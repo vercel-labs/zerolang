@@ -1,0 +1,11 @@
+id = "zero"
+name = "Zero"
+version = "0.1.1"
+schema_version = 1
+authors = ["Zero contributors"]
+description = "Zero language support for Zed."
+repository = "https://github.com/zerolang/zero"
+
+[grammars.zero]
+repository = "file://tree-sitter-zero"
+rev = "main"

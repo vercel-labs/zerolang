@@ -1,0 +1,27 @@
+{
+  "main": {
+    "prefix": "main",
+    "body": ["fun main() -> Void {", "    $0", "}"],
+    "description": "Main function"
+  },
+  "shape": {
+    "prefix": "shape",
+    "body": ["shape ${1:Name} {", "    ${2:field}: ${3:Type}", "}", "$0"],
+    "description": "Shape declaration"
+  },
+  "function": {
+    "prefix": "fun",
+    "body": ["fun ${1:name}(${2}) -> ${3:Void} {", "    $0", "}"],
+    "description": "Function declaration"
+  },
+  "test": {
+    "prefix": "test",
+    "body": ["test \"${1:name}\" {", "    $0", "}"],
+    "description": "Test block"
+  },
+  "GET route": {
+    "prefix": "get",
+    "body": ["pub fun GET(request: Request, world: World) -> Response {", "    $0", "}"],
+    "description": "Web GET handler"
+  }
+}

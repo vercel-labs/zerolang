@@ -1,0 +1,13 @@
+{
+  "name": "zero-zed",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:dev": "node scripts/prepare-dev-extension.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "toml": "^3.0.0"
+  }
+}

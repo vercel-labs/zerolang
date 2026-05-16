@@ -1,0 +1,58 @@
+==================
+Zero basics
+==================
+
+pub fun main() -> Void {
+    let value = add(1, 2)
+    if value == 3 {
+        return
+    }
+}
+
+shape Point {
+    x: i32,
+    y: i32,
+}
+
+---
+
+(source_file
+  (declaration
+    (function_declaration
+      (visibility)
+      name: (identifier)
+      (parameter_list)
+      (type_expression
+        (primitive_type))
+      body: (block
+        (statement
+          (let_statement
+            name: (identifier)
+            (call_expression
+              function: (identifier)
+              (argument_list
+                (literal
+                  (number_literal))
+                (literal
+                  (number_literal))))))
+        (statement
+          (if_statement
+            (binary_expression
+              (identifier)
+              (literal
+                (number_literal)))
+            (block
+              (statement
+                (return_statement))))))))
+  (declaration
+    (shape_declaration
+      name: (identifier)
+      body: (declaration_block
+        (field_declaration
+          name: (identifier)
+          type: (type_expression
+            (primitive_type)))
+        (field_declaration
+          name: (identifier)
+          type: (type_expression
+            (primitive_type)))))))

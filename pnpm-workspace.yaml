@@ -2,6 +2,7 @@ packages:
   - docs
   - evals
   - extensions/vscode
+  - extensions/zed
 allowBuilds:
   '@mongodb-js/zstd': true
   node-liblzma: false
