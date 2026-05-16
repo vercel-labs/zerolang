@@ -40,8 +40,19 @@ describe("VS Code extension manifest", () => {
     assert.match(matches, /fun/);
     assert.match(matches, /raises/);
     assert.match(matches, /shape/);
+    assert.match(matches, /interface/);
     assert.match(matches, /World/);
+    assert.match(matches, /MutSpan/);
     assert.match(matches, /Vercel/);
+  });
+
+  it("highlights current Zero operators", async () => {
+    const grammar = JSON.parse(await readFile("syntaxes/zero.tmLanguage.json", "utf8"));
+    const operatorPattern = grammar.repository.operators.patterns.find((pattern) => pattern.name === "keyword.operator.zero");
+    const operators = new RegExp(operatorPattern.match);
+
+    assert.match("&", operators);
+    assert.match("..", operators);
   });
 
   it("highlights comments, strings, and numbers", async () => {
