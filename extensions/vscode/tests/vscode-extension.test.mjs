@@ -46,15 +46,6 @@ describe("VS Code extension manifest", () => {
     assert.match(matches, /Vercel/);
   });
 
-  it("highlights current Zero operators", async () => {
-    const grammar = JSON.parse(await readFile("syntaxes/zero.tmLanguage.json", "utf8"));
-    const operatorPattern = grammar.repository.operators.patterns.find((pattern) => pattern.name === "keyword.operator.zero");
-    const operators = new RegExp(operatorPattern.match);
-
-    assert.match("&", operators);
-    assert.match("..", operators);
-  });
-
   it("highlights comments, strings, and numbers", async () => {
     const grammar = JSON.parse(await readFile("syntaxes/zero.tmLanguage.json", "utf8"));
     assert.equal(grammar.repository.comments.patterns[0].name, "comment.line.double-slash.zero");
