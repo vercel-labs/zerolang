@@ -1453,15 +1453,18 @@ const fixPatchBody = JSON.parse(fixPatchJson.stdout);
 assert.equal(fixPatchBody.mode, "patch");
 assert.equal(fixPatchBody.appliesEdits, false);
 assert.equal(fixPatchBody.fixes[0].appliesEdits, true);
+assert.equal(fixPatchBody.patches[0].line, 2);
 assert.match(fixPatchBody.patches[0].new, /let mut dst/);
 
 const fixApplyFixture = `${outDir}/fix-apply-mutable.0`;
-await writeFile(fixApplyFixture, await readFile("conformance/native/fail/mem-copy-immutable-dst.0", "utf8"));
+const fixApplyOriginal = await readFile("conformance/native/fail/mem-copy-immutable-dst.0", "utf8");
+await writeFile(fixApplyFixture, fixApplyOriginal);
 const fixApplyJson = await execFileAsync(zero, ["fix", "--apply", "--json", fixApplyFixture]);
 const fixApplyBody = JSON.parse(fixApplyJson.stdout);
 assert.equal(fixApplyBody.mode, "apply");
 assert.equal(fixApplyBody.applied, true);
-assert.match(await readFile(fixApplyFixture, "utf8"), /let mut dst/);
+const fixApplyResult = await readFile(fixApplyFixture, "utf8");
+assert.equal(fixApplyResult, fixApplyOriginal.replace("let dst:", "let mut dst:"));
 await execFileAsync(zero, ["check", fixApplyFixture]);
 
 const importGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/imports"]);
