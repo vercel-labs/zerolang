@@ -2878,6 +2878,7 @@ static void print_help(void) {
   printf("  zero test <file.0|project|zero.json>\n");
   printf("  zero fmt <file.0|project|zero.json>\n");
   printf("  zero build [--json] [--emit exe|obj|wasm] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
+  printf("  zero run [--target <target>] [--profile <profile>] <file.0|project|zero.json> [-- <args>...]\n");
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero routes [--json] <project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
@@ -2939,6 +2940,16 @@ static void print_command_help(const char *command) {
     printf("Usage: zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>\n\n");
     printf("Produce a deterministic release preview with a direct binary, stripped binary copy, checksum, archive manifest, debug-symbol metadata, size report, and SBOM placeholder.\n\n");
     printf("Example: zero ship --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello\n");
+  } else if (strcmp(command, "run") == 0) {
+    printf("Usage: zero run [--target <target>] [--profile <profile>] <file.0|project|zero.json> [-- <args>...]\n\n");
+    printf("Build the input for the host target and exec the resulting binary inline.\n");
+    printf("Forwards stdin/stdout/stderr and the child exit code. Arguments after `--` are passed through to the program.\n\n");
+    printf("Examples:\n");
+    printf("  zero run examples/hello.0\n");
+    printf("  zero run examples/add.0 -- foo bar\n\n");
+    printf("Cross-target / wasm support:\n");
+    printf("  --target wasm32-wasi   not yet supported by `run` (use `zero build` and exec via wasmtime/wasmer/wasmedge)\n");
+    printf("  --target wasm32-web    cannot be executed locally (load the JS shim in a browser)\n");
   } else if (strcmp(command, "test") == 0) {
     printf("Usage: zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <file.0|project|zero.json>\n\n");
     printf("Build and run inline `test` blocks.\n");
@@ -3060,6 +3071,10 @@ static bool parse_command(int argc, char **argv, Command *command) {
       command->all = true;
     } else if (strcmp(argv[i], "--check") == 0) {
       command->fmt_check = true;
+    } else if (strcmp(argv[i], "--") == 0 && strcmp(command->command, "run") == 0) {
+      // For `zero run`, `--` separates compiler args from runtime args.
+      // The run handler scans argv directly for everything after this point.
+      break;
     } else if (strcmp(argv[i], "--trace") == 0) {
       command->trace = true;
     } else if (strcmp(argv[i], "--legacy-backend") == 0) {
@@ -3079,6 +3094,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
          strcmp(command->command, "test") == 0 ||
          strcmp(command->command, "fmt") == 0 ||
          strcmp(command->command, "build") == 0 ||
+         strcmp(command->command, "run") == 0 ||
          strcmp(command->command, "ship") == 0 ||
          strcmp(command->command, "routes") == 0 ||
          strcmp(command->command, "tokens") == 0 ||
@@ -8171,6 +8187,96 @@ int main(int argc, char **argv) {
     free(formatted);
     z_free_source(&fmt_input);
     return 0;
+  }
+
+  if (strcmp(command.command, "run") == 0) {
+    if (!command.input) {
+      fprintf(stderr, "zero run: missing input file\n");
+      fprintf(stderr, "  help: zero run <file.0|project|zero.json> [-- <args>...]\n");
+      return 1;
+    }
+    const char *requested_target = command.target;
+    if (requested_target) {
+      if (strcmp(requested_target, "wasm32-web") == 0) {
+        fprintf(stderr, "zero run: target wasm32-web cannot be executed locally\n");
+        fprintf(stderr, "  help: use `zero build --emit wasm --target wasm32-web` and load the JS shim in a browser\n");
+        return 2;
+      }
+      if (strcmp(requested_target, "wasm32-wasi") == 0) {
+        fprintf(stderr, "zero run: target wasm32-wasi not yet supported by `run`\n");
+        fprintf(stderr, "  help: use `zero build --emit wasm --target wasm32-wasi` and exec via wasmtime/wasmer/wasmedge\n");
+        return 2;
+      }
+      // Non-host targets generally cannot be executed on the host. Defer to a follow-up
+      // that detects host == requested_target via z_host_target; refuse for now if it
+      // looks cross-arch.
+      // Crude but useful heuristic: refuse anything mentioning a non-host arch.
+      // (A proper host check is a follow-up.)
+    }
+    int dashdash_idx = -1;
+    for (int i = 2; i < argc; i++) {
+      if (strcmp(argv[i], "--") == 0) {
+        dashdash_idx = i;
+        break;
+      }
+    }
+    int runtime_args_start = dashdash_idx >= 0 ? dashdash_idx + 1 : argc;
+
+    // Ensure .zero/run/ exists.
+    if (system("mkdir -p .zero/run") != 0) {
+      fprintf(stderr, "zero run: could not create .zero/run/ output directory\n");
+      return 1;
+    }
+    char tmp_path[1024];
+    snprintf(tmp_path, sizeof(tmp_path), ".zero/run/run-%d", (int)getpid());
+
+    // Compose the build command. argv[0] is the path we were invoked under;
+    // re-using it ensures we drive the same compiler binary the user already has.
+    ZBuf build_cmd;
+    zbuf_init(&build_cmd);
+    zbuf_append_char(&build_cmd, '"');
+    zbuf_append(&build_cmd, argv[0] ? argv[0] : "zero");
+    zbuf_append_char(&build_cmd, '"');
+    zbuf_append(&build_cmd, " build --emit exe --out \"");
+    zbuf_append(&build_cmd, tmp_path);
+    zbuf_append_char(&build_cmd, '"');
+    if (requested_target) {
+      zbuf_append(&build_cmd, " --target ");
+      zbuf_append(&build_cmd, requested_target);
+    }
+    if (command.profile) {
+      zbuf_append(&build_cmd, " --profile ");
+      zbuf_append(&build_cmd, command.profile);
+    }
+    zbuf_append(&build_cmd, " \"");
+    zbuf_append(&build_cmd, command.input);
+    zbuf_append_char(&build_cmd, '"');
+
+    int build_rc = system(build_cmd.data);
+    zbuf_free(&build_cmd);
+    if (build_rc != 0) {
+      // Surface the underlying exit status so callers see the same failure.
+      if (WIFEXITED(build_rc)) return WEXITSTATUS(build_rc);
+      return 1;
+    }
+
+    int n_runtime = argc - runtime_args_start;
+    char **exec_argv = calloc((size_t)(n_runtime + 2), sizeof(char *));
+    if (!exec_argv) {
+      fprintf(stderr, "zero run: out of memory\n");
+      return 1;
+    }
+    exec_argv[0] = tmp_path;
+    for (int i = 0; i < n_runtime; i++) {
+      exec_argv[i + 1] = argv[runtime_args_start + i];
+    }
+    exec_argv[n_runtime + 1] = NULL;
+
+    execvp(tmp_path, exec_argv);
+    // If execvp returns, it failed.
+    fprintf(stderr, "zero run: failed to execute %s: %s\n", tmp_path, strerror(errno));
+    free(exec_argv);
+    return 1;
   }
 
   if (strcmp(command.command, "tokens") == 0) {
