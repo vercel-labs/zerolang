@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { constants as osConstants } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -72,22 +73,7 @@ function runNative() {
 }
 
 function signalExitCode(signal) {
-  const signalNumbers = {
-    SIGHUP: 1,
-    SIGINT: 2,
-    SIGQUIT: 3,
-    SIGILL: 4,
-    SIGTRAP: 5,
-    SIGABRT: 6,
-    SIGBUS: 7,
-    SIGFPE: 8,
-    SIGKILL: 9,
-    SIGSEGV: 11,
-    SIGPIPE: 13,
-    SIGALRM: 14,
-    SIGTERM: 15,
-  };
-  return 128 + (signalNumbers[signal] ?? 1);
+  return 128 + (osConstants.signals?.[signal] ?? 1);
 }
 
 function trySkillsCommand(argv) {
