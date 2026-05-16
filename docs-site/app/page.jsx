@@ -88,18 +88,13 @@ export default function HomePage() {
           <h1 className="m-0 text-[clamp(2rem,5vw,3.75rem)] font-bold leading-[1.15] tracking-[-0.045em]">
             The programming language
             <br />
-            for agents.
+            for agents
           </h1>
           <p className="mt-6 max-w-[38rem] text-[clamp(1rem,2vw,1.1875rem)] leading-[1.65] text-muted">
             Zero is a systems language designed so humans and AI agents can read,
             repair, inspect, and ship small native programs together. It keeps
             effects explicit, memory predictable, and compiler output structured.
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <ButtonLink href="/getting-started" variant="primary" size="lg">
-              Get started <ArrowRightIcon />
-            </ButtonLink>
-          </div>
           <InstallCopy />
         </section>
 
