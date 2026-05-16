@@ -199,6 +199,22 @@ describe("native zero CLI", () => {
     }
   });
 
+  it("lists the diagnostic catalog as JSON", async () => {
+    const catalog = JSON.parse((await runZero(["explain", "--json", "--all"])).stdout);
+
+    assert.equal(catalog.schemaVersion, 1);
+    assert.ok(catalog.diagnostics.length > 5);
+
+    const typ009 = catalog.diagnostics.find((diagnostic: { code: string }) => diagnostic.code === "TYP009");
+    assert.equal(typ009.category, "type");
+    assert.equal(typ009.repair.id, "make-binding-mutable");
+    assert.equal(typ009.repair.safety, "behavior-preserving");
+
+    const tar002 = catalog.diagnostics.find((diagnostic: { code: string }) => diagnostic.code === "TAR002");
+    assert.equal(tar002.repair.id, "remove-hosted-fs-or-use-host-target");
+    assert.equal(tar002.repair.safety, "requires-human-review");
+  });
+
   it("emits native diagnostic codes", async () => {
     const result = await runZero(["check", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
     assert.notEqual(result.code, 0);

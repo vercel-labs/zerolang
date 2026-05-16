@@ -2587,53 +2587,90 @@ static const ExplainInfo *find_explain_info(const char *code) {
   return NULL;
 }
 
+static int explain_diag_code(const char *code) {
+  if (!code) return 0;
+  return strcmp(code, "TAR001") == 0 ? 6001 :
+         strcmp(code, "TAR002") == 0 ? 6002 :
+         strcmp(code, "BLD003") == 0 ? 2003 :
+         strcmp(code, "TYP009") == 0 ? 3010 :
+         strcmp(code, "TYP023") == 0 ? 3032 :
+         strcmp(code, "TYP024") == 0 ? 3033 :
+         strcmp(code, "TYP025") == 0 ? 3034 :
+         strcmp(code, "MET001") == 0 ? 3035 :
+         strcmp(code, "TYP026") == 0 ? 3036 :
+         strcmp(code, "PUB001") == 0 ? 3037 :
+         strcmp(code, "IFC001") == 0 ? 3038 :
+         strcmp(code, "IFC002") == 0 ? 3039 :
+         strcmp(code, "IFC003") == 0 ? 3040 :
+         strcmp(code, "IFC004") == 0 ? 3041 :
+         strcmp(code, "IFC005") == 0 ? 3042 :
+         strcmp(code, "STC001") == 0 ? 3043 :
+         strcmp(code, "STC002") == 0 ? 3044 :
+         strcmp(code, "STC003") == 0 ? 3045 :
+         strcmp(code, "SHM001") == 0 ? 3046 :
+         strcmp(code, "SHM002") == 0 ? 3047 :
+         strcmp(code, "RCV001") == 0 ? 3048 :
+         strcmp(code, "RCV002") == 0 ? 3049 :
+         strcmp(code, "ERR002") == 0 ? 1002 :
+         strcmp(code, "ERR003") == 0 ? 1003 :
+         strcmp(code, "STD003") == 0 ? 3012 :
+         strcmp(code, "CGEN004") == 0 ? 4004 : 0;
+}
+
+static void append_explain_info_fields_json(ZBuf *buf, const ExplainInfo *info, bool include_examples) {
+  int diag_code_value = explain_diag_code(info->code);
+  zbuf_append(buf, "\"code\": ");
+  append_json_string(buf, info->code);
+  zbuf_append(buf, ", \"category\": ");
+  append_json_string(buf, info->category);
+  zbuf_append(buf, ", \"title\": ");
+  append_json_string(buf, info->title);
+  zbuf_append(buf, ", \"summary\": ");
+  append_json_string(buf, info->summary);
+  zbuf_append(buf, ", \"why\": ");
+  append_json_string(buf, info->why);
+  zbuf_append(buf, ", \"repair\": {\"id\": ");
+  append_json_string(buf, diag_repair_id(diag_code_value));
+  zbuf_append(buf, ", \"safety\": ");
+  append_json_string(buf, diag_fix_safety(diag_code_value));
+  zbuf_append(buf, ", \"summary\": ");
+  append_json_string(buf, info->canonical_repair);
+  zbuf_append(buf, "}");
+  if (include_examples) {
+    zbuf_append(buf, ", \"examples\": {\"bad\": ");
+    append_json_string(buf, info->bad_example);
+    zbuf_append(buf, ", \"good\": ");
+    append_json_string(buf, info->good_example);
+    zbuf_append(buf, "}");
+  }
+}
+
+static void append_explain_info_json(ZBuf *buf, const ExplainInfo *info, bool include_examples) {
+  zbuf_append(buf, "{");
+  append_explain_info_fields_json(buf, info, include_examples);
+  zbuf_append(buf, "}");
+}
+
 static void print_explain_json(const ExplainInfo *info) {
   ZBuf buf;
   zbuf_init(&buf);
-  zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"code\": ");
-  append_json_string(&buf, info->code);
-  zbuf_append(&buf, ",\n  \"category\": ");
-  append_json_string(&buf, info->category);
-  zbuf_append(&buf, ",\n  \"title\": ");
-  append_json_string(&buf, info->title);
-  zbuf_append(&buf, ",\n  \"summary\": ");
-  append_json_string(&buf, info->summary);
-  zbuf_append(&buf, ",\n  \"why\": ");
-  append_json_string(&buf, info->why);
-  zbuf_append(&buf, ",\n  \"repair\": {\"id\": ");
-  append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
-                                         strcmp(info->code, "TAR002") == 0 ? 6002 :
-                                         strcmp(info->code, "BLD003") == 0 ? 2003 :
-                                         strcmp(info->code, "TYP009") == 0 ? 3010 :
-                                         strcmp(info->code, "TYP023") == 0 ? 3032 :
-                                         strcmp(info->code, "TYP024") == 0 ? 3033 :
-                                         strcmp(info->code, "TYP025") == 0 ? 3034 :
-                                         strcmp(info->code, "MET001") == 0 ? 3035 :
-                                         strcmp(info->code, "TYP026") == 0 ? 3036 :
-                                         strcmp(info->code, "PUB001") == 0 ? 3037 :
-                                         strcmp(info->code, "IFC001") == 0 ? 3038 :
-                                         strcmp(info->code, "IFC002") == 0 ? 3039 :
-                                         strcmp(info->code, "IFC003") == 0 ? 3040 :
-                                         strcmp(info->code, "IFC004") == 0 ? 3041 :
-                                         strcmp(info->code, "IFC005") == 0 ? 3042 :
-                                         strcmp(info->code, "STC001") == 0 ? 3043 :
-                                         strcmp(info->code, "STC002") == 0 ? 3044 :
-                                         strcmp(info->code, "STC003") == 0 ? 3045 :
-                                         strcmp(info->code, "SHM001") == 0 ? 3046 :
-                                         strcmp(info->code, "SHM002") == 0 ? 3047 :
-                                         strcmp(info->code, "RCV001") == 0 ? 3048 :
-                                         strcmp(info->code, "RCV002") == 0 ? 3049 :
-                                         strcmp(info->code, "ERR002") == 0 ? 1002 :
-                                         strcmp(info->code, "ERR003") == 0 ? 1003 :
-                                         strcmp(info->code, "STD003") == 0 ? 3012 :
-                                         strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
-  zbuf_append(&buf, ", \"summary\": ");
-  append_json_string(&buf, info->canonical_repair);
-  zbuf_append(&buf, "},\n  \"examples\": {\"bad\": ");
-  append_json_string(&buf, info->bad_example);
-  zbuf_append(&buf, ", \"good\": ");
-  append_json_string(&buf, info->good_example);
-  zbuf_append(&buf, "}\n}\n");
+  zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  ");
+  append_explain_info_fields_json(&buf, info, true);
+  zbuf_append(&buf, "\n}\n");
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+static void print_explain_catalog_json(void) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"diagnostics\": [");
+  for (size_t i = 0; explain_infos[i].code; i++) {
+    if (i > 0) zbuf_append(&buf, ",");
+    zbuf_append(&buf, "\n    ");
+    append_explain_info_json(&buf, &explain_infos[i], false);
+  }
+  zbuf_append(&buf, "\n  ]\n}\n");
   fputs(buf.data, stdout);
   zbuf_free(&buf);
 }
@@ -2647,6 +2684,14 @@ static void print_explain_text(const ExplainInfo *info) {
 }
 
 static int explain_command(const Command *command) {
+  if (command->all) {
+    if (command->json) {
+      print_explain_catalog_json();
+    } else {
+      for (size_t i = 0; explain_infos[i].code; i++) printf("%s\t%s\n", explain_infos[i].code, explain_infos[i].title);
+    }
+    return 0;
+  }
   const ExplainInfo *info = find_explain_info(command->input);
   if (!info) {
     ZDiag diag = {0};
@@ -8190,7 +8235,7 @@ int main(int argc, char **argv) {
     }
     return 1;
   }
-  if (!command.input) {
+  if (!command.input && !(strcmp(command.command, "explain") == 0 && command.all)) {
     print_command_help(command.command);
     return 1;
   }
