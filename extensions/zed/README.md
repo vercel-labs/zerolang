@@ -15,3 +15,4 @@ pnpm run extension:zed:prepare
 Then run `zed: install dev extension` and select `.zero/zed/zero`.
 
 The checked-in manifest keeps a portable `file://tree-sitter-zero` grammar URL. The prepare script rewrites that to the absolute local grammar path Zed expects for dev-extension installs.
+Zed fetches grammars as Git repositories, so the prepare script also creates a temporary standalone grammar repo under `.zero/zed/tree-sitter-zero`.

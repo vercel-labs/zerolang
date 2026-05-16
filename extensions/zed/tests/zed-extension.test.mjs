@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import toml from "toml";
+
+const execFileAsync = promisify(execFile);
+const testDir = dirname(fileURLToPath(import.meta.url));
+const extensionDir = resolve(testDir, "..");
+const repoRoot = resolve(extensionDir, "..", "..");
 
 describe("Zed extension manifest", () => {
   it("declares Zero language metadata and grammar", async () => {
@@ -40,5 +49,24 @@ describe("Zed extension manifest", () => {
     assert.ok(snippets.function);
     assert.ok(snippets.test);
     assert.ok(snippets["GET route"]);
+  });
+
+  it("prepares a dev extension with a fetchable local grammar repository", async () => {
+    await execFileAsync(process.execPath, ["scripts/prepare-dev-extension.mjs"], {
+      cwd: extensionDir,
+      windowsHide: true,
+    });
+
+    const manifest = toml.parse(
+      await readFile(join(repoRoot, ".zero", "zed", "zero", "extension.toml"), "utf8"),
+    );
+    const grammar = manifest.grammars.zero;
+    assert.match(grammar.repository, /^file:\/\//);
+    assert.equal(grammar.rev, "main");
+
+    const { stdout } = await execFileAsync("git", ["ls-remote", grammar.repository, grammar.rev], {
+      windowsHide: true,
+    });
+    assert.match(stdout, /refs\/heads\/main/);
   });
 });
