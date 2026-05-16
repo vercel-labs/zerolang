@@ -8,6 +8,22 @@ export PATH="$HOME/.zero/bin:$PATH"
 zero --version
 ```
 
+To keep `zero` on your PATH permanently, add the export line to your shell
+profile (`~/.zshrc`, `~/.bashrc`, or equivalent).
+
+Expected output:
+
+```text
+zero <version>
+commit: <hash>
+host: <platform>
+backend: zero-c
+targets: ["darwin-arm64","darwin-x64","linux-musl-x64",...]
+target compiler: available <toolchain>
+```
+
+The values vary depending on your release and local toolchain.
+
 The installer downloads the latest matching binary from
 `github.com/vercel-labs/zero`, verifies it against the release checksum file,
 and writes it to `$HOME/.zero/bin/zero`. Set `ZERO_INSTALL_DIR` to choose a
