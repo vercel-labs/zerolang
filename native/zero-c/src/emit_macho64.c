@@ -169,6 +169,20 @@ static void macho_sha256_hash(const unsigned char *data, size_t len, unsigned ch
   macho_sha256_final(&ctx, hash);
 }
 
+static void macho_make_uuid(const ZBuf *text, const ZBuf *rodata, unsigned char uuid[16]) {
+  MachOSha256 ctx;
+  unsigned char hash[32];
+  const unsigned char tag[] = "zero-macho64-exe-v1";
+  macho_sha256_init(&ctx);
+  macho_sha256_update(&ctx, tag, sizeof(tag) - 1);
+  if (text && text->data && text->len) macho_sha256_update(&ctx, (const unsigned char *)text->data, text->len);
+  if (rodata && rodata->data && rodata->len) macho_sha256_update(&ctx, (const unsigned char *)rodata->data, rodata->len);
+  macho_sha256_final(&ctx, hash);
+  memcpy(uuid, hash, 16);
+  uuid[6] = (unsigned char)((uuid[6] & 0x0fu) | 0x40u);
+  uuid[8] = (unsigned char)((uuid[8] & 0x3fu) | 0x80u);
+}
+
 static void macho_append_code_signature(ZBuf *sig, const unsigned char *code, size_t code_len, const char *identifier) {
   const uint32_t page_log = 12;
   const size_t page_size = 1u << page_log;
@@ -1451,8 +1465,9 @@ bool z_emit_macho64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag
   const uint32_t libsystem_cmd_size = 56;
   const uint32_t main_cmd_size = 24;
   const uint32_t build_version_cmd_size = 24;
+  const uint32_t uuid_cmd_size = 24;
   const uint32_t code_signature_cmd_size = 16;
-  const uint32_t sizeofcmds = pagezero_cmd_size + text_segment_cmd_size + linkedit_cmd_size + dyld_info_cmd_size + dylinker_cmd_size + libsystem_cmd_size + main_cmd_size + build_version_cmd_size + code_signature_cmd_size;
+  const uint32_t sizeofcmds = pagezero_cmd_size + text_segment_cmd_size + linkedit_cmd_size + dyld_info_cmd_size + dylinker_cmd_size + libsystem_cmd_size + main_cmd_size + build_version_cmd_size + uuid_cmd_size + code_signature_cmd_size;
   const uint32_t text_offset = (uint32_t)macho_align(header_size + sizeofcmds, 16);
   const uint32_t rodata_offset = has_rodata ? (uint32_t)macho_align(text_offset + text.len, 8) : 0;
   for (size_t i = 0; i < ctx.data_patch_len; i++) {
@@ -1484,13 +1499,15 @@ bool z_emit_macho64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag
   const uint32_t code_signature_size = 20 + code_signature_hash_offset + code_signature_slots * 32;
   const uint64_t linkedit_vmaddr = base_addr + segment_file_size;
   const uint64_t linkedit_vmsize = macho_align(code_signature_size, page_size);
+  unsigned char uuid[16];
+  macho_make_uuid(&text, has_rodata ? &rodata : NULL, uuid);
 
   zbuf_init(out);
   append_u32le(out, 0xfeedfacfu);      // MH_MAGIC_64
   append_u32le(out, 0x0100000cu);      // CPU_TYPE_ARM64
   append_u32le(out, 0);                // CPU_SUBTYPE_ARM64_ALL
   append_u32le(out, 2);                // MH_EXECUTE
-  append_u32le(out, 9);                // ncmds
+  append_u32le(out, 10);               // ncmds
   append_u32le(out, sizeofcmds);
   append_u32le(out, 0x200085);         // MH_NOUNDEFS | MH_DYLDLINK | MH_TWOLEVEL | MH_PIE
   append_u32le(out, 0);
@@ -1591,6 +1608,10 @@ bool z_emit_macho64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag
   append_u32le(out, 0x000b0000);       // macOS 11.0.0
   append_u32le(out, 0);
   append_u32le(out, 0);
+
+  append_u32le(out, 0x1b);             // LC_UUID
+  append_u32le(out, uuid_cmd_size);
+  append_bytes(out, (const char *)uuid, sizeof(uuid));
 
   append_u32le(out, 0x1d);             // LC_CODE_SIGNATURE
   append_u32le(out, code_signature_cmd_size);
