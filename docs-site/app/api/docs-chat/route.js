@@ -89,6 +89,9 @@ export async function POST(req) {
 
   const result = streamText({
     model: DEFAULT_MODEL,
+    headers: process.env.AI_GATEWAY_API_KEY
+      ? { Authorization: `Bearer ${process.env.AI_GATEWAY_API_KEY}` }
+      : undefined,
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(5),
