@@ -4963,7 +4963,7 @@ static char *checked_call_param_type(const Program *program, const Function *cal
   return z_strdup(param_type ? param_type : "Unknown");
 }
 
-static bool function_return_value_provenance(const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, ValueProvenance *origins);
+static bool function_return_value_provenance(const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, ValueProvenance *origins, bool *may_return);
 
 static bool type_value_provenance_from_place(
   const Program *program,
@@ -5130,7 +5130,8 @@ static bool call_result_value_provenance(const Program *program, const Expr *exp
     has_summary_bindings = generic_call_bindings_from_checked_call(program, callee, expr, scope, return_type, &summary_bindings, &summary_binding_len);
   }
   ValueProvenance summary = {0};
-  if (function_return_value_provenance(program, callee, has_summary_bindings ? summary_bindings : NULL, summary_binding_len, &summary)) {
+  bool callee_may_return = true;
+  if (function_return_value_provenance(program, callee, has_summary_bindings ? summary_bindings : NULL, summary_binding_len, &summary, &callee_may_return)) {
     for (size_t origin_index = 0; origin_index < summary.len; origin_index++) {
       ProvenanceEntry *summary_entry = &summary.items[origin_index];
       size_t param_index = callee->params.len;
@@ -5202,6 +5203,7 @@ static bool call_result_value_provenance(const Program *program, const Expr *exp
   generic_bindings_free(summary_bindings, summary_binding_len);
   free(summary_bindings);
   if (added) return true;
+  if (!callee_may_return) return false;
 
   if (!return_mut && !type_is_named_generic(return_type, "ref")) return false;
 
@@ -5402,7 +5404,7 @@ static char *return_provenance_type_text(const char *type, GenericBinding *bindi
   return z_strdup(type);
 }
 
-static bool collect_return_value_provenance_from_stmt_vec(const Program *program, const Function *fun, const StmtVec *body, Scope *scope, GenericBinding *bindings, size_t binding_len, ValueProvenance *out) {
+static bool collect_return_value_provenance_from_stmt_vec(const Program *program, const Function *fun, const StmtVec *body, Scope *scope, GenericBinding *bindings, size_t binding_len, ValueProvenance *out, bool *may_return) {
   if (!program || !fun || !body || !scope || !out) return false;
   bool added = false;
   for (size_t stmt_index = 0; stmt_index < body->len; stmt_index++) {
@@ -5425,12 +5427,17 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
       continue;
     }
     if (stmt->kind == STMT_RETURN) {
+      if (may_return) *may_return = true;
       ValueProvenance origins = {0};
       if (expr_reference_provenance(program, stmt->expr, scope, &origins)) {
         if (value_provenance_add_all(out, &origins)) added = true;
       }
       value_provenance_free(&origins);
       return added;
+    }
+    if (stmt->kind == STMT_RAISE) {
+      if (fun->raises) return added;
+      continue;
     }
     if (stmt->kind == STMT_IF) {
       bool then_possible = true;
@@ -5444,14 +5451,14 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
       ProvenanceScopeSnapshot *else_after = NULL;
       if (then_possible) {
         Scope then_scope = {.parent = scope};
-        if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->then_body, &then_scope, bindings, binding_len, out)) added = true;
+        if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->then_body, &then_scope, bindings, binding_len, out, may_return)) added = true;
         scope_free(&then_scope);
         then_after = provenance_scope_snapshot_capture(scope);
       }
       provenance_scope_snapshot_restore(before);
       if (else_possible) {
         Scope else_scope = {.parent = scope};
-        if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->else_body, &else_scope, bindings, binding_len, out)) added = true;
+        if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->else_body, &else_scope, bindings, binding_len, out, may_return)) added = true;
         scope_free(&else_scope);
         else_after = provenance_scope_snapshot_capture(scope);
       }
@@ -5464,6 +5471,7 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
       provenance_scope_snapshot_free(then_after);
       provenance_scope_snapshot_free(else_after);
       provenance_scope_snapshot_free(before);
+      if (!continues[0] && !continues[1]) return added;
       continue;
     }
     if (stmt->kind == STMT_WHILE) {
@@ -5472,7 +5480,7 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
       ProvenanceScopeSnapshot *body_after = NULL;
       if (body_possible) {
         Scope body_scope = {.parent = scope};
-        if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->then_body, &body_scope, bindings, binding_len, out)) added = true;
+        if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->then_body, &body_scope, bindings, binding_len, out, may_return)) added = true;
         scope_free(&body_scope);
         body_after = provenance_scope_snapshot_capture(scope);
       }
@@ -5490,7 +5498,7 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
       char *substituted_iter_type = return_provenance_type_text(iter_type, bindings, binding_len);
       if (stmt->name) scope_add(&body_scope, stmt->name, substituted_iter_type ? substituted_iter_type : "Unknown", false);
       free(substituted_iter_type);
-      if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->then_body, &body_scope, bindings, binding_len, out)) added = true;
+      if (collect_return_value_provenance_from_stmt_vec(program, fun, &stmt->then_body, &body_scope, bindings, binding_len, out, may_return)) added = true;
       scope_free(&body_scope);
       ProvenanceScopeSnapshot *body_after = provenance_scope_snapshot_capture(scope);
       ProvenanceScopeSnapshot *states[] = {before, body_after};
@@ -5518,25 +5526,32 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
             free(payload_type);
           }
         }
-        if (collect_return_value_provenance_from_stmt_vec(program, fun, &arm->body, &arm_scope, bindings, binding_len, out)) added = true;
+        if (collect_return_value_provenance_from_stmt_vec(program, fun, &arm->body, &arm_scope, bindings, binding_len, out, may_return)) added = true;
         scope_free(&arm_scope);
         arm_states[arm_index] = provenance_scope_snapshot_capture(scope);
         arm_continues[arm_index] = !stmt_vec_guarantees_exit(&arm->body, fun->raises);
       }
       provenance_scope_snapshot_restore_union(before, arm_states, arm_continues, stmt->match_arms.len);
+      bool any_arm_continues = false;
+      for (size_t i = 0; i < stmt->match_arms.len; i++) {
+        if (arm_continues[i]) any_arm_continues = true;
+      }
       for (size_t i = 0; i < stmt->match_arms.len; i++) provenance_scope_snapshot_free(arm_states[i]);
       free(arm_states);
       free(arm_continues);
       provenance_scope_snapshot_free(before);
+      if (!any_arm_continues) return added;
       continue;
     }
   }
   return added;
 }
 
-static bool function_return_value_provenance(const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, ValueProvenance *origins) {
+static bool function_return_value_provenance(const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, ValueProvenance *origins, bool *may_return) {
+  if (may_return) *may_return = true;
   if (!program || !fun || !origins) return false;
   if (function_return_provenance_depth > 16) return false;
+  if (may_return) *may_return = false;
   function_return_provenance_depth++;
   GenericBinding *previous_expr_bindings = return_provenance_expr_bindings;
   size_t previous_expr_binding_len = return_provenance_expr_binding_len;
@@ -5551,7 +5566,7 @@ static bool function_return_value_provenance(const Program *program, const Funct
       free(param_type);
     }
   }
-  bool added = collect_return_value_provenance_from_stmt_vec(program, fun, &fun->body, &scope, bindings, binding_len, origins);
+  bool added = collect_return_value_provenance_from_stmt_vec(program, fun, &fun->body, &scope, bindings, binding_len, origins, may_return);
   scope_free(&scope);
   return_provenance_expr_bindings = previous_expr_bindings;
   return_provenance_expr_binding_len = previous_expr_binding_len;
