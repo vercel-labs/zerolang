@@ -2825,14 +2825,20 @@ static int print_or_apply_fix_json(const char *path, SourceInput *input, const Z
   int edit_line = 0;
   char *old_line = NULL;
   char *new_line = NULL;
-  bool has_edit = can_apply && find_make_binding_mutable_edit(input ? input->source : NULL, &edit_line, &old_line, &new_line);
+  char *original = NULL;
+  if (can_apply && input && input->source_file) {
+    ZDiag read_diag = {0};
+    original = z_read_file(input->source_file, &read_diag);
+  }
+  bool has_edit = original && find_make_binding_mutable_edit(original, &edit_line, &old_line, &new_line);
   bool applied = false;
   if (apply && has_edit) {
-    char *updated = apply_single_line_edit(input->source, edit_line, new_line);
+    char *updated = apply_single_line_edit(original, edit_line, new_line);
     ZDiag write_diag = {0};
     applied = z_write_file(input->source_file, updated, &write_diag);
     free(updated);
   }
+  free(original);
 
   ZBuf buf;
   zbuf_init(&buf);
