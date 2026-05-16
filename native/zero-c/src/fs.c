@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 
 void zbuf_init(ZBuf *buf) {
   buf->data = NULL;
@@ -76,6 +75,14 @@ static void diag_io(ZDiag *diag, const char *path, const char *action) {
   snprintf(diag->message, sizeof(diag->message), "failed to %s '%s': %s", action, path, strerror(errno));
 }
 
+static int zero_mkdir(const char *path) {
+#if defined(_WIN32)
+  return mkdir(path);
+#else
+  return mkdir(path, 0777);
+#endif
+}
+
 char *z_read_file(const char *path, ZDiag *diag) {
   FILE *file = fopen(path, "rb");
   if (!file) {
@@ -97,7 +104,7 @@ static bool mkdir_parents(const char *path) {
   for (char *cursor = copy + 1; *cursor; cursor++) {
     if (*cursor == '/') {
       *cursor = 0;
-      mkdir(copy, 0777);
+      zero_mkdir(copy);
       *cursor = '/';
     }
   }
@@ -1277,9 +1284,9 @@ static bool command_exists(const char *command) {
   ZBuf probe;
   zbuf_init(&probe);
   zbuf_appendf(&probe, "command -v '%s' >/dev/null 2>&1", command);
-  int code = system(probe.data);
+  bool ok = system(probe.data) == 0;
   zbuf_free(&probe);
-  return code != -1 && WIFEXITED(code) && WEXITSTATUS(code) == 0;
+  return ok;
 }
 
 static bool dir_exists_for_cc(const char *path) {
@@ -1432,9 +1439,8 @@ bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const ch
       exe_file
     );
   }
-  int code = system(cmd.data);
+  bool ok = system(cmd.data) == 0;
   zbuf_free(&cmd);
-  bool ok = code != -1 && WIFEXITED(code) && WEXITSTATUS(code) == 0;
   if (!ok) {
     fprintf(
       stderr,

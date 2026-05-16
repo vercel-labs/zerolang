@@ -1,23 +1,18 @@
 ## Getting Started
 
 Zero is the programming language for agents. The fastest way to try it today is
-to build the compiler from this repository and run the included examples.
+to install the latest compiler release and run a small program.
 
-The project is still early, so treat these commands as a hands-on preview rather
-than a stable production install path.
-
-## Build The Compiler
-
-From the repository root:
+## Install The Compiler
 
 ```sh
-npm install
-make -C native/zero-c
-bin/zero --version
+curl -fsSL https://zerolang.ai/install.sh | bash
+export PATH="$HOME/.zero/bin:$PATH"
+zero --version
 ```
 
-`npm` installs docs and test tooling. The compiler itself is built by `make` and
-written to `.zero/bin/zero`; `bin/zero` is the repository wrapper.
+The installer downloads the latest matching binary from the GitHub release and
+writes it to `$HOME/.zero/bin/zero`.
 
 ## Check Your First File
 
@@ -32,7 +27,7 @@ pub fun main(world: World) -> Void raises {
 Run the checker:
 
 ```sh
-bin/zero check hello.0
+zero check hello.0
 ```
 
 The important parts are:
@@ -65,11 +60,10 @@ pub fun main(world: World) -> Void raises {
 }
 ```
 
-Build and run it:
+Run it:
 
 ```sh
-bin/zero build --emit exe --target linux-musl-x64 add.0 --out .zero/out/add
-./.zero/out/add
+zero run add.0
 ```
 
 Expected output:
@@ -85,11 +79,12 @@ This example introduces a helper function, a local binding, and `if` / `else`.
 The project workflow starts with `zero new`:
 
 ```sh
-bin/zero new cli hello
+zero new cli hello
 cd hello
-../bin/zero check
-../bin/zero test
-../bin/zero build --target linux-musl-x64 --out .zero/out/hello
+zero check .
+zero test .
+zero run .
+zero build --target linux-musl-x64 --out .zero/out/hello .
 ```
 
 Single files are useful for learning, but real Zero projects use a `zero.json`
@@ -100,12 +95,12 @@ manifest and source files under `src/`.
 Work through these examples in order:
 
 ```sh
-bin/zero check examples/hello.0
-bin/zero check examples/hello-let.0
-bin/zero check examples/functions.0
-bin/zero check examples/branch.0
-bin/zero check examples/point.0
-bin/zero check examples/result-choice.0
+zero check examples/hello.0
+zero check examples/hello-let.0
+zero check examples/functions.0
+zero check examples/branch.0
+zero check examples/point.0
+zero check examples/result-choice.0
 ```
 
 They cover:
@@ -134,13 +129,13 @@ examples/
 Check it:
 
 ```sh
-bin/zero check examples/systems-package
+zero check examples/systems-package
 ```
 
 Inspect its module graph:
 
 ```sh
-bin/zero graph --json examples/systems-package
+zero graph --json examples/systems-package
 ```
 
 The manifest tells Zero where the entry point lives:

@@ -99,6 +99,7 @@ function assertTemplateManifest(kind, manifest, readme) {
     assert.match(readme, /zero doc --json/);
   } else {
     assert.equal(manifest.targets.cli.main, "src/main.0");
+    assert.match(readme, /zero run \./);
     assert.match(readme, /zero build --target linux-musl-x64/);
     assert.match(readme, /zero ship --target linux-musl-x64/);
   }
@@ -220,6 +221,7 @@ for (const [command, expected] of [
   [["--help"], /zero new cli hello/],
   [["check", "--help"], /Usage: zero check/],
   [["build", "--help"], /Usage: zero build/],
+  [["run", "--help"], /Usage: zero run/],
   [["test", "--help"], /Usage: zero test/],
   [["fmt", "--help"], /Usage: zero fmt/],
   [["new", "--help"], /Usage: zero new/],
@@ -345,6 +347,10 @@ for (const kind of ["cli", "lib", "package"]) {
   assertTemplateManifest(kind, manifest, readme);
   zero(["check", project]);
   zero(["test", project]);
+  if (kind !== "lib") {
+    const templateRun = zero(["run", "--out", join(project, "run-app"), project]).stdout;
+    assert.match(templateRun, kind === "cli" ? /hello from zero\n/ : /package ok\n/);
+  }
   const devReport = json(["dev", "--json", "--target", "linux-musl-x64", project]).body;
   assertDevReport(devReport, kind);
   if (kind === "lib") {
@@ -352,9 +358,8 @@ for (const kind of ["cli", "lib", "package"]) {
     assert.equal(docReport.schemaVersion, 1);
     assert.equal(docReport.generatedCBytes, 0);
   }
-  removeInlineTests(join(project, "src", "main.0"));
-  removeInlineTests(join(project, "src", "lib.0"));
   if (kind === "lib") {
+    removeInlineTests(join(project, "src", "lib.0"));
     zero(["parse", "--json", join(project, "src", "lib.0")]);
   } else {
     const buildOut = join(project, "app");
@@ -399,6 +404,15 @@ assertReleaseTargetContract(buildReport, {
   targetLibcMode: "bundled-libc",
 });
 repeatBuildHash(["build", "--json", "--target", "linux-musl-x64", "examples/hello.0", "--out", join(outDir, "hello-linux-report")], join(outDir, "hello-linux-report"), join(outDir, "hello-linux-report.repeat"));
+
+const runArtifact = join(outDir, "run-add");
+rmSync(runArtifact, { force: true });
+rmSync(`${runArtifact}.exe`, { force: true });
+rmSync(`${runArtifact}.c`, { force: true });
+const runResult = zero(["run", "--out", runArtifact, "examples/add.0"]);
+assert.match(runResult.stdout, /math works\n/);
+assert(existsSync(version.host.startsWith("win32") ? `${runArtifact}.exe` : runArtifact));
+assert.equal(existsSync(`${runArtifact}.c`), false);
 
 for (const [requestedProfile, canonicalProfile, profileKey] of [
   ["debug", "debug", "debug"],
@@ -1658,7 +1672,8 @@ assert.equal(wasmWebTarget.directBackend.explicitDirectFallback, "never-c-bridge
 assert.equal(linuxMuslTarget.directBackend.exeSupported, true);
 assert.equal(linuxMuslTarget.directBackend.exeEmitter, "zero-elf64-exe");
 assert.equal(linuxGnuTarget.directBackend.objectEmitter, "zero-elf64");
-assert.equal(linuxGnuTarget.directBackend.exeSupported, false);
+assert.equal(linuxGnuTarget.directBackend.exeSupported, true);
+assert.equal(linuxGnuTarget.directBackend.exeEmitter, "zero-elf64-exe");
 assert.equal(darwinArm64Target.directBackend.objectEmitter, "zero-macho64");
 assert.equal(darwinArm64Target.directBackend.exeSupported, true);
 assert.equal(darwinArm64Target.directBackend.exeEmitter, "zero-macho64-exe");

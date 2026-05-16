@@ -61,6 +61,18 @@ describe("native zero CLI", () => {
       const run = await execFileAsync(exe, []);
       assert.match(run.stdout, /math works/);
       await assert.rejects(access(`${exe}.c`));
+
+      const runExe = join(cwd, "add-run");
+      const zeroRun = await runZero(["run", "--out", runExe, "examples/add.0"]);
+      assert.match(zeroRun.stdout, /math works/);
+      assert.equal(zeroRun.stderr, "");
+      await assert.rejects(access(`${runExe}.c`));
+
+      const zeroRunWithArgs = await runZero(["run", "--out", join(cwd, "add-run-args"), "examples/add.0", "--", "--emit", "c"]);
+      assert.match(zeroRunWithArgs.stdout, /math works/);
+
+      const exitCodeRun = await runZero(["run", "--out", join(cwd, "return42"), "examples/direct-exe-return.0"]).catch((error) => error);
+      assert.equal(exitCodeRun.code, 42);
     } finally {
       await rm(cwd, { force: true, recursive: true });
     }

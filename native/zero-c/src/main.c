@@ -14,7 +14,11 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#if !defined(_WIN32)
 #include <sys/wait.h>
+#else
+#include <process.h>
+#endif
 #include <unistd.h>
 
 #define ZERO_VERSION "0.1.0"
@@ -37,6 +41,8 @@ typedef struct {
   const char *backend;
   const char *unknown_flag;
   const char *filter;
+  int run_argc;
+  char **run_argv;
   bool json;
   bool plan;
   bool apply;
@@ -302,8 +308,7 @@ static bool command_available(const char *name) {
 }
 
 static bool command_succeeds(const char *command) {
-  int code = system(command);
-  return code != -1 && WIFEXITED(code) && WEXITSTATUS(code) == 0;
+  return system(command) == 0;
 }
 
 static char *command_first_line(const char *command) {
@@ -322,8 +327,24 @@ static bool path_exists(const char *path) {
   return stat(path, &st) == 0;
 }
 
+static int zero_mkdir(const char *path) {
+#if defined(_WIN32)
+  return mkdir(path);
+#else
+  return mkdir(path, 0777);
+#endif
+}
+
+static int zero_lstat(const char *path, struct stat *st) {
+#if defined(_WIN32)
+  return stat(path, st);
+#else
+  return lstat(path, st);
+#endif
+}
+
 static bool ensure_dir(const char *path, ZDiag *diag) {
-  if (mkdir(path, 0777) == 0 || errno == EEXIST) return true;
+  if (zero_mkdir(path) == 0 || errno == EEXIST) return true;
   diag->code = 2002;
   diag->path = path;
   diag->line = 1;
@@ -344,7 +365,7 @@ static char *join_cli_path(const char *left, const char *right) {
 
 static bool remove_tree(const char *path, ZBuf *deleted) {
   struct stat st;
-  if (lstat(path, &st) != 0) return errno == ENOENT;
+  if (zero_lstat(path, &st) != 0) return errno == ENOENT;
   if (S_ISDIR(st.st_mode)) {
     DIR *dir = opendir(path);
     if (!dir) return false;
@@ -1577,9 +1598,9 @@ static bool json_array_nonempty_literal(const char *json) {
 }
 
 static bool compiler_cache_touch(const char *kind, uint64_t key) {
-  mkdir(".zero", 0777);
-  mkdir(".zero/cache", 0777);
-  mkdir(".zero/cache/native", 0777);
+  zero_mkdir(".zero");
+  zero_mkdir(".zero/cache");
+  zero_mkdir(".zero/cache/native");
   char path[256];
   snprintf(path, sizeof(path), ".zero/cache/native/%s-%016llx.cache", kind, (unsigned long long)key);
   bool hit = path_exists(path);
@@ -2909,6 +2930,7 @@ static void print_help(void) {
   printf("  zero test <file.0|project|zero.json>\n");
   printf("  zero fmt <file.0|project|zero.json>\n");
   printf("  zero build [--json] [--emit exe|obj|wasm] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
+  printf("  zero run [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json> [-- args...]\n");
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero routes [--json] <project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
@@ -2927,6 +2949,7 @@ static void print_help(void) {
   printf("  zero targets\n");
   printf("\nExamples:\n");
   printf("  zero new cli hello\n");
+  printf("  zero run examples/add.0\n");
   printf("  zero build --emit exe examples/hello.0 --out .zero/out/hello\n");
   printf("  zero ship --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello\n");
   printf("  zero check --json examples/hello.0\n");
@@ -2966,6 +2989,10 @@ static void print_command_help(const char *command) {
     printf("Usage: zero build [--json] [--emit exe|obj|wasm] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <input>\n\n");
     printf("Build direct native, object, or WebAssembly artifacts.\n\n");
     printf("Example: zero build --release tiny --emit exe examples/hello.0 --out .zero/out/hello\n");
+  } else if (strcmp(command, "run") == 0) {
+    printf("Usage: zero run [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <input> [-- args...]\n\n");
+    printf("Build a host executable with the direct backend and run it. Program stdout and stderr are passed through unchanged.\n\n");
+    printf("Example: zero run examples/add.0\n");
   } else if (strcmp(command, "ship") == 0) {
     printf("Usage: zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>\n\n");
     printf("Produce a deterministic release preview with a direct binary, stripped binary copy, checksum, archive manifest, debug-symbol metadata, size report, and SBOM placeholder.\n\n");
@@ -3020,6 +3047,77 @@ static void print_command_help(const char *command) {
   }
 }
 
+static bool parse_common_option(int argc, char **argv, int *index, Command *command) {
+  const char *arg = argv[*index];
+  if (strcmp(arg, "--emit") == 0) {
+    if (*index + 1 >= argc) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    (*index)++;
+    if (strcmp(argv[*index], "exe") == 0) command->emit = EMIT_EXE;
+    else if (strcmp(argv[*index], "obj") == 0) command->emit = EMIT_OBJ;
+    else if (strcmp(argv[*index], "wasm") == 0) command->emit = EMIT_WASM;
+    else command->emit = EMIT_C;
+    return true;
+  } else if (strcmp(arg, "--out") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->out = argv[++(*index)];
+    return true;
+  } else if (strcmp(arg, "--target") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->target = argv[++(*index)];
+    return true;
+  } else if (strcmp(arg, "--profile") == 0 || strcmp(arg, "--release") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->profile = argv[++(*index)];
+    return true;
+  } else if (strcmp(arg, "--cc") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->cc = argv[++(*index)];
+    return true;
+  } else if (strcmp(arg, "--backend") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->backend = argv[++(*index)];
+    return true;
+  } else if (strcmp(arg, "--filter") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->filter = argv[++(*index)];
+    return true;
+  } else if (strcmp(arg, "--json") == 0) {
+    command->json = true;
+    return true;
+  } else if (strcmp(arg, "--plan") == 0) {
+    command->plan = true;
+    return true;
+  } else if (strcmp(arg, "--apply") == 0) {
+    command->apply = true;
+    return true;
+  } else if (strcmp(arg, "--patch") == 0) {
+    command->patch = true;
+    return true;
+  } else if (strcmp(arg, "--all") == 0) {
+    command->all = true;
+    return true;
+  } else if (strcmp(arg, "--check") == 0) {
+    command->fmt_check = true;
+    return true;
+  } else if (strcmp(arg, "--trace") == 0) {
+    command->trace = true;
+    return true;
+  } else if (strcmp(arg, "--legacy-backend") == 0) {
+    command->legacy_backend = true;
+    return true;
+  } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
+    command->kind = "help";
+    return true;
+  } else if (strncmp(arg, "--", 2) == 0) {
+    command->unknown_flag = arg;
+    return true;
+  }
+  return false;
+}
+
 static bool parse_command(int argc, char **argv, Command *command) {
   if (argc < 2) return false;
   command->command = argv[1];
@@ -3060,45 +3158,26 @@ static bool parse_command(int argc, char **argv, Command *command) {
     command->kind = argv[2];
     arg_start = 3;
   }
+  if (strcmp(command->command, "run") == 0) {
+    for (int i = arg_start; i < argc; i++) {
+      if (command->input) {
+        if (strcmp(argv[i], "--") == 0) {
+          command->run_argc = argc - i - 1;
+          command->run_argv = &argv[i + 1];
+        } else {
+          command->run_argc = argc - i;
+          command->run_argv = &argv[i];
+        }
+        return true;
+      }
+      if (parse_common_option(argc, argv, &i, command)) continue;
+      command->input = argv[i];
+    }
+    return true;
+  }
   for (int i = arg_start; i < argc; i++) {
-    if (strcmp(argv[i], "--emit") == 0 && i + 1 < argc) {
-      i++;
-      if (strcmp(argv[i], "exe") == 0) command->emit = EMIT_EXE;
-      else if (strcmp(argv[i], "obj") == 0) command->emit = EMIT_OBJ;
-      else if (strcmp(argv[i], "wasm") == 0) command->emit = EMIT_WASM;
-      else command->emit = EMIT_C;
-    } else if (strcmp(argv[i], "--out") == 0 && i + 1 < argc) {
-      command->out = argv[++i];
-    } else if (strcmp(argv[i], "--target") == 0 && i + 1 < argc) {
-      command->target = argv[++i];
-    } else if ((strcmp(argv[i], "--profile") == 0 || strcmp(argv[i], "--release") == 0) && i + 1 < argc) {
-      command->profile = argv[++i];
-    } else if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
-      command->cc = argv[++i];
-    } else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
-      command->backend = argv[++i];
-    } else if (strcmp(argv[i], "--filter") == 0 && i + 1 < argc) {
-      command->filter = argv[++i];
-    } else if (strcmp(argv[i], "--json") == 0) {
-      command->json = true;
-    } else if (strcmp(argv[i], "--plan") == 0) {
-      command->plan = true;
-    } else if (strcmp(argv[i], "--apply") == 0) {
-      command->apply = true;
-    } else if (strcmp(argv[i], "--patch") == 0) {
-      command->patch = true;
-    } else if (strcmp(argv[i], "--all") == 0) {
-      command->all = true;
-    } else if (strcmp(argv[i], "--check") == 0) {
-      command->fmt_check = true;
-    } else if (strcmp(argv[i], "--trace") == 0) {
-      command->trace = true;
-    } else if (strcmp(argv[i], "--legacy-backend") == 0) {
-      command->legacy_backend = true;
-    } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-      command->kind = "help";
-    } else if (strncmp(argv[i], "--", 2) == 0) {
-      command->unknown_flag = argv[i];
+    if (parse_common_option(argc, argv, &i, command)) {
+      continue;
     } else {
       command->input = argv[i];
     }
@@ -3110,6 +3189,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
          strcmp(command->command, "test") == 0 ||
          strcmp(command->command, "fmt") == 0 ||
          strcmp(command->command, "build") == 0 ||
+         strcmp(command->command, "run") == 0 ||
          strcmp(command->command, "ship") == 0 ||
          strcmp(command->command, "routes") == 0 ||
          strcmp(command->command, "tokens") == 0 ||
@@ -3249,6 +3329,52 @@ static void print_artifact(const char *path, long long elapsed_ms) {
   } else {
     printf("%s (%s)\n", path, duration);
   }
+}
+
+static int run_executable_artifact(const char *exe_file, const Command *command) {
+  int run_argc = command ? command->run_argc : 0;
+  if (run_argc < 0) run_argc = 0;
+  char **child_argv = (char **)calloc((size_t)run_argc + 2, sizeof(char *));
+  if (!child_argv) {
+    fprintf(stderr, "zero run: out of memory\n");
+    return 1;
+  }
+  child_argv[0] = (char *)exe_file;
+  for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
+  child_argv[run_argc + 1] = NULL;
+
+  fflush(NULL);
+#if defined(_WIN32)
+  intptr_t status = _spawnv(_P_WAIT, exe_file, (const char *const *)child_argv);
+  free(child_argv);
+  if (status < 0) {
+    perror("zero run");
+    return 1;
+  }
+  return (int)status;
+#else
+  pid_t pid = fork();
+  if (pid == 0) {
+    execv(exe_file, child_argv);
+    perror("zero run");
+    _exit(127);
+  }
+  free(child_argv);
+  if (pid < 0) {
+    perror("zero run");
+    return 1;
+  }
+
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    perror("zero run");
+    return 1;
+  }
+  if (WIFEXITED(status)) return WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+  return 1;
+#endif
 }
 
 static const char *build_compiler_label(const Command *command, const ZTargetInfo *target) {
@@ -4952,11 +5078,12 @@ static bool create_cli_template(const char *root, const char *name, ZDiag *diag)
     "This project was created with `zero new cli`.\n\n"
     "Try:\n\n"
     "```sh\n"
-    "zero check\n"
-    "zero test\n"
-    "zero dev --json\n"
-    "zero build --target linux-musl-x64 --out .zero/out/app\n"
-    "zero ship --target linux-musl-x64 --out .zero/ship/app\n"
+    "zero check .\n"
+    "zero test .\n"
+    "zero run .\n"
+    "zero dev --json .\n"
+    "zero build --target linux-musl-x64 --out .zero/out/app .\n"
+    "zero ship --target linux-musl-x64 --out .zero/ship/app .\n"
     "```\n\n"
     "The entry point receives `World` explicitly, so I/O is visible in the function signature. The generated output is deterministic and the manifest records the default release target.\n",
     diag)) return false;
@@ -4981,11 +5108,11 @@ static bool create_lib_template(const char *root, const char *name, ZDiag *diag)
     "This small package exposes one public function, docs metadata in `zero.json`, and an inline test.\n\n"
     "Try:\n\n"
     "```sh\n"
-    "zero check\n"
-    "zero test\n"
-    "zero dev --json\n"
-    "zero graph --json\n"
-    "zero doc --json\n"
+    "zero check .\n"
+    "zero test .\n"
+    "zero dev --json .\n"
+    "zero graph --json .\n"
+    "zero doc --json .\n"
     "```\n",
     diag)) return false;
   return write_project_file(root, ".gitignore", ".zero/\n", diag);
@@ -5028,12 +5155,13 @@ static bool create_package_template(const char *root, const char *name, ZDiag *d
     "This template shows package-local imports, one public symbol, and one private helper.\n\n"
     "Try:\n\n"
     "```sh\n"
-    "zero check\n"
-    "zero test\n"
-    "zero dev --json\n"
-    "zero build --target linux-musl-x64 --out .zero/out/app\n"
-    "zero ship --target linux-musl-x64 --out .zero/ship/app\n"
-    "zero graph --json\n"
+    "zero check .\n"
+    "zero test .\n"
+    "zero run .\n"
+    "zero dev --json .\n"
+    "zero build --target linux-musl-x64 --out .zero/out/app .\n"
+    "zero ship --target linux-musl-x64 --out .zero/ship/app .\n"
+    "zero graph --json .\n"
     "```\n",
     diag)) return false;
   return write_project_file(root, ".gitignore", ".zero/\n", diag);
@@ -5069,7 +5197,8 @@ static int new_command(const Command *command) {
   }
 
   printf("created %s project %s\n", command->kind, command->input);
-  printf("next: cd %s && zero check && zero test && zero build\n", command->input);
+  if (strcmp(command->kind, "lib") == 0) printf("next: cd %s && zero check . && zero test .\n", command->input);
+  else printf("next: cd %s && zero check . && zero test . && zero run .\n", command->input);
   return 0;
 }
 
@@ -5292,7 +5421,7 @@ static int doctor_command(bool json) {
   bool target_cc_override = zero_cc && zero_cc[0];
   bool bundled_target_cc_ok = command_available("zig");
   bool target_cc_ok = target_cc_override || bundled_target_cc_ok;
-  bool zero_dir_ok = mkdir(".zero", 0777) == 0 || errno == EEXIST;
+  bool zero_dir_ok = zero_mkdir(".zero") == 0 || errno == EEXIST;
   bool write_ok = false;
   if (zero_dir_ok) {
     ZDiag diag = {0};
@@ -8127,7 +8256,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  if (command.legacy_backend || ((strcmp(command.command, "build") == 0 || strcmp(command.command, "ship") == 0) && command.emit == EMIT_C)) {
+  if (command.legacy_backend || ((strcmp(command.command, "build") == 0 || strcmp(command.command, "run") == 0 || strcmp(command.command, "ship") == 0) && command.emit == EMIT_C)) {
     diag.code = 2003;
     diag.line = 1;
     diag.column = 1;
@@ -8139,6 +8268,45 @@ int main(int argc, char **argv) {
     if (command.json) print_diag_json(command.input, &diag);
     else print_diag(command.input, &diag);
     return 1;
+  }
+
+  if (strcmp(command.command, "run") == 0) {
+    if (command.json) {
+      diag.code = 2002;
+      diag.line = 1;
+      diag.column = 1;
+      diag.length = 1;
+      snprintf(diag.message, sizeof(diag.message), "zero run does not support --json");
+      snprintf(diag.expected, sizeof(diag.expected), "zero run <input>");
+      snprintf(diag.actual, sizeof(diag.actual), "zero run --json");
+      snprintf(diag.help, sizeof(diag.help), "program stdout belongs to the program; use zero build --json to inspect the artifact before running it");
+      print_diag_json(command.input, &diag);
+      return 1;
+    }
+    if (command.emit != EMIT_EXE) {
+      diag.code = 2002;
+      diag.line = 1;
+      diag.column = 1;
+      diag.length = 1;
+      snprintf(diag.message, sizeof(diag.message), "zero run only supports executable output");
+      snprintf(diag.expected, sizeof(diag.expected), "zero run <input>");
+      snprintf(diag.actual, sizeof(diag.actual), command.emit == EMIT_OBJ ? "--emit obj" : "--emit wasm");
+      snprintf(diag.help, sizeof(diag.help), "use zero build --emit obj|wasm when you need a non-executable artifact");
+      print_diag(command.input, &diag);
+      return 1;
+    }
+    if (!z_target_is_host(target)) {
+      diag.code = 2002;
+      diag.line = 1;
+      diag.column = 1;
+      diag.length = 1;
+      snprintf(diag.message, sizeof(diag.message), "zero run requires the host target");
+      snprintf(diag.expected, sizeof(diag.expected), "target %s", z_host_target());
+      snprintf(diag.actual, sizeof(diag.actual), "target %s", target && target->name ? target->name : "unknown");
+      snprintf(diag.help, sizeof(diag.help), "use zero build --target %s for cross-target artifacts, then run them on a matching host", target && target->name ? target->name : "<target>");
+      print_diag(command.input, &diag);
+      return 1;
+    }
   }
 
   if (strcmp(command.command, "explain") == 0) {
@@ -8332,7 +8500,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  if ((strcmp(command.command, "build") == 0 || strcmp(command.command, "ship") == 0) &&
+  if ((strcmp(command.command, "build") == 0 || strcmp(command.command, "run") == 0 || strcmp(command.command, "ship") == 0) &&
       !validate_c_libraries_for_target(&input, target, &diag)) {
     if (command.json) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
@@ -8584,8 +8752,9 @@ int main(int argc, char **argv) {
   const char *direct_exe_emitter = command.emit == EMIT_EXE ? z_direct_exe_emitter(target) : "none";
   CapabilitySummary direct_exe_caps = program_capabilities(&program);
   bool build_command = strcmp(command.command, "build") == 0;
+  bool run_command = strcmp(command.command, "run") == 0;
   bool ship_command = strcmp(command.command, "ship") == 0;
-  bool artifact_command = build_command || ship_command;
+  bool artifact_command = build_command || run_command || ship_command;
   bool default_direct_exe = artifact_command && command.emit == EMIT_EXE && direct_exe_emitter && strcmp(direct_exe_emitter, "none") != 0 && !command.backend && self_host_subset_compatible(&program, &direct_exe_caps);
   bool requested_direct_exe = artifact_command && command.emit == EMIT_EXE && command.backend &&
                               (strcmp(command.backend, "zero-elf64") == 0 ||
@@ -8647,6 +8816,16 @@ int main(int argc, char **argv) {
       z_free_program(&program);
       z_free_source(&input);
       return 1;
+    }
+
+    if (run_command) {
+      int rc = run_executable_artifact(exe_file, &command);
+      free(exe_file);
+      zbuf_free(&exe);
+      z_free_ir_program(&ir);
+      z_free_program(&program);
+      z_free_source(&input);
+      return rc;
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;

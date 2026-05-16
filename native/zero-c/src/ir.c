@@ -2986,10 +2986,10 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
   }
   FunctionVec direct_functions = {0};
   for (size_t i = 0; i < program->functions.len; i++) {
-    if (program->functions.items[i].type_params.len == 0) push_function_clone(&direct_functions, &program->functions.items[i]);
+    if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0) push_function_clone(&direct_functions, &program->functions.items[i]);
   }
   for (size_t i = 0; i < program->functions.len; i++) {
-    if (program->functions.items[i].type_params.len == 0) {
+    if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0) {
       ir_collect_generic_specializations_from_stmt_vec(&direct_functions, program, &program->functions.items[i].body);
     }
   }

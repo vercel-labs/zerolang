@@ -1144,10 +1144,11 @@ function selfHostSourceForms(sourceBytes) {
 }
 
 function rejectRemovedCBackend(argv) {
-  const emit = optionValue(argv, "--emit");
-  if (argv.includes("--legacy-backend") || emit === "c") {
-    const json = argv.includes("--json");
-    const actual = argv.includes("--legacy-backend") ? "--legacy-backend" : "--emit c";
+  const compilerArgs = compilerOptionArgs(argv);
+  const emit = optionValue(compilerArgs, "--emit");
+  if (compilerArgs.includes("--legacy-backend") || emit === "c") {
+    const json = compilerArgs.includes("--json");
+    const actual = compilerArgs.includes("--legacy-backend") ? "--legacy-backend" : "--emit c";
     const diagnostic = {
       schemaVersion: 1,
       ok: false,
@@ -1156,7 +1157,7 @@ function rejectRemovedCBackend(argv) {
           code: "BLD003",
           severity: "error",
           message: "C backend output is not supported",
-          path: inputPath(argv),
+          path: inputPath(compilerArgs),
           line: 1,
           column: 1,
           length: 1,
@@ -1181,6 +1182,23 @@ function rejectRemovedCBackend(argv) {
     }
     process.exit(1);
   }
+}
+
+function compilerOptionArgs(argv) {
+  if (argv[0] !== "run") return argv;
+  const result = [argv[0]];
+  const valueFlags = new Set(["--emit", "--target", "--out", "--profile", "--release", "--cc", "--backend", "--filter"]);
+  for (let i = 1; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--") break;
+    result.push(arg);
+    if (valueFlags.has(arg) && i + 1 < argv.length) {
+      result.push(argv[++i]);
+      continue;
+    }
+    if (!arg.startsWith("--")) break;
+  }
+  return result;
 }
 
 function inputPath(argv) {

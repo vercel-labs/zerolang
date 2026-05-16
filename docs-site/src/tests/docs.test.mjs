@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -48,8 +49,9 @@ describe("docs registry", () => {
       return readFile(join(docsSiteRoot, doc.sourcePath.slice(1)), "utf8");
     };
 
+    assert.match(await readDoc("getting-started"), /curl -fsSL https:\/\/zerolang\.ai\/install\.sh \| bash/);
     assert.match(await readDoc("getting-started"), /```sh[\s\S]*zero new cli hello/);
-    assert.match(await readDoc("getting-started"), /bin\/zero build --target linux-musl-x64/);
+    assert.match(await readDoc("getting-started"), /zero build --target linux-musl-x64/);
     assert.match(await readDoc("examples"), /bin\/zero check examples\/hello\.0/);
     const learnZero = await readDoc("learn-zero");
     for (const topic of ["main", "let", "Write Functions", "shape", "Field Defaults", "Span", "check", "Run Tests", "Cross Targets", "Diagnostics"]) {
@@ -95,8 +97,11 @@ describe("docs registry", () => {
     for (const optimizationTerm of ["profileSemantics", "profileBudget", "sizeBreakdown", "retentionReasons", "optimizationHints", "memoryBudgets", "allocatorFacts", "allocationInstrumentation", "collectionFacts", "trend summary", "ZERO_BENCH_RUNS=1 npm run bench", "debug", "fast", "small", "tiny"]) {
       assert.match(optimization, new RegExp(optimizationTerm));
     }
-    assert.match(await readDoc("install"), /targetToolchains/);
-    assert.match(await readDoc("install"), /direct-wasm/);
+    const install = await readDoc("install");
+    assert.match(install, /https:\/\/zerolang\.ai\/install\.sh/);
+    assert.match(install, /release checksum file/);
+    assert.match(install, /targetToolchains/);
+    assert.match(install, /direct-wasm/);
     const packageManifest = await readDoc("package-manifest");
     for (const packageTerm of ["dependencies", "package.lockfile", "packageCache.cacheKeyInputs", "PKG001", "PKG004", "publicationGate"]) {
       assert.match(packageManifest, new RegExp(packageTerm));
@@ -166,6 +171,9 @@ describe("docs registry", () => {
     }
     const homePage = await readFile(join(docsSiteRoot, "app/page.jsx"), "utf8");
     assert.match(homePage, /Check, build, test, format, inspect, and document/);
+    assert.match(homePage, /InstallCopy/);
+    const installCopy = await readFile(join(docsSiteRoot, "components/install-copy.jsx"), "utf8");
+    assert.match(installCopy, /curl -fsSL https:\/\/zerolang\.ai\/install\.sh \| bash/);
     const packageJson = JSON.parse(await readFile(resolve(docsSiteRoot, "..", "package.json"), "utf8"));
     assert.match(packageJson.scripts["docs:build"], /docs-site/);
     assert.match(packageJson.scripts["docs:compiler"], /playground-wasm-smoke/);
@@ -200,6 +208,23 @@ describe("docs registry", () => {
     assert.match(runner, /browser compiler is stale/);
     assert.match(nextConfig, /\/playground\/zeroc-zero\.wasm/);
     assert.match(nextConfig, /no-store, max-age=0/);
+    assert.match(nextConfig, /\/install\.sh/);
+  });
+
+  it("serves a static installer for latest GitHub releases", async () => {
+    const installerPath = join(docsSiteRoot, "public/install.sh");
+    const installer = await readFile(installerPath, "utf8");
+    assert.match(installer, /^#!\/bin\/sh/);
+    assert.match(installer, /releases\/latest\/download/);
+    assert.match(installer, /CHECKSUMS\.txt/);
+    assert.match(installer, /sha256sum/);
+    assert.match(installer, /shasum -a 256/);
+    assert.match(installer, /ZERO_INSTALL_DIR/);
+    assert.match(installer, /ZERO_LINUX_FLAVOR/);
+    assert.match(installer, /zero-\$\{platform\}-\$\{cpu\}\$\{exe_suffix\}/);
+
+    const syntax = spawnSync("sh", ["-n", installerPath], { encoding: "utf8" });
+    assert.equal(syntax.status, 0, syntax.stderr);
   });
 
   it("keeps public docs free of internal process narratives", async () => {

@@ -6,25 +6,24 @@ Zero is experimental and still changing. The compiler, standard library, docs, a
 
 ## Quick Start
 
-Build the local compiler from a checkout:
+Install the latest release:
 
 ```bash
-npm install
-make -C native/zero-c
-bin/zero --version
+curl -fsSL https://zerolang.ai/install.sh | bash
+export PATH="$HOME/.zero/bin:$PATH"
+zero --version
 ```
 
 Check a program:
 
 ```bash
-bin/zero check examples/hello.0
+zero check examples/hello.0
 ```
 
-Build and run a small executable:
+Run a small executable:
 
 ```bash
-bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
-./.zero/out/add
+zero run examples/add.0
 ```
 
 Expected output:
@@ -49,13 +48,14 @@ npm run docs:dev
 ## Common Commands
 
 ```bash
-bin/zero check examples/hello.0
-bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
-bin/zero graph --json examples/systems-package
-bin/zero size --json examples/point.0
-bin/zero routes --json examples/web/hello
-bin/zero skills get zero --full
-bin/zero doctor --json
+zero check examples/hello.0
+zero run examples/add.0
+zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
+zero graph --json examples/systems-package
+zero size --json examples/point.0
+zero routes --json examples/web/hello
+zero skills get zero --full
+zero doctor --json
 ```
 
 ## Validation

@@ -377,6 +377,7 @@ const char *z_direct_object_emitter(const ZTargetInfo *target) {
 
 const char *z_direct_exe_emitter(const ZTargetInfo *target) {
   if (!target) return "none";
+  if (target->name && strcmp(target->name, "linux-x64") == 0) return "zero-elf64-exe";
   if (target->name && strcmp(target->name, "linux-musl-x64") == 0) return "zero-elf64-exe";
   if (target->name && strcmp(target->name, "linux-musl-arm64") == 0) return "zero-elf-aarch64-exe";
   if (target->name && strcmp(target->name, "linux-arm64") == 0) return "zero-elf-aarch64-exe";

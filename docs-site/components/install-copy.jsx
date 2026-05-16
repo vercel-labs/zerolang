@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const INSTALL_COMMAND = "make -C native/zero-c && bin/zero check examples/hello.0";
+const INSTALL_COMMAND = "curl -fsSL https://zerolang.ai/install.sh | bash";
 
 export function InstallCopy() {
   const [copied, setCopied] = useState(false);
@@ -16,13 +16,13 @@ export function InstallCopy() {
   }
 
   return (
-    <div className="mt-6 flex items-center rounded-md border border-border bg-surface">
-      <code className="flex-1 px-4 py-2 font-mono text-[0.8125rem] tracking-tight text-muted">
+    <div className="mt-6 flex w-full max-w-[32rem] items-center overflow-hidden rounded-md border border-border bg-surface">
+      <code className="flex-1 overflow-x-auto whitespace-nowrap px-4 py-2 text-left font-mono text-[0.8125rem] tracking-tight text-muted">
         {INSTALL_COMMAND}
       </code>
       <button
         type="button"
-          aria-label="Copy quick start command"
+        aria-label="Copy install command"
         onClick={handleCopy}
         className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center self-stretch border-l border-border text-muted transition hover:bg-surface-muted hover:text-fg"
       >
