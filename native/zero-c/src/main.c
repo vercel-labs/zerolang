@@ -8299,6 +8299,44 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   zbuf_append(buf, "  \"requiresCapabilities\": ");
   append_capability_json_array(buf, &caps);
   zbuf_append(buf, ",\n");
+  zbuf_append(buf, "  \"effectsSummary\": {\n");
+  zbuf_append(buf, "    \"required\": ");
+  append_capability_json_array(buf, &caps);
+  zbuf_append(buf, ",\n");
+  zbuf_append(buf, "    \"availableOnTarget\": [");
+  {
+    bool first = true;
+    if (target_caps.args) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"args\""); first = false; }
+    if (target_caps.env) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"env\""); first = false; }
+    if (target_caps.fs) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"fs\""); first = false; }
+    if (target_caps.memory) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"memory\""); first = false; }
+    if (target_caps.time) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"time\""); first = false; }
+    if (target_caps.rand) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"rand\""); first = false; }
+    if (target_caps.net) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"net\""); first = false; }
+    if (target_caps.proc) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"proc\""); first = false; }
+    if (target_caps.web) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"web\""); first = false; }
+  }
+  zbuf_append(buf, "],\n");
+  zbuf_append(buf, "    \"missingOnTarget\": [");
+  {
+    bool first = true;
+    if (caps.args && !target_caps.args) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"args\""); first = false; }
+    if (caps.env && !target_caps.env) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"env\""); first = false; }
+    if (caps.fs && !target_caps.fs) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"fs\""); first = false; }
+    if (caps.memory && !target_caps.memory) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"memory\""); first = false; }
+    if (caps.time && !target_caps.time) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"time\""); first = false; }
+    if (caps.rand && !target_caps.rand) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"rand\""); first = false; }
+    if (caps.net && !target_caps.net) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"net\""); first = false; }
+    if (caps.proc && !target_caps.proc) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"proc\""); first = false; }
+    if (caps.web && !target_caps.web) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"web\""); first = false; }
+    if (caps.world) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"world\""); first = false; }
+    if (caps.alloc) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"alloc\""); first = false; }
+    if (caps.path) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"path\""); first = false; }
+    if (caps.codec) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"codec\""); first = false; }
+    if (caps.parse) { if (!first) zbuf_append(buf, ", "); zbuf_append(buf, "\"parse\""); first = false; }
+  }
+  zbuf_append(buf, "]\n");
+  zbuf_append(buf, "  },\n");
   zbuf_append(buf, "  \"selfHostSubset\": ");
   append_self_host_subset_json(buf, program, &caps, target);
   zbuf_append(buf, ",\n");
