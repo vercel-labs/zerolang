@@ -2357,6 +2357,16 @@ static const ExplainInfo explain_infos[] = {
     "let mut dst: [4]u8 = [0, 0, 0, 0]\nlet _ = std.mem.copy(dst, src)",
   },
   {
+    "NAM003",
+    "name-resolution",
+    "Unknown identifier",
+    "An expression references a name that is not visible at that source location.",
+    "Zero keeps name resolution explicit so agents can distinguish missing declarations, missing imports, and spelling mistakes from type errors.",
+    "Declare the referenced symbol, import the module that provides it, or correct the identifier spelling.",
+    "return 40 + missing",
+    "const missing: i32 = 2\nreturn 40 + missing",
+  },
+  {
     "ERR002",
     "fallibility",
     "Error set mismatch",
@@ -2604,6 +2614,7 @@ static void print_explain_json(const ExplainInfo *info) {
   append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
                                          strcmp(info->code, "TAR002") == 0 ? 6002 :
                                          strcmp(info->code, "BLD003") == 0 ? 2003 :
+                                         strcmp(info->code, "NAM003") == 0 ? 3003 :
                                          strcmp(info->code, "TYP009") == 0 ? 3010 :
                                          strcmp(info->code, "TYP023") == 0 ? 3032 :
                                          strcmp(info->code, "TYP024") == 0 ? 3033 :

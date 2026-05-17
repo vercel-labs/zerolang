@@ -1433,6 +1433,11 @@ assert.equal(explainJson.schemaVersion, 1);
 assert.equal(explainJson.code, "TAR002");
 assert.equal(explainJson.repair.id, "remove-hosted-fs-or-use-host-target");
 
+const explainNameJson = json(["explain", "--json", "NAM003"]).body;
+assert.equal(explainNameJson.schemaVersion, 1);
+assert.equal(explainNameJson.code, "NAM003");
+assert.equal(explainNameJson.repair.id, "declare-missing-symbol");
+
 const fixPlan = json(["fix", "--plan", "--json", "--target", "wasm32-web", "conformance/native/fail/std-fs-target-unsupported.0"]).body;
 assert.equal(fixPlan.schemaVersion, 1);
 assert.equal(fixPlan.mode, "plan");
