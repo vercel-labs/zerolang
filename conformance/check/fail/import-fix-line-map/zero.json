@@ -1,0 +1,4 @@
+{
+  "package": { "name": "import-fix-line-map", "version": "0.1.0" },
+  "targets": { "cli": { "kind": "exe", "main": "src/main.0" } }
+}

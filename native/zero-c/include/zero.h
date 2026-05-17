@@ -597,6 +597,8 @@ typedef struct {
   char **symbol_names;
   char **symbol_modules;
   char **symbol_kinds;
+  char **source_line_paths;
+  int *source_line_numbers;
   SourceDependency *dependencies;
   bool *symbol_public;
   size_t source_file_count;
@@ -604,6 +606,7 @@ typedef struct {
   size_t module_count;
   size_t import_edge_count;
   size_t symbol_count;
+  size_t source_line_count;
   size_t dependency_count;
   long long resolve_ms;
   long long parse_ms;
@@ -706,6 +709,7 @@ char *z_read_file(const char *path, ZDiag *diag);
 bool z_write_file(const char *path, const char *text, ZDiag *diag);
 bool z_write_binary_file(const char *path, const unsigned char *data, size_t len, ZDiag *diag);
 bool z_resolve_source(const char *input, SourceInput *out, ZDiag *diag);
+bool z_map_source_diag(const SourceInput *input, ZDiag *diag);
 void z_free_source(SourceInput *input);
 bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag);
 void z_free_manifest(ZManifest *manifest);

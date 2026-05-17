@@ -1,0 +1,3 @@
+pub fun helper() -> i32 {
+    return true
+}

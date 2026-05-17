@@ -233,6 +233,19 @@ static void source_input_push_file(SourceInput *input, const char *path) {
   input->source_files[input->source_file_count++] = z_strdup(path);
 }
 
+static void source_input_push_source_line(SourceInput *input, const char *path, int original_line) {
+  input->source_line_paths = realloc(input->source_line_paths, (input->source_line_count + 1) * sizeof(char *));
+  input->source_line_numbers = realloc(input->source_line_numbers, (input->source_line_count + 1) * sizeof(int));
+  input->source_line_paths[input->source_line_count] = z_strdup(path);
+  input->source_line_numbers[input->source_line_count] = original_line > 0 ? original_line : 1;
+  input->source_line_count++;
+}
+
+static void source_input_push_final_source_line(SourceInput *input) {
+  if (!input || input->source_line_count == 0) return;
+  source_input_push_source_line(input, input->source_line_paths[input->source_line_count - 1], input->source_line_numbers[input->source_line_count - 1]);
+}
+
 static void source_input_push_import(SourceInput *input, const char *name) {
   input->imports = realloc(input->imports, (input->import_count + 1) * sizeof(char *));
   input->imports[input->import_count++] = z_strdup(name);
@@ -379,11 +392,13 @@ static char *module_path_to_source(const char *src_root, const char *module_name
   return NULL;
 }
 
-static void append_source_without_imports(ZBuf *buf, const char *path, const char *source) {
+static void append_source_without_imports(SourceInput *input, ZBuf *buf, const char *path, const char *source) {
   zbuf_append(buf, "// file: ");
   zbuf_append(buf, path);
   zbuf_append(buf, "\n");
+  source_input_push_source_line(input, path, 1);
   const char *line = source;
+  int original_line = 1;
   while (*line) {
     const char *end = strchr(line, '\n');
     size_t len = end ? (size_t)(end - line) : strlen(line);
@@ -393,11 +408,16 @@ static void append_source_without_imports(ZBuf *buf, const char *path, const cha
       len--;
     }
     bool is_import = (len >= 4 && strncmp(start, "use ", 4) == 0) || (len >= 7 && strncmp(start, "import ", 7) == 0);
-    if (!is_import) zbuf_appendf(buf, "%.*s\n", (int)(end ? (size_t)(end - line) : strlen(line)), line);
+    if (!is_import) {
+      zbuf_appendf(buf, "%.*s\n", (int)(end ? (size_t)(end - line) : strlen(line)), line);
+      source_input_push_source_line(input, path, original_line);
+    }
+    original_line++;
     if (!end) break;
     line = end + 1;
   }
   zbuf_append(buf, "\n");
+  source_input_push_source_line(input, path, original_line);
 }
 
 static bool resolve_imported_source(const char *path, const char *src_root, SourceInput *input, ZBuf *combined, ZDiag *diag, char ***stack, size_t *stack_len);
@@ -570,7 +590,7 @@ static bool resolve_imported_source(const char *path, const char *src_root, Sour
   if (ok) {
     source_input_push_file(input, path);
     source_input_push_module(input, module_name, path);
-    append_source_without_imports(combined, path, source);
+    append_source_without_imports(input, combined, path, source);
   }
   free(module_name);
   free(source);
@@ -1195,6 +1215,7 @@ bool z_resolve_source(const char *input, SourceInput *out, ZDiag *diag) {
     char **stack = NULL;
     size_t stack_len = 0;
     resolve_imported_source(out->source_file, src_dir, out, &source, diag, &stack, &stack_len);
+    if (diag->code == 0) source_input_push_final_source_line(out);
     free(stack);
     free(src_dir);
     out->source = diag->code == 0 ? source.data : NULL;
@@ -1213,11 +1234,21 @@ bool z_resolve_source(const char *input, SourceInput *out, ZDiag *diag) {
   char **stack = NULL;
   size_t stack_len = 0;
   resolve_imported_source(out->source_file, dir, out, &source, diag, &stack, &stack_len);
+  if (diag->code == 0) source_input_push_final_source_line(out);
   free(stack);
   free(dir);
   out->source = diag->code == 0 ? source.data : NULL;
   if (diag->code != 0) zbuf_free(&source);
   return out->source != NULL;
+}
+
+bool z_map_source_diag(const SourceInput *input, ZDiag *diag) {
+  if (!input || !diag || diag->line <= 0 || input->source_line_count == 0) return false;
+  size_t index = (size_t)diag->line - 1;
+  if (index >= input->source_line_count) return false;
+  diag->path = input->source_line_paths[index];
+  diag->line = input->source_line_numbers[index] > 0 ? input->source_line_numbers[index] : 1;
+  return true;
 }
 
 void z_free_source(SourceInput *input) {
@@ -1229,6 +1260,7 @@ void z_free_source(SourceInput *input) {
   free(input->package_version);
   free(input->lockfile_path);
   for (size_t i = 0; i < input->source_file_count; i++) free(input->source_files[i]);
+  for (size_t i = 0; i < input->source_line_count; i++) free(input->source_line_paths[i]);
   for (size_t i = 0; i < input->import_count; i++) free(input->imports[i]);
   for (size_t i = 0; i < input->module_count; i++) {
     free(input->module_names[i]);
@@ -1255,6 +1287,8 @@ void z_free_source(SourceInput *input) {
     free(input->dependencies[i].status);
   }
   free(input->source_files);
+  free(input->source_line_paths);
+  free(input->source_line_numbers);
   free(input->imports);
   free(input->module_names);
   free(input->module_paths);

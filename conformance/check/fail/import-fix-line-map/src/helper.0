@@ -1,0 +1,5 @@
+pub fun helper() -> Void {
+    let values: [2]i32 = [1, 2]
+    let span: MutSpan<i32> = values
+    span[0] = 3
+}

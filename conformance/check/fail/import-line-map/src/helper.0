@@ -1,0 +1,3 @@
+pub fun hashPassword(bytes: Span<u8>) -> u32 {
+    return std.crypto.hash32(bytes)
+}
