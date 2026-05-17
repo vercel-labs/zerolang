@@ -3,6 +3,11 @@ import { convertToModelMessages, stepCountIs, streamText } from "ai";
 import { createBashTool } from "bash-tool";
 import { docs } from "@/lib/docs";
 import { readArticleBySlug } from "@/lib/articles";
+import {
+  docsChatDailyRateLimit,
+  docsChatMinuteRateLimit,
+  isDocsChatRateLimitConfigured,
+} from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
@@ -65,6 +70,56 @@ function addCacheControl(messages) {
   });
 }
 
+function getRateLimitIdentifier(req) {
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  const realIp = req.headers.get("x-real-ip");
+  return forwardedFor?.split(",")[0]?.trim() || realIp?.trim() || "anonymous";
+}
+
+async function rateLimitRequest(req) {
+  if (!isDocsChatRateLimitConfigured()) {
+    return NextResponse.json(
+      {
+        error: "Chat rate limiting is not configured",
+        message: "Set KV_REST_API_URL and KV_REST_API_TOKEN to enable docs chat.",
+      },
+      { status: 503 },
+    );
+  }
+
+  const identifier = getRateLimitIdentifier(req);
+  let minuteResult;
+  let dailyResult;
+  try {
+    [minuteResult, dailyResult] = await Promise.all([
+      docsChatMinuteRateLimit.limit(identifier),
+      docsChatDailyRateLimit.limit(identifier),
+    ]);
+  } catch (error) {
+    console.error("Docs chat rate limiting failed", error);
+    return NextResponse.json(
+      {
+        error: "Chat rate limiting unavailable",
+        message: "Docs chat is temporarily unavailable because rate limiting could not be applied.",
+      },
+      { status: 503 },
+    );
+  }
+
+  if (minuteResult.success && dailyResult.success) return null;
+
+  const isMinuteLimit = !minuteResult.success;
+  return NextResponse.json(
+    {
+      error: "Rate limit exceeded",
+      message: isMinuteLimit
+        ? "Too many requests. Please wait a moment before trying again."
+        : "Daily limit reached. Please try again tomorrow.",
+    },
+    { status: 429 },
+  );
+}
+
 export async function POST(req) {
   if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
     return NextResponse.json(
@@ -72,6 +127,9 @@ export async function POST(req) {
       { status: 503 },
     );
   }
+
+  const rateLimitResponse = await rateLimitRequest(req);
+  if (rateLimitResponse) return rateLimitResponse;
 
   let body;
   try {
