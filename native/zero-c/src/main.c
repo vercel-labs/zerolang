@@ -51,6 +51,7 @@ typedef struct {
   bool patch;
   bool all;
   bool fmt_check;
+  bool fmt_write;
   bool legacy_backend;
   bool trace;
   EmitKind emit;
@@ -3075,7 +3076,7 @@ static void print_help(void) {
   printf("  zero new cli|lib|package <name>\n");
   printf("  zero check <file.0|project|zero.json>\n");
   printf("  zero test <file.0|project|zero.json>\n");
-  printf("  zero fmt <file.0|project|zero.json>\n");
+  printf("  zero fmt [--check|--write] [--json] <file.0|project|zero.json>\n");
   printf("  zero build [--json] [--emit exe|obj|wasm] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero run [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json> [-- args...]\n");
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
@@ -3148,8 +3149,12 @@ static void print_command_help(const char *command) {
     printf("Usage: zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <file.0|project|zero.json>\n\n");
     printf("Build and run inline `test` blocks.\n");
   } else if (strcmp(command, "fmt") == 0) {
-    printf("Usage: zero fmt [--check] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero fmt [--check|--write] [--json] <file.0|project|zero.json>\n\n");
     printf("Print deterministic bootstrap formatting for current Zero syntax.\n");
+    printf("  --check  Exit with non-zero if the file is not formatted.\n");
+    printf("  --write  Overwrite the file in place.\n");
+    printf("  --json   Structured envelope for --check and --write.\n");
+    printf("  --check and --write are mutually exclusive.\n");
   } else if (strcmp(command, "targets") == 0) {
     printf("Usage: zero targets\n\n");
     printf("Print supported target facts as JSON.\n");
@@ -3248,6 +3253,9 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     return true;
   } else if (strcmp(arg, "--check") == 0) {
     command->fmt_check = true;
+    return true;
+  } else if (strcmp(arg, "--write") == 0) {
+    command->fmt_write = true;
     return true;
   } else if (strcmp(arg, "--trace") == 0) {
     command->trace = true;
@@ -8720,17 +8728,76 @@ int main(int argc, char **argv) {
       z_free_source(&fmt_input);
       return 1;
     }
-    char *formatted = format_source_minimal(fmt_input.source);
-    if (command.fmt_check) {
-      bool matches = strcmp(formatted, fmt_input.source) == 0;
-      if (matches) {
-        printf("fmt ok\n");
+    if (command.fmt_check && command.fmt_write) {
+      if (command.json) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"command\": \"fmt\",\n  \"ok\": false,\n  \"error\": \"--check and --write are mutually exclusive\"\n}\n");
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
       } else {
-        fprintf(stderr, "format differs: %s\n", fmt_input.source_file ? fmt_input.source_file : command.input);
+        fprintf(stderr, "error: --check and --write are mutually exclusive\n");
+      }
+      z_free_source(&fmt_input);
+      return 1;
+    }
+    char *formatted = format_source_minimal(fmt_input.source);
+    bool matches = strcmp(formatted, fmt_input.source) == 0;
+    if (command.fmt_check) {
+      if (command.json) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"command\": \"fmt\",\n  \"mode\": \"check\",\n  \"sourceFile\": ");
+        append_json_string(&buf, fmt_input.source_file ? fmt_input.source_file : command.input);
+        zbuf_append(&buf, ",\n  \"ok\": ");
+        zbuf_append(&buf, matches ? "true" : "false");
+        if (!matches) {
+          zbuf_append(&buf, ",\n  \"unformatted\": [");
+          append_json_string(&buf, fmt_input.source_file ? fmt_input.source_file : command.input);
+          zbuf_append(&buf, "]");
+        }
+        zbuf_append(&buf, "\n}\n");
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
+      } else {
+        if (matches) {
+          printf("fmt ok\n");
+        } else {
+          fprintf(stderr, "format differs: %s\n", fmt_input.source_file ? fmt_input.source_file : command.input);
+        }
       }
       free(formatted);
       z_free_source(&fmt_input);
       return matches ? 0 : 1;
+    }
+    if (command.fmt_write) {
+      ZDiag write_diag = {0};
+      bool written = z_write_file(fmt_input.source_file, formatted, &write_diag);
+      if (command.json) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"command\": \"fmt\",\n  \"mode\": \"write\",\n  \"sourceFile\": ");
+        append_json_string(&buf, fmt_input.source_file ? fmt_input.source_file : command.input);
+        zbuf_append(&buf, ",\n  \"ok\": ");
+        zbuf_append(&buf, written ? "true" : "false");
+        if (written) {
+          zbuf_append(&buf, ",\n  \"written\": [");
+          append_json_string(&buf, fmt_input.source_file ? fmt_input.source_file : command.input);
+          zbuf_append(&buf, "]");
+        }
+        zbuf_append(&buf, "\n}\n");
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
+      } else {
+        if (written) {
+          printf("formatted: %s\n", fmt_input.source_file ? fmt_input.source_file : command.input);
+        } else {
+          print_diag(fmt_input.source_file, &write_diag);
+        }
+      }
+      free(formatted);
+      z_free_source(&fmt_input);
+      return written ? 0 : 1;
     }
     fputs(formatted, stdout);
     free(formatted);
