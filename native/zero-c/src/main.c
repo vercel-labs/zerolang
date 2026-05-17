@@ -3160,7 +3160,8 @@ static bool parse_command(int argc, char **argv, Command *command) {
          strcmp(command->command, "fix") == 0 ||
          strcmp(command->command, "doctor") == 0 ||
          strcmp(command->command, "clean") == 0 ||
-         strcmp(command->command, "targets") == 0;
+         strcmp(command->command, "targets") == 0 ||
+         strcmp(command->command, "schema") == 0;
 }
 
 static long long now_ms(void);
@@ -7786,6 +7787,141 @@ static size_t source_line_count(const char *source) {
   return lines;
 }
 
+// ── Type → JSON Schema mapping helpers ──────────────────────────
+
+static bool type_is_integer(const char *t) {
+  return strcmp(t, "i8") == 0 || strcmp(t, "i16") == 0 ||
+         strcmp(t, "i32") == 0 || strcmp(t, "i64") == 0 ||
+         strcmp(t, "u8") == 0 || strcmp(t, "u16") == 0 ||
+         strcmp(t, "u32") == 0 || strcmp(t, "u64") == 0 ||
+         strcmp(t, "usize") == 0 || strcmp(t, "isize") == 0;
+}
+
+static bool type_is_number(const char *t) {
+  return strcmp(t, "f32") == 0 || strcmp(t, "f64") == 0;
+}
+
+static bool type_is_string(const char *t) {
+  return strcmp(t, "String") == 0;
+}
+
+static bool type_is_bool(const char *t) {
+  return strcmp(t, "Bool") == 0;
+}
+
+// Forward declaration
+static void append_type_json(ZBuf *buf, const char *type, const Program *program);
+
+// Append JSON Schema for a Maybe<T> inner type
+static void append_type_json(ZBuf *buf, const char *type, const Program *program) {
+  // Skip whitespace
+  while (*type == ' ') type++;
+
+  // Maybe<T> → anyOf
+  if (strncmp(type, "Maybe<", 6) == 0) {
+    zbuf_append(buf, "{\"anyOf\":[");
+    // Extract inner type
+    const char *inner_start = type + 6;
+    int depth = 1;
+    const char *inner_end = inner_start;
+    while (*inner_end && depth > 0) {
+      if (*inner_end == '<') depth++;
+      else if (*inner_end == '>') depth--;
+      if (depth > 0) inner_end++;
+    }
+    // inner_end now points to '>'
+    size_t inner_len = inner_end - inner_start;
+    // Copy inner type string
+    char *inner = (char*)malloc(inner_len + 1);
+    memcpy(inner, inner_start, inner_len);
+    inner[inner_len] = '\0';
+    append_type_json(buf, inner, program);
+    free(inner);
+    zbuf_append(buf, ",{\"type\":\"null\"}]}");
+    return;
+  }
+
+  // [N]T → array
+  if (*type == '[') {
+    const char *close = strchr(type, ']');
+    if (close) {
+      zbuf_append(buf, "{\"type\":\"array\",\"items\":");
+      append_type_json(buf, close + 1, program);
+      zbuf_append(buf, "}");
+      return;
+    }
+  }
+
+  // Span<T>, MutSpan<T> → array
+  if (strncmp(type, "Span<", 5) == 0 || strncmp(type, "MutSpan<", 8) == 0) {
+    const char *inner_start = strchr(type, '<') + 1;
+    const char *inner_end = strrchr(type, '>');
+    size_t inner_len = inner_end - inner_start;
+    char *inner = (char*)malloc(inner_len + 1);
+    memcpy(inner, inner_start, inner_len);
+    inner[inner_len] = '\0';
+    zbuf_append(buf, "{\"type\":\"array\",\"items\":");
+    append_type_json(buf, inner, program);
+    zbuf_append(buf, "}");
+    free(inner);
+    return;
+  }
+
+  // Known types
+  if (type_is_integer(type)) { zbuf_append(buf, "{\"type\":\"integer\"}"); return; }
+  if (type_is_number(type))  { zbuf_append(buf, "{\"type\":\"number\"}"); return; }
+  if (type_is_string(type))  { zbuf_append(buf, "{\"type\":\"string\"}"); return; }
+  if (type_is_bool(type))    { zbuf_append(buf, "{\"type\":\"boolean\"}"); return; }
+  if (strcmp(type, "char") == 0) { zbuf_append(buf, "{\"type\":\"string\",\"maxLength\":1}"); return; }
+  if (strcmp(type, "Void") == 0) { zbuf_append(buf, "{\"type\":\"null\"}"); return; }
+
+  // Check if it's a known shape → $ref
+  for (size_t i = 0; i < program->shapes.len; i++) {
+    if (strcmp(program->shapes.items[i].name, type) == 0) {
+      zbuf_append(buf, "{\"$ref\":\"#/$defs/");
+      zbuf_appendf(buf, "%s\"}", type);
+      return;
+    }
+  }
+
+  // Unknown: emit empty schema (accepts anything)
+  zbuf_append(buf, "{}");
+}
+
+// ── append_schema_json: emit JSON Schema for all shapes ──────────
+
+static void append_schema_json(ZBuf *buf, const Program *program) {
+  zbuf_append(buf, "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"$defs\":{");
+
+  for (size_t s = 0; s < program->shapes.len; s++) {
+    const Shape *shape = &program->shapes.items[s];
+
+    if (s > 0) zbuf_append(buf, ",");
+    zbuf_appendf(buf, "\"%s\":", shape->name);
+    zbuf_append(buf, "{\"type\":\"object\",\"properties\":{");
+
+    for (size_t f = 0; f < shape->fields.len; f++) {
+      const Param *field = &shape->fields.items[f];
+      if (f > 0) zbuf_append(buf, ",");
+      zbuf_appendf(buf, "\"%s\":", field->name);
+      append_type_json(buf, field->type, program);
+    }
+
+    zbuf_append(buf, "},\"required\":[");
+    bool first = true;
+    for (size_t f = 0; f < shape->fields.len; f++) {
+      const Param *field = &shape->fields.items[f];
+      if (strncmp(field->type, "Maybe", 5) == 0) continue;
+      if (!first) zbuf_append(buf, ",");
+      first = false;
+      zbuf_appendf(buf, "\"%s\"", field->name);
+    }
+    zbuf_append(buf, "],\"additionalProperties\":false}");
+  }
+
+  zbuf_append(buf, "}}\n");
+}
+
 static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program *program, const ZTargetInfo *target) {
   CapabilitySummary caps = program_capabilities(program);
   size_t public_count = 0;
@@ -8559,6 +8695,17 @@ int main(int argc, char **argv) {
     append_graph_json(&graph, &input, &program, target);
     fputs(graph.data, stdout);
     zbuf_free(&graph);
+    z_free_program(&program);
+    z_free_source(&input);
+    return 0;
+  }
+
+  if (strcmp(command.command, "schema") == 0) {
+    ZBuf schema;
+    zbuf_init(&schema);
+    append_schema_json(&schema, &program);
+    fputs(schema.data, stdout);
+    zbuf_free(&schema);
     z_free_program(&program);
     z_free_source(&input);
     return 0;
