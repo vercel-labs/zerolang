@@ -1438,6 +1438,36 @@ assert.equal(explainNameJson.schemaVersion, 1);
 assert.equal(explainNameJson.code, "NAM003");
 assert.equal(explainNameJson.repair.id, "declare-missing-symbol");
 
+// --- explain coverage guard: prevent future NAM003-style drift ---
+const mainC = readFileSync("native/zero-c/src/main.c", "utf8");
+const emitCodes = new Set(
+  [...mainC.matchAll(/\s+case \d+: return "([A-Z]{3,}\d{3})"/g)].map(m => m[1])
+);
+emitCodes.delete("PAR100");
+const explainCodes = new Set(
+  [...mainC.matchAll(/^\s{2,}"([A-Z]{3,}\d{3})",$/gm)].map(m => m[1])
+);
+const KNOWN_MISSING = new Set([
+  "ABI001", "APP001", "BLD002", "BOR001", "BOR002",
+  "CIMP001", "CIMP002", "CIMP003", "ERR001", "FLD001", "FLD002",
+  "IMP001", "IMP002", "IMP003", "MAT001", "MAT002", "MAT003",
+  "MAT004", "MAT005", "MEM001", "NAM002", "NAM004", "OWN001",
+  "OWN002", "PKG001", "PKG002", "PKG003", "PKG004", "STD002",
+  "TYP001", "TYP002", "TYP003", "TYP005", "TYP010", "TYP011",
+  "TYP012", "TYP013", "TYP014", "TYP015", "TYP016", "TYP017",
+  "TYP018", "TYP019", "TYP020", "TYP021", "TYP022", "VAR001",
+  "VAR002", "VAR003", "VAR004", "WEB001",
+]);
+for (const code of emitCodes) {
+  if (explainCodes.has(code)) continue;
+  if (KNOWN_MISSING.has(code)) continue;
+  assert.fail(`diagnostic code ${code} is emitted by diag_code() but has no explain entry and is not in the known-missing allowlist`);
+}
+const remainingMissing = [...emitCodes].filter(c => !explainCodes.has(c)).sort();
+const coveredCount = [...emitCodes].filter(c => explainCodes.has(c)).length;
+const knownMissingCount = remainingMissing.filter(c => KNOWN_MISSING.has(c)).length;
+// --- end explain coverage guard ---
+
 const fixPlan = json(["fix", "--plan", "--json", "--target", "wasm32-web", "conformance/native/fail/std-fs-target-unsupported.0"]).body;
 assert.equal(fixPlan.schemaVersion, 1);
 assert.equal(fixPlan.mode, "plan");
@@ -1808,6 +1838,12 @@ const report = {
   targets: {
     host: targets.host,
     count: targets.targets.length,
+  },
+  diagnosticExplainCoverage: {
+    totalEmitted: emitCodes.size,
+    totalCovered: coveredCount,
+    totalKnownMissing: knownMissingCount,
+    missingCodes: remainingMissing,
   },
   generatedCAudit: null,
 };
