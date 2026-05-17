@@ -2856,12 +2856,26 @@ static int explain_command(const Command *command) {
                                              strcmp(info->code, "TYP009") == 0 ? 3010 :
                                              strcmp(info->code, "TYP023") == 0 ? 3032 :
                                              strcmp(info->code, "TYP024") == 0 ? 3033 :
-                                             strcmp(info->code, "ERR002") == 0 ? 3034 :
-                                             strcmp(info->code, "ERR003") == 0 ? 3035 :
-                                             strcmp(info->code, "STD003") == 0 ? 3036 :
-                                             strcmp(info->code, "NAM003") == 0 ? 3003 :
-                                             strcmp(info->code, "CGEN004") == 0 ? 3037 :
-                                             strcmp(info->code, "MET001") == 0 ? 3038 : 0));
+                                             strcmp(info->code, "TYP025") == 0 ? 3034 :
+                                             strcmp(info->code, "MET001") == 0 ? 3035 :
+                                             strcmp(info->code, "TYP026") == 0 ? 3036 :
+                                             strcmp(info->code, "PUB001") == 0 ? 3037 :
+                                             strcmp(info->code, "IFC001") == 0 ? 3038 :
+                                             strcmp(info->code, "IFC002") == 0 ? 3039 :
+                                             strcmp(info->code, "IFC003") == 0 ? 3040 :
+                                             strcmp(info->code, "IFC004") == 0 ? 3041 :
+                                             strcmp(info->code, "IFC005") == 0 ? 3042 :
+                                             strcmp(info->code, "STC001") == 0 ? 3043 :
+                                             strcmp(info->code, "STC002") == 0 ? 3044 :
+                                             strcmp(info->code, "STC003") == 0 ? 3045 :
+                                             strcmp(info->code, "SHM001") == 0 ? 3046 :
+                                             strcmp(info->code, "SHM002") == 0 ? 3047 :
+                                             strcmp(info->code, "RCV001") == 0 ? 3048 :
+                                             strcmp(info->code, "RCV002") == 0 ? 3049 :
+                                             strcmp(info->code, "ERR002") == 0 ? 1002 :
+                                             strcmp(info->code, "ERR003") == 0 ? 1003 :
+                                             strcmp(info->code, "STD003") == 0 ? 3012 :
+                                             strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
         zbuf_append(&buf, ",\n        \"summary\": ");
         append_json_string(&buf, info->canonical_repair);
         zbuf_append(&buf, "},\n      \"examples\": {\"bad\": ");
