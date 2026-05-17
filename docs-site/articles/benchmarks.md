@@ -28,6 +28,7 @@ The current cases include:
 
 - `hello`: minimal output
 - `add`: arithmetic and a helper function
+- `gcd`: integer loop and modulo math kernel
 - `structs`: shape construction and direct field access
 - `params`: multiple typed parameters and nested calls
 - `buffers`: fixed arrays, spans, copy/fill, and byte equality
