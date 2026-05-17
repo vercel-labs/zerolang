@@ -2910,8 +2910,14 @@ static void append_fix_plan_diagnostic(ZBuf *buf, const char *path, const ZDiag 
   zbuf_append(buf, "}}");
 }
 
-static void print_fix_plan_json(const char *path, const ZDiag *diag) {
+static bool find_make_binding_mutable_edit(const char *source, int *line_out, char **old_line_out, char **new_line_out);
+
+static void print_fix_plan_json(const char *path, const ZDiag *diag, const SourceInput *input) {
   bool has_diag = diag && diag->code != 0;
+  int edit_line = 0;
+  char *old_line = NULL;
+  char *new_line = NULL;
+  bool has_edit = has_diag && input && input->source && find_make_binding_mutable_edit(input->source, &edit_line, &old_line, &new_line);
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
@@ -2931,11 +2937,23 @@ static void print_fix_plan_json(const char *path, const ZDiag *diag) {
     append_json_string(&buf, diag_fix_safety(diag->code));
     zbuf_append(&buf, ", \"summary\": ");
     append_json_string(&buf, diag_repair_summary(diag->code));
-    zbuf_append(&buf, ", \"appliesEdits\": false}");
+    zbuf_append(&buf, ", \"appliesEdits\": false");
+    if (has_edit) {
+      zbuf_append(&buf, ",\n    \"edits\": [{\"line\": ");
+      zbuf_appendf(&buf, "%d", edit_line);
+      zbuf_append(&buf, ", \"old\": ");
+      append_json_string(&buf, old_line);
+      zbuf_append(&buf, ", \"new\": ");
+      append_json_string(&buf, new_line);
+      zbuf_append(&buf, "}]");
+    }
+    zbuf_append(&buf, "}");
   }
   zbuf_append(&buf, "]\n}\n");
   fputs(buf.data, stdout);
   zbuf_free(&buf);
+  free(old_line);
+  free(new_line);
 }
 
 static bool find_make_binding_mutable_edit(const char *source, int *line_out, char **old_line_out, char **new_line_out) {
@@ -8834,7 +8852,7 @@ int main(int argc, char **argv) {
         z_free_source(&input);
         return rc;
       }
-      print_fix_plan_json(diag.path ? diag.path : command.input, &diag);
+      print_fix_plan_json(diag.path ? diag.path : command.input, &diag, &input);
       z_free_program(&program);
       z_free_source(&input);
       return 0;
@@ -8848,7 +8866,7 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "graph") != 0 && !validate_target_capabilities(&program, target, &diag, input.source_file)) {
     if (strcmp(command.command, "fix") == 0) {
-      print_fix_plan_json(input.source_file, &diag);
+      print_fix_plan_json(input.source_file, &diag, &input);
       z_free_program(&program);
       z_free_source(&input);
       return 0;
@@ -8879,7 +8897,7 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "fix") == 0) {
     if (command.apply || command.patch) print_or_apply_fix_json(input.source_file, &input, NULL, command.apply);
-    else print_fix_plan_json(input.source_file, NULL);
+    else print_fix_plan_json(input.source_file, NULL, &input);
     z_free_program(&program);
     z_free_source(&input);
     return 0;
