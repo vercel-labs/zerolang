@@ -2641,6 +2641,8 @@ for (const [fixture, code] of [
   ["shape-array-reference-index-origin.0", /BOR001/],
   ["shape-array-reference-call-origin.0", /BOR001/],
   ["receiver-return-field-origin.0", /BOR001/],
+  ["receiver-return-partial-field-origin.0", /BOR001/],
+  ["receiver-return-partial-index-origin.0", /BOR001/],
   ["world-stream-used-as-value.0", /TYP001/],
 ]) {
   const result = await execFileAsync(zero, ["check", `conformance/native/fail/${fixture}`]).catch((error) => error);

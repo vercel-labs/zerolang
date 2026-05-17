@@ -5276,8 +5276,8 @@ static bool expr_reference_provenance(const Program *program, const Expr *expr, 
       bool added = value_provenance_add_all_under_path(origins, &binding_origins, path);
       value_provenance_free(&binding_origins);
       if (added) return true;
-      if (has_binding_origins) return false;
       if (scope_has(scope, root) && type_value_provenance_from_place(program, member_type, scope, root, path, NULL, origins, 0)) return true;
+      if (has_binding_origins) return false;
     }
     if (type_is_named_generic(member_type, "ref") || type_is_named_generic(member_type, "mutref")) {
       ValueProvenance receiver_origins = {0};
@@ -5299,8 +5299,8 @@ static bool expr_reference_provenance(const Program *program, const Expr *expr, 
       bool added = value_provenance_add_all_under_path(origins, &binding_origins, path);
       value_provenance_free(&binding_origins);
       if (added) return true;
-      if (has_binding_origins) return false;
       if (scope_has(scope, root) && type_value_provenance_from_place(program, element_type, scope, root, path, NULL, origins, 0)) return true;
+      if (has_binding_origins) return false;
     }
     if (type_is_named_generic(element_type, "ref") || type_is_named_generic(element_type, "mutref")) {
       ValueProvenance receiver_origins = {0};
