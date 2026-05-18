@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { access, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { describe, it } from "node:test";
@@ -253,5 +254,77 @@ describe("native zero CLI", () => {
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /FLD001/);
     assert.match(result.stderr, /explain: zero explain FLD001/);
+  });
+
+  it("covers target capability facts in zero targets", async () => {
+    const targets = JSON.parse((await runZero(["targets"])).stdout);
+    assert.equal(targets.schemaVersion, 1);
+    assert.ok(targets.host.length > 0);
+
+    // Find the host target
+    const hostTarget = targets.targets.find((t: { hosted: boolean }) => t.hosted);
+    assert.ok(hostTarget, "host target should exist");
+    assert.equal(hostTarget.hosted, true);
+
+    // Host target should have process/runtime capabilities
+    assert.ok(hostTarget.capabilities.includes("proc"), "host target should have proc capability");
+    assert.ok(hostTarget.capabilities.includes("fs"), "host target should have fs capability");
+    assert.ok(hostTarget.capabilities.includes("net"), "host target should have net capability");
+
+    // Host target should have hosted process/runtime surface facts
+    const hostCapabilityNames = hostTarget.capabilityFacts.map((f: { name: string }) => f.name);
+    assert.ok(hostCapabilityNames.includes("proc"), "host target capabilityFacts should include proc");
+    assert.ok(hostCapabilityNames.includes("fs"), "host target capabilityFacts should include fs");
+
+    // Unavailable capabilities should appear with available: false
+    const webFact = hostTarget.capabilityFacts.find((f: { name: string }) => f.name === "web");
+    if (webFact) {
+      assert.equal(webFact.available, false, "web capability should be unavailable on host target");
+    }
+
+    // Find a non-host target (e.g., wasm32-wasi)
+    const wasmTarget = targets.targets.find((t: { name: string }) => t.name === "wasm32-wasi");
+    if (wasmTarget) {
+      assert.equal(wasmTarget.hosted, false, "wasm32-wasi should not be hosted");
+      assert.ok(!wasmTarget.capabilities.includes("proc"), "wasm should not have proc");
+    }
+  });
+
+  it("covers zero new --json envelope with order-independent args", async () => {
+    const tmpDir = join(tmpdir(), `zero-new-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+
+    try {
+      // Test --json before positional args
+      const result1 = JSON.parse((await runZero(["new", "--json", "cli", "mycli"], { cwd: tmpDir })).stdout);
+      assert.equal(result1.schemaVersion, 1);
+      assert.equal(result1.ok, true);
+      assert.equal(result1.kind, "cli");
+      assert.equal(result1.name, "mycli");
+      assert.equal(result1.path, "mycli");
+      assert.equal(result1.manifest, "mycli/zero.json");
+      assert.equal(result1.entry, "mycli/src/main.0");
+      assert.ok(Array.isArray(result1.nextSteps));
+      assert.ok(result1.nextSteps.includes("zero run mycli"), "cli should have run in nextSteps");
+
+      // Clean up for next test
+      rmSync(join(tmpDir, "mycli"), { force: true, recursive: true });
+
+      // Test --json after positional args
+      const result2 = JSON.parse((await runZero(["new", "lib", "mylib", "--json"], { cwd: tmpDir })).stdout);
+      assert.equal(result2.kind, "lib");
+      assert.equal(result2.name, "mylib");
+      assert.ok(!result2.nextSteps.includes("zero run mylib"), "lib should not have run in nextSteps");
+      assert.ok(result2.nextSteps.includes("zero check mylib"));
+      assert.ok(result2.nextSteps.includes("zero test mylib"));
+
+      // Test plain-text output is unchanged
+      rmSync(join(tmpDir, "mylib"), { force: true, recursive: true });
+      const result3 = (await runZero(["new", "cli", "plaincli"], { cwd: tmpDir })).stdout;
+      assert.match(result3, /created cli project plaincli/);
+      assert.match(result3, /next: cd plaincli && zero check . && zero test . && zero run ./);
+    } finally {
+      rmSync(tmpDir, { force: true, recursive: true });
+    }
   });
 });

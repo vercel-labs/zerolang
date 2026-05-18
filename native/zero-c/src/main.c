@@ -3272,14 +3272,13 @@ static bool parse_command(int argc, char **argv, Command *command) {
   command->target = "host";
   command->profile = "release";
   if (strcmp(command->command, "new") == 0) {
-    if (argc >= 3) {
-      if (strcmp(argv[2], "--help") == 0 || strcmp(argv[2], "-h") == 0) command->kind = "help";
-      else command->kind = argv[2];
-    }
-    for (int i = 3; i < argc; i++) {
-      if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) return true;
-      else if (!command->input) command->input = argv[i];
-      else return false;
+    for (int i = 2; i < argc; i++) {
+      if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { command->kind = "help"; continue; }
+      if (strcmp(argv[i], "--json") == 0) { command->json = true; continue; }
+      if (!command->kind) { command->kind = argv[i]; continue; }
+      if (!command->input) { command->input = argv[i]; continue; }
+      command->unknown_flag = argv[i];
+      return true;
     }
     return true;
   }
@@ -5554,9 +5553,48 @@ static int new_command(const Command *command) {
     return 1;
   }
 
-  printf("created %s project %s\n", command->kind, command->input);
-  if (strcmp(command->kind, "lib") == 0) printf("next: cd %s && zero check . && zero test .\n", command->input);
-  else printf("next: cd %s && zero check . && zero test . && zero run .\n", command->input);
+  if (command->json) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"kind\": ");
+    append_json_string(&buf, command->kind);
+    zbuf_append(&buf, ",\n  \"name\": ");
+    append_json_string(&buf, command->input);
+    zbuf_append(&buf, ",\n  \"path\": ");
+    append_json_string(&buf, command->input);
+    zbuf_append(&buf, ",\n  \"manifest\": ");
+    ZBuf manifest_path;
+    zbuf_init(&manifest_path);
+    zbuf_append(&manifest_path, command->input);
+    zbuf_append(&manifest_path, "/zero.json");
+    append_json_string(&buf, manifest_path.data);
+    zbuf_free(&manifest_path);
+    zbuf_append(&buf, ",\n  \"entry\": ");
+    ZBuf entry_path;
+    zbuf_init(&entry_path);
+    zbuf_append(&entry_path, command->input);
+    zbuf_append(&entry_path, "/src/main.0");
+    append_json_string(&buf, entry_path.data);
+    zbuf_free(&entry_path);
+    zbuf_append(&buf, ",\n  \"nextSteps\": [");
+    zbuf_append(&buf, "\"zero check ");
+    zbuf_append(&buf, command->input);
+    zbuf_append(&buf, "\", \"zero test ");
+    zbuf_append(&buf, command->input);
+    zbuf_append(&buf, "\"");
+    if (strcmp(command->kind, "lib") != 0) {
+      zbuf_append(&buf, ", \"zero run ");
+      zbuf_append(&buf, command->input);
+      zbuf_append(&buf, "\"");
+    }
+    zbuf_append(&buf, "]\n}\n");
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else {
+    printf("created %s project %s\n", command->kind, command->input);
+    if (strcmp(command->kind, "lib") == 0) printf("next: cd %s && zero check . && zero test .\n", command->input);
+    else printf("next: cd %s && zero check . && zero test . && zero run .\n", command->input);
+  }
   return 0;
 }
 
