@@ -1,0 +1,66 @@
+fun count_while(n: i32) -> i32 {
+    let mut i = 0
+    let mut total = 0
+    while i < n {
+        i = i + 1
+        total = total + i
+    }
+    return total
+}
+
+fun break_at(limit: i32) -> i32 {
+    let mut i = 0
+    while i < 10 {
+        if i == limit {
+            break
+        }
+        i = i + 1
+    }
+    return i
+}
+
+fun sum_for(n: i32) -> i32 {
+    let mut total = 0
+    for i in 0..n {
+        total = total + i
+    }
+    return total
+}
+
+fun count_skipping(n: i32, skip: i32) -> i32 {
+    let mut total = 0
+    for i in 0..n {
+        if i == skip {
+            continue
+        }
+        total = total + 1
+    }
+    return total
+}
+
+fun array_get(idx: i32) -> i32 {
+    let arr: [3]i32 = [10, 20, 30]
+    return arr[idx]
+}
+
+test "while loop with assignment" {
+    expect(count_while(5) == 15)
+}
+
+test "while break stops early" {
+    expect(break_at(3) == 3)
+}
+
+test "for loop sum" {
+    expect(sum_for(5) == 10)
+}
+
+test "for continue skips element" {
+    expect(count_skipping(5, 2) == 4)
+}
+
+test "array literal and index" {
+    expect(array_get(0) == 10)
+    expect(array_get(1) == 20)
+    expect(array_get(2) == 30)
+}
