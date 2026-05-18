@@ -5807,6 +5807,7 @@ static const Choice *test_find_choice(const Program *program, const char *name) 
 }
 
 static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *expr, TestValue *out, TestRunFailure *failure);
+static bool test_eval_function_with_caller(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure, TestEnv *caller_env, const Expr **arg_exprs, size_t arg_expr_len);
 
 static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, TestRunFailure *failure) {
   for (size_t i = 0; body && i < body->len; i++) {
@@ -5897,6 +5898,32 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
         if (!test_eval_expr(program, env, stmt->expr, &value, failure)) return false;
         test_env_set(env, stmt->target->text, &value);
         test_value_free(&value);
+      } else if (stmt->target && stmt->target->kind == EXPR_MEMBER && stmt->target->left && stmt->target->left->kind == EXPR_IDENT) {
+        /* Field assignment on a shape: shape.field = value */
+        const char *var_name = stmt->target->left->text;
+        const char *field_name = stmt->target->text ? stmt->target->text : "";
+        TestValue rhs = {0};
+        if (!test_eval_expr(program, env, stmt->expr, &rhs, failure)) return false;
+        /* Find the binding in the environment and update the field in-place */
+        bool field_found = false;
+        for (size_t ei = 0; ei < env->len; ei++) {
+          if (strcmp(env->items[ei].name, var_name) == 0 && env->items[ei].value.kind == TEST_VALUE_SHAPE) {
+            for (size_t fi = 0; fi < env->items[ei].value.field_len; fi++) {
+              if (strcmp(env->items[ei].value.fields[fi].name, field_name) == 0) {
+                test_value_free(env->items[ei].value.fields[fi].value);
+                *env->items[ei].value.fields[fi].value = test_value_copy(&rhs);
+                field_found = true;
+                break;
+              }
+            }
+            break;
+          }
+        }
+        test_value_free(&rhs);
+        if (!field_found) {
+          test_fail(failure, stmt->target, "zero test field assignment: field not found on shape");
+          return false;
+        }
       } else {
         test_fail(failure, NULL, "zero test direct runner does not support this assignment target yet");
         return false;
@@ -5920,6 +5947,10 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
 }
 
 static bool test_eval_function(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure) {
+  return test_eval_function_with_caller(program, fun, args, arg_len, out, failure, NULL, NULL, 0);
+}
+
+static bool test_eval_function_with_caller(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure, TestEnv *caller_env, const Expr **arg_exprs, size_t arg_expr_len) {
   if (!fun) {
     test_fail(failure, NULL, "zero test unknown function");
     return false;
@@ -5932,6 +5963,33 @@ static bool test_eval_function(const Program *program, const Function *fun, cons
   for (size_t i = 0; i < arg_len; i++) test_env_set(&local, fun->params.items[i].name, &args[i]);
   bool returned = false;
   bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, failure);
+  /* mutref writeback: for params typed mutref<...>, copy modified local back to caller */
+  if (ok && caller_env) {
+    for (size_t i = 0; i < fun->params.len; i++) {
+      const char *ptype = fun->params.items[i].type;
+      if (ptype && strncmp(ptype, "mutref<", 7) == 0) {
+        /* Find the modified value in the local env */
+        TestValue modified = {0};
+        if (test_env_get(&local, fun->params.items[i].name, &modified)) {
+          /* Find the caller's variable name from the arg expression.
+             The arg is typically EXPR_BORROW whose left is EXPR_IDENT. */
+          const char *caller_var = NULL;
+          if (i < arg_expr_len && arg_exprs && arg_exprs[i]) {
+            const Expr *aexpr = arg_exprs[i];
+            if (aexpr->kind == EXPR_BORROW && aexpr->left && aexpr->left->kind == EXPR_IDENT) {
+              caller_var = aexpr->left->text;
+            } else if (aexpr->kind == EXPR_IDENT) {
+              caller_var = aexpr->text;
+            }
+          }
+          if (caller_var) {
+            test_env_set(caller_env, caller_var, &modified);
+          }
+          test_value_free(&modified);
+        }
+      }
+    }
+  }
   test_env_free(&local);
   if (!ok) return false;
   if (!returned) out->kind = TEST_VALUE_VOID;
@@ -6121,8 +6179,13 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
             }
           }
         }
-        if (fun) ok = test_eval_function(program, fun, args, expr->args.len, out, failure);
-        else if (out->kind == TEST_VALUE_VOID) {
+        if (fun) {
+          /* Collect arg expression pointers for mutref writeback */
+          const Expr **arg_exprs = calloc(expr->args.len ? expr->args.len : 1, sizeof(const Expr *));
+          for (size_t ai = 0; ai < expr->args.len; ai++) arg_exprs[ai] = expr->args.items[ai];
+          ok = test_eval_function_with_caller(program, fun, args, expr->args.len, out, failure, env, arg_exprs, expr->args.len);
+          free(arg_exprs);
+        } else if (out->kind == TEST_VALUE_VOID) {
           test_fail(failure, expr, "zero test unknown function");
           ok = false;
         }
@@ -6163,6 +6226,13 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
     case EXPR_NULL:
       out->kind = TEST_VALUE_VOID;
       return true;
+    case EXPR_BORROW:
+      /* Borrow expressions: &x (ref) and &mut x (mutref).
+         In the test evaluator, both resolve to the underlying value.
+         mutref writeback is handled at function call boundaries. */
+      if (expr->left) return test_eval_expr(program, env, expr->left, out, failure);
+      test_fail(failure, expr, "zero test borrow without operand");
+      return false;
     case EXPR_CAST:
       /* Type casts: evaluate the inner expression, pass through the value.
          The checker has already validated the cast is legal. */
