@@ -84,5 +84,5 @@ jobs:
       - name: Release artifact build smoke
         run: |
           mkdir -p .zero/ci-release
-          ZIG_GLOBAL_CACHE_DIR=.zero/zig-global-cache ZIG_LOCAL_CACHE_DIR=.zero/zig-local-cache zig cc -target x86_64-linux-musl -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c -o .zero/ci-release/zero-linux-musl-x64
+          ZIG_GLOBAL_CACHE_DIR=.zero/zig-global-cache ZIG_LOCAL_CACHE_DIR=.zero/zig-local-cache zig cc -target x86_64-linux-musl -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c native/zero-c/src/crypto/*.c -o .zero/ci-release/zero-linux-musl-x64
           ./.zero/ci-release/zero-linux-musl-x64 --version

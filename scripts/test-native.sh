@@ -18,6 +18,16 @@ make -C native/zero-c
 
 mkdir -p .zero/native-test .zero/conformance
 
+crypto_test_path=".zero/native-test/crypto-test"
+cc -std=c11 -Wall -Wextra -Wpedantic -I native/zero-c/include -DZERO_TEST \
+  native/zero-c/tests/crypto/crypto_test.c \
+  native/zero-c/src/crypto/ed25519.c \
+  native/zero-c/src/crypto/sha256.c \
+  -o "$crypto_test_path"
+"$crypto_test_path"
+
+bash scripts/crypto-openssl-check.sh
+
 expected_output() {
   case "$1" in
     examples/hello.0) printf "hello from zero" ;;
