@@ -151,9 +151,17 @@ static bool match_kind(Parser *parser, TokenKind kind) {
 }
 
 static bool fail(Parser *parser, const char *message) {
-  parser->diag->code = 100;
   parser->diag->line = current(parser)->line;
   parser->diag->column = current(parser)->column;
+  if (strcmp(current(parser)->text, ";") == 0) {
+    parser->diag->code = 102;
+    snprintf(parser->diag->message, sizeof(parser->diag->message), "unexpected semicolon");
+    snprintf(parser->diag->expected, sizeof(parser->diag->expected), "Zero syntax without semicolon terminators");
+    snprintf(parser->diag->actual, sizeof(parser->diag->actual), ";");
+    snprintf(parser->diag->help, sizeof(parser->diag->help), "remove the semicolon; Zero statements do not use semicolon terminators");
+    return false;
+  }
+  parser->diag->code = 100;
   snprintf(parser->diag->message, sizeof(parser->diag->message), "%s", message);
   return false;
 }

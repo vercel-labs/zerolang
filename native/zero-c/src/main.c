@@ -2345,6 +2345,8 @@ static void append_time_json(ZBuf *buf, const SourceInput *input, const Program 
 
 static const char *diag_fix_safety(int code) {
   switch (code) {
+    case 102:
+      return "behavior-preserving";
     case 7001:
     case 7002:
     case 7003:
@@ -2395,6 +2397,7 @@ static const char *diag_fix_safety(int code) {
 static const char *diag_repair_id(int code) {
   switch (code) {
     case 100: return "repair-syntax";
+    case 102: return "remove-unexpected-semicolon";
     case 1001: return "add-raises-or-rescue";
     case 1002: return "add-missing-error-name";
     case 1003: return "check-or-rescue-fallible-call";
@@ -2444,6 +2447,7 @@ static const char *diag_repair_id(int code) {
 static const char *diag_repair_summary(int code) {
   switch (code) {
     case 100: return "Repair the syntax at the reported parser span, then rerun zero check.";
+    case 102: return "Delete the semicolon at the diagnostic location.";
     case 1001: return "Add raises to the function signature or handle the fallible expression with rescue.";
     case 1002: return "Add the missing error name to raises { ... } or rescue the call locally.";
     case 1003: return "Wrap the fallible call in check or rescue so error flow is explicit.";
@@ -2538,6 +2542,46 @@ typedef struct {
 static void print_diag_json(const char *path, const ZDiag *diag);
 
 static const ExplainInfo explain_infos[] = {
+  {
+    "PAR100",
+    "parser",
+    "Parser syntax failure",
+    "The parser found tokens that do not match Zero source syntax.",
+    "Zero keeps syntax errors under one parser code while the diagnostic fields identify the expected token, actual token, and local repair.",
+    "Use the reported span and fields to repair the syntax; for semicolon terminators, delete the semicolon.",
+    "pub fun main() -> Void {\n  let value = 1;\n}",
+    "pub fun main() -> Void {\n  let value = 1\n}",
+  },
+  {
+    "APP001",
+    "application",
+    "Missing main function",
+    "The input is being checked or built as an executable entry point, but it does not declare a `main` function.",
+    "Single-file executable inputs need an explicit entry point so agents and tooling do not infer startup behavior from unrelated public functions.",
+    "Add `pub fun main(...) -> Void`, or check the file as part of the package that owns its entry point.",
+    "pub fun helper() -> Void {}",
+    "pub fun main() -> Void {}",
+  },
+  {
+    "NAM003",
+    "name",
+    "Unknown identifier",
+    "A referenced name is not visible in the current scope.",
+    "Zero keeps name resolution deterministic: bindings, parameters, imports, and declarations must be explicit before use.",
+    "Declare the symbol, import the module that provides it, or correct the identifier spelling.",
+    "pub fun main() -> Void {\n  missing()\n}",
+    "pub fun main() -> Void {\n  known()\n}\nfun known() -> Void {}",
+  },
+  {
+    "CIMP001",
+    "c-import",
+    "C header could not be read",
+    "An `extern c` import references a header path the compiler cannot read.",
+    "C imports are resolved through explicit package or target inputs so checks remain reproducible across machines.",
+    "Make the header path package-relative, vendor the header, or configure the target sysroot/dependency metadata.",
+    "extern c \"stdint.h\" { }",
+    "extern c \"vendor/include/stdint.h\" { }",
+  },
   {
     "TAR001",
     "target",
@@ -2819,6 +2863,41 @@ static const ExplainInfo *find_explain_info(const char *code) {
   return NULL;
 }
 
+static int explain_diag_numeric_code(const char *code) {
+  if (strcmp(code, "PAR100") == 0) return 100;
+  if (strcmp(code, "APP001") == 0) return 2001;
+  if (strcmp(code, "NAM003") == 0) return 3003;
+  if (strcmp(code, "CIMP001") == 0) return 8001;
+  if (strcmp(code, "TAR001") == 0) return 6001;
+  if (strcmp(code, "TAR002") == 0) return 6002;
+  if (strcmp(code, "BLD003") == 0) return 2003;
+  if (strcmp(code, "TYP009") == 0) return 3010;
+  if (strcmp(code, "TYP023") == 0) return 3032;
+  if (strcmp(code, "TYP024") == 0) return 3033;
+  if (strcmp(code, "TYP025") == 0) return 3034;
+  if (strcmp(code, "MET001") == 0) return 3035;
+  if (strcmp(code, "TYP026") == 0) return 3036;
+  if (strcmp(code, "PUB001") == 0) return 3037;
+  if (strcmp(code, "IFC001") == 0) return 3038;
+  if (strcmp(code, "IFC002") == 0) return 3039;
+  if (strcmp(code, "IFC003") == 0) return 3040;
+  if (strcmp(code, "IFC004") == 0) return 3041;
+  if (strcmp(code, "IFC005") == 0) return 3042;
+  if (strcmp(code, "STC001") == 0) return 3043;
+  if (strcmp(code, "STC002") == 0) return 3044;
+  if (strcmp(code, "STC003") == 0) return 3045;
+  if (strcmp(code, "SHM001") == 0) return 3046;
+  if (strcmp(code, "SHM002") == 0) return 3047;
+  if (strcmp(code, "RCV001") == 0) return 3048;
+  if (strcmp(code, "RCV002") == 0) return 3049;
+  if (strcmp(code, "BOR001") == 0) return 3029;
+  if (strcmp(code, "ERR002") == 0) return 1002;
+  if (strcmp(code, "ERR003") == 0) return 1003;
+  if (strcmp(code, "STD003") == 0) return 3012;
+  if (strcmp(code, "CGEN004") == 0) return 4004;
+  return 0;
+}
+
 static void print_explain_json(const ExplainInfo *info) {
   ZBuf buf;
   zbuf_init(&buf);
@@ -2833,33 +2912,7 @@ static void print_explain_json(const ExplainInfo *info) {
   zbuf_append(&buf, ",\n  \"why\": ");
   append_json_string(&buf, info->why);
   zbuf_append(&buf, ",\n  \"repair\": {\"id\": ");
-  append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
-                                         strcmp(info->code, "TAR002") == 0 ? 6002 :
-                                         strcmp(info->code, "BLD003") == 0 ? 2003 :
-                                         strcmp(info->code, "TYP009") == 0 ? 3010 :
-                                         strcmp(info->code, "TYP023") == 0 ? 3032 :
-                                         strcmp(info->code, "TYP024") == 0 ? 3033 :
-                                         strcmp(info->code, "TYP025") == 0 ? 3034 :
-                                         strcmp(info->code, "MET001") == 0 ? 3035 :
-                                         strcmp(info->code, "TYP026") == 0 ? 3036 :
-                                         strcmp(info->code, "PUB001") == 0 ? 3037 :
-                                         strcmp(info->code, "IFC001") == 0 ? 3038 :
-                                         strcmp(info->code, "IFC002") == 0 ? 3039 :
-                                         strcmp(info->code, "IFC003") == 0 ? 3040 :
-                                         strcmp(info->code, "IFC004") == 0 ? 3041 :
-                                         strcmp(info->code, "IFC005") == 0 ? 3042 :
-                                         strcmp(info->code, "STC001") == 0 ? 3043 :
-                                         strcmp(info->code, "STC002") == 0 ? 3044 :
-                                         strcmp(info->code, "STC003") == 0 ? 3045 :
-                                         strcmp(info->code, "SHM001") == 0 ? 3046 :
-                                         strcmp(info->code, "SHM002") == 0 ? 3047 :
-                                         strcmp(info->code, "RCV001") == 0 ? 3048 :
-                                         strcmp(info->code, "RCV002") == 0 ? 3049 :
-                                         strcmp(info->code, "BOR001") == 0 ? 3029 :
-                                         strcmp(info->code, "ERR002") == 0 ? 1002 :
-                                         strcmp(info->code, "ERR003") == 0 ? 1003 :
-                                         strcmp(info->code, "STD003") == 0 ? 3012 :
-                                         strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
+  append_json_string(&buf, diag_repair_id(explain_diag_numeric_code(info->code)));
   zbuf_append(&buf, ", \"summary\": ");
   append_json_string(&buf, info->canonical_repair);
   zbuf_append(&buf, "},\n  \"examples\": {\"bad\": ");
@@ -2889,7 +2942,7 @@ static int explain_command(const Command *command) {
     snprintf(diag.message, sizeof(diag.message), "unknown diagnostic code '%s'", command->input ? command->input : "");
     snprintf(diag.expected, sizeof(diag.expected), "known diagnostic code");
     snprintf(diag.actual, sizeof(diag.actual), "%s", command->input ? command->input : "");
-    snprintf(diag.help, sizeof(diag.help), "try TAR002, TYP009, TYP023, ERR002, ERR003, or STD003");
+    snprintf(diag.help, sizeof(diag.help), "try PAR100, APP001, NAM003, CIMP001, TAR002, TYP009, TYP023, ERR002, ERR003, or STD003");
     if (command->json) print_diag_json(command->input, &diag);
     else print_diag(command->input, &diag);
     return 1;
