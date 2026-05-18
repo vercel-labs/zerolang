@@ -1640,7 +1640,7 @@ const genericStaticBytes = new TextEncoder().encode("interface Readable<T> { fun
 new Uint8Array(inst.exports.memory.buffer).set(genericStaticBytes, 45056);
 const fallibilityBytes = new TextEncoder().encode("fun fail() -> Void raises { BadInput } { raise BadInput } pub fun main() -> Void raises { check fail() rescue err { return } }\n");
 new Uint8Array(inst.exports.memory.buffer).set(fallibilityBytes, 47104);
-const capabilityBytes = new TextEncoder().encode('pub fun main(world: World, net: Net) -> Void raises { let fs = std.fs.host() let env = std.env.get("X") let proc = std.proc.spawn("noop") check world.out.write("target web") }\n');
+const capabilityBytes = new TextEncoder().encode('pub fun main(world: World, net: Net) -> Void raises { let fs = world.fs() let env = std.env.get("X") let proc = std.proc.spawn("noop") check world.out.write("target web") }\n');
 new Uint8Array(inst.exports.memory.buffer).set(capabilityBytes, 59392);
 const ownershipBytes = new TextEncoder().encode("shape Receiver { value: i32 fun add(self: mutref<Self>) -> Void { self.value = self.value + 1 } } pub fun main() -> Void { let mut bytes: [2]u8 = [0, 0] let span: MutSpan<u8> = bytes bytes[0] = 1 let owned: owned<Receiver> = Receiver { value: 1 } consume(owned) Receiver.add(&mut owned) }\n");
 new Uint8Array(inst.exports.memory.buffer).set(ownershipBytes, 6144);

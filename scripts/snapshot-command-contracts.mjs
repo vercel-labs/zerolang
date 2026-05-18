@@ -1284,7 +1284,7 @@ assert.equal(compilerZeroStage0Instance.exports.compiler_fallibility_diag_code(0
 assert.equal(compilerZeroStage0Instance.exports.compiler_fallibility_diag_code(1, 0, 0, 0), 1003);
 assert.equal(compilerZeroStage0Instance.exports.compiler_fallibility_diag_code(0, 1, 0, 0), 1002);
 assert.equal(compilerZeroStage0Instance.exports.compiler_fallibility_diag_code(0, 0, 0, 1), 1001);
-const compilerZeroCapabilityBytes = new TextEncoder().encode('pub fun main(world: World, net: Net) -> Void raises { let fs = std.fs.host() let env = std.env.get("X") let proc = std.proc.spawn("noop") check world.out.write("target web") }\n');
+const compilerZeroCapabilityBytes = new TextEncoder().encode('pub fun main(world: World, net: Net) -> Void raises { let fs = world.fs() let env = std.env.get("X") let proc = std.proc.spawn("noop") check world.out.write("target web") }\n');
 new Uint8Array(compilerZeroStage0Instance.exports.memory.buffer).set(compilerZeroCapabilityBytes, 59392);
 assert.equal(compilerZeroStage0Instance.exports.compiler_capability_summary(59392, compilerZeroCapabilityBytes.length, compilerZeroStage0Instance.exports.memory.buffer.byteLength), 255);
 assert.equal(compilerZeroStage0Instance.exports.compiler_capability_diag_code(0, 0), 0);

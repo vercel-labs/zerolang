@@ -1133,10 +1133,6 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       elf_append_u8(code, 0x35);
       elf_append_u32(code, 0x9e3779b9u);
       return true;
-    case IR_VALUE_FS_HOST:
-      elf_append_u8(code, 0x31);
-      elf_append_u8(code, 0xc0);
-      return true;
     case IR_VALUE_FS_OPEN:
     case IR_VALUE_FS_CREATE: {
       bool create = value->kind == IR_VALUE_FS_CREATE;

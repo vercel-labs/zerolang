@@ -10,7 +10,7 @@ Zero's current capability system has a documentation-implementation gap. The doc
 
 1. `World` is a parameter, not a capability token. It's a plain record — storable, duplicable, aliasable.
 2. `raises` is a boolean with no effect information. `fun foo() -> Void raises` could do anything.
-3. Capabilities like `Fs`, `Net`, `Proc` are mintable from nothing (`std.fs.host()`), making them unforgeable in documentation only.
+3. Capabilities like `Fs`, `Net`, `Proc` are mintable from nothing (`world.fs()`), making them unforgeable in documentation only.
 4. Dual API shapes coexist: `std.fs.read(path, buf)` (ambient) and `std.fs.open(fs, path)` (capability-gated). The ambient form always wins.
 5. Effect tracking is done by scanning stdlib call names, not by type-level effect annotations.
 6. `graph --json` reports capabilities as a flat boolean struct, not as a structured effect system.
@@ -153,7 +153,7 @@ World (root)
   └── Proc (world.proc()) — processes
 ```
 
-**Key change:** `std.fs.host()` is removed. The only way to get `Fs` is from `world.fs()`. This makes capabilities unforgeable.
+**Key change:** `world.fs()` is removed. The only way to get `Fs` is from `world.fs()`. This makes capabilities unforgeable.
 
 **Compiler changes:**
 - Type checker: track capability parameters separately from regular parameters
@@ -302,13 +302,13 @@ The `graph --json` output becomes a machine-readable contract:
 **Files changed:**
 - `native/zero-c/src/checker.c` — capability tracking, prevent ambient minting
 - `native/zero-c/src/main.c` — update stdlib helper table
-- `docs-site/articles/modules/fs.md` — remove `std.fs.host()` documentation
+- `docs-site/articles/modules/fs.md` — remove `world.fs()` documentation
 - `docs-site/articles/primitives.md` — update capability hierarchy
-- All examples — update to use `world.fs()` instead of `std.fs.host()`
+- All examples — update to use `world.fs()` instead of `world.fs()`
 
 **Tests:**
 - `world.fs()` returns `Fs` capability
-- `std.fs.host()` is rejected (or removed)
+- `world.fs()` is rejected (or removed)
 - Capability cannot be stored in global
 - Capability cannot be duplicated
 - Target-gating still works (Fs rejected on wasm32-wasi)
@@ -354,7 +354,7 @@ This is a significant language feature that requires careful design. Defer until
 3. **Capability derivation**: Should `world.fs()` return a new `Fs` each time, or the same `Fs`?
    - Recommendation: Same `Fs` (World owns it, lends it out). This is simpler and sufficient for v0.
 
-4. **Backward compatibility**: How long to support the old `std.fs.host()` pattern?
+4. **Backward compatibility**: How long to support the old `world.fs()` pattern?
    - Recommendation: Deprecate in v0.2, remove in v0.4. Add a migration diagnostic.
 
 5. **Effect granularity**: Is `io` too coarse? Should it be split into `stdout` and `stderr`?
@@ -366,7 +366,7 @@ This is a significant language feature that requires careful design. Defer until
 |---------|---------------|-----------------|------|------|---|
 | Effect in signature | Boolean `raises` | Effect rows `raises<io, fs>` | Effect rows `<io, console>` | Capability in type `ref` | Guard in type |
 | Effect propagation | Manual `check` | Automatic through call chain | Automatic | Automatic | Automatic |
-| Capability minting | `std.fs.host()` (ambient) | `world.fs()` (derived) | N/A (effect-based) | `iso`, `trn`, `ref` | N/A |
+| Capability minting | `world.fs()` (ambient) | `world.fs()` (derived) | N/A (effect-based) | `iso`, `trn`, `ref` | N/A |
 | Substructural discipline | None | Affine (Layer 3) | None | Full (iso/trn/ref/val/box) | None |
 | Effect handlers | None | Planned (Layer 4) | Built-in | N/A | N/A |
 | Agent-readable effects | Partial (graph JSON) | Full (signature + JSON) | Partial | Partial | None |

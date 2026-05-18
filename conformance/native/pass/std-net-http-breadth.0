@@ -1,5 +1,5 @@
 pub fun main(world: World) -> Void raises {
-    let net = std.net.host()
+    let net = world.net()
     let addr = std.net.withTimeout(std.net.address("localhost", 8080_u16), std.time.ms(250))
     let conn = std.net.connect(net, addr)
     let listener = std.net.listen(net, addr)

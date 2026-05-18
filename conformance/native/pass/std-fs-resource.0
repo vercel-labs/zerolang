@@ -9,7 +9,7 @@ fun write_auto(fs: Fs) -> Bool {
 }
 
 pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
+    let fs = world.fs()
     let wrote = write_auto(fs)
     let missing = std.fs.open(fs, ".zero/conformance/std-fs-resource-missing.txt")
     let opened = std.fs.open(fs, ".zero/conformance/std-fs-resource.txt")
