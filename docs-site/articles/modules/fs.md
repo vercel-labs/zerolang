@@ -6,7 +6,7 @@ Runnable today:
 | --- | --- | --- |
 | `std.fs.read(path, buf)` | `usize` | Reads bytes from a hosted path into a caller-provided `MutSpan<u8>` buffer. |
 | `std.fs.write(path, bytes)` | `usize` | Writes bytes to a hosted path and returns the byte count. |
-| `std.fs.host()` | `Fs` | Creates the hosted filesystem capability. |
+| `world.fs()` | `Fs` | Creates the hosted filesystem capability. |
 | `std.fs.open(fs, path)` | `Maybe<owned<File>>` | Opens a file and returns `null` when unavailable. |
 | `std.fs.openOrRaise(fs, path)` | `owned<File>` | Opens a file or raises `{ NotFound, TooLarge, Io }`. |
 | `std.fs.create(fs, path)` | `Maybe<owned<File>>` | Creates a file and returns `null` when unavailable. |
@@ -41,7 +41,7 @@ Current limits:
 
 ```zero
 pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
+    let fs = world.fs()
     let mut file: owned<File> = check std.fs.createOrRaise(fs, ".zero/out/example.txt")
     check std.fs.writeAllOrRaise(&mut file, std.mem.span("hello\n"))
     let len = check std.fs.fileLenOrRaise(&mut file)

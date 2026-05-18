@@ -2706,9 +2706,6 @@ static bool wasm_emit_value(ZBuf *code, const IrValue *value, const WasmEmitCont
     }
     case IR_VALUE_RAND_ENTROPY_U32:
       return wasm_emit_wasi_random_u32(code, value, ctx, diag);
-    case IR_VALUE_FS_HOST:
-      wasm_emit_i32_const(code, 0);
-      return true;
     case IR_VALUE_FS_OPEN:
     case IR_VALUE_FS_CREATE:
       return wasm_emit_wasi_fs_open_create(code, value, ctx, diag);

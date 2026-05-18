@@ -1728,13 +1728,6 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if (strcmp(callee_name, "std.net.host") == 0 && expr->args.len == 0) {
-        IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, expr->line, expr->column);
-        value->int_value = 1;
-        free(callee_name);
-        *out = value;
-        return true;
-      }
       int http_error_code = ir_std_http_error_code(callee_name);
       if (http_error_code >= 0 && expr->args.len == 0) {
         IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_U32, expr->line, expr->column);
@@ -1930,12 +1923,6 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         }
         IrValue *value = ir_new_value(ir, IR_VALUE_ENV_GET, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
         value->left = key;
-        free(callee_name);
-        *out = value;
-        return true;
-      }
-      if (strcmp(callee_name, "std.fs.host") == 0 && expr->args.len == 0) {
-        IrValue *value = ir_new_value(ir, IR_VALUE_FS_HOST, IR_TYPE_I32, expr->line, expr->column);
         free(callee_name);
         *out = value;
         return true;
