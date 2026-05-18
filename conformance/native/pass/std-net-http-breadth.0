@@ -1,10 +1,9 @@
 pub fun main(world: World) -> Void raises {
-    let net = world.net()
     let addr = std.net.withTimeout(std.net.address("localhost", 8080_u16), std.time.ms(250))
-    let conn = std.net.connect(net, addr)
-    let listener = std.net.listen(net, addr)
-    let _client = std.http.client(net)
-    let _server = std.http.server(net, addr)
+    let conn = std.net.connect(world.net(), addr)
+    let listener = std.net.listen(world.net(), addr)
+    let _client = std.http.client(world.net())
+    let _server = std.http.server(world.net(), addr)
     let getA = std.http.parseMethod("GET")
     let getB = std.http.parseMethod("GET")
 

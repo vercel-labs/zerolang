@@ -145,6 +145,8 @@ static const char *diag_code(int code) {
     case 5001: return "WEB001";
     case 6001: return "TAR001";
     case 6002: return "TAR002";
+    case 6003: return "CAP001";
+    case 6004: return "CAP002";
     case 7001: return "IMP001";
     case 7002: return "IMP002";
     case 7003: return "IMP003";
