@@ -1,0 +1,9 @@
+extern fun abs(n: i32) -> i32
+
+pub fun main(world: World) -> Void raises {
+    let neg: i32 = 0 - 42
+    let result = abs(neg)
+    if result == 42 {
+        check world.out.write("extern call ok\n")
+    }
+}

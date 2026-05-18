@@ -203,6 +203,7 @@ typedef struct {
   ParamVec errors;
   bool is_test;
   bool export_c;
+  bool extern_c;
   StmtVec body;
   int line;
   int column;
@@ -443,6 +444,7 @@ struct IrValue {
   unsigned long long int_value;
   unsigned local_index;
   unsigned callee_index;
+  char *extern_symbol_name;
   unsigned array_index;
   unsigned field_offset;
   unsigned data_offset;

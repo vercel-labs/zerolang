@@ -7083,6 +7083,7 @@ static bool stmt_vec_guarantees_exit(const StmtVec *body, bool function_raises) 
 
 static bool check_function_has_required_return(const Function *fun, ZDiag *diag) {
   if (!fun || !fun->return_type || strcmp(fun->return_type, "Void") == 0) return true;
+  if (fun->extern_c) return true;  // extern functions have no body
   if (stmt_vec_guarantees_exit(&fun->body, fun->raises)) return true;
   return set_diag_detail(diag, 3007, "non-void function must return a value on every path", fun->line, fun->column, fun->return_type, "function body may fall through", "add an explicit return or raise on every path");
 }
@@ -7183,6 +7184,21 @@ static bool validate_generic_owned_fields(const Shape *shape, ZDiag *diag) {
     Param *field = &shape->fields.items[field_index];
     if (field->type && strstr(field->type, "owned<") && type_references_generic_param(field->type, shape)) {
       return set_diag_detail(diag, 3013, "generic containers cannot own generic payloads in this compiler", field->line, field->column, "non-owned generic field or concrete owned field", field->type, "store a concrete owned type or keep ownership outside the generic container until generic drop specialization lands");
+    }
+  }
+  return true;
+}
+
+static bool validate_extern_c_function(const Function *fun, ZDiag *diag) {
+  if (!fun || !fun->extern_c) return true;
+  if (fun->raises) return set_diag_detail(diag, 3031, "extern c function must not raise", fun->line, fun->column, "non-raising C ABI function", "raises extern", "use explicit error return values across C ABI boundaries");
+  if (!is_c_abi_type(fun->return_type)) {
+    return set_diag_detail(diag, 3031, "extern c return type is not ABI-safe", fun->line, fun->column, "Void or primitive scalar return type", fun->return_type ? fun->return_type : "Unknown", "use explicit scalar C ABI return types");
+  }
+  for (size_t i = 0; i < fun->params.len; i++) {
+    const Param *param = &fun->params.items[i];
+    if (!is_c_abi_type(param->type)) {
+      return set_diag_detail(diag, 3031, "extern c parameter type is not ABI-safe", param->line, param->column, "primitive scalar or explicit ref/mutref parameter", param->type ? param->type : "Unknown", "use explicit scalar C ABI parameter types");
     }
   }
   return true;
@@ -7573,6 +7589,7 @@ bool z_check_program(const Program *program, ZDiag *diag) {
     if (!validate_type_param_constraints(program, fun, diag)) return false;
     if (!validate_function_error_set(fun, diag)) return false;
     if (!validate_export_c_function(fun, diag)) return false;
+    if (!validate_extern_c_function(fun, diag)) return false;
   }
   if (!main_fun && !has_test) return set_diag_detail(diag, 2001, "missing main function", 1, 1, "function named main", "no main function", "add pub fun main(...) -> Void");
 	  for (size_t i = 0; i < program->functions.len; i++) {
