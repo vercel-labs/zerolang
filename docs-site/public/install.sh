@@ -3,6 +3,7 @@ set -eu
 
 repo="${ZERO_REPO:-vercel-labs/zero}"
 install_dir="${ZERO_INSTALL_DIR:-${HOME:-}/.zero/bin}"
+trust_dir="${ZERO_TRUSTED_KEYS_DIR:-${HOME:-}/.zero/trust}"
 version="${ZERO_VERSION:-latest}"
 linux_flavor="${ZERO_LINUX_FLAVOR:-musl}"
 
@@ -26,6 +27,7 @@ need_cmd chmod
 need_cmd awk
 need_cmd mv
 need_cmd rm
+need_cmd openssl
 
 os="$(uname -s)"
 arch="$(uname -m)"
@@ -79,6 +81,12 @@ case "$version" in
 esac
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/zero-install.XXXXXX")"
+root_key_path="$tmp/zero-root-key.pem"
+cat > "$root_key_path" <<'KEY'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAtSp+tgdRqSEhijE2xmwcwZDt9NRPPtbQK34yhBFDzE4=
+-----END PUBLIC KEY-----
+KEY
 cleanup() {
   rm -rf "$tmp"
 }
@@ -113,10 +121,53 @@ verify_checksum() {
   fi
 }
 
+hex_to_bin() {
+  in_path="$1"
+  out_path="$2"
+  if command -v xxd >/dev/null 2>&1; then
+    xxd -r -p "$in_path" > "$out_path"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY' "$in_path" "$out_path"
+import binascii
+import sys
+
+in_path = sys.argv[1]
+out_path = sys.argv[2]
+with open(in_path, "r", encoding="utf8") as handle:
+    text = handle.read().strip()
+with open(out_path, "wb") as handle:
+    handle.write(binascii.unhexlify(text))
+PY
+    return
+  fi
+  fail 'missing hex decoder: install xxd or python3'
+}
+
+verify_signature() {
+  file="$1"
+  sig_hex="$2"
+  sig_bin="$3"
+  hex_to_bin "$sig_hex" "$sig_bin"
+  openssl pkeyutl -verify -pubin -inkey "$root_key_path" -rawin -in "$file" -sigfile "$sig_bin" >/dev/null
+}
+
 printf 'Installing Zero from %s...\n' "$base_url"
 download "${base_url}/${asset}" "${tmp}/${asset}"
 download "${base_url}/CHECKSUMS.txt" "${tmp}/CHECKSUMS.txt"
+download "${base_url}/checksums.txt.sig" "${tmp}/checksums.txt.sig"
+download "${base_url}/trusted-keys.json" "${tmp}/trusted-keys.json"
+download "${base_url}/trusted-keys.sig" "${tmp}/trusted-keys.sig"
+
+verify_signature "${tmp}/trusted-keys.json" "${tmp}/trusted-keys.sig" "${tmp}/trusted-keys.sig.bin"
+verify_signature "${tmp}/CHECKSUMS.txt" "${tmp}/checksums.txt.sig" "${tmp}/checksums.txt.sig.bin"
 verify_checksum "${tmp}/CHECKSUMS.txt" "$asset"
+
+mkdir -p "$trust_dir"
+chmod 755 "$trust_dir"
+mv "${tmp}/trusted-keys.json" "${trust_dir}/trusted-keys.json"
+mv "${tmp}/trusted-keys.sig" "${trust_dir}/trusted-keys.sig"
 
 mkdir -p "$install_dir"
 chmod 755 "${tmp}/${asset}"
