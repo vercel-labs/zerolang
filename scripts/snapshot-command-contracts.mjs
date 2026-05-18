@@ -11,11 +11,26 @@ if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST
 }
 
 const outDir = ".zero/command-contracts";
+const keysDir = join(outDir, "keys");
+const zeroBin = process.env.ZERO_BIN ?? "bin/zero";
+const trustedKeysPath = join(process.cwd(), "tests", "fixtures", "trusted-keys.json");
+const trustedKeysSigPath = join(process.cwd(), "tests", "fixtures", "trusted-keys.sig");
+const seedDefault = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+rmSync(keysDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
 function zero(args, options = {}) {
+  const env = {
+    ...process.env,
+    ZERO_KEYS_DIR: keysDir,
+    ZERO_KEY_EMAIL: "command-contracts@example.com",
+    ZERO_KEY_NAME: "Command Contracts",
+    ZERO_TRUSTED_KEYS: trustedKeysPath,
+    ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    ZERO_KEY_SEED: seedDefault,
+  };
   try {
-    const stdout = execFileSync("bin/zero", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const stdout = execFileSync(zeroBin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
     return { code: 0, stdout };
   } catch (error) {
     if (!options.allowFailure) throw error;
@@ -173,8 +188,13 @@ function assertShipReport(report, outPath) {
   assert.deepEqual(report.releasePreview.targetContract, report.releaseTargetContract);
   assert.equal(report.artifactPath, outPath);
   assert.equal(statSync(report.artifactPath).size, report.artifactBytes);
+  assert.equal(report.checksum.algorithm, "sha256");
+  assert.match(report.checksum.value, /^[0-9a-f]{64}$/);
+  assert(report.signature);
+  assert.match(report.signature.keyId, /^[0-9a-f]{64}$/);
+  assert(existsSync(report.signature.path), `signature should exist at ${report.signature.path}`);
   const artifactKinds = new Set(report.artifacts.map((artifact) => artifact.kind));
-  for (const kind of ["binary", "stripped-binary", "checksum", "archive", "debug-symbol-metadata", "size-report", "sbom-placeholder"]) {
+  for (const kind of ["binary", "stripped-binary", "checksum", "checksum-signature", "archive", "debug-symbol-metadata", "size-report", "sbom-placeholder"]) {
     assert(artifactKinds.has(kind), `ship report should include ${kind}`);
   }
   for (const artifact of report.artifacts) {

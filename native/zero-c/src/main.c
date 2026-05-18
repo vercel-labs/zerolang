@@ -71,6 +71,7 @@ typedef struct {
   char *size_path;
   char *sbom_path;
   char *signer_key_id;
+  char *signer_label;
   char checksum_hex[65];
   long long binary_bytes;
   long long stripped_bytes;
@@ -4440,6 +4441,7 @@ static void ship_artifacts_free(ShipArtifacts *artifacts) {
   free(artifacts->size_path);
   free(artifacts->sbom_path);
   free(artifacts->signer_key_id);
+  free(artifacts->signer_label);
   memset(artifacts, 0, sizeof(*artifacts));
 }
 
@@ -4463,6 +4465,7 @@ static bool write_ship_artifacts(
   artifacts->size_path = path_with_suffix(exe_file, ".size.json");
   artifacts->sbom_path = path_with_suffix(exe_file, ".sbom.json");
   artifacts->signer_key_id = z_strdup(signer && signer->id_hex ? signer->id_hex : "");
+  artifacts->signer_label = z_strdup(signer && signer->label && signer->label[0] ? signer->label : "default");
   unsigned char checksum_bytes[32];
   sha256_hash((const unsigned char *)(exe && exe->data ? exe->data : ""), exe ? exe->len : 0, checksum_bytes);
   z_hex_write(checksum_bytes, 32, artifacts->checksum_hex);
@@ -4662,14 +4665,27 @@ static void print_ship_json(const Command *command, const SourceInput *input, co
   zbuf_free(&buf);
 }
 
+static void ship_signer_text(const ShipArtifacts *artifacts, char *out, size_t size) {
+  const char *label = artifacts && artifacts->signer_label && artifacts->signer_label[0] ? artifacts->signer_label : "default";
+  const char *key_id = artifacts && artifacts->signer_key_id ? artifacts->signer_key_id : "";
+  char prefix[25];
+  size_t key_len = strlen(key_id);
+  size_t prefix_len = key_len < 24 ? key_len : 24;
+  memcpy(prefix, key_id, prefix_len);
+  prefix[prefix_len] = '\0';
+  snprintf(out, size, "%s: %s", label, prefix);
+}
+
 static void print_ship_text(const ShipArtifacts *artifacts, long long elapsed_ms) {
   char duration[32];
+  char signer_text[96];
   format_duration(elapsed_ms, duration, sizeof(duration));
+  ship_signer_text(artifacts, signer_text, sizeof(signer_text));
   printf("release preview (%s)\n", duration);
   printf("binary: %s (%lld bytes)\n", artifacts->binary_path, artifacts->binary_bytes);
   printf("stripped: %s (%lld bytes)\n", artifacts->stripped_path, artifacts->stripped_bytes);
   printf("checksum: %s (%s)\n", artifacts->checksum_path, artifacts->checksum_hex);
-  printf("signature: %s (key %s)\n", artifacts->signature_path, artifacts->signer_key_id ? artifacts->signer_key_id : "");
+  printf("signature: %s (%s)\n", artifacts->signature_path, signer_text);
   printf("archive: %s\n", artifacts->archive_path);
   printf("debug symbols: %s\n", artifacts->debug_path);
   printf("size report: %s\n", artifacts->size_path);

@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { describe, it } from "node:test";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = process.cwd();
-const zero = join(root, "bin", "zero");
+const zeroBinEnv = process.env.ZERO_BIN;
+const zeroBin = zeroBinEnv ? (isAbsolute(zeroBinEnv) ? zeroBinEnv : join(root, zeroBinEnv)) : join(root, "bin", "zero");
+const trustedKeysPath = join(root, "tests", "fixtures", "trusted-keys.json");
+const trustedKeysSigPath = join(root, "tests", "fixtures", "trusted-keys.sig");
+const seedDefault = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const seedBackup = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f";
+const seedThird = "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f";
 const supportedTargets = [
   "darwin-arm64",
   "darwin-x64",
@@ -33,7 +40,102 @@ function runnableBuildArgs(input: string, out: string) {
 }
 
 function runZero(args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
-  return execFileAsync(zero, args, { cwd: options.cwd ?? root, env: options.env ?? process.env });
+  return execFileAsync(zeroBin, args, { cwd: options.cwd ?? root, env: options.env ?? process.env });
+}
+
+function jsonValueSpan(text: string, startIndex: number) {
+  let start = startIndex;
+  while (start < text.length && /\s/.test(text[start])) start++;
+  if (start >= text.length) throw new Error("missing json value");
+
+  const first = text[start];
+  if (first === "\"") {
+    let index = start + 1;
+    for (; index < text.length; index++) {
+      const ch = text[index];
+      if (ch === "\\") {
+        index++;
+        continue;
+      }
+      if (ch === "\"") return { start, end: index + 1 };
+    }
+    throw new Error("unterminated json string");
+  }
+
+  if (first === "{" || first === "[") {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index++) {
+      const ch = text[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === "\"") inString = false;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = true;
+        continue;
+      }
+      if (ch === "{" || ch === "[") depth++;
+      if (ch === "}" || ch === "]") {
+        depth--;
+        if (depth === 0) return { start, end: index + 1 };
+      }
+    }
+    throw new Error("unterminated json value");
+  }
+
+  let end = start;
+  while (end < text.length) {
+    const ch = text[end];
+    if (ch === "," || ch === "}" || ch === "]" || /\s/.test(ch)) break;
+    end++;
+  }
+  return { start, end };
+}
+
+function ledgerDataText(text: string) {
+  const keyIndex = text.indexOf("\"data\"");
+  assert.ok(keyIndex >= 0, "ledger data missing");
+  const colonIndex = text.indexOf(":", keyIndex + 6);
+  assert.ok(colonIndex >= 0, "ledger data missing colon");
+  const span = jsonValueSpan(text, colonIndex + 1);
+  return text.slice(span.start, span.end);
+}
+
+async function readTextTrim(path: string): Promise<string> {
+  return (await readFile(path, "utf8")).trim();
+}
+
+async function readActiveKey(keysDir: string): Promise<string> {
+  return readTextTrim(join(keysDir, "active-key.txt"));
+}
+
+async function readPublicKey(keysDir: string, keyId: string): Promise<string> {
+  return readTextTrim(join(keysDir, keyId, "public.key"));
+}
+
+async function readIdentity(keysDir: string, keyId: string): Promise<{ label: string; name: string; email: string; keyId: string }> {
+  const text = await readFile(join(keysDir, keyId, "identity.txt"), "utf8");
+  const map = new Map<string, string>();
+  for (const line of text.trim().split(/\r?\n/)) {
+    const [key, value] = line.split("=", 2);
+    if (key && value) map.set(key, value);
+  }
+  return {
+    label: map.get("label") ?? "",
+    name: map.get("name") ?? "",
+    email: map.get("email") ?? "",
+    keyId: map.get("key_id") ?? "",
+  };
 }
 
 async function collectSkillMdFiles(dir: string): Promise<string[]> {
