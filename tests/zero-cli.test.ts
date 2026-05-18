@@ -254,4 +254,38 @@ describe("native zero CLI", () => {
     assert.match(result.stderr, /FLD001/);
     assert.match(result.stderr, /explain: zero explain FLD001/);
   });
+
+  it("covers target capability facts in zero targets", async () => {
+    const targets = JSON.parse((await runZero(["targets"])).stdout);
+    assert.equal(targets.schemaVersion, 1);
+    assert.ok(targets.host.length > 0);
+
+    // Find the host target
+    const hostTarget = targets.targets.find((t: { hosted: boolean }) => t.hosted);
+    assert.ok(hostTarget, "host target should exist");
+    assert.equal(hostTarget.hosted, true);
+
+    // Host target should have process/runtime capabilities
+    assert.ok(hostTarget.capabilities.includes("proc"), "host target should have proc capability");
+    assert.ok(hostTarget.capabilities.includes("fs"), "host target should have fs capability");
+    assert.ok(hostTarget.capabilities.includes("net"), "host target should have net capability");
+
+    // Host target should have hosted process/runtime surface facts
+    const hostCapabilityNames = hostTarget.capabilityFacts.map((f: { name: string }) => f.name);
+    assert.ok(hostCapabilityNames.includes("proc"), "host target capabilityFacts should include proc");
+    assert.ok(hostCapabilityNames.includes("fs"), "host target capabilityFacts should include fs");
+
+    // Unavailable capabilities should appear with available: false
+    const webFact = hostTarget.capabilityFacts.find((f: { name: string }) => f.name === "web");
+    if (webFact) {
+      assert.equal(webFact.available, false, "web capability should be unavailable on host target");
+    }
+
+    // Find a non-host target (e.g., wasm32-wasi)
+    const wasmTarget = targets.targets.find((t: { name: string }) => t.name === "wasm32-wasi");
+    if (wasmTarget) {
+      assert.equal(wasmTarget.hosted, false, "wasm32-wasi should not be hosted");
+      assert.ok(!wasmTarget.capabilities.includes("proc"), "wasm should not have proc");
+    }
+  });
 });
