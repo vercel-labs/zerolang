@@ -697,6 +697,11 @@ typedef struct {
   size_t entries;
 } ZMetaCacheStats;
 
+typedef enum {
+  Z_DIR_MAKE_LEAF,
+  Z_DIR_MAKE_PARENTS
+} ZDirMakeMode;
+
 void zbuf_init(ZBuf *buf);
 void zbuf_append(ZBuf *buf, const char *text);
 void zbuf_append_char(ZBuf *buf, char ch);
@@ -705,9 +710,24 @@ void zbuf_free(ZBuf *buf);
 
 char *z_strdup(const char *text);
 char *z_strndup(const char *text, size_t len);
+
+bool z_path_exists(const char *path);
+char *z_path_join(const char *left, const char *right);
+bool z_dir_make(const char *path, ZDirMakeMode mode, ZDiag *diag);
+
 char *z_read_file(const char *path, ZDiag *diag);
 bool z_write_file(const char *path, const char *text, ZDiag *diag);
 bool z_write_binary_file(const char *path, const unsigned char *data, size_t len, ZDiag *diag);
+
+const char *z_json_whitespace_skip(const char *cursor);
+const char *z_json_value_skip(const char *cursor);
+char *z_json_string_parse_copy(const char *cursor, const char **end_out);
+bool z_json_span_path_get(const char *json, const char **path, size_t path_len, const char **value_start, const char **value_end);
+char *z_json_span_copy(const char *start, const char *end);
+bool z_json_number_from_span(const char *start, const char *end, long long *value_out);
+char *z_json_string_path_get(const char *json, const char **path, size_t path_len);
+char *z_json_array_path_get(const char *json, const char **path, size_t path_len);
+void z_json_string_append(ZBuf *buf, const char *value);
 bool z_resolve_source(const char *input, SourceInput *out, ZDiag *diag);
 bool z_map_source_diag(const SourceInput *input, ZDiag *diag);
 void z_free_source(SourceInput *input);

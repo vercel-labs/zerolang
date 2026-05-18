@@ -67,6 +67,57 @@ char *z_strndup(const char *text, size_t len) {
   return copy;
 }
 
+static int zero_mkdir(const char *path);
+
+bool z_path_exists(const char *path) {
+  struct stat st;
+  return stat(path, &st) == 0;
+}
+
+char *z_path_join(const char *left, const char *right) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, left);
+  if (buf.len > 0 && buf.data[buf.len - 1] != '/') zbuf_append_char(&buf, '/');
+  zbuf_append(&buf, right);
+  return buf.data;
+}
+
+static bool dir_make_diag(ZDiag *diag, const char *path) {
+  diag->code = 2002;
+  diag->path = path;
+  diag->line = 1;
+  diag->column = 1;
+  snprintf(diag->message, sizeof(diag->message), "failed to create directory '%s': %s", path, strerror(errno));
+  snprintf(diag->help, sizeof(diag->help), "choose a writable project path");
+  return false;
+}
+
+static bool dir_make_parents(const char *path, ZDiag *diag) {
+  char *copy = z_strdup(path);
+  for (char *cursor = copy + 1; *cursor; cursor++) {
+    if (*cursor == '/') {
+      *cursor = 0;
+      if (zero_mkdir(copy) != 0 && errno != EEXIST) {
+        bool ok = dir_make_diag(diag, copy);
+        free(copy);
+        return ok;
+      }
+      *cursor = '/';
+    }
+  }
+  free(copy);
+  return true;
+}
+
+bool z_dir_make(const char *path, ZDirMakeMode mode, ZDiag *diag) {
+  if (mode == Z_DIR_MAKE_PARENTS) {
+    if (!dir_make_parents(path, diag)) return false;
+  }
+  if (zero_mkdir(path) == 0 || errno == EEXIST) return true;
+  return dir_make_diag(diag, path);
+}
+
 static void diag_io(ZDiag *diag, const char *path, const char *action) {
   diag->code = 1;
   diag->path = path;
@@ -99,21 +150,8 @@ char *z_read_file(const char *path, ZDiag *diag) {
   return data;
 }
 
-static bool mkdir_parents(const char *path) {
-  char *copy = z_strdup(path);
-  for (char *cursor = copy + 1; *cursor; cursor++) {
-    if (*cursor == '/') {
-      *cursor = 0;
-      zero_mkdir(copy);
-      *cursor = '/';
-    }
-  }
-  free(copy);
-  return true;
-}
-
 bool z_write_file(const char *path, const char *text, ZDiag *diag) {
-  mkdir_parents(path);
+  if (!dir_make_parents(path, diag)) return false;
   FILE *file = fopen(path, "wb");
   if (!file) {
     diag_io(diag, path, "write");
@@ -125,7 +163,7 @@ bool z_write_file(const char *path, const char *text, ZDiag *diag) {
 }
 
 bool z_write_binary_file(const char *path, const unsigned char *data, size_t len, ZDiag *diag) {
-  mkdir_parents(path);
+  if (!dir_make_parents(path, diag)) return false;
   FILE *file = fopen(path, "wb");
   if (!file) {
     diag_io(diag, path, "write");
@@ -597,196 +635,6 @@ static bool resolve_imported_source(const char *path, const char *src_root, Sour
   return ok;
 }
 
-static const char *json_skip_ws(const char *cursor) {
-  while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-  return cursor;
-}
-
-static const char *json_skip_string(const char *cursor) {
-  if (*cursor != '"') return NULL;
-  cursor++;
-  while (*cursor) {
-    if (*cursor == '\\' && cursor[1]) {
-      cursor += 2;
-      continue;
-    }
-    if (*cursor == '"') return cursor + 1;
-    cursor++;
-  }
-  return NULL;
-}
-
-static char *json_parse_string_copy(const char *cursor, const char **end_out) {
-  if (*cursor != '"') return NULL;
-  cursor++;
-  ZBuf out;
-  zbuf_init(&out);
-  while (*cursor) {
-    if (*cursor == '"') {
-      if (end_out) *end_out = cursor + 1;
-      if (!out.data) zbuf_append(&out, "");
-      return out.data;
-    }
-    if (*cursor == '\\' && cursor[1]) {
-      cursor++;
-      switch (*cursor) {
-        case '"': zbuf_append_char(&out, '"'); break;
-        case '\\': zbuf_append_char(&out, '\\'); break;
-        case '/': zbuf_append_char(&out, '/'); break;
-        case 'b': zbuf_append_char(&out, '\b'); break;
-        case 'f': zbuf_append_char(&out, '\f'); break;
-        case 'n': zbuf_append_char(&out, '\n'); break;
-        case 'r': zbuf_append_char(&out, '\r'); break;
-        case 't': zbuf_append_char(&out, '\t'); break;
-        case 'u':
-          for (int i = 0; i < 4 && cursor[1]; i++) cursor++;
-          zbuf_append_char(&out, '?');
-          break;
-        default:
-          zbuf_append_char(&out, *cursor);
-          break;
-      }
-      cursor++;
-      continue;
-    }
-    zbuf_append_char(&out, *cursor++);
-  }
-  zbuf_free(&out);
-  return NULL;
-}
-
-static const char *json_skip_value(const char *cursor) {
-  cursor = json_skip_ws(cursor);
-  if (*cursor == '"') return json_skip_string(cursor);
-  if (*cursor == '{') {
-    cursor++;
-    while (*cursor) {
-      cursor = json_skip_ws(cursor);
-      if (*cursor == '}') return cursor + 1;
-      const char *key_end = json_skip_string(cursor);
-      if (!key_end) return NULL;
-      cursor = json_skip_ws(key_end);
-      if (*cursor != ':') return NULL;
-      cursor = json_skip_value(cursor + 1);
-      if (!cursor) return NULL;
-      cursor = json_skip_ws(cursor);
-      if (*cursor == ',') {
-        cursor++;
-        continue;
-      }
-      if (*cursor == '}') return cursor + 1;
-      return NULL;
-    }
-    return NULL;
-  }
-  if (*cursor == '[') {
-    cursor++;
-    while (*cursor) {
-      cursor = json_skip_ws(cursor);
-      if (*cursor == ']') return cursor + 1;
-      cursor = json_skip_value(cursor);
-      if (!cursor) return NULL;
-      cursor = json_skip_ws(cursor);
-      if (*cursor == ',') {
-        cursor++;
-        continue;
-      }
-      if (*cursor == ']') return cursor + 1;
-      return NULL;
-    }
-    return NULL;
-  }
-  if (!*cursor) return NULL;
-  while (*cursor && *cursor != ',' && *cursor != '}' && *cursor != ']') cursor++;
-  return cursor;
-}
-
-static bool json_find_member_span(const char *object, const char *name, const char **value_start, const char **value_end) {
-  const char *cursor = json_skip_ws(object);
-  if (*cursor != '{') return false;
-  cursor++;
-  while (*cursor) {
-    cursor = json_skip_ws(cursor);
-    if (*cursor == '}') return false;
-    const char *key_end = NULL;
-    char *key = json_parse_string_copy(cursor, &key_end);
-    if (!key) return false;
-    cursor = json_skip_ws(key_end);
-    if (*cursor != ':') {
-      free(key);
-      return false;
-    }
-    cursor = json_skip_ws(cursor + 1);
-    const char *end = json_skip_value(cursor);
-    if (!end) {
-      free(key);
-      return false;
-    }
-    bool matched = strcmp(key, name) == 0;
-    free(key);
-    if (matched) {
-      *value_start = cursor;
-      *value_end = end;
-      return true;
-    }
-    cursor = json_skip_ws(end);
-    if (*cursor == ',') {
-      cursor++;
-      continue;
-    }
-    if (*cursor == '}') return false;
-    return false;
-  }
-  return false;
-}
-
-static bool json_get_span_path(const char *json, const char **path, size_t path_len, const char **value_start, const char **value_end) {
-  const char *start = json;
-  const char *end = NULL;
-  for (size_t i = 0; i < path_len; i++) {
-    if (!json_find_member_span(start, path[i], &start, &end)) return false;
-  }
-  *value_start = start;
-  *value_end = end;
-  return true;
-}
-
-static char *json_get_string_path(const char *json, const char **path, size_t path_len) {
-  const char *start = NULL;
-  const char *end = NULL;
-  if (!json_get_span_path(json, path, path_len, &start, &end)) return NULL;
-  (void)end;
-  return json_parse_string_copy(start, NULL);
-}
-
-static char *json_span_copy(const char *start, const char *end) {
-  while (end > start && isspace((unsigned char)end[-1])) end--;
-  return z_strndup(start, (size_t)(end - start));
-}
-
-static char *json_array_from_value_span(const char *start, const char *end) {
-  start = json_skip_ws(start);
-  if (*start == '[') return json_span_copy(start, end);
-  if (*start == '"') {
-    char *value = json_span_copy(start, end);
-    ZBuf buf;
-    zbuf_init(&buf);
-    zbuf_append_char(&buf, '[');
-    zbuf_append(&buf, value);
-    zbuf_append_char(&buf, ']');
-    free(value);
-    return buf.data;
-  }
-  return z_strdup("[]");
-}
-
-static char *json_get_array_path(const char *json, const char **path, size_t path_len) {
-  const char *start = NULL;
-  const char *end = NULL;
-  if (!json_get_span_path(json, path, path_len, &start, &end)) return z_strdup("[]");
-  return json_array_from_value_span(start, end);
-}
-
 static void manifest_push_c_lib(ZManifest *manifest, ZManifestCLib lib) {
   manifest->c_libs = realloc(manifest->c_libs, (manifest->c_lib_count + 1) * sizeof(ZManifestCLib));
   manifest->c_libs[manifest->c_lib_count++] = lib;
@@ -798,22 +646,22 @@ static void manifest_push_dependency(ZManifest *manifest, ZManifestDependency de
 }
 
 static void parse_manifest_dependencies_object(const char *deps, ZManifest *out) {
-  const char *cursor = json_skip_ws(deps);
+  const char *cursor = z_json_whitespace_skip(deps);
   if (*cursor != '{') return;
   cursor++;
   while (*cursor) {
-    cursor = json_skip_ws(cursor);
+    cursor = z_json_whitespace_skip(cursor);
     if (*cursor == '}') break;
     const char *key_end = NULL;
-    char *name = json_parse_string_copy(cursor, &key_end);
+    char *name = z_json_string_parse_copy(cursor, &key_end);
     if (!name) break;
-    cursor = json_skip_ws(key_end);
+    cursor = z_json_whitespace_skip(key_end);
     if (*cursor != ':') {
       free(name);
       break;
     }
-    cursor = json_skip_ws(cursor + 1);
-    const char *value_end = json_skip_value(cursor);
+    cursor = z_json_whitespace_skip(cursor + 1);
+    const char *value_end = z_json_value_skip(cursor);
     if (!value_end) {
       free(name);
       break;
@@ -822,29 +670,29 @@ static void parse_manifest_dependencies_object(const char *deps, ZManifest *out)
     dep.name = name;
     dep.targets_json = z_strdup("[]");
     if (*cursor == '"') {
-      dep.version = json_parse_string_copy(cursor, NULL);
+      dep.version = z_json_string_parse_copy(cursor, NULL);
       dep.path = z_strdup("");
     } else if (*cursor == '{') {
       const char *path_path[] = {"path"};
       const char *version_path[] = {"version"};
       const char *targets_path[] = {"targets"};
       const char *target_path[] = {"target"};
-      dep.path = json_get_string_path(cursor, path_path, 1);
+      dep.path = z_json_string_path_get(cursor, path_path, 1);
       if (!dep.path) dep.path = z_strdup("");
-      dep.version = json_get_string_path(cursor, version_path, 1);
+      dep.version = z_json_string_path_get(cursor, version_path, 1);
       if (!dep.version) dep.version = z_strdup("");
       free(dep.targets_json);
-      dep.targets_json = json_get_array_path(cursor, targets_path, 1);
+      dep.targets_json = z_json_array_path_get(cursor, targets_path, 1);
       if (!dep.targets_json || strcmp(dep.targets_json, "[]") == 0) {
         free(dep.targets_json);
-        dep.targets_json = json_get_array_path(cursor, target_path, 1);
+        dep.targets_json = z_json_array_path_get(cursor, target_path, 1);
       }
     } else {
       dep.version = z_strdup("");
       dep.path = z_strdup("");
     }
     manifest_push_dependency(out, dep);
-    cursor = json_skip_ws(value_end);
+    cursor = z_json_whitespace_skip(value_end);
     if (*cursor == ',') {
       cursor++;
       continue;
@@ -856,7 +704,7 @@ static void parse_manifest_dependencies_object(const char *deps, ZManifest *out)
 
 bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag) {
   memset(out, 0, sizeof(*out));
-  if (*json_skip_ws(manifest) != '{') {
+  if (*z_json_whitespace_skip(manifest) != '{') {
     if (diag) {
       diag->code = 2002;
       diag->line = 1;
@@ -872,17 +720,17 @@ bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag) {
   const char *package_version_path[] = {"package", "version"};
   const char *main_path[] = {"targets", "cli", "main"};
   const char *kind_path[] = {"targets", "cli", "kind"};
-  out->package_name = json_get_string_path(manifest, package_name_path, 2);
-  out->package_version = json_get_string_path(manifest, package_version_path, 2);
-  out->main_path = json_get_string_path(manifest, main_path, 3);
-  out->kind = json_get_string_path(manifest, kind_path, 3);
+  out->package_name = z_json_string_path_get(manifest, package_name_path, 2);
+  out->package_version = z_json_string_path_get(manifest, package_version_path, 2);
+  out->main_path = z_json_string_path_get(manifest, main_path, 3);
+  out->kind = z_json_string_path_get(manifest, kind_path, 3);
 
   const char *dependencies_path[] = {"dependencies"};
   const char *deps_alias_path[] = {"deps"};
   const char *deps = NULL;
   const char *deps_end = NULL;
-  if (json_get_span_path(manifest, dependencies_path, 1, &deps, &deps_end) ||
-      json_get_span_path(manifest, deps_alias_path, 1, &deps, &deps_end)) {
+  if (z_json_span_path_get(manifest, dependencies_path, 1, &deps, &deps_end) ||
+      z_json_span_path_get(manifest, deps_alias_path, 1, &deps, &deps_end)) {
     parse_manifest_dependencies_object(deps, out);
     (void)deps_end;
   }
@@ -890,23 +738,23 @@ bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag) {
   const char *libs_path[] = {"c", "libs"};
   const char *libs = NULL;
   const char *libs_end = NULL;
-  if (json_get_span_path(manifest, libs_path, 2, &libs, &libs_end)) {
-    const char *cursor = json_skip_ws(libs);
+  if (z_json_span_path_get(manifest, libs_path, 2, &libs, &libs_end)) {
+    const char *cursor = z_json_whitespace_skip(libs);
     if (*cursor == '{') {
       cursor++;
       while (*cursor) {
-        cursor = json_skip_ws(cursor);
+        cursor = z_json_whitespace_skip(cursor);
         if (*cursor == '}') break;
         const char *key_end = NULL;
-        char *name = json_parse_string_copy(cursor, &key_end);
+        char *name = z_json_string_parse_copy(cursor, &key_end);
         if (!name) break;
-        cursor = json_skip_ws(key_end);
+        cursor = z_json_whitespace_skip(key_end);
         if (*cursor != ':') {
           free(name);
           break;
         }
-        cursor = json_skip_ws(cursor + 1);
-        const char *value_end = json_skip_value(cursor);
+        cursor = z_json_whitespace_skip(cursor + 1);
+        const char *value_end = z_json_value_skip(cursor);
         if (!value_end) {
           free(name);
           break;
@@ -921,20 +769,20 @@ bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag) {
           const char *pkg_config_camel_path[] = {"pkgConfig"};
           ZManifestCLib lib = {0};
           lib.name = name;
-          lib.headers_json = json_get_array_path(cursor, headers_path, 1);
-          lib.include_json = json_get_array_path(cursor, include_path, 1);
-          lib.lib_json = json_get_array_path(cursor, lib_path, 1);
-          lib.link_json = json_get_array_path(cursor, link_path, 1);
-          lib.mode = json_get_string_path(cursor, mode_path, 1);
+          lib.headers_json = z_json_array_path_get(cursor, headers_path, 1);
+          lib.include_json = z_json_array_path_get(cursor, include_path, 1);
+          lib.lib_json = z_json_array_path_get(cursor, lib_path, 1);
+          lib.link_json = z_json_array_path_get(cursor, link_path, 1);
+          lib.mode = z_json_string_path_get(cursor, mode_path, 1);
           if (!lib.mode) lib.mode = z_strdup("static");
-          lib.pkg_config = json_get_string_path(cursor, pkg_config_path, 1);
-          if (!lib.pkg_config) lib.pkg_config = json_get_string_path(cursor, pkg_config_camel_path, 1);
+          lib.pkg_config = z_json_string_path_get(cursor, pkg_config_path, 1);
+          if (!lib.pkg_config) lib.pkg_config = z_json_string_path_get(cursor, pkg_config_camel_path, 1);
           if (!lib.pkg_config) lib.pkg_config = z_strdup("");
           manifest_push_c_lib(out, lib);
         } else {
           free(name);
         }
-        cursor = json_skip_ws(value_end);
+        cursor = z_json_whitespace_skip(value_end);
         if (*cursor == ',') {
           cursor++;
           continue;
