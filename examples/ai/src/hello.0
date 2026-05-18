@@ -1,0 +1,13 @@
+// examples/ai/src/hello.0
+// Demonstrates AI-native primitives in Zero.
+// Capability-gated AI access with explicit budgets.
+
+use ai
+
+pub fun main(world: World) -> Void raises {
+    let mut ai = Ai { provider: "anthropic", model: "claude-sonnet-4", maxTokensPerCall: 512, maxTokensPerSession: 4096, sessionTokensUsed: 0 }
+    let result = ai.generateText("Explain Zero effects in one sentence")
+    check world.out.write("AI primitive test: ")
+    check world.out.write(result.finishReason)
+    check world.out.write("\n")
+}

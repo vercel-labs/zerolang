@@ -1,0 +1,19 @@
+// ai/src/ai.0
+// Core AI primitives for Zero — capability-gated, effect-visible, budget-aware.
+
+shape AiResult {
+    text: String,
+    finishReason: String,
+}
+
+shape Ai {
+    provider: String,
+    model: String,
+    maxTokensPerCall: i32,
+    maxTokensPerSession: i32,
+    sessionTokensUsed: i32,
+
+    fun generateText(self: mutref<Self>, prompt: String) -> AiResult {
+        return AiResult { text: "", finishReason: "stop" }
+    }
+}
