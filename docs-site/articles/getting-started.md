@@ -87,6 +87,8 @@ zero run .
 zero build --target linux-musl-x64 --out .zero/out/hello .
 ```
 
+`zero new lib` and `zero new package` use the same secure path and reuse the active developer key.
+
 Single files are useful for learning, but real Zero projects use a `zero.json`
 manifest and source files under `src/`.
 

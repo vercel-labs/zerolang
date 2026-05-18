@@ -19,7 +19,7 @@ Most commands accept the same input forms:
 | `zero test <input>` | Run inline `test` blocks. |
 | `zero fmt <input>` | Print formatted source. Add `--check` in CI. |
 | `zero build <input>` | Emit an executable, object file, or WebAssembly module. |
-| `zero ship <input>` | Produce a release preview with checksums and metadata. |
+| `zero ship <input>` | Produce a release preview with signed checksums. |
 | `zero graph <input>` | Inspect modules, symbols, capabilities, and helper use. |
 | `zero size <input>` | Explain artifact size, retained helpers, and profile budgets. |
 | `zero doc <input>` | Emit public API documentation facts. |
@@ -36,7 +36,8 @@ zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
 zero build --emit wasm --target wasm32-wasi examples/direct-wasm-add.0 --out .zero/out/add.wasm
 zero graph --json examples/systems-package
 zero size --json examples/point.0
-zero ship --json --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello
+zero new package hello
+zero ship --json --target linux-musl-x64 hello --out .zero/ship/hello
 zero doctor --json
 ```
 
@@ -64,7 +65,7 @@ Use `--json` when another tool will read the result. Text output is for people.
 | `zero time --json` | Compiler phase timing plus `interfaceFingerprints` and incremental invalidation facts. |
 | `zero build --json` | Artifact path, size, selected `toolchain`, target triple, linker flavor, and sysroot status. |
 | `zero size --json` | `profileSemantics`, `profileCatalog`, `profileBudget`, `sizeBreakdown`, `retentionReasons`, and `optimizationHints`. |
-| `zero ship --json` | A release preview with artifact names, hashes, a checksum file, debug-symbol metadata, size report, and SBOM placeholder. |
+| `zero ship --json` | A release preview with artifact names, hashes, a checksum file and signature, debug-symbol metadata, size report, and SBOM placeholder. |
 | `zero doctor --json` | Host checks plus `targetToolchains`, the per-target readiness matrix. |
 
 `zero check --json` and `zero graph --json` also include `compileTime`.
@@ -100,6 +101,42 @@ backend is not a compatibility path.
 Expected-fail tests use `xfail:`, `expected fail:`, or `[xfail]` in the test
 name. A test marked this way must fail; an unexpected pass fails the command.
 
+## Keys
+
+`zero keys` manages developer keys and the signed trust list used for ledger
+verification.
+
+Keys live in `$HOME/.zero/keys` (override `ZERO_KEYS_DIR`). The trust list lives
+in `$HOME/.zero/trust` as `trusted-keys.json` and `trusted-keys.sig`. Override
+that location with `ZERO_TRUSTED_KEYS_DIR` or point directly at files with
+`ZERO_TRUSTED_KEYS` and `ZERO_TRUSTED_KEYS_SIG`.
+
+`zero ship` requires `ledger.json` and a signer key authorized by the ledger.
+Pass `--insecure` to skip trusted-keys signature verification when offline.
+
+Refresh the trust list with:
+
+```sh
+zero keys refresh
+```
+
+Override download locations with `ZERO_TRUSTED_KEYS_URL` and
+`ZERO_TRUSTED_KEYS_SIG_URL`.
+
+Common commands:
+
+```sh
+zero keys list
+zero keys show default
+zero keys new --email dev@example.com --label default
+zero keys import --public <hex> --email maintainer@example.com --label backup
+zero keys use default
+zero keys authorize --ledger ledger.json --key backup
+zero keys revoke --ledger ledger.json --key backup --reason "left"
+zero keys rotate --ledger ledger.json --old backup --new third
+zero keys refresh
+```
+
 ## Skills
 
 `zero skills` serves bundled skill content for agents:
@@ -131,12 +168,14 @@ document symbols, and quick-fix code actions surfaced from `zero fix` for
 ```sh
 zero --version [--json]
 zero new cli|lib|package <path>
+zero keys <command> [options]
+zero keys refresh
 zero doctor [--json]
 zero check [--json] [--target <target>] <input>
 zero dev [--json] [--trace] [--target <target>] <input>
 zero run [--target <target>] [--profile dev|release] [--out <file>] <input> [-- args...]
 zero build [--emit exe|obj|wasm] [--target <target>] [--profile dev|release] [--out <file>] <input>
-zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
+zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <project|zero.json>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
 zero graph [--json] [--target <target>] <input>

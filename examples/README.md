@@ -120,7 +120,6 @@ Most examples are designed for `check`. To build and run an executable, use a CL
 ```sh
 bin/zero dev --json --target linux-musl-x64 examples/add.0
 bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
-bin/zero ship --target linux-musl-x64 examples/add.0 --out .zero/ship/add
 ./.zero/out/add
 ```
 
@@ -128,6 +127,13 @@ Expected output:
 
 ```text
 math works
+```
+
+Ship requires a package ledger. Create a package and ship it:
+
+```sh
+bin/zero new package hello
+bin/zero ship --target linux-musl-x64 hello --out .zero/ship/hello
 ```
 
 The larger CLI path is `examples/zero-hash/`. It seeds a small file, reads it through a fixed-buffer allocator, computes CRC-32 over the read bytes without heap allocation, and prints:
