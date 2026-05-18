@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "format": "zero-trusted-keys-v1",
+  "keys": {
+    "publishers": [
+      {
+        "keyId": "56475aa75463474c0285df5dbf2bcab73da651358839e9b77481b2eab107708c",
+        "publicKey": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+        "label": "default",
+        "name": "Dev Example",
+        "email": "dev@example.com"
+      },
+      {
+        "keyId": "24f6ed6acbfe1009c030d7ca567c33ca4830911498236b5561a6c82abec5de28",
+        "publicKey": "29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
+        "label": "backup",
+        "name": "Backup Example",
+        "email": "backup@example.com"
+      },
+      {
+        "keyId": "03396219237f75a64f12aeb7f39723abf400b160c364980a765dac24aeba2464",
+        "publicKey": "2543b92ff1095511476adc8369db6ddc933665a11978dda1404ee1066ca9559d",
+        "label": "third",
+        "name": "Third Example",
+        "email": "third@example.com"
+      }
+    ],
+    "threshold": 1,
+    "revoked": []
+  }
+}

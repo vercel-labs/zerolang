@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "format": "zero-trusted-keys-v1",
+  "keys": {
+    "publishers": [
+      {
+        "keyId": "d4375787fb36a159e640a435133629f3f72a9d1cba479fe358edf83759bd70b3",
+        "publicKey": "b52a7eb60751a921218a3136c66c1cc190edf4d44f3ed6d02b7e32841143cc4e",
+        "label": "root",
+        "name": "Zero Root",
+        "email": "root@zerolang.ai"
+      }
+    ],
+    "threshold": 1,
+    "revoked": []
+  }
+}
