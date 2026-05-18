@@ -46,6 +46,7 @@ const cases = [
   { name: "zero-hash", expectedStdout: "zero-hash ok", languages: ["zero"] },
   { name: "json", expectedStdout: "json", languages: ["zero"] },
   { name: "networking", expectedStdout: "networking", languages: ["zero"], skipLanguages: ["zero"] },
+  { name: "token-count", expectedStdout: "token-count", languages: ["zero"] },
 ];
 
 const languages = [
@@ -428,6 +429,7 @@ function buildMeasurementCoverage(results) {
       measurementFact(results, "rescue", "fallible-rescue"),
       measurementFact(results, "networking", "networking"),
       measurementFact(results, "json", "json"),
+      measurementFact(results, "token-count", "token-scan"),
     ],
   };
 }

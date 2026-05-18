@@ -1,0 +1,18 @@
+pub fun main(world: World) -> Void raises {
+    let input: Span<u8> = std.mem.span("the quick brown fox")
+    let len: usize = std.mem.len(input)
+    let space: u8 = 32_u8
+    let mut count: usize = 0
+    let mut prev: u8 = 32_u8
+    let mut i: usize = 0
+    while i < len {
+        if input[i] != space && prev == space {
+            count = count + 1
+        }
+        prev = input[i]
+        i = i + 1
+    }
+    if count == 4 {
+        check world.out.write("token-count\n")
+    }
+}

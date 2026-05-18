@@ -37,6 +37,7 @@ The current cases include:
 - `slices`, `arena`, `fallibility`, `branches`: memory views, fixed-buffer allocation style, explicit fallible branching, and branch-heavy loops
 - `module-package`, `rescue`: package graph overhead and local rescue lowering
 - `fs-resource`, `mem-copy-fill`, `zero-hash`: focused Zero cases for file-resource metadata, memory helpers, and deterministic byte payload processing
+- `token-count`: space-delimited token scan over a fixed byte span
 
 The Zero sources for these cases live under `benchmarks/zero`.
 Host targets that do not support a direct executable runner for a case report it
