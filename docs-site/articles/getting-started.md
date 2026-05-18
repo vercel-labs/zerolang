@@ -11,6 +11,21 @@ export PATH="$HOME/.zero/bin:$PATH"
 zero --version
 ```
 
+Expected output:
+
+```text
+zero 0.1.1
+commit: <hash>
+host: <platform>
+...
+```
+
+To make the PATH change permanent, add it to your shell profile:
+
+```sh
+echo 'export PATH="$HOME/.zero/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
+```
+
 The installer downloads the latest matching binary from the GitHub release and
 writes it to `$HOME/.zero/bin/zero`.
 

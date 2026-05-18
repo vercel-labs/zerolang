@@ -71,7 +71,8 @@ Zero makes memory shape visible in types. These forms are primitive type constru
 | Primitive | Purpose |
 | --- | --- |
 | `[N]T` | Fixed-size array with `N` elements of `T`. |
-| `Span<T>` | Non-owning pointer plus length. |
+| `Span<T>` | Non-owning pointer plus length. Read-only view. |
+| `MutSpan<T>` | Non-owning pointer plus length. Writable view. |
 | `ref<T>` | Non-owning shared reference. |
 | `mutref<T>` | Non-owning mutable reference. |
 | `owned<T>` | Move-only value that owns cleanup responsibility. |
