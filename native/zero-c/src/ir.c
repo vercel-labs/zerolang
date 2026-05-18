@@ -621,6 +621,7 @@ static IrValue *ir_new_value(IrProgram *ir, IrValueKind kind, IrTypeKind type, i
 
 static void ir_free_value(IrValue *value) {
   if (!value) return;
+  free(value->extern_symbol_name);
   ir_free_value(value->index);
   ir_free_value(value->left);
   ir_free_value(value->right);
@@ -2144,37 +2145,49 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         ir_mark_unsupported(ir, "direct backend call target is not a same-file function", expr->line, expr->column, expr->left->text);
         return false;
       }
+      bool is_extern_call = callee->extern_c;
       const TypeArgVec *type_args = ir_call_type_args(expr);
-      bool generic_call = callee->type_params.len > 0;
+      bool generic_call = false;
       char *specialized_name = NULL;
       const char *lookup_name = expr->left->text;
-      if (generic_call) {
-        if (!type_args || type_args->len != callee->type_params.len) {
-          ir_mark_unsupported(ir, "direct backend generic calls require explicit type arguments", expr->line, expr->column, callee->name);
+
+      if (!is_extern_call) {
+        // Internal function call - existing logic
+        generic_call = callee->type_params.len > 0;
+        if (generic_call) {
+          if (!type_args || type_args->len != callee->type_params.len) {
+            ir_mark_unsupported(ir, "direct backend generic calls require explicit type arguments", expr->line, expr->column, callee->name);
+            return false;
+          }
+          specialized_name = ir_specialized_function_name(callee, type_args);
+          lookup_name = specialized_name;
+        } else if (type_args && type_args->len > 0) {
+          ir_mark_unsupported(ir, "direct backend non-generic call cannot use type arguments", expr->line, expr->column, expr->left->text);
           return false;
         }
-        specialized_name = ir_specialized_function_name(callee, type_args);
-        lookup_name = specialized_name;
-      } else if (type_args && type_args->len > 0) {
-        ir_mark_unsupported(ir, "direct backend non-generic call cannot use type arguments", expr->line, expr->column, expr->left->text);
-        return false;
-      }
-      if (!ir_find_function_index(ir, lookup_name, &callee_index)) {
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend call target is missing from MIR function table", expr->line, expr->column, expr->left->text);
-        return false;
-      }
-      if (callee->type_params.len > 0 || callee->is_test) {
-        if (!generic_call || callee->is_test) {
+        if (!ir_find_function_index(ir, lookup_name, &callee_index)) {
           free(specialized_name);
-          ir_mark_unsupported(ir, "direct backend calls do not support tests", expr->line, expr->column, callee->name);
+          ir_mark_unsupported(ir, "direct backend call target is missing from MIR function table", expr->line, expr->column, expr->left->text);
           return false;
         }
-      }
-      if (callee->type_params.len > 1) {
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend generic calls currently support one type parameter", expr->line, expr->column, callee->name);
-        return false;
+        if (callee->type_params.len > 0 || callee->is_test) {
+          if (!generic_call || callee->is_test) {
+            free(specialized_name);
+            ir_mark_unsupported(ir, "direct backend calls do not support tests", expr->line, expr->column, callee->name);
+            return false;
+          }
+        }
+        if (callee->type_params.len > 1) {
+          free(specialized_name);
+          ir_mark_unsupported(ir, "direct backend generic calls currently support one type parameter", expr->line, expr->column, callee->name);
+          return false;
+        }
+      } else {
+        // Extern function call - skip generic/test checks
+        if (type_args && type_args->len > 0) {
+          ir_mark_unsupported(ir, "extern function calls cannot use type arguments", expr->line, expr->column, expr->left->text);
+          return false;
+        }
       }
       if (callee->params.len != expr->args.len) {
         free(specialized_name);
@@ -2194,7 +2207,13 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         return false;
       }
       IrValue *value = ir_new_value(ir, IR_VALUE_CALL, callee->raises ? IR_TYPE_I64 : type, expr->line, expr->column);
-      value->callee_index = callee_index;
+      if (is_extern_call) {
+        value->extern_symbol_name = z_strdup(expr->left->text);
+        value->callee_index = 0;  // Not used for extern calls
+      } else {
+        value->callee_index = callee_index;
+        value->extern_symbol_name = NULL;
+      }
       value->element_type = type;
       for (size_t i = 0; i < expr->args.len; i++) {
         const char *param_type_text = generic_call ? ir_substitute_type_param(callee, type_args, callee->params.items[i].type) : callee->params.items[i].type;
@@ -2824,6 +2843,10 @@ static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunc
 }
 
 static bool ir_lower_function_body(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Function *source) {
+  // Extern functions have no body - skip lowering
+  if (source->extern_c) {
+    return true;
+  }
   if (source->type_params.len > 0 || source->is_test) {
     ir_mark_unsupported(ir, "direct wasm MVP does not support generics or tests", source->line, source->column, source->name);
     return false;
@@ -2987,10 +3010,12 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
   }
   FunctionVec direct_functions = {0};
   for (size_t i = 0; i < program->functions.len; i++) {
-    if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0) push_function_clone(&direct_functions, &program->functions.items[i]);
+    if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0 && !program->functions.items[i].extern_c) {
+      push_function_clone(&direct_functions, &program->functions.items[i]);
+    }
   }
   for (size_t i = 0; i < program->functions.len; i++) {
-    if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0) {
+    if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0 && !program->functions.items[i].extern_c) {
       ir_collect_generic_specializations_from_stmt_vec(&direct_functions, program, &program->functions.items[i].body);
     }
   }

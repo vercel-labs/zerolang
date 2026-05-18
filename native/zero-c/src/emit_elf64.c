@@ -252,6 +252,11 @@ typedef struct {
 } ElfRodataPatch;
 
 typedef struct {
+  char *symbol_name;
+  size_t call_offset;
+} ExternCallSite;
+
+typedef struct {
   const IrProgram *ir;
   size_t *function_offsets;
   size_t function_count;
@@ -261,6 +266,9 @@ typedef struct {
   ElfRodataPatch *rodata_patches;
   size_t rodata_patch_len;
   size_t rodata_patch_cap;
+  ExternCallSite *extern_call_sites;
+  size_t extern_call_site_len;
+  size_t extern_call_site_cap;
   bool emit_rodata_relocations;
   unsigned rodata_base_offset;
   uint64_t rodata_addr;
@@ -288,6 +296,20 @@ static bool elf_record_call_patch(ElfEmitContext *ctx, size_t patch_offset, unsi
     ctx->call_patches = items;
   }
   ctx->call_patches[ctx->call_patch_len++] = (ElfCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  return true;
+}
+
+static bool elf_record_extern_call_site(ElfEmitContext *ctx, size_t call_offset, const char *symbol_name, ZDiag *diag, const IrValue *value) {
+  if (!ctx || !symbol_name) {
+    return elf_diag(diag, "direct ELF64 extern call requires context and symbol name", value ? value->line : 1, value ? value->column : 1, "missing context");
+  }
+  if (ctx->extern_call_site_len + 1 > ctx->extern_call_site_cap) {
+    ctx->extern_call_site_cap = ctx->extern_call_site_cap == 0 ? 8 : ctx->extern_call_site_cap * 2;
+    ExternCallSite *items = realloc(ctx->extern_call_sites, ctx->extern_call_site_cap * sizeof(ExternCallSite));
+    if (!items) return elf_diag(diag, "direct ELF64 extern call site allocation failed", value ? value->line : 1, value ? value->column : 1, "allocation failed");
+    ctx->extern_call_sites = items;
+  }
+  ctx->extern_call_sites[ctx->extern_call_site_len++] = (ExternCallSite){.symbol_name = z_strdup(symbol_name), .call_offset = call_offset};
   return true;
 }
 
@@ -751,7 +773,13 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         elf_emit_pop_reg64(code, param_regs[i - 1]);
       }
       size_t patch = elf_emit_jmp32_placeholder(code, 0xe8);
-      return elf_record_call_patch(ctx, patch, value->callee_index, diag, value);
+      if (value->extern_symbol_name != NULL) {
+        // Extern function call - record for relocation
+        return elf_record_extern_call_site(ctx, patch, value->extern_symbol_name, diag, value);
+      } else {
+        // Internal function call - patch directly
+        return elf_record_call_patch(ctx, patch, value->callee_index, diag, value);
+      }
     }
     case IR_VALUE_MEMORY_PEEK_U8:
       if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
@@ -2360,6 +2388,8 @@ bool z_emit_elf64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
       free(symbol_names);
       free(ctx.call_patches);
       free(ctx.rodata_patches);
+      for (size_t j = 0; j < ctx.extern_call_site_len; j++) free(ctx.extern_call_sites[j].symbol_name);
+      free(ctx.extern_call_sites);
       zbuf_free(&text);
       zbuf_free(&rodata);
       zbuf_free(&rela_text);
@@ -2378,9 +2408,74 @@ bool z_emit_elf64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
     elf_append_rela(&rela_text, ctx.rodata_patches[i].patch_offset, 1, 1, ctx.rodata_patches[i].data_offset - ctx.rodata_base_offset);
   }
 
-  for (size_t i = 0; i < ir->function_len; i++) {
-    elf_append_symbol(&symtab, symbol_names[i], ir->functions[i].is_exported ? 0x12 : 0x02, 1, function_offsets[i], function_sizes[i]);
+  // Collect unique extern symbols
+  size_t extern_symbol_count = 0;
+  char **extern_symbol_names = NULL;
+  uint32_t *extern_symbol_strtab_offsets = NULL;
+  if (ctx.extern_call_site_len > 0) {
+    extern_symbol_names = calloc(ctx.extern_call_site_len, sizeof(char *));
+    extern_symbol_strtab_offsets = calloc(ctx.extern_call_site_len, sizeof(uint32_t));
+    for (size_t i = 0; i < ctx.extern_call_site_len; i++) {
+      const char *symbol = ctx.extern_call_sites[i].symbol_name;
+      bool found = false;
+      for (size_t j = 0; j < extern_symbol_count; j++) {
+        if (strcmp(extern_symbol_names[j], symbol) == 0) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        extern_symbol_names[extern_symbol_count] = z_strdup(symbol);
+        extern_symbol_strtab_offsets[extern_symbol_count] = (uint32_t)strtab.len;
+        zbuf_append(&strtab, symbol);
+        elf_append_u8(&strtab, 0);
+        extern_symbol_count++;
+      }
+    }
   }
+
+  // Add local function symbols
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (!ir->functions[i].is_exported) {
+      elf_append_symbol(&symtab, symbol_names[i], 0x02, 1, function_offsets[i], function_sizes[i]);
+    }
+  }
+
+  // Add global function symbols
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (ir->functions[i].is_exported) {
+      elf_append_symbol(&symtab, symbol_names[i], 0x12, 1, function_offsets[i], function_sizes[i]);
+    }
+  }
+
+  // Add extern (undefined) symbols
+  for (size_t i = 0; i < extern_symbol_count; i++) {
+    elf_append_symbol(&symtab, extern_symbol_strtab_offsets[i], 0x10, 0, 0, 0);
+  }
+
+  // Add extern call relocations (R_X86_64_PLT32)
+  for (size_t i = 0; i < ctx.extern_call_site_len; i++) {
+    const char *symbol = ctx.extern_call_sites[i].symbol_name;
+    uint32_t symbol_index = 0;
+    for (size_t j = 0; j < extern_symbol_count; j++) {
+      if (strcmp(extern_symbol_names[j], symbol) == 0) {
+        // Symbol index = 1 (null) + (rodata section symbol if exists) + local_count + global_count + j
+        size_t local_count = has_rodata ? 1 : 0;  // .rodata section symbol
+        size_t global_count = 0;
+        for (size_t k = 0; k < ir->function_len; k++) {
+          if (ir->functions[k].is_exported) global_count++;
+          else local_count++;
+        }
+        symbol_index = (uint32_t)(1 + local_count + global_count + j);
+        break;
+      }
+    }
+    elf_append_rela(&rela_text, ctx.extern_call_sites[i].call_offset, symbol_index, 4, -4);
+  }
+
+  for (size_t i = 0; i < extern_symbol_count; i++) free(extern_symbol_names[i]);
+  free(extern_symbol_names);
+  free(extern_symbol_strtab_offsets);
 
   elf_append_u8(&shstrtab, 0);
   uint32_t sh_name_text = (uint32_t)shstrtab.len;
@@ -2407,9 +2502,12 @@ bool z_emit_elf64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
   uint32_t sh_name_shstrtab = (uint32_t)shstrtab.len;
   zbuf_append(&shstrtab, ".shstrtab");
   elf_append_u8(&shstrtab, 0);
+  uint32_t sh_name_note_gnu_stack = (uint32_t)shstrtab.len;
+  zbuf_append(&shstrtab, ".note.GNU-stack");
+  elf_append_u8(&shstrtab, 0);
 
   const size_t ehdr_size = 64;
-  const size_t shnum = 5 + (has_rodata ? 1 : 0) + (rela_text.len > 0 ? 1 : 0);
+  const size_t shnum = 6 + (has_rodata ? 1 : 0) + (rela_text.len > 0 ? 1 : 0);
   const uint16_t symtab_shndx = (uint16_t)(2 + (has_rodata ? 1 : 0) + (rela_text.len > 0 ? 1 : 0));
   const uint16_t strtab_shndx = (uint16_t)(symtab_shndx + 1);
   const uint16_t shstrtab_shndx = (uint16_t)(strtab_shndx + 1);
@@ -2456,19 +2554,29 @@ bool z_emit_elf64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
   elf_append_bytes(out, (const unsigned char *)shstrtab.data, shstrtab.len);
   elf_pad_to(out, shoff);
 
+  // Calculate sh_info for symtab (index of first global symbol)
+  size_t local_symbol_count = 1;  // null symbol
+  if (has_rodata) local_symbol_count++;  // .rodata section symbol
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (!ir->functions[i].is_exported) local_symbol_count++;
+  }
+
   elf_append_section_header(out, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   elf_append_section_header(out, sh_name_text, 1, 0x6, text_offset, text.len, 0, 0, 16, 0);
   if (has_rodata) elf_append_section_header(out, sh_name_rodata, 1, 0x2, rodata_offset, rodata.len, 0, 0, 8, 0);
   if (rela_text.len > 0) elf_append_section_header(out, sh_name_rela_text, 4, 0, rela_text_offset, rela_text.len, symtab_shndx, 1, 8, 24);
-  elf_append_section_header(out, sh_name_symtab, 2, 0, symtab_offset, symtab.len, strtab_shndx, has_rodata ? 2 : 1, 8, 24);
+  elf_append_section_header(out, sh_name_symtab, 2, 0, symtab_offset, symtab.len, strtab_shndx, (uint32_t)local_symbol_count, 8, 24);
   elf_append_section_header(out, sh_name_strtab, 3, 0, strtab_offset, strtab.len, 0, 0, 1, 0);
   elf_append_section_header(out, sh_name_shstrtab, 3, 0, shstrtab_offset, shstrtab.len, 0, 0, 1, 0);
+  elf_append_section_header(out, sh_name_note_gnu_stack, 1, 0, 0, 0, 0, 0, 1, 0);
 
   free(function_offsets);
   free(function_sizes);
   free(symbol_names);
   free(ctx.call_patches);
   free(ctx.rodata_patches);
+  for (size_t i = 0; i < ctx.extern_call_site_len; i++) free(ctx.extern_call_sites[i].symbol_name);
+  free(ctx.extern_call_sites);
   zbuf_free(&text);
   zbuf_free(&rodata);
   zbuf_free(&rela_text);

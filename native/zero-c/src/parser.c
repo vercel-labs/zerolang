@@ -722,6 +722,10 @@ static Function parse_function(Parser *parser) {
     expect(parser, "c", "expected 'c' after export");
     fun.export_c = true;
   }
+  if (match(parser, "extern")) {
+    match(parser, "c");  // optional 'c' qualifier
+    fun.extern_c = true;
+  }
   fun.is_public = match(parser, "pub");
   expect(parser, "fun", "expected function declaration");
   Token *name = expect_ident(parser, "expected function name");
@@ -742,7 +746,14 @@ static Function parse_function(Parser *parser) {
       fun.errors = parse_error_set(parser);
     }
   }
-  fun.body = parse_block(parser);
+  if (!fun.extern_c) {
+    fun.body = parse_block(parser);
+  } else {
+    // extern fun must not have a body
+    if (check(parser, "{")) {
+      fail(parser, "extern function cannot have a body");
+    }
+  }
   return fun;
 }
 
@@ -954,7 +965,10 @@ Program z_parse(TokenVec *tokens, ZDiag *diag) {
              !check(&parser, "packed")) parser.index++;
       continue;
     }
-    if (check(&parser, "extern") && parser.tokens->items[parser.index + 1].text && strcmp(parser.tokens->items[parser.index + 1].text, "c") == 0) {
+    if (check(&parser, "extern") &&
+        parser.tokens->items[parser.index + 1].text &&
+        strcmp(parser.tokens->items[parser.index + 1].text, "c") == 0 &&
+        parser.tokens->items[parser.index + 2].kind == TOK_STRING) {
       Token *start = current(&parser);
       parser.index += 2;
       Token *header = current(&parser);
@@ -985,9 +999,18 @@ Program z_parse(TokenVec *tokens, ZDiag *diag) {
       push_interface(&program.interfaces, parse_interface(&parser, is_public));
       continue;
     }
-    if (check(&parser, "shape") || check(&parser, "extern") || check(&parser, "packed")) {
+    if (check(&parser, "shape") || check(&parser, "packed")) {
       push_shape(&program.shapes, parse_shape(&parser, is_public));
       continue;
+    }
+    if (check(&parser, "extern")) {
+      // Check if it's "extern shape" or "extern [c] fun"
+      if (parser.tokens->items[parser.index + 1].text &&
+          strcmp(parser.tokens->items[parser.index + 1].text, "shape") == 0) {
+        push_shape(&program.shapes, parse_shape(&parser, is_public));
+        continue;
+      }
+      // Otherwise, it's "extern [c] fun" - fall through to function parsing
     }
     if (check(&parser, "enum")) {
       push_enum(&program.enums, parse_enum(&parser));

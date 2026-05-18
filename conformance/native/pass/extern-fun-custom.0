@@ -1,0 +1,10 @@
+extern fun add_values(a: i32, b: i32) -> i32
+extern fun multiply(a: i32, b: i32) -> i32
+
+pub fun main(world: World) -> Void raises {
+    let sum = add_values(40, 2)
+    let product = multiply(6, 7)
+    if sum == 42 && product == 42 {
+        check world.out.write("custom extern ok\n")
+    }
+}

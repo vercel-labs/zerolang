@@ -1,0 +1,6 @@
+extern fun side_effect(value: i32) -> Void
+
+pub fun main(world: World) -> Void raises {
+    side_effect(42)
+    check world.out.write("void extern ok\n")
+}
