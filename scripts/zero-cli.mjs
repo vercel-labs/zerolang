@@ -471,13 +471,14 @@ function trySelfHostedDriver(argv) {
 
   const loaded = loadSelfHostDriverInput(input);
   if (!loaded) return false;
+
+  if (!selfHostDriverSupportsTarget({ command, target, normalizedInput })) return false;
+
   if (!existsSync(publicCompiler)) {
     console.error("zero: browser compiler artifact is missing");
     console.error("run: npm run docs:compiler");
     process.exit(127);
   }
-
-  if (!selfHostDriverSupportsTarget({ command, target, normalizedInput })) return false;
 
   const emit = optionValue(argv, "--emit") ?? (command === "build" ? "exe" : null);
   if (command === "build" && emit !== "wasm") return false;
