@@ -182,6 +182,17 @@ typedef struct {
 } ParamVec;
 
 typedef struct {
+  char **items;
+  size_t len;
+  size_t cap;
+} EffectVec;
+
+void effect_vec_push(EffectVec *vec, const char *name);
+void effect_vec_free(EffectVec *vec);
+void effect_vec_merge(EffectVec *dst, const EffectVec *src);
+bool effect_vec_contains(const EffectVec *vec, const char *name);
+
+typedef struct {
   Stmt **items;
   size_t len;
   size_t cap;
@@ -230,6 +241,7 @@ typedef struct {
   bool raises;
   bool has_error_set;
   ParamVec errors;
+  EffectVec effects;
   bool is_test;
   bool export_c;
   StmtVec body;

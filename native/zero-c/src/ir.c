@@ -34,6 +34,38 @@ static ParamVec clone_params(const ParamVec *params) {
   return result;
 }
 
+void effect_vec_push(EffectVec *vec, const char *name) {
+  if (!vec || !name) return;
+  for (size_t i = 0; i < vec->len; i++) {
+    if (strcmp(vec->items[i], name) == 0) return;
+  }
+  if (vec->len + 1 > vec->cap) {
+    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
+    vec->items = realloc(vec->items, vec->cap * sizeof(char *));
+  }
+  vec->items[vec->len++] = z_strdup(name);
+}
+
+void effect_vec_free(EffectVec *vec) {
+  if (!vec) return;
+  for (size_t i = 0; i < vec->len; i++) free(vec->items[i]);
+  free(vec->items);
+  *vec = (EffectVec){0};
+}
+
+void effect_vec_merge(EffectVec *dst, const EffectVec *src) {
+  if (!dst || !src) return;
+  for (size_t i = 0; i < src->len; i++) effect_vec_push(dst, src->items[i]);
+}
+
+bool effect_vec_contains(const EffectVec *vec, const char *name) {
+  if (!vec || !name) return false;
+  for (size_t i = 0; i < vec->len; i++) {
+    if (strcmp(vec->items[i], name) == 0) return true;
+  }
+  return false;
+}
+
 static void push_expr_clone(ExprVec *vec, const Expr *expr) {
   if (vec->len + 1 > vec->cap) {
     vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
