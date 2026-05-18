@@ -178,6 +178,11 @@ static bool token_on_line(Token *token, int line) {
   return token && token->kind != TOK_EOF && token->line == line;
 }
 
+static int token_end_column(Token *token) {
+  if (!token) return 1;
+  return token->column + (int)token->length;
+}
+
 static Token *expect(Parser *parser, const char *text, const char *message) {
   if (match(parser, text)) return previous(parser);
   fail(parser, message);
@@ -975,6 +980,7 @@ static UseImport parse_use_import(Parser *parser) {
     fail_at(parser, current(parser), "expected import module name");
   }
   Token *segment = parser->diag->code == 0 ? expect_ident(parser, "expected import module name") : NULL;
+  Token *end_token = segment;
   if (segment) zbuf_append(&module, segment->text);
   while (parser->diag->code == 0 && token_on_line(current(parser), start->line) && match(parser, ".")) {
     Token *dot = previous(parser);
@@ -986,6 +992,7 @@ static UseImport parse_use_import(Parser *parser) {
     if (segment) {
       zbuf_append_char(&module, '.');
       zbuf_append(&module, segment->text);
+      end_token = segment;
     }
   }
   if (parser->diag->code == 0 && check(parser, "as") && !token_on_line(current(parser), start->line)) {
@@ -996,12 +1003,16 @@ static UseImport parse_use_import(Parser *parser) {
       fail_at(parser, current(parser), "expected import alias");
     }
     Token *alias = parser->diag->code == 0 ? expect_ident(parser, "expected import alias") : NULL;
-    if (alias) item.alias = z_strdup(alias->text);
+    if (alias) {
+      item.alias = z_strdup(alias->text);
+      end_token = alias;
+    }
   }
   if (parser->diag->code == 0 && token_on_line(current(parser), start->line)) {
     fail_at(parser, current(parser), "expected end of line after use declaration");
   }
   item.module = module.data ? module.data : z_strdup("");
+  item.end_column = token_end_column(end_token);
   return item;
 }
 

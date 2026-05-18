@@ -8293,12 +8293,6 @@ static const char *resolved_path_for_import(const SourceInput *input, const char
   return NULL;
 }
 
-static int use_import_end_column(const UseImport *item) {
-  size_t end = (size_t)(item->column > 0 ? item->column : 1) + strlen("use ") + strlen(item->module ? item->module : "");
-  if (item->alias && item->alias[0]) end += strlen(" as ") + strlen(item->alias);
-  return (int)end;
-}
-
 static void append_use_imports_json(ZBuf *buf, const SourceInput *input, const Program *program) {
   zbuf_append(buf, "[");
   for (size_t i = 0; program && i < program->use_imports.len; i++) {
@@ -8326,7 +8320,7 @@ static void append_use_imports_json(ZBuf *buf, const SourceInput *input, const P
                  line,
                  item->column,
                  line,
-                 use_import_end_column(item));
+                 item->end_column > 0 ? item->end_column : item->column);
     zbuf_append(buf, ",\"resolvedPath\":");
     append_json_string_or_null(buf, resolved_path);
     zbuf_append(buf, "}");

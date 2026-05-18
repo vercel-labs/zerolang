@@ -1782,6 +1782,26 @@ assert(importGraphBody.useImports.every((item) => item.sourceRange.columnUnit ==
 assert(importGraphBody.symbols.some((item) => item.module === "math" && item.name === "add_one"));
 assert(importGraphBody.functions.some((item) => item.name === "main" && item.returnType === "Void" && item.effects.includes("world")));
 
+const whitespaceUsePackage = `${outDir}/use-whitespace-package`;
+await mkdir(`${whitespaceUsePackage}/src`, { recursive: true });
+await writeFile(`${whitespaceUsePackage}/zero.json`, JSON.stringify({
+  package: { name: "use-whitespace-package", version: "0.1.0" },
+  targets: { cli: { kind: "exe", main: "src/main.0" } },
+  deps: {},
+}, null, 2));
+await writeFile(`${whitespaceUsePackage}/src/math.0`, 'fun add_one(value: i32) -> i32 {\n    return value + 1\n}\n');
+await writeFile(`${whitespaceUsePackage}/src/types.0`, 'shape Point {\n    value: i32,\n}\n');
+await writeFile(`${whitespaceUsePackage}/src/main.0`, 'use\tmath\nuse   types   as   model\n\npub fun main(world: World) -> Void raises {\n    let point = Point { value: add_one(41) }\n    if point.value == 42 {\n        check world.out.write("whitespace imports pass\\n")\n    }\n}\n');
+const whitespaceUseCheck = await execFileAsync(zero, ["check", "--json", whitespaceUsePackage]);
+assert.equal(JSON.parse(whitespaceUseCheck.stdout).ok, true);
+const whitespaceUseGraph = await execFileAsync(zero, ["graph", "--json", whitespaceUsePackage]);
+const whitespaceUseGraphBody = JSON.parse(whitespaceUseGraph.stdout);
+assert.deepEqual(whitespaceUseGraphBody.useImports.map((item) => `${item.from}->${item.to}:${item.kind}:${item.alias ?? "null"}:${item.sourceRange.end.column}`), [
+  "main->math:package-local:null:9",
+  "main->types:package-local:model:25",
+]);
+assert.deepEqual(whitespaceUseGraphBody.importEdges.map((item) => `${item.from}->${item.to}`), ["main->math", "main->types"]);
+
 const packageUseGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/package"]);
 const packageUseGraphBody = JSON.parse(packageUseGraph.stdout);
 assert.deepEqual(packageUseGraphBody.useImports.map((item) => `${item.from}->${item.to}:${item.kind}:${item.resolvedPath ?? "null"}`), [

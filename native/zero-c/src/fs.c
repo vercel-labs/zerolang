@@ -580,8 +580,8 @@ static bool scan_imports_and_append_dependencies(const char *source, const char 
     }
     const char *module = NULL;
     size_t module_len = 0;
-    if (len >= 4 && strncmp(start, "use ", 4) == 0) {
-      parse_use_import_line_module(start + 4, len - 4, &module, &module_len);
+    if (len > 3 && strncmp(start, "use", 3) == 0 && isspace((unsigned char)start[3])) {
+      parse_use_import_line_module(start + 3, len - 3, &module, &module_len);
     } else if (len >= 7 && strncmp(start, "import ", 7) == 0) {
       module = start + 7;
       module_len = len - 7;

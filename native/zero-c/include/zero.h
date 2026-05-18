@@ -337,6 +337,7 @@ typedef struct {
   char *alias;
   int line;
   int column;
+  int end_column;
 } UseImport;
 
 typedef struct {
