@@ -15,7 +15,7 @@
     "provenance:guardrails": "node scripts/provenance-guardrails.mjs",
     "conformance:sandbox": "node scripts/native-test-sandbox.mjs -- npm run conformance:local",
     "command-contracts": "npm run command-contracts:sandbox",
-    "command-contracts:local": "ZERO_NATIVE_TEST_ALLOW_LOCAL=1 node scripts/snapshot-command-contracts.mjs",
+    "command-contracts:local": "ZERO_NATIVE_TEST_ALLOW_LOCAL=1 sh -c 'make -C native/zero-c OUT=../../.zero/bin/zero-test CFLAGS=\"-std=c11 -Wall -Wextra -Wpedantic -Os -DZERO_TEST\" && ZERO_NATIVE_BIN=.zero/bin/zero-test node scripts/snapshot-command-contracts.mjs'",
     "command-contracts:sandbox": "node scripts/native-test-sandbox.mjs -- npm run command-contracts:local",
     "docs:wasm": "bin/zero build --emit wasm --target wasm32-web compiler-zero --out docs-site/public/playground/zeroc-zero",
     "docs:compiler": "node scripts/playground-wasm-smoke.mjs && node scripts/browser-compiler-hardening.mjs",
@@ -37,7 +37,7 @@
     "wasm:runtime:smoke": "node scripts/wasm-runtime-smoke.mjs",
     "agent:demo": "node scripts/agent-repair-demo.mjs",
     "zls": "node scripts/zls.mjs",
-    "test:zero": "make -C native/zero-c && npm run build:test --silent && node --test .zero/test-js/*.test.js",
+    "test:zero": "make -C native/zero-c && make -C native/zero-c OUT=../../.zero/bin/zero-test CFLAGS='-std=c11 -Wall -Wextra -Wpedantic -Os -DZERO_TEST' && npm run build:test --silent && ZERO_NATIVE_BIN=.zero/bin/zero-test node --test .zero/test-js/*.test.js",
     "test": "npm run conformance && npm run native:test && npm run wasm:runtime:smoke && npm run test:zero && npm run docs:test && npm run zls -- --self-test && npm run agent:demo && npm run test -w zero-lang",
     "zero": "bin/zero"
   },

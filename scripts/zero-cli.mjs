@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const native = join(root, ".zero", "bin", "zero");
+const nativeOverride = process.env.ZERO_NATIVE_BIN;
+const native = nativeOverride && nativeOverride.length
+  ? (isAbsolute(nativeOverride) ? nativeOverride : join(root, nativeOverride))
+  : join(root, ".zero", "bin", "zero");
 const publicCompiler = join(root, "docs-site", "public", "playground", "zeroc-zero.wasm");
 const args = process.argv.slice(2);
 const selfHostDriverInputs = new Set([

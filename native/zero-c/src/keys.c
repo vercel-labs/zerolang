@@ -205,6 +205,36 @@ static char* keys_identity_path(const char* dir) {
   return z_path_join(dir, "identity.txt");
 }
 
+static bool path_prefix_match(const char* path, const char* prefix) {
+  if (!path || !prefix || !prefix[0]) return false;
+  size_t len = strlen(prefix);
+  if (strncmp(path, prefix, len) != 0) return false;
+  if (path[len] == '\0') return true;
+  return path[len] == '/' || path[len] == '\\';
+}
+
+static char* path_env_prefix_text(const char* path, const char* env_name) {
+  const char* value = getenv(env_name);
+  if (!value || !value[0]) return NULL;
+  if (!path_prefix_match(path, value)) return NULL;
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, "$");
+  zbuf_append(&buf, env_name);
+  zbuf_append(&buf, path + strlen(value));
+  return buf.data;
+}
+
+static char* path_display_text(const char* path) {
+  char* text = path_env_prefix_text(path, "ZERO_HOME");
+  if (text) return text;
+  text = path_env_prefix_text(path, "ZERO_KEYS_DIR");
+  if (text) return text;
+  text = path_env_prefix_text(path, "HOME");
+  if (text) return text;
+  return z_strdup(path ? path : "");
+}
+
 static bool keys_mode_set(const char* path, int mode, ZDiag* diag) {
 #if defined(_WIN32)
   (void)path;
@@ -1064,9 +1094,6 @@ static void keys_list_print(KeyUse* items, size_t count, const char* active_id) 
     bool active = active_id && strcmp(active_id, use->id_hex) == 0;
     printf("%s %s\n", active ? "*" : "-", use->id_hex ? use->id_hex : "");
     printf("  label: %s\n", use->label ? use->label : "");
-    printf("  name: %s\n", use->name ? use->name : "");
-    printf("  email: %s\n", use->email ? use->email : "");
-    printf("  path: %s\n", use->dir ? use->dir : "");
     printf("  private: %s\n", use->has_private ? "yes" : "no");
   }
 }
@@ -1148,7 +1175,9 @@ static int keys_show_command(const char* ref, bool json) {
     printf("label: %s\n", use.label ? use.label : "");
     printf("name: %s\n", use.name ? use.name : "");
     printf("email: %s\n", use.email ? use.email : "");
-    printf("path: %s\n", use.dir ? use.dir : "");
+    char* path_text = path_display_text(use.dir ? use.dir : "");
+    printf("path: %s\n", path_text);
+    free(path_text);
     printf("private: %s\n", use.has_private ? "yes" : "no");
   }
   keys_use_free(&use);
@@ -1544,6 +1573,11 @@ int keys_command(int argc, char** argv) {
     break;
   }
   const char* kind = index < argc ? argv[index++] : "list";
+
+  if (strcmp(kind, "help") == 0) {
+    keys_help_print();
+    return 0;
+  }
 
   if (strcmp(kind, "list") == 0) {
     for (; index < argc; index++) {

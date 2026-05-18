@@ -131,6 +131,162 @@ describe("native zero CLI", () => {
     }
   });
 
+  it("creates secure templates for zero new", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "zero-new-"));
+    const keysDir = await mkdtemp(join(tmpdir(), "zero-keys-"));
+    const env = {
+      ...process.env,
+      ZERO_KEYS_DIR: keysDir,
+      ZERO_KEY_EMAIL: "dev@example.com",
+      ZERO_KEY_NAME: "Dev Example",
+      ZERO_TRUSTED_KEYS: trustedKeysPath,
+      ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    };
+
+    try {
+      const cli = await runZero(["new", "cli", "demo-cli"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedDefault } });
+
+      const keyId = await readActiveKey(keysDir);
+      const keyDir = join(keysDir, keyId);
+      await access(join(keyDir, "public.key"));
+      await access(join(keyDir, "private.key"));
+      await access(join(keyDir, "identity.txt"));
+
+      const publicKey = await readPublicKey(keysDir, keyId);
+      assert.match(cli.stdout, /Here's your package:/);
+      assert.match(cli.stdout, new RegExp(`pubkey: ${publicKey}`));
+
+      const identity = await readIdentity(keysDir, keyId);
+      assert.equal(identity.label, "default");
+      assert.equal(identity.name, "Dev Example");
+      assert.equal(identity.email, "dev@example.com");
+      assert.equal(identity.keyId, keyId);
+      const ledgerPath = join(workDir, "demo-cli", "ledger.json");
+      const ledgerText = await readFile(ledgerPath, "utf8");
+      const ledger = JSON.parse(ledgerText);
+      assert.equal(ledger.schemaVersion, 1);
+      assert.equal(ledger.format, "zero-ledger-v1");
+      assert.equal(ledger.package.name, "demo-cli");
+
+      const entry = ledger.entries[0];
+      assert.equal(entry.kind, "keys");
+      assert.equal(entry.seq, 1);
+      assert.equal(entry.prevHash, "");
+      assert.equal(entry.data.threshold, 1);
+      assert.deepEqual(entry.data.revoked, []);
+      assert.equal(entry.data.publishers.length, 1);
+      assert.equal(entry.signatures.length, 1);
+      assert.equal(entry.data.publishers[0].keyId, keyId);
+      assert.equal(entry.data.publishers[0].publicKey, publicKey);
+      assert.equal(entry.data.publishers[0].label, "default");
+      assert.equal(entry.data.publishers[0].name, "Dev Example");
+      assert.equal(entry.data.publishers[0].email, "dev@example.com");
+
+      const dataText = ledgerDataText(ledgerText);
+      const hash = createHash("sha256").update(dataText, "utf8").digest("hex");
+      assert.equal(entry.hash, hash);
+
+      if (process.platform !== "win32") {
+        const publicMode = (await stat(join(keyDir, "public.key"))).mode & 0o777;
+        const privateMode = (await stat(join(keyDir, "private.key"))).mode & 0o777;
+        const identityMode = (await stat(join(keyDir, "identity.txt"))).mode & 0o777;
+        assert.equal(publicMode, 0o644);
+        assert.equal(privateMode, 0o600);
+        assert.equal(identityMode, 0o644);
+      }
+
+      const lib = await runZero(["new", "lib", "demo-lib"], { cwd: workDir, env });
+      assert.match(lib.stdout, new RegExp(`pubkey: ${publicKey}`));
+      assert.match(lib.stdout, /next: zero check/);
+
+      const pkg = await runZero(["new", "package", "demo-pkg"], { cwd: workDir, env });
+      assert.match(pkg.stdout, new RegExp(`pubkey: ${publicKey}`));
+      assert.match(pkg.stdout, /next: zero check/);
+    } finally {
+      await rm(workDir, { force: true, recursive: true });
+      await rm(keysDir, { force: true, recursive: true });
+    }
+  });
+
+  it("manages keys and ledger entries", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "zero-ledger-"));
+    const keysDir = await mkdtemp(join(tmpdir(), "zero-keys-ledger-"));
+    const env = {
+      ...process.env,
+      ZERO_KEYS_DIR: keysDir,
+      ZERO_KEY_EMAIL: "dev@example.com",
+      ZERO_KEY_NAME: "Dev Example",
+      ZERO_TRUSTED_KEYS: trustedKeysPath,
+      ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    };
+
+    try {
+      await runZero(["new", "package", "demo"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedDefault } });
+      const ledgerPath = join(workDir, "demo", "ledger.json");
+      const activeKey = await readActiveKey(keysDir);
+
+      await runZero(["keys", "new", "--email", "backup@example.com", "--label", "backup", "--no-activate"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedBackup } });
+      const list = JSON.parse((await runZero(["keys", "list", "--json"], { cwd: workDir, env })).stdout);
+      const backupKey = list.keys.find((item: { label: string }) => item.label === "backup")?.id;
+      assert.ok(backupKey);
+      assert.equal(list.keys.find((item: { id: string }) => item.id === activeKey)?.active, true);
+
+      const show = JSON.parse((await runZero(["keys", "show", "backup", "--json"], { cwd: workDir, env })).stdout);
+      assert.equal(show.key.id, backupKey);
+
+      await runZero(["keys", "use", "backup"], { cwd: workDir, env });
+      assert.equal(await readActiveKey(keysDir), backupKey);
+      await runZero(["keys", "use", activeKey], { cwd: workDir, env });
+
+      await runZero(["keys", "authorize", "--ledger", ledgerPath, "--key", "backup"], { cwd: workDir, env });
+      let ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      assert.equal(ledger.entries.length, 2);
+      assert.equal(ledger.entries[1].data.publishers.some((item: { keyId: string }) => item.keyId === backupKey), true);
+
+      await runZero(["keys", "revoke", "--ledger", ledgerPath, "--key", "backup", "--reason", "left"], { cwd: workDir, env });
+      ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      assert.equal(ledger.entries.length, 3);
+      assert.equal(ledger.entries[2].data.revoked.some((item: { keyId: string; reason: string }) => item.keyId === backupKey && item.reason === "left"), true);
+
+      await runZero(["keys", "new", "--email", "third@example.com", "--label", "third", "--no-activate"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedThird } });
+      await runZero(["keys", "rotate", "--ledger", ledgerPath, "--old", "backup", "--new", "third"], { cwd: workDir, env });
+      ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      assert.equal(ledger.entries.length, 4);
+      assert.equal(ledger.entries[3].data.publishers.some((item: { label: string }) => item.label === "third"), true);
+      assert.equal(ledger.entries[3].data.revoked.some((item: { keyId: string; reason: string }) => item.keyId === backupKey && item.reason === "left"), true);
+    } finally {
+      await rm(workDir, { force: true, recursive: true });
+      await rm(keysDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects tampered trusted keys", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "zero-trust-"));
+    const keysDir = await mkdtemp(join(tmpdir(), "zero-trust-keys-"));
+    const env = {
+      ...process.env,
+      ZERO_KEYS_DIR: keysDir,
+      ZERO_KEY_EMAIL: "dev@example.com",
+      ZERO_KEY_NAME: "Dev Example",
+      ZERO_TRUSTED_KEYS: trustedKeysPath,
+      ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    };
+    const tamperedPath = join(workDir, "trusted-keys.json");
+
+    try {
+      const source = await readFile(trustedKeysPath, "utf8");
+      await writeFile(tamperedPath, `${source}\n`);
+      const result = await runZero(["new", "package", "demo"], {
+        cwd: workDir,
+        env: { ...env, ZERO_TRUSTED_KEYS: tamperedPath, ZERO_KEY_SEED: seedDefault },
+      }).catch((error) => error);
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr ?? result.stdout, /trusted keys signature invalid/);
+    } finally {
+      await rm(workDir, { force: true, recursive: true });
+      await rm(keysDir, { force: true, recursive: true });
+    }
+  });
   it("reports graph, size, routes, and targets", async () => {
     const graph = JSON.parse((await runZero(["graph", "--json", "examples/point.0"])).stdout);
     assert.equal(graph.shapes[0].name, "Point");

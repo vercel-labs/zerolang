@@ -383,7 +383,9 @@ for (const kind of ["cli", "lib", "package"]) {
   const project = join(outDir, `new-${kind}`);
   rmSync(project, { recursive: true, force: true });
   const created = zero(["new", kind, project]).stdout;
-  assert.match(created, new RegExp(`created ${kind} project`));
+  assert.match(created, /Here's your package:/);
+  assert.match(created, /pubkey:/);
+  assert.match(created, /next: zero check/);
   const manifest = JSON.parse(readFileSync(join(project, "zero.json"), "utf8"));
   const readme = readFileSync(join(project, "README.md"), "utf8");
   readFileSync(join(project, ".gitignore"), "utf8");
