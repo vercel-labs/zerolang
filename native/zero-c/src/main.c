@@ -1983,6 +1983,7 @@ static void append_used_stdlib_helpers_json(ZBuf *buf, const HelperUseSummary *h
 static void append_runtime_shims_json(ZBuf *buf, const char *emitted_symbol_text, const CapabilitySummary *caps);
 static const Function *find_program_function(const Program *program, const char *name);
 static void append_function_effects_json(ZBuf *buf, const Function *fun);
+static void append_function_user_effects_json(ZBuf *buf, const Function *fun);
 static void append_function_ownership_json(ZBuf *buf, const Function *fun);
 
 static const char *static_param_kind_json(const Program *program, const char *type) {
@@ -2101,6 +2102,8 @@ static void append_public_docs_json(ZBuf *buf, const SourceInput *input, const P
       append_target_capability_facts_json(buf, target, &fun_caps);
       zbuf_append(buf, ",\"effects\":");
       append_function_effects_json(buf, fun);
+      zbuf_append(buf, ",\"userEffects\":");
+      append_function_user_effects_json(buf, fun);
       zbuf_append(buf, ",\"ownership\":");
       append_function_ownership_json(buf, fun);
     } else {
@@ -6006,6 +6009,19 @@ static void append_function_effects_json(ZBuf *buf, const Function *fun) {
   append_capability_json_array(buf, &caps);
 }
 
+static void append_function_user_effects_json(ZBuf *buf, const Function *fun) {
+  zbuf_append(buf, "[");
+  if (fun) {
+    for (size_t i = 0; i < fun->effects.len; i++) {
+      if (i > 0) zbuf_append(buf, ", ");
+      zbuf_append_char(buf, '"');
+      zbuf_append(buf, fun->effects.items[i]);
+      zbuf_append_char(buf, '"');
+    }
+  }
+  zbuf_append(buf, "]");
+}
+
 static void append_function_error_json(ZBuf *buf, const Function *fun) {
   zbuf_append(buf, "\"errorSetKind\":");
   append_json_string(buf, !fun || !fun->raises ? "none" : (fun->has_error_set ? "explicit" : (fun->is_public ? "open" : "inferred")));
@@ -8837,6 +8853,8 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     append_function_effects_json(buf, fun);
     zbuf_append(buf, ",\"effects\":");
     append_function_effects_json(buf, fun);
+    zbuf_append(buf, ",\"userEffects\":");
+    append_function_user_effects_json(buf, fun);
     zbuf_append(buf, ",\"allocationBehavior\":");
     append_json_string(buf, function_allocation_behavior(fun));
     zbuf_append(buf, ",\"targetSupport\":");
@@ -8918,6 +8936,8 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
       append_function_error_json(buf, method);
       zbuf_append(buf, ",\"staticDispatch\":true,\"effects\":");
       append_function_effects_json(buf, method);
+      zbuf_append(buf, ",\"userEffects\":");
+      append_function_user_effects_json(buf, method);
       zbuf_append(buf, ",\"allocationBehavior\":");
       append_json_string(buf, function_allocation_behavior(method));
       zbuf_append(buf, ",\"targetSupport\":");

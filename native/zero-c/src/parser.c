@@ -711,6 +711,16 @@ static StmtVec parse_block(Parser *parser) {
   return body;
 }
 
+static void parse_effect_row(Parser *parser, EffectVec *effects) {
+  if (!match(parser, "<")) return;
+  if (match(parser, ">")) return;
+  do {
+    Token *name = expect_ident(parser, "expected effect name");
+    if (name) effect_vec_push(effects, name->text);
+  } while (match(parser, ","));
+  expect(parser, ">", "expected '>' after effect list");
+}
+
 static Function parse_function(Parser *parser) {
   Token *start = current(parser);
   Function fun = {0};
@@ -730,7 +740,9 @@ static Function parse_function(Parser *parser) {
   fun.return_type = parse_type(parser);
   if (match(parser, "raises")) {
     fun.raises = true;
-    if (check(parser, "{") &&
+    if (check(parser, "<")) {
+      parse_effect_row(parser, &fun.effects);
+    } else if (check(parser, "{") &&
         parser->tokens->items[parser->index + 1].text &&
         parser->tokens->items[parser->index + 1].text[0] >= 'A' &&
         parser->tokens->items[parser->index + 1].text[0] <= 'Z') {
@@ -1128,6 +1140,7 @@ void z_free_program(Program *program) {
         free(method->errors.items[error_index].type);
       }
       free(method->errors.items);
+      effect_vec_free(&method->effects);
       for (size_t param_index = 0; param_index < method->params.len; param_index++) {
         free(method->params.items[param_index].name);
         free(method->params.items[param_index].type);
@@ -1167,6 +1180,7 @@ void z_free_program(Program *program) {
         free(method->errors.items[error_index].type);
       }
       free(method->errors.items);
+      effect_vec_free(&method->effects);
       for (size_t param_index = 0; param_index < method->params.len; param_index++) {
         free(method->params.items[param_index].name);
         free(method->params.items[param_index].type);
@@ -1218,6 +1232,7 @@ void z_free_program(Program *program) {
       free(fun->errors.items[error_index].type);
     }
     free(fun->errors.items);
+    effect_vec_free(&fun->effects);
     for (size_t param_index = 0; param_index < fun->params.len; param_index++) {
       free(fun->params.items[param_index].name);
       free(fun->params.items[param_index].type);
