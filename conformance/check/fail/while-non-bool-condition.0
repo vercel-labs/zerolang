@@ -1,0 +1,5 @@
+pub fun main() -> Void {
+  while 42 {
+    break
+  }
+}

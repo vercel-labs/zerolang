@@ -1,0 +1,9 @@
+pub fun main() -> Void {
+  let text: String = "hello"
+  let byte: u8 = text[0]
+  expect(byte == 104)
+
+  let slice: Span<u8> = text[1..3]
+  expect(slice[0] == 101)
+  expect(slice[1] == 108)
+}

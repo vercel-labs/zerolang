@@ -1,0 +1,14 @@
+fun might_fail(ok: Bool) -> i32 raises { Bad } {
+  if ok == false {
+    raise Bad
+  }
+  return 42
+}
+
+pub fun main() -> Void {
+  let value = might_fail(false) rescue err { 0 }
+  expect(value == 0)
+
+  let value2 = might_fail(true) rescue err { 0 }
+  expect(value2 == 42)
+}

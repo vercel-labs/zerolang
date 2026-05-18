@@ -1,0 +1,20 @@
+enum Color {
+  red,
+  green,
+  blue,
+}
+
+pub fun main() -> Void {
+  let c: Color = Color.green
+  match c {
+    .red {
+      expect(false)
+    }
+    .green {
+      expect(true)
+    }
+    .blue {
+      expect(false)
+    }
+  }
+}

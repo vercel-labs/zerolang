@@ -1,0 +1,13 @@
+fun cleanup(marker: MutSpan<u8>) -> Void {
+  marker[0] = 1
+}
+
+pub fun main(world: World) -> Void raises {
+  let mut marker: [1]u8 = [0]
+  if true {
+    defer cleanup(marker)
+  }
+  if marker[0] == 1 {
+    check world.out.write("defer ok\n")
+  }
+}

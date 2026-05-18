@@ -371,6 +371,16 @@ for (const fixture of [
   "conformance/check/pass/checker-type-forms.0",
   "conformance/check/pass/package",
   "conformance/check/pass/imports",
+  "conformance/check/pass/while-loop-basic.0",
+  "conformance/check/pass/for-range-basic.0",
+  "conformance/check/pass/for-range-break-continue.0",
+  "conformance/check/pass/enum-match-cases.0",
+  "conformance/check/pass/rescue-basic.0",
+  "conformance/check/pass/defer-basic.0",
+  "conformance/check/pass/maybe-std-mem.0",
+  "conformance/check/pass/integer-cast.0",
+  "conformance/check/pass/array-slicing.0",
+  "conformance/check/pass/string-indexing.0",
   "examples/memory-package",
   "examples/const-arithmetic.0",
   "examples/generic-pair.0",
@@ -1481,6 +1491,14 @@ assert.notEqual(matchGuardNonBoolJson.code, 0);
 const matchGuardNonBoolBody = JSON.parse(matchGuardNonBoolJson.stdout);
 assert.equal(matchGuardNonBoolBody.diagnostics[0].code, "MAT005");
 assert.match(matchGuardNonBoolBody.diagnostics[0].message, /guard/);
+
+const whileNonBoolConditionJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/while-non-bool-condition.0"]).catch((error) => error);
+assert.notEqual(whileNonBoolConditionJson.code, 0);
+const whileNonBoolConditionBody = JSON.parse(whileNonBoolConditionJson.stdout);
+assert.equal(whileNonBoolConditionBody.diagnostics[0].code, "TYP010");
+assert.match(whileNonBoolConditionBody.diagnostics[0].message, /condition must be Bool/);
+assert.match(whileNonBoolConditionBody.diagnostics[0].expected, /Bool/);
+assert.match(whileNonBoolConditionBody.diagnostics[0].actual, /i32/);
 
 const badTargetNameJson = await execFileAsync(zero, ["check", "--json", "--target", "not-a-target", "examples/hello.0"]).catch((error) => error);
 assert.notEqual(badTargetNameJson.code, 0);

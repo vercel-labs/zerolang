@@ -1,0 +1,13 @@
+pub fun main() -> Void {
+  let mut sum = 0
+  for i in 0..10 {
+    if i == 3 {
+      continue
+    }
+    if i == 7 {
+      break
+    }
+    sum = sum + i
+  }
+  expect(sum == 18)
+}

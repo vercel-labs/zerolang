@@ -1,0 +1,8 @@
+pub fun main() -> Void {
+  let items: [3]i32 = [10, 20, 30]
+  let value = std.mem.get(items, 1)
+  expect(value.has && value.value == 20)
+
+  let missing = std.mem.get(items, 5)
+  expect(missing.has == false)
+}

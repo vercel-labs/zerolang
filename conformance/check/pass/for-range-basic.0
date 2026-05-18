@@ -1,0 +1,7 @@
+pub fun main() -> Void {
+  let mut sum = 0
+  for i in 0..5 {
+    sum = sum + i
+  }
+  expect(sum == 10)
+}

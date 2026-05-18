@@ -1,0 +1,9 @@
+pub fun main() -> Void {
+  let big: i32 = 300
+  let small: u8 = big as u8
+  expect(small == 44)
+
+  let wide: u64 = 42
+  let narrow: u8 = wide as u8
+  expect(narrow == 42)
+}
