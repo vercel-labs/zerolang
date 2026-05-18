@@ -857,6 +857,66 @@ static bool ir_is_world_stream_write(const IrFunction *fun, const Expr *expr, co
 
 static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out);
 
+static bool ir_u8_literal_byte(const Expr *expr, unsigned char *out) {
+  if (!expr || !out) return false;
+  if (expr->kind != EXPR_NUMBER && expr->kind != EXPR_CHAR) return false;
+  unsigned long long parsed = 0;
+  if (!ir_parse_integer_literal(expr->text ? expr->text : "0", &parsed) || parsed > 255) return false;
+  *out = (unsigned char)parsed;
+  return true;
+}
+
+static bool ir_lower_array_literal_byte_view(IrProgram *ir, const Expr *expr, IrValue **out) {
+  if (!expr || expr->kind != EXPR_ARRAY_LITERAL) return false;
+  unsigned array_len = 0;
+  IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
+  if (!ir_parse_fixed_array_type(expr->resolved_type, &array_len, &element_type) || element_type != IR_TYPE_U8) {
+    ir_mark_unsupported(ir, "direct backend inline byte array span requires a fixed [N]u8 literal", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "unknown array literal");
+    return false;
+  }
+  if (expr->array_repeat) {
+    if (expr->args.len != 2) {
+      ir_mark_unsupported(ir, "direct backend inline byte array repeat literal requires value and count", expr->line, expr->column, "array literal");
+      return false;
+    }
+  } else if (expr->args.len != array_len) {
+    ir_mark_unsupported(ir, "direct backend inline byte array literal length must match resolved type", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "array literal");
+    return false;
+  }
+
+  unsigned char *bytes = malloc(array_len == 0 ? 1 : array_len);
+  if (!bytes) return false;
+  if (expr->array_repeat) {
+    unsigned char byte = 0;
+    if (!ir_u8_literal_byte(expr->args.items[0], &byte)) {
+      free(bytes);
+      ir_mark_unsupported(ir, "direct backend inline byte array repeat requires a byte literal value", expr->args.items[0] ? expr->args.items[0]->line : expr->line, expr->args.items[0] ? expr->args.items[0]->column : expr->column, "non-byte literal");
+      return false;
+    }
+    memset(bytes, byte, array_len);
+  } else {
+    for (unsigned i = 0; i < array_len; i++) {
+      unsigned char byte = 0;
+      if (!ir_u8_literal_byte(expr->args.items[i], &byte)) {
+        free(bytes);
+        ir_mark_unsupported(ir, "direct backend inline byte array span requires byte literal elements", expr->args.items[i] ? expr->args.items[i]->line : expr->line, expr->args.items[i] ? expr->args.items[i]->column : expr->column, "non-byte literal");
+        return false;
+      }
+      bytes[i] = byte;
+    }
+  }
+
+  unsigned offset = 0;
+  bool added = ir_add_readonly_data(ir, bytes, array_len, expr->line, expr->column, &offset);
+  free(bytes);
+  if (!added) return false;
+  IrValue *value = ir_new_value(ir, IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
+  value->data_offset = offset;
+  value->data_len = array_len;
+  *out = value;
+  return true;
+}
+
 static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {
   if (!expr) {
     ir_mark_unsupported(ir, "direct wasm byte view is missing", 1, 1, "missing expression");
@@ -878,6 +938,9 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
     value->data_len = len;
     *out = value;
     return true;
+  }
+  if (expr->kind == EXPR_ARRAY_LITERAL) {
+    return ir_lower_array_literal_byte_view(ir, expr, out);
   }
   if (expr->kind == EXPR_CALL && expr->args.len == 1) {
     char *callee = ir_expr_callee_name(expr->left);
@@ -1187,6 +1250,33 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
     case EXPR_SLICE:
       return ir_lower_byte_view(program, ir, fun, expr, out);
     case EXPR_INDEX: {
+      if (expr->left && expr->left->kind == EXPR_MEMBER &&
+          expr->left->left && expr->left->left->kind == EXPR_IDENT) {
+        const IrLocal *record = ir_function_find_local(fun, expr->left->left->text);
+        unsigned field_offset = 0;
+        bool field_is_array = false;
+        unsigned field_array_len = 0;
+        IrTypeKind field_element_type = IR_TYPE_UNSUPPORTED;
+        if (record && record->is_record &&
+            ir_shape_field_storage_info(program, record->shape_name, expr->left->text, &field_offset, NULL, &field_is_array, &field_array_len, &field_element_type) &&
+            field_is_array) {
+          unsigned long long const_index = 0;
+          if (!expr->right || expr->right->kind != EXPR_NUMBER ||
+              !ir_parse_integer_literal(expr->right->text, &const_index)) {
+            ir_mark_unsupported(ir, "direct backend record array field index currently requires a constant index", expr->right ? expr->right->line : expr->line, expr->right ? expr->right->column : expr->column, expr->left->text);
+            return false;
+          }
+          if (const_index >= field_array_len) {
+            ir_mark_unsupported(ir, "direct backend record array field index is out of bounds", expr->right->line, expr->right->column, expr->left->text);
+            return false;
+          }
+          IrValue *value = ir_new_value(ir, IR_VALUE_FIELD_LOAD, field_element_type, expr->line, expr->column);
+          value->local_index = record->index;
+          value->field_offset = field_offset + (unsigned)const_index * ir_type_byte_size(field_element_type);
+          *out = value;
+          return true;
+        }
+      }
       if (ir_expr_is_byte_view_source(expr->left)) {
         IrValue *view = NULL;
         IrValue *index = NULL;
@@ -2681,25 +2771,37 @@ static bool ir_lower_shape_initializer(const Program *program, IrProgram *ir, Ir
       return false;
     }
     if (field_is_array) {
-      if (!field_expr || field_expr->kind != EXPR_ARRAY_LITERAL || field_expr->args.len != field_array_len) {
+      if (!field_expr || field_expr->kind != EXPR_ARRAY_LITERAL) {
         ir_type_arg_vec_free(&shape_args);
         ir_mark_unsupported(ir, "direct backend record array field requires a matching array literal", field_expr ? field_expr->line : line, field_expr ? field_expr->column : column, field->name);
         return false;
       }
-      for (size_t element_index = 0; element_index < field_expr->args.len; element_index++) {
+      if (field_expr->array_repeat) {
+        if (field_expr->args.len != 2) {
+          ir_type_arg_vec_free(&shape_args);
+          ir_mark_unsupported(ir, "direct backend record array field repeat literal requires value and count", field_expr->line, field_expr->column, field->name);
+          return false;
+        }
+      } else if (field_expr->args.len != field_array_len) {
+        ir_type_arg_vec_free(&shape_args);
+        ir_mark_unsupported(ir, "direct backend record array field requires a matching array literal", field_expr->line, field_expr->column, field->name);
+        return false;
+      }
+      for (size_t element_index = 0; element_index < field_array_len; element_index++) {
+        const Expr *element_expr = field_expr->array_repeat ? field_expr->args.items[0] : field_expr->args.items[element_index];
         IrValue *element = NULL;
-        if (!ir_lower_expr(program, ir, mir_fun, field_expr->args.items[element_index], &element)) {
+        if (!ir_lower_expr(program, ir, mir_fun, element_expr, &element)) {
           ir_type_arg_vec_free(&shape_args);
           return false;
         }
         if (element->type != field_element_type) {
           ir_free_value(element);
           ir_type_arg_vec_free(&shape_args);
-          ir_mark_unsupported(ir, "direct backend record array field initializer type does not match element", field_expr->args.items[element_index]->line, field_expr->args.items[element_index]->column, field->name);
+          ir_mark_unsupported(ir, "direct backend record array field initializer type does not match element", element_expr->line, element_expr->column, field->name);
           return false;
         }
         unsigned element_offset = field_offset + (unsigned)element_index * ir_type_byte_size(field_element_type);
-        ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = element_offset, .value = element, .line = field_expr->args.items[element_index]->line, .column = field_expr->args.items[element_index]->column});
+        ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = element_offset, .value = element, .line = element_expr->line, .column = element_expr->column});
       }
       continue;
     }

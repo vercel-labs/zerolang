@@ -1,0 +1,12 @@
+shape Packet {
+    bytes: [4]u8
+}
+
+export c fun main() -> i32 {
+    let packet = Packet{bytes: [7_u8; 4]}
+    if packet.bytes[0] == 7_u8 &&
+        packet.bytes[3] == 7_u8 {
+        return 0
+    }
+    return 1
+}

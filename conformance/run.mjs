@@ -272,11 +272,13 @@ for (const fixture of [
   "conformance/native/pass/std-http-response-helpers.0",
   "conformance/native/pass/std-data-formats.0",
   "conformance/native/pass/std-json-bytes.0",
+  "conformance/native/pass/std-json-inline-bytes.0",
   "conformance/native/pass/std-json-duplicate-keys.0",
   "conformance/native/pass/std-json-allocator-capacity.0",
   "conformance/native/pass/std-platform-basics.0",
   "conformance/native/pass/std-mem-arrays.0",
   "conformance/native/pass/array-repeat-literal.0",
+  "conformance/native/pass/array-repeat-record-field.0",
   "conformance/native/pass/integer-widths.0",
   "conformance/native/pass/std-codec-widths.0",
   "conformance/native/pass/parse-integers.0",
@@ -739,6 +741,14 @@ assert(directArrayObjBody.objectBackend.directFacts.maxFrameBytes > 0);
 assert.equal(directArrayObjBody.objectBackend.objectEmission.path, "direct-elf64-object");
 await assertElf64Object(directArrayObjOut, "main");
 
+const directArrayRepeatRecordFieldOut = `${outDir}/direct-array-repeat-record-field.o`;
+const directArrayRepeatRecordFieldJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "conformance/native/pass/array-repeat-record-field.0", "--out", directArrayRepeatRecordFieldOut]);
+const directArrayRepeatRecordFieldBody = JSON.parse(directArrayRepeatRecordFieldJson.stdout);
+assert.equal(directArrayRepeatRecordFieldBody.emit, "obj");
+assert.equal(directArrayRepeatRecordFieldBody.generatedCBytes, 0);
+assert.equal(directArrayRepeatRecordFieldBody.objectBackend.objectEmission.path, "direct-elf64-object");
+await assertElf64Object(directArrayRepeatRecordFieldOut, "main");
+
 const directExeOut = `${outDir}/direct-exe-return`;
 const directExeJson = await execFileAsync(zero, ["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "examples/direct-exe-return.0", "--out", directExeOut]);
 const directExeBody = JSON.parse(directExeJson.stdout);
@@ -893,6 +903,20 @@ assert(WebAssembly.Module.imports(new WebAssembly.Module(directJsonBytesBytes)).
 ));
 const directJsonBytesInstance = await instantiateJsonRuntimeWasm(directJsonBytesBytes);
 assert.equal(directJsonBytesInstance.instance.exports.main(), 0);
+
+const directJsonInlineBytesOut = `${outDir}/direct-json-inline-bytes`;
+const directJsonInlineBytesJson = await execFileAsync(zero, ["build", "--json", "--emit", "wasm", "--target", "wasm32-web", "conformance/native/pass/std-json-inline-bytes.0", "--out", directJsonInlineBytesOut]);
+const directJsonInlineBytesBody = JSON.parse(directJsonInlineBytesJson.stdout);
+assert.equal(directJsonInlineBytesBody.generatedCBytes, 0);
+assert.equal(directJsonInlineBytesBody.objectBackend.objectEmission.path, "direct-wasm");
+assert.equal(directJsonInlineBytesBody.objectBackend.directFacts.runtime.linearMemory, true);
+assert.equal(directJsonInlineBytesBody.objectBackend.directFacts.runtime.readonlyDataBytes, 4);
+const directJsonInlineBytesBytes = await readFile(`${directJsonInlineBytesOut}.wasm`);
+assert(WebAssembly.Module.imports(new WebAssembly.Module(directJsonInlineBytesBytes)).some((entry) =>
+  entry.module === "zero_runtime" && entry.name === "zero_json_parse_bytes"
+));
+const directJsonInlineBytesInstance = await instantiateJsonRuntimeWasm(directJsonInlineBytesBytes);
+assert.equal(directJsonInlineBytesInstance.instance.exports.main(), 0);
 
 const directJsonDuplicateKeysOut = `${outDir}/direct-json-duplicate-keys`;
 const directJsonDuplicateKeysJson = await execFileAsync(zero, ["build", "--json", "--emit", "wasm", "--target", "wasm32-web", "conformance/native/pass/std-json-duplicate-keys.0", "--out", directJsonDuplicateKeysOut]);

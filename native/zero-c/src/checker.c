@@ -4969,7 +4969,10 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               if (scope_actual) actual = scope_actual;
             }
             bool span_array_arg = false;
-            if (expected && actual && actual[0] == '[' && (type_is_named_generic(expected, "Span") || type_is_named_generic(expected, "MutSpan"))) {
+            bool expected_span = expected && type_is_named_generic(expected, "Span");
+            bool expected_mut_span = expected && type_is_named_generic(expected, "MutSpan");
+            bool inline_array_literal = expr->args.items[i] && expr->args.items[i]->kind == EXPR_ARRAY_LITERAL;
+            if (expected && actual && actual[0] == '[' && (expected_span || (expected_mut_span && !inline_array_literal))) {
               char expected_element[128];
               char actual_element[128];
               if (span_element_text(expected, expected_element, sizeof(expected_element)) &&
