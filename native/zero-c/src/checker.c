@@ -1477,6 +1477,14 @@ static bool is_allocator_type(const char *type) {
   return type && (strcmp(type, "NullAlloc") == 0 || strcmp(type, "FixedBufAlloc") == 0 || strcmp(type, "PageAlloc") == 0 || strcmp(type, "GeneralAlloc") == 0);
 }
 
+static bool type_is_capability(const char *type) {
+  if (!type) return false;
+  return strcmp(type, "Fs") == 0 || strcmp(type, "Net") == 0 ||
+         strcmp(type, "Env") == 0 || strcmp(type, "Args") == 0 ||
+         strcmp(type, "Clock") == 0 || strcmp(type, "Rand") == 0 ||
+         strcmp(type, "Proc") == 0 || strcmp(type, "Ai") == 0;
+}
+
 static bool owned_inner_text(const char *type, char *out, size_t out_len) {
   if (!type || !out || out_len == 0) return false;
   const char *inner = NULL;
@@ -1665,6 +1673,11 @@ static bool check_place_root_available(const Expr *expr, Scope *scope, const cha
     char actual_detail[160];
     snprintf(actual_detail, sizeof(actual_detail), "%s was moved", root);
     return set_diag_detail(diag, 3013, "owned value was already moved", expr->line, expr->column, "live owned binding", actual_detail, "stop using the old binding after transferring ownership");
+  }
+  if (actual && type_is_capability(actual) && scope_is_moved(scope, root)) {
+    char actual_detail[160];
+    snprintf(actual_detail, sizeof(actual_detail), "%s was moved", root);
+    return set_diag_detail(diag, 6003, "capability was already moved", expr->line, expr->column, "live capability binding", actual_detail, "capabilities are affine — pass them to a function or derive a new one from World");
   }
   return true;
 }
@@ -4237,6 +4250,11 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           snprintf(actual_detail, sizeof(actual_detail), "%s was moved", expr->text);
           return set_diag_detail(diag, 3013, "owned value was already moved", expr->line, expr->column, "live owned binding", actual_detail, "stop using the old binding after transferring ownership");
         }
+        if (actual && type_is_capability(actual) && scope_is_moved(scope, expr->text)) {
+          char actual_detail[160];
+          snprintf(actual_detail, sizeof(actual_detail), "%s was moved", expr->text);
+          return set_diag_detail(diag, 6003, "capability was already moved", expr->line, expr->column, "live capability binding", actual_detail, "capabilities are affine — pass them to a function or derive a new one from World");
+        }
         if (!check_read_not_mutably_borrowed(expr, scope, diag)) return false;
       }
       if (expected && type_is_named_generic(expected, "MutSpan")) {
@@ -5433,9 +5451,11 @@ static bool check_expr(const Program *program, const Expr *expr, Scope *scope, Z
 }
 
 static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type) {
-  if (!expr || expr->kind != EXPR_IDENT || !destination_type || !type_is_owned(destination_type)) return;
+  if (!expr || expr->kind != EXPR_IDENT || !destination_type) return;
   const char *source_type = scope_type(scope, expr->text);
-  if (source_type && type_is_owned(source_type)) {
+  if (!source_type) return;
+  if ((type_is_owned(source_type) && type_is_owned(destination_type)) ||
+      (type_is_capability(source_type) && type_is_capability(destination_type))) {
     scope_set_moved(scope, expr->text, true);
     ((Expr *)expr)->moves_ownership = true;
   }

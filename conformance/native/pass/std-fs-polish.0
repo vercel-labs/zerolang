@@ -1,6 +1,5 @@
 pub fun main(world: World) -> Void raises {
-    let fs = world.fs()
-    let created = std.fs.create(fs, ".zero/polish-a.txt")
+    let created = std.fs.create(world.fs(), ".zero/polish-a.txt")
     if created.has {
         let mut file: owned<File> = created.value
         if std.fs.writeAll(&mut file, std.mem.span("abc")) {
