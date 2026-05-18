@@ -3,6 +3,12 @@
 #endif
 
 #include "zero.h"
+#include "package.h"
+#include "keys.h"
+#include "ledger.h"
+#include "crypto.h"
+#include "hex.h"
+#include "process.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -51,6 +57,7 @@ typedef struct {
   bool fmt_check;
   bool legacy_backend;
   bool trace;
+  bool insecure;
   EmitKind emit;
 } Command;
 
@@ -58,11 +65,14 @@ typedef struct {
   char *binary_path;
   char *stripped_path;
   char *checksum_path;
+  char *signature_path;
   char *archive_path;
   char *debug_path;
   char *size_path;
   char *sbom_path;
-  uint64_t checksum;
+  char *signer_key_id;
+  char *signer_label;
+  char checksum_hex[65];
   long long binary_bytes;
   long long stripped_bytes;
   long long archive_bytes;
@@ -164,23 +174,10 @@ static void print_diag(const char *path, const ZDiag *diag) {
   fprintf(stderr, "  explain: zero explain %s\n", diag_code(diag->code));
 }
 
-static void append_json_string(ZBuf *buf, const char *value) {
-  zbuf_append_char(buf, '"');
-  for (const char *cursor = value ? value : ""; *cursor; cursor++) {
-    if (*cursor == '"') zbuf_append(buf, "\\\"");
-    else if (*cursor == '\\') zbuf_append(buf, "\\\\");
-    else if (*cursor == '\n') zbuf_append(buf, "\\n");
-    else if (*cursor == '\r') zbuf_append(buf, "\\r");
-    else if (*cursor == '\t') zbuf_append(buf, "\\t");
-    else zbuf_append_char(buf, *cursor);
-  }
-  zbuf_append_char(buf, '"');
-}
-
 static void print_json_string(const char *value) {
   ZBuf buf;
   zbuf_init(&buf);
-  append_json_string(&buf, value);
+  z_json_string_append(&buf, value);
   fputs(buf.data, stdout);
   zbuf_free(&buf);
 }
@@ -200,14 +197,14 @@ static const char *token_kind_name(TokenKind kind) {
 
 static void append_tokens_json(ZBuf *buf, const char *source_file, const TokenVec *tokens) {
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, source_file);
+  z_json_string_append(buf, source_file);
   zbuf_append(buf, ",\n  \"tokens\": [\n");
   for (size_t i = 0; tokens && i < tokens->len; i++) {
     const Token *token = &tokens->items[i];
     zbuf_append(buf, "    {\"kind\": ");
-    append_json_string(buf, token_kind_name(token->kind));
+    z_json_string_append(buf, token_kind_name(token->kind));
     zbuf_append(buf, ", \"text\": ");
-    append_json_string(buf, token->text);
+    z_json_string_append(buf, token->text);
     zbuf_appendf(
       buf,
       ", \"line\": %d, \"column\": %d, \"offset\": %zu, \"length\": %zu}%s\n",
@@ -242,7 +239,7 @@ static const char *stmt_kind_name(StmtKind kind) {
 
 static void append_parse_json(ZBuf *buf, const char *source_file, const Program *program) {
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, source_file);
+  z_json_string_append(buf, source_file);
   zbuf_appendf(
     buf,
     ",\n  \"root\": {\"kind\": \"module\", \"shapeCount\": %zu, \"enumCount\": %zu, \"choiceCount\": %zu, \"functionCount\": %zu},\n",
@@ -256,7 +253,7 @@ static void append_parse_json(ZBuf *buf, const char *source_file, const Program 
     const Shape *shape = &program->shapes.items[i];
     zbuf_append(buf, i == 0 ? "\n    " : ",\n    ");
     zbuf_append(buf, "{\"kind\":\"shape\",\"name\":");
-    append_json_string(buf, shape->name);
+    z_json_string_append(buf, shape->name);
     zbuf_appendf(buf, ",\"fieldCount\":%zu,\"methodCount\":%zu,\"line\":%d,\"column\":%d}", shape->fields.len, shape->methods.len, shape->line, shape->column);
   }
   zbuf_append(buf, program && program->shapes.len ? "\n  ],\n" : "],\n");
@@ -265,7 +262,7 @@ static void append_parse_json(ZBuf *buf, const char *source_file, const Program 
     const EnumDecl *item = &program->enums.items[i];
     zbuf_append(buf, i == 0 ? "\n    " : ",\n    ");
     zbuf_append(buf, "{\"kind\":\"enum\",\"name\":");
-    append_json_string(buf, item->name);
+    z_json_string_append(buf, item->name);
     zbuf_appendf(buf, ",\"caseCount\":%zu,\"line\":%d,\"column\":%d}", item->cases.len, item->line, item->column);
   }
   zbuf_append(buf, program && program->enums.len ? "\n  ],\n" : "],\n");
@@ -274,7 +271,7 @@ static void append_parse_json(ZBuf *buf, const char *source_file, const Program 
     const Choice *item = &program->choices.items[i];
     zbuf_append(buf, i == 0 ? "\n    " : ",\n    ");
     zbuf_append(buf, "{\"kind\":\"choice\",\"name\":");
-    append_json_string(buf, item->name);
+    z_json_string_append(buf, item->name);
     zbuf_appendf(buf, ",\"caseCount\":%zu,\"line\":%d,\"column\":%d}", item->cases.len, item->line, item->column);
   }
   zbuf_append(buf, program && program->choices.len ? "\n  ],\n" : "],\n");
@@ -283,13 +280,13 @@ static void append_parse_json(ZBuf *buf, const char *source_file, const Program 
     const Function *fun = &program->functions.items[i];
     zbuf_append(buf, i == 0 ? "\n    " : ",\n    ");
     zbuf_append(buf, "{\"kind\":\"function\",\"name\":");
-    append_json_string(buf, fun->name);
+    z_json_string_append(buf, fun->name);
     zbuf_append(buf, ",\"returnType\":");
-    append_json_string(buf, fun->return_type);
+    z_json_string_append(buf, fun->return_type);
     zbuf_appendf(buf, ",\"paramCount\":%zu,\"bodyKinds\":[", fun->params.len);
     for (size_t j = 0; j < fun->body.len; j++) {
       if (j > 0) zbuf_append(buf, ",");
-      append_json_string(buf, stmt_kind_name(fun->body.items[j]->kind));
+      z_json_string_append(buf, stmt_kind_name(fun->body.items[j]->kind));
     }
     zbuf_appendf(buf, "],\"line\":%d,\"column\":%d}", fun->line, fun->column);
   }
@@ -301,66 +298,12 @@ static const char *zero_commit(void) {
   return commit && commit[0] ? commit : "unknown";
 }
 
-static bool command_available(const char *name) {
-  char command[128];
-  snprintf(command, sizeof(command), "command -v %s >/dev/null 2>&1", name);
-  return system(command) == 0;
-}
-
-static bool command_succeeds(const char *command) {
-  return system(command) == 0;
-}
-
-static char *command_first_line(const char *command) {
-  FILE *pipe = popen(command, "r");
-  if (!pipe) return z_strdup("");
-  char line[256];
-  if (!fgets(line, sizeof(line), pipe)) line[0] = 0;
-  pclose(pipe);
-  size_t len = strlen(line);
-  while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = 0;
-  return z_strdup(line);
-}
-
-static bool path_exists(const char *path) {
-  struct stat st;
-  return stat(path, &st) == 0;
-}
-
-static int zero_mkdir(const char *path) {
-#if defined(_WIN32)
-  return mkdir(path);
-#else
-  return mkdir(path, 0777);
-#endif
-}
-
 static int zero_lstat(const char *path, struct stat *st) {
 #if defined(_WIN32)
   return stat(path, st);
 #else
   return lstat(path, st);
 #endif
-}
-
-static bool ensure_dir(const char *path, ZDiag *diag) {
-  if (zero_mkdir(path) == 0 || errno == EEXIST) return true;
-  diag->code = 2002;
-  diag->path = path;
-  diag->line = 1;
-  diag->column = 1;
-  snprintf(diag->message, sizeof(diag->message), "failed to create directory '%s': %s", path, strerror(errno));
-  snprintf(diag->help, sizeof(diag->help), "choose a writable project path");
-  return false;
-}
-
-static char *join_cli_path(const char *left, const char *right) {
-  ZBuf buf;
-  zbuf_init(&buf);
-  zbuf_append(&buf, left);
-  if (buf.len > 0 && buf.data[buf.len - 1] != '/') zbuf_append_char(&buf, '/');
-  zbuf_append(&buf, right);
-  return buf.data;
 }
 
 static bool remove_tree(const char *path, ZBuf *deleted) {
@@ -372,7 +315,7 @@ static bool remove_tree(const char *path, ZBuf *deleted) {
     struct dirent *entry = NULL;
     while ((entry = readdir(dir)) != NULL) {
       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-      char *child = join_cli_path(path, entry->d_name);
+      char *child = z_path_join(path, entry->d_name);
       bool ok = remove_tree(child, deleted);
       free(child);
       if (!ok) {
@@ -710,7 +653,7 @@ static void append_capability_json_array(ZBuf *buf, const CapabilitySummary *cap
 #define APPEND_CAP(name, enabled) do { \
     if (enabled) { \
       if (wrote) zbuf_append(buf, ", "); \
-      append_json_string(buf, name); \
+      z_json_string_append(buf, name); \
       wrote = true; \
     } \
   } while (0)
@@ -1187,7 +1130,7 @@ static void append_abi_primitives_json(ZBuf *buf, const ZTargetInfo *target) {
   for (int i = 0; types[i]; i++) {
     if (i > 0) zbuf_append(buf, ",");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, types[i]);
+    z_json_string_append(buf, types[i]);
     zbuf_appendf(buf, ",\"size\":%d,\"align\":%d}", abi_type_size(types[i], target), abi_type_align(types[i], target));
   }
   zbuf_append(buf, "]");
@@ -1204,7 +1147,7 @@ static void append_abi_shapes_json(ZBuf *buf, const Program *program, const ZTar
     int offset = 0;
     int max_align = 1;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, shape->name);
+    z_json_string_append(buf, shape->name);
     zbuf_append(buf, ",\"layout\":\"extern\",\"fields\":[");
     for (size_t field_index = 0; field_index < shape->fields.len; field_index++) {
       const Param *field = &shape->fields.items[field_index];
@@ -1214,9 +1157,9 @@ static void append_abi_shapes_json(ZBuf *buf, const Program *program, const ZTar
       if (align > max_align) max_align = align;
       if (field_index > 0) zbuf_append(buf, ",");
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, field->name);
+      z_json_string_append(buf, field->name);
       zbuf_append(buf, ",\"type\":");
-      append_json_string(buf, field->type);
+      z_json_string_append(buf, field->type);
       zbuf_appendf(buf, ",\"offset\":%d,\"size\":%d,\"align\":%d}", offset, size, align);
       offset += size;
     }
@@ -1230,7 +1173,7 @@ static void append_abi_enums_json(ZBuf *buf, const Program *program) {
   for (size_t i = 0; program && i < program->enums.len; i++) {
     if (i > 0) zbuf_append(buf, ",");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, program->enums.items[i].name);
+    z_json_string_append(buf, program->enums.items[i].name);
     zbuf_appendf(buf, ",\"size\":4,\"align\":4,\"cases\":%zu}", program->enums.items[i].cases.len);
   }
   zbuf_append(buf, "]");
@@ -1263,11 +1206,11 @@ static void append_c_exports_json(ZBuf *buf, const Program *program) {
     if (wrote) zbuf_append(buf, ",");
     wrote = true;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, fun->name);
+    z_json_string_append(buf, fun->name);
     zbuf_append(buf, ",\"returnType\":");
-    append_json_string(buf, fun->return_type ? fun->return_type : "Void");
+    z_json_string_append(buf, fun->return_type ? fun->return_type : "Void");
     zbuf_append(buf, ",\"cReturnType\":");
-    append_json_string(buf, c_abi_type_name(fun->return_type));
+    z_json_string_append(buf, c_abi_type_name(fun->return_type));
     zbuf_append(buf, ",\"raises\":");
     zbuf_append(buf, fun->raises ? "true" : "false");
     zbuf_append(buf, ",\"params\":[");
@@ -1275,11 +1218,11 @@ static void append_c_exports_json(ZBuf *buf, const Program *program) {
       const Param *param = &fun->params.items[param_index];
       if (param_index > 0) zbuf_append(buf, ",");
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, param->name);
+      z_json_string_append(buf, param->name);
       zbuf_append(buf, ",\"type\":");
-      append_json_string(buf, param->type);
+      z_json_string_append(buf, param->type);
       zbuf_append(buf, ",\"cType\":");
-      append_json_string(buf, c_abi_type_name(param->type));
+      z_json_string_append(buf, c_abi_type_name(param->type));
       zbuf_append(buf, "}");
     }
     zbuf_append(buf, "]}");
@@ -1320,7 +1263,7 @@ static void append_c_export_header_json(ZBuf *buf, const Program *program) {
     if (program->functions.items[i].export_c) export_count++;
   }
   zbuf_appendf(buf, "{\"available\":%s,\"format\":\"c-header\",\"exportCount\":%zu,\"text\":", export_count > 0 ? "true" : "false", export_count);
-  append_json_string(buf, header.data ? header.data : "");
+  z_json_string_append(buf, header.data ? header.data : "");
   zbuf_append(buf, "}");
   zbuf_free(&header);
 }
@@ -1329,15 +1272,15 @@ static void append_c_imports_json(ZBuf *buf, const Program *program, const ZTarg
 
 static void append_abi_dump_json(ZBuf *buf, const SourceInput *input, const Program *program, const ZTargetInfo *target) {
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, input ? input->source_file : "");
+  z_json_string_append(buf, input ? input->source_file : "");
   zbuf_append(buf, ",\n  \"target\": ");
-  append_json_string(buf, target ? target->name : "host");
+  z_json_string_append(buf, target ? target->name : "host");
   zbuf_append(buf, ",\n  \"pointerSize\": ");
   zbuf_appendf(buf, "%d", abi_pointer_size(target));
   zbuf_append(buf, ",\n  \"objectFormat\": ");
-  append_json_string(buf, target && target->object_format ? target->object_format : "unknown");
+  z_json_string_append(buf, target && target->object_format ? target->object_format : "unknown");
   zbuf_append(buf, ",\n  \"callingConvention\": ");
-  append_json_string(buf, target && target->abi ? target->abi : "host");
+  z_json_string_append(buf, target && target->abi ? target->abi : "host");
   zbuf_append(buf, ",\n  \"primitiveLayouts\": ");
   append_abi_primitives_json(buf, target);
   zbuf_append(buf, ",\n  \"externShapes\": ");
@@ -1357,15 +1300,6 @@ static uint64_t fnv1a_text(const char *text) {
   uint64_t hash = 1469598103934665603ull;
   for (const unsigned char *cursor = (const unsigned char *)(text ? text : ""); *cursor; cursor++) {
     hash ^= (uint64_t)*cursor;
-    hash *= 1099511628211ull;
-  }
-  return hash;
-}
-
-static uint64_t fnv1a_bytes(const unsigned char *data, size_t len) {
-  uint64_t hash = 1469598103934665603ull;
-  for (size_t i = 0; i < len; i++) {
-    hash ^= (uint64_t)data[i];
     hash *= 1099511628211ull;
   }
   return hash;
@@ -1531,9 +1465,9 @@ static void append_interface_fingerprints_json(ZBuf *buf, const SourceInput *inp
     uint64_t interface_hash = module_public_interface_hash(input, module_name);
     size_t public_count = module_public_symbol_count(input, module_name);
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, module_name);
+    z_json_string_append(buf, module_name);
     zbuf_append(buf, ",\"path\":");
-    append_json_string(buf, module_path);
+    z_json_string_append(buf, module_path);
     zbuf_appendf(buf, ",\"sourceHash\":\"%016llx\",\"publicInterfaceHash\":\"%016llx\",\"publicSymbolCount\":%zu,\"publicSymbols\":[",
                  (unsigned long long)source_hash,
                  (unsigned long long)interface_hash,
@@ -1544,9 +1478,9 @@ static void append_interface_fingerprints_json(ZBuf *buf, const SourceInput *inp
       if (!input->symbol_modules || strcmp(input->symbol_modules[j], module_name) != 0) continue;
       if (wrote_symbol) zbuf_append(buf, ",");
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, input->symbol_names[j]);
+      z_json_string_append(buf, input->symbol_names[j]);
       zbuf_append(buf, ",\"kind\":");
-      append_json_string(buf, input->symbol_kinds ? input->symbol_kinds[j] : "unknown");
+      z_json_string_append(buf, input->symbol_kinds ? input->symbol_kinds[j] : "unknown");
       zbuf_append(buf, "}");
       wrote_symbol = true;
     }
@@ -1556,9 +1490,9 @@ static void append_interface_fingerprints_json(ZBuf *buf, const SourceInput *inp
       if (strcmp(input->import_from[j], module_name) != 0) continue;
       if (wrote_import) zbuf_append(buf, ",");
       zbuf_append(buf, "{\"module\":");
-      append_json_string(buf, input->import_to[j]);
+      z_json_string_append(buf, input->import_to[j]);
       zbuf_append(buf, ",\"path\":");
-      append_json_string(buf, input->import_paths[j]);
+      z_json_string_append(buf, input->import_paths[j]);
       zbuf_append(buf, "}");
       wrote_import = true;
     }
@@ -1598,12 +1532,11 @@ static bool json_array_nonempty_literal(const char *json) {
 }
 
 static bool compiler_cache_touch(const char *kind, uint64_t key) {
-  zero_mkdir(".zero");
-  zero_mkdir(".zero/cache");
-  zero_mkdir(".zero/cache/native");
+  ZDiag dir_diag = {0};
+  z_dir_make(".zero/cache/native", Z_DIR_MAKE_PARENTS, &dir_diag);
   char path[256];
   snprintf(path, sizeof(path), ".zero/cache/native/%s-%016llx.cache", kind, (unsigned long long)key);
-  bool hit = path_exists(path);
+  bool hit = z_path_exists(path);
   FILE *file = fopen(path, "wb");
   if (file) {
     fprintf(file, "%s %016llx\n", kind, (unsigned long long)key);
@@ -1617,7 +1550,7 @@ static void append_compiler_phases_json(ZBuf *buf, const SourceInput *input) {
 #define APPEND_PHASE(name, field, cacheable) do { \
     if (strcmp(name, "resolve") != 0) zbuf_append(buf, ", "); \
     zbuf_append(buf, "{\"name\":"); \
-    append_json_string(buf, name); \
+    z_json_string_append(buf, name); \
     zbuf_appendf(buf, ",\"elapsedMs\":%lld,\"cacheable\":%s}", input ? input->field : 0, cacheable ? "true" : "false"); \
   } while (0)
   APPEND_PHASE("resolve", resolve_ms, true);
@@ -1642,13 +1575,13 @@ static void append_compiler_caches_json(ZBuf *buf, const SourceInput *input, con
 #define APPEND_CACHE(label, key, hit, invalidates) do { \
     if (wrote) zbuf_append(buf, ", "); \
     zbuf_append(buf, "{\"name\":"); \
-    append_json_string(buf, label); \
+    z_json_string_append(buf, label); \
     zbuf_appendf(buf, ",\"key\":\"%016llx\",\"hit\":%s,\"stored\":true,\"compilerVersion\":\"%s\",\"packageVersion\":", (unsigned long long)(key), (hit) ? "true" : "false", ZERO_VERSION); \
-    append_json_string(buf, input && input->package_version ? input->package_version : ""); \
+    z_json_string_append(buf, input && input->package_version ? input->package_version : ""); \
     zbuf_appendf(buf, ",\"dependencyGraphHash\":\"%016llx\",\"lockfileHash\":\"%016llx\",\"invalidatesOn\":", \
                  (unsigned long long)(input ? input->dependency_graph_hash : 0), \
                  (unsigned long long)(input ? input->lockfile_hash : 0)); \
-    append_json_string(buf, invalidates); \
+    z_json_string_append(buf, invalidates); \
     zbuf_append(buf, "}"); \
     wrote = true; \
   } while (0)
@@ -1683,27 +1616,27 @@ static void append_incremental_invalidations_json(ZBuf *buf, const SourceInput *
   for (size_t i = 0; input && i < input->import_edge_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"from\":");
-    append_json_string(buf, input->import_from[i]);
+    z_json_string_append(buf, input->import_from[i]);
     zbuf_append(buf, ",\"to\":");
-    append_json_string(buf, input->import_to[i]);
+    z_json_string_append(buf, input->import_to[i]);
     zbuf_append(buf, ",\"path\":");
-    append_json_string(buf, input->import_paths[i]);
+    z_json_string_append(buf, input->import_paths[i]);
     zbuf_append(buf, "}");
   }
   zbuf_append(buf, "],\"targetDependency\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\"profileDependency\":");
-  append_json_string(buf, profile ? profile : "release");
+  z_json_string_append(buf, profile ? profile : "release");
   zbuf_appendf(buf, ",\"affectedModules\":%zu,\"recheckStrategy\":\"fingerprint changed modules and dependent bodies\"", input ? input->module_count : 0);
   zbuf_append(buf, ",\"changedInputs\":{\"sourceFiles\":[");
   for (size_t i = 0; input && i < input->source_file_count; i++) {
     if (i > 0) zbuf_append(buf, ",");
-    append_json_string(buf, input->source_files[i]);
+    z_json_string_append(buf, input->source_files[i]);
   }
   zbuf_append(buf, "],\"manifestPath\":");
-  append_json_string(buf, input && input->manifest_path ? input->manifest_path : "");
+  z_json_string_append(buf, input && input->manifest_path ? input->manifest_path : "");
   zbuf_append(buf, ",\"packageLockfile\":");
-  append_json_string(buf, input && input->lockfile_path ? input->lockfile_path : "");
+  z_json_string_append(buf, input && input->lockfile_path ? input->lockfile_path : "");
   zbuf_append(buf, "},\"cacheHits\":");
   zbuf_appendf(buf, "%zu", hits);
   zbuf_append(buf, ",\"cacheMisses\":");
@@ -1722,18 +1655,18 @@ static bool package_dependency_target_compatible(const SourceDependency *dep, co
 
 static void append_package_metadata_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target) {
   zbuf_append(buf, "{\"name\":");
-  append_json_string(buf, input && input->package_name ? input->package_name : "");
+  z_json_string_append(buf, input && input->package_name ? input->package_name : "");
   zbuf_append(buf, ",\"version\":");
-  append_json_string(buf, input && input->package_version ? input->package_version : "");
+  z_json_string_append(buf, input && input->package_version ? input->package_version : "");
   zbuf_append(buf, ",\"root\":");
-  append_json_string(buf, input && input->package_root ? input->package_root : "");
+  z_json_string_append(buf, input && input->package_root ? input->package_root : "");
   zbuf_append(buf, ",\"manifestPath\":");
-  append_json_string(buf, input && input->manifest_path ? input->manifest_path : "");
+  z_json_string_append(buf, input && input->manifest_path ? input->manifest_path : "");
   zbuf_appendf(buf, ",\"manifestHash\":\"%016llx\",\"dependencyGraphHash\":\"%016llx\"",
                (unsigned long long)(input ? input->manifest_hash : 0),
                (unsigned long long)(input ? input->dependency_graph_hash : 0));
   zbuf_append(buf, ",\"lockfile\":{\"format\":\"zero-lock-v1\",\"path\":");
-  append_json_string(buf, input && input->lockfile_path ? input->lockfile_path : "");
+  z_json_string_append(buf, input && input->lockfile_path ? input->lockfile_path : "");
   zbuf_appendf(buf, ",\"hash\":\"%016llx\",\"generated\":%s}",
                (unsigned long long)(input ? input->lockfile_hash : 0),
                input && input->lockfile_path ? "true" : "false");
@@ -1743,19 +1676,19 @@ static void append_package_metadata_json(ZBuf *buf, const SourceInput *input, co
     const SourceDependency *dep = &input->dependencies[i];
     if (i > 0) zbuf_append(buf, ",");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, dep->name);
+    z_json_string_append(buf, dep->name);
     zbuf_append(buf, ",\"version\":");
-    append_json_string(buf, dep->version);
+    z_json_string_append(buf, dep->version);
     zbuf_append(buf, ",\"path\":");
-    append_json_string(buf, dep->path);
+    z_json_string_append(buf, dep->path);
     zbuf_append(buf, ",\"resolvedManifest\":");
-    append_json_string(buf, dep->resolved_manifest);
+    z_json_string_append(buf, dep->resolved_manifest);
     zbuf_append(buf, ",\"resolvedName\":");
-    append_json_string(buf, dep->resolved_name);
+    z_json_string_append(buf, dep->resolved_name);
     zbuf_append(buf, ",\"resolvedVersion\":");
-    append_json_string(buf, dep->resolved_version);
+    z_json_string_append(buf, dep->resolved_version);
     zbuf_append(buf, ",\"status\":");
-    append_json_string(buf, dep->status);
+    z_json_string_append(buf, dep->status);
     zbuf_appendf(buf, ",\"direct\":%s,\"fingerprint\":\"%016llx\",\"targetCompatible\":%s,\"targets\":",
                  dep->direct ? "true" : "false",
                  (unsigned long long)dep->fingerprint,
@@ -1768,17 +1701,17 @@ static void append_package_metadata_json(ZBuf *buf, const SourceInput *input, co
 
 static void append_package_cache_audit_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile) {
   zbuf_append(buf, "{\"cacheKeyInputs\":{\"compilerVersion\":");
-  append_json_string(buf, ZERO_VERSION);
+  z_json_string_append(buf, ZERO_VERSION);
   zbuf_append(buf, ",\"target\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\"packageVersion\":");
-  append_json_string(buf, input && input->package_version ? input->package_version : "");
+  z_json_string_append(buf, input && input->package_version ? input->package_version : "");
   zbuf_appendf(buf, ",\"dependencyGraphHash\":\"%016llx\",\"manifestHash\":\"%016llx\",\"lockfileHash\":\"%016llx\"}",
                (unsigned long long)(input ? input->dependency_graph_hash : 0),
                (unsigned long long)(input ? input->manifest_hash : 0),
                (unsigned long long)(input ? input->lockfile_hash : 0));
   zbuf_append(buf, ",\"invalidationReasons\":[\"source changed\",\"manifest changed\",\"dependency graph changed\",\"target changed\",\"profile changed\",\"compiler version changed\"],\"profile\":");
-  append_json_string(buf, profile ? profile : "release");
+  z_json_string_append(buf, profile ? profile : "release");
   zbuf_append(buf, "}");
 }
 
@@ -1811,7 +1744,7 @@ static void append_compile_time_json(ZBuf *buf, const Program *program, const So
   append_hash_json(buf, "targetHash", fnv1a_text(target ? target->name : z_host_target()));
   append_hash_json(buf, "manifestHash", fnv1a_text(manifest ? manifest : ""));
   zbuf_append(buf, ",\"compilerVersion\":");
-  append_json_string(buf, ZERO_VERSION);
+  z_json_string_append(buf, ZERO_VERSION);
   zbuf_append(buf, ",\"declaredInputs\":[\"source\",\"target\",\"compilerVersion\",\"manifest\",\"targetFacts\"]}");
   zbuf_append(buf, ",\"meta\":{\"supportedFacts\":[\"literal arithmetic\",\"literal comparisons\",\"Bool logic\",\"target.os\",\"target.arch\",\"target.abi\",\"target.libc\",\"target.objectFormat\",\"target.endian\",\"target.pointerWidth\",\"target.hasCapability\",\"fieldCount\",\"hasField\",\"fieldType\",\"enumCaseCount\",\"hasEnumCase\",\"choiceCaseCount\",\"hasChoiceCase\"],\"unsupportedEffects\":[\"filesystem\",\"network\",\"process\",\"ambient environment\"],\"cycleDiagnostic\":\"MET001\",\"safetyLimitDiagnostic\":\"MET001\"}");
   zbuf_append(buf, ",\"reflection\":{\"typed\":true,\"compileTimeOnly\":true,\"releaseMetadataRetained\":false,\"facts\":[\"target\",\"shape fields\",\"enum cases\",\"choice cases\"]}");
@@ -1831,7 +1764,7 @@ static void print_check_json_success(const char *path, const SourceInput *input,
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"sourceFile\": ");
-  append_json_string(&buf, path);
+  z_json_string_append(&buf, path);
   CapabilitySummary caps = program_capabilities(program);
   ZMetaCacheStats meta = z_meta_cache_stats();
   char *manifest = read_optional_file("zero.json");
@@ -1865,9 +1798,9 @@ static void print_check_json_success(const char *path, const SourceInput *input,
 static void append_public_docs_json(ZBuf *buf, const SourceInput *input, const Program *program, const ZTargetInfo *target) {
   CapabilitySummary caps = program_capabilities(program);
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, input ? input->source_file : "");
+  z_json_string_append(buf, input ? input->source_file : "");
   zbuf_append(buf, ",\n  \"target\": ");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\n  \"package\": ");
   append_package_metadata_json(buf, input, target);
   zbuf_append(buf, ",\n  \"packageCache\": ");
@@ -1880,9 +1813,9 @@ static void append_public_docs_json(ZBuf *buf, const SourceInput *input, const P
   for (size_t i = 0; input && i < input->module_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, input->module_names[i]);
+    z_json_string_append(buf, input->module_names[i]);
     zbuf_append(buf, ",\"path\":");
-    append_json_string(buf, input->module_paths[i]);
+    z_json_string_append(buf, input->module_paths[i]);
     zbuf_append(buf, "}");
   }
   zbuf_append(buf, "],\n  \"symbols\": [");
@@ -1892,11 +1825,11 @@ static void append_public_docs_json(ZBuf *buf, const SourceInput *input, const P
     if (wrote_symbol) zbuf_append(buf, ", ");
     wrote_symbol = true;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, input->symbol_names[i]);
+    z_json_string_append(buf, input->symbol_names[i]);
     zbuf_append(buf, ",\"module\":");
-    append_json_string(buf, input->symbol_modules[i]);
+    z_json_string_append(buf, input->symbol_modules[i]);
     zbuf_append(buf, ",\"kind\":");
-    append_json_string(buf, input->symbol_kinds ? input->symbol_kinds[i] : "unknown");
+    z_json_string_append(buf, input->symbol_kinds ? input->symbol_kinds[i] : "unknown");
     zbuf_append(buf, ",\"doc\":\"\",\"examples\":[],\"targetSupport\":");
     const Function *fun = (input->symbol_kinds && strcmp(input->symbol_kinds[i], "function") == 0) ? find_program_function(program, input->symbol_names[i]) : NULL;
     if (fun) {
@@ -1939,7 +1872,7 @@ static void append_c_header_inputs_json(ZBuf *buf, const Program *program) {
   zbuf_append(buf, "[");
   for (size_t i = 0; program && i < program->c_imports.len; i++) {
     if (i > 0) zbuf_append(buf, ",");
-    append_json_string(buf, program->c_imports.items[i].header);
+    z_json_string_append(buf, program->c_imports.items[i].header);
   }
   zbuf_append(buf, "]");
 }
@@ -1948,7 +1881,7 @@ static void append_json_string_array_item(ZBuf *buf, bool *first, const char *na
   if (!buf || !first || !name) return;
   if (!*first) zbuf_append(buf, ", ");
   *first = false;
-  append_json_string(buf, name);
+  z_json_string_append(buf, name);
 }
 
 static bool target_is_wasm_object(const ZTargetInfo *target) {
@@ -1997,28 +1930,28 @@ static bool append_capability_imports_json(ZBuf *buf, const CapabilitySummary *c
 static void append_portable_capability_restrictions_json(ZBuf *buf, const ZTargetInfo *target) {
   const char *kind = portable_runtime_kind(target);
   zbuf_append(buf, "{\"filesystem\":");
-  if (strcmp(kind, "wasi") == 0) append_json_string(buf, "capability-gated");
-  else if (strcmp(kind, "browser-worker") == 0) append_json_string(buf, "denied");
-  else append_json_string(buf, z_target_has_capability(target, "fs") ? "target-capability" : "unavailable");
+  if (strcmp(kind, "wasi") == 0) z_json_string_append(buf, "capability-gated");
+  else if (strcmp(kind, "browser-worker") == 0) z_json_string_append(buf, "denied");
+  else z_json_string_append(buf, z_target_has_capability(target, "fs") ? "target-capability" : "unavailable");
   zbuf_append(buf, ",\"environment\":");
-  if (strcmp(kind, "wasi") == 0) append_json_string(buf, "explicit import");
-  else if (strcmp(kind, "browser-worker") == 0) append_json_string(buf, "preloaded import only");
-  else append_json_string(buf, z_target_has_capability(target, "env") ? "target-capability" : "unavailable");
+  if (strcmp(kind, "wasi") == 0) z_json_string_append(buf, "explicit import");
+  else if (strcmp(kind, "browser-worker") == 0) z_json_string_append(buf, "preloaded import only");
+  else z_json_string_append(buf, z_target_has_capability(target, "env") ? "target-capability" : "unavailable");
   zbuf_append(buf, ",\"arguments\":");
-  if (strcmp(kind, "wasi") == 0) append_json_string(buf, "explicit import");
-  else if (strcmp(kind, "browser-worker") == 0) append_json_string(buf, "preloaded import only");
-  else append_json_string(buf, z_target_has_capability(target, "args") ? "target-capability" : "unavailable");
+  if (strcmp(kind, "wasi") == 0) z_json_string_append(buf, "explicit import");
+  else if (strcmp(kind, "browser-worker") == 0) z_json_string_append(buf, "preloaded import only");
+  else z_json_string_append(buf, z_target_has_capability(target, "args") ? "target-capability" : "unavailable");
   zbuf_append(buf, ",\"stdio\":");
-  if (target_is_wasm_object(target)) append_json_string(buf, "explicit fd_write/fd_read imports");
-  else append_json_string(buf, z_target_has_capability(target, "stdio") ? "target-capability" : "unavailable");
+  if (target_is_wasm_object(target)) z_json_string_append(buf, "explicit fd_write/fd_read imports");
+  else z_json_string_append(buf, z_target_has_capability(target, "stdio") ? "target-capability" : "unavailable");
   zbuf_append(buf, ",\"dom\":");
-  append_json_string(buf, strcmp(kind, "browser-worker") == 0 ? "unavailable to portable worker module" : "unavailable");
+  z_json_string_append(buf, strcmp(kind, "browser-worker") == 0 ? "unavailable to portable worker module" : "unavailable");
   zbuf_append(buf, ",\"network\":");
-  if (strcmp(kind, "browser-worker") == 0) append_json_string(buf, "denied until Fetch capability");
-  else append_json_string(buf, z_target_has_capability(target, "net") ? "target-capability" : "unavailable");
+  if (strcmp(kind, "browser-worker") == 0) z_json_string_append(buf, "denied until Fetch capability");
+  else z_json_string_append(buf, z_target_has_capability(target, "net") ? "target-capability" : "unavailable");
   zbuf_append(buf, ",\"process\":");
-  if (strcmp(kind, "browser-worker") == 0 || strcmp(kind, "wasi") == 0) append_json_string(buf, "denied");
-  else append_json_string(buf, z_target_has_capability(target, "proc") ? "target-capability" : "unavailable");
+  if (strcmp(kind, "browser-worker") == 0 || strcmp(kind, "wasi") == 0) z_json_string_append(buf, "denied");
+  else z_json_string_append(buf, z_target_has_capability(target, "proc") ? "target-capability" : "unavailable");
   zbuf_append(buf, "}");
 }
 
@@ -2028,26 +1961,26 @@ static void append_local_runtime_plan_json(ZBuf *buf, const CapabilitySummary *c
   zbuf_init(&imports);
   bool has_imports = append_capability_imports_json(&imports, caps, target);
   zbuf_append(buf, "{\"schemaVersion\":1,\"target\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\"runtimeKind\":");
-  append_json_string(buf, portable_runtime_kind(target));
+  z_json_string_append(buf, portable_runtime_kind(target));
   zbuf_append(buf, ",\"productionLikeImports\":");
   zbuf_append(buf, wasm_target ? "true" : "false");
   zbuf_append(buf, ",\"providerSpecificDeployment\":false,\"hostedDeployment\":\"out-of-scope\",\"command\":");
-  if (target_name_is(target, "wasm32-web")) append_json_string(buf, "zero dev --target wasm32-web");
-  else if (target_name_is(target, "wasm32-wasi")) append_json_string(buf, "npm run wasm:runtime:smoke");
-  else append_json_string(buf, "zero dev");
+  if (target_name_is(target, "wasm32-web")) z_json_string_append(buf, "zero dev --target wasm32-web");
+  else if (target_name_is(target, "wasm32-wasi")) z_json_string_append(buf, "npm run wasm:runtime:smoke");
+  else z_json_string_append(buf, "zero dev");
   zbuf_append(buf, ",\"imports\":{\"explicit\":");
   zbuf_append(buf, wasm_target ? "true" : "false");
   zbuf_append(buf, ",\"module\":");
-  if (wasm_target && has_imports) append_json_string(buf, "wasi_snapshot_preview1");
+  if (wasm_target && has_imports) z_json_string_append(buf, "wasi_snapshot_preview1");
   else zbuf_append(buf, "null");
   zbuf_append(buf, ",\"functions\":");
   zbuf_append(buf, imports.data);
   zbuf_append(buf, ",\"adapter\":");
-  if (target_name_is(target, "wasm32-web")) append_json_string(buf, "browser-worker-import-shim");
-  else if (target_name_is(target, "wasm32-wasi")) append_json_string(buf, "wasi-preview1-import-shim");
-  else append_json_string(buf, "native-target-runtime");
+  if (target_name_is(target, "wasm32-web")) z_json_string_append(buf, "browser-worker-import-shim");
+  else if (target_name_is(target, "wasm32-wasi")) z_json_string_append(buf, "wasi-preview1-import-shim");
+  else z_json_string_append(buf, "native-target-runtime");
   zbuf_append(buf, "},\"capabilityRestrictions\":");
   append_portable_capability_restrictions_json(buf, target);
   zbuf_append(buf, ",\"memoryFloorBudgetBytes\":");
@@ -2061,9 +1994,9 @@ static void append_dev_plan_json(ZBuf *buf, const SourceInput *input, const Prog
   size_t test_count = program_test_count(program, command ? command->filter : NULL);
   const Function *main_fun = find_program_function(program, "main");
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"mode\": \"watch-plan\",\n  \"sourceFile\": ");
-  append_json_string(buf, input ? input->source_file : "");
+  z_json_string_append(buf, input ? input->source_file : "");
   zbuf_append(buf, ",\n  \"target\": ");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"watch\": {\"strategy\":\"fingerprint changed modules and dependent tests\",\"persistent\": false, \"planOnly\": true, \"sourceFileCount\": ");
   zbuf_appendf(buf, "%zu", input ? input->source_file_count : 0);
   zbuf_append(buf, ", \"moduleCount\": ");
@@ -2071,12 +2004,12 @@ static void append_dev_plan_json(ZBuf *buf, const SourceInput *input, const Prog
   zbuf_append(buf, ", \"files\": [");
   for (size_t i = 0; input && i < input->source_file_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
-    append_json_string(buf, input->source_files[i]);
+    z_json_string_append(buf, input->source_files[i]);
   }
   zbuf_append(buf, "], \"manifest\": ");
-  append_json_string(buf, "zero.json");
+  z_json_string_append(buf, "zero.json");
   zbuf_append(buf, ", \"packageLocks\": [");
-  if (input && input->lockfile_path) append_json_string(buf, input->lockfile_path);
+  if (input && input->lockfile_path) z_json_string_append(buf, input->lockfile_path);
   zbuf_append(buf, "], \"generatedBindingInputs\": ");
   append_c_header_inputs_json(buf, program);
   zbuf_append(buf, ", \"rerun\": [\"check\", \"test\", \"examples\"], \"restartOnSuccess\": ");
@@ -2094,7 +2027,7 @@ static void append_dev_plan_json(ZBuf *buf, const SourceInput *input, const Prog
   zbuf_append(buf, "}, {\"kind\":\"restart\",\"enabled\":");
   zbuf_append(buf, main_fun ? "true" : "false");
   zbuf_append(buf, ",\"target\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, "}],\n  \"restart\": {\"runnableCli\":");
   zbuf_append(buf, main_fun ? "true" : "false");
   zbuf_append(buf, ",\"strategy\":\"rebuild-and-restart-after-successful-checks\",\"binaryOut\":\".zero/dev/app\"},\n  \"partialDiagnostics\": {\"stable\":true,\"whileCodegenPending\":true,\"sourceOfTruth\":\"zero check --json\",\"schemaVersion\":1},\n  \"trace\": {\"enabled\":true,\"requested\":");
@@ -2127,9 +2060,9 @@ static void append_time_json(ZBuf *buf, const SourceInput *input, const Program 
   size_t misses = 0;
   source_cache_hit_miss_counts(input, &hits, &misses);
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, input ? input->source_file : "");
+  z_json_string_append(buf, input ? input->source_file : "");
   zbuf_append(buf, ",\n  \"target\": ");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"compilerPhases\": ");
   append_compiler_phases_json(buf, input);
   zbuf_append(buf, ",\n  \"compilerCaches\": ");
@@ -2591,17 +2524,17 @@ static void print_explain_json(const ExplainInfo *info) {
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"code\": ");
-  append_json_string(&buf, info->code);
+  z_json_string_append(&buf, info->code);
   zbuf_append(&buf, ",\n  \"category\": ");
-  append_json_string(&buf, info->category);
+  z_json_string_append(&buf, info->category);
   zbuf_append(&buf, ",\n  \"title\": ");
-  append_json_string(&buf, info->title);
+  z_json_string_append(&buf, info->title);
   zbuf_append(&buf, ",\n  \"summary\": ");
-  append_json_string(&buf, info->summary);
+  z_json_string_append(&buf, info->summary);
   zbuf_append(&buf, ",\n  \"why\": ");
-  append_json_string(&buf, info->why);
+  z_json_string_append(&buf, info->why);
   zbuf_append(&buf, ",\n  \"repair\": {\"id\": ");
-  append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
+  z_json_string_append(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
                                          strcmp(info->code, "TAR002") == 0 ? 6002 :
                                          strcmp(info->code, "BLD003") == 0 ? 2003 :
                                          strcmp(info->code, "TYP009") == 0 ? 3010 :
@@ -2628,11 +2561,11 @@ static void print_explain_json(const ExplainInfo *info) {
                                          strcmp(info->code, "STD003") == 0 ? 3012 :
                                          strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
   zbuf_append(&buf, ", \"summary\": ");
-  append_json_string(&buf, info->canonical_repair);
+  z_json_string_append(&buf, info->canonical_repair);
   zbuf_append(&buf, "},\n  \"examples\": {\"bad\": ");
-  append_json_string(&buf, info->bad_example);
+  z_json_string_append(&buf, info->bad_example);
   zbuf_append(&buf, ", \"good\": ");
-  append_json_string(&buf, info->good_example);
+  z_json_string_append(&buf, info->good_example);
   zbuf_append(&buf, "}\n}\n");
   fputs(buf.data, stdout);
   zbuf_free(&buf);
@@ -2671,33 +2604,33 @@ static void print_diag_json(const char *path, const ZDiag *diag) {
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"diagnostics\": [\n    {\n");
   zbuf_append(&buf, "      \"severity\": \"error\",\n      \"code\": ");
-  append_json_string(&buf, diag_code(diag->code));
+  z_json_string_append(&buf, diag_code(diag->code));
   zbuf_append(&buf, ",\n      \"message\": ");
-  append_json_string(&buf, diag->message);
+  z_json_string_append(&buf, diag->message);
   zbuf_append(&buf, ",\n      \"path\": ");
-  append_json_string(&buf, diag->path ? diag->path : path);
+  z_json_string_append(&buf, diag->path ? diag->path : path);
   zbuf_appendf(&buf, ",\n      \"line\": %d,\n      \"column\": %d,\n      \"length\": %d,\n", diag->line, diag->column, diag->length > 0 ? diag->length : 1);
   zbuf_append(&buf, "      \"expected\": ");
-  append_json_string(&buf, diag->expected);
+  z_json_string_append(&buf, diag->expected);
   zbuf_append(&buf, ",\n      \"actual\": ");
-  append_json_string(&buf, diag->actual);
+  z_json_string_append(&buf, diag->actual);
   zbuf_append(&buf, ",\n      \"help\": ");
-  append_json_string(&buf, diag->help);
+  z_json_string_append(&buf, diag->help);
   zbuf_append(&buf, ",\n      \"fixSafety\": ");
-  append_json_string(&buf, diag_fix_safety(diag->code));
+  z_json_string_append(&buf, diag_fix_safety(diag->code));
   zbuf_append(&buf, ",\n      \"repair\": {\"id\": ");
-  append_json_string(&buf, diag_repair_id(diag->code));
+  z_json_string_append(&buf, diag_repair_id(diag->code));
   zbuf_append(&buf, ", \"summary\": ");
-  append_json_string(&buf, diag_repair_summary(diag->code));
+  z_json_string_append(&buf, diag_repair_summary(diag->code));
   zbuf_append(&buf, "}");
   zbuf_append(&buf, ",\n      \"related\": [");
   if ((diag->code == 7001 || diag->code == 7002 || diag->code == 7003 || diag->code == 1002 || diag->code == 1003 ||
        diag->code == 6001 || diag->code == 6002 ||
        diag->code == 3010 || diag->code == 3011 || diag->code == 3012 || diag->code == 3028 || diag->code == 3029) && diag->actual[0]) {
     zbuf_append(&buf, "{\"path\":");
-    append_json_string(&buf, diag->path ? diag->path : path);
+    z_json_string_append(&buf, diag->path ? diag->path : path);
     zbuf_appendf(&buf, ",\"line\":%d,\"column\":%d,\"message\":", diag->line, diag->column);
-    append_json_string(&buf, diag->actual);
+    z_json_string_append(&buf, diag->actual);
     zbuf_append(&buf, "}");
   }
   zbuf_append(&buf, "]");
@@ -2709,24 +2642,24 @@ static void print_diag_json(const char *path, const ZDiag *diag) {
 static void append_fix_plan_diagnostic(ZBuf *buf, const char *path, const ZDiag *diag) {
   zbuf_append(buf, "{");
   zbuf_append(buf, "\"code\": ");
-  append_json_string(buf, diag_code(diag->code));
+  z_json_string_append(buf, diag_code(diag->code));
   zbuf_append(buf, ", \"message\": ");
-  append_json_string(buf, diag->message);
+  z_json_string_append(buf, diag->message);
   zbuf_append(buf, ", \"path\": ");
-  append_json_string(buf, diag->path ? diag->path : path);
+  z_json_string_append(buf, diag->path ? diag->path : path);
   zbuf_appendf(buf, ", \"line\": %d, \"column\": %d, \"length\": %d", diag->line, diag->column, diag->length > 0 ? diag->length : 1);
   zbuf_append(buf, ", \"expected\": ");
-  append_json_string(buf, diag->expected);
+  z_json_string_append(buf, diag->expected);
   zbuf_append(buf, ", \"actual\": ");
-  append_json_string(buf, diag->actual);
+  z_json_string_append(buf, diag->actual);
   zbuf_append(buf, ", \"help\": ");
-  append_json_string(buf, diag->help);
+  z_json_string_append(buf, diag->help);
   zbuf_append(buf, ", \"fixSafety\": ");
-  append_json_string(buf, diag_fix_safety(diag->code));
+  z_json_string_append(buf, diag_fix_safety(diag->code));
   zbuf_append(buf, ", \"repair\": {\"id\": ");
-  append_json_string(buf, diag_repair_id(diag->code));
+  z_json_string_append(buf, diag_repair_id(diag->code));
   zbuf_append(buf, ", \"summary\": ");
-  append_json_string(buf, diag_repair_summary(diag->code));
+  z_json_string_append(buf, diag_repair_summary(diag->code));
   zbuf_append(buf, "}}");
 }
 
@@ -2737,20 +2670,20 @@ static void print_fix_plan_json(const char *path, const ZDiag *diag) {
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
   zbuf_append(&buf, has_diag ? "false" : "true");
   zbuf_append(&buf, ",\n  \"mode\": \"plan\",\n  \"appliesEdits\": false,\n  \"safetyLevels\": [\"format-only\", \"behavior-preserving\", \"api-changing\", \"target-changing\", \"requires-human-review\"],\n  \"input\": ");
-  append_json_string(&buf, path);
+  z_json_string_append(&buf, path);
   zbuf_append(&buf, ",\n  \"selfHostRepairPolicy\": {\"unsupportedFeatureSafety\":\"requires-human-review\",\"compatibilityFallback\":\"removed\",\"directFallback\":\"never-c-bridge\"}");
   zbuf_append(&buf, ",\n  \"diagnostics\": [");
   if (has_diag) append_fix_plan_diagnostic(&buf, path, diag);
   zbuf_append(&buf, "],\n  \"fixes\": [");
   if (has_diag) {
     zbuf_append(&buf, "{\"id\": ");
-    append_json_string(&buf, diag_repair_id(diag->code));
+    z_json_string_append(&buf, diag_repair_id(diag->code));
     zbuf_append(&buf, ", \"diagnosticCode\": ");
-    append_json_string(&buf, diag_code(diag->code));
+    z_json_string_append(&buf, diag_code(diag->code));
     zbuf_append(&buf, ", \"safety\": ");
-    append_json_string(&buf, diag_fix_safety(diag->code));
+    z_json_string_append(&buf, diag_fix_safety(diag->code));
     zbuf_append(&buf, ", \"summary\": ");
-    append_json_string(&buf, diag_repair_summary(diag->code));
+    z_json_string_append(&buf, diag_repair_summary(diag->code));
     zbuf_append(&buf, ", \"appliesEdits\": false}");
   }
   zbuf_append(&buf, "]\n}\n");
@@ -2850,32 +2783,32 @@ static int print_or_apply_fix_json(const char *path, SourceInput *input, const Z
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
   zbuf_append(&buf, has_diag ? "false" : "true");
   zbuf_append(&buf, ",\n  \"mode\": ");
-  append_json_string(&buf, apply ? "apply" : "patch");
+  z_json_string_append(&buf, apply ? "apply" : "patch");
   zbuf_appendf(&buf, ",\n  \"appliesEdits\": %s,\n  \"applied\": %s,\n  \"input\": ", apply ? "true" : "false", applied ? "true" : "false");
-  append_json_string(&buf, path);
+  z_json_string_append(&buf, path);
   zbuf_append(&buf, ",\n  \"selfHostRepairPolicy\": {\"unsupportedFeatureSafety\":\"requires-human-review\",\"compatibilityFallback\":\"removed\",\"directFallback\":\"never-c-bridge\"}");
   zbuf_append(&buf, ",\n  \"diagnostics\": [");
   if (has_diag) append_fix_plan_diagnostic(&buf, path, diag);
   zbuf_append(&buf, "],\n  \"fixes\": [");
   if (has_diag) {
     zbuf_append(&buf, "{\"id\": ");
-    append_json_string(&buf, diag_repair_id(diag->code));
+    z_json_string_append(&buf, diag_repair_id(diag->code));
     zbuf_append(&buf, ", \"diagnosticCode\": ");
-    append_json_string(&buf, diag_code(diag->code));
+    z_json_string_append(&buf, diag_code(diag->code));
     zbuf_append(&buf, ", \"safety\": ");
-    append_json_string(&buf, diag_fix_safety(diag->code));
+    z_json_string_append(&buf, diag_fix_safety(diag->code));
     zbuf_append(&buf, ", \"summary\": ");
-    append_json_string(&buf, diag_repair_summary(diag->code));
+    z_json_string_append(&buf, diag_repair_summary(diag->code));
     zbuf_appendf(&buf, ", \"appliesEdits\": %s}", has_edit ? "true" : "false");
   }
   zbuf_append(&buf, "],\n  \"patches\": [");
   if (has_edit) {
     zbuf_append(&buf, "{\"path\":");
-    append_json_string(&buf, edit_path);
+    z_json_string_append(&buf, edit_path);
     zbuf_appendf(&buf, ",\"line\":%d,\"old\":", edit_line);
-    append_json_string(&buf, old_line);
+    z_json_string_append(&buf, old_line);
     zbuf_append(&buf, ",\"new\":");
-    append_json_string(&buf, new_line);
+    z_json_string_append(&buf, new_line);
     zbuf_append(&buf, "}");
   }
   zbuf_append(&buf, "]\n}\n");
@@ -2893,12 +2826,13 @@ static void print_help(void) {
   printf("  zero --version [--json]\n");
   printf("  zero skills [list|get|path] [--json]\n");
   printf("  zero new cli|lib|package <name>\n");
+  printf("  zero keys <command> [options]\n");
   printf("  zero check <file.0|project|zero.json>\n");
   printf("  zero test <file.0|project|zero.json>\n");
   printf("  zero fmt <file.0|project|zero.json>\n");
   printf("  zero build [--json] [--emit exe|obj|wasm] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero run [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json> [-- args...]\n");
-  printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
+  printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <project|zero.json>\n");
   printf("  zero routes [--json] <project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
   printf("  zero parse --json <file.0|project|zero.json>\n");
@@ -2914,11 +2848,13 @@ static void print_help(void) {
   printf("  zero doctor [--json]\n");
   printf("  zero clean [--all]\n");
   printf("  zero targets\n");
+  printf("\nFlags:\n");
+  printf("  --insecure  skip trusted-keys signature verification\n");
   printf("\nExamples:\n");
   printf("  zero new cli hello\n");
   printf("  zero run examples/add.0\n");
   printf("  zero build --emit exe examples/hello.0 --out .zero/out/hello\n");
-  printf("  zero ship --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello\n");
+  printf("  zero ship --target linux-musl-x64 hello --out .zero/ship/hello\n");
   printf("  zero check --json examples/hello.0\n");
   printf("  zero build --target linux-musl-x64 examples/memory-package\n");
 }
@@ -2927,10 +2863,34 @@ static void print_command_help(const char *command) {
   if (strcmp(command, "new") == 0) {
     printf("Usage: zero new cli|lib|package <name>\n\n");
     printf("Create a small Zero project template.\n\n");
+    printf("Flags:\n");
+    printf("  --insecure  skip trusted-keys signature verification\n\n");
     printf("Examples:\n");
     printf("  zero new cli hello\n");
     printf("  zero new lib math-kit\n");
     printf("  zero new package demo\n");
+  } else if (strcmp(command, "keys") == 0) {
+    printf("Usage: zero keys <command> [options]\n\n");
+    printf("Manage developer keys and ledger authorization.\n\n");
+    printf("Commands:\n");
+    printf("  list\n");
+    printf("  show <label|key-id>\n");
+    printf("  new --email <email> [--name <name>] [--label <label>] [--no-activate]\n");
+    printf("  use <label|key-id>\n");
+    printf("  import --public <hex> --email <email> [--name <name>] [--label <label>]\n");
+    printf("  authorize --ledger <path> --key <label|key-id>\n");
+    printf("  revoke --ledger <path> --key <label|key-id> --reason <text>\n");
+    printf("  rotate --ledger <path> --old <label|key-id> --new <label|key-id>\n");
+    printf("  refresh\n\n");
+    printf("Flags:\n");
+    printf("  --json\n\n");
+    printf("Environment:\n");
+    printf("  ZERO_KEYS_DIR\n");
+    printf("  ZERO_TRUSTED_KEYS_DIR\n");
+    printf("  ZERO_TRUSTED_KEYS\n");
+    printf("  ZERO_TRUSTED_KEYS_SIG\n");
+    printf("  ZERO_TRUSTED_KEYS_URL\n");
+    printf("  ZERO_TRUSTED_KEYS_SIG_URL\n");
   } else if (strcmp(command, "skills") == 0) {
     printf("Usage: zero skills [list|get|path] [--json]\n\n");
     printf("List and retrieve bundled skill content for agents.\n\n");
@@ -2961,9 +2921,9 @@ static void print_command_help(const char *command) {
     printf("Build a host executable with the direct backend and run it. Program stdout and stderr are passed through unchanged.\n\n");
     printf("Example: zero run examples/add.0\n");
   } else if (strcmp(command, "ship") == 0) {
-    printf("Usage: zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>\n\n");
+    printf("Usage: zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <project|zero.json>\n\n");
     printf("Produce a deterministic release preview with a direct binary, stripped binary copy, checksum, archive manifest, debug-symbol metadata, size report, and SBOM placeholder.\n\n");
-    printf("Example: zero ship --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello\n");
+    printf("Example: zero ship --target linux-musl-x64 hello --out .zero/ship/hello\n");
   } else if (strcmp(command, "test") == 0) {
     printf("Usage: zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <file.0|project|zero.json>\n\n");
     printf("Build and run inline `test` blocks.\n");
@@ -3072,6 +3032,9 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
   } else if (strcmp(arg, "--trace") == 0) {
     command->trace = true;
     return true;
+  } else if (strcmp(arg, "--insecure") == 0) {
+    command->insecure = true;
+    return true;
   } else if (strcmp(arg, "--legacy-backend") == 0) {
     command->legacy_backend = true;
     return true;
@@ -3098,7 +3061,11 @@ static bool parse_command(int argc, char **argv, Command *command) {
     }
     for (int i = 3; i < argc; i++) {
       if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) return true;
-      else if (!command->input) command->input = argv[i];
+      if (strcmp(argv[i], "--insecure") == 0) {
+        command->insecure = true;
+        continue;
+      }
+      if (!command->input) command->input = argv[i];
       else return false;
     }
     return true;
@@ -3468,17 +3435,17 @@ static void append_profile_aliases_json(ZBuf *buf, const char *profile) {
   const char *canonical = profile_canonical_name(profile);
   zbuf_append(buf, "[");
   if (strcmp(canonical, "release-small") == 0) {
-    append_json_string(buf, "small");
+    z_json_string_append(buf, "small");
     zbuf_append(buf, ", ");
-    append_json_string(buf, "release-small");
+    z_json_string_append(buf, "release-small");
     zbuf_append(buf, ", ");
-    append_json_string(buf, "release");
+    z_json_string_append(buf, "release");
   } else if (strcmp(canonical, "release-fast") == 0) {
-    append_json_string(buf, "fast");
+    z_json_string_append(buf, "fast");
     zbuf_append(buf, ", ");
-    append_json_string(buf, "release-fast");
+    z_json_string_append(buf, "release-fast");
   } else {
-    append_json_string(buf, canonical);
+    z_json_string_append(buf, canonical);
   }
   zbuf_append(buf, "]");
 }
@@ -3487,42 +3454,42 @@ static void append_profile_budget_json(ZBuf *buf, const char *profile) {
   zbuf_append(buf, "{\"maxHelloArtifactBytes\":");
   zbuf_appendf(buf, "%d", profile_max_hello_bytes(profile));
   zbuf_append(buf, ",\"helperBudgetPolicy\":");
-  append_json_string(buf, profile_helper_budget_policy(profile));
+  z_json_string_append(buf, profile_helper_budget_policy(profile));
   zbuf_append(buf, ",\"debugMetadataAllowed\":");
   zbuf_append(buf, profile_debug_info(profile) ? "true" : "false");
   zbuf_append(buf, ",\"metadataRetention\":");
-  append_json_string(buf, profile_runtime_metadata(profile));
+  z_json_string_append(buf, profile_runtime_metadata(profile));
   zbuf_append(buf, ",\"deterministicArtifacts\":true,\"generatedCBytes\":0,\"cBridgeFallback\":false}");
 }
 
 static void append_profile_semantics_json(ZBuf *buf, const char *profile) {
   zbuf_append(buf, "{\"requested\":");
-  append_json_string(buf, profile ? profile : "release");
+  z_json_string_append(buf, profile ? profile : "release");
   zbuf_append(buf, ",\"canonical\":");
-  append_json_string(buf, profile_canonical_name(profile));
+  z_json_string_append(buf, profile_canonical_name(profile));
   zbuf_append(buf, ",\"profileKey\":");
-  append_json_string(buf, profile_key_name(profile));
+  z_json_string_append(buf, profile_key_name(profile));
   zbuf_append(buf, ",\"aliases\":");
   append_profile_aliases_json(buf, profile);
   zbuf_append(buf, ",\"optimizationGoal\":");
-  append_json_string(buf, profile_optimization_goal(profile));
+  z_json_string_append(buf, profile_optimization_goal(profile));
   zbuf_append(buf, ",\"codegenOptimization\":");
-  append_json_string(buf, profile_codegen_optimization(profile));
+  z_json_string_append(buf, profile_codegen_optimization(profile));
   zbuf_append(buf, ",\"linkOptimization\":");
-  append_json_string(buf, profile_link_optimization(profile));
+  z_json_string_append(buf, profile_link_optimization(profile));
   zbuf_append(buf, ",\"overflowPolicy\":");
-  append_json_string(buf, profile_overflow_policy(profile));
+  z_json_string_append(buf, profile_overflow_policy(profile));
   zbuf_append(buf, ",\"boundsPolicy\":");
-  append_json_string(buf, profile_bounds_policy(profile));
+  z_json_string_append(buf, profile_bounds_policy(profile));
   zbuf_append(buf, ",\"panicPolicy\":");
-  append_json_string(buf, profile_panic_policy(profile));
+  z_json_string_append(buf, profile_panic_policy(profile));
   zbuf_append(buf, ",\"unwindPolicy\":");
-  append_json_string(buf, profile_unwind_policy(profile));
+  z_json_string_append(buf, profile_unwind_policy(profile));
   zbuf_appendf(buf, ",\"debugInfo\":%s", profile_debug_info(profile) ? "true" : "false");
   zbuf_append(buf, ",\"runtimeMetadataPolicy\":");
-  append_json_string(buf, profile_runtime_metadata(profile));
+  z_json_string_append(buf, profile_runtime_metadata(profile));
   zbuf_append(buf, ",\"symbolPolicy\":");
-  append_json_string(buf, profile_symbol_policy(profile));
+  z_json_string_append(buf, profile_symbol_policy(profile));
   zbuf_append(buf, ",\"panicFormatting\":");
   zbuf_append(buf, profile_debug_info(profile) ? "true" : "false");
   zbuf_append(buf, ",\"profileBudget\":");
@@ -3558,22 +3525,22 @@ static const char *public_linker_label(const char *linker) {
 static void append_toolchain_plan_json(ZBuf *buf, const Command *command, const ZTargetInfo *target) {
   ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
   zbuf_append(buf, "{\"driverKind\":");
-  append_json_string(buf, public_driver_kind(plan.driver_kind));
+  z_json_string_append(buf, public_driver_kind(plan.driver_kind));
   zbuf_append(buf, ",\"selectionSource\":");
-  append_json_string(buf, plan.selection_source);
+  z_json_string_append(buf, plan.selection_source);
   zbuf_append(buf, ",\"compiler\":");
-  append_json_string(buf, public_compiler_label(&plan));
+  z_json_string_append(buf, public_compiler_label(&plan));
   zbuf_append(buf, ",\"targetTriple\":");
-  append_json_string(buf, plan.target_triple);
+  z_json_string_append(buf, plan.target_triple);
   zbuf_append(buf, ",\"linkerFlavor\":");
-  append_json_string(buf, public_linker_label(plan.linker_flavor));
+  z_json_string_append(buf, public_linker_label(plan.linker_flavor));
   zbuf_append(buf, ",\"libcMode\":");
-  append_json_string(buf, plan.libc_mode);
+  z_json_string_append(buf, plan.libc_mode);
   zbuf_appendf(buf, ",\"requiresSysroot\":%s", plan.requires_sysroot ? "true" : "false");
   zbuf_append(buf, ",\"sysrootEnv\":");
-  append_json_string(buf, plan.sysroot_env);
+  z_json_string_append(buf, plan.sysroot_env);
   zbuf_append(buf, ",\"sysrootStatus\":");
-  append_json_string(buf, plan.sysroot_status);
+  z_json_string_append(buf, plan.sysroot_status);
   zbuf_appendf(buf, ",\"usesTargetFlag\":%s", plan.uses_target_flag ? "true" : "false");
   zbuf_appendf(buf, ",\"usesToolchainCache\":%s", plan.uses_zig_cache ? "true" : "false");
   zbuf_appendf(buf, ",\"stripArtifact\":%s", plan.strip_artifact ? "true" : "false");
@@ -3786,13 +3753,13 @@ static void append_runtime_import_audit_json(ZBuf *buf, const IrProgram *ir, con
   size_t import_count = wasm_target ? runtime_import_audit_count(&audit) : 0;
   bool linear_memory = runtime_linear_memory_required(input, wasm_target, import_count);
   zbuf_append(buf, "{\"source\":\"direct-wasm-ir-scan\",\"module\":");
-  if (import_count > 0) append_json_string(buf, "wasi_snapshot_preview1");
+  if (import_count > 0) z_json_string_append(buf, "wasi_snapshot_preview1");
   else zbuf_append(buf, "null");
   zbuf_append(buf, ",\"functions\":");
   append_runtime_import_functions_json(buf, &audit, wasm_target);
   zbuf_appendf(buf, ",\"functionCount\":%zu", import_count);
   zbuf_append(buf, ",\"target\":");
-  append_json_string(buf, target ? target->name : "host");
+  z_json_string_append(buf, target ? target->name : "host");
   zbuf_append(buf, ",\"memoryFloor\":");
   append_wasm_memory_floor_json(buf, input, linear_memory);
   zbuf_append(buf, "}");
@@ -3804,29 +3771,29 @@ static void append_portable_runtime_json(ZBuf *buf, const IrProgram *ir, const S
   size_t import_count = wasm_target ? runtime_import_audit_count(&audit) : 0;
   bool linear_memory = runtime_linear_memory_required(input, wasm_target, import_count);
   zbuf_append(buf, "{\"schemaVersion\":1,\"target\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\"runtimeKind\":");
-  append_json_string(buf, portable_runtime_kind(target));
+  z_json_string_append(buf, portable_runtime_kind(target));
   zbuf_append(buf, ",\"portable\":");
   zbuf_append(buf, wasm_target ? "true" : "false");
   zbuf_append(buf, ",\"providerSpecificDeployment\":false,\"hostedDeployment\":\"out-of-scope\"");
   zbuf_append(buf, ",\"imports\":{\"source\":\"direct-wasm-ir-scan\",\"explicit\":");
   zbuf_append(buf, wasm_target ? "true" : "false");
   zbuf_append(buf, ",\"module\":");
-  if (import_count > 0) append_json_string(buf, "wasi_snapshot_preview1");
+  if (import_count > 0) z_json_string_append(buf, "wasi_snapshot_preview1");
   else zbuf_append(buf, "null");
   zbuf_append(buf, ",\"functions\":");
   append_runtime_import_functions_json(buf, &audit, wasm_target);
   zbuf_appendf(buf, ",\"functionCount\":%zu", import_count);
   zbuf_append(buf, ",\"adapter\":");
-  if (target_name_is(target, "wasm32-web")) append_json_string(buf, "browser-worker-import-shim");
-  else if (target_name_is(target, "wasm32-wasi")) append_json_string(buf, "wasi-preview1-import-shim");
-  else append_json_string(buf, "native-target-runtime");
+  if (target_name_is(target, "wasm32-web")) z_json_string_append(buf, "browser-worker-import-shim");
+  else if (target_name_is(target, "wasm32-wasi")) z_json_string_append(buf, "wasi-preview1-import-shim");
+  else z_json_string_append(buf, "native-target-runtime");
   zbuf_append(buf, "},\"localRunner\":{\"covered\":");
   zbuf_append(buf, wasm_target ? "true" : "false");
   zbuf_append(buf, ",\"command\":");
-  if (wasm_target) append_json_string(buf, "npm run wasm:runtime:smoke");
-  else append_json_string(buf, "zero dev");
+  if (wasm_target) z_json_string_append(buf, "npm run wasm:runtime:smoke");
+  else z_json_string_append(buf, "zero dev");
   zbuf_append(buf, ",\"productionLikeImports\":");
   zbuf_append(buf, wasm_target ? "true" : "false");
   zbuf_append(buf, "},\"capabilityRestrictions\":");
@@ -3884,9 +3851,9 @@ static void append_target_capability_contract_json(ZBuf *buf, const ZTargetInfo 
   for (int i = 0; capabilities[i]; i++) {
     if (i > 0) zbuf_append(buf, ",");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, capabilities[i]);
+    z_json_string_append(buf, capabilities[i]);
     zbuf_appendf(buf, ",\"available\":%s,\"source\":", z_target_has_capability(target, capabilities[i]) ? "true" : "false");
-    append_json_string(buf, z_target_has_capability(target, capabilities[i]) ? "target-manifest" : "unavailable");
+    z_json_string_append(buf, z_target_has_capability(target, capabilities[i]) ? "target-manifest" : "unavailable");
     zbuf_append(buf, "}");
   }
   zbuf_append(buf, "]");
@@ -3899,7 +3866,7 @@ static void append_target_capability_names_json(ZBuf *buf, const ZTargetInfo *ta
   for (int i = 0; capabilities[i]; i++) {
     if (!z_target_has_capability(target, capabilities[i])) continue;
     if (!first) zbuf_append(buf, ",");
-    append_json_string(buf, capabilities[i]);
+    z_json_string_append(buf, capabilities[i]);
     first = false;
   }
   zbuf_append(buf, "]");
@@ -3922,59 +3889,59 @@ static void append_release_target_contract_json(ZBuf *buf, const SourceInput *in
   const char *sysroot_status = artifact_requires_sysroot ? plan.sysroot_status : (target_requires_sysroot ? "not-used-by-direct-artifact" : "not-required");
 
   zbuf_append(buf, "{\"schemaVersion\":1,\"target\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_append(buf, ",\"hostTarget\":");
-  append_json_string(buf, z_host_target());
+  z_json_string_append(buf, z_host_target());
   zbuf_appendf(buf, ",\"crossCompilation\":%s", target && strcmp(target->name, z_host_target()) != 0 ? "true" : "false");
   zbuf_append(buf, ",\"emit\":");
-  append_json_string(buf, emit_kind ? emit_kind : "exe");
+  z_json_string_append(buf, emit_kind ? emit_kind : "exe");
   zbuf_append(buf, ",\"artifactKind\":");
-  append_json_string(buf, release_artifact_kind_for_emit(target, emit_kind));
+  z_json_string_append(buf, release_artifact_kind_for_emit(target, emit_kind));
   zbuf_append(buf, ",\"objectFormat\":");
-  append_json_string(buf, object_format);
+  z_json_string_append(buf, object_format);
   zbuf_append(buf, ",\"os\":");
-  append_json_string(buf, target && target->os ? target->os : "unknown");
+  z_json_string_append(buf, target && target->os ? target->os : "unknown");
   zbuf_append(buf, ",\"arch\":");
-  append_json_string(buf, target && target->arch ? target->arch : "unknown");
+  z_json_string_append(buf, target && target->arch ? target->arch : "unknown");
   zbuf_append(buf, ",\"abi\":");
-  append_json_string(buf, target && target->abi ? target->abi : "");
+  z_json_string_append(buf, target && target->abi ? target->abi : "");
   zbuf_append(buf, ",\"linkerFlavor\":");
-  append_json_string(buf, linker_flavor);
+  z_json_string_append(buf, linker_flavor);
   zbuf_append(buf, ",\"targetLinker\":");
-  append_json_string(buf, target && target->linker ? target->linker : "");
+  z_json_string_append(buf, target && target->linker ? target->linker : "");
   zbuf_append(buf, ",\"selectedEmitter\":");
-  append_json_string(buf, selected_emitter);
+  z_json_string_append(buf, selected_emitter);
   zbuf_append(buf, ",\"directObjectEmitter\":");
-  append_json_string(buf, z_direct_object_emitter(target));
+  z_json_string_append(buf, z_direct_object_emitter(target));
   zbuf_append(buf, ",\"directExeEmitter\":");
-  append_json_string(buf, z_direct_exe_emitter(target));
+  z_json_string_append(buf, z_direct_exe_emitter(target));
   zbuf_append(buf, ",\"directStatus\":");
-  append_json_string(buf, z_direct_backend_status(target));
+  z_json_string_append(buf, z_direct_backend_status(target));
   zbuf_append(buf, ",\"fallbackPolicy\":\"explicit-direct-never-c-bridge\",\"generatedCBytes\":0,\"cBridgeFallback\":false");
   zbuf_append(buf, ",\"libc\":{\"name\":");
-  append_json_string(buf, target && target->libc ? target->libc : "default");
+  z_json_string_append(buf, target && target->libc ? target->libc : "default");
   zbuf_append(buf, ",\"targetMode\":");
-  append_json_string(buf, z_target_libc_mode(target));
+  z_json_string_append(buf, z_target_libc_mode(target));
   zbuf_append(buf, ",\"artifactMode\":");
-  append_json_string(buf, artifact_libc_mode);
+  z_json_string_append(buf, artifact_libc_mode);
   zbuf_appendf(buf, ",\"hostReusable\":%s}", target && z_target_is_host(target) ? "true" : "false");
   zbuf_appendf(buf, ",\"sysroot\":{\"requiredByTarget\":%s,\"requiredByArtifact\":%s,\"env\":",
                target_requires_sysroot ? "true" : "false",
                artifact_requires_sysroot ? "true" : "false");
-  append_json_string(buf, target_requires_sysroot || artifact_requires_sysroot ? plan.sysroot_env : "");
+  z_json_string_append(buf, target_requires_sysroot || artifact_requires_sysroot ? plan.sysroot_env : "");
   zbuf_append(buf, ",\"status\":");
-  append_json_string(buf, sysroot_status);
+  z_json_string_append(buf, sysroot_status);
   zbuf_appendf(buf, ",\"missing\":%s}", artifact_requires_sysroot && strcmp(plan.sysroot_status, "missing") == 0 ? "true" : "false");
   zbuf_append(buf, ",\"capabilities\":");
   append_target_capability_names_json(buf, target);
   zbuf_append(buf, ",\"capabilityFacts\":");
   append_target_capability_contract_json(buf, target);
   zbuf_append(buf, ",\"readiness\":{\"status\":");
-  append_json_string(buf, direct_selected ? "supported" : "unsupported");
+  z_json_string_append(buf, direct_selected ? "supported" : "unsupported");
   zbuf_appendf(buf, ",\"directArtifact\":%s,\"missingSysroot\":%s,\"unsupportedReason\":",
                direct_selected ? "true" : "false",
                artifact_requires_sysroot && strcmp(plan.sysroot_status, "missing") == 0 ? "true" : "false");
-  append_json_string(buf, direct_selected ? "" : z_direct_backend_reason(target));
+  z_json_string_append(buf, direct_selected ? "" : z_direct_backend_reason(target));
   zbuf_append(buf, "},\"determinism\":{\"reproducible\":true,\"stableArtifactNames\":true,\"repeatBuildHash\":\"checked-by-command-contracts\"}");
   zbuf_appendf(buf, ",\"sourceFileCount\":%zu,\"moduleCount\":%zu}", input ? input->source_file_count : 0, input ? input->module_count : 0);
 }
@@ -4006,42 +3973,42 @@ static void append_object_backend_json(ZBuf *buf, const SourceInput *input, cons
                  direct_symbol_count,
                  input && input->direct_function_count > input->direct_export_count ? input->direct_function_count - input->direct_export_count : 0);
     zbuf_append(buf, ",\"linking\":{\"linkerFlavor\":");
-    append_json_string(buf, direct_linker_flavor_for_emitter(direct_emitter));
+    z_json_string_append(buf, direct_linker_flavor_for_emitter(direct_emitter));
     zbuf_append(buf, ",\"objectFormat\":");
-    append_json_string(buf, object_format);
+    z_json_string_append(buf, object_format);
     zbuf_append(buf, ",\"targetLibraries\":\"none\",\"symbolMap\":");
-    append_json_string(buf, strcmp(object_format, "wasm") == 0 ? "not-emitted-in-mvp" : "object-symbol-table");
+    z_json_string_append(buf, strcmp(object_format, "wasm") == 0 ? "not-emitted-in-mvp" : "object-symbol-table");
     zbuf_append(buf, ",\"externalToolchain\":\"none\",\"toolchainSource\":\"direct-backend\",\"stripArtifacts\":false}");
     zbuf_append(buf, ",\"linkerPlan\":{\"format\":");
-    append_json_string(buf, object_format);
+    z_json_string_append(buf, object_format);
     zbuf_append(buf, ",\"flavor\":");
-    append_json_string(buf, direct_linker_flavor_for_emitter(direct_emitter));
+    z_json_string_append(buf, direct_linker_flavor_for_emitter(direct_emitter));
     zbuf_append(buf, ",\"archives\":[],\"staticLibraries\":[],\"importLibraries\":[],\"systemLibraries\":[],\"rpaths\":[],\"loadPaths\":[],\"visibility\":\"exported-c-and-main-only\",\"crossLinking\":true,\"externalToolchain\":\"none\",\"reproducible\":true,\"libcMode\":\"none\",\"targetLibcMode\":");
-    append_json_string(buf, z_target_libc_mode(target));
+    z_json_string_append(buf, z_target_libc_mode(target));
     zbuf_appendf(buf, ",\"requiresSysroot\":false,\"targetRequiresSysroot\":%s,\"sysrootStatus\":",
                  z_target_requires_sysroot(target) ? "true" : "false");
-    append_json_string(buf, z_target_requires_sysroot(target) ? "not-used-by-direct-artifact" : "not-required");
+    z_json_string_append(buf, z_target_requires_sysroot(target) ? "not-used-by-direct-artifact" : "not-required");
     zbuf_append(buf, "}");
     zbuf_append(buf, ",\"targetFacts\":{\"directAvailable\":true,\"status\":");
-    append_json_string(buf, z_direct_backend_status(target));
+    z_json_string_append(buf, z_direct_backend_status(target));
     zbuf_append(buf, ",\"selectedEmitter\":");
-    append_json_string(buf, direct_emitter);
+    z_json_string_append(buf, direct_emitter);
     zbuf_append(buf, ",\"objectFormat\":");
-    append_json_string(buf, object_format);
+    z_json_string_append(buf, object_format);
     zbuf_append(buf, ",\"arch\":");
-    append_json_string(buf, arch);
+    z_json_string_append(buf, arch);
     zbuf_append(buf, ",\"abi\":");
-    append_json_string(buf, target && target->abi ? target->abi : "");
+    z_json_string_append(buf, target && target->abi ? target->abi : "");
     zbuf_append(buf, ",\"libcMode\":");
-    append_json_string(buf, z_target_libc_mode(target));
+    z_json_string_append(buf, z_target_libc_mode(target));
     zbuf_appendf(buf, ",\"requiresSysroot\":%s", z_target_requires_sysroot(target) ? "true" : "false");
     zbuf_append(buf, ",\"capabilities\":");
     append_target_capability_names_json(buf, target);
     zbuf_append(buf, ",\"fallbackPolicy\":\"explicit-direct-never-c-bridge\",\"reason\":");
-    append_json_string(buf, z_direct_backend_reason(target));
+    z_json_string_append(buf, z_direct_backend_reason(target));
     zbuf_append(buf, "}");
     zbuf_appendf(buf, ",\"moduleCount\":%zu,\"emitKind\":", input ? input->module_count : 0);
-    append_json_string(buf, emit_kind ? emit_kind : "exe");
+    z_json_string_append(buf, emit_kind ? emit_kind : "exe");
     append_direct_backend_facts_json(buf, input);
     zbuf_append(buf, "}");
     return;
@@ -4049,21 +4016,21 @@ static void append_object_backend_json(ZBuf *buf, const SourceInput *input, cons
   zbuf_append(buf, "{\"internalIr\":{\"typeRepresentation\":\"MIR primitive value types\",\"controlFlowRepresentation\":\"direct-backend-only\",\"callRepresentation\":\"unsupported-direct-request\",\"debugRepresentation\":\"source spans retained on diagnostics\"}");
   zbuf_append(buf, ",\"objectEmission\":{\"path\":\"none\",\"functions\":false,\"dataSections\":false,\"symbols\":false,\"relocations\":\"none\"}");
   zbuf_append(buf, ",\"linking\":{\"linkerFlavor\":\"none\",\"objectFormat\":");
-  append_json_string(buf, target && target->object_format ? target->object_format : "native");
+  z_json_string_append(buf, target && target->object_format ? target->object_format : "native");
   zbuf_append(buf, ",\"targetLibraries\":\"none\",\"symbolMap\":\"none\",\"externalToolchain\":\"none\",\"toolchainSource\":\"direct-backend-only\",\"stripArtifacts\":false}");
   zbuf_append(buf, ",\"linkerPlan\":{\"format\":");
-  append_json_string(buf, target && target->object_format ? target->object_format : "native");
+  z_json_string_append(buf, target && target->object_format ? target->object_format : "native");
   ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
   zbuf_append(buf, ",\"flavor\":\"none\",\"archives\":[],\"staticLibraries\":[],\"importLibraries\":[],\"systemLibraries\":[],\"rpaths\":[],\"loadPaths\":[],\"visibility\":\"none\",\"crossLinking\":false,\"externalToolchain\":\"none\",\"reproducible\":true,\"libcMode\":");
-  append_json_string(buf, plan.libc_mode);
+  z_json_string_append(buf, plan.libc_mode);
   zbuf_appendf(buf, ",\"requiresSysroot\":%s,\"sysrootStatus\":", plan.requires_sysroot ? "true" : "false");
-  append_json_string(buf, plan.sysroot_status);
+  z_json_string_append(buf, plan.sysroot_status);
   zbuf_append(buf, "}");
   zbuf_append(buf, ",\"targetFacts\":{\"directAvailable\":false,\"fallbackPolicy\":\"removed\",\"reason\":");
-  append_json_string(buf, z_direct_backend_reason(target));
+  z_json_string_append(buf, z_direct_backend_reason(target));
   zbuf_append(buf, "}");
   zbuf_appendf(buf, ",\"moduleCount\":%zu,\"emitKind\":", input ? input->module_count : 0);
-  append_json_string(buf, emit_kind ? emit_kind : "exe");
+  z_json_string_append(buf, emit_kind ? emit_kind : "exe");
   zbuf_append(buf, "}");
 }
 
@@ -4206,11 +4173,11 @@ static void append_memory_capability_facts_json(ZBuf *buf, const CapabilitySumma
   zbuf_append(buf, ",\"targetSupport\":");
   append_target_capability_facts_json(buf, target, caps);
   zbuf_append(buf, ",\"filesystem\":");
-  append_json_string(buf, caps && caps->fs
+  z_json_string_append(buf, caps && caps->fs
                         ? (z_target_has_capability(target, "fs") ? "available" : "target-denied")
                         : "not-required");
   zbuf_append(buf, ",\"worldStdio\":");
-  append_json_string(buf, caps && caps->world
+  z_json_string_append(buf, caps && caps->world
                         ? (z_target_has_capability(target, "stdio") ? "available" : "target-denied")
                         : "not-required");
   zbuf_append(buf, "}");
@@ -4231,13 +4198,13 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
                   uses_allocator ||
                   uses_buffers;
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, input ? input->source_file : NULL);
+  z_json_string_append(buf, input ? input->source_file : NULL);
   zbuf_append(buf, ",\n  \"target\": ");
-  append_json_string(buf, target ? target->name : "host");
+  z_json_string_append(buf, target ? target->name : "host");
   zbuf_append(buf, ",\n  \"hostTarget\": ");
-  append_json_string(buf, z_host_target());
+  z_json_string_append(buf, z_host_target());
   zbuf_append(buf, ",\n  \"profile\": ");
-  append_json_string(buf, command && command->profile ? command->profile : "release");
+  z_json_string_append(buf, command && command->profile ? command->profile : "release");
   zbuf_append(buf, ",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"loweredIrBytes\": ");
   zbuf_appendf(buf, "%zu", input ? input->lowered_ir_bytes : 0);
   zbuf_append(buf, ",\n  \"directFacts\": {\"functionCount\":");
@@ -4257,11 +4224,11 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
                memory_budget_stack_bytes(input, &memory_summary),
                memory_budget_max_frame_bytes(input, &memory_summary),
                memory_budget_static_bytes(input, &memory_summary));
-  append_json_string(buf, uses_allocator ? "explicit-allocator-no-global-heap" : "not-required");
+  z_json_string_append(buf, uses_allocator ? "explicit-allocator-no-global-heap" : "not-required");
   zbuf_append(buf, ",\"allocator\":");
-  append_json_string(buf, uses_allocator ? "explicit" : "none");
+  z_json_string_append(buf, uses_allocator ? "explicit" : "none");
   zbuf_append(buf, ",\"buffer\":");
-  append_json_string(buf, uses_buffers ? "explicit collections" : "none");
+  z_json_string_append(buf, uses_buffers ? "explicit collections" : "none");
   zbuf_append(buf, ",\"hiddenHeapAllocation\":false,\"boundsTraps\":\"pay-as-used\"},\n  \"memoryBudgets\": ");
   append_memory_budgets_json(buf, input, &memory_summary, linear_memory);
   zbuf_append(buf, ",\n  \"allocatorFacts\": ");
@@ -4283,11 +4250,11 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
   zbuf_append(buf, ",\n  \"mir\": {\"valid\":");
   zbuf_append(buf, ir && ir->mir_valid ? "true" : "false");
   zbuf_append(buf, ",\"expected\":");
-  append_json_string(buf, ir ? ir->mir_expected : "");
+  z_json_string_append(buf, ir ? ir->mir_expected : "");
   zbuf_append(buf, ",\"actual\":");
-  append_json_string(buf, ir ? ir->mir_actual : "");
+  z_json_string_append(buf, ir ? ir->mir_actual : "");
   zbuf_append(buf, ",\"message\":");
-  append_json_string(buf, ir ? ir->mir_message : "");
+  z_json_string_append(buf, ir ? ir->mir_message : "");
   zbuf_append(buf, "},\n  \"compilerPhases\": ");
   append_compiler_phases_json(buf, input);
   zbuf_append(buf, ",\n  \"compilerCaches\": ");
@@ -4329,13 +4296,13 @@ static void print_build_json(const Command *command, const SourceInput *input, c
     ZBuf direct_toolchain;
     zbuf_init(&direct_toolchain);
     zbuf_append(&direct_toolchain, "{\"driverKind\":");
-    append_json_string(&direct_toolchain, driver_kind);
+    z_json_string_append(&direct_toolchain, driver_kind);
     zbuf_append(&direct_toolchain, ",\"selectionSource\":\"direct-backend\",\"compiler\":");
-    append_json_string(&direct_toolchain, driver_kind);
+    z_json_string_append(&direct_toolchain, driver_kind);
     zbuf_append(&direct_toolchain, ",\"targetTriple\":");
-    append_json_string(&direct_toolchain, target && target->zig_target ? target->zig_target : "");
+    z_json_string_append(&direct_toolchain, target && target->zig_target ? target->zig_target : "");
     zbuf_append(&direct_toolchain, ",\"linkerFlavor\":");
-    append_json_string(&direct_toolchain, direct_linker_flavor_for_emitter(direct_emitter));
+    z_json_string_append(&direct_toolchain, direct_linker_flavor_for_emitter(direct_emitter));
     zbuf_append(&direct_toolchain, ",\"libcMode\":\"none\",\"requiresSysroot\":false,\"sysrootEnv\":\"\",\"sysrootStatus\":\"not-required\",\"usesTargetFlag\":false,\"usesToolchainCache\":false,\"stripArtifact\":false}");
     fputs(direct_toolchain.data, stdout);
     zbuf_free(&direct_toolchain);
@@ -4395,6 +4362,52 @@ static long long file_size_or_negative(const char *path) {
   return (long long)st.st_size;
 }
 
+static bool ship_diag_set(ZDiag *diag, const char *path, const char *message, const char *help) {
+  diag->code = 9004;
+  diag->path = path;
+  diag->line = 1;
+  diag->column = 1;
+  snprintf(diag->message, sizeof(diag->message), "%s", message ? message : "ship failed");
+  snprintf(diag->help, sizeof(diag->help), "%s", help ? help : "check ledger and trusted keys");
+  return false;
+}
+
+static bool ship_ledger_load(const SourceInput *input, LedgerKeys *trusted, LedgerKeys *ledger, char **ledger_path, ZDiag *diag) {
+  if (!input || !input->package_root || !input->package_root[0]) {
+    return ship_diag_set(diag, input ? input->source_file : NULL,
+                         "ship requires ledger.json",
+                         "run zero new package to create ledger.json");
+  }
+  char *path = z_path_join(input->package_root, "ledger.json");
+  *ledger_path = path;
+  if (!z_path_exists(path)) {
+    return ship_diag_set(diag, path, "ledger.json missing", "run zero new package to create ledger.json");
+  }
+  if (!z_trusted_keys_load_verified(trusted, diag)) {
+    ledger_keys_free(trusted);
+    return false;
+  }
+  if (!ledger_read_keys(path, trusted, ledger, NULL, NULL, NULL, diag)) {
+    ledger_keys_free(trusted);
+    ledger_keys_free(ledger);
+    return false;
+  }
+  return true;
+}
+
+static bool ship_signer_check(const LedgerKeys *ledger, const KeyUse *signer, const char *ledger_path, ZDiag *diag) {
+  if (!signer || !signer->id_hex || !signer->id_hex[0]) {
+    return ship_diag_set(diag, ledger_path, "ship signer missing", "select an active key");
+  }
+  if (!z_ledger_keys_has_publisher(ledger, signer->id_hex)) {
+    return ship_diag_set(diag, ledger_path, "ship signer not authorized", "authorize the key with zero keys authorize");
+  }
+  if (z_ledger_keys_has_revoked(ledger, signer->id_hex)) {
+    return ship_diag_set(diag, ledger_path, "ship signer revoked", "rotate or authorize another key");
+  }
+  return true;
+}
+
 static char *path_with_suffix(const char *path, const char *suffix) {
   ZBuf buf;
   zbuf_init(&buf);
@@ -4422,23 +4435,40 @@ static void ship_artifacts_free(ShipArtifacts *artifacts) {
   free(artifacts->binary_path);
   free(artifacts->stripped_path);
   free(artifacts->checksum_path);
+  free(artifacts->signature_path);
   free(artifacts->archive_path);
   free(artifacts->debug_path);
   free(artifacts->size_path);
   free(artifacts->sbom_path);
+  free(artifacts->signer_key_id);
+  free(artifacts->signer_label);
   memset(artifacts, 0, sizeof(*artifacts));
 }
 
-static bool write_ship_artifacts(const Command *command, const SourceInput *input, const ZTargetInfo *target, const ZBuf *exe, const char *exe_file, ShipArtifacts *artifacts, ZDiag *diag) {
+static bool write_ship_artifacts(
+  const Command *command,
+  const SourceInput *input,
+  const ZTargetInfo *target,
+  const ZBuf *exe,
+  const char *exe_file,
+  const KeyUse *signer,
+  ShipArtifacts *artifacts,
+  ZDiag *diag
+) {
   memset(artifacts, 0, sizeof(*artifacts));
   artifacts->binary_path = z_strdup(exe_file);
   artifacts->stripped_path = path_with_suffix(exe_file, ".stripped");
   artifacts->checksum_path = path_with_suffix(exe_file, ".checksum");
+  artifacts->signature_path = path_with_suffix(artifacts->checksum_path, ".sig");
   artifacts->archive_path = path_with_suffix(exe_file, ".zeroar");
   artifacts->debug_path = path_with_suffix(exe_file, ".debug.json");
   artifacts->size_path = path_with_suffix(exe_file, ".size.json");
   artifacts->sbom_path = path_with_suffix(exe_file, ".sbom.json");
-  artifacts->checksum = fnv1a_bytes((const unsigned char *)(exe && exe->data ? exe->data : ""), exe ? exe->len : 0);
+  artifacts->signer_key_id = z_strdup(signer && signer->id_hex ? signer->id_hex : "");
+  artifacts->signer_label = z_strdup(signer && signer->label && signer->label[0] ? signer->label : "default");
+  unsigned char checksum_bytes[32];
+  sha256_hash((const unsigned char *)(exe && exe->data ? exe->data : ""), exe ? exe->len : 0, checksum_bytes);
+  z_hex_write(checksum_bytes, 32, artifacts->checksum_hex);
   artifacts->binary_bytes = file_size_or_negative(exe_file);
 
   if (!z_write_binary_file(artifacts->stripped_path, (const unsigned char *)(exe && exe->data ? exe->data : ""), exe ? exe->len : 0, diag)) return false;
@@ -4447,23 +4477,44 @@ static bool write_ship_artifacts(const Command *command, const SourceInput *inpu
 
   ZBuf checksum;
   zbuf_init(&checksum);
-  zbuf_appendf(&checksum, "fnv1a64 %016llx  %s\n", (unsigned long long)artifacts->checksum, artifacts->binary_path);
+  zbuf_appendf(&checksum, "sha256 %s  %s\n", artifacts->checksum_hex, artifacts->binary_path);
   if (!z_write_file(artifacts->checksum_path, checksum.data ? checksum.data : "", diag)) {
     zbuf_free(&checksum);
     return false;
   }
+  unsigned char sig_bytes[64];
+  if (!ed25519_sign(sig_bytes,
+                    (const unsigned char *)(checksum.data ? checksum.data : ""),
+                    checksum.len,
+                    signer->public_key,
+                    signer->private_key)) {
+    zbuf_free(&checksum);
+    return ship_diag_set(diag, artifacts->checksum_path, "ship checksum signature failed", "check the signing key");
+  }
+  char sig_hex[129];
+  z_hex_write(sig_bytes, 64, sig_hex);
+  ZBuf signature;
+  zbuf_init(&signature);
+  zbuf_append(&signature, sig_hex);
+  zbuf_append_char(&signature, '\n');
+  if (!z_write_file(artifacts->signature_path, signature.data ? signature.data : "", diag)) {
+    zbuf_free(&signature);
+    zbuf_free(&checksum);
+    return false;
+  }
+  zbuf_free(&signature);
   zbuf_free(&checksum);
 
   ZBuf debug;
   zbuf_init(&debug);
   zbuf_append(&debug, "{\n  \"schemaVersion\": 1,\n  \"kind\": \"zero-debug-symbol-metadata\",\n  \"sourceFile\": ");
-  append_json_string(&debug, input ? input->source_file : "");
+  z_json_string_append(&debug, input ? input->source_file : "");
   zbuf_append(&debug, ",\n  \"target\": ");
-  append_json_string(&debug, target ? target->name : z_host_target());
+  z_json_string_append(&debug, target ? target->name : z_host_target());
   zbuf_append(&debug, ",\n  \"profile\": ");
-  append_json_string(&debug, command ? command->profile : "release");
+  z_json_string_append(&debug, command ? command->profile : "release");
   zbuf_append(&debug, ",\n  \"debugInfoAvailable\": false,\n  \"strippedBinary\": ");
-  append_json_string(&debug, artifacts->stripped_path);
+  z_json_string_append(&debug, artifacts->stripped_path);
   zbuf_append(&debug, ",\n  \"symbolPolicy\": \"metadata-placeholder-until-debug-info-emission\"\n}\n");
   if (!z_write_file(artifacts->debug_path, debug.data ? debug.data : "", diag)) {
     zbuf_free(&debug);
@@ -4474,9 +4525,9 @@ static bool write_ship_artifacts(const Command *command, const SourceInput *inpu
   ZBuf size;
   zbuf_init(&size);
   zbuf_append(&size, "{\n  \"schemaVersion\": 1,\n  \"kind\": \"zero-release-size-report\",\n  \"sourceFile\": ");
-  append_json_string(&size, input ? input->source_file : "");
+  z_json_string_append(&size, input ? input->source_file : "");
   zbuf_append(&size, ",\n  \"target\": ");
-  append_json_string(&size, target ? target->name : z_host_target());
+  z_json_string_append(&size, target ? target->name : z_host_target());
   zbuf_appendf(&size, ",\n  \"artifactBytes\": %lld,\n  \"loweredIrBytes\": %zu,\n  \"generatedCBytes\": 0,\n  \"sections\": [{\"name\":\"binary\",\"bytes\":%lld},{\"name\":\"lowered-ir\",\"bytes\":%zu}],\n  \"directFacts\": {\"functionCount\":%zu,\"readonlyDataBytes\":%zu,\"stackBytes\":%zu}\n}\n",
                artifacts->binary_bytes,
                input ? input->lowered_ir_bytes : 0,
@@ -4494,7 +4545,7 @@ static bool write_ship_artifacts(const Command *command, const SourceInput *inpu
   ZBuf sbom;
   zbuf_init(&sbom);
   zbuf_append(&sbom, "{\n  \"schemaVersion\": 1,\n  \"kind\": \"zero-sbom-placeholder\",\n  \"format\": \"spdx-json-placeholder\",\n  \"packages\": [{\"name\":\"root\",\"sourceFile\":");
-  append_json_string(&sbom, input ? input->source_file : "");
+  z_json_string_append(&sbom, input ? input->source_file : "");
   zbuf_append(&sbom, ",\"license\":\"unknown\"}],\n  \"generatedCBytes\": 0,\n  \"note\": \"full dependency license scan is not implemented yet\"\n}\n");
   if (!z_write_file(artifacts->sbom_path, sbom.data ? sbom.data : "", diag)) {
     zbuf_free(&sbom);
@@ -4505,9 +4556,10 @@ static bool write_ship_artifacts(const Command *command, const SourceInput *inpu
   ZBuf archive;
   zbuf_init(&archive);
   zbuf_append(&archive, "zero archive manifest v1\n");
-  zbuf_appendf(&archive, "binary %s %lld %016llx\n", artifacts->binary_path, artifacts->binary_bytes, (unsigned long long)artifacts->checksum);
+  zbuf_appendf(&archive, "binary %s %lld %s\n", artifacts->binary_path, artifacts->binary_bytes, artifacts->checksum_hex);
   zbuf_appendf(&archive, "stripped %s %lld\n", artifacts->stripped_path, artifacts->stripped_bytes);
   zbuf_appendf(&archive, "checksum %s\n", artifacts->checksum_path);
+  zbuf_appendf(&archive, "signature %s %s\n", artifacts->signature_path, artifacts->signer_key_id ? artifacts->signer_key_id : "");
   zbuf_appendf(&archive, "debug %s\n", artifacts->debug_path);
   zbuf_appendf(&archive, "size %s\n", artifacts->size_path);
   zbuf_appendf(&archive, "sbom %s\n", artifacts->sbom_path);
@@ -4529,12 +4581,12 @@ static bool write_ship_artifacts(const Command *command, const SourceInput *inpu
 
 static void append_ship_artifact_json(ZBuf *buf, const char *kind, const char *path, long long bytes, const char *format) {
   zbuf_append(buf, "{\"kind\":");
-  append_json_string(buf, kind);
+  z_json_string_append(buf, kind);
   zbuf_append(buf, ",\"path\":");
-  append_json_string(buf, path);
+  z_json_string_append(buf, path);
   zbuf_appendf(buf, ",\"bytes\":%lld", bytes);
   zbuf_append(buf, ",\"format\":");
-  append_json_string(buf, format);
+  z_json_string_append(buf, format);
   zbuf_append(buf, "}");
 }
 
@@ -4542,29 +4594,33 @@ static void print_ship_json(const Command *command, const SourceInput *input, co
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"command\": \"ship\",\n  \"sourceFile\": ");
-  append_json_string(&buf, input ? input->source_file : "");
+  z_json_string_append(&buf, input ? input->source_file : "");
   zbuf_append(&buf, ",\n  \"target\": ");
-  append_json_string(&buf, target ? target->name : z_host_target());
+  z_json_string_append(&buf, target ? target->name : z_host_target());
   zbuf_append(&buf, ",\n  \"hostTarget\": ");
-  append_json_string(&buf, z_host_target());
+  z_json_string_append(&buf, z_host_target());
   zbuf_append(&buf, ",\n  \"profile\": ");
-  append_json_string(&buf, command ? command->profile : "release");
+  z_json_string_append(&buf, command ? command->profile : "release");
   zbuf_append(&buf, ",\n  \"emit\": \"exe\",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"artifactPath\": ");
-  append_json_string(&buf, artifacts ? artifacts->binary_path : "");
-  zbuf_appendf(&buf, ",\n  \"artifactBytes\": %lld,\n  \"checksum\": {\"algorithm\":\"fnv1a64\",\"value\":\"%016llx\",\"path\":",
+  z_json_string_append(&buf, artifacts ? artifacts->binary_path : "");
+  zbuf_appendf(&buf, ",\n  \"artifactBytes\": %lld,\n  \"checksum\": {\"algorithm\":\"sha256\",\"value\":\"%s\",\"path\":",
                artifacts ? artifacts->binary_bytes : 0,
-               (unsigned long long)(artifacts ? artifacts->checksum : 0));
-  append_json_string(&buf, artifacts ? artifacts->checksum_path : "");
+               artifacts ? artifacts->checksum_hex : "");
+  z_json_string_append(&buf, artifacts ? artifacts->checksum_path : "");
+  zbuf_append(&buf, "},\n  \"signature\": {\"keyId\": ");
+  z_json_string_append(&buf, artifacts ? artifacts->signer_key_id : "");
+  zbuf_append(&buf, ", \"path\": ");
+  z_json_string_append(&buf, artifacts ? artifacts->signature_path : "");
   zbuf_append(&buf, "},\n  \"releasePreview\": {\"deterministic\": true, \"archive\": ");
-  append_json_string(&buf, artifacts ? artifacts->archive_path : "");
+  z_json_string_append(&buf, artifacts ? artifacts->archive_path : "");
   zbuf_append(&buf, ", \"strippedBinary\": ");
-  append_json_string(&buf, artifacts ? artifacts->stripped_path : "");
+  z_json_string_append(&buf, artifacts ? artifacts->stripped_path : "");
   zbuf_append(&buf, ", \"sizeReport\": ");
-  append_json_string(&buf, artifacts ? artifacts->size_path : "");
+  z_json_string_append(&buf, artifacts ? artifacts->size_path : "");
   zbuf_append(&buf, ", \"debugSymbols\": ");
-  append_json_string(&buf, artifacts ? artifacts->debug_path : "");
+  z_json_string_append(&buf, artifacts ? artifacts->debug_path : "");
   zbuf_append(&buf, ", \"sbom\": ");
-  append_json_string(&buf, artifacts ? artifacts->sbom_path : "");
+  z_json_string_append(&buf, artifacts ? artifacts->sbom_path : "");
   zbuf_append(&buf, ", \"targetContract\": ");
   append_release_target_contract_json(&buf, input, target, command, "exe");
   zbuf_append(&buf, "},\n  \"artifacts\": [");
@@ -4572,7 +4628,9 @@ static void print_ship_json(const Command *command, const SourceInput *input, co
   zbuf_append(&buf, ", ");
   append_ship_artifact_json(&buf, "stripped-binary", artifacts ? artifacts->stripped_path : "", artifacts ? artifacts->stripped_bytes : 0, "native-executable");
   zbuf_append(&buf, ", ");
-  append_ship_artifact_json(&buf, "checksum", artifacts ? artifacts->checksum_path : "", file_size_or_negative(artifacts ? artifacts->checksum_path : ""), "fnv1a64");
+  append_ship_artifact_json(&buf, "checksum", artifacts ? artifacts->checksum_path : "", file_size_or_negative(artifacts ? artifacts->checksum_path : ""), "sha256");
+  zbuf_append(&buf, ", ");
+  append_ship_artifact_json(&buf, "checksum-signature", artifacts ? artifacts->signature_path : "", file_size_or_negative(artifacts ? artifacts->signature_path : ""), "ed25519");
   zbuf_append(&buf, ", ");
   append_ship_artifact_json(&buf, "archive", artifacts ? artifacts->archive_path : "", artifacts ? artifacts->archive_bytes : 0, "zero-archive-manifest-v1");
   zbuf_append(&buf, ", ");
@@ -4582,9 +4640,9 @@ static void print_ship_json(const Command *command, const SourceInput *input, co
   zbuf_append(&buf, ", ");
   append_ship_artifact_json(&buf, "sbom-placeholder", artifacts ? artifacts->sbom_path : "", artifacts ? artifacts->sbom_bytes : 0, "spdx-json-placeholder");
   zbuf_appendf(&buf, "],\n  \"elapsedMs\": %lld,\n  \"targetFacts\": {\"directStatus\":", elapsed_ms);
-  append_json_string(&buf, z_direct_backend_status(target));
+  z_json_string_append(&buf, z_direct_backend_status(target));
   zbuf_append(&buf, ",\"directExeEmitter\":");
-  append_json_string(&buf, z_direct_exe_emitter(target));
+  z_json_string_append(&buf, z_direct_exe_emitter(target));
   zbuf_append(&buf, ",\"fallbackPolicy\":\"explicit-direct-never-c-bridge\"},\n  \"compilerPhases\": ");
   append_compiler_phases_json(&buf, input);
   zbuf_append(&buf, ",\n  \"releaseTargetContract\": ");
@@ -4607,13 +4665,27 @@ static void print_ship_json(const Command *command, const SourceInput *input, co
   zbuf_free(&buf);
 }
 
+static void ship_signer_text(const ShipArtifacts *artifacts, char *out, size_t size) {
+  const char *label = artifacts && artifacts->signer_label && artifacts->signer_label[0] ? artifacts->signer_label : "default";
+  const char *key_id = artifacts && artifacts->signer_key_id ? artifacts->signer_key_id : "";
+  char prefix[25];
+  size_t key_len = strlen(key_id);
+  size_t prefix_len = key_len < 24 ? key_len : 24;
+  memcpy(prefix, key_id, prefix_len);
+  prefix[prefix_len] = '\0';
+  snprintf(out, size, "%s: %s", label, prefix);
+}
+
 static void print_ship_text(const ShipArtifacts *artifacts, long long elapsed_ms) {
   char duration[32];
+  char signer_text[96];
   format_duration(elapsed_ms, duration, sizeof(duration));
+  ship_signer_text(artifacts, signer_text, sizeof(signer_text));
   printf("release preview (%s)\n", duration);
   printf("binary: %s (%lld bytes)\n", artifacts->binary_path, artifacts->binary_bytes);
   printf("stripped: %s (%lld bytes)\n", artifacts->stripped_path, artifacts->stripped_bytes);
-  printf("checksum: %s (%016llx)\n", artifacts->checksum_path, (unsigned long long)artifacts->checksum);
+  printf("checksum: %s (%s)\n", artifacts->checksum_path, artifacts->checksum_hex);
+  printf("signature: %s (%s)\n", artifacts->signature_path, signer_text);
   printf("archive: %s\n", artifacts->archive_path);
   printf("debug symbols: %s\n", artifacts->debug_path);
   printf("size report: %s\n", artifacts->size_path);
@@ -4944,24 +5016,24 @@ static char *format_source_minimal(const char *source) {
 static int print_version_command(bool json) {
   const char *zero_cc = getenv("ZERO_CC");
   bool target_cc_override = zero_cc && zero_cc[0];
-  bool bundled_target_cc_available = command_available("zig");
+  bool bundled_target_cc_available = z_command_available("zig");
   bool target_cc_available = target_cc_override || bundled_target_cc_available;
-  char *target_cc_version = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_available ? command_first_line("zig version 2>/dev/null") : z_strdup(""));
+  char *target_cc_version = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_available ? z_command_first_line("zig version 2>/dev/null") : z_strdup(""));
   if (json) {
     ZBuf buf;
     zbuf_init(&buf);
     zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"version\": ");
-    append_json_string(&buf, ZERO_VERSION);
+    z_json_string_append(&buf, ZERO_VERSION);
     zbuf_append(&buf, ",\n  \"commit\": ");
-    append_json_string(&buf, zero_commit());
+    z_json_string_append(&buf, zero_commit());
     zbuf_append(&buf, ",\n  \"host\": ");
-    append_json_string(&buf, z_host_target());
+    z_json_string_append(&buf, z_host_target());
     zbuf_append(&buf, ",\n  \"backend\": \"zero-c\",\n  \"targets\": ");
     z_append_target_names_json(&buf);
     zbuf_append(&buf, ",\n  \"targetCompiler\": {\"available\": ");
     zbuf_append(&buf, target_cc_available ? "true" : "false");
     zbuf_append(&buf, ", \"kind\": \"target-capable C compiler\", \"version\": ");
-    append_json_string(&buf, target_cc_version);
+    z_json_string_append(&buf, target_cc_version);
     zbuf_append(&buf, "},\n  \"crossCompilation\": {\"ready\": ");
     zbuf_append(&buf, target_cc_available ? "true" : "false");
     zbuf_append(&buf, "}\n}\n");
@@ -4984,161 +5056,16 @@ static int print_version_command(bool json) {
   return 0;
 }
 
-static bool write_project_file(const char *root, const char *relative, const char *text, ZDiag *diag) {
-  char *path = join_cli_path(root, relative);
-  bool ok = z_write_file(path, text, diag);
-  free(path);
-  return ok;
-}
+typedef enum {
+  DIR_MAKE_OK,
+  DIR_MAKE_EXISTS,
+  DIR_MAKE_ERROR
+} DirMakeStatus;
 
-static bool write_project_buf(const char *root, const char *relative, ZBuf *buf, ZDiag *diag) {
-  bool ok = write_project_file(root, relative, buf->data ? buf->data : "", diag);
-  zbuf_free(buf);
-  return ok;
-}
-
-static bool append_manifest(ZBuf *buf, const char *name, const char *main_path) {
-  zbuf_append(buf, "{\n");
-  zbuf_append(buf, "  \"package\": {\n");
-  zbuf_append(buf, "    \"name\": ");
-  append_json_string(buf, name);
-  zbuf_append(buf, ",\n    \"version\": \"0.1.0\",\n    \"license\": \"MIT\"\n");
-  zbuf_append(buf, "  },\n");
-  zbuf_append(buf, "  \"targets\": {\n");
-  zbuf_append(buf, "    \"cli\": {\n");
-  zbuf_append(buf, "      \"kind\": \"exe\",\n");
-  zbuf_append(buf, "      \"main\": ");
-  append_json_string(buf, main_path);
-  zbuf_append(buf, ",\n      \"defaultTarget\": \"linux-musl-x64\",\n      \"devTarget\": \"host\",\n      \"releaseProfile\": \"release-small\"\n    }\n");
-  zbuf_append(buf, "  },\n");
-  zbuf_append(buf, "  \"deps\": {},\n");
-  zbuf_append(buf, "  \"profiles\": {\n");
-  zbuf_append(buf, "    \"dev\": { \"inherits\": \"dev\" },\n");
-  zbuf_append(buf, "    \"release-small\": { \"inherits\": \"release-small\" }\n");
-  zbuf_append(buf, "  },\n");
-  zbuf_append(buf, "  \"docs\": {\n");
-  zbuf_append(buf, "    \"readme\": \"README.md\",\n");
-  zbuf_append(buf, "    \"examples\": [");
-  append_json_string(buf, main_path);
-  zbuf_append(buf, "]\n");
-  zbuf_append(buf, "  }\n");
-  zbuf_append(buf, "}\n");
-  return true;
-}
-
-static bool create_cli_template(const char *root, const char *name, ZDiag *diag) {
-  ZBuf manifest;
-  zbuf_init(&manifest);
-  append_manifest(&manifest, name, "src/main.0");
-  if (!write_project_buf(root, "zero.json", &manifest, diag)) return false;
-  if (!write_project_file(root, "src/lib.0",
-    "pub fun greeting_code() -> i32 {\n"
-    "    return 42\n"
-    "}\n",
-    diag)) return false;
-  if (!write_project_file(root, "src/main.0",
-    "use lib\n\n"
-    "pub fun main(world: World) -> Void raises {\n"
-    "    if greeting_code() == 42 {\n"
-    "        check world.out.write(\"hello from zero\\n\")\n"
-    "    }\n"
-    "}\n\n"
-    "test \"greeting is stable\" {\n"
-    "    expect(greeting_code() == 42)\n"
-    "}\n",
-    diag)) return false;
-  if (!write_project_file(root, "README.md",
-    "# Zero CLI\n\n"
-    "This project was created with `zero new cli`.\n\n"
-    "Try:\n\n"
-    "```sh\n"
-    "zero check .\n"
-    "zero test .\n"
-    "zero run .\n"
-    "zero dev --json .\n"
-    "zero build --target linux-musl-x64 --out .zero/out/app .\n"
-    "zero ship --target linux-musl-x64 --out .zero/ship/app .\n"
-    "```\n\n"
-    "The entry point receives `World` explicitly, so I/O is visible in the function signature. The generated output is deterministic and the manifest records the default release target.\n",
-    diag)) return false;
-  return write_project_file(root, ".gitignore", ".zero/\n", diag);
-}
-
-static bool create_lib_template(const char *root, const char *name, ZDiag *diag) {
-  ZBuf manifest;
-  zbuf_init(&manifest);
-  append_manifest(&manifest, name, "src/lib.0");
-  if (!write_project_buf(root, "zero.json", &manifest, diag)) return false;
-  if (!write_project_file(root, "src/lib.0",
-    "pub fun add_one(value: i32) -> i32 {\n"
-    "    return value + 1\n"
-    "}\n\n"
-    "test \"public api works\" {\n"
-    "    expect(add_one(41) == 42)\n"
-    "}\n",
-    diag)) return false;
-  if (!write_project_file(root, "README.md",
-    "# Zero Library\n\n"
-    "This small package exposes one public function, docs metadata in `zero.json`, and an inline test.\n\n"
-    "Try:\n\n"
-    "```sh\n"
-    "zero check .\n"
-    "zero test .\n"
-    "zero dev --json .\n"
-    "zero graph --json .\n"
-    "zero doc --json .\n"
-    "```\n",
-    diag)) return false;
-  return write_project_file(root, ".gitignore", ".zero/\n", diag);
-}
-
-static bool create_package_template(const char *root, const char *name, ZDiag *diag) {
-  ZBuf manifest;
-  zbuf_init(&manifest);
-  append_manifest(&manifest, name, "src/main.0");
-  if (!write_project_buf(root, "zero.json", &manifest, diag)) return false;
-  if (!write_project_file(root, "src/model.0",
-    "pub shape Point {\n"
-    "    value: i32,\n"
-    "}\n",
-    diag)) return false;
-  if (!write_project_file(root, "src/math.0",
-    "fun base(value: i32) -> i32 {\n"
-    "    return value\n"
-    "}\n\n"
-    "pub fun add_one(value: i32) -> i32 {\n"
-    "    return base(value) + 1\n"
-    "}\n",
-    diag)) return false;
-  if (!write_project_file(root, "src/main.0",
-    "use math\n"
-    "use model\n\n"
-    "pub fun main(world: World) -> Void raises {\n"
-    "    let point = Point { value: add_one(41) }\n"
-    "    if point.value == 42 {\n"
-    "        check world.out.write(\"package ok\\n\")\n"
-    "    }\n"
-    "}\n\n"
-    "test \"package import works\" {\n"
-    "    let point = Point { value: add_one(41) }\n"
-    "    expect(point.value == 42)\n"
-    "}\n",
-    diag)) return false;
-  if (!write_project_file(root, "README.md",
-    "# Zero Package\n\n"
-    "This template shows package-local imports, one public symbol, and one private helper.\n\n"
-    "Try:\n\n"
-    "```sh\n"
-    "zero check .\n"
-    "zero test .\n"
-    "zero run .\n"
-    "zero dev --json .\n"
-    "zero build --target linux-musl-x64 --out .zero/out/app .\n"
-    "zero ship --target linux-musl-x64 --out .zero/ship/app .\n"
-    "zero graph --json .\n"
-    "```\n",
-    diag)) return false;
-  return write_project_file(root, ".gitignore", ".zero/\n", diag);
+static DirMakeStatus dir_make_status(const char *path, ZDiag *diag) {
+  if (z_path_exists(path)) return DIR_MAKE_EXISTS;
+  if (!z_dir_make(path, Z_DIR_MAKE_LEAF, diag)) return DIR_MAKE_ERROR;
+  return DIR_MAKE_OK;
 }
 
 static int new_command(const Command *command) {
@@ -5147,32 +5074,43 @@ static int new_command(const Command *command) {
     fprintf(stderr, "usage: zero new cli|lib|package <name>\n");
     return 1;
   }
-  if (path_exists(command->input)) {
+  DirMakeStatus status = dir_make_status(command->input, &diag);
+  if (status == DIR_MAKE_EXISTS) {
     fprintf(stderr, "zero new: '%s' already exists\n", command->input);
     return 1;
   }
-  if (!ensure_dir(command->input, &diag)) {
+  if (status == DIR_MAKE_ERROR) {
     print_diag(command->input, &diag);
     return 1;
   }
 
-  bool ok = false;
-  if (strcmp(command->kind, "cli") == 0) ok = create_cli_template(command->input, command->input, &diag);
-  else if (strcmp(command->kind, "lib") == 0) ok = create_lib_template(command->input, command->input, &diag);
-  else if (strcmp(command->kind, "package") == 0) ok = create_package_template(command->input, command->input, &diag);
+  PackageTemplate template_kind;
+  if (strcmp(command->kind, "cli") == 0) template_kind = PACKAGE_TEMPLATE_CLI;
+  else if (strcmp(command->kind, "lib") == 0) template_kind = PACKAGE_TEMPLATE_LIB;
+  else if (strcmp(command->kind, "package") == 0) template_kind = PACKAGE_TEMPLATE_APP;
   else {
     fprintf(stderr, "zero new: unknown template '%s'\n", command->kind);
     fprintf(stderr, "help: choose cli, lib, or package\n");
     return 1;
   }
-  if (!ok) {
+
+  PackageKeyNote note = {0};
+  if (!package_create(command->input, command->input, template_kind, &note, &diag)) {
     print_diag(diag.path ? diag.path : command->input, &diag);
+    package_key_note_free(&note);
     return 1;
   }
 
-  printf("created %s project %s\n", command->kind, command->input);
-  if (strcmp(command->kind, "lib") == 0) printf("next: cd %s && zero check . && zero test .\n", command->input);
-  else printf("next: cd %s && zero check . && zero test . && zero run .\n", command->input);
+  const char *package_value = command->input;
+  printf("Here's your package: %s\n\n", package_value);
+  printf("pubkey: %s\n\n", note.public_key ? note.public_key : "");
+
+  if (strcmp(command->kind, "lib") == 0) {
+    printf("next: zero check %s && zero test %s\n", package_value, package_value);
+  } else {
+    printf("next: zero check %s && zero test %s && zero run %s\n", package_value, package_value, package_value);
+  }
+  package_key_note_free(&note);
   return 0;
 }
 
@@ -5217,11 +5155,11 @@ static void append_doctor_check_json(ZBuf *buf, bool *first, const char *name, c
   if (!*first) zbuf_append(buf, ",\n");
   *first = false;
   zbuf_append(buf, "    {\"name\": ");
-  append_json_string(buf, name);
+  z_json_string_append(buf, name);
   zbuf_append(buf, ", \"status\": ");
-  append_json_string(buf, status);
+  z_json_string_append(buf, status);
   zbuf_append(buf, ", \"message\": ");
-  append_json_string(buf, message);
+  z_json_string_append(buf, message);
   zbuf_append(buf, "}");
 }
 
@@ -5306,10 +5244,10 @@ static void doctor_target_toolchain_status(const ZTargetInfo *target, const ZToo
 }
 
 static void append_doctor_target_toolchains_json(ZBuf *buf, size_t *ok_count, size_t *warning_count, size_t *error_count) {
-  bool cc_ok = command_available("cc");
-  bool target_cc_ok = command_available("zig");
-  bool emcc_ok = command_available("emcc");
-  bool emcc_sane = emcc_ok && command_succeeds("emcc --version >/dev/null 2>&1");
+  bool cc_ok = z_command_available("cc");
+  bool target_cc_ok = z_command_available("zig");
+  bool emcc_ok = z_command_available("emcc");
+  bool emcc_sane = emcc_ok && z_command_ok("emcc --version >/dev/null 2>&1");
   zbuf_append(buf, ",\n  \"targetToolchains\": [\n");
   for (size_t i = 0; i < z_target_count(); i++) {
     const ZTargetInfo *target = z_target_at(i);
@@ -5323,28 +5261,28 @@ static void append_doctor_target_toolchains_json(ZBuf *buf, size_t *ok_count, si
     else (*ok_count)++;
 
     zbuf_append(buf, "    {\"target\": ");
-    append_json_string(buf, target->name);
+    z_json_string_append(buf, target->name);
     zbuf_append(buf, ", \"status\": ");
-    append_json_string(buf, status);
+    z_json_string_append(buf, status);
     zbuf_append(buf, ", \"message\": ");
-    append_json_string(buf, message.data ? message.data : "");
+    z_json_string_append(buf, message.data ? message.data : "");
     zbuf_append(buf, ", \"driverKind\": ");
-    append_json_string(buf, public_driver_kind(plan.driver_kind));
+    z_json_string_append(buf, public_driver_kind(plan.driver_kind));
     zbuf_append(buf, ", \"compiler\": ");
-    append_json_string(buf, public_compiler_label(&plan));
+    z_json_string_append(buf, public_compiler_label(&plan));
     zbuf_append(buf, ", \"selectionSource\": ");
-    append_json_string(buf, plan.selection_source);
+    z_json_string_append(buf, plan.selection_source);
     zbuf_append(buf, ", \"targetTriple\": ");
-    append_json_string(buf, plan.target_triple);
+    z_json_string_append(buf, plan.target_triple);
     zbuf_append(buf, ", \"linkerFlavor\": ");
-    append_json_string(buf, public_linker_label(plan.linker_flavor));
+    z_json_string_append(buf, public_linker_label(plan.linker_flavor));
     zbuf_append(buf, ", \"libcMode\": ");
-    append_json_string(buf, plan.libc_mode);
+    z_json_string_append(buf, plan.libc_mode);
     zbuf_appendf(buf, ", \"requiresSysroot\": %s", plan.requires_sysroot ? "true" : "false");
     zbuf_append(buf, ", \"sysrootEnv\": ");
-    append_json_string(buf, plan.sysroot_env);
+    z_json_string_append(buf, plan.sysroot_env);
     zbuf_append(buf, ", \"sysrootStatus\": ");
-    append_json_string(buf, plan.sysroot_status);
+    z_json_string_append(buf, plan.sysroot_status);
     zbuf_appendf(buf, "}%s\n", i + 1 < z_target_count() ? "," : "");
     zbuf_free(&message);
   }
@@ -5353,9 +5291,9 @@ static void append_doctor_target_toolchains_json(ZBuf *buf, size_t *ok_count, si
 
 static size_t doctor_wasi_runner_count(void) {
   size_t count = 0;
-  if (command_available("wasmtime")) count++;
-  if (command_available("wasmer")) count++;
-  if (command_available("wasmedge")) count++;
+  if (z_command_available("wasmtime")) count++;
+  if (z_command_available("wasmer")) count++;
+  if (z_command_available("wasmedge")) count++;
   return count;
 }
 
@@ -5364,15 +5302,15 @@ static void append_doctor_wasi_runners_json(ZBuf *buf) {
   const char *commands[] = {"wasmtime --version 2>/dev/null", "wasmer --version 2>/dev/null", "wasmedge --version 2>/dev/null", NULL};
   zbuf_append(buf, ",\n  \"wasiRunners\": [\n");
   for (int i = 0; names[i]; i++) {
-    bool available = command_available(names[i]);
-    char *version = available ? command_first_line(commands[i]) : z_strdup("");
+    bool available = z_command_available(names[i]);
+    char *version = available ? z_command_first_line(commands[i]) : z_strdup("");
     zbuf_append(buf, "    {\"name\": ");
-    append_json_string(buf, names[i]);
+    z_json_string_append(buf, names[i]);
     zbuf_appendf(buf, ", \"available\": %s", available ? "true" : "false");
     zbuf_append(buf, ", \"version\": ");
-    append_json_string(buf, version);
+    z_json_string_append(buf, version);
     zbuf_append(buf, ", \"status\": ");
-    append_json_string(buf, available ? "ok" : "missing");
+    z_json_string_append(buf, available ? "ok" : "missing");
     zbuf_append(buf, ", \"purpose\": \"execute wasm32-wasi artifacts in local and CI harnesses\"");
     zbuf_appendf(buf, "}%s\n", names[i + 1] ? "," : "");
     free(version);
@@ -5390,19 +5328,20 @@ static void doctor_target_toolchain_counts(size_t *ok_count, size_t *warning_cou
 static int doctor_command(bool json) {
   const char *overall = "ok";
   const char *host_status = strcmp(z_host_target(), "unknown") == 0 ? "warning" : "ok";
-  bool cc_ok = command_available("cc") || command_available("clang") || command_available("gcc");
+  bool cc_ok = z_command_available("cc") || z_command_available("clang") || z_command_available("gcc");
   const char *zero_cc = getenv("ZERO_CC");
   bool target_cc_override = zero_cc && zero_cc[0];
-  bool bundled_target_cc_ok = command_available("zig");
+  bool bundled_target_cc_ok = z_command_available("zig");
   bool target_cc_ok = target_cc_override || bundled_target_cc_ok;
-  bool zero_dir_ok = zero_mkdir(".zero") == 0 || errno == EEXIST;
+  ZDiag dir_diag = {0};
+  bool zero_dir_ok = z_dir_make(".zero", Z_DIR_MAKE_LEAF, &dir_diag);
   bool write_ok = false;
   if (zero_dir_ok) {
     ZDiag diag = {0};
     write_ok = z_write_file(".zero/doctor.tmp", "ok\n", &diag);
     unlink(".zero/doctor.tmp");
   }
-  bool docs_ok = path_exists("examples/hello.0") && path_exists("docs-site/articles/getting-started.md");
+  bool docs_ok = z_path_exists("examples/hello.0") && z_path_exists("docs-site/articles/getting-started.md");
   bool path_ok = false;
   char *path_message = doctor_path_message(&path_ok);
   bool target_ok = z_find_target(z_host_target()) != NULL;
@@ -5428,16 +5367,16 @@ static int doctor_command(bool json) {
   overall = worse_status(overall, (zero_dir_ok && write_ok) ? "ok" : "error");
   overall = worse_status(overall, docs_ok ? "ok" : "warning");
 
-  char *cc_message = cc_ok ? command_first_line("cc --version 2>/dev/null") : z_strdup("no native C compiler found on PATH");
-  char *target_cc_message = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_ok ? command_first_line("zig version 2>/dev/null") : z_strdup("target-capable C compiler not found; cross-target executable builds may be unavailable"));
+  char *cc_message = cc_ok ? z_command_first_line("cc --version 2>/dev/null") : z_strdup("no native C compiler found on PATH");
+  char *target_cc_message = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_ok ? z_command_first_line("zig version 2>/dev/null") : z_strdup("target-capable C compiler not found; cross-target executable builds may be unavailable"));
 
   if (json) {
     ZBuf buf;
     zbuf_init(&buf);
     zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"status\": ");
-    append_json_string(&buf, overall);
+    z_json_string_append(&buf, overall);
     zbuf_append(&buf, ",\n  \"host\": ");
-    append_json_string(&buf, z_host_target());
+    z_json_string_append(&buf, z_host_target());
     zbuf_append(&buf, ",\n  \"checks\": [\n");
     bool first = true;
     append_doctor_check_json(&buf, &first, "host", host_status, z_host_target());
@@ -5493,12 +5432,12 @@ static void append_function_effects_json(ZBuf *buf, const Function *fun) {
 
 static void append_function_error_json(ZBuf *buf, const Function *fun) {
   zbuf_append(buf, "\"errorSetKind\":");
-  append_json_string(buf, !fun || !fun->raises ? "none" : (fun->has_error_set ? "explicit" : (fun->is_public ? "open" : "inferred")));
+  z_json_string_append(buf, !fun || !fun->raises ? "none" : (fun->has_error_set ? "explicit" : (fun->is_public ? "open" : "inferred")));
   zbuf_append(buf, ",\"errorNames\":[");
   if (fun && fun->has_error_set) {
     for (size_t i = 0; i < fun->errors.len; i++) {
       if (i > 0) zbuf_append(buf, ",");
-      append_json_string(buf, fun->errors.items[i].name);
+      z_json_string_append(buf, fun->errors.items[i].name);
     }
   }
   zbuf_append(buf, "]");
@@ -5538,7 +5477,7 @@ static bool append_missing_capabilities_json(ZBuf *buf, const CapabilitySummary 
 #define APPEND_MISSING_CAP(name, enabled) do { \
     if ((enabled) && !capability_available_on_target(target, name)) { \
       if (wrote) zbuf_append(buf, ","); \
-      append_json_string(buf, name); \
+      z_json_string_append(buf, name); \
       wrote = true; \
     } \
   } while (0)
@@ -5566,7 +5505,7 @@ static void append_target_capability_facts_json(ZBuf *buf, const ZTargetInfo *ta
   ZBuf missing;
   zbuf_init(&missing);
   bool has_missing = append_missing_capabilities_json(&missing, caps, target);
-  append_json_string(buf, has_missing ? "unsupported" : "supported");
+  z_json_string_append(buf, has_missing ? "unsupported" : "supported");
   zbuf_append(buf, ",\"missingCapabilities\":");
   zbuf_append(buf, missing.data ? missing.data : "[]");
   zbuf_append(buf, "}");
@@ -5582,17 +5521,17 @@ static void append_function_ownership_json(ZBuf *buf, const Function *fun) {
     const char *ownership = type_ownership_kind(param->type);
     if (strcmp(ownership, "owned") == 0) moves = true;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, param->name);
+    z_json_string_append(buf, param->name);
     zbuf_append(buf, ",\"type\":");
-    append_json_string(buf, param->type);
+    z_json_string_append(buf, param->type);
     zbuf_append(buf, ",\"ownership\":");
-    append_json_string(buf, ownership);
+    z_json_string_append(buf, ownership);
     zbuf_append(buf, "}");
   }
   const char *return_ownership = type_ownership_kind(fun ? fun->return_type : NULL);
   if (strcmp(return_ownership, "owned") == 0) moves = true;
   zbuf_append(buf, "],\"returnOwnership\":");
-  append_json_string(buf, return_ownership);
+  z_json_string_append(buf, return_ownership);
   zbuf_appendf(buf, ",\"movesOwnership\":%s}", moves ? "true" : "false");
 }
 
@@ -6027,16 +5966,16 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     if (wrote_result) zbuf_append(&results, ", ");
     wrote_result = true;
     zbuf_append(&results, "{\"name\":");
-    append_json_string(&results, failure.current_test ? failure.current_test : fun->name);
+    z_json_string_append(&results, failure.current_test ? failure.current_test : fun->name);
     zbuf_append(&results, ",\"status\":");
-    append_json_string(&results, status);
+    z_json_string_append(&results, status);
     zbuf_appendf(&results, ",\"expectedFailure\":%s,\"durationMs\":%lld,\"location\":{\"sourceFile\":", expected_failure ? "true" : "false", test_duration_ms);
-    append_json_string(&results, input ? input->source_file : "");
+    z_json_string_append(&results, input ? input->source_file : "");
     zbuf_appendf(&results, ",\"line\":%d,\"column\":%d}", fun->line, fun->column);
     zbuf_append(&results, ",\"failure\":");
     if (failure_message) {
       zbuf_append(&results, "{\"message\":");
-      append_json_string(&results, failure_message);
+      z_json_string_append(&results, failure_message);
       zbuf_appendf(&results, ",\"line\":%d,\"column\":%d}", failure.line ? failure.line : fun->line, failure.column ? failure.column : fun->column);
     } else {
       zbuf_append(&results, "null");
@@ -6056,9 +5995,9 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
     zbuf_append(&buf, ok ? "true" : "false");
     zbuf_append(&buf, ",\n  \"sourceFile\": ");
-    append_json_string(&buf, input ? input->source_file : "");
+    z_json_string_append(&buf, input ? input->source_file : "");
     zbuf_append(&buf, ",\n  \"target\": ");
-    append_json_string(&buf, target ? target->name : z_host_target());
+    z_json_string_append(&buf, target ? target->name : z_host_target());
     zbuf_append(&buf, ",\n  \"testBackend\": \"direct-frontend\",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"selectedTests\": ");
     zbuf_appendf(&buf, "%zu", selected);
     zbuf_append(&buf, ",\n  \"discoveredTests\": ");
@@ -6076,18 +6015,18 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     zbuf_append(&buf, ",\n  \"exitCode\": ");
     zbuf_append(&buf, ok ? "0" : "1");
     zbuf_append(&buf, ",\n  \"stdout\": ");
-    append_json_string(&buf, ok ? stdout_text : "");
+    z_json_string_append(&buf, ok ? stdout_text : "");
     zbuf_append(&buf, ",\n  \"stderr\": ");
-    append_json_string(&buf, stderr_text);
+    z_json_string_append(&buf, stderr_text);
     zbuf_append(&buf, ",\n  \"testDiscovery\": {\"mode\":");
-    append_json_string(&buf, input && input->package_root ? "package" : "single-file");
+    z_json_string_append(&buf, input && input->package_root ? "package" : "single-file");
     zbuf_append(&buf, ",\"filter\":");
-    if (command && command->filter) append_json_string(&buf, command->filter);
+    if (command && command->filter) z_json_string_append(&buf, command->filter);
     else zbuf_append(&buf, "null");
     zbuf_append(&buf, ",\"packageRoot\":");
-    append_json_string(&buf, input && input->package_root ? input->package_root : "");
+    z_json_string_append(&buf, input && input->package_root ? input->package_root : "");
     zbuf_append(&buf, ",\"manifestPath\":");
-    append_json_string(&buf, input && input->manifest_path ? input->manifest_path : "");
+    z_json_string_append(&buf, input && input->manifest_path ? input->manifest_path : "");
     zbuf_appendf(&buf, ",\"sourceFileCount\":%zu,\"moduleCount\":%zu,\"discoveredTests\":%zu,\"selectedTests\":%zu}",
                  input ? input->source_file_count : 0,
                  input ? input->module_count : 0,
@@ -6096,14 +6035,14 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     zbuf_append(&buf, ",\n  \"fixtures\": {\"sourceFiles\":[");
     for (size_t i = 0; input && i < input->source_file_count; i++) {
       if (i > 0) zbuf_append(&buf, ", ");
-      append_json_string(&buf, input->source_files[i]);
+      z_json_string_append(&buf, input->source_files[i]);
     }
     zbuf_append(&buf, "],\"goldenOutput\":");
-    append_json_string(&buf, stdout_text);
+    z_json_string_append(&buf, stdout_text);
     zbuf_append(&buf, ",\"snapshotKey\":\"zero-test-direct-frontend-v1\"}");
     CapabilitySummary caps = program_capabilities(program);
     zbuf_append(&buf, ",\n  \"targetFacts\": {\"hostTarget\":");
-    append_json_string(&buf, z_host_target());
+    z_json_string_append(&buf, z_host_target());
     zbuf_append(&buf, ",\"capabilitySupport\":");
     append_target_capability_facts_json(&buf, target, &caps);
     zbuf_append(&buf, "}");
@@ -6190,26 +6129,26 @@ static const char *helper_example_path(const StdHelperInfo *helper) {
 
 static void append_std_helper_object_json(ZBuf *buf, const StdHelperInfo *helper, bool include_estimate) {
   zbuf_append(buf, "{\"name\":");
-  append_json_string(buf, helper->name);
+  z_json_string_append(buf, helper->name);
   zbuf_append(buf, ",\"module\":");
-  append_json_string(buf, helper_module_name(helper));
+  z_json_string_append(buf, helper_module_name(helper));
   zbuf_append(buf, ",\"returnType\":");
-  append_json_string(buf, helper->return_type);
+  z_json_string_append(buf, helper->return_type);
   zbuf_appendf(buf, ",\"args\":%d,\"capability\":", helper->arg_count);
-  append_json_string(buf, helper->capability);
+  z_json_string_append(buf, helper->capability);
   zbuf_append(buf, ",\"effects\":[");
-  append_json_string(buf, helper->capability);
+  z_json_string_append(buf, helper->capability);
   zbuf_append(buf, "]");
   zbuf_append(buf, ",\"targetSupport\":");
-  append_json_string(buf, helper->target_support);
+  z_json_string_append(buf, helper->target_support);
   zbuf_append(buf, ",\"allocationBehavior\":");
-  append_json_string(buf, helper->allocation_behavior);
+  z_json_string_append(buf, helper->allocation_behavior);
   zbuf_append(buf, ",\"errorBehavior\":");
-  append_json_string(buf, helper_error_behavior(helper));
+  z_json_string_append(buf, helper_error_behavior(helper));
   zbuf_append(buf, ",\"ownershipNotes\":");
-  append_json_string(buf, helper_ownership_notes(helper));
+  z_json_string_append(buf, helper_ownership_notes(helper));
   zbuf_append(buf, ",\"example\":");
-  append_json_string(buf, helper_example_path(helper));
+  z_json_string_append(buf, helper_example_path(helper));
   zbuf_append(buf, ",\"apiStability\":\"bootstrap-stable\"");
   zbuf_appendf(buf, ",\"emitsRuntimeHelper\":%s", helper->emits_runtime_helper ? "true" : "false");
   if (include_estimate) zbuf_appendf(buf, ",\"estimatedDirectBytes\":%d", helper_estimated_direct_bytes(helper));
@@ -6281,15 +6220,15 @@ static void append_size_functions_json(ZBuf *buf, const Program *program) {
     const Function *fun = &program->functions.items[i];
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, fun->is_test ? (fun->test_name ? fun->test_name : "test") : fun->name);
+    z_json_string_append(buf, fun->is_test ? (fun->test_name ? fun->test_name : "test") : fun->name);
     zbuf_append(buf, ",\"kind\":");
-    append_json_string(buf, fun->is_test ? "test" : "function");
+    z_json_string_append(buf, fun->is_test ? "test" : "function");
     zbuf_appendf(buf, ",\"public\":%s,\"exportC\":%s,\"raises\":%s,\"estimatedDirectBytes\":%zu,\"retained\":true,\"retainedBy\":",
                  fun->is_public ? "true" : "false",
                  fun->export_c ? "true" : "false",
                  fun->raises ? "true" : "false",
                  estimated_function_bytes(fun));
-    append_json_string(buf, function_retention_reason(fun));
+    z_json_string_append(buf, function_retention_reason(fun));
     zbuf_append(buf, "}");
   }
   zbuf_append(buf, "]");
@@ -6312,7 +6251,7 @@ static void append_size_sections_json(ZBuf *buf, const SourceInput *input, const
   zbuf_appendf(buf, ", {\"name\":\"rodata\",\"kind\":\"literals\",\"bytes\":%zu,\"retainedBy\":\"string and byte literals referenced by code\"}", readonly);
   zbuf_appendf(buf, ", {\"name\":\"stack\",\"kind\":\"memory\",\"bytes\":%zu,\"retainedBy\":\"fixed locals and direct stack layout\"}", stack);
   zbuf_appendf(buf, ", {\"name\":\"debug-metadata\",\"kind\":\"debug\",\"bytes\":%zu,\"retainedBy\":", debug_bytes);
-  append_json_string(buf, debug_bytes ? "profile keeps debug metadata" : "profile strips unrequested debug metadata");
+  z_json_string_append(buf, debug_bytes ? "profile keeps debug metadata" : "profile strips unrequested debug metadata");
   zbuf_append(buf, "}");
   if (artifact_bytes >= 0) zbuf_appendf(buf, ", {\"name\":\"artifact\",\"kind\":\"output\",\"bytes\":%lld,\"retainedBy\":\"written output artifact\"}", artifact_bytes);
   zbuf_append(buf, "]");
@@ -6338,13 +6277,13 @@ static void append_size_helper_breakdown_json(ZBuf *buf, const HelperUseSummary 
     if (!helpers || !helpers->used[i]) continue;
     if (wrote) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, std_helpers[i].name);
+    z_json_string_append(buf, std_helpers[i].name);
     zbuf_append(buf, ",\"module\":");
-    append_json_string(buf, helper_module_name(&std_helpers[i]));
+    z_json_string_append(buf, helper_module_name(&std_helpers[i]));
     zbuf_appendf(buf, ",\"estimatedDirectBytes\":%d,\"emitsRuntimeHelper\":%s,\"retainedBy\":\"source helper call\",\"capability\":",
                  helper_estimated_direct_bytes(&std_helpers[i]),
                  std_helpers[i].emits_runtime_helper ? "true" : "false");
-    append_json_string(buf, std_helpers[i].capability);
+    z_json_string_append(buf, std_helpers[i].capability);
     zbuf_append(buf, "}");
     wrote = true;
   }
@@ -6368,9 +6307,9 @@ static void append_size_imports_json(ZBuf *buf, const CapabilitySummary *caps) {
     if (!facts[i].enabled) continue;
     if (wrote) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, facts[i].name);
+    z_json_string_append(buf, facts[i].name);
     zbuf_append(buf, ",\"retainedBy\":");
-    append_json_string(buf, facts[i].reason);
+    z_json_string_append(buf, facts[i].reason);
     zbuf_append(buf, "}");
     wrote = true;
   }
@@ -6384,9 +6323,9 @@ static void append_retention_reasons_json(ZBuf *buf, const SourceInput *input, c
     const Function *fun = &program->functions.items[i];
     if (wrote) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"kind\":\"function\",\"name\":");
-    append_json_string(buf, fun->is_test ? (fun->test_name ? fun->test_name : "test") : fun->name);
+    z_json_string_append(buf, fun->is_test ? (fun->test_name ? fun->test_name : "test") : fun->name);
     zbuf_append(buf, ",\"reason\":");
-    append_json_string(buf, function_retention_reason(fun));
+    z_json_string_append(buf, function_retention_reason(fun));
     zbuf_append(buf, "}");
     wrote = true;
   }
@@ -6394,7 +6333,7 @@ static void append_retention_reasons_json(ZBuf *buf, const SourceInput *input, c
     if (!helpers || !helpers->used[i]) continue;
     if (wrote) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"kind\":\"stdlibHelper\",\"name\":");
-    append_json_string(buf, std_helpers[i].name);
+    z_json_string_append(buf, std_helpers[i].name);
     zbuf_append(buf, ",\"reason\":\"source helper call\",\"estimatedDirectBytes\":");
     zbuf_appendf(buf, "%d}", helper_estimated_direct_bytes(&std_helpers[i]));
     wrote = true;
@@ -6419,9 +6358,9 @@ static void append_optimization_hints_json(ZBuf *buf, const SourceInput *input, 
 #define APPEND_HINT(ID, MESSAGE) do { \
   if (wrote) zbuf_append(buf, ", "); \
   zbuf_append(buf, "{\"id\":"); \
-  append_json_string(buf, ID); \
+  z_json_string_append(buf, ID); \
   zbuf_append(buf, ",\"message\":"); \
-  append_json_string(buf, MESSAGE); \
+  z_json_string_append(buf, MESSAGE); \
   zbuf_append(buf, "}"); \
   wrote = true; \
 } while (0)
@@ -6452,11 +6391,11 @@ static size_t helper_count_used(const HelperUseSummary *helpers) {
 static void append_size_breakdown_json(ZBuf *buf, const SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command, const HelperUseSummary *helpers, const CapabilitySummary *caps, long long artifact_bytes) {
   const char *profile = command && command->profile ? command->profile : "release";
   zbuf_append(buf, "{\"schemaVersion\":1,\"profile\":");
-  append_json_string(buf, profile);
+  z_json_string_append(buf, profile);
   zbuf_append(buf, ",\"profileKey\":");
-  append_json_string(buf, profile_key_name(profile));
+  z_json_string_append(buf, profile_key_name(profile));
   zbuf_append(buf, ",\"target\":");
-  append_json_string(buf, target ? target->name : z_host_target());
+  z_json_string_append(buf, target ? target->name : z_host_target());
   zbuf_appendf(buf, ",\"summary\":{\"functionCount\":%zu,\"stdlibHelperCount\":%zu,\"runtimeImportCount\":%d,\"debugMetadataBytes\":%zu},\"functions\":",
                program ? program->functions.len : 0,
                helpers ? helper_count_used(helpers) : 0,
@@ -6476,9 +6415,9 @@ static void append_size_breakdown_json(ZBuf *buf, const SourceInput *input, cons
   zbuf_append(buf, ",\"debugMetadata\":{\"bytes\":");
   zbuf_appendf(buf, "%zu", profile_debug_metadata_bytes(program, profile));
   zbuf_append(buf, ",\"policy\":");
-  append_json_string(buf, profile_runtime_metadata(profile));
+  z_json_string_append(buf, profile_runtime_metadata(profile));
   zbuf_append(buf, ",\"retainedBy\":");
-  append_json_string(buf, profile_debug_info(profile) ? "profile metadata policy" : "stripped by profile");
+  z_json_string_append(buf, profile_debug_info(profile) ? "profile metadata policy" : "stripped by profile");
   zbuf_append(buf, "}}");
 }
 
@@ -6488,11 +6427,11 @@ static void append_compiler_runtime_helpers_json_ex(ZBuf *buf, const char *emitt
     const CompilerRuntimeHelperInfo *helper = &compiler_runtime_helpers[i];
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, helper->name);
+    z_json_string_append(buf, helper->name);
     zbuf_append(buf, ",\"symbol\":");
-    append_json_string(buf, helper->symbol);
+    z_json_string_append(buf, helper->symbol);
     zbuf_append(buf, ",\"category\":");
-    append_json_string(buf, helper->category);
+    z_json_string_append(buf, helper->category);
     zbuf_appendf(buf, ",\"estimatedDirectBytes\":%d,\"emitted\":%s,\"payAsUsed\":true}",
                  helper->estimated_direct_bytes,
                  (emitted_symbol_text && strstr(emitted_symbol_text, helper->symbol)) || seed_compiler_runtime ? "true" : "false");
@@ -6521,7 +6460,7 @@ static bool append_direct_generic_specialization_item(ZBuf *buf, DirectGenericJs
   snprintf(state->names[state->len++], sizeof(state->names[0]), "%s", name);
   if (state->wrote) zbuf_append(buf, ", ");
   zbuf_append(buf, "{\"name\":");
-  append_json_string(buf, name);
+  z_json_string_append(buf, name);
   zbuf_append(buf, ",\"kind\":\"generic-specialization\",\"estimatedDirectBytes\":128,\"source\":\"direct-size-metadata\"}");
   state->wrote = true;
   return true;
@@ -7180,9 +7119,9 @@ static void append_runtime_shims_json_ex(ZBuf *buf, const char *emitted_symbol_t
     if (enabled) { \
       if (wrote) zbuf_append(buf, ", "); \
       zbuf_append(buf, "{\"name\":"); \
-      append_json_string(buf, name); \
+      z_json_string_append(buf, name); \
       zbuf_append(buf, ",\"reason\":"); \
-      append_json_string(buf, reason); \
+      z_json_string_append(buf, reason); \
       zbuf_append(buf, ",\"payAsUsed\":true}"); \
       wrote = true; \
     } \
@@ -7251,9 +7190,9 @@ static void append_c_params_json(ZBuf *buf, const char *start, const char *end) 
         if (wrote) zbuf_append(buf, ",");
         wrote = true;
         zbuf_append(buf, "{\"name\":");
-        append_json_string(buf, name);
+        z_json_string_append(buf, name);
         zbuf_append(buf, ",\"type\":");
-        append_json_string(buf, type);
+        z_json_string_append(buf, type);
         zbuf_append(buf, "}");
         free(name);
         free(type);
@@ -7274,9 +7213,9 @@ static void append_c_function_model_json(ZBuf *buf, const char *line) {
   char *name = name_start ? z_strndup(name_start, (size_t)(name_end - name_start)) : z_strdup("");
   char *return_type = name_start ? trim_span_copy(line, name_start) : z_strdup("");
   zbuf_append(buf, "{\"name\":");
-  append_json_string(buf, name);
+  z_json_string_append(buf, name);
   zbuf_append(buf, ",\"returnType\":");
-  append_json_string(buf, return_type);
+  z_json_string_append(buf, return_type);
   zbuf_append(buf, ",\"params\":");
   append_c_params_json(buf, paren ? paren + 1 : line, close ? close : line);
   zbuf_append(buf, "}");
@@ -7321,9 +7260,9 @@ static void append_c_header_constants_json(ZBuf *buf, const char *header) {
       if (wrote) zbuf_append(buf, ",");
       wrote = true;
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, name);
+      z_json_string_append(buf, name);
       zbuf_append(buf, ",\"value\":");
-      append_json_string(buf, value);
+      z_json_string_append(buf, value);
       zbuf_append(buf, ",\"type\":\"int\"}");
     }
     free(name);
@@ -7351,9 +7290,9 @@ static void append_c_header_typedefs_json(ZBuf *buf, const char *header) {
         if (wrote) zbuf_append(buf, ",");
         wrote = true;
         zbuf_append(buf, "{\"name\":");
-        append_json_string(buf, name);
+        z_json_string_append(buf, name);
         zbuf_append(buf, ",\"target\":");
-        append_json_string(buf, target);
+        z_json_string_append(buf, target);
         zbuf_append(buf, "}");
         free(name);
         free(target);
@@ -7384,9 +7323,9 @@ static void append_c_struct_fields_json(ZBuf *buf, const char *start, const char
         if (wrote) zbuf_append(buf, ",");
         wrote = true;
         zbuf_append(buf, "{\"name\":");
-        append_json_string(buf, name);
+        z_json_string_append(buf, name);
         zbuf_append(buf, ",\"type\":");
-        append_json_string(buf, type);
+        z_json_string_append(buf, type);
         zbuf_append(buf, "}");
         free(name);
         free(type);
@@ -7415,9 +7354,9 @@ static void append_c_header_structs_json(ZBuf *buf, const char *header) {
     if (wrote) zbuf_append(buf, ",");
     wrote = true;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, alias[0] ? alias : tag);
+    z_json_string_append(buf, alias[0] ? alias : tag);
     zbuf_append(buf, ",\"tag\":");
-    append_json_string(buf, tag);
+    z_json_string_append(buf, tag);
     zbuf_append(buf, ",\"fields\":");
     append_c_struct_fields_json(buf, open + 1, close);
     zbuf_append(buf, "}");
@@ -7444,9 +7383,9 @@ static void append_c_enum_cases_json(ZBuf *buf, const char *start, const char *e
         if (wrote) zbuf_append(buf, ",");
         wrote = true;
         zbuf_append(buf, "{\"name\":");
-        append_json_string(buf, name);
+        z_json_string_append(buf, name);
         zbuf_append(buf, ",\"value\":");
-        append_json_string(buf, value);
+        z_json_string_append(buf, value);
         zbuf_append(buf, "}");
       }
       free(name);
@@ -7473,7 +7412,7 @@ static void append_c_header_enums_json(ZBuf *buf, const char *header) {
     if (wrote) zbuf_append(buf, ",");
     wrote = true;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, name);
+    z_json_string_append(buf, name);
     zbuf_append(buf, ",\"backing\":\"int\",\"cases\":");
     append_c_enum_cases_json(buf, open + 1, close);
     zbuf_append(buf, "}");
@@ -7506,16 +7445,16 @@ static void append_c_imports_json(ZBuf *buf, const Program *program, const ZTarg
     char *header = z_read_file(import->header, &read_diag);
     uint64_t header_hash = fnv1a_text(header ? header : "");
     zbuf_append(buf, "{\"header\":");
-    append_json_string(buf, import->header);
+    z_json_string_append(buf, import->header);
     zbuf_append(buf, ",\"alias\":");
-    append_json_string(buf, import->alias);
+    z_json_string_append(buf, import->alias);
     zbuf_appendf(buf, ",\"cacheKey\":\"%016llx-%s\"", (unsigned long long)header_hash, target && target->zig_target ? target->zig_target : "host");
     zbuf_append(buf, ",\"cache\":{\"headerHash\":\"");
     zbuf_appendf(buf, "%016llx", (unsigned long long)header_hash);
     zbuf_append(buf, "\",\"target\":");
-    append_json_string(buf, target && target->name ? target->name : z_host_target());
+    z_json_string_append(buf, target && target->name ? target->name : z_host_target());
     zbuf_append(buf, ",\"abi\":");
-    append_json_string(buf, target && target->abi ? target->abi : "host");
+    z_json_string_append(buf, target && target->abi ? target->abi : "host");
     zbuf_appendf(buf, ",\"flagsHash\":\"%016llx\",\"sysrootFingerprint\":\"%016llx\"}", (unsigned long long)fnv1a_text(""), (unsigned long long)fnv1a_text(target && z_target_requires_sysroot(target) ? z_target_sysroot_env_name(target) : "not-required"));
     zbuf_append(buf, ",\"imports\":{\"functions\":");
     zbuf_appendf(buf, "%zu", count_text_occurrences(header, ");"));
@@ -7602,7 +7541,7 @@ static void append_c_libraries_json(ZBuf *buf, const SourceInput *input, const Z
     bool implicit_discovery = c_lib_uses_unsafe_foreign_discovery(lib, target);
     bool windows_import_ready = !(target && target->abi && strcmp(target->abi, "msvc") == 0) || strstr(lib->lib_json ? lib->lib_json : "", ".lib") != NULL;
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, lib->name);
+    z_json_string_append(buf, lib->name);
     zbuf_append(buf, ",\"headers\":");
     zbuf_append(buf, lib->headers_json ? lib->headers_json : "[]");
     zbuf_append(buf, ",\"includePaths\":");
@@ -7612,19 +7551,19 @@ static void append_c_libraries_json(ZBuf *buf, const SourceInput *input, const Z
     zbuf_append(buf, ",\"link\":");
     zbuf_append(buf, lib->link_json ? lib->link_json : "[]");
     zbuf_append(buf, ",\"linkMode\":");
-    append_json_string(buf, lib->mode && strstr(lib->mode, "dynamic") ? "dynamic" : "static");
+    z_json_string_append(buf, lib->mode && strstr(lib->mode, "dynamic") ? "dynamic" : "static");
     zbuf_append(buf, ",\"pkgConfig\":");
-    append_json_string(buf, lib->pkg_config ? lib->pkg_config : "");
+    z_json_string_append(buf, lib->pkg_config ? lib->pkg_config : "");
     zbuf_append(buf, ",\"linkPlan\":{\"target\":");
-    append_json_string(buf, target && target->name ? target->name : z_host_target());
+    z_json_string_append(buf, target && target->name ? target->name : z_host_target());
     zbuf_append(buf, ",\"sysrootEnv\":");
-    append_json_string(buf, target && z_target_requires_sysroot(target) ? z_target_sysroot_env_name(target) : "");
+    z_json_string_append(buf, target && z_target_requires_sysroot(target) ? z_target_sysroot_env_name(target) : "");
     zbuf_append(buf, ",\"includePaths\":");
     zbuf_append(buf, lib->include_json ? lib->include_json : "[]");
     zbuf_append(buf, ",\"libraryPaths\":");
     zbuf_append(buf, lib->lib_json ? lib->lib_json : "[]");
     zbuf_append(buf, ",\"hostDiscovery\":");
-    append_json_string(buf, implicit_discovery ? "blocked" : "none");
+    z_json_string_append(buf, implicit_discovery ? "blocked" : "none");
     zbuf_appendf(buf, "},\"targetValidation\":{\"pkgConfigTargetSafe\":%s,\"vendoredHeaders\":%s,\"vendoredLibraries\":%s,\"windowsImportLibraries\":%s,\"hostHeaderLeakage\":%s,\"implicitHostDiscovery\":%s,\"status\":",
                  pkg_unsafe ? "false" : "true",
                  vendored_headers ? "true" : "false",
@@ -7632,7 +7571,7 @@ static void append_c_libraries_json(ZBuf *buf, const SourceInput *input, const Z
                  windows_import_ready ? "true" : "false",
                  host_leakage ? "true" : "false",
                  implicit_discovery ? "true" : "false");
-    append_json_string(buf, implicit_discovery ? "blocked" : "ok");
+    z_json_string_append(buf, implicit_discovery ? "blocked" : "ok");
     zbuf_append(buf, "}}");
   }
   zbuf_append(buf, "]");
@@ -7708,7 +7647,7 @@ static void append_self_host_subset_json(ZBuf *buf, const Program *program, cons
   zbuf_appendf(buf, ",\"compatible\":%s", compatible ? "true" : "false");
   zbuf_append(buf, ",\"target\":\"wasm32-web\",\"backend\":\"direct-wasm\"");
   zbuf_append(buf, ",\"selectedTarget\":");
-  append_json_string(buf, target && target->name ? target->name : "host");
+  z_json_string_append(buf, target && target->name ? target->name : "host");
   zbuf_append(buf, ",\"allowedCapabilities\":[\"memory\",\"alloc\",\"path\",\"codec\",\"parse\",\"args\",\"env\",\"World.stdout\",\"World.stderr\"]");
   zbuf_appendf(buf, ",\"cInterop\":{\"headerImports\":%s,\"typedBindings\":%s,\"generatedCRequired\":false,\"externalCallBoundary\":\"direct-abi-audit\"}", program && program->c_imports.len > 0 ? "true" : "false", program && program->c_imports.len > 0 ? "true" : "false");
   zbuf_append(buf, ",\"blockedReasons\":[");
@@ -7716,7 +7655,7 @@ static void append_self_host_subset_json(ZBuf *buf, const Program *program, cons
 #define APPEND_BLOCKED_CAP(field, label) do { \
     if (caps && caps->field) { \
       if (wrote) zbuf_append(buf, ","); \
-      append_json_string(buf, label); \
+      z_json_string_append(buf, label); \
       wrote = true; \
     } \
   } while (0)
@@ -7754,20 +7693,20 @@ static void append_self_host_routing_json(ZBuf *buf, const char *command_name, c
   zbuf_append(buf, "{\"contractVersion\":1,\"subsetCompatible\":");
   zbuf_append(buf, compatible ? "true" : "false");
   zbuf_append(buf, ",\"mode\":");
-  append_json_string(buf, mode);
+  z_json_string_append(buf, mode);
   zbuf_append(buf, ",\"phases\":{\"parse\":\"zero-c\",\"check\":\"zero-c\",\"lower\":\"zero-c\",\"emit\":");
-  append_json_string(buf, wasm_selected ? "zero-c-direct-wasm" : "zero-c");
+  z_json_string_append(buf, wasm_selected ? "zero-c-direct-wasm" : "zero-c");
   zbuf_append(buf, ",\"selfHostCompiler\":\"compiler-zero\",\"selfHostCompilerRole\":");
-  append_json_string(buf, (frontend_selected || wasm_selected) ? "seed-artifact" : "not-used");
+  z_json_string_append(buf, (frontend_selected || wasm_selected) ? "seed-artifact" : "not-used");
   zbuf_append(buf, "}");
   zbuf_append(buf, ",\"frontend\":{\"selected\":");
   zbuf_append(buf, frontend_selected ? "true" : "false");
   zbuf_append(buf, ",\"implementation\":\"compiler-zero\",\"status\":");
-  append_json_string(buf, frontend_selected ? "selected" : "not-selected");
+  z_json_string_append(buf, frontend_selected ? "selected" : "not-selected");
   zbuf_append(buf, "},\"wasmEmitter\":{\"selected\":");
   zbuf_append(buf, wasm_selected ? "true" : "false");
   zbuf_append(buf, ",\"implementation\":\"compiler-zero-direct-wasm\",\"status\":");
-  append_json_string(buf, wasm_selected ? "selected" : "not-selected");
+  z_json_string_append(buf, wasm_selected ? "selected" : "not-selected");
   zbuf_append(buf, "},\"metadata\":{\"graphJson\":");
   zbuf_append(buf, compatible ? "true" : "false");
   zbuf_append(buf, ",\"sizeJson\":");
@@ -7784,13 +7723,13 @@ static void append_release_matrix_target_support_json(ZBuf *buf) {
     if (i > 0) zbuf_append(buf, ",");
     const ZTargetInfo *matrix_target = z_find_target(targets[i]);
     zbuf_append(buf, "{\"target\":");
-    append_json_string(buf, targets[i]);
+    z_json_string_append(buf, targets[i]);
     zbuf_append(buf, ",\"directStatus\":");
-    append_json_string(buf, z_direct_backend_status(matrix_target));
+    z_json_string_append(buf, z_direct_backend_status(matrix_target));
     zbuf_append(buf, ",\"directObjectEmitter\":");
-    append_json_string(buf, z_direct_object_emitter(matrix_target));
+    z_json_string_append(buf, z_direct_object_emitter(matrix_target));
     zbuf_append(buf, ",\"directExeEmitter\":");
-    append_json_string(buf, z_direct_exe_emitter(matrix_target));
+    z_json_string_append(buf, z_direct_exe_emitter(matrix_target));
     zbuf_append(buf, ",\"fallbackPolicy\":\"explicit-direct-never-c-bridge\"}");
   }
   zbuf_append(buf, "]");
@@ -7816,7 +7755,7 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n");
   zbuf_appendf(buf, "  \"sourceFile\": \"%s\",\n", input->source_file);
   zbuf_append(buf, "  \"targets\": [{\"name\":\"cli\",\"kind\":\"exe\",\"main\":");
-  append_json_string(buf, input->source_file);
+  z_json_string_append(buf, input->source_file);
   zbuf_append(buf, "}],\n");
   zbuf_append(buf, "  \"package\": ");
   append_package_metadata_json(buf, input, target);
@@ -7825,9 +7764,9 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   append_package_cache_audit_json(buf, input, target, "release");
   zbuf_append(buf, ",\n");
   zbuf_append(buf, "  \"targetSupport\": {\"target\":");
-  append_json_string(buf, target ? target->name : "host");
+  z_json_string_append(buf, target ? target->name : "host");
   zbuf_append(buf, ",\"hostTarget\":");
-  append_json_string(buf, z_host_target());
+  z_json_string_append(buf, z_host_target());
   zbuf_appendf(buf, ",\"hosted\":%s,\"fsAvailable\":%s,\"capabilities\":", target_is_host(target) ? "true" : "false", z_target_has_capability(target, "fs") ? "true" : "false");
   CapabilitySummary target_caps = {0};
   target_caps.memory = true;
@@ -7871,7 +7810,7 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   zbuf_append(buf, "  \"sourceFiles\": [");
   for (size_t i = 0; i < input->source_file_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
-    append_json_string(buf, input->source_files[i]);
+    z_json_string_append(buf, input->source_files[i]);
   }
   zbuf_append(buf, "],\n  \"sourceMaps\": [");
   for (size_t i = 0; i < input->source_file_count; i++) {
@@ -7879,22 +7818,22 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     char *map_source = read_optional_file(input->source_files[i]);
     const char *map_text = map_source ? map_source : ((strcmp(input->source_files[i], input->source_file) == 0 && input->source) ? input->source : input->source_files[i]);
     zbuf_append(buf, "{\"path\":");
-    append_json_string(buf, input->source_files[i]);
+    z_json_string_append(buf, input->source_files[i]);
     zbuf_appendf(buf, ",\"sourceHash\":\"%016llx\",\"lineCount\":%zu,\"columnUnit\":\"utf8-byte\"}", (unsigned long long)fnv1a_text(map_text), source_line_count(map_text));
     free(map_source);
   }
   zbuf_append(buf, "],\n  \"imports\": [");
   for (size_t i = 0; i < input->import_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
-    append_json_string(buf, input->imports[i]);
+    z_json_string_append(buf, input->imports[i]);
   }
   zbuf_append(buf, "],\n  \"modules\": [");
   for (size_t i = 0; i < input->module_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, input->module_names[i]);
+    z_json_string_append(buf, input->module_names[i]);
     zbuf_append(buf, ",\"path\":");
-    append_json_string(buf, input->module_paths[i]);
+    z_json_string_append(buf, input->module_paths[i]);
     zbuf_append(buf, "}");
   }
   zbuf_append(buf, "],\n  \"interfaceFingerprints\": ");
@@ -7903,11 +7842,11 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   for (size_t i = 0; i < input->import_edge_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"from\":");
-    append_json_string(buf, input->import_from[i]);
+    z_json_string_append(buf, input->import_from[i]);
     zbuf_append(buf, ",\"to\":");
-    append_json_string(buf, input->import_to[i]);
+    z_json_string_append(buf, input->import_to[i]);
     zbuf_append(buf, ",\"path\":");
-    append_json_string(buf, input->import_paths[i]);
+    z_json_string_append(buf, input->import_paths[i]);
     zbuf_append(buf, "}");
   }
   zbuf_append(buf, "],\n");
@@ -7915,18 +7854,18 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   for (size_t i = 0; i < input->symbol_count; i++) {
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, input->symbol_names[i]);
+    z_json_string_append(buf, input->symbol_names[i]);
     zbuf_append(buf, ",\"module\":");
-    append_json_string(buf, input->symbol_modules[i]);
+    z_json_string_append(buf, input->symbol_modules[i]);
     zbuf_append(buf, ",\"kind\":");
-    append_json_string(buf, input->symbol_kinds ? input->symbol_kinds[i] : "unknown");
+    z_json_string_append(buf, input->symbol_kinds ? input->symbol_kinds[i] : "unknown");
     zbuf_appendf(buf, ",\"public\":%s", input->symbol_public[i] ? "true" : "false");
     const Function *symbol_fun = (input->symbol_kinds && strcmp(input->symbol_kinds[i], "function") == 0) ? find_program_function(program, input->symbol_names[i]) : NULL;
     if (symbol_fun) {
       zbuf_append(buf, ",\"effects\":");
       append_function_effects_json(buf, symbol_fun);
       zbuf_append(buf, ",\"allocationBehavior\":");
-      append_json_string(buf, function_allocation_behavior(symbol_fun));
+      z_json_string_append(buf, function_allocation_behavior(symbol_fun));
       zbuf_append(buf, ",\"targetSupport\":");
       CapabilitySummary symbol_caps = function_capabilities(symbol_fun);
       append_target_capability_facts_json(buf, target, &symbol_caps);
@@ -7943,7 +7882,7 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     zbuf_appendf(buf, "{\"name\":\"%s\",\"kind\":\"function\",\"public\":%s,\"params\":%zu,\"typeParams\":[", fun->name, fun->is_public ? "true" : "false", fun->params.len);
     for (size_t type_param_index = 0; type_param_index < fun->type_params.len; type_param_index++) {
       if (type_param_index > 0) zbuf_append(buf, ",");
-      append_json_string(buf, fun->type_params.items[type_param_index].name);
+      z_json_string_append(buf, fun->type_params.items[type_param_index].name);
     }
     zbuf_append(buf, "],\"staticParams\":[");
     bool wrote_static_param = false;
@@ -7953,11 +7892,11 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
       if (wrote_static_param) zbuf_append(buf, ",");
       wrote_static_param = true;
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, type_param->name);
+      z_json_string_append(buf, type_param->name);
       zbuf_append(buf, ",\"type\":");
-      append_json_string(buf, type_param->type ? type_param->type : "usize");
+      z_json_string_append(buf, type_param->type ? type_param->type : "usize");
       zbuf_append(buf, ",\"kind\":");
-      append_json_string(buf, static_param_kind_json(program, type_param->type));
+      z_json_string_append(buf, static_param_kind_json(program, type_param->type));
       zbuf_append(buf, ",\"staticDispatch\":true}");
     }
     zbuf_append(buf, "],\"constraints\":[");
@@ -7969,9 +7908,9 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
       if (wrote_constraint) zbuf_append(buf, ",");
       wrote_constraint = true;
       zbuf_append(buf, "{\"typeParam\":");
-      append_json_string(buf, type_param->name);
+      z_json_string_append(buf, type_param->name);
       zbuf_append(buf, ",\"interface\":");
-      append_json_string(buf, type_param->type);
+      z_json_string_append(buf, type_param->type);
       zbuf_append(buf, ",\"staticDispatch\":true}");
     }
     zbuf_appendf(buf, "],\"generic\":%s,\"returnType\":\"%s\",\"raises\":%s,", fun->type_params.len > 0 ? "true" : "false", fun->return_type ? fun->return_type : "Void", fun->raises ? "true" : "false");
@@ -7981,7 +7920,7 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     zbuf_append(buf, ",\"effects\":");
     append_function_effects_json(buf, fun);
     zbuf_append(buf, ",\"allocationBehavior\":");
-    append_json_string(buf, function_allocation_behavior(fun));
+    z_json_string_append(buf, function_allocation_behavior(fun));
     zbuf_append(buf, ",\"targetSupport\":");
     CapabilitySummary fun_caps = function_capabilities(fun);
     append_target_capability_facts_json(buf, target, &fun_caps);
@@ -7996,7 +7935,7 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     zbuf_appendf(buf, "{\"name\":\"%s\",\"kind\":\"shape\",\"public\":%s,\"layout\":\"%s\",\"typeParams\":[", shape->name, shape->is_public ? "true" : "false", shape->layout);
     for (size_t type_param_index = 0; type_param_index < shape->type_params.len; type_param_index++) {
       if (type_param_index > 0) zbuf_append(buf, ",");
-      append_json_string(buf, shape->type_params.items[type_param_index].name);
+      z_json_string_append(buf, shape->type_params.items[type_param_index].name);
     }
     zbuf_append(buf, "],\"staticParams\":[");
     bool wrote_shape_static_param = false;
@@ -8006,11 +7945,11 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
       if (wrote_shape_static_param) zbuf_append(buf, ",");
       wrote_shape_static_param = true;
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, type_param->name);
+      z_json_string_append(buf, type_param->name);
       zbuf_append(buf, ",\"type\":");
-      append_json_string(buf, type_param->type ? type_param->type : "usize");
+      z_json_string_append(buf, type_param->type ? type_param->type : "usize");
       zbuf_append(buf, ",\"kind\":");
-      append_json_string(buf, static_param_kind_json(program, type_param->type));
+      z_json_string_append(buf, static_param_kind_json(program, type_param->type));
       zbuf_append(buf, ",\"staticDispatch\":true}");
     }
     zbuf_append(buf, "],\"generic\":");
@@ -8026,19 +7965,19 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
       Function *method = &shape->methods.items[method_index];
       if (method_index > 0) zbuf_append(buf, ", ");
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, method->name);
+      z_json_string_append(buf, method->name);
       zbuf_append(buf, ",\"doc\":\"\"");
       zbuf_appendf(buf, ",\"public\":%s,\"params\":%zu,\"typeParams\":[", method->is_public ? "true" : "false", method->params.len);
       for (size_t type_param_index = 0; type_param_index < method->type_params.len; type_param_index++) {
         if (type_param_index > 0) zbuf_append(buf, ",");
-        append_json_string(buf, method->type_params.items[type_param_index].name);
+        z_json_string_append(buf, method->type_params.items[type_param_index].name);
       }
       zbuf_append(buf, "],\"inheritedShapeParams\":");
       zbuf_append(buf, shape->type_params.len > 0 ? "true" : "false");
       zbuf_append(buf, ",\"shapeTypeParams\":[");
       for (size_t type_param_index = 0; type_param_index < shape->type_params.len; type_param_index++) {
         if (type_param_index > 0) zbuf_append(buf, ",");
-        append_json_string(buf, shape->type_params.items[type_param_index].name);
+        z_json_string_append(buf, shape->type_params.items[type_param_index].name);
       }
       zbuf_append(buf, "],\"shapeStaticParams\":[");
       bool wrote_method_shape_static_param = false;
@@ -8048,21 +7987,21 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
         if (wrote_method_shape_static_param) zbuf_append(buf, ",");
         wrote_method_shape_static_param = true;
         zbuf_append(buf, "{\"name\":");
-        append_json_string(buf, type_param->name);
+        z_json_string_append(buf, type_param->name);
         zbuf_append(buf, ",\"type\":");
-        append_json_string(buf, type_param->type ? type_param->type : "usize");
+        z_json_string_append(buf, type_param->type ? type_param->type : "usize");
         zbuf_append(buf, ",\"kind\":");
-        append_json_string(buf, static_param_kind_json(program, type_param->type));
+        z_json_string_append(buf, static_param_kind_json(program, type_param->type));
         zbuf_append(buf, ",\"staticDispatch\":true}");
       }
       zbuf_append(buf, "],\"returnType\":");
-      append_json_string(buf, method->return_type ? method->return_type : "Void");
+      z_json_string_append(buf, method->return_type ? method->return_type : "Void");
       zbuf_appendf(buf, ",\"raises\":%s,", method->raises ? "true" : "false");
       append_function_error_json(buf, method);
       zbuf_append(buf, ",\"staticDispatch\":true,\"effects\":");
       append_function_effects_json(buf, method);
       zbuf_append(buf, ",\"allocationBehavior\":");
-      append_json_string(buf, function_allocation_behavior(method));
+      z_json_string_append(buf, function_allocation_behavior(method));
       zbuf_append(buf, ",\"targetSupport\":");
       CapabilitySummary method_caps = function_capabilities(method);
       append_target_capability_facts_json(buf, target, &method_caps);
@@ -8079,27 +8018,27 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     zbuf_appendf(buf, "{\"name\":\"%s\",\"kind\":\"interface\",\"public\":%s,\"typeParams\":[", interface->name, interface->is_public ? "true" : "false");
     for (size_t type_param_index = 0; type_param_index < interface->type_params.len; type_param_index++) {
       if (type_param_index > 0) zbuf_append(buf, ",");
-      append_json_string(buf, interface->type_params.items[type_param_index].name);
+      z_json_string_append(buf, interface->type_params.items[type_param_index].name);
     }
     zbuf_append(buf, "],\"staticOnly\":true,\"methods\":[");
     for (size_t method_index = 0; method_index < interface->methods.len; method_index++) {
       Function *method = &interface->methods.items[method_index];
       if (method_index > 0) zbuf_append(buf, ", ");
       zbuf_append(buf, "{\"name\":");
-      append_json_string(buf, method->name);
+      z_json_string_append(buf, method->name);
       zbuf_append(buf, ",\"doc\":\"\"");
       zbuf_append(buf, ",\"params\":[");
       for (size_t param_index = 0; param_index < method->params.len; param_index++) {
         Param *param = &method->params.items[param_index];
         if (param_index > 0) zbuf_append(buf, ",");
         zbuf_append(buf, "{\"name\":");
-        append_json_string(buf, param->name);
+        z_json_string_append(buf, param->name);
         zbuf_append(buf, ",\"type\":");
-        append_json_string(buf, param->type);
+        z_json_string_append(buf, param->type);
         zbuf_append(buf, "}");
       }
       zbuf_append(buf, "],\"returnType\":");
-      append_json_string(buf, method->return_type ? method->return_type : "Void");
+      z_json_string_append(buf, method->return_type ? method->return_type : "Void");
       zbuf_appendf(buf, ",\"raises\":%s,", method->raises ? "true" : "false");
       append_function_error_json(buf, method);
       zbuf_append(buf, ",\"staticDispatch\":true}");
@@ -8111,9 +8050,9 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     TypeAlias *item = &program->aliases.items[i];
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, item->name);
+    z_json_string_append(buf, item->name);
     zbuf_append(buf, ",\"target\":");
-    append_json_string(buf, item->target);
+    z_json_string_append(buf, item->target);
     zbuf_appendf(buf, ",\"public\":%s}", item->is_public ? "true" : "false");
   }
   zbuf_append(buf, "],\n  \"consts\": [");
@@ -8121,9 +8060,9 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
     ConstDecl *item = &program->consts.items[i];
     if (i > 0) zbuf_append(buf, ", ");
     zbuf_append(buf, "{\"name\":");
-    append_json_string(buf, item->name);
+    z_json_string_append(buf, item->name);
     zbuf_append(buf, ",\"type\":");
-    append_json_string(buf, item->type ? item->type : (item->expr ? item->expr->resolved_type : "Unknown"));
+    z_json_string_append(buf, item->type ? item->type : (item->expr ? item->expr->resolved_type : "Unknown"));
     zbuf_appendf(buf, ",\"public\":%s}", item->is_public ? "true" : "false");
   }
   zbuf_append(buf, "],\n  \"enums\": [");
@@ -8165,6 +8104,9 @@ int main(int argc, char **argv) {
     print_help();
     return 0;
   }
+  if (argc >= 2 && strcmp(argv[1], "keys") == 0) {
+    return keys_command(argc, argv);
+  }
   Command command = {0};
   if (!parse_command(argc, argv, &command)) {
     print_help();
@@ -8180,6 +8122,9 @@ int main(int argc, char **argv) {
     if (strncmp(command.unknown_flag, "--js", 4) == 0) fprintf(stderr, " or use --json");
     fprintf(stderr, "\n");
     return 1;
+  }
+  if (command.insecure) {
+    z_trusted_keys_insecure_set(true);
   }
   if (strcmp(command.command, "--version") == 0 || strcmp(command.command, "version") == 0) {
     return print_version_command(command.json);
@@ -8808,22 +8753,29 @@ int main(int argc, char **argv) {
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;
+    int ship_rc = 0;
     if (ship_command) {
       ShipArtifacts ship = {0};
-      if (!write_ship_artifacts(&command, &input, target, &exe, exe_file, &ship, &diag)) {
+      LedgerKeys trusted = {0};
+      LedgerKeys ledger = {0};
+      KeyUse signer = {0};
+      char *ledger_path = NULL;
+      if (!ship_ledger_load(&input, &trusted, &ledger, &ledger_path, &diag)) ship_rc = 1;
+      if (ship_rc == 0 && !keys_active_or_create(&signer, &diag)) ship_rc = 1;
+      if (ship_rc == 0 && !ship_signer_check(&ledger, &signer, ledger_path, &diag)) ship_rc = 1;
+      if (ship_rc == 0 && !write_ship_artifacts(&command, &input, target, &exe, exe_file, &signer, &ship, &diag)) ship_rc = 1;
+      if (ship_rc == 0) {
+        if (command.json) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
+        else print_ship_text(&ship, elapsed_ms);
+      } else {
         if (command.json) print_diag_json(diag.path ? diag.path : exe_file, &diag);
         else print_diag(diag.path ? diag.path : exe_file, &diag);
-        ship_artifacts_free(&ship);
-        free(exe_file);
-        zbuf_free(&exe);
-        z_free_ir_program(&ir);
-        z_free_program(&program);
-        z_free_source(&input);
-        return 1;
       }
-      if (command.json) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
-      else print_ship_text(&ship, elapsed_ms);
       ship_artifacts_free(&ship);
+      keys_use_free(&signer);
+      ledger_keys_free(&ledger);
+      ledger_keys_free(&trusted);
+      free(ledger_path);
     } else if (command.json) {
       print_build_json(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
     } else {
@@ -8834,7 +8786,7 @@ int main(int argc, char **argv) {
     z_free_ir_program(&ir);
     z_free_program(&program);
     z_free_source(&input);
-    return 0;
+    return ship_command ? ship_rc : 0;
   }
   if (strcmp(command.command, "size") == 0) {
     CapabilitySummary caps = program_capabilities(&program);
@@ -8848,9 +8800,9 @@ int main(int argc, char **argv) {
       ZBuf artifact;
       zbuf_init(&artifact);
       zbuf_append(&artifact, "{\n  \"schemaVersion\": 1,\n  \"kind\": \"zero-size-metadata\",\n  \"sourceFile\": ");
-      append_json_string(&artifact, input.source_file);
+      z_json_string_append(&artifact, input.source_file);
       zbuf_append(&artifact, ",\n  \"target\": ");
-      append_json_string(&artifact, target ? target->name : z_host_target());
+      z_json_string_append(&artifact, target ? target->name : z_host_target());
       zbuf_appendf(&artifact, ",\n  \"generatedCBytes\": 0,\n  \"loweredIrBytes\": %zu\n}\n", input.lowered_ir_bytes);
       phase_started = now_ms();
       input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, "direct-size-metadata"));

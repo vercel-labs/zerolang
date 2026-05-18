@@ -1,11 +1,11 @@
 CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Os
 ROOT := ../..
-OUT := $(ROOT)/.zero/bin/zero
+OUT ?= $(ROOT)/.zero/bin/zero
 BUILD_STAMP := $(OUT).build
 HOST_ID := $(shell uname -s 2>/dev/null || echo unknown)-$(shell uname -m 2>/dev/null || echo unknown)
 BUILD_ID := $(HOST_ID)|$(CC)|$(CFLAGS)
-SRC := $(wildcard src/*.c)
+SRC := $(wildcard src/*.c) $(wildcard src/crypto/*.c)
 
 .PHONY: all clean install-local FORCE
 

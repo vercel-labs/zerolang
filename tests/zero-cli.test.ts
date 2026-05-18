@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { describe, it } from "node:test";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = process.cwd();
-const zero = join(root, "bin", "zero");
+const zeroBinEnv = process.env.ZERO_BIN;
+const zeroBin = zeroBinEnv ? (isAbsolute(zeroBinEnv) ? zeroBinEnv : join(root, zeroBinEnv)) : join(root, "bin", "zero");
+const trustedKeysPath = join(root, "tests", "fixtures", "trusted-keys.json");
+const trustedKeysSigPath = join(root, "tests", "fixtures", "trusted-keys.sig");
+const seedDefault = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const seedBackup = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f";
+const seedThird = "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f";
 const supportedTargets = [
   "darwin-arm64",
   "darwin-x64",
@@ -33,7 +40,102 @@ function runnableBuildArgs(input: string, out: string) {
 }
 
 function runZero(args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
-  return execFileAsync(zero, args, { cwd: options.cwd ?? root, env: options.env ?? process.env });
+  return execFileAsync(zeroBin, args, { cwd: options.cwd ?? root, env: options.env ?? process.env });
+}
+
+function jsonValueSpan(text: string, startIndex: number) {
+  let start = startIndex;
+  while (start < text.length && /\s/.test(text[start])) start++;
+  if (start >= text.length) throw new Error("missing json value");
+
+  const first = text[start];
+  if (first === "\"") {
+    let index = start + 1;
+    for (; index < text.length; index++) {
+      const ch = text[index];
+      if (ch === "\\") {
+        index++;
+        continue;
+      }
+      if (ch === "\"") return { start, end: index + 1 };
+    }
+    throw new Error("unterminated json string");
+  }
+
+  if (first === "{" || first === "[") {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index++) {
+      const ch = text[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === "\"") inString = false;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = true;
+        continue;
+      }
+      if (ch === "{" || ch === "[") depth++;
+      if (ch === "}" || ch === "]") {
+        depth--;
+        if (depth === 0) return { start, end: index + 1 };
+      }
+    }
+    throw new Error("unterminated json value");
+  }
+
+  let end = start;
+  while (end < text.length) {
+    const ch = text[end];
+    if (ch === "," || ch === "}" || ch === "]" || /\s/.test(ch)) break;
+    end++;
+  }
+  return { start, end };
+}
+
+function ledgerDataText(text: string) {
+  const keyIndex = text.indexOf("\"data\"");
+  assert.ok(keyIndex >= 0, "ledger data missing");
+  const colonIndex = text.indexOf(":", keyIndex + 6);
+  assert.ok(colonIndex >= 0, "ledger data missing colon");
+  const span = jsonValueSpan(text, colonIndex + 1);
+  return text.slice(span.start, span.end);
+}
+
+async function readTextTrim(path: string): Promise<string> {
+  return (await readFile(path, "utf8")).trim();
+}
+
+async function readActiveKey(keysDir: string): Promise<string> {
+  return readTextTrim(join(keysDir, "active-key.txt"));
+}
+
+async function readPublicKey(keysDir: string, keyId: string): Promise<string> {
+  return readTextTrim(join(keysDir, keyId, "public.key"));
+}
+
+async function readIdentity(keysDir: string, keyId: string): Promise<{ label: string; name: string; email: string; keyId: string }> {
+  const text = await readFile(join(keysDir, keyId, "identity.txt"), "utf8");
+  const map = new Map<string, string>();
+  for (const line of text.trim().split(/\r?\n/)) {
+    const [key, value] = line.split("=", 2);
+    if (key && value) map.set(key, value);
+  }
+  return {
+    label: map.get("label") ?? "",
+    name: map.get("name") ?? "",
+    email: map.get("email") ?? "",
+    keyId: map.get("key_id") ?? "",
+  };
 }
 
 async function collectSkillMdFiles(dir: string): Promise<string[]> {
@@ -131,6 +233,162 @@ describe("native zero CLI", () => {
     }
   });
 
+  it("creates secure templates for zero new", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "zero-new-"));
+    const keysDir = await mkdtemp(join(tmpdir(), "zero-keys-"));
+    const env = {
+      ...process.env,
+      ZERO_KEYS_DIR: keysDir,
+      ZERO_KEY_EMAIL: "dev@example.com",
+      ZERO_KEY_NAME: "Dev Example",
+      ZERO_TRUSTED_KEYS: trustedKeysPath,
+      ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    };
+
+    try {
+      const cli = await runZero(["new", "cli", "demo-cli"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedDefault } });
+
+      const keyId = await readActiveKey(keysDir);
+      const keyDir = join(keysDir, keyId);
+      await access(join(keyDir, "public.key"));
+      await access(join(keyDir, "private.key"));
+      await access(join(keyDir, "identity.txt"));
+
+      const publicKey = await readPublicKey(keysDir, keyId);
+      assert.match(cli.stdout, /Here's your package:/);
+      assert.match(cli.stdout, new RegExp(`pubkey: ${publicKey}`));
+
+      const identity = await readIdentity(keysDir, keyId);
+      assert.equal(identity.label, "default");
+      assert.equal(identity.name, "Dev Example");
+      assert.equal(identity.email, "dev@example.com");
+      assert.equal(identity.keyId, keyId);
+      const ledgerPath = join(workDir, "demo-cli", "ledger.json");
+      const ledgerText = await readFile(ledgerPath, "utf8");
+      const ledger = JSON.parse(ledgerText);
+      assert.equal(ledger.schemaVersion, 1);
+      assert.equal(ledger.format, "zero-ledger-v1");
+      assert.equal(ledger.package.name, "demo-cli");
+
+      const entry = ledger.entries[0];
+      assert.equal(entry.kind, "keys");
+      assert.equal(entry.seq, 1);
+      assert.equal(entry.prevHash, "");
+      assert.equal(entry.data.threshold, 1);
+      assert.deepEqual(entry.data.revoked, []);
+      assert.equal(entry.data.publishers.length, 1);
+      assert.equal(entry.signatures.length, 1);
+      assert.equal(entry.data.publishers[0].keyId, keyId);
+      assert.equal(entry.data.publishers[0].publicKey, publicKey);
+      assert.equal(entry.data.publishers[0].label, "default");
+      assert.equal(entry.data.publishers[0].name, "Dev Example");
+      assert.equal(entry.data.publishers[0].email, "dev@example.com");
+
+      const dataText = ledgerDataText(ledgerText);
+      const hash = createHash("sha256").update(dataText, "utf8").digest("hex");
+      assert.equal(entry.hash, hash);
+
+      if (process.platform !== "win32") {
+        const publicMode = (await stat(join(keyDir, "public.key"))).mode & 0o777;
+        const privateMode = (await stat(join(keyDir, "private.key"))).mode & 0o777;
+        const identityMode = (await stat(join(keyDir, "identity.txt"))).mode & 0o777;
+        assert.equal(publicMode, 0o644);
+        assert.equal(privateMode, 0o600);
+        assert.equal(identityMode, 0o644);
+      }
+
+      const lib = await runZero(["new", "lib", "demo-lib"], { cwd: workDir, env });
+      assert.match(lib.stdout, new RegExp(`pubkey: ${publicKey}`));
+      assert.match(lib.stdout, /next: zero check/);
+
+      const pkg = await runZero(["new", "package", "demo-pkg"], { cwd: workDir, env });
+      assert.match(pkg.stdout, new RegExp(`pubkey: ${publicKey}`));
+      assert.match(pkg.stdout, /next: zero check/);
+    } finally {
+      await rm(workDir, { force: true, recursive: true });
+      await rm(keysDir, { force: true, recursive: true });
+    }
+  });
+
+  it("manages keys and ledger entries", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "zero-ledger-"));
+    const keysDir = await mkdtemp(join(tmpdir(), "zero-keys-ledger-"));
+    const env = {
+      ...process.env,
+      ZERO_KEYS_DIR: keysDir,
+      ZERO_KEY_EMAIL: "dev@example.com",
+      ZERO_KEY_NAME: "Dev Example",
+      ZERO_TRUSTED_KEYS: trustedKeysPath,
+      ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    };
+
+    try {
+      await runZero(["new", "package", "demo"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedDefault } });
+      const ledgerPath = join(workDir, "demo", "ledger.json");
+      const activeKey = await readActiveKey(keysDir);
+
+      await runZero(["keys", "new", "--email", "backup@example.com", "--label", "backup", "--no-activate"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedBackup } });
+      const list = JSON.parse((await runZero(["keys", "list", "--json"], { cwd: workDir, env })).stdout);
+      const backupKey = list.keys.find((item: { label: string }) => item.label === "backup")?.id;
+      assert.ok(backupKey);
+      assert.equal(list.keys.find((item: { id: string }) => item.id === activeKey)?.active, true);
+
+      const show = JSON.parse((await runZero(["keys", "show", "backup", "--json"], { cwd: workDir, env })).stdout);
+      assert.equal(show.key.id, backupKey);
+
+      await runZero(["keys", "use", "backup"], { cwd: workDir, env });
+      assert.equal(await readActiveKey(keysDir), backupKey);
+      await runZero(["keys", "use", activeKey], { cwd: workDir, env });
+
+      await runZero(["keys", "authorize", "--ledger", ledgerPath, "--key", "backup"], { cwd: workDir, env });
+      let ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      assert.equal(ledger.entries.length, 2);
+      assert.equal(ledger.entries[1].data.publishers.some((item: { keyId: string }) => item.keyId === backupKey), true);
+
+      await runZero(["keys", "revoke", "--ledger", ledgerPath, "--key", "backup", "--reason", "left"], { cwd: workDir, env });
+      ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      assert.equal(ledger.entries.length, 3);
+      assert.equal(ledger.entries[2].data.revoked.some((item: { keyId: string; reason: string }) => item.keyId === backupKey && item.reason === "left"), true);
+
+      await runZero(["keys", "new", "--email", "third@example.com", "--label", "third", "--no-activate"], { cwd: workDir, env: { ...env, ZERO_KEY_SEED: seedThird } });
+      await runZero(["keys", "rotate", "--ledger", ledgerPath, "--old", "backup", "--new", "third"], { cwd: workDir, env });
+      ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      assert.equal(ledger.entries.length, 4);
+      assert.equal(ledger.entries[3].data.publishers.some((item: { label: string }) => item.label === "third"), true);
+      assert.equal(ledger.entries[3].data.revoked.some((item: { keyId: string; reason: string }) => item.keyId === backupKey && item.reason === "left"), true);
+    } finally {
+      await rm(workDir, { force: true, recursive: true });
+      await rm(keysDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects tampered trusted keys", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "zero-trust-"));
+    const keysDir = await mkdtemp(join(tmpdir(), "zero-trust-keys-"));
+    const env = {
+      ...process.env,
+      ZERO_KEYS_DIR: keysDir,
+      ZERO_KEY_EMAIL: "dev@example.com",
+      ZERO_KEY_NAME: "Dev Example",
+      ZERO_TRUSTED_KEYS: trustedKeysPath,
+      ZERO_TRUSTED_KEYS_SIG: trustedKeysSigPath,
+    };
+    const tamperedPath = join(workDir, "trusted-keys.json");
+
+    try {
+      const source = await readFile(trustedKeysPath, "utf8");
+      await writeFile(tamperedPath, `${source}\n`);
+      const result = await runZero(["new", "package", "demo"], {
+        cwd: workDir,
+        env: { ...env, ZERO_TRUSTED_KEYS: tamperedPath, ZERO_KEY_SEED: seedDefault },
+      }).catch((error) => error);
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr ?? result.stdout, /trusted keys signature invalid/);
+    } finally {
+      await rm(workDir, { force: true, recursive: true });
+      await rm(keysDir, { force: true, recursive: true });
+    }
+  });
   it("reports graph, size, routes, and targets", async () => {
     const graph = JSON.parse((await runZero(["graph", "--json", "examples/point.0"])).stdout);
     assert.equal(graph.shapes[0].name, "Point");

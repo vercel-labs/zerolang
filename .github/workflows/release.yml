@@ -32,6 +32,9 @@ jobs:
           missing=0
           for asset in \
             CHECKSUMS.txt \
+            checksums.txt.sig \
+            trusted-keys.json \
+            trusted-keys.sig \
             zero-darwin-arm64 \
             zero-darwin-x64 \
             zero-linux-arm64 \
@@ -94,7 +97,7 @@ jobs:
             target="$1"
             name="$2"
             echo "Building $name (target: $target)..."
-            zig cc -target "$target" -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c -o "/tmp/zero-release/$name"
+            zig cc -target "$target" -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c native/zero-c/src/crypto/*.c -o "/tmp/zero-release/$name"
             chmod 755 "/tmp/zero-release/$name"
           }
 
@@ -108,6 +111,22 @@ jobs:
           build_asset x86_64-windows-gnu   zero-win32-x64.exe
 
           (cd /tmp/zero-release && shasum -a 256 zero-* > CHECKSUMS.txt)
+
+      - name: Sign release metadata
+        env:
+          ZERO_ROOT_PRIVATE_KEY: ${{ secrets.ZERO_ROOT_PRIVATE_KEY }}
+        run: |
+          if [ -z "${ZERO_ROOT_PRIVATE_KEY:-}" ]; then
+            echo "ZERO_ROOT_PRIVATE_KEY is required" >&2
+            exit 1
+          fi
+          key_path="/tmp/zero-release/root-key.pem"
+          printf '%s' "$ZERO_ROOT_PRIVATE_KEY" > "$key_path"
+          openssl pkeyutl -sign -inkey "$key_path" -rawin -in /tmp/zero-release/CHECKSUMS.txt -out /tmp/zero-release/checksums.txt.sig.bin
+          xxd -p -c 256 /tmp/zero-release/checksums.txt.sig.bin > /tmp/zero-release/checksums.txt.sig
+          openssl pkeyutl -sign -inkey "$key_path" -rawin -in trusted-keys.json -out /tmp/zero-release/trusted-keys.sig.bin
+          xxd -p -c 256 /tmp/zero-release/trusted-keys.sig.bin > /tmp/zero-release/trusted-keys.sig
+          cp trusted-keys.json /tmp/zero-release/trusted-keys.json
 
       - name: Smoke test release assets
         run: |
@@ -126,6 +145,10 @@ jobs:
           do
             test -s "$asset"
           done
+
+          test -s checksums.txt.sig
+          test -s trusted-keys.json
+          test -s trusted-keys.sig
 
           shasum -a 256 -c CHECKSUMS.txt
 
@@ -154,6 +177,9 @@ jobs:
           gh release upload "$TAG" \
             /tmp/zero-release/zero-* \
             /tmp/zero-release/CHECKSUMS.txt \
+            /tmp/zero-release/checksums.txt.sig \
+            /tmp/zero-release/trusted-keys.json \
+            /tmp/zero-release/trusted-keys.sig \
             --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

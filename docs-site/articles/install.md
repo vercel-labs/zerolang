@@ -10,7 +10,9 @@ zero --version
 
 The installer downloads the latest matching binary from
 `github.com/vercel-labs/zero`, verifies it against the release checksum file,
-and writes it to `$HOME/.zero/bin/zero`. Set `ZERO_INSTALL_DIR` to choose a
+verifies the signed trust list, and writes it to `$HOME/.zero/bin/zero`. The
+trust list is stored under `$HOME/.zero/trust`; set `ZERO_TRUSTED_KEYS_DIR` to
+choose a different trust directory. Set `ZERO_INSTALL_DIR` to choose a
 different install directory. On Linux it installs the static musl build by
 default; set `ZERO_LINUX_FLAVOR=gnu` to install the glibc-targeted build.
 
