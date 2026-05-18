@@ -4,7 +4,7 @@ Runnable today:
 
 | API | Return | Notes |
 | --- | --- | --- |
-| `std.net.host()` | `Net` | Creates the hosted network capability. |
+| `world.net()` | `Net` | Creates the hosted network capability. |
 | `std.net.address(host, port)` | `Address` | Builds an address value without allocation. |
 | `std.net.dnsName(address)` | `String` | Reads the address host name. |
 | `std.net.withTimeout(address, duration)` | `Address` | Returns address metadata with a timeout. |
@@ -24,7 +24,7 @@ Metadata labels:
 
 ```zero
 pub fun main(world: World) -> Void raises {
-    let net = std.net.host()
+    let net = world.net()
     let addr = std.net.withTimeout(std.net.address("localhost", 8080_u16), std.time.ms(250))
     let conn = std.net.connect(net, addr)
     if conn.has && std.mem.eql(std.net.dnsName(addr), "localhost") {

@@ -1030,7 +1030,6 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.crypto.constantTimeEql") == 0) result = "Bool";
   else if (strcmp(name.data, "std.crypto.secureRandomU32") == 0) result = "u32";
   else if (strcmp(name.data, "std.net.address") == 0) result = "Address";
-  else if (strcmp(name.data, "std.net.host") == 0) result = "Net";
   else if (strcmp(name.data, "std.net.dnsName") == 0) result = "String";
   else if (strcmp(name.data, "std.net.connect") == 0) result = "Maybe<Conn>";
   else if (strcmp(name.data, "std.net.listen") == 0) result = "Maybe<Listener>";
@@ -1055,7 +1054,6 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.args.len") == 0) result = "usize";
   else if (strcmp(name.data, "std.args.get") == 0) result = "Maybe<String>";
   else if (strcmp(name.data, "std.env.get") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.fs.host") == 0) result = "Fs";
   else if (strcmp(name.data, "std.fs.open") == 0) result = "Maybe<owned<File>>";
   else if (strcmp(name.data, "std.fs.openOrRaise") == 0) result = "owned<File>";
   else if (strcmp(name.data, "std.fs.create") == 0) result = "Maybe<owned<File>>";
@@ -1176,7 +1174,6 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.crypto.constantTimeEql") == 0) return 2;
   if (strcmp(name, "std.crypto.secureRandomU32") == 0) return 0;
   if (strcmp(name, "std.net.address") == 0) return 2;
-  if (strcmp(name, "std.net.host") == 0) return 0;
   if (strcmp(name, "std.net.dnsName") == 0) return 1;
   if (strcmp(name, "std.net.connect") == 0) return 2;
   if (strcmp(name, "std.net.listen") == 0) return 2;
@@ -1201,7 +1198,6 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.args.len") == 0) return 0;
   if (strcmp(name, "std.args.get") == 0) return 1;
   if (strcmp(name, "std.env.get") == 0) return 1;
-  if (strcmp(name, "std.fs.host") == 0) return 0;
   if (strcmp(name, "std.fs.open") == 0) return 2;
   if (strcmp(name, "std.fs.openOrRaise") == 0) return 2;
   if (strcmp(name, "std.fs.create") == 0) return 2;
@@ -3793,6 +3789,15 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
       }
       if (expr->left && expr->left->kind == EXPR_MEMBER) {
         if (is_world_stream_write_callee(expr->left, scope)) return "Void";
+        const char *member_type = expr_type(program, expr->left, scope);
+        if (member_type && strcmp(member_type, "Fs") == 0) return "Fs";
+        if (member_type && strcmp(member_type, "Net") == 0) return "Net";
+        if (member_type && strcmp(member_type, "Env") == 0) return "Env";
+        if (member_type && strcmp(member_type, "Args") == 0) return "Args";
+        if (member_type && strcmp(member_type, "Clock") == 0) return "Clock";
+        if (member_type && strcmp(member_type, "Rand") == 0) return "Rand";
+        if (member_type && strcmp(member_type, "Proc") == 0) return "Proc";
+        if (member_type && strcmp(member_type, "Ai") == 0) return "Ai";
         const Shape *shape = NULL;
         const Function *method = find_namespace_shape_method(program, expr->left, &shape);
         if (method) {
@@ -3903,6 +3908,14 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
         if (owned_inner_text(left_type, owned_shape_type, sizeof(owned_shape_type))) left_type = owned_shape_type;
         if (ref_inner_text(left_type, ref_shape_type, sizeof(ref_shape_type))) left_type = ref_shape_type;
         if (strcmp(left_type, "World") == 0 && (strcmp(expr->text, "out") == 0 || strcmp(expr->text, "err") == 0)) return "WorldStream";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "fs") == 0) return "Fs";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "net") == 0) return "Net";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "env") == 0) return "Env";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "args") == 0) return "Args";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "clock") == 0) return "Clock";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "rand") == 0) return "Rand";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "proc") == 0) return "Proc";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "ai") == 0) return "Ai";
         const Shape *shape = find_shape_for_type(program, left_type);
         if (shape) {
           const Param *field = find_shape_field(shape, expr->text);
@@ -4181,7 +4194,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       if (is_builtin_value(expr->text) && !scope_has(scope, expr->text)) {
         char message[256];
         snprintf(message, sizeof(message), "builtin namespace '%s' cannot be used as a runtime value", expr->text);
-        return set_diag_detail(diag, 3005, message, expr->line, expr->column, "runtime value", "builtin namespace", "use a supported member call such as Response.text(...) or std.fs.host()");
+        return set_diag_detail(diag, 3005, message, expr->line, expr->column, "runtime value", "builtin namespace", "use a supported member call such as Response.text(...) or world.fs()");
       }
       {
         const char *actual = scope_type(scope, expr->text);
@@ -4244,6 +4257,14 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
         if (strcmp(left_type, "World") == 0 && (strcmp(expr->text, "out") == 0 || strcmp(expr->text, "err") == 0)) {
           return set_diag_detail(diag, 3005, "World stream member cannot be used as a runtime value", expr->line, expr->column, "world.out.write(...) or world.err.write(...)", expr->text, "call write directly on the stream capability");
         }
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "fs") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "net") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "env") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "args") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "clock") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "rand") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "proc") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "ai") == 0) return true;
         const Shape *shape = find_shape_for_type(program, left_type);
         if (shape) {
           if (!find_shape_field(shape, expr->text)) {

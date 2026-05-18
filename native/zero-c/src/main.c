@@ -569,6 +569,7 @@ typedef struct {
   bool proc;
   bool web;
   bool world;
+  bool ai;
 } CapabilitySummary;
 
 #define STD_HELPER_MAX 192
@@ -723,7 +724,6 @@ static const StdHelperInfo std_helpers[] = {
   {"std.crypto.hmac32", "u32", 2, "codec", "target-neutral", "no allocation", true},
   {"std.crypto.constantTimeEql", "Bool", 2, "memory", "target-neutral", "no allocation", true},
   {"std.crypto.secureRandomU32", "u32", 0, "rand", "host", "target entropy source", true},
-  {"std.net.host", "Net", 0, "net", "host", "explicit network capability handle", false},
   {"std.net.address", "Address", 2, "net", "target-neutral", "no allocation", true},
   {"std.net.dnsName", "String", 1, "net", "target-neutral", "borrows address host", false},
   {"std.net.connect", "Maybe<Conn>", 2, "net", "host", "no allocation; returns unopened bootstrap handle", true},
@@ -756,7 +756,6 @@ static const StdHelperInfo std_helpers[] = {
   {"std.http.headerOffset", "usize", 1, "memory", "host-runtime", "reads header-value offset metadata", true},
   {"std.http.headerLen", "usize", 1, "memory", "host-runtime", "reads header-value length metadata", true},
   {"std.http.tlsBoundary", "String", 0, "net", "host", "declares platform-or-C-library TLS boundary", false},
-  {"std.fs.host", "Fs", 0, "fs", "host", "no allocation", true},
   {"std.fs.open", "Maybe<owned<File>>", 2, "fs", "host", "owned file handle", true},
   {"std.fs.openOrRaise", "owned<File>", 2, "fs", "host", "owned file handle", true},
   {"std.fs.create", "Maybe<owned<File>>", 2, "fs", "host", "owned file handle", true},
@@ -891,6 +890,7 @@ static void capability_summary_set(CapabilitySummary *caps, const char *capabili
   else if (strcmp(capability, "proc") == 0) caps->proc = true;
   else if (strcmp(capability, "web") == 0) caps->web = true;
   else if (strcmp(capability, "world") == 0) caps->world = true;
+  else if (strcmp(capability, "ai") == 0) caps->ai = true;
 }
 
 static void append_capability_json_array(ZBuf *buf, const CapabilitySummary *caps) {
@@ -917,6 +917,7 @@ static void append_capability_json_array(ZBuf *buf, const CapabilitySummary *cap
   APPEND_CAP("proc", caps && caps->proc);
   APPEND_CAP("web", caps && caps->web);
   APPEND_CAP("world", caps && caps->world);
+  APPEND_CAP("ai", caps && caps->ai);
 #undef APPEND_CAP
   zbuf_append(buf, "]");
 }
@@ -1152,6 +1153,7 @@ static void collect_capabilities_from_std_name(const char *name, CapabilitySumma
   else if (strncmp(name, "std.crypto.", strlen("std.crypto.")) == 0) caps->codec = true;
   else if (strncmp(name, "std.net.", strlen("std.net.")) == 0) caps->net = true;
   else if (strncmp(name, "std.http.", strlen("std.http.")) == 0) caps->net = true;
+  else if (strncmp(name, "std.ai.", strlen("std.ai.")) == 0) caps->ai = true;
   else if (strncmp(name, "std.mem.", strlen("std.mem.")) == 0) {
     caps->memory = true;
     if (strcmp(name, "std.mem.nullAlloc") == 0 ||
@@ -1227,9 +1229,12 @@ static CapabilitySummary function_capabilities(const Function *fun) {
     if (strcmp(type, "World") == 0) caps.world = true;
     else if (strcmp(type, "Fs") == 0) caps.fs = true;
     else if (strcmp(type, "Net") == 0) caps.net = true;
-    else if (strcmp(type, "Proc") == 0) caps.proc = true;
+    else if (strcmp(type, "Env") == 0) caps.env = true;
+    else if (strcmp(type, "Args") == 0) caps.args = true;
     else if (strcmp(type, "Clock") == 0) caps.time = true;
     else if (strcmp(type, "Rand") == 0) caps.rand = true;
+    else if (strcmp(type, "Proc") == 0) caps.proc = true;
+    else if (strcmp(type, "Ai") == 0) caps.ai = true;
     else if (strcmp(type, "Vercel") == 0 || strcmp(type, "Request") == 0 || strcmp(type, "Response") == 0) caps.web = true;
     else if (strcmp(type, "Alloc") == 0 || strcmp(type, "FixedBufAlloc") == 0 || strcmp(type, "NullAlloc") == 0) capability_summary_set(&caps, "alloc");
     if (strstr(type, "Span<") || strstr(type, "MutSpan<") || strstr(type, "ByteBuf")) caps.memory = true;
@@ -1256,6 +1261,7 @@ static CapabilitySummary program_capabilities(const Program *program) {
     caps.proc = caps.proc || fun_caps.proc;
     caps.web = caps.web || fun_caps.web;
     caps.world = caps.world || fun_caps.world;
+    caps.ai = caps.ai || fun_caps.ai;
   }
   for (size_t i = 0; program && i < program->shapes.len; i++) {
     for (size_t field_index = 0; field_index < program->shapes.items[i].fields.len; field_index++) {
@@ -2659,7 +2665,7 @@ static const ExplainInfo explain_infos[] = {
     "The compile-time evaluator rejected a `meta` expression because it was unsupported, effectful, cyclic, or outside the safety limits.",
     "Zero keeps compile-time execution sandboxed, deterministic, and bounded, so filesystem, network, process, and ambient environment access fail before code generation.",
     "Use literal arithmetic, Bool logic, target facts, or typed reflection facts within the bounded evaluator.",
-    "const bad: usize = meta std.fs.host()",
+    "const bad: usize = meta world.fs()",
     "const page: usize = meta target.pointerWidth * 64",
   },
   {

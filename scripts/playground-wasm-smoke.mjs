@@ -208,7 +208,7 @@ assert.equal(publicCompiler.instance.exports.compiler_fallibility_summary(47104,
 assert.equal(publicCompiler.instance.exports.compiler_fallibility_diag_code(1, 0, 0, 0), 1003);
 assert.equal(publicCompiler.instance.exports.compiler_fallibility_diag_code(0, 1, 0, 0), 1002);
 assert.equal(publicCompiler.instance.exports.compiler_fallibility_diag_code(0, 0, 0, 1), 1001);
-const publicCompilerCapabilityBytes = new TextEncoder().encode('pub fun main(world: World, net: Net) -> Void raises { let fs = std.fs.host() let env = std.env.get("X") let proc = std.proc.spawn("noop") check world.out.write("target web") }\n');
+const publicCompilerCapabilityBytes = new TextEncoder().encode('pub fun main(world: World, net: Net) -> Void raises { let fs = world.fs() let env = std.env.get("X") let proc = std.proc.spawn("noop") check world.out.write("target web") }\n');
 new Uint8Array(publicCompiler.instance.exports.memory.buffer).set(publicCompilerCapabilityBytes, 59392);
 assert.equal(publicCompiler.instance.exports.compiler_capability_summary(59392, publicCompilerCapabilityBytes.length, publicCompiler.instance.exports.memory.buffer.byteLength), 255);
 assert.equal(publicCompiler.instance.exports.compiler_capability_diag_code(1, 0), 6002);
