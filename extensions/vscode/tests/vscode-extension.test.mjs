@@ -40,7 +40,9 @@ describe("VS Code extension manifest", () => {
     assert.match(matches, /fun/);
     assert.match(matches, /raises/);
     assert.match(matches, /shape/);
+    assert.match(matches, /interface/);
     assert.match(matches, /World/);
+    assert.match(matches, /MutSpan/);
     assert.match(matches, /Vercel/);
   });
 

@@ -81,7 +81,7 @@
         },
         {
           "name": "keyword.declaration.zero",
-          "match": "\\b(?:choice|const|enum|export|extern|fun|impl|import|let|meta|mut|packed|pub|shape|static|test|type|use|var)\\b"
+          "match": "\\b(?:choice|const|enum|export|extern|fun|impl|import|interface|let|meta|mut|packed|pub|shape|static|test|type|use|var)\\b"
         },
         {
           "name": "constant.language.zero",
@@ -97,7 +97,7 @@
         },
         {
           "name": "support.type.container.zero",
-          "match": "\\b(?:Maybe|Span|owned|ref|mutref|Vec|String)\\b"
+          "match": "\\b(?:Maybe|MutSpan|Span|owned|ref|mutref|Vec|String)\\b"
         }
       ]
     },
@@ -117,7 +117,7 @@
       "patterns": [
         {
           "name": "keyword.operator.zero",
-          "match": "\\b(?:as)\\b|->|=>|\\+%|\\+\\||==|!=|<=|>=|&&|\\|\\||[=+\\-*/%<>.:]"
+          "match": "\\b(?:as)\\b|->|=>|\\.\\.|\\+%|\\+\\||==|!=|<=|>=|&&|\\|\\||[=+\\-*/%<>.:&]"
         }
       ]
     }
