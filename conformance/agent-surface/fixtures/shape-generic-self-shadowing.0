@@ -1,0 +1,5 @@
+shape Box<Self> {
+    value: i32,
+}
+
+pub fun main() -> Void {}

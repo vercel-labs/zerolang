@@ -7428,6 +7428,9 @@ static bool validate_type_param_names_do_not_shadow(const Program *program, cons
         }
       }
     }
+    if (strcmp(param->name, "Self") == 0) {
+      return set_diag_detail(diag, 3008, "generic type parameter shadows Self type", param->line, param->column, "generic type parameter name other than Self", "'Self' is reserved for method Self types", "rename the generic parameter");
+    }
     const char *kind = visible_concrete_type_name_kind(program, param->name);
     if (kind) {
       char actual[160];

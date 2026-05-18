@@ -27,6 +27,14 @@
       "runner": "assert-diagnostic-code"
     },
     {
+      "id": "shape-generic-self-shadowing",
+      "path": "conformance/agent-surface/fixtures/shape-generic-self-shadowing.0",
+      "classification": "semantic-rule",
+      "currentBehavior": "check-fail-NAM004",
+      "followUp": "Reject shape generic parameters that hide the special Self type.",
+      "runner": "assert-diagnostic-code"
+    },
+    {
       "id": "method-generic-type-shadowing",
       "path": "conformance/agent-surface/fixtures/method-generic-type-shadowing.0",
       "classification": "semantic-rule",
@@ -40,6 +48,14 @@
       "classification": "semantic-rule",
       "currentBehavior": "check-fail-NAM004",
       "followUp": "Reject method generic parameters that hide enclosing generic parameters.",
+      "runner": "assert-diagnostic-code"
+    },
+    {
+      "id": "method-generic-self-shadowing",
+      "path": "conformance/agent-surface/fixtures/method-generic-self-shadowing.0",
+      "classification": "semantic-rule",
+      "currentBehavior": "check-fail-NAM004",
+      "followUp": "Reject method generic parameters that hide the special Self type.",
       "runner": "assert-diagnostic-code"
     },
     {
