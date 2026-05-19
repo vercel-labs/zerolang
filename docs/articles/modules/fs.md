@@ -31,6 +31,22 @@ Runnable today:
 | `std.fs.atomicWrite(path, temp, bytes)` | `Bool` | Writes through a caller-provided temporary path and renames. |
 | `std.fs.close(&mut file)` | `Void` | Closes an owned file handle explicitly; remaining owned files are cleaned up deterministically. |
 
+Path arguments accept either a `String` literal or a byte view
+(`Span<u8>`, `MutSpan<u8>`, or a `[N]u8` array). Paths lower through the
+same `{ptr, len}` representation regardless of how they are spelled, so a
+path assembled at runtime into a byte buffer can be passed directly:
+
+```zero
+let mut path_buf: [40]u8 = [0; 40]
+// ... fill path_buf with bytes ...
+let written = std.fs.writeBytes(path_buf[0..len], bytes)
+```
+
+This applies to every path parameter (for example `read`, `writeBytes`,
+`exists`, `rename`, `atomicWrite`, `open`, `readAll`). The filesystem
+makes its own NUL-terminated copy of the bytes, so the span does not need
+a trailing NUL.
+
 Current limits:
 
 - Richer permissions and platform-specific file modes.
