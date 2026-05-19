@@ -999,6 +999,7 @@ const diagnostics = [
   ["SHM001", ["check", "--json", "conformance/check/fail/generic-shape-method-cannot-infer.0"]],
   ["RCV001", ["check", "--json", "conformance/check/fail/receiver-method-unknown.0"]],
   ["RCV002", ["check", "--json", "conformance/check/fail/receiver-method-immutable.0"]],
+  ["APP001", ["check", "--json", "conformance/check/fail/missing-main.0"]],
 ].map(([code, args]) => {
   const body = json(args, { allowFailure: true }).body;
   const diagnostic = body.diagnostics[0];

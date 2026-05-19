@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "code": "APP001",
+  "title": "Missing main function",
+  "fixSafety": "requires-human-review",
+  "defaultOutput": "plain-text-no-ansi"
+}

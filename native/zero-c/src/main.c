@@ -2520,6 +2520,7 @@ static const char *diag_repair_id(int code) {
     case 3029: return "end-conflicting-borrow";
     case 3030: return "return-owned-value";
     case 3031: return "make-c-abi-safe";
+    case 2001: return "add-main-entry-point";
     case 2003: return "use-direct-emitter";
     case 3032: return "match-generic-type-arguments";
     case 3033: return "make-generic-argument-types-match";
@@ -2554,6 +2555,7 @@ static const char *diag_repair_id(int code) {
 static const char *diag_repair_summary(int code) {
   switch (code) {
     case 100: return "Repair the syntax at the reported parser span, then rerun zero check.";
+    case 2001: return "Add pub fun main(...) -> Void as the program entry point, or add a test function for a library unit.";
     case 1001: return "Add raises to the function signature or handle the fallible expression with rescue.";
     case 1002: return "Add the missing error name to raises { ... } or rescue the call locally.";
     case 1003: return "Wrap the fallible call in check or rescue so error flow is explicit.";
@@ -2919,6 +2921,16 @@ static const ExplainInfo explain_infos[] = {
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",
     "zero build --emit obj --target linux-x64 examples/direct-call-add.0",
   },
+  {
+    "APP001",
+    "app",
+    "Missing main function",
+    "The program has no `main` function and no test functions, so there is no entry point to run.",
+    "This diagnostic is emitted only after full type, borrow, and effect analysis has run, so it never masks real errors elsewhere in the file.",
+    "Add `pub fun main(...) -> Void`, or add a test function if this file is meant to be checked as a library unit.",
+    "fun helper() -> Void {}",
+    "fun helper() -> Void {}\n\npub fun main() -> Void {}",
+  },
   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -2970,7 +2982,8 @@ static void print_explain_json(const ExplainInfo *info) {
                                          strcmp(info->code, "ERR002") == 0 ? 1002 :
                                          strcmp(info->code, "ERR003") == 0 ? 1003 :
                                          strcmp(info->code, "STD003") == 0 ? 3012 :
-                                         strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
+                                         strcmp(info->code, "CGEN004") == 0 ? 4004 :
+                                         strcmp(info->code, "APP001") == 0 ? 2001 : 0));
   zbuf_append(&buf, ", \"summary\": ");
   append_json_string(&buf, info->canonical_repair);
   zbuf_append(&buf, "},\n  \"examples\": {\"bad\": ");

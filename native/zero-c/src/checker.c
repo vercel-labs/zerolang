@@ -7831,7 +7831,6 @@ bool z_check_program(const Program *program, ZDiag *diag) {
     if (!validate_function_error_set(fun, diag)) return false;
     if (!validate_export_c_function(fun, diag)) return false;
   }
-  if (!main_fun && !has_test) return set_diag_detail(diag, 2001, "missing main function", 1, 1, "function named main", "no main function", "add pub fun main(...) -> Void");
 	  for (size_t i = 0; i < program->functions.len; i++) {
 	    const Function *fun = &program->functions.items[i];
 	    Scope scope = {0};
@@ -7873,5 +7872,6 @@ bool z_check_program(const Program *program, ZDiag *diag) {
     scope_free(&scope);
     if (!ok) return false;
   }
+  if (!main_fun && !has_test) return set_diag_detail(diag, 2001, "missing main function", 1, 1, "function named main", "no main function", "add pub fun main(...) -> Void");
   return true;
 }
