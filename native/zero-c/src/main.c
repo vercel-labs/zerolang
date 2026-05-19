@@ -250,6 +250,7 @@ static const char *stmt_kind_name(StmtKind kind) {
     case STMT_CONTINUE: return "continue";
     case STMT_MATCH: return "match";
     case STMT_RAISE: return "raise";
+    case STMT_WITH: return "with";
   }
   return "unknown";
 }

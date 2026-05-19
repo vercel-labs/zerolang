@@ -275,6 +275,18 @@ typedef struct {
 } EffectDecl;
 
 typedef struct {
+  char *name;
+  int line;
+  int column;
+} CapabilityDecl;
+
+typedef struct {
+  CapabilityDecl *items;
+  size_t len;
+  size_t cap;
+} CapabilityDeclVec;
+
+typedef struct {
   EffectDecl *items;
   size_t len;
   size_t cap;
@@ -395,6 +407,7 @@ typedef struct {
   ChoiceVec choices;
   FunctionVec functions;
   EffectDeclVec effects;
+  CapabilityDeclVec capabilities;
 } Program;
 
 typedef enum {

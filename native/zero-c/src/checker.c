@@ -1477,12 +1477,12 @@ static bool is_allocator_type(const char *type) {
   return type && (strcmp(type, "NullAlloc") == 0 || strcmp(type, "FixedBufAlloc") == 0 || strcmp(type, "PageAlloc") == 0 || strcmp(type, "GeneralAlloc") == 0);
 }
 
-static bool type_is_capability(const char *type) {
-  if (!type) return false;
-  return strcmp(type, "Fs") == 0 || strcmp(type, "Net") == 0 ||
-         strcmp(type, "Env") == 0 || strcmp(type, "Args") == 0 ||
-         strcmp(type, "Clock") == 0 || strcmp(type, "Rand") == 0 ||
-         strcmp(type, "Proc") == 0 || strcmp(type, "Ai") == 0;
+static bool type_is_capability(const Program *program, const char *type) {
+  if (!type || !program) return false;
+  for (size_t i = 0; i < program->capabilities.len; i++) {
+    if (strcmp(program->capabilities.items[i].name, type) == 0) return true;
+  }
+  return false;
 }
 
 static bool owned_inner_text(const char *type, char *out, size_t out_len) {
@@ -1661,7 +1661,7 @@ static bool check_borrow_conflict_at(Scope *scope, const char *root, const char 
   return true;
 }
 
-static bool check_place_root_available(const Expr *expr, Scope *scope, const char *root, ZDiag *diag) {
+static bool check_place_root_available(const Program *program, const Expr *expr, Scope *scope, const char *root, ZDiag *diag) {
   if (!expr || !scope || !root || !root[0]) return true;
   const char *actual = scope_type(scope, root);
   if (actual && strcmp(actual, "Type") == 0) {
@@ -1674,7 +1674,7 @@ static bool check_place_root_available(const Expr *expr, Scope *scope, const cha
     snprintf(actual_detail, sizeof(actual_detail), "%s was moved", root);
     return set_diag_detail(diag, 3013, "owned value was already moved", expr->line, expr->column, "live owned binding", actual_detail, "stop using the old binding after transferring ownership");
   }
-  if (actual && type_is_capability(actual) && scope_is_moved(scope, root)) {
+  if (actual && type_is_capability(program, actual) && scope_is_moved(scope, root)) {
     char actual_detail[160];
     snprintf(actual_detail, sizeof(actual_detail), "%s was moved", root);
     return set_diag_detail(diag, 6003, "capability was already moved", expr->line, expr->column, "live capability binding", actual_detail, "capabilities are affine — pass them to a function or derive a new one from World");
@@ -1834,7 +1834,7 @@ static const Function *find_constrained_interface_method_in_function(const Progr
 static const Function *find_constrained_interface_method(const Program *program, const Expr *callee, const InterfaceDecl **out_interface);
 static void strip_ref_like_type(const char *type, char *out, size_t out_len);
 static bool interface_constraint_parts(const Program *program, const char *constraint, const InterfaceDecl **out_interface, char ***out_args, size_t *out_arg_len);
-static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type);
+static void mark_owned_move_if_needed(const Program *program, const Expr *expr, Scope *scope, const char *destination_type);
 static void mark_owned_target_live_if_needed(const Expr *target, Scope *scope, const char *target_type);
 static int allow_fallible_call;
 static const Function *checking_function;
@@ -4250,7 +4250,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           snprintf(actual_detail, sizeof(actual_detail), "%s was moved", expr->text);
           return set_diag_detail(diag, 3013, "owned value was already moved", expr->line, expr->column, "live owned binding", actual_detail, "stop using the old binding after transferring ownership");
         }
-        if (actual && type_is_capability(actual) && scope_is_moved(scope, expr->text)) {
+        if (actual && type_is_capability(program, actual) && scope_is_moved(scope, expr->text)) {
           char actual_detail[160];
           snprintf(actual_detail, sizeof(actual_detail), "%s was moved", expr->text);
           return set_diag_detail(diag, 6003, "capability was already moved", expr->line, expr->column, "live capability binding", actual_detail, "capabilities are affine — pass them to a function or derive a new one from World");
@@ -4292,7 +4292,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       char path[256];
       bool local_place = expr_binding_path(expr, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(expr, scope, root, diag)) return false;
+        if (!check_place_root_available(program, expr, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, expr, scope, diag)) return false;
       } else if (!check_expr(program, expr->left, scope, diag)) return false;
       {
@@ -4342,7 +4342,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       char path[256];
       bool local_place = expr_binding_path(expr, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(expr, scope, root, diag)) return false;
+        if (!check_place_root_available(program, expr, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, expr, scope, diag)) return false;
       } else if (!check_expr(program, expr->left, scope, diag)) return false;
       const char *base_type = expr_type(program, expr->left, scope);
@@ -4512,7 +4512,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           if (expr->args.len != expected_count) return set_diag_detail(diag, 3108, "choice payload arity mismatch", expr->line, expr->column, expected_count ? "one payload argument" : "no payload arguments", "wrong payload argument count", "add or remove the payload argument");
           for (size_t i = 0; i < expr->args.len; i++) {
             if (!check_expr_expected(program, expr->args.items[i], scope, diag, item_case->type)) return false;
-            mark_owned_move_if_needed(expr->args.items[i], scope, item_case->type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, item_case->type);
           }
           if (item_case->type && expr->args.len == 1) {
             const char *actual = expr_type(program, expr->args.items[0], scope);
@@ -4553,7 +4553,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               free(method_bindings);
               return ok;
             }
-            mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
             free(expected_type);
           }
           if (function_has_error_flow(program, method)) {
@@ -4681,7 +4681,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
                 free(receiver_bindings);
                 return ok;
               }
-              mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+              mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
               free(expected_type);
             }
             if (function_has_error_flow(program, receiver_method)) {
@@ -4746,7 +4746,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               free_type_arg_list(constraint_args, constraint_arg_len);
               return ok;
             }
-            mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
             free(expected_type);
           }
           if (function_has_error_flow(program, required)) {
@@ -4820,7 +4820,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               free(bindings);
               return ok;
             }
-            mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
             free(expected_type);
           }
           if (function_has_error_flow(program, fun)) {
@@ -4855,7 +4855,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
             snprintf(message, sizeof(message), "argument %zu to '%s' has incompatible type", i + 1, fun->name);
             return set_diag_detail(diag, 3005, message, expr->args.items[i]->line, expr->args.items[i]->column, fun->params.items[i].type, expr_type(program, expr->args.items[i], scope), "pass a compatible value");
           }
-          if (fun && i < fun->params.len) mark_owned_move_if_needed(expr->args.items[i], scope, fun->params.items[i].type);
+          if (fun && i < fun->params.len) mark_owned_move_if_needed(program, expr->args.items[i], scope, fun->params.items[i].type);
         } else {
           if (!check_expr(program, expr->args.items[i], scope, diag)) return false;
         }
@@ -5450,12 +5450,12 @@ static bool check_expr(const Program *program, const Expr *expr, Scope *scope, Z
   return check_expr_expected(program, expr, scope, diag, NULL);
 }
 
-static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type) {
+static void mark_owned_move_if_needed(const Program *program, const Expr *expr, Scope *scope, const char *destination_type) {
   if (!expr || expr->kind != EXPR_IDENT || !destination_type) return;
   const char *source_type = scope_type(scope, expr->text);
   if (!source_type) return;
   if ((type_is_owned(source_type) && type_is_owned(destination_type)) ||
-      (type_is_capability(source_type) && type_is_capability(destination_type))) {
+      (type_is_capability(program, source_type) && type_is_capability(program, destination_type))) {
     scope_set_moved(scope, expr->text, true);
     ((Expr *)expr)->moves_ownership = true;
   }
@@ -5493,7 +5493,7 @@ static bool check_lvalue_target(const Program *program, const Expr *target, Scop
       char path[256];
       bool local_place = expr_binding_path(target->left, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(target->left, scope, root, diag)) return false;
+        if (!check_place_root_available(program, target->left, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, target->left, scope, diag)) return false;
       } else if (!check_expr(program, target->left, scope, diag)) return false;
       const char *read_base_type = expr_type(program, target->left, scope);
@@ -5533,7 +5533,7 @@ static bool check_lvalue_target(const Program *program, const Expr *target, Scop
       char path[256];
       bool local_place = expr_binding_path(target->left, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(target->left, scope, root, diag)) return false;
+        if (!check_place_root_available(program, target->left, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, target->left, scope, diag)) return false;
       } else if (!check_expr(program, target->left, scope, diag)) return false;
       const char *read_base_type = expr_type(program, target->left, scope);
@@ -7088,7 +7088,7 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
       return set_diag_detail(diag, 3006, "let binding type does not match initializer", stmt->line, stmt->column, stmt->type, actual, "change the annotation or initializer");
     }
     const char *binding_type = stmt->type ? stmt->type : actual;
-    mark_owned_move_if_needed(stmt->expr, scope, binding_type);
+    mark_owned_move_if_needed(program, stmt->expr, scope, binding_type);
     set_stmt_resolved_type(stmt, binding_type);
     scope_add_decl(scope, stmt->name, binding_type, stmt->mutable_binding, stmt->line, stmt->column);
     register_borrow_binding(program, stmt, scope);
@@ -7110,7 +7110,7 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
     if (!types_compatible(expected, actual)) {
       return set_diag_detail(diag, 3006, "assignment type does not match binding", stmt->line, stmt->column, expected, actual, "assign a compatible value");
     }
-    mark_owned_move_if_needed(stmt->expr, scope, expected);
+    mark_owned_move_if_needed(program, stmt->expr, scope, expected);
     mark_owned_target_live_if_needed(target, scope, expected);
     if (!update_borrow_assignment(program, target, stmt->expr, scope, diag)) return false;
     return true;
@@ -7177,7 +7177,7 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
       return set_diag_detail(diag, 3007, "return type does not match function return type", stmt->line, stmt->column, fun->return_type, actual, "return a value compatible with the function signature");
     }
     if (!check_return_reference_escape(program, stmt->expr, scope, diag)) return false;
-    mark_owned_move_if_needed(stmt->expr, scope, fun->return_type);
+    mark_owned_move_if_needed(program, stmt->expr, scope, fun->return_type);
     return true;
   }
   if (stmt->kind == STMT_EXPR) return check_expr(program, stmt->expr, scope, diag);

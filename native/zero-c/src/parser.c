@@ -914,6 +914,26 @@ static InterfaceDecl parse_interface(Parser *parser, bool is_public) {
   return interface;
 }
 
+static CapabilityDecl parse_capability(Parser *parser, bool is_public) {
+  Token *start = current(parser);
+  expect(parser, "capability", "expected 'capability' keyword");
+  CapabilityDecl cap = {0};
+  Token *name = expect_ident(parser, "expected capability name");
+  cap.name = name ? z_strdup(name->text) : z_strdup("<error>");
+  cap.line = start->line;
+  cap.column = start->column;
+  (void)is_public;
+  return cap;
+}
+
+static void push_capability(CapabilityDeclVec *vec, CapabilityDecl cap) {
+  if (vec->len + 1 > vec->cap) {
+    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
+    vec->items = realloc(vec->items, vec->cap * sizeof(CapabilityDecl));
+  }
+  vec->items[vec->len++] = cap;
+}
+
 static EffectDecl parse_effect(Parser *parser, bool is_public) {
   Token *start = current(parser);
   expect(parser, "effect", "expected 'effect' keyword");
@@ -1084,6 +1104,10 @@ Program z_parse(TokenVec *tokens, ZDiag *diag) {
     }
     if (check(&parser, "interface")) {
       push_interface(&program.interfaces, parse_interface(&parser, is_public));
+      continue;
+    }
+    if (check(&parser, "capability")) {
+      push_capability(&program.capabilities, parse_capability(&parser, is_public));
       continue;
     }
     if (check(&parser, "shape") || check(&parser, "extern") || check(&parser, "packed")) {
@@ -1335,4 +1359,11 @@ void z_free_program(Program *program) {
   program->effects.items = NULL;
   program->effects.len = 0;
   program->effects.cap = 0;
+  for (size_t i = 0; i < program->capabilities.len; i++) {
+    free(program->capabilities.items[i].name);
+  }
+  free(program->capabilities.items);
+  program->capabilities.items = NULL;
+  program->capabilities.len = 0;
+  program->capabilities.cap = 0;
 }
