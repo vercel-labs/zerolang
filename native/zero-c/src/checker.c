@@ -1008,6 +1008,15 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.json.streamTokensBytes") == 0) result = "usize";
   else if (strcmp(name.data, "std.json.writeString") == 0) result = "Maybe<String>";
   else if (strcmp(name.data, "std.json.decodeBoundary") == 0) result = "String";
+  else if (strcmp(name.data, "std.json.root") == 0) result = "JsonNode";
+  else if (strcmp(name.data, "std.json.kind") == 0) result = "JsonKind";
+  else if (strcmp(name.data, "std.json.get") == 0) result = "Maybe<JsonNode>";
+  else if (strcmp(name.data, "std.json.at") == 0) result = "Maybe<JsonNode>";
+  else if (strcmp(name.data, "std.json.len") == 0) result = "usize";
+  else if (strcmp(name.data, "std.json.string") == 0) result = "Maybe<usize>";
+  else if (strcmp(name.data, "std.json.int") == 0) result = "Maybe<i64>";
+  else if (strcmp(name.data, "std.json.float") == 0) result = "Maybe<f64>";
+  else if (strcmp(name.data, "std.json.bool") == 0) result = "Maybe<Bool>";
   else if (strcmp(name.data, "std.time.ms") == 0) result = "Duration";
   else if (strcmp(name.data, "std.time.seconds") == 0) result = "Duration";
   else if (strcmp(name.data, "std.time.add") == 0) result = "Duration";
@@ -1151,6 +1160,15 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.json.streamTokensBytes") == 0) return 1;
   if (strcmp(name, "std.json.writeString") == 0) return 2;
   if (strcmp(name, "std.json.decodeBoundary") == 0) return 0;
+  if (strcmp(name, "std.json.root") == 0) return 1;
+  if (strcmp(name, "std.json.kind") == 0) return 1;
+  if (strcmp(name, "std.json.get") == 0) return 2;
+  if (strcmp(name, "std.json.at") == 0) return 2;
+  if (strcmp(name, "std.json.len") == 0) return 1;
+  if (strcmp(name, "std.json.string") == 0) return 2;
+  if (strcmp(name, "std.json.int") == 0) return 1;
+  if (strcmp(name, "std.json.float") == 0) return 1;
+  if (strcmp(name, "std.json.bool") == 0) return 1;
   if (strcmp(name, "std.time.ms") == 0) return 1;
   if (strcmp(name, "std.time.seconds") == 0) return 1;
   if (strcmp(name, "std.time.add") == 0) return 2;
@@ -1285,6 +1303,15 @@ static const char *std_call_arg_type(const char *name, size_t index) {
   if (strcmp(name, "std.json.streamTokens") == 0) return "String";
   if (strcmp(name, "std.json.streamTokensBytes") == 0) return "Span<u8>";
   if (strcmp(name, "std.json.writeString") == 0) return index == 0 ? "MutSpan<u8>" : "String";
+  if (strcmp(name, "std.json.root") == 0) return "JsonDoc";
+  if (strcmp(name, "std.json.kind") == 0) return "JsonNode";
+  if (strcmp(name, "std.json.get") == 0) return index == 0 ? "JsonNode" : "Span<u8>";
+  if (strcmp(name, "std.json.at") == 0) return index == 0 ? "JsonNode" : "usize";
+  if (strcmp(name, "std.json.len") == 0) return "JsonNode";
+  if (strcmp(name, "std.json.string") == 0) return index == 0 ? "JsonNode" : "MutSpan<u8>";
+  if (strcmp(name, "std.json.int") == 0) return "JsonNode";
+  if (strcmp(name, "std.json.float") == 0) return "JsonNode";
+  if (strcmp(name, "std.json.bool") == 0) return "JsonNode";
   if (strcmp(name, "std.time.ms") == 0) return "i32";
   if (strcmp(name, "std.time.seconds") == 0) return "i32";
   if (strcmp(name, "std.time.add") == 0) return index == 0 ? "Duration" : "Duration";
@@ -7460,7 +7487,7 @@ static bool is_builtin_type_name(const char *name) {
     "Void", "Bool", "bool", "String", "char", "Type",
     "World", "WorldStream", "Fs", "File", "ByteBuf", "NullAlloc", "FixedBufAlloc", "PageAlloc", "GeneralAlloc",
     "Vec", "Map", "Set", "Duration", "RandSource", "ProcStatus", "Address", "Net", "Conn", "Listener",
-    "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "BufferedReader", "BufferedWriter",
+    "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "JsonNode", "JsonKind", "BufferedReader", "BufferedWriter",
     "Env", "Args", "Clock", "Rand", "Proc", "Alloc",
     "Maybe", "Span", "MutSpan", "ref", "mutref", "owned",
     NULL
