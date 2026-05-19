@@ -50,6 +50,13 @@ Pass program arguments after `--`:
 zero run examples/cli-file.0 -- input.txt
 ```
 
+Hosted `std.fs`, `std.time`, and `std.rand` programs build through the same
+direct backend. On targets whose direct executable emitter lowers these
+operations (the ELF64 x86-64 backend lowers them as inline syscalls), `zero run`
+and `zero build --emit exe` produce a self-contained executable with no manual
+`cc` step and no generated C. Targets whose direct emitter cannot lower a hosted
+operation still report `CGEN004` instead of emitting an unrunnable binary.
+
 ## JSON Output
 
 Use `--json` when another tool will read the result. Text output is for people.
