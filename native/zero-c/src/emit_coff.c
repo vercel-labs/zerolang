@@ -759,6 +759,40 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
     coff_emit_store_local_from_reg(text, fun, instr->local_index, 0);
     return true;
   }
+  if (instr->kind == IR_INSTR_INDEX_FILL || instr->kind == IR_INSTR_FIELD_FILL) {
+    /* O(1) constant byte fill: a counted loop instead of one store per element
+       keeps the emitted .text size independent of the array length. */
+    if (instr->kind == IR_INSTR_INDEX_FILL) {
+      if (instr->array_index >= fun->local_len) return coff_diag_at(diag, "direct COFF array fill is out of range", instr->line, instr->column, "invalid array local");
+      coff_emit_array_base_rdx(text, fun, instr->array_index);
+    } else {
+      if (instr->local_index >= fun->local_len) return coff_diag_at(diag, "direct COFF record fill is out of range", instr->line, instr->column, "invalid record local");
+      unsigned offset = coff_local_slot_offset(fun, instr->local_index, instr->field_offset);
+      coff_emit_rbp_disp_reg(text, 0x8d, 2, offset, true); /* lea rdx, [rbp - field] */
+    }
+    unsigned char byte = instr->value ? (unsigned char)(instr->value->int_value & 0xffu) : 0u;
+    /* xor ecx, ecx */
+    append_u8(text, 0x31);
+    append_u8(text, 0xc9);
+    size_t loop_start = text->len;
+    /* cmp ecx, fill_count */
+    append_u8(text, 0x81);
+    append_u8(text, 0xf9);
+    append_u32le(text, instr->fill_count);
+    size_t exit_patch = coff_emit_jcc32_placeholder(text, 0x83); /* jae */
+    /* mov byte [rdx+rcx*1], imm8 */
+    append_u8(text, 0xc6);
+    append_u8(text, 0x04);
+    append_u8(text, 0x0a);
+    append_u8(text, byte);
+    /* inc ecx */
+    append_u8(text, 0xff);
+    append_u8(text, 0xc1);
+    size_t back_patch = coff_emit_jmp32_placeholder(text, 0xe9);
+    coff_patch_rel32(text, back_patch, loop_start);
+    coff_patch_rel32(text, exit_patch, text->len);
+    return true;
+  }
   if (instr->kind == IR_INSTR_FIELD_STORE) {
     if (instr->local_index >= fun->local_len) return coff_diag_at(diag, "direct COFF field store record is out of range", instr->line, instr->column, "invalid record local");
     if (!fun->locals[instr->local_index].is_record) return coff_diag_at(diag, "direct COFF field store requires record local", instr->line, instr->column, "non-record local");

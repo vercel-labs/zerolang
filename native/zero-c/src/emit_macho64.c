@@ -1419,6 +1419,33 @@ static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *i
     else macho_emit_store_local_w(text, fun, 8, instr->local_index, 0, frame_size);
     return true;
   }
+  if (instr->kind == IR_INSTR_INDEX_FILL || instr->kind == IR_INSTR_FIELD_FILL) {
+    /* O(1) constant byte fill: a counted loop instead of one store per element,
+       so the emitted .text stays constant regardless of the array length. */
+    unsigned slot = 0;
+    if (instr->kind == IR_INSTR_INDEX_FILL) {
+      if (instr->array_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O array fill is out of range", instr->line, instr->column, "invalid array local");
+      slot = macho_local_slot_offset(fun, instr->array_index, 0, frame_size);
+    } else {
+      if (instr->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O record fill is out of range", instr->line, instr->column, "invalid record local");
+      slot = macho_local_slot_offset(fun, instr->local_index, instr->field_offset, frame_size);
+    }
+    uint32_t byte = instr->value ? (uint32_t)(instr->value->int_value & 0xffu) : 0u;
+    macho_emit_add_x_sp_imm(text, 9, slot);          // x9 = base
+    macho_emit_movz_w(text, 10, byte);               // w10 = value
+    macho_emit_movz_w(text, 11, 0);                  // w11 = counter
+    macho_emit_movz_w(text, 12, instr->fill_count);  // w12 = count
+    size_t loop_start = text->len;
+    macho_emit_cmp_w(text, 11, 12);
+    size_t exit_patch = macho_emit_b_cond_placeholder(text, 2); // b.hs (counter >= count)
+    macho_emit_add_x_reg(text, 13, 9, 11);           // x13 = base + counter (stride 1)
+    macho_emit_strb_w(text, 10, 13);                 // store byte
+    macho_emit_add_w_imm(text, 11, 11, 1);           // counter++
+    size_t back_patch = macho_emit_b_placeholder(text);
+    macho_patch_branch26(text, back_patch, loop_start);
+    macho_patch_cond19(text, exit_patch, text->len);
+    return true;
+  }
   if (instr->kind == IR_INSTR_FIELD_STORE) {
     if (instr->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O field store record is out of range", instr->line, instr->column, "invalid record local");
     if (!fun->locals[instr->local_index].is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
