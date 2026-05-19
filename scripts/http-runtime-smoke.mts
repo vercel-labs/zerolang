@@ -190,7 +190,7 @@ async function runHttpHeadersExample(baseUrl) {
 
 function okSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [512]u8 = [${zeroArray(512)}]
     let result = std.http.fetch(client, std.mem.span("GET ${baseUrl}/ok\\n\\n"), response, std.time.ms(1000))
@@ -218,7 +218,7 @@ function okSource(baseUrl) {
 
 function fetchRequestSource(baseUrl, method, path, body, expectedStatus, expectedBodyLen, expectedCode) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let request = std.mem.span("${method} ${baseUrl}${path}\\ncontent-type: application/json\\nx-zero-test: yes\\n\\n${body}")
     let mut response: [512]u8 = [${zeroArray(512)}]
@@ -239,7 +239,7 @@ function fetchRequestSource(baseUrl, method, path, body, expectedStatus, expecte
 
 function resultFailureSource(baseUrl, path, responseSize, timeoutMs, expectedStatus, expectedLen, expectedError, expectedCode) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [${responseSize}]u8 = [${zeroArray(responseSize)}]
     let result = std.http.fetch(client, std.mem.span("GET ${baseUrl}${path}\\n\\n"), response, std.time.ms(${timeoutMs}))
@@ -256,7 +256,7 @@ function resultFailureSource(baseUrl, path, responseSize, timeoutMs, expectedSta
 
 function headersSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [512]u8 = [${zeroArray(512)}]
     let result = std.http.fetch(client, std.mem.span("GET ${baseUrl}/ok\\n\\n"), response, std.time.ms(1000))
@@ -282,7 +282,7 @@ function headersSource(baseUrl) {
 
 function interimHeadersSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [512]u8 = [${zeroArray(512)}]
     let result = std.http.fetch(client, std.mem.span("GET ${baseUrl}/interim\\n\\n"), response, std.time.ms(1000))
@@ -309,7 +309,7 @@ function interimHeadersSource(baseUrl) {
 
 function headSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let request = std.mem.span("HEAD ${baseUrl}/ok\\nx-zero-test: yes\\n\\n")
     let mut response: [512]u8 = [${zeroArray(512)}]
@@ -331,7 +331,7 @@ function headSource(baseUrl) {
 
 function jsonResultSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [512]u8 = [${zeroArray(512)}]
     let result = std.http.fetch(client, std.mem.span("GET ${baseUrl}/ok\\n\\n"), response, std.time.ms(1000))
@@ -356,7 +356,7 @@ function jsonResultSource(baseUrl) {
 
 function invalidUrlSource() {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [64]u8 = [${zeroArray(64)}]
     let result = std.http.fetch(client, std.mem.span("GET http://\\n\\n"), response, std.time.ms(1000))
@@ -373,7 +373,7 @@ function invalidUrlSource() {
 
 function shorthandRejectedSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [64]u8 = [${zeroArray(64)}]
     let result = std.http.fetch(client, std.mem.span("${baseUrl}/ok"), response, std.time.ms(1000))
@@ -390,7 +390,7 @@ function shorthandRejectedSource(baseUrl) {
 
 function unterminatedEnvelopeSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [64]u8 = [${zeroArray(64)}]
     let result = std.http.fetch(client, std.mem.span("GET ${baseUrl}/ok"), response, std.time.ms(1000))
@@ -407,7 +407,7 @@ function unterminatedEnvelopeSource(baseUrl) {
 
 function invalidRequestSource(baseUrl) {
   return `export c fun main() -> i32 {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [128]u8 = [${zeroArray(128)}]
     let request = std.mem.span("POST ${baseUrl}/echo\\nbad-header\\n\\n")

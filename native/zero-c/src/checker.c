@@ -568,6 +568,27 @@ static bool scope_set_moved(Scope *scope, const char *name, bool moved) {
   return false;
 }
 
+static void scope_remove(Scope *scope, const char *name) {
+  for (Scope *cursor = scope; cursor; cursor = cursor->parent) {
+    for (size_t i = 0; i < cursor->len; i++) {
+      if (strcmp(cursor->names[i], name) == 0) {
+        free(cursor->names[i]);
+        free(cursor->types[i]);
+        for (size_t j = i; j + 1 < cursor->len; j++) {
+          cursor->names[j] = cursor->names[j + 1];
+          cursor->types[j] = cursor->types[j + 1];
+          cursor->mutable[j] = cursor->mutable[j + 1];
+          cursor->moved[j] = cursor->moved[j + 1];
+          cursor->is_param[j] = cursor->is_param[j + 1];
+          cursor->value_provenance[j] = cursor->value_provenance[j + 1];
+        }
+        cursor->len--;
+        return;
+      }
+    }
+  }
+}
+
 static bool scope_is_param(Scope *scope, const char *name) {
   for (Scope *cursor = scope; cursor; cursor = cursor->parent) {
     for (size_t i = 0; i < cursor->len; i++) {
@@ -1028,7 +1049,6 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.crypto.constantTimeEql") == 0) result = "Bool";
   else if (strcmp(name.data, "std.crypto.secureRandomU32") == 0) result = "u32";
   else if (strcmp(name.data, "std.net.address") == 0) result = "Address";
-  else if (strcmp(name.data, "std.net.host") == 0) result = "Net";
   else if (strcmp(name.data, "std.net.dnsName") == 0) result = "String";
   else if (strcmp(name.data, "std.net.connect") == 0) result = "Maybe<Conn>";
   else if (strcmp(name.data, "std.net.listen") == 0) result = "Maybe<Listener>";
@@ -1053,7 +1073,6 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.args.len") == 0) result = "usize";
   else if (strcmp(name.data, "std.args.get") == 0) result = "Maybe<String>";
   else if (strcmp(name.data, "std.env.get") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.fs.host") == 0) result = "Fs";
   else if (strcmp(name.data, "std.fs.open") == 0) result = "Maybe<owned<File>>";
   else if (strcmp(name.data, "std.fs.openOrRaise") == 0) result = "owned<File>";
   else if (strcmp(name.data, "std.fs.create") == 0) result = "Maybe<owned<File>>";
@@ -1171,7 +1190,6 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.crypto.constantTimeEql") == 0) return 2;
   if (strcmp(name, "std.crypto.secureRandomU32") == 0) return 0;
   if (strcmp(name, "std.net.address") == 0) return 2;
-  if (strcmp(name, "std.net.host") == 0) return 0;
   if (strcmp(name, "std.net.dnsName") == 0) return 1;
   if (strcmp(name, "std.net.connect") == 0) return 2;
   if (strcmp(name, "std.net.listen") == 0) return 2;
@@ -1196,7 +1214,6 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.args.len") == 0) return 0;
   if (strcmp(name, "std.args.get") == 0) return 1;
   if (strcmp(name, "std.env.get") == 0) return 1;
-  if (strcmp(name, "std.fs.host") == 0) return 0;
   if (strcmp(name, "std.fs.open") == 0) return 2;
   if (strcmp(name, "std.fs.openOrRaise") == 0) return 2;
   if (strcmp(name, "std.fs.create") == 0) return 2;
@@ -1451,6 +1468,14 @@ static bool is_allocator_type(const char *type) {
   return type && (strcmp(type, "NullAlloc") == 0 || strcmp(type, "FixedBufAlloc") == 0 || strcmp(type, "PageAlloc") == 0 || strcmp(type, "GeneralAlloc") == 0);
 }
 
+static bool type_is_capability(const Program *program, const char *type) {
+  if (!type || !program) return false;
+  for (size_t i = 0; i < program->capabilities.len; i++) {
+    if (strcmp(program->capabilities.items[i].name, type) == 0) return true;
+  }
+  return false;
+}
+
 static bool owned_inner_text(const char *type, char *out, size_t out_len) {
   if (!type || !out || out_len == 0) return false;
   const char *inner = NULL;
@@ -1627,7 +1652,7 @@ static bool check_borrow_conflict_at(Scope *scope, const char *root, const char 
   return true;
 }
 
-static bool check_place_root_available(const Expr *expr, Scope *scope, const char *root, ZDiag *diag) {
+static bool check_place_root_available(const Program *program, const Expr *expr, Scope *scope, const char *root, ZDiag *diag) {
   if (!expr || !scope || !root || !root[0]) return true;
   const char *actual = scope_type(scope, root);
   if (actual && strcmp(actual, "Type") == 0) {
@@ -1639,6 +1664,11 @@ static bool check_place_root_available(const Expr *expr, Scope *scope, const cha
     char actual_detail[160];
     snprintf(actual_detail, sizeof(actual_detail), "%s was moved", root);
     return set_diag_detail(diag, 3013, "owned value was already moved", expr->line, expr->column, "live owned binding", actual_detail, "stop using the old binding after transferring ownership");
+  }
+  if (actual && type_is_capability(program, actual) && scope_is_moved(scope, root)) {
+    char actual_detail[160];
+    snprintf(actual_detail, sizeof(actual_detail), "%s was moved", root);
+    return set_diag_detail(diag, 6003, "capability was already moved", expr->line, expr->column, "live capability binding", actual_detail, "capabilities are affine — pass them to a function or derive a new one from World");
   }
   return true;
 }
@@ -1795,7 +1825,7 @@ static const Function *find_constrained_interface_method_in_function(const Progr
 static const Function *find_constrained_interface_method(const Program *program, const Expr *callee, const InterfaceDecl **out_interface);
 static void strip_ref_like_type(const char *type, char *out, size_t out_len);
 static bool interface_constraint_parts(const Program *program, const char *constraint, const InterfaceDecl **out_interface, char ***out_args, size_t *out_arg_len);
-static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type);
+static void mark_owned_move_if_needed(const Program *program, const Expr *expr, Scope *scope, const char *destination_type);
 static void mark_owned_target_live_if_needed(const Expr *target, Scope *scope, const char *target_type);
 static int allow_fallible_call;
 static const Function *checking_function;
@@ -1811,6 +1841,14 @@ static bool function_exists(const Program *program, const char *name) {
 static const Function *find_function(const Program *program, const char *name) {
   for (size_t i = 0; i < program->functions.len; i++) {
     if (strcmp(program->functions.items[i].name, name) == 0) return &program->functions.items[i];
+  }
+  return NULL;
+}
+
+static const EffectDecl *find_effect(const Program *program, const char *name) {
+  if (!name) return NULL;
+  for (size_t i = 0; i < program->effects.len; i++) {
+    if (strcmp(program->effects.items[i].name, name) == 0) return &program->effects.items[i];
   }
   return NULL;
 }
@@ -3784,6 +3822,15 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
       }
       if (expr->left && expr->left->kind == EXPR_MEMBER) {
         if (is_world_stream_write_callee(expr->left, scope)) return "Void";
+        const char *member_type = expr_type(program, expr->left, scope);
+        if (member_type && strcmp(member_type, "Fs") == 0) return "Fs";
+        if (member_type && strcmp(member_type, "Net") == 0) return "Net";
+        if (member_type && strcmp(member_type, "Env") == 0) return "Env";
+        if (member_type && strcmp(member_type, "Args") == 0) return "Args";
+        if (member_type && strcmp(member_type, "Clock") == 0) return "Clock";
+        if (member_type && strcmp(member_type, "Rand") == 0) return "Rand";
+        if (member_type && strcmp(member_type, "Proc") == 0) return "Proc";
+        if (member_type && strcmp(member_type, "Ai") == 0) return "Ai";
         const Shape *shape = NULL;
         const Function *method = find_namespace_shape_method(program, expr->left, &shape);
         if (method) {
@@ -3894,6 +3941,14 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
         if (owned_inner_text(left_type, owned_shape_type, sizeof(owned_shape_type))) left_type = owned_shape_type;
         if (ref_inner_text(left_type, ref_shape_type, sizeof(ref_shape_type))) left_type = ref_shape_type;
         if (strcmp(left_type, "World") == 0 && (strcmp(expr->text, "out") == 0 || strcmp(expr->text, "err") == 0)) return "WorldStream";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "fs") == 0) return "Fs";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "net") == 0) return "Net";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "env") == 0) return "Env";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "args") == 0) return "Args";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "clock") == 0) return "Clock";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "rand") == 0) return "Rand";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "proc") == 0) return "Proc";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "ai") == 0) return "Ai";
         const Shape *shape = find_shape_for_type(program, left_type);
         if (shape) {
           const Param *field = find_shape_field(shape, expr->text);
@@ -4172,7 +4227,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       if (is_builtin_value(expr->text) && !scope_has(scope, expr->text)) {
         char message[256];
         snprintf(message, sizeof(message), "builtin namespace '%s' cannot be used as a runtime value", expr->text);
-        return set_diag_detail(diag, 3005, message, expr->line, expr->column, "runtime value", "builtin namespace", "use a supported member call such as std.fs.host()");
+        return set_diag_detail(diag, 3005, message, expr->line, expr->column, "runtime value", "builtin namespace", "use a supported member call such as world.fs()");
       }
       {
         const char *actual = scope_type(scope, expr->text);
@@ -4185,6 +4240,11 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           char actual_detail[160];
           snprintf(actual_detail, sizeof(actual_detail), "%s was moved", expr->text);
           return set_diag_detail(diag, 3013, "owned value was already moved", expr->line, expr->column, "live owned binding", actual_detail, "stop using the old binding after transferring ownership");
+        }
+        if (actual && type_is_capability(program, actual) && scope_is_moved(scope, expr->text)) {
+          char actual_detail[160];
+          snprintf(actual_detail, sizeof(actual_detail), "%s was moved", expr->text);
+          return set_diag_detail(diag, 6003, "capability was already moved", expr->line, expr->column, "live capability binding", actual_detail, "capabilities are affine — pass them to a function or derive a new one from World");
         }
         if (!check_read_not_mutably_borrowed(expr, scope, diag)) return false;
       }
@@ -4223,7 +4283,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       char path[256];
       bool local_place = expr_binding_path(expr, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(expr, scope, root, diag)) return false;
+        if (!check_place_root_available(program, expr, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, expr, scope, diag)) return false;
       } else if (!check_expr(program, expr->left, scope, diag)) return false;
       {
@@ -4235,6 +4295,14 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
         if (strcmp(left_type, "World") == 0 && (strcmp(expr->text, "out") == 0 || strcmp(expr->text, "err") == 0)) {
           return set_diag_detail(diag, 3005, "World stream member cannot be used as a runtime value", expr->line, expr->column, "world.out.write(...) or world.err.write(...)", expr->text, "call write directly on the stream capability");
         }
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "fs") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "net") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "env") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "args") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "clock") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "rand") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "proc") == 0) return true;
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "ai") == 0) return true;
         const Shape *shape = find_shape_for_type(program, left_type);
         if (shape) {
           if (!find_shape_field(shape, expr->text)) {
@@ -4265,7 +4333,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       char path[256];
       bool local_place = expr_binding_path(expr, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(expr, scope, root, diag)) return false;
+        if (!check_place_root_available(program, expr, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, expr, scope, diag)) return false;
       } else if (!check_expr(program, expr->left, scope, diag)) return false;
       const char *base_type = expr_type(program, expr->left, scope);
@@ -4435,7 +4503,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           if (expr->args.len != expected_count) return set_diag_detail(diag, 3108, "choice payload arity mismatch", expr->line, expr->column, expected_count ? "one payload argument" : "no payload arguments", "wrong payload argument count", "add or remove the payload argument");
           for (size_t i = 0; i < expr->args.len; i++) {
             if (!check_expr_expected(program, expr->args.items[i], scope, diag, item_case->type)) return false;
-            mark_owned_move_if_needed(expr->args.items[i], scope, item_case->type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, item_case->type);
           }
           if (item_case->type && expr->args.len == 1) {
             const char *actual = expr_type(program, expr->args.items[0], scope);
@@ -4476,7 +4544,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               free(method_bindings);
               return ok;
             }
-            mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
             free(expected_type);
           }
           if (function_has_error_flow(program, method)) {
@@ -4604,7 +4672,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
                 free(receiver_bindings);
                 return ok;
               }
-              mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+              mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
               free(expected_type);
             }
             if (function_has_error_flow(program, receiver_method)) {
@@ -4669,7 +4737,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               free_type_arg_list(constraint_args, constraint_arg_len);
               return ok;
             }
-            mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
             free(expected_type);
           }
           if (function_has_error_flow(program, required)) {
@@ -4743,7 +4811,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               free(bindings);
               return ok;
             }
-            mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
+            mark_owned_move_if_needed(program, expr->args.items[i], scope, expected_type);
             free(expected_type);
           }
           if (function_has_error_flow(program, fun)) {
@@ -4778,7 +4846,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
             snprintf(message, sizeof(message), "argument %zu to '%s' has incompatible type", i + 1, fun->name);
             return set_diag_detail(diag, 3005, message, expr->args.items[i]->line, expr->args.items[i]->column, fun->params.items[i].type, expr_type(program, expr->args.items[i], scope), "pass a compatible value");
           }
-          if (fun && i < fun->params.len) mark_owned_move_if_needed(expr->args.items[i], scope, fun->params.items[i].type);
+          if (fun && i < fun->params.len) mark_owned_move_if_needed(program, expr->args.items[i], scope, fun->params.items[i].type);
         } else {
           if (!check_expr(program, expr->args.items[i], scope, diag)) return false;
         }
@@ -5373,10 +5441,12 @@ static bool check_expr(const Program *program, const Expr *expr, Scope *scope, Z
   return check_expr_expected(program, expr, scope, diag, NULL);
 }
 
-static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type) {
-  if (!expr || expr->kind != EXPR_IDENT || !destination_type || !type_is_owned(destination_type)) return;
+static void mark_owned_move_if_needed(const Program *program, const Expr *expr, Scope *scope, const char *destination_type) {
+  if (!expr || expr->kind != EXPR_IDENT || !destination_type) return;
   const char *source_type = scope_type(scope, expr->text);
-  if (source_type && type_is_owned(source_type)) {
+  if (!source_type) return;
+  if ((type_is_owned(source_type) && type_is_owned(destination_type)) ||
+      (type_is_capability(program, source_type) && type_is_capability(program, destination_type))) {
     scope_set_moved(scope, expr->text, true);
     ((Expr *)expr)->moves_ownership = true;
   }
@@ -5414,7 +5484,7 @@ static bool check_lvalue_target(const Program *program, const Expr *target, Scop
       char path[256];
       bool local_place = expr_binding_path(target->left, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(target->left, scope, root, diag)) return false;
+        if (!check_place_root_available(program, target->left, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, target->left, scope, diag)) return false;
       } else if (!check_expr(program, target->left, scope, diag)) return false;
       const char *read_base_type = expr_type(program, target->left, scope);
@@ -5454,7 +5524,7 @@ static bool check_lvalue_target(const Program *program, const Expr *target, Scop
       char path[256];
       bool local_place = expr_binding_path(target->left, root, sizeof(root), path, sizeof(path)) && scope_has(scope, root);
       if (local_place) {
-        if (!check_place_root_available(target->left, scope, root, diag)) return false;
+        if (!check_place_root_available(program, target->left, scope, root, diag)) return false;
         if (!check_place_index_exprs(program, target->left, scope, diag)) return false;
       } else if (!check_expr(program, target->left, scope, diag)) return false;
       const char *read_base_type = expr_type(program, target->left, scope);
@@ -6992,6 +7062,8 @@ static bool check_scalar_match(const Program *program, const Function *fun, cons
   return true;
 }
 
+static bool check_handler_function(const Program *program, const Function *fun, const Function *handler, Scope *scope, ZDiag *diag);
+
 static bool check_stmt(const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {
   if (stmt->kind == STMT_LET) {
     for (size_t i = 0; i < scope->len; i++) {
@@ -7007,7 +7079,7 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
       return set_diag_detail(diag, 3006, "let binding type does not match initializer", stmt->line, stmt->column, stmt->type, actual, "change the annotation or initializer");
     }
     const char *binding_type = stmt->type ? stmt->type : actual;
-    mark_owned_move_if_needed(stmt->expr, scope, binding_type);
+    mark_owned_move_if_needed(program, stmt->expr, scope, binding_type);
     set_stmt_resolved_type(stmt, binding_type);
     scope_add_decl(scope, stmt->name, binding_type, stmt->mutable_binding, stmt->line, stmt->column);
     register_borrow_binding(program, stmt, scope);
@@ -7029,7 +7101,7 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
     if (!types_compatible(expected, actual)) {
       return set_diag_detail(diag, 3006, "assignment type does not match binding", stmt->line, stmt->column, expected, actual, "assign a compatible value");
     }
-    mark_owned_move_if_needed(stmt->expr, scope, expected);
+    mark_owned_move_if_needed(program, stmt->expr, scope, expected);
     mark_owned_target_live_if_needed(target, scope, expected);
     if (!update_borrow_assignment(program, target, stmt->expr, scope, diag)) return false;
     return true;
@@ -7067,6 +7139,27 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
     }
     return true;
   }
+  if (stmt->kind == STMT_WITH) {
+    EffectDecl *effect = find_effect(program, stmt->name);
+    if (!effect) {
+      char message[256];
+      snprintf(message, sizeof(message), "unknown effect '%s'", stmt->name ? stmt->name : "<error>");
+      return set_diag_detail(diag, 6201, message, stmt->line, stmt->column, "declared effect", stmt->name, "declare the effect before using it");
+    }
+    Scope handler_scope = {.parent = scope};
+    FunctionVec *handler_ops = (FunctionVec *)stmt->handler_ops;
+    for (size_t i = 0; i < handler_ops->len; i++) {
+      if (!check_handler_function(program, fun, &handler_ops->items[i], &handler_scope, diag)) {
+        scope_free(&handler_scope);
+        return false;
+      }
+    }
+    scope_free(&handler_scope);
+    Scope body_scope = {.parent = scope};
+    bool ok = check_stmt_vec_with_loop(program, fun, &stmt->else_body, &body_scope, diag, loop_depth);
+    scope_free(&body_scope);
+    return ok;
+  }
   if (stmt->kind == STMT_DEFER) return check_expr(program, stmt->expr, scope, diag);
   if (stmt->kind == STMT_RETURN) {
     if (!check_expr_expected(program, stmt->expr, scope, diag, fun->return_type)) return false;
@@ -7075,7 +7168,7 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
       return set_diag_detail(diag, 3007, "return type does not match function return type", stmt->line, stmt->column, fun->return_type, actual, "return a value compatible with the function signature");
     }
     if (!check_return_reference_escape(program, stmt->expr, scope, diag)) return false;
-    mark_owned_move_if_needed(stmt->expr, scope, fun->return_type);
+    mark_owned_move_if_needed(program, stmt->expr, scope, fun->return_type);
     return true;
   }
   if (stmt->kind == STMT_EXPR) return check_expr(program, stmt->expr, scope, diag);
@@ -7313,6 +7406,18 @@ static bool validate_drop_method(const Shape *shape, const Function *method, ZDi
   }
   (void)shape;
   return true;
+}
+
+static bool check_handler_function(const Program *program, const Function *fun, const Function *handler, Scope *scope, ZDiag *diag) {
+  for (size_t i = 0; i < handler->params.len; i++) {
+    Param *param = &handler->params.items[i];
+    scope_add(scope, param->name, param->type, false);
+  }
+  bool ok = check_stmt_vec(program, handler, &handler->body, scope, diag);
+  for (size_t i = 0; i < handler->params.len; i++) {
+    scope_remove(scope, handler->params.items[i].name);
+  }
+  return ok;
 }
 
 static bool check_shape_method_body(const Program *program, const Shape *shape, const Function *method, ZDiag *diag) {
