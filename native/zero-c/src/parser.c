@@ -160,6 +160,7 @@ static Token *expect_ident(Parser *parser, const char *message) {
 
 static Expr *parse_expr(Parser *parser);
 static StmtVec parse_block(Parser *parser);
+static Function parse_function(Parser *parser);
 static void free_expr(Expr *expr);
 
 static char *parse_type(Parser *parser) {

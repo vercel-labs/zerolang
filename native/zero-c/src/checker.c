@@ -1795,10 +1795,11 @@ static const Function *find_constrained_interface_method_in_function(const Progr
 static const Function *find_constrained_interface_method(const Program *program, const Expr *callee, const InterfaceDecl **out_interface);
 static void strip_ref_like_type(const char *type, char *out, size_t out_len);
 static bool interface_constraint_parts(const Program *program, const char *constraint, const InterfaceDecl **out_interface, char ***out_args, size_t *out_arg_len);
-static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type);
+static void mark_owned_move_if_needed(const Program *program, const Expr *expr, Scope *scope, const char *destination_type);
 static void mark_owned_target_live_if_needed(const Expr *target, Scope *scope, const char *target_type);
 static int allow_fallible_call;
 static const Function *checking_function;
+static bool check_handler_function(const Program *program, const Function *fun, const Function *handler, Scope *scope, ZDiag *diag);
 
 static bool function_exists(const Program *program, const char *name) {
   if (strcmp(name, "expect") == 0) return true;
@@ -5373,7 +5374,7 @@ static bool check_expr(const Program *program, const Expr *expr, Scope *scope, Z
   return check_expr_expected(program, expr, scope, diag, NULL);
 }
 
-static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char *destination_type) {
+static void mark_owned_move_if_needed(const Program *program, const Expr *expr, Scope *scope, const char *destination_type) {
   if (!expr || expr->kind != EXPR_IDENT || !destination_type || !type_is_owned(destination_type)) return;
   const char *source_type = scope_type(scope, expr->text);
   if (source_type && type_is_owned(source_type)) {

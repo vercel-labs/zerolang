@@ -159,7 +159,8 @@ typedef enum {
   STMT_BREAK,
   STMT_CONTINUE,
   STMT_MATCH,
-  STMT_RAISE
+  STMT_RAISE,
+  STMT_WITH
 } StmtKind;
 
 typedef struct Stmt Stmt;
@@ -214,6 +215,7 @@ struct Stmt {
   StmtVec then_body;
   StmtVec else_body;
   MatchArmVec match_arms;
+  void *handler_ops;
   int line;
   int column;
 };
