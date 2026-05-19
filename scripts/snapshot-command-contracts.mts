@@ -357,6 +357,16 @@ assert.equal(expectedFailTestJson.results[0].status, "expected-fail");
 
 assert.match(zero(["fmt", "--check", "conformance/native/pass/test-blocks.0"]).stdout, /fmt ok/);
 
+const fmtWriteContract = join(outDir, "fmt-write.0");
+writeFileSync(fmtWriteContract, "pub fun main()->Void{let n:i32=1\nif n>0{let v:u64=(n as u64)}}\n");
+assert.match(zero(["fmt", "--write", fmtWriteContract]).stdout, /formatted/);
+assert.equal(
+  readFileSync(fmtWriteContract, "utf8"),
+  'pub fun main() -> Void {\n    let n: i32 = 1\n    if n > 0 {\n        let v: u64 = (n as u64)\n    }\n}\n',
+);
+assert.match(zero(["fmt", "--check", fmtWriteContract]).stdout, /fmt ok/);
+assert.equal(zero(["fmt", "--write", fmtWriteContract]).stdout, "");
+
 const unknownFlag = zero(["check", "--jsoon", "examples/hello.0"], { allowFailure: true });
 assert.notEqual(unknownFlag.code, 0);
 assert.match(unknownFlag.stderr, /unknown flag: --jsoon/);
