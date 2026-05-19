@@ -1,0 +1,45 @@
+use scan
+
+fun seed(fs: Fs) -> Void raises { NotFound, TooLarge, Io } {
+    let mut file: owned<File> = check std.fs.createOrRaise(fs, ".zero/agent-source-inspector-input.0")
+    check std.fs.writeAllOrRaise(&mut file, std.mem.span("use std.fs\nuse std.http\nshape Tool { value: i32 }\nchoice Repair { safe: i32, review: i32 }\nfun run(world: World) -> Void raises { check world.out.write(\"ok\") }\n"))
+    std.fs.close(&mut file)
+}
+
+fun matchesSeed(facts: SourceFacts) -> Bool {
+    return facts.imports == 2 &&
+        facts.functions == 1 &&
+        facts.shapes == 1 &&
+        facts.choices == 1 &&
+        facts.uses_fs &&
+        facts.uses_http &&
+        facts.has_raises &&
+        facts.has_guarded_call
+}
+
+pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
+    let fs = std.fs.host()
+    check seed(fs)
+
+    let arg_path = std.args.get(1)
+    let mut path: String = ".zero/agent-source-inspector-input.0"
+    if arg_path.has {
+        path = arg_path.value
+    }
+
+    let mut storage: [1024]u8 = [0_u8; 1024]
+    let mut arena = std.mem.arena(storage)
+    let body = std.fs.readAll(arena, fs, path, 1024)
+    if body.has == false {
+        check world.err.write("agent source inspector read failed\n")
+        return
+    }
+
+    let buf: owned<ByteBuf> = body.value
+    let facts = inspect(std.mem.bufBytes(&buf))
+    if matchesSeed(facts) {
+        check world.out.write("agent source inspector ok\n")
+        return
+    }
+    check world.err.write("agent source inspector mismatch\n")
+}

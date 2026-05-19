@@ -77,6 +77,7 @@ Core examples:
 - `examples/cli-file.0`: args, env, file writes, stdout, and stderr.
 - `examples/file-copy.0`: `Fs`, `owned<File>`, read/write resource capabilities, and automatic close.
 - `examples/zero-hash/`: file checksum CLI with args fallback, fixed buffers, hosted reads, and CRC-32 over bytes.
+- `examples/agent-source-inspector/`: Zero-native source scanner that reads a `.0` file into caller-owned storage and reports agent-relevant facts such as imports, declarations, fallibility, and hosted helper use.
 - `examples/readall-cli/`: fixed-buffer allocator use and owned byte-buffer reads.
 - `examples/resource-cli/`: package-local modules, resource cleanup, and hosted filesystem capability use.
 - `examples/memory-package/`: target-neutral package helper checks without hosted filesystem dependencies.

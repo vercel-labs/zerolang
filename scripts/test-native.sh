@@ -75,6 +75,7 @@ expected_output() {
     examples/batch3-cli) printf "batch3 cli ok" ;;
     examples/resource-cli) printf "resource cli ok" ;;
     examples/zero-hash) printf "zero-hash ok" ;;
+    examples/agent-source-inspector) printf "agent source inspector ok" ;;
     examples/memory-package) printf "memory package ok" ;;
     examples/result-choice.0) printf "choice ok" ;;
     examples/const-arithmetic.0) printf "const arithmetic ok" ;;
@@ -108,6 +109,7 @@ examples=(
   examples/batch3-cli
   examples/resource-cli
   examples/zero-hash
+  examples/agent-source-inspector
   examples/memory-package
   examples/result-choice.0
   examples/const-arithmetic.0
