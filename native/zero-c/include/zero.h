@@ -519,6 +519,8 @@ struct IrValue {
 typedef enum {
   IR_INSTR_LOCAL_SET,
   IR_INSTR_INDEX_STORE,
+  IR_INSTR_INDEX_FILL,
+  IR_INSTR_FIELD_FILL,
   IR_INSTR_FIELD_STORE,
   IR_INSTR_WORLD_WRITE,
   IR_INSTR_RAISE,
@@ -534,6 +536,8 @@ struct IrInstr {
   unsigned array_index;
   unsigned field_offset;
   unsigned error_code;
+  unsigned fill_count;
+  unsigned fill_stride;
   IrValue *value;
   IrValue *index;
   IrInstr *then_instrs;

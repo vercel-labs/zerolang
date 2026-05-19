@@ -2462,6 +2462,45 @@ static bool elf_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
     }
     return true;
   }
+  if (instr->kind == IR_INSTR_INDEX_FILL || instr->kind == IR_INSTR_FIELD_FILL) {
+    /* O(1) constant byte fill: emit a counted loop instead of one immediate
+       store per element so the .text size is independent of the array length. */
+    unsigned disp = 0;
+    if (instr->kind == IR_INSTR_INDEX_FILL) {
+      if (instr->array_index >= fun->local_len) return elf_diag(diag, "direct ELF64 array fill is out of range", instr->line, instr->column, "invalid array local");
+      disp = fun->locals[instr->array_index].frame_offset;
+    } else {
+      if (instr->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 record fill is out of range", instr->line, instr->column, "invalid record local");
+      disp = elf_record_field_disp(&fun->locals[instr->local_index], instr->field_offset);
+    }
+    unsigned char byte = instr->value ? (unsigned char)(instr->value->int_value & 0xffu) : 0u;
+    /* lea rax, [rbp - disp] */
+    elf_append_u8(text, 0x48);
+    elf_append_u8(text, 0x8d);
+    elf_append_u8(text, 0x85);
+    elf_append_u32(text, (uint32_t)(-(int32_t)disp));
+    /* xor ecx, ecx */
+    elf_append_u8(text, 0x31);
+    elf_append_u8(text, 0xc9);
+    size_t loop_start = text->len;
+    /* cmp ecx, fill_count */
+    elf_append_u8(text, 0x81);
+    elf_append_u8(text, 0xf9);
+    elf_append_u32(text, instr->fill_count);
+    size_t exit_patch = elf_emit_jcc32_placeholder(text, 0x83); /* jae */
+    /* mov byte [rax+rcx*1], imm8 */
+    elf_append_u8(text, 0xc6);
+    elf_append_u8(text, 0x04);
+    elf_append_u8(text, 0x08);
+    elf_append_u8(text, byte);
+    /* inc ecx */
+    elf_append_u8(text, 0xff);
+    elf_append_u8(text, 0xc1);
+    size_t back_patch = elf_emit_jmp32_placeholder(text, 0xe9);
+    elf_patch_rel32(text, back_patch, loop_start);
+    elf_patch_rel32(text, exit_patch, text->len);
+    return true;
+  }
   if (instr->kind == IR_INSTR_FIELD_STORE) {
     if (instr->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 field store record is out of range", instr->line, instr->column, "invalid record local");
     const IrLocal *local = &fun->locals[instr->local_index];

@@ -1,0 +1,10 @@
+export c fun main() -> i32 {
+    let mut buffer: [1048576]u8 = [0_u8; 1048576]
+    buffer[0] = 1_u8
+    if buffer[0] == 1_u8 &&
+        buffer[1] == 0_u8 &&
+        buffer[1048575] == 0_u8 {
+        return 0
+    }
+    return 1
+}

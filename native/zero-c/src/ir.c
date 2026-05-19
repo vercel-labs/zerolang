@@ -8,6 +8,11 @@
 
 #define IR_READONLY_DATA_BASE 1024u
 #define IR_READONLY_DATA_LIMIT 65536u
+/* Repeat literals up to this many elements stay fully unrolled (matches the
+   previous behaviour and existing fixtures). Larger constant fills lower to a
+   single IR_INSTR_INDEX_FILL / IR_INSTR_FIELD_FILL counted loop so the lowered
+   IR and emitted .text stay O(1) instead of O(N). */
+#define IR_ARRAY_FILL_UNROLL_MAX 32u
 
 static Expr *clone_expr(const Expr *expr);
 static Stmt *clone_stmt(const Stmt *stmt);
@@ -2635,6 +2640,30 @@ static bool ir_lower_array_initializer(const Program *program, IrProgram *ir, Ir
       return false;
     }
     const Expr *value_expr = expr->args.items[0];
+    /* O(1) lowering: a repeat literal `[v; N]` with a constant element and a
+       large count expands to N immediate stores, so the lowered IR (and the
+       emitted .text) grow linearly with N. Detect the constant case and emit a
+       single IR_INSTR_INDEX_FILL that backends lower to a counted loop, keeping
+       both IR size and code size O(1). Small arrays keep the unrolled stores so
+       existing fixtures and codegen are unchanged. */
+    if (local->array_len > IR_ARRAY_FILL_UNROLL_MAX) {
+      IrValue *probe = NULL;
+      if (!ir_lower_expr(program, ir, mir_fun, value_expr, &probe)) return false;
+      if (probe->type != local->element_type) {
+        ir_free_value(probe);
+        ir_mark_unsupported(ir, "direct backend array repeat literal element type does not match local type", value_expr->line, value_expr->column, local->name);
+        return false;
+      }
+      if ((probe->kind == IR_VALUE_INT || probe->kind == IR_VALUE_BOOL) &&
+          ir_type_byte_size(local->element_type) == 1) {
+        ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){
+          .kind = IR_INSTR_INDEX_FILL, .array_index = local->index, .value = probe,
+          .fill_count = local->array_len, .fill_stride = 1,
+          .line = value_expr->line, .column = value_expr->column});
+        return true;
+      }
+      ir_free_value(probe);
+    }
     for (size_t i = 0; i < local->array_len; i++) {
       IrValue *index = ir_new_index_literal(ir, (unsigned)i, value_expr->line, value_expr->column);
       IrValue *value = NULL;
@@ -2728,6 +2757,31 @@ static bool ir_lower_shape_initializer(const Program *program, IrProgram *ir, Ir
         ir_type_arg_vec_free(&shape_args);
         ir_mark_unsupported(ir, "direct backend record array field requires a matching array literal", field_expr->line, field_expr->column, field->name);
         return false;
+      }
+      /* Same O(1) treatment for large constant repeat literals initialising a
+         record's fixed-array field: one IR_INSTR_FIELD_FILL counted loop
+         instead of field_array_len immediate field stores. */
+      if (field_expr->array_repeat && field_array_len > IR_ARRAY_FILL_UNROLL_MAX) {
+        IrValue *probe = NULL;
+        if (!ir_lower_expr(program, ir, mir_fun, field_expr->args.items[0], &probe)) {
+          ir_type_arg_vec_free(&shape_args);
+          return false;
+        }
+        if (probe->type != field_element_type) {
+          ir_free_value(probe);
+          ir_type_arg_vec_free(&shape_args);
+          ir_mark_unsupported(ir, "direct backend record array field initializer type does not match element", field_expr->line, field_expr->column, field->name);
+          return false;
+        }
+        if ((probe->kind == IR_VALUE_INT || probe->kind == IR_VALUE_BOOL) &&
+            ir_type_byte_size(field_element_type) == 1) {
+          ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){
+            .kind = IR_INSTR_FIELD_FILL, .local_index = local->index, .field_offset = field_offset,
+            .value = probe, .fill_count = field_array_len, .fill_stride = 1,
+            .line = field_expr->line, .column = field_expr->column});
+          continue;
+        }
+        ir_free_value(probe);
       }
       for (size_t element_index = 0; element_index < field_array_len; element_index++) {
         const Expr *element_expr = field_expr->array_repeat ? field_expr->args.items[0] : field_expr->args.items[element_index];
