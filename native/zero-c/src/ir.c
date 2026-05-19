@@ -151,6 +151,7 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (strcmp(type, "Duration") == 0) return IR_TYPE_I64;
   if (strcmp(type, "RandSource") == 0) return IR_TYPE_U32;
   if (strcmp(type, "ProcStatus") == 0) return IR_TYPE_I32;
+  if (strcmp(type, "ProcResult") == 0) return IR_TYPE_U64;
   if (strcmp(type, "Net") == 0 || strcmp(type, "HttpClient") == 0) return IR_TYPE_I32;
   if (strcmp(type, "HttpResult") == 0) return IR_TYPE_U64;
   if (strcmp(type, "HttpError") == 0) return IR_TYPE_U32;
@@ -1564,14 +1565,94 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if (strcmp(callee_name, "std.proc.run") == 0 && expr->args.len == 5) {
+        IrValue *argv = NULL;
+        IrValue *stdin_bytes = NULL;
+        IrValue *out_buf = NULL;
+        IrValue *err_buf = NULL;
+        IrValue *timeout = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &argv) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &stdin_bytes) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[2], &out_buf) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[3], &err_buf) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[4], &timeout)) {
+          ir_free_value(argv);
+          ir_free_value(stdin_bytes);
+          ir_free_value(out_buf);
+          ir_free_value(err_buf);
+          ir_free_value(timeout);
+          free(callee_name);
+          return false;
+        }
+        if (timeout->type != IR_TYPE_I64) {
+          ir_free_value(argv);
+          ir_free_value(stdin_bytes);
+          ir_free_value(out_buf);
+          ir_free_value(err_buf);
+          ir_free_value(timeout);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.proc.run timeout must be a Duration", expr->args.items[4]->line, expr->args.items[4]->column, "non-Duration timeout");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_PROC_RUN, IR_TYPE_U64, expr->line, expr->column);
+        value->left = argv;
+        value->right = stdin_bytes;
+        value->index = out_buf;
+        ir_value_push_arg(ir, value, err_buf);
+        ir_value_push_arg(ir, value, timeout);
+        if (ir->direct_runtime_helper_count < 2) ir->direct_runtime_helper_count = 2;
+        if (ir->direct_host_runtime_import_count < 2) ir->direct_host_runtime_import_count = 2;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (strcmp(callee_name, "std.proc.exitCode") == 0 && expr->args.len == 1) {
         IrValue *status = NULL;
         if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &status)) {
           free(callee_name);
           return false;
         }
+        if (status->type == IR_TYPE_U64) {
+          IrValue *value = ir_new_value(ir, IR_VALUE_PROC_RUN_EXIT_CODE, IR_TYPE_I32, expr->line, expr->column);
+          value->left = status;
+          if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+          if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+          free(callee_name);
+          *out = value;
+          return true;
+        }
         free(callee_name);
         *out = status;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.proc.outLen") == 0 ||
+           strcmp(callee_name, "std.proc.errLen") == 0 ||
+           strcmp(callee_name, "std.proc.timedOut") == 0) && expr->args.len == 1) {
+        IrValue *result = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &result)) {
+          free(callee_name);
+          return false;
+        }
+        if (result->type != IR_TYPE_U64) {
+          ir_free_value(result);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend proc result helper expects ProcResult", expr->args.items[0]->line, expr->args.items[0]->column, "non-ProcResult argument");
+          return false;
+        }
+        IrValueKind kind = IR_VALUE_PROC_RUN_OUT_LEN;
+        IrTypeKind type = IR_TYPE_USIZE;
+        if (strcmp(callee_name, "std.proc.errLen") == 0) {
+          kind = IR_VALUE_PROC_RUN_ERR_LEN;
+        } else if (strcmp(callee_name, "std.proc.timedOut") == 0) {
+          kind = IR_VALUE_PROC_RUN_TIMED_OUT;
+          type = IR_TYPE_BOOL;
+        }
+        IrValue *value = ir_new_value(ir, kind, type, expr->line, expr->column);
+        value->left = result;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
         return true;
       }
       if ((strcmp(callee_name, "std.codec.crc32") == 0 ||

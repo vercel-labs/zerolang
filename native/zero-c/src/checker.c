@@ -1022,7 +1022,11 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.rand.nextU32") == 0) result = "u32";
   else if (strcmp(name.data, "std.rand.entropyU32") == 0) result = "u32";
   else if (strcmp(name.data, "std.proc.spawn") == 0) result = "ProcStatus";
+  else if (strcmp(name.data, "std.proc.run") == 0) result = "ProcResult";
   else if (strcmp(name.data, "std.proc.exitCode") == 0) result = "i32";
+  else if (strcmp(name.data, "std.proc.outLen") == 0) result = "usize";
+  else if (strcmp(name.data, "std.proc.errLen") == 0) result = "usize";
+  else if (strcmp(name.data, "std.proc.timedOut") == 0) result = "Bool";
   else if (strcmp(name.data, "std.crypto.hash32") == 0) result = "u32";
   else if (strcmp(name.data, "std.crypto.hmac32") == 0) result = "u32";
   else if (strcmp(name.data, "std.crypto.constantTimeEql") == 0) result = "Bool";
@@ -1165,7 +1169,11 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.rand.nextU32") == 0) return 1;
   if (strcmp(name, "std.rand.entropyU32") == 0) return 0;
   if (strcmp(name, "std.proc.spawn") == 0) return 1;
+  if (strcmp(name, "std.proc.run") == 0) return 5;
   if (strcmp(name, "std.proc.exitCode") == 0) return 1;
+  if (strcmp(name, "std.proc.outLen") == 0) return 1;
+  if (strcmp(name, "std.proc.errLen") == 0) return 1;
+  if (strcmp(name, "std.proc.timedOut") == 0) return 1;
   if (strcmp(name, "std.crypto.hash32") == 0) return 1;
   if (strcmp(name, "std.crypto.hmac32") == 0) return 2;
   if (strcmp(name, "std.crypto.constantTimeEql") == 0) return 2;
@@ -1296,7 +1304,17 @@ static const char *std_call_arg_type(const char *name, size_t index) {
   if (strcmp(name, "std.rand.seed") == 0) return "u32";
   if (strcmp(name, "std.rand.nextU32") == 0) return "mutref<RandSource>";
   if (strcmp(name, "std.proc.spawn") == 0) return "String";
-  if (strcmp(name, "std.proc.exitCode") == 0) return "ProcStatus";
+  if (strcmp(name, "std.proc.run") == 0) {
+    if (index == 0) return "Span<u8>";
+    if (index == 1) return "Span<u8>";
+    if (index == 2) return "MutSpan<u8>";
+    if (index == 3) return "MutSpan<u8>";
+    return "Duration";
+  }
+  if (strcmp(name, "std.proc.exitCode") == 0) return NULL;
+  if (strcmp(name, "std.proc.outLen") == 0) return "ProcResult";
+  if (strcmp(name, "std.proc.errLen") == 0) return "ProcResult";
+  if (strcmp(name, "std.proc.timedOut") == 0) return "ProcResult";
   if (strcmp(name, "std.crypto.hash32") == 0) return "Span<u8>";
   if (strcmp(name, "std.crypto.hmac32") == 0) return "Span<u8>";
   if (strcmp(name, "std.crypto.constantTimeEql") == 0) return index == 0 ? "Span<u8>" : "Span<u8>";
@@ -7459,7 +7477,7 @@ static bool is_builtin_type_name(const char *name) {
   const char *names[] = {
     "Void", "Bool", "bool", "String", "char", "Type",
     "World", "WorldStream", "Fs", "File", "ByteBuf", "NullAlloc", "FixedBufAlloc", "PageAlloc", "GeneralAlloc",
-    "Vec", "Map", "Set", "Duration", "RandSource", "ProcStatus", "Address", "Net", "Conn", "Listener",
+    "Vec", "Map", "Set", "Duration", "RandSource", "ProcStatus", "ProcResult", "Address", "Net", "Conn", "Listener",
     "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "BufferedReader", "BufferedWriter",
     "Env", "Args", "Clock", "Rand", "Proc", "Alloc",
     "Maybe", "Span", "MutSpan", "ref", "mutref", "owned",
