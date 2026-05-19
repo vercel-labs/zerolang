@@ -460,6 +460,23 @@ typedef enum {
   IR_TYPE_RECORD
 } IrTypeKind;
 
+/* System V AMD64-flavoured ABI classification for direct-backend parameters
+ * and return values. The same table classifies returns; aggregates larger
+ * than two eightbytes use a hidden caller pointer (sret for returns). */
+typedef enum {
+  ZERO_ABI_VOID,     /* Void return           -> no value class */
+  ZERO_ABI_SCALAR,   /* iN/uN/usize/Bool/char -> 1 integer register */
+  ZERO_ABI_FATPTR,   /* Span/MutSpan/String   -> {ptr,len} fat pointer */
+  ZERO_ABI_PTR,      /* ref/mutref/owned      -> thin pointer */
+  ZERO_ABI_MAYBE,    /* Maybe<T>              -> {has,value} */
+  ZERO_ABI_AGG_REGS, /* shape <=16B all-scalar -> field-flattened regs */
+  ZERO_ABI_AGG_MEM,  /* shape >16B            -> hidden pointer / sret */
+  ZERO_ABI_UNSUPPORTED
+} ZeroAbiClass;
+
+const char *zero_abi_class_name(ZeroAbiClass abi_class);
+ZeroAbiClass zero_abi_classify(const char *type);
+
 typedef enum {
   IR_ERROR_NONE = 0,
   IR_ERROR_UNKNOWN = 1,
