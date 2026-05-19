@@ -41,8 +41,22 @@ direct Darwin arm64 and Linux x64 host executable paths.
 
 `zero targets --json` includes an `httpRuntime` object for each target. On a
 supported host target it reports the curl provider, the platform-or-C-library
-TLS boundary, TLS verification state, the curl system library, and the
-`ZERO_HTTP_TEST_CA_BUNDLE` custom CA override.
+TLS boundary, TLS verification state, the curl system library, the
+`ZERO_HTTP_TEST_CA_BUNDLE` custom CA override, and a `hostLinkable` boolean.
+
+`hostLinkable` reflects whether the build host actually has the libcurl
+development files. The HTTP runtime provider links the system libcurl, so a
+`net` build on a host without `curl/curl.h` and the libcurl library fails
+loudly with diagnostic `BLD004` (repair id `install-libcurl-dev`) instead of
+silently producing a binary whose `std.http.fetch(...)` calls always fail:
+
+```sh
+zero explain BLD004
+```
+
+Install the libcurl development package (for example `libcurl4-openssl-dev` on
+Debian/Ubuntu, or `brew install curl` on macOS) to make the `net` capability
+buildable. Builds that do not use the `net` capability are unaffected.
 
 The smallest common target-neutral subset remains:
 

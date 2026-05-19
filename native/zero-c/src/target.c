@@ -417,9 +417,34 @@ static bool target_http_runtime_supported(const ZTargetInfo *target) {
           (target->os && strcmp(target->os, "linux") == 0));
 }
 
+// Whether the host toolchain can see curl/curl.h. The embedded HTTP provider
+// degrades to a silent no-op stub when this header is absent, so report it as
+// a fact (`hostLinkable`) instead of unconditionally claiming "supported".
+// Probed once per process via the host preprocessor.
+static bool host_curl_header_available(void) {
+  static int cached = -1;
+  if (cached >= 0) return cached != 0;
+  const char *zero_cc = getenv("ZERO_CC");
+  const char *cc = zero_cc && zero_cc[0] ? zero_cc : "cc";
+  ZBuf cmd;
+  zbuf_init(&cmd);
+  zbuf_appendf(&cmd, "echo '#include <curl/curl.h>' | '%s' -E -x c - >/dev/null 2>&1", cc);
+  cached = (cmd.data && system(cmd.data) == 0) ? 1 : 0;
+  zbuf_free(&cmd);
+  return cached != 0;
+}
+
 void z_append_http_runtime_json(ZBuf *buf, const ZTargetInfo *target) {
   if (target_http_runtime_supported(target)) {
-    zbuf_append(buf, "{\"status\":\"supported\",\"provider\":\"curl\",\"providerLink\":\"system-library\",\"tlsBoundary\":\"platform-or-c-library\",\"caSource\":\"provider-default\",\"tlsVerification\":true,\"customCa\":{\"supported\":true,\"mode\":\"test-harness\",\"env\":\"ZERO_HTTP_TEST_CA_BUNDLE\"},\"insecureMode\":false,\"protocols\":[\"http\",\"https\"],\"staticLibraries\":[\"zero_runtime.o\",\"zero_http_curl.o\"],\"systemLibraries\":[\"curl\"],\"reason\":\"host direct runtime link plan uses libcurl with verification enabled\"}");
+    bool host_linkable = host_curl_header_available();
+    zbuf_appendf(
+      buf,
+      "{\"status\":\"supported\",\"provider\":\"curl\",\"providerLink\":\"system-library\",\"hostLinkable\":%s,\"tlsBoundary\":\"platform-or-c-library\",\"caSource\":\"provider-default\",\"tlsVerification\":true,\"customCa\":{\"supported\":true,\"mode\":\"test-harness\",\"env\":\"ZERO_HTTP_TEST_CA_BUNDLE\"},\"insecureMode\":false,\"protocols\":[\"http\",\"https\"],\"staticLibraries\":[\"zero_runtime.o\",\"zero_http_curl.o\"],\"systemLibraries\":[\"curl\"],\"reason\":\"%s\"}",
+      host_linkable ? "true" : "false",
+      host_linkable
+        ? "host direct runtime link plan uses libcurl with verification enabled"
+        : "net capability requires libcurl development files; install libcurl to build std.http.fetch (see BLD004)"
+    );
     return;
   }
   const char *reason = "target has no audited HTTP runtime provider";

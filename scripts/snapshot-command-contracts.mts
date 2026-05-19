@@ -205,6 +205,17 @@ assert(version.targets.includes("darwin-arm64"));
 assert(version.targets.includes("linux-musl-x64"));
 assert(version.targets.includes("win32-x64.exe"));
 assert.equal(typeof version.targetCompiler.available, "boolean");
+// P2-10: a from-source `make` build stamps the git commit, so the contract
+// build must report a real short commit (not the `unknown` fallback) and
+// must report host/target compiler facts independently.
+assert.equal(typeof version.commit, "string");
+assert(version.commit.length > 0);
+assert.notEqual(version.commit, "unknown");
+assert.match(version.commit, /^[0-9a-f]{7,40}$/);
+assert.equal(typeof version.hostCompiler.available, "boolean");
+assert.equal(version.hostCompiler.available, true);
+assert.equal(version.hostCompiler.status, "present");
+assert(["present", "missing"].includes(version.targetCompiler.status));
 
 const doctor = json(["doctor", "--json"]).body;
 assert.equal(doctor.schemaVersion, 1);

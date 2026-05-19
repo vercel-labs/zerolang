@@ -95,11 +95,14 @@ jobs:
           mkdir -p /tmp/zero-release
           node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-skill-data.mts
 
+          ZERO_GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+          echo "Stamping commit: $ZERO_GIT_COMMIT"
+
           build_asset() {
             target="$1"
             name="$2"
             echo "Building $name (target: $target)..."
-            zig cc -target "$target" -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c -o "/tmp/zero-release/$name"
+            zig cc -target "$target" -std=c11 -D_POSIX_C_SOURCE=200809L -Os -DZERO_GIT_COMMIT="\"$ZERO_GIT_COMMIT\"" -Inative/zero-c/include native/zero-c/src/*.c -o "/tmp/zero-release/$name"
             chmod 755 "/tmp/zero-release/$name"
           }
 
