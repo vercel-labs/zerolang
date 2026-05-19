@@ -115,6 +115,14 @@ static const ZTargetInfo *current_check_target = NULL;
 static MetaCacheEntry *meta_cache = NULL;
 static ZMetaCacheStats meta_stats = {0};
 
+static void *checker_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
+  if (len + 1 > *cap) {
+    *cap = z_grow_capacity(*cap, len + 1, initial);
+    return z_checked_reallocarray(items, *cap, item_size);
+  }
+  return items;
+}
+
 static const char *origin_path_text(const char *path) {
   return path ? path : "";
 }
@@ -256,10 +264,7 @@ static bool value_provenance_add_full(ValueProvenance *origins, const char *root
       return true;
     }
   }
-  if (origins->len + 1 > origins->cap) {
-    origins->cap = origins->cap == 0 ? 4 : origins->cap * 2;
-    origins->items = realloc(origins->items, origins->cap * sizeof(ProvenanceEntry));
-  }
+  origins->items = checker_grow_items(origins->items, origins->len, &origins->cap, 4, sizeof(ProvenanceEntry));
   origins->items[origins->len] = (ProvenanceEntry){
     .value_path = path && path[0] ? z_strdup(path) : NULL,
     .origin = {
@@ -374,10 +379,7 @@ static bool place_vec_add(PlaceVec *places, const char *root, Scope *root_scope,
     Place *place = &places->items[i];
     if (strcmp(place->root, root) == 0 && place->root_scope == root_scope && origin_path_equal(place->path, path)) return true;
   }
-  if (places->len + 1 > places->cap) {
-    places->cap = places->cap == 0 ? 4 : places->cap * 2;
-    places->items = realloc(places->items, places->cap * sizeof(Place));
-  }
+  places->items = checker_grow_items(places->items, places->len, &places->cap, 4, sizeof(Place));
   places->items[places->len++] = (Place){
     .root = z_strdup(root),
     .root_scope = root_scope,
@@ -406,10 +408,7 @@ static void place_vec_free(PlaceVec *places) {
 
 static bool provenance_storage_effect_vec_add(ProvenanceStorageEffectVec *effects, const char *target_root, Scope *target_scope, const char *target_path, const ValueProvenance *value, bool overwrite) {
   if (!effects || !target_root || !target_root[0] || !value || value->len == 0) return false;
-  if (effects->len + 1 > effects->cap) {
-    effects->cap = effects->cap == 0 ? 4 : effects->cap * 2;
-    effects->items = realloc(effects->items, effects->cap * sizeof(ProvenanceStorageEffect));
-  }
+  effects->items = checker_grow_items(effects->items, effects->len, &effects->cap, 4, sizeof(ProvenanceStorageEffect));
   ProvenanceStorageEffect *effect = &effects->items[effects->len++];
   *effect = (ProvenanceStorageEffect){
     .target = {
@@ -453,15 +452,16 @@ ZMetaCacheStats z_meta_cache_stats(void) {
 
 static void scope_add_ex(Scope *scope, const char *name, const char *type, bool mutable, bool is_param, int line, int column) {
   if (scope->len + 1 > scope->cap) {
-    scope->cap = scope->cap == 0 ? 8 : scope->cap * 2;
-    scope->names = realloc(scope->names, scope->cap * sizeof(char *));
-    scope->types = realloc(scope->types, scope->cap * sizeof(char *));
-    scope->mutable = realloc(scope->mutable, scope->cap * sizeof(bool));
-    scope->moved = realloc(scope->moved, scope->cap * sizeof(bool));
-    scope->is_param = realloc(scope->is_param, scope->cap * sizeof(bool));
-    scope->decl_line = realloc(scope->decl_line, scope->cap * sizeof(int));
-    scope->decl_column = realloc(scope->decl_column, scope->cap * sizeof(int));
-    scope->value_provenance = realloc(scope->value_provenance, scope->cap * sizeof(ValueProvenance));
+    size_t next_cap = z_grow_capacity(scope->cap, scope->len + 1, 8);
+    scope->names = z_checked_reallocarray(scope->names, next_cap, sizeof(char *));
+    scope->types = z_checked_reallocarray(scope->types, next_cap, sizeof(char *));
+    scope->mutable = z_checked_reallocarray(scope->mutable, next_cap, sizeof(bool));
+    scope->moved = z_checked_reallocarray(scope->moved, next_cap, sizeof(bool));
+    scope->is_param = z_checked_reallocarray(scope->is_param, next_cap, sizeof(bool));
+    scope->decl_line = z_checked_reallocarray(scope->decl_line, next_cap, sizeof(int));
+    scope->decl_column = z_checked_reallocarray(scope->decl_column, next_cap, sizeof(int));
+    scope->value_provenance = z_checked_reallocarray(scope->value_provenance, next_cap, sizeof(ValueProvenance));
+    scope->cap = next_cap;
   }
   scope->names[scope->len++] = z_strdup(name);
   scope->types[scope->len - 1] = z_strdup(type ? type : "Unknown");
@@ -1415,10 +1415,7 @@ static bool split_generic_args(const char *inner, size_t inner_len, char ***out_
         free(items);
         return false;
       }
-      if (len + 1 > cap) {
-        cap = cap == 0 ? 4 : cap * 2;
-        items = realloc(items, cap * sizeof(char *));
-      }
+      items = checker_grow_items(items, len, &cap, 4, sizeof(char *));
       items[len++] = z_strndup(inner + start, end - start);
       start = i + 1;
     }
@@ -6884,10 +6881,7 @@ static void collect_visible_type_names(Scope *scope, ParamVec *out) {
     for (size_t i = 0; i < cursor->len; i++) {
       if (!cursor->names[i] || !cursor->types[i] || strcmp(cursor->types[i], "Type") != 0) continue;
       if (param_vec_contains_name(out, cursor->names[i])) continue;
-      if (out->len == out->cap) {
-        out->cap = out->cap ? out->cap * 2 : 8;
-        out->items = realloc(out->items, out->cap * sizeof(Param));
-      }
+      out->items = checker_grow_items(out->items, out->len, &out->cap, 8, sizeof(Param));
       out->items[out->len++] = (Param){
         .name = cursor->names[i],
         .type = "Type",
