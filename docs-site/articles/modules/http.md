@@ -59,7 +59,7 @@ Metadata helpers:
 
 ```zero
 pub fun main(world: World) -> Void raises {
-    let net = std.net.host()
+    let net = world.net()
     let addr = std.net.address("localhost", 8080_u16)
     let _client = std.http.client(net)
     let _server = std.http.server(net, addr)
@@ -75,7 +75,7 @@ GET request:
 
 ```zero
 pub fun main(world: World) -> Void raises {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [512]u8 = [0_u8; 512]
     let request = std.mem.span("GET https://example.com\n\n")
@@ -92,7 +92,7 @@ Request with headers and body:
 
 ```zero
 pub fun main(world: World) -> Void raises {
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let request = std.mem.span("POST https://example.com/api\ncontent-type: application/json\n\n{\"ping\":1}")
     let mut response: [512]u8 = [0_u8; 512]
@@ -114,7 +114,7 @@ pub fun main(world: World) -> Void raises {
         check world.err.write("usage: pass HTTP request envelope\n")
         return
     }
-    let net = std.net.host()
+    let net = world.net()
     let client = std.http.client(net)
     let mut response: [512]u8 = [0_u8; 512]
     let result = std.http.fetch(client, std.mem.span(maybe_request.value), response, std.time.ms(5000))
