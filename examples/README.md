@@ -151,7 +151,7 @@ bin/zero build --target linux-musl-x64 examples/memory-package --out .zero/out/m
 Run the docs site with:
 
 ```sh
-npm run docs:serve
+npm run docs:dev
 ```
 
 Start with Getting Started, then Learn Zero.
