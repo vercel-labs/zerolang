@@ -152,9 +152,9 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
   a64_append_u8(&strtab, 0);
   a64_append_zeros(&symtab, 24);
 
-  size_t *function_offsets = calloc(ir->function_len, sizeof(size_t));
-  size_t *function_sizes = calloc(ir->function_len, sizeof(size_t));
-  uint32_t *symbol_names = calloc(ir->function_len, sizeof(uint32_t));
+  size_t *function_offsets = z_checked_calloc(ir->function_len, sizeof(size_t));
+  size_t *function_sizes = z_checked_calloc(ir->function_len, sizeof(size_t));
+  uint32_t *symbol_names = z_checked_calloc(ir->function_len, sizeof(uint32_t));
   if (!function_offsets || !function_sizes || !symbol_names) {
     free(function_offsets);
     free(function_sizes);
@@ -286,7 +286,7 @@ bool z_emit_elf_aarch64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag)
   a64_append_u32(&text, 0xd4000001u); // svc #0
   a64_pad_to(&text, a64_align(text.len, 16));
 
-  size_t *function_offsets = calloc(ir->function_len, sizeof(size_t));
+  size_t *function_offsets = z_checked_calloc(ir->function_len, sizeof(size_t));
   if (!function_offsets) {
     zbuf_free(&text);
     return a64_diag(diag, "direct AArch64 ELF executable backend ran out of memory", 1, 1, "allocation failed");

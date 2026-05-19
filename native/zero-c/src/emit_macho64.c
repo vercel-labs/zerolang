@@ -612,9 +612,8 @@ static bool macho_record_call_patch(MachOEmitContext *ctx, size_t patch_offset, 
     return macho_diag_at(diag, "direct AArch64 Mach-O call target is out of range", value ? value->line : 1, value ? value->column : 1, "invalid callee");
   }
   if (ctx->call_patch_len == ctx->call_patch_cap) {
-    ctx->call_patch_cap = ctx->call_patch_cap ? ctx->call_patch_cap * 2 : 8;
-    ctx->call_patches = realloc(ctx->call_patches, ctx->call_patch_cap * sizeof(MachOCallPatch));
-    if (!ctx->call_patches) return macho_diag(diag, "out of memory while recording Mach-O call relocation");
+    ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
+    ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(MachOCallPatch));
   }
   ctx->call_patches[ctx->call_patch_len++] = (MachOCallPatch){.patch_offset = patch_offset, .callee_index = callee_index, .line = value ? value->line : 1, .column = value ? value->column : 1};
   return true;
@@ -623,10 +622,8 @@ static bool macho_record_call_patch(MachOEmitContext *ctx, size_t patch_offset, 
 static bool macho_record_data_patch(MachOEmitContext *ctx, size_t patch_offset, unsigned data_offset, const IrValue *value, ZDiag *diag) {
   if (!ctx) return macho_diag_at(diag, "direct AArch64 Mach-O data relocation requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (ctx->data_patch_len == ctx->data_patch_cap) {
-    ctx->data_patch_cap = ctx->data_patch_cap ? ctx->data_patch_cap * 2 : 8;
-    MachODataPatch *items = realloc(ctx->data_patches, ctx->data_patch_cap * sizeof(MachODataPatch));
-    if (!items) return macho_diag(diag, "out of memory while recording Mach-O data relocation");
-    ctx->data_patches = items;
+    ctx->data_patch_cap = z_grow_capacity(ctx->data_patch_cap, ctx->data_patch_len + 1, 8);
+    ctx->data_patches = z_checked_reallocarray(ctx->data_patches, ctx->data_patch_cap, sizeof(MachODataPatch));
   }
   ctx->data_patches[ctx->data_patch_len++] = (MachODataPatch){.patch_offset = patch_offset, .data_offset = data_offset};
   return true;
@@ -635,10 +632,8 @@ static bool macho_record_data_patch(MachOEmitContext *ctx, size_t patch_offset, 
 static bool macho_record_world_write_patch(MachOEmitContext *ctx, size_t patch_offset, const IrInstr *instr, ZDiag *diag) {
   if (!ctx) return macho_diag_at(diag, "direct AArch64 Mach-O World write relocation requires an emit context", instr ? instr->line : 1, instr ? instr->column : 1, "missing context");
   if (ctx->world_write_patch_len == ctx->world_write_patch_cap) {
-    ctx->world_write_patch_cap = ctx->world_write_patch_cap ? ctx->world_write_patch_cap * 2 : 4;
-    MachOWorldWritePatch *items = realloc(ctx->world_write_patches, ctx->world_write_patch_cap * sizeof(MachOWorldWritePatch));
-    if (!items) return macho_diag(diag, "out of memory while recording Mach-O World write relocation");
-    ctx->world_write_patches = items;
+    ctx->world_write_patch_cap = z_grow_capacity(ctx->world_write_patch_cap, ctx->world_write_patch_len + 1, 4);
+    ctx->world_write_patches = z_checked_reallocarray(ctx->world_write_patches, ctx->world_write_patch_cap, sizeof(MachOWorldWritePatch));
   }
   ctx->world_write_patches[ctx->world_write_patch_len++] = (MachOWorldWritePatch){.patch_offset = patch_offset};
   return true;
@@ -647,10 +642,8 @@ static bool macho_record_world_write_patch(MachOEmitContext *ctx, size_t patch_o
 static bool macho_record_runtime_json_parse_bytes_patch(MachOEmitContext *ctx, size_t patch_offset, const IrValue *value, ZDiag *diag) {
   if (!ctx) return macho_diag_at(diag, "direct AArch64 Mach-O JSON runtime relocation requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (ctx->runtime_json_parse_bytes_patch_len == ctx->runtime_json_parse_bytes_patch_cap) {
-    ctx->runtime_json_parse_bytes_patch_cap = ctx->runtime_json_parse_bytes_patch_cap ? ctx->runtime_json_parse_bytes_patch_cap * 2 : 4;
-    MachORuntimeJsonParseBytesPatch *items = realloc(ctx->runtime_json_parse_bytes_patches, ctx->runtime_json_parse_bytes_patch_cap * sizeof(MachORuntimeJsonParseBytesPatch));
-    if (!items) return macho_diag(diag, "out of memory while recording Mach-O JSON runtime relocation");
-    ctx->runtime_json_parse_bytes_patches = items;
+    ctx->runtime_json_parse_bytes_patch_cap = z_grow_capacity(ctx->runtime_json_parse_bytes_patch_cap, ctx->runtime_json_parse_bytes_patch_len + 1, 4);
+    ctx->runtime_json_parse_bytes_patches = z_checked_reallocarray(ctx->runtime_json_parse_bytes_patches, ctx->runtime_json_parse_bytes_patch_cap, sizeof(MachORuntimeJsonParseBytesPatch));
   }
   ctx->runtime_json_parse_bytes_patches[ctx->runtime_json_parse_bytes_patch_len++] = (MachORuntimeJsonParseBytesPatch){.patch_offset = patch_offset};
   return true;
@@ -659,10 +652,8 @@ static bool macho_record_runtime_json_parse_bytes_patch(MachOEmitContext *ctx, s
 static bool macho_record_runtime_http_fetch_patch(MachOEmitContext *ctx, size_t patch_offset, const IrValue *value, ZDiag *diag) {
   if (!ctx) return macho_diag_at(diag, "direct AArch64 Mach-O HTTP runtime relocation requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (ctx->runtime_http_fetch_patch_len == ctx->runtime_http_fetch_patch_cap) {
-    ctx->runtime_http_fetch_patch_cap = ctx->runtime_http_fetch_patch_cap ? ctx->runtime_http_fetch_patch_cap * 2 : 4;
-    MachORuntimeHttpFetchPatch *items = realloc(ctx->runtime_http_fetch_patches, ctx->runtime_http_fetch_patch_cap * sizeof(MachORuntimeHttpFetchPatch));
-    if (!items) return macho_diag(diag, "out of memory while recording Mach-O HTTP runtime relocation");
-    ctx->runtime_http_fetch_patches = items;
+    ctx->runtime_http_fetch_patch_cap = z_grow_capacity(ctx->runtime_http_fetch_patch_cap, ctx->runtime_http_fetch_patch_len + 1, 4);
+    ctx->runtime_http_fetch_patches = z_checked_reallocarray(ctx->runtime_http_fetch_patches, ctx->runtime_http_fetch_patch_cap, sizeof(MachORuntimeHttpFetchPatch));
   }
   ctx->runtime_http_fetch_patches[ctx->runtime_http_fetch_patch_len++] = (MachORuntimeHttpFetchPatch){.patch_offset = patch_offset};
   return true;
@@ -671,10 +662,8 @@ static bool macho_record_runtime_http_fetch_patch(MachOEmitContext *ctx, size_t 
 static bool macho_record_runtime_http_result_patch(MachORuntimeHttpResultPatch **items, size_t *len, size_t *cap, size_t patch_offset, const IrValue *value, ZDiag *diag) {
   if (!items || !len || !cap) return macho_diag_at(diag, "direct AArch64 Mach-O HTTP result relocation requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (*len == *cap) {
-    *cap = *cap ? *cap * 2 : 4;
-    MachORuntimeHttpResultPatch *next = realloc(*items, *cap * sizeof(MachORuntimeHttpResultPatch));
-    if (!next) return macho_diag(diag, "out of memory while recording Mach-O HTTP result relocation");
-    *items = next;
+    *cap = z_grow_capacity(*cap, *len + 1, 4);
+    *items = z_checked_reallocarray(*items, *cap, sizeof(MachORuntimeHttpResultPatch));
   }
   (*items)[(*len)++] = (MachORuntimeHttpResultPatch){.patch_offset = patch_offset};
   return true;
@@ -1620,8 +1609,8 @@ bool z_emit_macho64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *d
   bool has_rodata = program->readonly_data_bytes > 0 || program->data_segment_len > 0;
   unsigned rodata_base_offset = macho_rodata_base_offset(program);
   if (has_rodata) macho_append_rodata(&rodata, program, rodata_base_offset);
-  size_t *offsets = calloc(program->function_len, sizeof(size_t));
-  uint32_t *string_offsets = calloc(program->function_len, sizeof(uint32_t));
+  size_t *offsets = z_checked_calloc(program->function_len, sizeof(size_t));
+  uint32_t *string_offsets = z_checked_calloc(program->function_len, sizeof(uint32_t));
   if (!offsets) {
     free(string_offsets);
     zbuf_free(&relocs);
@@ -2142,7 +2131,7 @@ bool z_emit_macho64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag
   unsigned rodata_base_offset = macho_rodata_base_offset(program);
   if (has_rodata) macho_append_rodata(&rodata, program, rodata_base_offset);
 
-  size_t *offsets = calloc(program->function_len, sizeof(size_t));
+  size_t *offsets = z_checked_calloc(program->function_len, sizeof(size_t));
   if (!offsets) {
     zbuf_free(&rodata);
     zbuf_free(&text);

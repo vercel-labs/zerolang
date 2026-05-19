@@ -327,10 +327,8 @@ static bool elf_record_call_patch(ElfEmitContext *ctx, size_t patch_offset, unsi
     return elf_diag(diag, "direct ELF64 call target index is out of range", value ? value->line : 1, value ? value->column : 1, "invalid callee");
   }
   if (ctx->call_patch_len + 1 > ctx->call_patch_cap) {
-    ctx->call_patch_cap = ctx->call_patch_cap == 0 ? 8 : ctx->call_patch_cap * 2;
-    ElfCallPatch *items = realloc(ctx->call_patches, ctx->call_patch_cap * sizeof(ElfCallPatch));
-    if (!items) return elf_diag(diag, "direct ELF64 call patch allocation failed", value ? value->line : 1, value ? value->column : 1, "allocation failed");
-    ctx->call_patches = items;
+    ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
+    ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(ElfCallPatch));
   }
   ctx->call_patches[ctx->call_patch_len++] = (ElfCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
   return true;
@@ -339,22 +337,19 @@ static bool elf_record_call_patch(ElfEmitContext *ctx, size_t patch_offset, unsi
 static bool elf_record_rodata_patch(ElfEmitContext *ctx, size_t patch_offset, unsigned data_offset, ZDiag *diag, const IrValue *value) {
   if (!ctx) return elf_diag(diag, "direct ELF64 readonly data patch requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (ctx->rodata_patch_len + 1 > ctx->rodata_patch_cap) {
-    ctx->rodata_patch_cap = ctx->rodata_patch_cap == 0 ? 8 : ctx->rodata_patch_cap * 2;
-    ElfRodataPatch *items = realloc(ctx->rodata_patches, ctx->rodata_patch_cap * sizeof(ElfRodataPatch));
-    if (!items) return elf_diag(diag, "direct ELF64 readonly data patch allocation failed", value ? value->line : 1, value ? value->column : 1, "allocation failed");
-    ctx->rodata_patches = items;
+    ctx->rodata_patch_cap = z_grow_capacity(ctx->rodata_patch_cap, ctx->rodata_patch_len + 1, 8);
+    ctx->rodata_patches = z_checked_reallocarray(ctx->rodata_patches, ctx->rodata_patch_cap, sizeof(ElfRodataPatch));
   }
   ctx->rodata_patches[ctx->rodata_patch_len++] = (ElfRodataPatch){.patch_offset = patch_offset, .data_offset = data_offset};
   return true;
 }
 
 static bool elf_record_runtime_patch(ElfRuntimePatch **items, size_t *len, size_t *cap, size_t patch_offset, ZDiag *diag, const IrValue *value, const char *name) {
+  (void)name;
   if (!items || !len || !cap) return elf_diag(diag, "direct ELF64 runtime patch requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (*len + 1 > *cap) {
-    *cap = *cap == 0 ? 4 : *cap * 2;
-    ElfRuntimePatch *next = realloc(*items, *cap * sizeof(ElfRuntimePatch));
-    if (!next) return elf_diag(diag, "direct ELF64 runtime call patch allocation failed", value ? value->line : 1, value ? value->column : 1, name);
-    *items = next;
+    *cap = z_grow_capacity(*cap, *len + 1, 4);
+    *items = z_checked_reallocarray(*items, *cap, sizeof(ElfRuntimePatch));
   }
   (*items)[(*len)++] = (ElfRuntimePatch){.patch_offset = patch_offset};
   return true;
@@ -2675,9 +2670,9 @@ bool z_emit_elf64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
     elf_append_symbol(&symtab, 0, 0x03, 2, 0, 0);
   }
 
-  size_t *function_offsets = calloc(ir->function_len, sizeof(size_t));
-  size_t *function_sizes = calloc(ir->function_len, sizeof(size_t));
-  uint32_t *symbol_names = calloc(ir->function_len, sizeof(uint32_t));
+  size_t *function_offsets = z_checked_calloc(ir->function_len, sizeof(size_t));
+  size_t *function_sizes = z_checked_calloc(ir->function_len, sizeof(size_t));
+  uint32_t *symbol_names = z_checked_calloc(ir->function_len, sizeof(uint32_t));
   if (!function_offsets || !function_sizes || !symbol_names) {
     free(function_offsets);
     free(function_sizes);
@@ -3134,7 +3129,7 @@ bool z_emit_elf64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
   if (has_rodata) elf_append_rodata(&rodata, ir, rodata_base_offset);
   size_t start_stub_len = 3 + 5 + 2 + 5 + 2;
   size_t first_function_offset = elf_align(start_stub_len, 16);
-  size_t *function_offsets = calloc(ir->function_len, sizeof(size_t));
+  size_t *function_offsets = z_checked_calloc(ir->function_len, sizeof(size_t));
   if (!function_offsets) {
     zbuf_free(&text);
     zbuf_free(&rodata);

@@ -13,11 +13,27 @@ static Expr *clone_expr(const Expr *expr);
 static Stmt *clone_stmt(const Stmt *stmt);
 static void push_function_clone(FunctionVec *vec, const Function *source);
 
-static void push_param_clone(ParamVec *vec, const Param *param) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(Param));
+static void *ir_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
+  if (len + 1 > *cap) {
+    *cap = z_grow_capacity(*cap, len + 1, initial);
+    return z_checked_reallocarray(items, *cap, item_size);
   }
+  return items;
+}
+
+static void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
+  if (len + 1 > *cap) {
+    size_t next_cap = z_grow_capacity(*cap, len + 1, initial);
+    void *next_items = z_checked_reallocarray(items, next_cap, item_size);
+    if (ir) ir->mir_bytes += next_cap * item_size;
+    *cap = next_cap;
+    return next_items;
+  }
+  return items;
+}
+
+static void push_param_clone(ParamVec *vec, const Param *param) {
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Param));
   vec->items[vec->len++] = (Param){
     .name = z_strdup(param->name),
     .type = param->type ? z_strdup(param->type) : NULL,
@@ -35,18 +51,12 @@ static ParamVec clone_params(const ParamVec *params) {
 }
 
 static void push_expr_clone(ExprVec *vec, const Expr *expr) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(Expr *));
-  }
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Expr *));
   vec->items[vec->len++] = clone_expr(expr);
 }
 
 static void push_type_arg_clone(TypeArgVec *vec, const TypeArg *arg) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(TypeArg));
-  }
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeArg));
   vec->items[vec->len++] = (TypeArg){
     .type = arg->type ? z_strdup(arg->type) : NULL,
     .line = arg->line,
@@ -55,10 +65,7 @@ static void push_type_arg_clone(TypeArgVec *vec, const TypeArg *arg) {
 }
 
 static void push_field_clone(FieldInitVec *vec, const FieldInit *field) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(FieldInit));
-  }
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(FieldInit));
   vec->items[vec->len++] = (FieldInit){
     .name = z_strdup(field->name),
     .value = clone_expr(field->value),
@@ -69,7 +76,7 @@ static void push_field_clone(FieldInitVec *vec, const FieldInit *field) {
 
 static Expr *clone_expr(const Expr *expr) {
   if (!expr) return NULL;
-  Expr *copy = calloc(1, sizeof(Expr));
+  Expr *copy = z_checked_calloc(1, sizeof(Expr));
   copy->kind = expr->kind;
   copy->text = expr->text ? z_strdup(expr->text) : NULL;
   copy->resolved_type = expr->resolved_type ? z_strdup(expr->resolved_type) : NULL;
@@ -88,10 +95,7 @@ static Expr *clone_expr(const Expr *expr) {
 }
 
 static void push_stmt_clone(StmtVec *vec, const Stmt *stmt) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 8 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(Stmt *));
-  }
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Stmt *));
   vec->items[vec->len++] = clone_stmt(stmt);
 }
 
@@ -102,10 +106,7 @@ static StmtVec clone_stmts(const StmtVec *stmts) {
 }
 
 static void push_match_arm_clone(MatchArmVec *vec, const MatchArm *arm) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(MatchArm));
-  }
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(MatchArm));
   vec->items[vec->len++] = (MatchArm){
     .case_name = z_strdup(arm->case_name),
     .range_end = arm->range_end ? z_strdup(arm->range_end) : NULL,
@@ -119,7 +120,7 @@ static void push_match_arm_clone(MatchArmVec *vec, const MatchArm *arm) {
 
 static Stmt *clone_stmt(const Stmt *stmt) {
   if (!stmt) return NULL;
-  Stmt *copy = calloc(1, sizeof(Stmt));
+  Stmt *copy = z_checked_calloc(1, sizeof(Stmt));
   copy->kind = stmt->kind;
   copy->name = stmt->name ? z_strdup(stmt->name) : NULL;
   copy->type = stmt->type ? z_strdup(stmt->type) : NULL;
@@ -240,10 +241,7 @@ static void ir_type_arg_vec_free(TypeArgVec *args) {
 }
 
 static void ir_type_arg_vec_push_owned(TypeArgVec *args, char *type) {
-  if (args->len + 1 > args->cap) {
-    args->cap = args->cap == 0 ? 4 : args->cap * 2;
-    args->items = realloc(args->items, args->cap * sizeof(TypeArg));
-  }
+  args->items = ir_grow_items(args->items, args->len, &args->cap, 4, sizeof(TypeArg));
   args->items[args->len++] = (TypeArg){.type = type};
 }
 
@@ -649,7 +647,7 @@ static IrValue *ir_new_maybe_scalar_literal(IrProgram *ir, bool has, IrTypeKind 
 }
 
 static IrValue *ir_new_value(IrProgram *ir, IrValueKind kind, IrTypeKind type, int line, int column) {
-  IrValue *value = calloc(1, sizeof(IrValue));
+  IrValue *value = z_checked_calloc(1, sizeof(IrValue));
   value->kind = kind;
   value->type = type;
   value->line = line;
@@ -681,11 +679,7 @@ static void ir_free_instrs(IrInstr *instrs, size_t len) {
 }
 
 static void ir_function_push_local(IrProgram *ir, IrFunction *fun, const char *name, IrTypeKind type, bool is_param, bool is_array, bool is_record, const char *shape_name, IrTypeKind element_type, unsigned array_len, unsigned byte_size_override, unsigned alignment_override, bool is_mutable, int line, int column) {
-  if (fun->local_len + 1 > fun->local_cap) {
-    fun->local_cap = fun->local_cap == 0 ? 4 : fun->local_cap * 2;
-    fun->locals = realloc(fun->locals, fun->local_cap * sizeof(IrLocal));
-    if (ir) ir->mir_bytes += fun->local_cap * sizeof(IrLocal);
-  }
+  fun->locals = ir_grow_tracked_items(ir, fun->locals, fun->local_len, &fun->local_cap, 4, sizeof(IrLocal));
   unsigned byte_size = byte_size_override ? byte_size_override : (is_array ? ir_type_byte_size(element_type) * array_len : (type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_ALLOC || type == IR_TYPE_VEC ? 16 : (type == IR_TYPE_MAYBE_BYTE_VIEW ? 24 : (type == IR_TYPE_MAYBE_SCALAR ? 16 : 8))));
   unsigned alignment = alignment_override ? alignment_override : (is_array ? ir_type_alignment(element_type) : 8);
   fun->locals[fun->local_len] = (IrLocal){
@@ -776,11 +770,7 @@ static char *ir_stable_id_for_source_function(const SourceInput *input, const Fu
 }
 
 static void ir_value_push_arg(IrProgram *ir, IrValue *value, IrValue *arg) {
-  if (value->arg_len + 1 > value->arg_cap) {
-    value->arg_cap = value->arg_cap == 0 ? 4 : value->arg_cap * 2;
-    value->args = realloc(value->args, value->arg_cap * sizeof(IrValue *));
-    if (ir) ir->mir_bytes += value->arg_cap * sizeof(IrValue *);
-  }
+  value->args = ir_grow_tracked_items(ir, value->args, value->arg_len, &value->arg_cap, 4, sizeof(IrValue *));
   value->args[value->arg_len++] = arg;
 }
 
@@ -804,15 +794,11 @@ static bool ir_add_readonly_data(IrProgram *ir, const unsigned char *bytes, unsi
     ir_mark_unsupported(ir, "direct backend readonly data exceeds the initial memory page", line, column, "string/data segment");
     return false;
   }
-  if (ir->data_segment_len + 1 > ir->data_segment_cap) {
-    ir->data_segment_cap = ir->data_segment_cap == 0 ? 4 : ir->data_segment_cap * 2;
-    ir->data_segments = realloc(ir->data_segments, ir->data_segment_cap * sizeof(IrDataSegment));
-    ir->mir_bytes += ir->data_segment_cap * sizeof(IrDataSegment);
-  }
+  ir->data_segments = ir_grow_tracked_items(ir, ir->data_segments, ir->data_segment_len, &ir->data_segment_cap, 4, sizeof(IrDataSegment));
   IrDataSegment *segment = &ir->data_segments[ir->data_segment_len++];
   segment->offset = (unsigned)offset;
   segment->len = len;
-  segment->bytes = malloc(len == 0 ? 1 : len);
+  segment->bytes = z_checked_malloc(len == 0 ? 1 : len);
   if (len > 0) memcpy(segment->bytes, bytes, len);
   ir->readonly_data_bytes += len;
   ir->direct_readonly_data_bytes = ir->readonly_data_bytes;
@@ -901,8 +887,7 @@ static bool ir_lower_array_literal_byte_view(IrProgram *ir, const Expr *expr, Ir
     return false;
   }
 
-  unsigned char *bytes = malloc(array_len == 0 ? 1 : array_len);
-  if (!bytes) return false;
+  unsigned char *bytes = z_checked_malloc(array_len == 0 ? 1 : array_len);
   if (expr->array_repeat) {
     unsigned char byte = 0;
     if (!ir_u8_literal_byte(expr->args.items[0], &byte)) {
@@ -943,8 +928,7 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
     const char *text = expr->text ? expr->text : "";
     unsigned offset = 0;
     unsigned len = (unsigned)strlen(text);
-    unsigned char *nul_terminated = malloc((size_t)len + 1);
-    if (!nul_terminated) return false;
+    unsigned char *nul_terminated = z_checked_malloc((size_t)len + 1);
     memcpy(nul_terminated, text, len);
     nul_terminated[len] = 0;
     bool added = ir_add_readonly_data(ir, nul_terminated, len + 1, expr->line, expr->column, &offset);
@@ -1061,11 +1045,7 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
 }
 
 static void ir_instr_vec_push(IrProgram *ir, IrInstr **items, size_t *len, size_t *cap, IrInstr instr) {
-  if (*len + 1 > *cap) {
-    *cap = *cap == 0 ? 4 : *cap * 2;
-    *items = realloc(*items, *cap * sizeof(IrInstr));
-    if (ir) ir->mir_bytes += *cap * sizeof(IrInstr);
-  }
+  *items = ir_grow_tracked_items(ir, *items, *len, cap, 4, sizeof(IrInstr));
   (*items)[(*len)++] = instr;
 }
 
@@ -1134,11 +1114,7 @@ static char *ir_expr_callee_name(const Expr *expr) {
     char *left = ir_expr_callee_name(expr->left);
     size_t left_len = strlen(left);
     size_t text_len = strlen(expr->text ? expr->text : "");
-    char *name = malloc(left_len + text_len + 2);
-    if (!name) {
-      free(left);
-      return z_strdup("");
-    }
+    char *name = z_checked_malloc(left_len + text_len + 2);
     snprintf(name, left_len + text_len + 2, "%s.%s", left, expr->text ? expr->text : "");
     free(left);
     return name;
@@ -3111,11 +3087,7 @@ static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction 
 }
 
 static IrFunction *ir_program_push_function(IrProgram *ir, const Function *source, const char *stable_id_text) {
-  if (ir->function_len + 1 > ir->function_cap) {
-    ir->function_cap = ir->function_cap == 0 ? 4 : ir->function_cap * 2;
-    ir->functions = realloc(ir->functions, ir->function_cap * sizeof(IrFunction));
-    ir->mir_bytes += ir->function_cap * sizeof(IrFunction);
-  }
+  ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
   ZBuf stable_id;
   zbuf_init(&stable_id);
@@ -3378,8 +3350,8 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
       ir_collect_generic_specializations_from_stmt_vec(&direct_functions, program, &program->functions.items[i].body);
     }
   }
-  IrFunctionOrder *order = calloc(direct_functions.len ? direct_functions.len : 1, sizeof(IrFunctionOrder));
-  char **stable_ids = calloc(direct_functions.len ? direct_functions.len : 1, sizeof(char *));
+  IrFunctionOrder *order = z_checked_calloc(direct_functions.len ? direct_functions.len : 1, sizeof(IrFunctionOrder));
+  char **stable_ids = z_checked_calloc(direct_functions.len ? direct_functions.len : 1, sizeof(char *));
   for (size_t i = 0; i < direct_functions.len; i++) {
     stable_ids[i] = ir_stable_id_for_source_function(input, &direct_functions.items[i]);
     order[i] = (IrFunctionOrder){.name = direct_functions.items[i].name, .stable_id = stable_ids[i], .source_index = i};
@@ -3418,10 +3390,7 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
 }
 
 static void push_function_clone(FunctionVec *vec, const Function *source) {
-  if (vec->len + 1 > vec->cap) {
-    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
-    vec->items = realloc(vec->items, vec->cap * sizeof(Function));
-  }
+  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Function));
   vec->items[vec->len++] = (Function){
     .name = z_strdup(source->name),
     .test_name = source->test_name ? z_strdup(source->test_name) : NULL,
@@ -3444,10 +3413,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   IrProgram ir = {0};
   for (size_t i = 0; i < program->c_imports.len; i++) {
     CImport *source = &program->c_imports.items[i];
-    if (ir.program.c_imports.len + 1 > ir.program.c_imports.cap) {
-      ir.program.c_imports.cap = ir.program.c_imports.cap == 0 ? 4 : ir.program.c_imports.cap * 2;
-      ir.program.c_imports.items = realloc(ir.program.c_imports.items, ir.program.c_imports.cap * sizeof(CImport));
-    }
+    ir.program.c_imports.items = ir_grow_items(ir.program.c_imports.items, ir.program.c_imports.len, &ir.program.c_imports.cap, 4, sizeof(CImport));
     ir.program.c_imports.items[ir.program.c_imports.len++] = (CImport){
       .header = source->header ? z_strdup(source->header) : NULL,
       .alias = source->alias ? z_strdup(source->alias) : NULL,
@@ -3457,10 +3423,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->consts.len; i++) {
     ConstDecl *source = &program->consts.items[i];
-    if (ir.program.consts.len + 1 > ir.program.consts.cap) {
-      ir.program.consts.cap = ir.program.consts.cap == 0 ? 4 : ir.program.consts.cap * 2;
-      ir.program.consts.items = realloc(ir.program.consts.items, ir.program.consts.cap * sizeof(ConstDecl));
-    }
+    ir.program.consts.items = ir_grow_items(ir.program.consts.items, ir.program.consts.len, &ir.program.consts.cap, 4, sizeof(ConstDecl));
     ir.program.consts.items[ir.program.consts.len++] = (ConstDecl){
       .name = z_strdup(source->name),
       .type = source->type ? z_strdup(source->type) : NULL,
@@ -3472,10 +3435,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->aliases.len; i++) {
     TypeAlias *source = &program->aliases.items[i];
-    if (ir.program.aliases.len + 1 > ir.program.aliases.cap) {
-      ir.program.aliases.cap = ir.program.aliases.cap == 0 ? 4 : ir.program.aliases.cap * 2;
-      ir.program.aliases.items = realloc(ir.program.aliases.items, ir.program.aliases.cap * sizeof(TypeAlias));
-    }
+    ir.program.aliases.items = ir_grow_items(ir.program.aliases.items, ir.program.aliases.len, &ir.program.aliases.cap, 4, sizeof(TypeAlias));
     ir.program.aliases.items[ir.program.aliases.len++] = (TypeAlias){
       .name = z_strdup(source->name),
       .target = source->target ? z_strdup(source->target) : NULL,
@@ -3486,10 +3446,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->interfaces.len; i++) {
     InterfaceDecl *source = &program->interfaces.items[i];
-    if (ir.program.interfaces.len + 1 > ir.program.interfaces.cap) {
-      ir.program.interfaces.cap = ir.program.interfaces.cap == 0 ? 4 : ir.program.interfaces.cap * 2;
-      ir.program.interfaces.items = realloc(ir.program.interfaces.items, ir.program.interfaces.cap * sizeof(InterfaceDecl));
-    }
+    ir.program.interfaces.items = ir_grow_items(ir.program.interfaces.items, ir.program.interfaces.len, &ir.program.interfaces.cap, 4, sizeof(InterfaceDecl));
     InterfaceDecl cloned = {
       .name = z_strdup(source->name),
       .type_params = clone_params(&source->type_params),
@@ -3504,10 +3461,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->shapes.len; i++) {
     Shape *source = &program->shapes.items[i];
-    if (ir.program.shapes.len + 1 > ir.program.shapes.cap) {
-      ir.program.shapes.cap = ir.program.shapes.cap == 0 ? 4 : ir.program.shapes.cap * 2;
-      ir.program.shapes.items = realloc(ir.program.shapes.items, ir.program.shapes.cap * sizeof(Shape));
-    }
+    ir.program.shapes.items = ir_grow_items(ir.program.shapes.items, ir.program.shapes.len, &ir.program.shapes.cap, 4, sizeof(Shape));
     Shape cloned = {
       .name = z_strdup(source->name),
       .layout = z_strdup(source->layout),
@@ -3524,10 +3478,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->enums.len; i++) {
     EnumDecl *source = &program->enums.items[i];
-    if (ir.program.enums.len + 1 > ir.program.enums.cap) {
-      ir.program.enums.cap = ir.program.enums.cap == 0 ? 4 : ir.program.enums.cap * 2;
-      ir.program.enums.items = realloc(ir.program.enums.items, ir.program.enums.cap * sizeof(EnumDecl));
-    }
+    ir.program.enums.items = ir_grow_items(ir.program.enums.items, ir.program.enums.len, &ir.program.enums.cap, 4, sizeof(EnumDecl));
     ir.program.enums.items[ir.program.enums.len++] = (EnumDecl){
       .name = z_strdup(source->name),
       .type = source->type ? z_strdup(source->type) : NULL,
@@ -3538,10 +3489,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->choices.len; i++) {
     Choice *source = &program->choices.items[i];
-    if (ir.program.choices.len + 1 > ir.program.choices.cap) {
-      ir.program.choices.cap = ir.program.choices.cap == 0 ? 4 : ir.program.choices.cap * 2;
-      ir.program.choices.items = realloc(ir.program.choices.items, ir.program.choices.cap * sizeof(Choice));
-    }
+    ir.program.choices.items = ir_grow_items(ir.program.choices.items, ir.program.choices.len, &ir.program.choices.cap, 4, sizeof(Choice));
     ir.program.choices.items[ir.program.choices.len++] = (Choice){
       .name = z_strdup(source->name),
       .cases = clone_params(&source->cases),

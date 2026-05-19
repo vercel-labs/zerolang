@@ -309,10 +309,8 @@ static bool coff_record_call_patch(CoffEmitContext *ctx, size_t patch_offset, un
     return coff_diag_at(diag, "direct COFF call target index is out of range", value ? value->line : 1, value ? value->column : 1, "invalid callee");
   }
   if (ctx->call_patch_len == ctx->call_patch_cap) {
-    ctx->call_patch_cap = ctx->call_patch_cap ? ctx->call_patch_cap * 2 : 8;
-    CoffCallPatch *items = realloc(ctx->call_patches, ctx->call_patch_cap * sizeof(CoffCallPatch));
-    if (!items) return coff_diag_at(diag, "direct COFF call patch allocation failed", value ? value->line : 1, value ? value->column : 1, "allocation failed");
-    ctx->call_patches = items;
+    ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
+    ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(CoffCallPatch));
   }
   ctx->call_patches[ctx->call_patch_len++] = (CoffCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
   return true;
@@ -321,10 +319,8 @@ static bool coff_record_call_patch(CoffEmitContext *ctx, size_t patch_offset, un
 static bool coff_record_rodata_patch(CoffEmitContext *ctx, size_t patch_offset, unsigned data_offset, const IrValue *value, ZDiag *diag) {
   if (!ctx) return coff_diag_at(diag, "direct COFF readonly data relocation requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
   if (ctx->rodata_patch_len == ctx->rodata_patch_cap) {
-    ctx->rodata_patch_cap = ctx->rodata_patch_cap ? ctx->rodata_patch_cap * 2 : 8;
-    CoffRodataPatch *items = realloc(ctx->rodata_patches, ctx->rodata_patch_cap * sizeof(CoffRodataPatch));
-    if (!items) return coff_diag_at(diag, "direct COFF readonly data patch allocation failed", value ? value->line : 1, value ? value->column : 1, "allocation failed");
-    ctx->rodata_patches = items;
+    ctx->rodata_patch_cap = z_grow_capacity(ctx->rodata_patch_cap, ctx->rodata_patch_len + 1, 8);
+    ctx->rodata_patches = z_checked_reallocarray(ctx->rodata_patches, ctx->rodata_patch_cap, sizeof(CoffRodataPatch));
   }
   ctx->rodata_patches[ctx->rodata_patch_len++] = (CoffRodataPatch){.patch_offset = patch_offset, .data_offset = data_offset};
   return true;
@@ -333,10 +329,8 @@ static bool coff_record_rodata_patch(CoffEmitContext *ctx, size_t patch_offset, 
 static bool coff_record_world_write_patch(CoffEmitContext *ctx, size_t patch_offset, const IrInstr *instr, ZDiag *diag) {
   if (!ctx) return coff_diag_at(diag, "direct COFF World write relocation requires an emit context", instr ? instr->line : 1, instr ? instr->column : 1, "missing context");
   if (ctx->world_write_patch_len == ctx->world_write_patch_cap) {
-    ctx->world_write_patch_cap = ctx->world_write_patch_cap ? ctx->world_write_patch_cap * 2 : 4;
-    CoffWorldWritePatch *items = realloc(ctx->world_write_patches, ctx->world_write_patch_cap * sizeof(CoffWorldWritePatch));
-    if (!items) return coff_diag_at(diag, "direct COFF World write patch allocation failed", instr ? instr->line : 1, instr ? instr->column : 1, "allocation failed");
-    ctx->world_write_patches = items;
+    ctx->world_write_patch_cap = z_grow_capacity(ctx->world_write_patch_cap, ctx->world_write_patch_len + 1, 4);
+    ctx->world_write_patches = z_checked_reallocarray(ctx->world_write_patches, ctx->world_write_patch_cap, sizeof(CoffWorldWritePatch));
   }
   ctx->world_write_patches[ctx->world_write_patch_len++] = (CoffWorldWritePatch){.patch_offset = patch_offset};
   return true;
@@ -964,7 +958,7 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
   bool has_rodata = program->readonly_data_bytes > 0 || program->data_segment_len > 0;
   unsigned rodata_base_offset = coff_rodata_base_offset(program);
   if (has_rodata) coff_append_rodata(&rodata, program, rodata_base_offset);
-  size_t *offsets = calloc(program->function_len, sizeof(size_t));
+  size_t *offsets = z_checked_calloc(program->function_len, sizeof(size_t));
   if (!offsets) {
     zbuf_free(&relocs);
     zbuf_free(&rodata);
@@ -1311,7 +1305,7 @@ bool z_emit_coff_x64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag *dia
   unsigned rodata_base_offset = coff_rodata_base_offset(program);
   if (has_rodata) coff_append_rodata(&rdata, program, rodata_base_offset);
 
-  size_t *offsets = calloc(program->function_len, sizeof(size_t));
+  size_t *offsets = z_checked_calloc(program->function_len, sizeof(size_t));
   if (!offsets) {
     zbuf_free(&rdata);
     zbuf_free(&text);
