@@ -52,6 +52,7 @@ typedef struct {
   bool patch;
   bool all;
   bool fmt_check;
+  bool fmt_write;
   bool legacy_backend;
   bool trace;
   EmitKind emit;
@@ -3270,7 +3271,7 @@ static void print_help(void) {
   printf("  zero new cli|lib|package <name>\n");
   printf("  zero check <file.0|project|zero.json>\n");
   printf("  zero test <file.0|project|zero.json>\n");
-  printf("  zero fmt <file.0|project|zero.json>\n");
+  printf("  zero fmt [--check] [--write] <file.0|project|zero.json>\n");
   printf("  zero build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero run [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json> [-- args...]\n");
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
@@ -3339,8 +3340,9 @@ static void print_command_help(const char *command) {
     printf("Usage: zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <file.0|project|zero.json>\n\n");
     printf("Build and run inline `test` blocks.\n");
   } else if (strcmp(command, "fmt") == 0) {
-    printf("Usage: zero fmt [--check] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero fmt [--check] [--write] <file.0|project|zero.json>\n\n");
     printf("Print deterministic bootstrap formatting for current Zero syntax.\n");
+    printf("Add --check to fail when input is unformatted, or --write to rewrite files in place.\n");
   } else if (strcmp(command, "targets") == 0) {
     printf("Usage: zero targets\n\n");
     printf("Print supported target facts as JSON.\n");
@@ -3439,6 +3441,9 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     return true;
   } else if (strcmp(arg, "--check") == 0) {
     command->fmt_check = true;
+    return true;
+  } else if (strcmp(arg, "--write") == 0) {
+    command->fmt_write = true;
     return true;
   } else if (strcmp(arg, "--trace") == 0) {
     command->trace = true;
@@ -5129,11 +5134,15 @@ typedef struct {
   int angle_depth;
   bool brace_stack[256];
   size_t brace_depth;
+  bool generic_stack[64];
+  size_t generic_depth;
   bool at_line_start;
   bool pending_block;
   bool in_function_header;
   bool next_brace_is_error_set;
   bool dot_at_line_start;
+  bool pending_as_cast;
+  bool current_angle_is_generic;
   char previous[32];
 } FormatState;
 
@@ -5174,23 +5183,75 @@ static void fmt_blank_line(FormatState *fmt) {
   fmt->at_line_start = true;
 }
 
+/* Decide whether the `<` at source[open] opens a generic argument list
+ * (e.g. Box<u8, 4>) rather than a less-than comparison (e.g. n < 0).
+ * Scans forward with angle-bracket balancing: a generic list contains only
+ * type-list tokens and closes with a balanced `>` before any expression or
+ * statement terminator. */
+static bool fmt_angle_opens_generic(const char *source, size_t open) {
+  size_t i = open + 1;
+  int angle = 1;
+  int paren = 0;
+  int bracket = 0;
+  bool saw_content = false;
+  while (source[i]) {
+    char c = source[i];
+    if (c == ' ' || c == '\t' || c == '\r') { i++; continue; }
+    if (c == '\n') {
+      /* A bare newline inside a pending angle group only stays generic
+       * while brackets/parens are still open; otherwise treat as compare. */
+      if (paren == 0 && bracket == 0) return false;
+      i++;
+      continue;
+    }
+    if (c == '<') { angle++; i++; continue; }
+    if (c == '>') {
+      if (source[i + 1] == '=') return false; /* `>=` is a comparison */
+      angle--;
+      i++;
+      if (angle == 0) return saw_content || true;
+      continue;
+    }
+    if (c == '(') { paren++; i++; continue; }
+    if (c == ')') { if (paren == 0) return false; paren--; i++; continue; }
+    if (c == '[') { bracket++; i++; continue; }
+    if (c == ']') { if (bracket == 0) return false; bracket--; i++; continue; }
+    if (c == ',' || c == ':' || c == '.' || c == '_') { saw_content = true; i++; continue; }
+    if (fmt_is_ident_char(c)) { saw_content = true; i++; continue; }
+    /* Any other symbol (=, +, -, *, /, ;, {, }, &, |, !, ?, etc.) cannot
+     * appear directly inside a generic argument list. */
+    return false;
+  }
+  return false;
+}
+
 static bool fmt_previous_is_opening_punct(const FormatState *fmt) {
+  /* A comparison `<` is a binary operator, not opening punctuation, so the
+   * following operand must still be spaced (`n < 0`, not `n <0`). */
+  if (strcmp(fmt->previous, "<") == 0) return fmt->current_angle_is_generic;
   return strcmp(fmt->previous, "(") == 0 ||
          strcmp(fmt->previous, "[") == 0 ||
          strcmp(fmt->previous, "]") == 0 ||
-         strcmp(fmt->previous, "<") == 0 ||
          strcmp(fmt->previous, ".") == 0 ||
          strcmp(fmt->previous, "&") == 0;
 }
 
 static bool fmt_no_space_before(const char *token, const FormatState *fmt) {
+  /* Angle brackets only hug their neighbours when they delimit a generic
+   * argument list; as comparison operators they are spaced like `<`/`>`. */
+  if (strcmp(token, "<") == 0 || strcmp(token, ">") == 0) {
+    if (!fmt->current_angle_is_generic) {
+      return fmt->out.len == 0 ||
+             fmt->out.data[fmt->out.len - 1] == '\n' ||
+             fmt->out.data[fmt->out.len - 1] == ' ';
+    }
+    return true;
+  }
   return strcmp(token, ")") == 0 ||
          strcmp(token, "]") == 0 ||
          strcmp(token, ",") == 0 ||
          strcmp(token, ".") == 0 ||
          strcmp(token, ":") == 0 ||
-         strcmp(token, "<") == 0 ||
-         strcmp(token, ">") == 0 ||
          strcmp(token, "(") == 0 ||
          strcmp(token, "[") == 0 ||
          fmt_previous_is_opening_punct(fmt) ||
@@ -5217,7 +5278,8 @@ static bool fmt_space_after(const char *token) {
          strcmp(token, "/") == 0 ||
          strcmp(token, "%") == 0 ||
          strcmp(token, "+%") == 0 ||
-         strcmp(token, "+|") == 0;
+         strcmp(token, "+|") == 0 ||
+         strcmp(token, "as") == 0;
 }
 
 static bool fmt_space_before_operator(const char *token) {
@@ -5236,7 +5298,8 @@ static bool fmt_space_before_operator(const char *token) {
          strcmp(token, "/") == 0 ||
          strcmp(token, "%") == 0 ||
          strcmp(token, "+%") == 0 ||
-         strcmp(token, "+|") == 0;
+         strcmp(token, "+|") == 0 ||
+         strcmp(token, "as") == 0;
 }
 
 static void fmt_append_token(FormatState *fmt, const char *token) {
@@ -5330,8 +5393,15 @@ static char *format_source_minimal(const char *source) {
         if (input[i] == '\n') newlines++;
         i++;
       }
-      if (newlines > 1 && fmt.indent == 0 && fmt.out.len > 0) fmt_blank_line(&fmt);
-      else if (newlines > 0 && fmt.out.len > 0 && !fmt.at_line_start) fmt_newline(&fmt);
+      bool in_value_brace = fmt.brace_depth > 0 && !fmt.brace_stack[fmt.brace_depth - 1];
+      if (in_value_brace) {
+        /* Struct/array literals are emitted on a single canonical line, so
+         * source newlines inside a value brace are collapsed to a space. */
+      } else if (newlines > 1 && fmt.indent == 0 && fmt.out.len > 0) {
+        fmt_blank_line(&fmt);
+      } else if (newlines > 0 && fmt.out.len > 0 && !fmt.at_line_start) {
+        fmt_newline(&fmt);
+      }
       continue;
     }
     if (input[i] == '/' && input[i + 1] == '/') {
@@ -5400,6 +5470,7 @@ static char *format_source_minimal(const char *source) {
       continue;
     }
     char token[3] = {0};
+    size_t token_offset = i;
     if (fmt_is_two_char_symbol(input, i)) {
       token[0] = input[i];
       token[1] = input[i + 1];
@@ -5416,8 +5487,24 @@ static char *format_source_minimal(const char *source) {
       else if (strcmp(token, ")") == 0 && fmt.paren_depth > 0) fmt.paren_depth--;
       else if (strcmp(token, "[") == 0) fmt.bracket_depth++;
       else if (strcmp(token, "]") == 0 && fmt.bracket_depth > 0) fmt.bracket_depth--;
-      else if (strcmp(token, "<") == 0) fmt.angle_depth++;
-      else if (strcmp(token, ">") == 0 && fmt.angle_depth > 0) fmt.angle_depth--;
+      else if (strcmp(token, "<") == 0) {
+        fmt.angle_depth++;
+        bool is_generic = fmt_angle_opens_generic(input, token_offset);
+        if (fmt.generic_depth < sizeof(fmt.generic_stack) / sizeof(fmt.generic_stack[0])) {
+          fmt.generic_stack[fmt.generic_depth++] = is_generic;
+        }
+        fmt.current_angle_is_generic = is_generic;
+      } else if (strcmp(token, ">") == 0 && fmt.angle_depth > 0) {
+        fmt.angle_depth--;
+        bool is_generic = false;
+        if (fmt.generic_depth > 0) is_generic = fmt.generic_stack[--fmt.generic_depth];
+        fmt.current_angle_is_generic = is_generic;
+      } else {
+        /* Re-establish whether we are still inside a generic group so the
+         * token following a comparison `<`/`>` is spaced correctly. */
+        fmt.current_angle_is_generic =
+            fmt.generic_depth > 0 && fmt.generic_stack[fmt.generic_depth - 1];
+      }
       if (strcmp(token, ".") == 0 && strcmp(fmt.previous, "}") == 0 && !fmt.at_line_start) {
         fmt_newline(&fmt);
       }
@@ -5440,6 +5527,39 @@ static char *format_source_minimal(const char *source) {
     fmt.out.data[--fmt.out.len] = 0;
   }
   return fmt.out.data;
+}
+
+/* Format a single source file. With `write`, rewrite the file in place only
+ * when it changed; otherwise print the formatted text to stdout. Returns 0 on
+ * success, 1 on read/write failure. `*changed` reports whether the on-disk
+ * (or piped) content differed from its canonical form. */
+static int fmt_format_one_file(const char *path, bool write, bool *changed) {
+  ZDiag diag = {0};
+  char *source = z_read_file(path, &diag);
+  if (!source) {
+    print_diag(path, &diag);
+    return 1;
+  }
+  char *formatted = format_source_minimal(source);
+  bool differs = strcmp(formatted, source) != 0;
+  if (changed) *changed = differs;
+  if (write) {
+    if (differs) {
+      ZDiag write_diag = {0};
+      if (!z_write_file(path, formatted, &write_diag)) {
+        print_diag(path, &write_diag);
+        free(formatted);
+        free(source);
+        return 1;
+      }
+      printf("formatted %s\n", path);
+    }
+  } else {
+    fputs(formatted, stdout);
+  }
+  free(formatted);
+  free(source);
+  return 0;
 }
 
 static int print_version_command(bool json) {
@@ -9069,6 +9189,52 @@ int main(int argc, char **argv) {
       z_free_source(&fmt_input);
       return 1;
     }
+
+    /* The set of files to format: a single source file, or every file that a
+     * package/project resolves to. Formatting per file keeps every file a
+     * fixpoint at package scope, since the resolved `source` concatenates
+     * files behind `// file:` markers. */
+    char **files = NULL;
+    size_t file_count = 0;
+    if (fmt_input.source_file_count > 0) {
+      files = fmt_input.source_files;
+      file_count = fmt_input.source_file_count;
+    } else if (fmt_input.source_file) {
+      files = &fmt_input.source_file;
+      file_count = 1;
+    }
+
+    if ((command.fmt_write || command.fmt_check) && file_count > 0) {
+      int rc = 0;
+      bool any_changed = false;
+      for (size_t fi = 0; fi < file_count; fi++) {
+        bool changed = false;
+        if (command.fmt_write) {
+          if (fmt_format_one_file(files[fi], true, &changed) != 0) {
+            rc = 1;
+            break;
+          }
+        } else {
+          ZDiag read_diag = {0};
+          char *src = z_read_file(files[fi], &read_diag);
+          if (!src) {
+            print_diag(files[fi], &read_diag);
+            rc = 1;
+            break;
+          }
+          char *formatted = format_source_minimal(src);
+          changed = strcmp(formatted, src) != 0;
+          if (changed) fprintf(stderr, "format differs: %s\n", files[fi]);
+          free(formatted);
+          free(src);
+        }
+        if (changed) any_changed = true;
+      }
+      if (rc == 0 && command.fmt_check && !any_changed) printf("fmt ok\n");
+      z_free_source(&fmt_input);
+      return rc != 0 ? 1 : (command.fmt_check && any_changed ? 1 : 0);
+    }
+
     char *formatted = format_source_minimal(fmt_input.source);
     if (command.fmt_check) {
       bool matches = strcmp(formatted, fmt_input.source) == 0;

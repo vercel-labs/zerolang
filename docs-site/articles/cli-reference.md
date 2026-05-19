@@ -17,7 +17,7 @@ Most commands accept the same input forms:
 | `zero check <input>` | Parse, typecheck, and report diagnostics. |
 | `zero run <input>` | Build and run a host executable. |
 | `zero test <input>` | Run inline `test` blocks. |
-| `zero fmt <input>` | Print formatted source. Add `--check` in CI. |
+| `zero fmt <input>` | Print formatted source. Add `--check` in CI or `--write` to rewrite files in place. |
 | `zero build <input>` | Emit an executable or object file. |
 | `zero ship <input>` | Produce a release preview with checksums and metadata. |
 | `zero graph <input>` | Inspect modules, symbols, capabilities, and helper use. |
@@ -143,7 +143,7 @@ zero run [--target <target>] [--profile dev|release] [--out <file>] <input> [-- 
 zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <file>] <input>
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
-zero fmt [--check] <input>
+zero fmt [--check] [--write] <input>
 zero graph [--json] [--target <target>] <input>
 zero doc [--json] [--target <target>] <input>
 zero size [--json] [--target <target>] [--out <artifact>] <input>

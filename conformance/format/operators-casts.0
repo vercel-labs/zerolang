@@ -1,0 +1,11 @@
+shape Pair{first:i32,second:i32,}
+fun pick<T,static N:usize>(box:ref<Pair>)->i32{return box.first}
+pub fun main()->Void{let n:i32=5
+let i:i32=0
+let arr:[3]i32=[10,20,30]
+let pair:Pair=Pair{
+first:1,
+second:2,
+}
+if n>0 && i<n{let v:u64=(arr[i] as u64)
+if v>=0{i=i+1}}}
