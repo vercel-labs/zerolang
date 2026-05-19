@@ -159,7 +159,8 @@ typedef enum {
   STMT_BREAK,
   STMT_CONTINUE,
   STMT_MATCH,
-  STMT_RAISE
+  STMT_RAISE,
+  STMT_WITH
 } StmtKind;
 
 typedef struct Stmt Stmt;
@@ -179,6 +180,17 @@ typedef struct {
   size_t len;
   size_t cap;
 } ParamVec;
+
+typedef struct {
+  char **items;
+  size_t len;
+  size_t cap;
+} EffectVec;
+
+void effect_vec_push(EffectVec *vec, const char *name);
+void effect_vec_free(EffectVec *vec);
+void effect_vec_merge(EffectVec *dst, const EffectVec *src);
+bool effect_vec_contains(const EffectVec *vec, const char *name);
 
 typedef struct {
   Stmt **items;
@@ -214,6 +226,7 @@ struct Stmt {
   StmtVec then_body;
   StmtVec else_body;
   MatchArmVec match_arms;
+  void *handler_ops;
   int line;
   int column;
 };
@@ -228,6 +241,7 @@ typedef struct {
   bool raises;
   bool has_error_set;
   ParamVec errors;
+  EffectVec effects;
   bool is_test;
   bool export_c;
   StmtVec body;
@@ -251,6 +265,32 @@ typedef struct {
   int line;
   int column;
 } Shape;
+
+typedef struct {
+  char *name;
+  FunctionVec operations;
+  bool is_public;
+  int line;
+  int column;
+} EffectDecl;
+
+typedef struct {
+  char *name;
+  int line;
+  int column;
+} CapabilityDecl;
+
+typedef struct {
+  CapabilityDecl *items;
+  size_t len;
+  size_t cap;
+} CapabilityDeclVec;
+
+typedef struct {
+  EffectDecl *items;
+  size_t len;
+  size_t cap;
+} EffectDeclVec;
 
 typedef struct {
   Shape *items;
@@ -366,6 +406,8 @@ typedef struct {
   EnumVec enums;
   ChoiceVec choices;
   FunctionVec functions;
+  EffectDeclVec effects;
+  CapabilityDeclVec capabilities;
 } Program;
 
 typedef enum {
@@ -429,7 +471,6 @@ typedef enum {
   IR_VALUE_TIME_AS_MS,
   IR_VALUE_RAND_NEXT_U32,
   IR_VALUE_RAND_ENTROPY_U32,
-  IR_VALUE_FS_HOST,
   IR_VALUE_FS_OPEN,
   IR_VALUE_FS_CREATE,
   IR_VALUE_FS_READ_PATH,
