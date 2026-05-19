@@ -6,13 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void elf_append_u64(ZBuf *buf, uint64_t value) {
-  if (buf == NULL) return;
-
-  elf_append_u32(buf, (uint32_t)value);
-  elf_append_u32(buf, (uint32_t)(value >> 32));
-}
-
 static void elf_append_bytes(ZBuf *buf, const unsigned char *bytes, size_t len) {
   if (len == 0ULL) return;
 
