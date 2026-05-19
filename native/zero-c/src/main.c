@@ -885,7 +885,11 @@ static const StdHelperInfo std_helpers[] = {
   {"std.rand.nextU32", "u32", 1, "rand", "target-neutral", "updates explicit source", true},
   {"std.rand.entropyU32", "u32", 0, "rand", "host", "target entropy source", true},
   {"std.proc.spawn", "ProcStatus", 1, "proc", "host", "explicit process capability", true},
+  {"std.proc.run", "ProcResult", 5, "proc", "host", "executes argv vector, captures stdout/stderr", true},
   {"std.proc.exitCode", "i32", 1, "proc", "host", "no allocation", false},
+  {"std.proc.outLen", "usize", 1, "proc", "host", "no allocation", false},
+  {"std.proc.errLen", "usize", 1, "proc", "host", "no allocation", false},
+  {"std.proc.timedOut", "Bool", 1, "proc", "host", "no allocation", false},
   {"std.crypto.hash32", "u32", 1, "codec", "target-neutral", "no allocation", true},
   {"std.crypto.hmac32", "u32", 2, "codec", "target-neutral", "no allocation", true},
   {"std.crypto.constantTimeEql", "Bool", 2, "memory", "target-neutral", "no allocation", true},
@@ -6603,6 +6607,7 @@ static const char *helper_error_behavior(const StdHelperInfo *helper) {
   if (strstr(helper->name, "OrRaise")) return "raises { NotFound, TooLarge, Io }";
   if (helper->return_type && strncmp(helper->return_type, "Maybe<", strlen("Maybe<")) == 0) return "returns null on failure";
   if (strcmp(helper->name, "std.proc.spawn") == 0) return "returns ProcStatus";
+  if (strcmp(helper->name, "std.proc.run") == 0) return "returns ProcResult; check std.proc.timedOut and exit code";
   return "infallible";
 }
 

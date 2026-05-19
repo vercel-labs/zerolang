@@ -1,0 +1,25 @@
+pub fun main(world: World) -> Void raises {
+    // argv blob: little-endian u32 count, then per-arg u32 len + raw bytes.
+    // ["/bin/echo", "hi"]
+    let argv: [23]u8 = [2, 0, 0, 0, 9, 0, 0, 0, 47, 98, 105, 110, 47, 101, 99, 104, 111, 2, 0, 0, 0, 104, 105]
+    let mut out: [64]u8 = [0_u8; 64]
+    let mut err: [64]u8 = [0_u8; 64]
+    let result = std.proc.run(argv, std.mem.span(""), out, err, std.time.seconds(5))
+
+    // ["/zero-missing-xy"] -> execvp failure -> exit 127.
+    let missing: [24]u8 = [1, 0, 0, 0, 16, 0, 0, 0, 47, 122, 101, 114, 111, 45, 109, 105, 115, 115, 105, 110, 103, 45, 120, 121]
+    let mut out2: [16]u8 = [0_u8; 16]
+    let mut err2: [16]u8 = [0_u8; 16]
+    let failed = std.proc.run(missing, std.mem.span(""), out2, err2, std.time.seconds(5))
+
+    if std.proc.timedOut(result) == false &&
+        std.proc.exitCode(result) == 0 &&
+        std.proc.outLen(result) == 3 &&
+        std.proc.errLen(result) == 0 &&
+        out[0] == 104_u8 &&
+        out[1] == 105_u8 &&
+        out[2] == 10_u8 &&
+        std.proc.exitCode(failed) != 0 {
+        check world.out.write("proc run ok\n")
+    }
+}

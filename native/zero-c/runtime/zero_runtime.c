@@ -1,6 +1,8 @@
 #include "zero_runtime.h"
 
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 
 #if defined(_WIN32)
 #include <io.h>
@@ -356,3 +358,329 @@ uint32_t zero_http_result_body_len(uint64_t result) {
 uint32_t zero_http_result_error(uint64_t result) {
   return (uint32_t)((result >> 48) & 0xffffu);
 }
+
+/* ---- std.proc.run ----------------------------------------------------- */
+
+#define ZERO_PROC_LEN_MAX 0xffffffu /* 24-bit capture cap per stream */
+
+static uint64_t zero_proc_pack(uint32_t error, int32_t exit_code,
+                               uint32_t timed_out, uint32_t out_len,
+                               uint32_t err_len) {
+  uint64_t e = (uint64_t)(error & 0x7fu);
+  uint64_t code = (uint64_t)((uint32_t)exit_code & 0xffu);
+  uint64_t t = timed_out ? 1ull : 0ull;
+  if (out_len > ZERO_PROC_LEN_MAX) out_len = ZERO_PROC_LEN_MAX;
+  if (err_len > ZERO_PROC_LEN_MAX) err_len = ZERO_PROC_LEN_MAX;
+  return (t << 63) | (e << 56) | (code << 48) |
+         ((uint64_t)out_len << 24) | (uint64_t)err_len;
+}
+
+int32_t zero_proc_run_exit_code(uint64_t result) {
+  return (int32_t)((result >> 48) & 0xffu);
+}
+
+uint32_t zero_proc_run_out_len(uint64_t result) {
+  return (uint32_t)((result >> 24) & ZERO_PROC_LEN_MAX);
+}
+
+uint32_t zero_proc_run_err_len(uint64_t result) {
+  return (uint32_t)(result & ZERO_PROC_LEN_MAX);
+}
+
+uint32_t zero_proc_run_timed_out(uint64_t result) {
+  return (uint32_t)((result >> 63) & 1u);
+}
+
+uint32_t zero_proc_run_error(uint64_t result) {
+  return (uint32_t)((result >> 56) & 0x7fu);
+}
+
+static uint32_t zero_proc_read_u32le(const unsigned char *p) {
+  return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+         ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+/*
+ * Decodes the flat argv blob into a NULL-terminated argv array of NUL-
+ * terminated C strings. Returns the allocated array (caller frees argv and
+ * argv[0]'s backing store) or NULL on malformed input / allocation failure.
+ * The whole string table is allocated as one block pointed to by *storage.
+ */
+static char **zero_proc_decode_argv(ZeroByteView argv, char **storage) {
+  *storage = NULL;
+  if (!argv.ptr || argv.len < 4) return NULL;
+  uint32_t count = zero_proc_read_u32le(argv.ptr);
+  if (count == 0 || count > 4096) return NULL;
+  size_t pos = 4;
+  size_t total = 0;
+  for (uint32_t i = 0; i < count; i++) {
+    if (pos + 4 > argv.len) return NULL;
+    uint32_t alen = zero_proc_read_u32le(argv.ptr + pos);
+    pos += 4;
+    if (alen > argv.len || pos + alen > argv.len) return NULL;
+    total += (size_t)alen + 1;
+    pos += alen;
+  }
+  char **vec = (char **)malloc(sizeof(char *) * ((size_t)count + 1));
+  if (!vec) return NULL;
+  char *buf = (char *)malloc(total ? total : 1);
+  if (!buf) {
+    free(vec);
+    return NULL;
+  }
+  pos = 4;
+  size_t off = 0;
+  for (uint32_t i = 0; i < count; i++) {
+    uint32_t alen = zero_proc_read_u32le(argv.ptr + pos);
+    pos += 4;
+    vec[i] = buf + off;
+    if (alen) memcpy(buf + off, argv.ptr + pos, alen);
+    buf[off + alen] = '\0';
+    off += (size_t)alen + 1;
+    pos += alen;
+  }
+  vec[count] = NULL;
+  *storage = buf;
+  return vec;
+}
+
+#if defined(_WIN32)
+
+uint64_t zero_proc_run_result(
+  ZeroByteView argv,
+  ZeroByteView stdin_bytes,
+  ZeroMutByteView out,
+  ZeroMutByteView err,
+  int64_t timeout_ns
+) {
+  (void)argv;
+  (void)stdin_bytes;
+  (void)out;
+  (void)err;
+  (void)timeout_ns;
+  return zero_proc_pack(ZERO_PROC_UNAVAILABLE, -1, 0, 0, 0);
+}
+
+#else
+
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <time.h>
+
+static void zero_proc_set_nonblocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags >= 0) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+static int64_t zero_proc_now_ns(void) {
+  struct timespec ts;
+#if defined(CLOCK_MONOTONIC)
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+    return (int64_t)ts.tv_sec * 1000000000ll + (int64_t)ts.tv_nsec;
+  }
+#endif
+  return 0;
+}
+
+uint64_t zero_proc_run_result(
+  ZeroByteView argv,
+  ZeroByteView stdin_bytes,
+  ZeroMutByteView out,
+  ZeroMutByteView err,
+  int64_t timeout_ns
+) {
+  char *storage = NULL;
+  char **vec = zero_proc_decode_argv(argv, &storage);
+  if (!vec) return zero_proc_pack(ZERO_PROC_INVALID_ARGS, -1, 0, 0, 0);
+
+  int in_pipe[2] = {-1, -1};
+  int out_pipe[2] = {-1, -1};
+  int err_pipe[2] = {-1, -1};
+  if (pipe(in_pipe) != 0 || pipe(out_pipe) != 0 || pipe(err_pipe) != 0) {
+    for (int i = 0; i < 2; i++) {
+      if (in_pipe[i] >= 0) close(in_pipe[i]);
+      if (out_pipe[i] >= 0) close(out_pipe[i]);
+      if (err_pipe[i] >= 0) close(err_pipe[i]);
+    }
+    free(vec);
+    free(storage);
+    return zero_proc_pack(ZERO_PROC_SPAWN_FAILED, -1, 0, 0, 0);
+  }
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    close(in_pipe[0]); close(in_pipe[1]);
+    close(out_pipe[0]); close(out_pipe[1]);
+    close(err_pipe[0]); close(err_pipe[1]);
+    free(vec);
+    free(storage);
+    return zero_proc_pack(ZERO_PROC_SPAWN_FAILED, -1, 0, 0, 0);
+  }
+
+  if (pid == 0) {
+    /* child */
+    dup2(in_pipe[0], 0);
+    dup2(out_pipe[1], 1);
+    dup2(err_pipe[1], 2);
+    close(in_pipe[0]); close(in_pipe[1]);
+    close(out_pipe[0]); close(out_pipe[1]);
+    close(err_pipe[0]); close(err_pipe[1]);
+    execvp(vec[0], vec);
+    _exit(127);
+  }
+
+  /* parent */
+  close(in_pipe[0]);
+  close(out_pipe[1]);
+  close(err_pipe[1]);
+  zero_proc_set_nonblocking(in_pipe[1]);
+  zero_proc_set_nonblocking(out_pipe[0]);
+  zero_proc_set_nonblocking(err_pipe[0]);
+
+  const unsigned char *in_cursor = stdin_bytes.ptr;
+  size_t in_remaining = stdin_bytes.ptr ? stdin_bytes.len : 0;
+  if (in_remaining == 0) {
+    close(in_pipe[1]);
+    in_pipe[1] = -1;
+  }
+
+  size_t out_len = 0;
+  size_t err_len = 0;
+  int out_open = 1;
+  int err_open = 1;
+  uint32_t error = ZERO_PROC_OK;
+  uint32_t timed_out = 0;
+  int64_t deadline = (timeout_ns > 0) ? zero_proc_now_ns() + timeout_ns : 0;
+
+  while (out_open || err_open || in_pipe[1] >= 0) {
+    struct pollfd fds[3];
+    int nfds = 0;
+    int idx_out = -1;
+    int idx_err = -1;
+    int idx_in = -1;
+    if (out_open) {
+      fds[nfds].fd = out_pipe[0];
+      fds[nfds].events = POLLIN;
+      fds[nfds].revents = 0;
+      idx_out = nfds++;
+    }
+    if (err_open) {
+      fds[nfds].fd = err_pipe[0];
+      fds[nfds].events = POLLIN;
+      fds[nfds].revents = 0;
+      idx_err = nfds++;
+    }
+    if (in_pipe[1] >= 0) {
+      fds[nfds].fd = in_pipe[1];
+      fds[nfds].events = POLLOUT;
+      fds[nfds].revents = 0;
+      idx_in = nfds++;
+    }
+
+    int wait_ms = -1;
+    if (deadline) {
+      int64_t now = zero_proc_now_ns();
+      int64_t left = deadline - now;
+      if (left <= 0) {
+        timed_out = 1;
+        error = ZERO_PROC_TIMEOUT;
+        kill(pid, SIGKILL);
+        break;
+      }
+      int64_t left_ms = left / 1000000ll;
+      wait_ms = (left_ms > 1000) ? 1000 : (int)(left_ms + 1);
+    }
+
+    int ready = poll(fds, (nfds_t)nfds, wait_ms);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      error = ZERO_PROC_IO;
+      break;
+    }
+    if (ready == 0) continue; /* re-check deadline */
+
+    if (idx_in >= 0 && (fds[idx_in].revents & (POLLOUT | POLLERR | POLLHUP))) {
+      ssize_t w = write(in_pipe[1], in_cursor, in_remaining);
+      if (w > 0) {
+        in_cursor += w;
+        in_remaining -= (size_t)w;
+        if (in_remaining == 0) {
+          close(in_pipe[1]);
+          in_pipe[1] = -1;
+        }
+      } else if (w < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+        close(in_pipe[1]);
+        in_pipe[1] = -1;
+      }
+    }
+
+    if (idx_out >= 0 && (fds[idx_out].revents & (POLLIN | POLLHUP | POLLERR))) {
+      unsigned char tmp[4096];
+      ssize_t r = read(out_pipe[0], tmp, sizeof(tmp));
+      if (r > 0) {
+        if (out.ptr && out_len < out.len) {
+          size_t room = out.len - out_len;
+          size_t take = ((size_t)r < room) ? (size_t)r : room;
+          memcpy(out.ptr + out_len, tmp, take);
+        }
+        out_len += (size_t)r;
+      } else if (r == 0) {
+        out_open = 0;
+      } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+        out_open = 0;
+      }
+    }
+
+    if (idx_err >= 0 && (fds[idx_err].revents & (POLLIN | POLLHUP | POLLERR))) {
+      unsigned char tmp[4096];
+      ssize_t r = read(err_pipe[0], tmp, sizeof(tmp));
+      if (r > 0) {
+        if (err.ptr && err_len < err.len) {
+          size_t room = err.len - err_len;
+          size_t take = ((size_t)r < room) ? (size_t)r : room;
+          memcpy(err.ptr + err_len, tmp, take);
+        }
+        err_len += (size_t)r;
+      } else if (r == 0) {
+        err_open = 0;
+      } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+        err_open = 0;
+      }
+    }
+  }
+
+  if (in_pipe[1] >= 0) close(in_pipe[1]);
+  close(out_pipe[0]);
+  close(err_pipe[0]);
+
+  int status = 0;
+  for (;;) {
+    pid_t w = waitpid(pid, &status, 0);
+    if (w == pid) break;
+    if (w < 0 && errno != EINTR) {
+      status = 0;
+      break;
+    }
+  }
+
+  int32_t exit_code;
+  if (timed_out) {
+    exit_code = -1;
+  } else if (WIFEXITED(status)) {
+    exit_code = (int32_t)WEXITSTATUS(status);
+  } else if (WIFSIGNALED(status)) {
+    exit_code = (int32_t)(128 + WTERMSIG(status));
+  } else {
+    exit_code = -1;
+  }
+
+  free(vec);
+  free(storage);
+  return zero_proc_pack(error, exit_code, timed_out,
+                        (uint32_t)(out_len > ZERO_PROC_LEN_MAX ? ZERO_PROC_LEN_MAX : out_len),
+                        (uint32_t)(err_len > ZERO_PROC_LEN_MAX ? ZERO_PROC_LEN_MAX : err_len));
+}
+
+#endif
