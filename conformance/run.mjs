@@ -1715,6 +1715,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/char-literals.0", "char-literals", { stdout: "char literals ok\n" }],
   ["conformance/native/pass/float-primitives.0", "float-primitives", { stdout: "float primitives ok\n" }],
   ["conformance/native/pass/recursive-fibonacci.0", "recursive-fibonacci", { stdout: "recursive fibonacci ok\n" }],
+  ["conformance/native/pass/scratch-nested-index.0", "scratch-nested-index", { stdout: "scratch nested index ok\n" }],
   ["conformance/native/pass/checked-bounds-get.0", "checked-bounds-get", { stdout: "checked bounds get ok\n" }],
   ["conformance/native/pass/check-maybe-fallibility.0", "check-maybe-fallibility", { stdout: "check maybe fallibility ok\n" }],
   ["conformance/native/pass/fallibility-error-sets.0", "fallibility-error-sets", { stdout: "fallibility error sets ok\n" }],

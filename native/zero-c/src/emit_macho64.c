@@ -914,21 +914,29 @@ static bool macho_emit_rodata_ptr_literal(ZBuf *text, unsigned reg, unsigned dat
   return macho_record_data_patch(ctx, patch_offset, data_offset, value, diag);
 }
 
-static bool macho_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag);
-static bool macho_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag);
+static bool macho_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag);
+static bool macho_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
+  return macho_emit_byte_view_ptr_at(text, fun, view, reg, frame_size, 0, ctx, diag);
+}
+static bool macho_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag);
+static bool macho_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
+  return macho_emit_byte_view_len_at(text, fun, view, reg, frame_size, 0, ctx, diag);
+}
 static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag);
 static bool macho_emit_value_to_reg(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
   return macho_emit_value_to_reg_at(text, fun, value, reg, frame_size, 0, ctx, diag);
 }
 
-static bool macho_emit_json_parse_bytes_call(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
-  if (!macho_emit_byte_view_ptr(text, fun, value->left, 0, frame_size, ctx, diag)) return false;
-  if (!macho_emit_byte_view_len(text, fun, value->left, 1, frame_size, ctx, diag)) return false;
+static bool macho_emit_json_parse_bytes_call_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value ? value->left : NULL, diag)) return false;
+  if (!macho_emit_byte_view_len_at(text, fun, value->left, 1, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value ? value->left : NULL, diag)) return false;
   size_t patch = macho_emit_bl_placeholder(text);
   return macho_record_runtime_json_parse_bytes_patch(ctx, patch, value, diag);
 }
 
-static bool macho_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
+static bool macho_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!view) return macho_diag_at(diag, "direct AArch64 Mach-O byte view is missing", 1, 1, "missing byte view");
   if (view->kind == IR_VALUE_STRING_LITERAL || view->kind == IR_VALUE_ARRAY_BYTE_VIEW) {
     if (view->data_len > 65535) return macho_diag_at(diag, "direct AArch64 Mach-O byte-view length is too large for the current MVP", view->line, view->column, "large byte view");
@@ -952,14 +960,16 @@ static bool macho_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const Ir
       return true;
     }
     if ((!view->index || macho_const_u32_value(view->index, &start)) && view->right) {
-      if (!macho_emit_value_to_reg(text, fun, view->right, reg, frame_size, ctx, diag)) return false;
+      if (!macho_emit_value_to_reg_at(text, fun, view->right, reg, frame_size, scratch_slot, ctx, diag)) return false;
       if (start > 0) macho_emit_sub_w_imm(text, reg, reg, start);
       return true;
     }
     if (view->index && view->right) {
       unsigned tmp = reg == 8 ? 9 : 8;
-      if (!macho_emit_value_to_reg(text, fun, view->right, reg, frame_size, ctx, diag)) return false;
-      if (!macho_emit_value_to_reg(text, fun, view->index, tmp, frame_size, ctx, diag)) return false;
+      if (!macho_emit_value_to_reg_at(text, fun, view->right, reg, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, reg, view->right ? view->right->type : IR_TYPE_U32, scratch_slot, view->right, diag)) return false;
+      if (!macho_emit_value_to_reg_at(text, fun, view->index, tmp, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, reg, view->right ? view->right->type : IR_TYPE_U32, scratch_slot, view->right, diag)) return false;
       macho_emit_binary_w(text, IR_BIN_SUB, reg, reg, tmp);
       return true;
     }
@@ -968,7 +978,7 @@ static bool macho_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const Ir
   return macho_diag_at(diag, "direct AArch64 Mach-O byte-view length currently requires a literal, constant slice, or byte-view local", view->line, view->column, "unsupported byte view length");
 }
 
-static bool macho_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
+static bool macho_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!view) return macho_diag_at(diag, "direct AArch64 Mach-O byte view is missing", 1, 1, "missing byte view");
   if (view->kind == IR_VALUE_LOCAL && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) {
     macho_emit_load_local_x(text, fun, reg, view->local_index, 0, frame_size);
@@ -989,7 +999,7 @@ static bool macho_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const Ir
   }
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     unsigned start = 0;
-    if (!macho_emit_byte_view_ptr(text, fun, view->left, reg, frame_size, ctx, diag)) return false;
+    if (!macho_emit_byte_view_ptr_at(text, fun, view->left, reg, frame_size, scratch_slot, ctx, diag)) return false;
     if (!view->index) return true;
     if (macho_const_u32_value(view->index, &start)) {
       if (start > 4095) return macho_diag_at(diag, "direct AArch64 Mach-O byte slice constant start is too large", view->line, view->column, "unsupported byte slice");
@@ -997,7 +1007,9 @@ static bool macho_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const Ir
       return true;
     }
     unsigned tmp = reg == 8 ? 9 : 8;
-    if (!macho_emit_value_to_reg(text, fun, view->index, tmp, frame_size, ctx, diag)) return false;
+    if (!macho_emit_store_scratch(text, reg, IR_TYPE_U64, scratch_slot, view, diag)) return false;
+    if (!macho_emit_value_to_reg_at(text, fun, view->index, tmp, frame_size, scratch_slot + 1, ctx, diag)) return false;
+    if (!macho_emit_load_scratch(text, reg, IR_TYPE_U64, scratch_slot, view, diag)) return false;
     macho_emit_add_x_reg(text, reg, reg, tmp);
     return true;
   }
@@ -1098,11 +1110,11 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_CALL:
       return macho_emit_call_to_reg(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
-      if (!macho_emit_json_parse_bytes_call(text, fun, value, frame_size, ctx, diag)) return false;
+      if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       if (reg != 0) macho_emit_mov_x(text, reg, 0);
       return true;
     case IR_VALUE_JSON_VALIDATE_BYTES:
-      if (!macho_emit_json_parse_bytes_call(text, fun, value, frame_size, ctx, diag)) return false;
+      if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       macho_emit_cmp_x(text, 0, 31);
       macho_emit_movz_w(text, reg, 0);
       {
@@ -1112,7 +1124,7 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       }
       return true;
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
-      if (!macho_emit_json_parse_bytes_call(text, fun, value, frame_size, ctx, diag)) return false;
+      if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       macho_emit_cmp_x(text, 0, 31);
       {
         size_t ok = macho_emit_b_cond_placeholder(text, 10); // signed greater or equal
@@ -1125,11 +1137,19 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       }
       return true;
     case IR_VALUE_HTTP_FETCH: {
-      if (!macho_emit_byte_view_ptr(text, fun, value->left, 0, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_len(text, fun, value->left, 1, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_ptr(text, fun, value->right, 2, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_len(text, fun, value->right, 3, frame_size, ctx, diag)) return false;
-      if (!macho_emit_value_to_reg(text, fun, value->index, 4, frame_size, ctx, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->left, 1, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->right, 3, frame_size, scratch_slot + 3, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+      if (!macho_emit_value_to_reg_at(text, fun, value->index, 4, frame_size, scratch_slot + 4, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+      if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+      if (!macho_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
       size_t patch = macho_emit_bl_placeholder(text);
       if (!macho_record_runtime_http_fetch_patch(ctx, patch, value, diag)) return false;
       if (reg != 0) macho_emit_mov_x(text, reg, 0);
@@ -1142,7 +1162,7 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_HTTP_HEADER_FOUND:
     case IR_VALUE_HTTP_HEADER_OFFSET:
     case IR_VALUE_HTTP_HEADER_LEN: {
-      if (!macho_emit_value_to_reg(text, fun, value->left, 0, frame_size, ctx, diag)) return false;
+      if (!macho_emit_value_to_reg_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
       size_t patch = macho_emit_bl_placeholder(text);
       if (value->kind == IR_VALUE_HTTP_RESULT_OK) {
         if (!macho_record_runtime_http_result_ok_patch(ctx, patch, value, diag)) return false;
@@ -1165,8 +1185,10 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_HTTP_RESPONSE_LEN:
     case IR_VALUE_HTTP_RESPONSE_HEADERS_LEN:
     case IR_VALUE_HTTP_RESPONSE_BODY_OFFSET: {
-      if (!macho_emit_byte_view_ptr(text, fun, value->left, 0, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_len(text, fun, value->left, 1, frame_size, ctx, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->left, 1, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
       size_t patch = macho_emit_bl_placeholder(text);
       if (value->kind == IR_VALUE_HTTP_RESPONSE_LEN) {
         if (!macho_record_runtime_http_result_patch(&ctx->runtime_http_response_len_patches, &ctx->runtime_http_response_len_patch_len, &ctx->runtime_http_response_len_patch_cap, patch, value, diag)) return false;
@@ -1179,10 +1201,16 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return true;
     }
     case IR_VALUE_HTTP_HEADER_VALUE: {
-      if (!macho_emit_byte_view_ptr(text, fun, value->left, 0, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_len(text, fun, value->left, 1, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_ptr(text, fun, value->right, 2, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_len(text, fun, value->right, 3, frame_size, ctx, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->left, 1, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->right, 3, frame_size, scratch_slot + 3, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+      if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
       size_t patch = macho_emit_bl_placeholder(text);
       if (!macho_record_runtime_http_header_value_patch(ctx, patch, value, diag)) return false;
       if (reg != 0) macho_emit_mov_x(text, reg, 0);
@@ -1205,7 +1233,9 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       macho_emit_store_local_w(text, fun, 8, value->local_index, 8, frame_size);
       macho_emit_load_local_x(text, fun, 9, value->local_index, 0, frame_size);
       macho_emit_add_x_reg(text, 9, 9, 8);
-      if (!macho_emit_value_to_reg(text, fun, value->left, 10, frame_size, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 9, IR_TYPE_U64, scratch_slot, value, diag)) return false;
+      if (!macho_emit_value_to_reg_at(text, fun, value->left, 10, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 9, IR_TYPE_U64, scratch_slot, value, diag)) return false;
       macho_emit_strb_w(text, 10, 9);
       macho_emit_add_w_imm(text, 8, 8, 1);
       macho_emit_store_local_w(text, fun, 8, value->local_index, 8, frame_size);
@@ -1224,7 +1254,7 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       macho_emit_load_local_w(text, fun, reg, value->local_index, 0, frame_size);
       return true;
     case IR_VALUE_BYTE_VIEW_LEN:
-      return macho_emit_byte_view_len(text, fun, value->left, reg, frame_size, ctx, diag);
+      return macho_emit_byte_view_len_at(text, fun, value->left, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: {
       unsigned const_index = 0;
       unsigned char byte = 0;
@@ -1233,13 +1263,16 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
         macho_emit_movz_w(text, reg, byte);
         return true;
       }
-      if (!value->index || !macho_emit_value_to_reg(text, fun, value->index, 8, frame_size, ctx, diag)) return false;
-      if (!macho_emit_byte_view_len(text, fun, value->left, 9, frame_size, ctx, diag)) return false;
+      if (!value->index || !macho_emit_value_to_reg_at(text, fun, value->index, 8, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->left, 9, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
       macho_emit_cmp_w(text, 8, 9);
       size_t ok_patch = macho_emit_b_cond_placeholder(text, 3); // unsigned lower
       append_u32le(text, 0xd4200000u); // brk #0
       macho_patch_cond19(text, ok_patch, text->len);
-      if (!macho_emit_byte_view_ptr(text, fun, value->left, 9, frame_size, ctx, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 9, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
       macho_emit_add_x_reg(text, 9, 9, 8);
       macho_emit_ldrb_w(text, reg, 9);
       return true;
@@ -1253,24 +1286,28 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
         return true;
       }
       if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE)) {
-        if (!value->index || !macho_emit_value_to_reg(text, fun, value->index, 8, frame_size, ctx, diag)) return false;
+        if (!value->index || !macho_emit_value_to_reg_at(text, fun, value->index, 8, frame_size, scratch_slot, ctx, diag)) return false;
+        if (!macho_emit_store_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
         macho_emit_movz_w(text, 9, local->array_len);
         macho_emit_cmp_w(text, 8, 9);
         size_t ok_patch = macho_emit_b_cond_placeholder(text, 3); // unsigned lower
         append_u32le(text, 0xd4200000u); // brk #0
         macho_patch_cond19(text, ok_patch, text->len);
+        if (!macho_emit_load_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
         macho_emit_add_x_sp_imm(text, 9, macho_local_slot_offset(fun, value->array_index, 0, frame_size));
         macho_emit_add_x_reg_lsl(text, 9, 9, 8, 2);
         append_u32le(text, 0xb9400000u | (9u << 5) | (reg & 31u));
         return true;
       }
       if (!local->is_array || local->element_type != IR_TYPE_U8) return macho_diag_at(diag, "direct AArch64 Mach-O indexed load requires [N]u8 or integer arrays", value->line, value->column, "unsupported array local");
-      if (!value->index || !macho_emit_value_to_reg(text, fun, value->index, 8, frame_size, ctx, diag)) return false;
+      if (!value->index || !macho_emit_value_to_reg_at(text, fun, value->index, 8, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
       macho_emit_movz_w(text, 9, local->array_len);
       macho_emit_cmp_w(text, 8, 9);
       size_t ok_patch = macho_emit_b_cond_placeholder(text, 3); // unsigned lower
       append_u32le(text, 0xd4200000u); // brk #0
       macho_patch_cond19(text, ok_patch, text->len);
+      if (!macho_emit_load_scratch(text, 8, value->index ? value->index->type : IR_TYPE_U32, scratch_slot, value->index, diag)) return false;
       macho_emit_add_x_sp_imm(text, 9, macho_local_slot_offset(fun, value->array_index, 0, frame_size));
       macho_emit_add_x_reg(text, 9, 9, 8);
       macho_emit_ldrb_w(text, reg, 9);
