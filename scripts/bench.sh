@@ -14,7 +14,7 @@ if [[ "$mode" == "local" ]]; then
 fi
 
 if [[ " $* " == *" --mode "* ]]; then
-  node scripts/bench.mjs "$@"
+  scripts/bench.mts "$@"
 else
-  node scripts/bench.mjs --mode "$mode" "$@"
+  scripts/bench.mts --mode "$mode" "$@"
 fi

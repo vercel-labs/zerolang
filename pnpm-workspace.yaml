@@ -1,0 +1,7 @@
+packages:
+  - docs
+  - extensions/vscode
+allowBuilds:
+  '@mongodb-js/zstd': true
+  node-liblzma: false
+  sharp: true

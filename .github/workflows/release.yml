@@ -70,6 +70,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.14.1
@@ -89,7 +93,7 @@ jobs:
       - name: Cross-compile for all targets
         run: |
           mkdir -p /tmp/zero-release
-          node scripts/embed-skill-data.mjs
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-skill-data.mts
 
           build_asset() {
             target="$1"

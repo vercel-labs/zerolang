@@ -5851,7 +5851,7 @@ static int doctor_command(bool json) {
     write_ok = z_write_file(".zero/doctor.tmp", "ok\n", &diag);
     unlink(".zero/doctor.tmp");
   }
-  bool docs_ok = path_exists("examples/hello.0") && path_exists("docs-site/articles/getting-started.md");
+  bool docs_ok = path_exists("examples/hello.0") && path_exists("docs/articles/getting-started.md");
   bool path_ok = false;
   char *path_message = doctor_path_message(&path_ok);
   bool target_ok = z_find_target(z_host_target()) != NULL;

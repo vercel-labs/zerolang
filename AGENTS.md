@@ -64,7 +64,7 @@ bin/zero fix --plan --json <file-or-package>
 - `native/zero-c/`: native compiler implementation.
 - `examples/`: small runnable programs and packages.
 - `conformance/`: language and CLI fixtures.
-- `docs-site/`: public documentation site.
+- `docs/`: public documentation site.
 - `scripts/`: validation and release support tooling.
 
 ## Public Docs Policy
@@ -81,7 +81,7 @@ changelog voice and format.
 To prepare a release:
 
 1. Create a release branch, such as `ctate/v0.1.1`.
-2. Bump the release version in `package.json`, `docs-site/package.json`,
+2. Bump the release version in `package.json`, `docs/package.json`,
    `extensions/vscode/package.json`, and `native/zero-c/src/main.c`.
 3. Update command-contract expectations that assert the compiler version.
 4. Write the `CHANGELOG.md` entry for the new version, wrapped in

@@ -2,6 +2,7 @@ CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Os
 ROOT := ../..
 OUT := $(ROOT)/.zero/bin/zero
+NODE_TS := node --experimental-strip-types --disable-warning=ExperimentalWarning
 BUILD_STAMP := $(OUT).build
 HOST_ID := $(shell uname -s 2>/dev/null || echo unknown)-$(shell uname -m 2>/dev/null || echo unknown)
 BUILD_ID := $(HOST_ID)|$(CC)|$(CFLAGS)
@@ -21,8 +22,8 @@ $(BUILD_STAMP): FORCE
 		printf '%s\n' "$(BUILD_ID)" > $(BUILD_STAMP); \
 	fi
 
-$(EMBEDDED_SKILLS): $(ROOT)/scripts/embed-skill-data.mjs $(SKILL_INPUTS)
-	cd $(ROOT) && node scripts/embed-skill-data.mjs
+$(EMBEDDED_SKILLS): $(ROOT)/scripts/embed-skill-data.mts $(SKILL_INPUTS)
+	cd $(ROOT) && $(NODE_TS) scripts/embed-skill-data.mts
 
 $(OUT): $(BUILD_STAMP) $(SRC) $(INCLUDES) $(EMBEDDED_SKILLS)
 	@mkdir -p $(dir $(OUT))

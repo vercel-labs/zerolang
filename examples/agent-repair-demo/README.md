@@ -36,5 +36,5 @@ bin/zero check examples/agent-repair-demo/fixed.0
 Run the scripted demo:
 
 ```sh
-node scripts/agent-repair-demo.mjs
+pnpm run agent:demo
 ```

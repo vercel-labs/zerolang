@@ -1,6 +1,8 @@
 .DS_Store
 dist/
 .zero/
+.pnpm-store/
+.turbo/
 node_modules/
 npm-debug.log*
 

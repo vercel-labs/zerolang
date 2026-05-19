@@ -1,4 +1,4 @@
-/* Generated from Zero runtime sources. Run node scripts/embed-runtime-sources.mjs to refresh. */
+/* Generated from Zero runtime sources. Run node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-runtime-sources.mts to refresh. */
 #ifndef ZERO_EMBEDDED_RUNTIME_SOURCES_INC
 #define ZERO_EMBEDDED_RUNTIME_SOURCES_INC
 

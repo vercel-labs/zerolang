@@ -23,7 +23,7 @@ jobs:
       - name: Enable pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@10.11.0 --activate
+          corepack prepare pnpm@11.1.3 --activate
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify embedded skill data
         run: |
-          node scripts/embed-skill-data.mjs
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-skill-data.mts
           git diff --exit-code native/zero-c/src/embedded_skills.inc
 
       - run: pnpm install --frozen-lockfile
@@ -57,14 +57,11 @@ jobs:
       - name: Docs tests
         run: pnpm run docs:test
 
-      - name: Install docs dependencies
-        run: pnpm --prefix docs-site install --frozen-lockfile
-
       - name: Docs production build
         run: pnpm run docs:build
 
       - name: Extension tests
-        run: npm --prefix extensions/vscode test
+        run: pnpm run extension:test
 
       - name: Command contract snapshots
         run: pnpm run command-contracts:local
@@ -89,7 +86,7 @@ jobs:
       - name: Release artifact build smoke
         run: |
           mkdir -p .zero/ci-release
-          node scripts/embed-skill-data.mjs
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-skill-data.mts
           ZIG_GLOBAL_CACHE_DIR=.zero/zig-global-cache ZIG_LOCAL_CACHE_DIR=.zero/zig-local-cache zig cc -target x86_64-linux-musl -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c -o .zero/ci-release/zero-linux-musl-x64
           ./.zero/ci-release/zero-linux-musl-x64 --version
           ./.zero/ci-release/zero-linux-musl-x64 skills list --json

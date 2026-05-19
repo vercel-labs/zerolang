@@ -1,6 +1,6 @@
 # Zero Examples
 
-Use these examples as the hands-on path through Zero. Start at the top, run `bin/zero check`, and open the matching docs-site article when you want an explanation.
+Use these examples as the hands-on path through Zero. Start at the top, run `bin/zero check`, and open the matching docs article when you want an explanation.
 
 ## Profile And Size Checks
 

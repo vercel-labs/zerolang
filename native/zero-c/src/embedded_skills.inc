@@ -1,4 +1,4 @@
-/* Generated from Zero skill data. Run node scripts/embed-skill-data.mjs to refresh. */
+/* Generated from Zero skill data. Run node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-skill-data.mts to refresh. */
 #ifndef ZERO_EMBEDDED_SKILLS_INC
 #define ZERO_EMBEDDED_SKILLS_INC
 

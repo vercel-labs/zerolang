@@ -1331,7 +1331,12 @@ assert.equal(linuxArm64Target.directBackend.objectEmitter, "zero-elf-aarch64");
 assert.equal(linuxArm64Target.directBackend.exeEmitter, "zero-elf-aarch64-exe");
 assert.match(linuxArm64Target.directBackend.reason, /direct object and executable backend available/);
 
-const zlsSelfTest = await execFileAsync("node", ["scripts/zls.mjs", "--self-test"]);
+const zlsSelfTest = await execFileAsync("node", [
+  "--experimental-strip-types",
+  "--disable-warning=ExperimentalWarning",
+  "scripts/zls.mts",
+  "--self-test",
+]);
 assert.match(zlsSelfTest.stdout, /zls self-test ok/);
 
 const targetNetUnsupportedJson = await execFileAsync(zero, ["check", "--json", "--target", "linux-musl-x64", "conformance/check/fail/target-net-unsupported.0"]).catch((error) => error);

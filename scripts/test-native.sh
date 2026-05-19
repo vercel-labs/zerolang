@@ -249,7 +249,7 @@ SOURCE
     test ! -f .zero/native-test/std-http-fetch-linux.zero-runtime.o
     test ! -f .zero/native-test/std-http-fetch-linux.zero-http-curl.o
     node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync(".zero/native-test/std-http-fetch-linux.json","utf8")); if (report.generatedCBytes!==0 || report.objectBackend.objectEmission.path!=="direct-elf64-object" || report.objectBackend.linking.targetLibraries!=="zero-runtime,curl" || report.objectBackend.linking.externalToolchain!=="cc" || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_runtime.o") || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_http_curl.o") || !report.objectBackend.linkerPlan.systemLibraries.includes("curl") || report.objectBackend.directFacts.runtimeHelperCount!==2 || !(report.objectBackend.directFacts.runtime.readonlyDataBytes > 0)) process.exit(1);'
-    node scripts/http-runtime-smoke.mjs
+    scripts/http-runtime-smoke.mts
   fi
   rm -f "$curl_link_smoke_src" "$curl_link_smoke_exe"
 fi
@@ -422,7 +422,7 @@ if bin/zero test --json conformance/native/fail/test-unexpected-pass.0 > .zero/n
   exit 1
 fi
 node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-unexpected-pass.json","utf8")); if (j.ok || j.unexpectedPasses!==1 || j.results[0].status!=="unexpected-pass") process.exit(1);'
-node scripts/reliability-smoke.mjs >/dev/null
+scripts/reliability-smoke.mts >/dev/null
 if bin/zero test conformance/native/fail/test-expect-runtime-fail.0 >/dev/null 2>.zero/native-test/test-expect-runtime-fail.err; then
   echo "expected failing test block to fail" >&2
   exit 1
@@ -880,7 +880,7 @@ SOURCE
   test ! -f .zero/native-test/std-http-fetch.zero-runtime.o
   test ! -f .zero/native-test/std-http-fetch.zero-http-curl.o
   node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync(".zero/native-test/std-http-fetch.json","utf8")); if (report.generatedCBytes!==0 || report.objectBackend.linking.targetLibraries!=="zero-runtime,curl" || report.objectBackend.linking.externalToolchain!=="cc" || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_runtime.o") || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_http_curl.o") || !report.objectBackend.linkerPlan.systemLibraries.includes("curl") || report.objectBackend.directFacts.runtimeHelperCount!==2 || !(report.objectBackend.directFacts.runtime.readonlyDataBytes > 0)) process.exit(1);'
-  node scripts/http-runtime-smoke.mjs
+  scripts/http-runtime-smoke.mts
 fi
 rm -f .zero/native-test/direct-call-add-win.obj .zero/native-test/direct-call-add-win.obj.c
 bin/zero build --json --emit obj --target win32-x64.exe examples/direct-call-add.0 --out .zero/native-test/direct-call-add-win.obj > .zero/native-test/direct-call-add-win.json
