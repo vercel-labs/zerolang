@@ -1614,6 +1614,51 @@ await writeFile(fmtIdempotentPath, fmtSyntaxLocalRun.stdout);
 const fmtIdempotentRun = await execFileAsync(zero, ["fmt", fmtIdempotentPath]);
 assert.equal(fmtIdempotentRun.stdout, fmtSyntaxLocalRun.stdout);
 
+const fmtOperatorsRun = await execFileAsync(zero, ["fmt", "conformance/format/operators-casts.0"]);
+assert.equal(fmtOperatorsRun.stdout, `shape Pair {
+    first: i32,
+    second: i32,
+}
+fun pick<T, static N: usize>(box: ref<Pair>) -> i32 {
+    return box.first
+}
+pub fun main() -> Void {
+    let n: i32 = 5
+    let i: i32 = 0
+    let arr: [3]i32 = [10, 20, 30]
+    let pair: Pair = Pair { first: 1, second: 2, }
+    if n > 0 && i < n {
+        let v: u64 = (arr[i] as u64)
+        if v >= 0 {
+            i = i + 1
+        }
+    }
+}
+`);
+
+// fmt is a fixpoint over operators, `as` casts, and multi-line struct literals.
+const fmtFixpointPath = `${outDir}/fmt-fixpoint.0`;
+await writeFile(fmtFixpointPath, fmtOperatorsRun.stdout);
+const fmtFixpointRun = await execFileAsync(zero, ["fmt", fmtFixpointPath]);
+assert.equal(fmtFixpointRun.stdout, fmtOperatorsRun.stdout);
+
+// `zero fmt --write` rewrites unformatted source in place and is itself a fixpoint.
+const fmtWritePath = `${outDir}/fmt-write.0`;
+await writeFile(fmtWritePath, "pub fun main()->Void{let n:i32=1\nif n>0{let v:u64=(n as u64)}}\n");
+await execFileAsync(zero, ["fmt", "--write", fmtWritePath]);
+const fmtWritten = await readFile(fmtWritePath, "utf8");
+assert.equal(fmtWritten, `pub fun main() -> Void {
+    let n: i32 = 1
+    if n > 0 {
+        let v: u64 = (n as u64)
+    }
+}
+`);
+const fmtWriteRoundTrip = await execFileAsync(zero, ["fmt", fmtWritePath]);
+assert.equal(fmtWriteRoundTrip.stdout, fmtWritten);
+const fmtWriteCheck = await execFileAsync(zero, ["fmt", "--check", fmtWritePath]);
+assert.equal(fmtWriteCheck.stdout, "fmt ok\n");
+
 const fmtFunctionsBlocksRun = await execFileAsync(zero, ["fmt", "conformance/format/functions-blocks.0"]);
 assert.equal(fmtFunctionsBlocksRun.stdout, `fun helper(value: i32) -> i32 {
     if value == 0 {
