@@ -1760,6 +1760,43 @@ for (const runtimeFixture of [
   await assertDirectRuntimeOrUnsupported(...runtimeFixture);
 }
 
+// Hosted std.fs programs must build a self-contained direct executable via the
+// ELF64 backend (no manual cc / no generated C), not bail out with CGEN004.
+async function assertHostedDirectExe(fixture, name, expected) {
+  const out = `${outDir}/${name}`;
+  await rm(out, { force: true });
+  const build = await execFileAsync(zero, [
+    "build", "--json", "--emit", "exe", "--target", "linux-musl-x64", fixture, "--out", out,
+  ]);
+  const body = JSON.parse(build.stdout);
+  assert.equal(body.generatedCBytes, 0);
+  assert.equal(body.legacy, false);
+  assert(body.artifactBytes > 0);
+  const bytes = await readFile(out);
+  assert.equal(bytes[0], 0x7f);
+  assert.equal(bytes[1], 0x45);
+  assert.equal(bytes[2], 0x4c);
+  assert.equal(bytes[3], 0x46);
+  assert.equal(bytes.readUInt16LE(16), 2);
+  assert.equal(bytes.readUInt16LE(18), 62);
+  if (!canRunLinuxMuslX64) return;
+  const run = await execFileAsync(out, expected.args ?? []).catch((error) => error);
+  if (run.code || run.signal) return;
+  assert.equal(run.stdout, expected.stdout);
+  if (expected.file) assert.equal(await readFile(`${outDir}/${expected.file.name}`, "utf8"), expected.file.text);
+}
+
+await assertHostedDirectExe("conformance/native/pass/std-fs.0", "std-fs-hosted-exe", {
+  stdout: "fs ok\n",
+  file: { name: "std-fs-write.txt", text: "zero write\n" },
+});
+await assertHostedDirectExe("conformance/native/pass/std-fs-bytes.0", "std-fs-bytes-hosted-exe", {
+  stdout: "fs bytes ok\n",
+});
+await assertHostedDirectExe("conformance/native/pass/std-fs-fallible.0", "std-fs-fallible-hosted-exe", {
+  stdout: "fs named errors ok\n",
+});
+
 await assertBoundsTrap("conformance/native/fail/bounds-array-index.0", "bounds-array-index");
 await assertBoundsTrap("conformance/native/fail/bounds-span-index.0", "bounds-span-index");
 await assertBoundsTrap("conformance/native/fail/bounds-slice-end.0", "bounds-slice-end");
