@@ -260,6 +260,7 @@ for (const fixture of [
   "conformance/native/pass/std-mem-arrays.0",
   "conformance/native/pass/array-repeat-literal.0",
   "conformance/native/pass/array-repeat-record-field.0",
+  "conformance/native/pass/array-zeroinit-bss.0",
   "conformance/native/pass/integer-widths.0",
   "conformance/native/pass/std-codec-widths.0",
   "conformance/native/pass/parse-integers.0",
@@ -706,6 +707,37 @@ assert.equal(directObjBody.generatedCBytes, 0);
 assert(directObjBody.loweredIrBytes > 0);
 assert.equal(directObjBody.objectBackend.objectEmission.path, "direct-elf64-object");
 await assertElf64Object(directObjOut, "main");
+
+// P0-2: a constant `[v; N]` repeat literal must lower to an O(1) counted fill
+// instead of N immediate stores, so the emitted .text (and lowered IR) stay
+// constant as N grows. Build the 1 MiB zeroed-buffer fixture and a tiny
+// variant and assert the larger array does not grow .text and links small.
+// Two zeroed buffers 16x apart in size must lower to byte-identical .text:
+// the fill loop's instruction count is independent of the element count, so
+// growth is strictly O(1) (no per-element stores remain).
+const zeroinitSmallOut = `${outDir}/array-zeroinit-64k.o`;
+const zeroinitHugeOut = `${outDir}/array-zeroinit-huge.o`;
+const zeroinitSmallSrc = `${outDir}/array-zeroinit-64k.0`;
+await writeFile(zeroinitSmallSrc, "export c fun main() -> i32 {\n    let mut buffer: [65536]u8 = [0_u8; 65536]\n    buffer[0] = 1_u8\n    if buffer[0] == 1_u8 && buffer[1] == 0_u8 && buffer[65535] == 0_u8 { return 0 }\n    return 1\n}\n");
+const zeroinitSmallJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", zeroinitSmallSrc, "--out", zeroinitSmallOut]);
+const zeroinitHugeJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "conformance/native/pass/array-zeroinit-bss.0", "--out", zeroinitHugeOut]);
+const zeroinitSmallBody = JSON.parse(zeroinitSmallJson.stdout);
+const zeroinitHugeBody = JSON.parse(zeroinitHugeJson.stdout);
+assert.equal(zeroinitHugeBody.generatedCBytes, 0);
+// Lowered IR is O(1): a 16x larger buffer must not enlarge the lowered IR.
+assert.equal(zeroinitHugeBody.loweredIrBytes, zeroinitSmallBody.loweredIrBytes,
+  `zero-init lowered IR must be O(1) (64k=${zeroinitSmallBody.loweredIrBytes}, 1MiB=${zeroinitHugeBody.loweredIrBytes})`);
+const zeroinitSmall = await assertElf64Object(zeroinitSmallOut, "main");
+const zeroinitHuge = await assertElf64Object(zeroinitHugeOut, "main");
+const hugeTextBytes = zeroinitHuge.sections.get(".text").size;
+const smallTextBytes = zeroinitSmall.sections.get(".text").size;
+// O(1) .text growth: a 16x larger array emits exactly the same code size.
+assert.equal(hugeTextBytes, smallTextBytes,
+  `1 MiB zero-init .text must be O(1) (64k=${smallTextBytes}, 1MiB=${hugeTextBytes})`);
+// The linked object for a 1 MiB zeroed buffer must stay far under 256 KiB.
+const hugeObjectBytes = (await readFile(zeroinitHugeOut)).length;
+assert(hugeObjectBytes < 256 * 1024,
+  `1 MiB zero-init object should be < 256 KiB, got ${hugeObjectBytes}`);
 
 const directI64ObjOut = `${outDir}/direct-i64-return.o`;
 const directI64ObjJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-i64-return.0", "--out", directI64ObjOut]);

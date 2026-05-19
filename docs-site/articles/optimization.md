@@ -56,6 +56,19 @@ metadata block stayed in the artifact. Use `optimizationHints` for the next
 action, such as switching away from `debug`, removing hosted filesystem helpers
 from target-neutral code, or inspecting `topLargestEmittedHelpers`.
 
+## Constant Array Zero/Fill
+
+A repeat literal such as `[0_u8; 1048576]` (or a record's `[v; N]` array field)
+is lowered to a single counted fill instruction instead of `N` immediate
+stores. Code size and lowered IR for a constant `[v; N]` byte array are
+**O(1)** in `N`: a 1 MiB zeroed buffer emits the same `.text` as a 64 KiB one
+instead of growing by roughly one store per element. Small arrays (`N` up to
+32 elements) stay fully unrolled so existing codegen is unchanged. This applies
+to byte (`u8`/`bool`) arrays with a constant fill value; other element types
+keep the unrolled form. Inspect the effect with `bin/zero size --json`
+(`loweredIrBytes`) or by comparing the `.text` section of two differently sized
+zeroed buffers.
+
 ## Benchmark Trends
 
 The benchmark gate writes both a full one-run report and a compact trend
