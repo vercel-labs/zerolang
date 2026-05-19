@@ -159,7 +159,8 @@ typedef enum {
   STMT_BREAK,
   STMT_CONTINUE,
   STMT_MATCH,
-  STMT_RAISE
+  STMT_RAISE,
+  STMT_WITH
 } StmtKind;
 
 typedef struct Stmt Stmt;
@@ -214,6 +215,7 @@ struct Stmt {
   StmtVec then_body;
   StmtVec else_body;
   MatchArmVec match_arms;
+  void *handler_ops;
   int line;
   int column;
 };
@@ -251,6 +253,20 @@ typedef struct {
   int line;
   int column;
 } Shape;
+
+typedef struct {
+  char *name;
+  FunctionVec operations;
+  bool is_public;
+  int line;
+  int column;
+} EffectDecl;
+
+typedef struct {
+  EffectDecl *items;
+  size_t len;
+  size_t cap;
+} EffectDeclVec;
 
 typedef struct {
   Shape *items;
@@ -366,6 +382,7 @@ typedef struct {
   EnumVec enums;
   ChoiceVec choices;
   FunctionVec functions;
+  EffectDeclVec effects;
 } Program;
 
 typedef enum {

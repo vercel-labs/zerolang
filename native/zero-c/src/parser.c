@@ -159,6 +159,7 @@ static Token *expect_ident(Parser *parser, const char *message) {
 }
 
 static Expr *parse_expr(Parser *parser);
+static Function parse_function(Parser *parser);
 static StmtVec parse_block(Parser *parser);
 static void free_expr(Expr *expr);
 
@@ -607,6 +608,25 @@ static Stmt *parse_statement(Parser *parser) {
     stmt->expr = parse_expr(parser);
     return stmt;
   }
+  if (match(parser, "with")) {
+    Stmt *stmt = new_stmt(STMT_WITH, start);
+    Token *effect_name = expect_ident(parser, "expected effect name after with");
+    if (effect_name) stmt->name = z_strdup(effect_name->text);
+    expect(parser, "handledBy", "expected 'handledBy' after effect name");
+    expect(parser, "{", "expected '{' before handler body");
+    while (!check(parser, "}") && current(parser)->kind != TOK_EOF && parser->diag->code == 0) {
+      if (check(parser, "pub") || check(parser, "fun")) {
+        Function op = parse_function(parser);
+        if (!stmt->handler_ops) stmt->handler_ops = calloc(1, sizeof(FunctionVec));
+        push_function((FunctionVec *)stmt->handler_ops, op);
+        continue;
+      }
+      fail(parser, "expected handler function declaration");
+      break;
+    }
+    expect(parser, "}", "expected '}' after handler body");
+    return stmt;
+  }
   if (match(parser, "return")) {
     Stmt *stmt = new_stmt(STMT_RETURN, start);
     if (!check(parser, "}")) stmt->expr = parse_expr(parser);
@@ -882,6 +902,37 @@ static InterfaceDecl parse_interface(Parser *parser, bool is_public) {
   return interface;
 }
 
+static EffectDecl parse_effect(Parser *parser, bool is_public) {
+  Token *start = current(parser);
+  expect(parser, "effect", "expected 'effect' keyword");
+  EffectDecl effect = {0};
+  Token *name = expect_ident(parser, "expected effect name");
+  effect.name = name ? z_strdup(name->text) : z_strdup("<error>");
+  effect.line = start->line;
+  effect.column = start->column;
+  effect.is_public = is_public;
+  expect(parser, "{", "expected '{' before effect body");
+  while (!check(parser, "}") && current(parser)->kind != TOK_EOF && parser->diag->code == 0) {
+    if (check(parser, "pub") || check(parser, "fun")) {
+      Function op = parse_interface_method(parser);
+      push_function(&effect.operations, op);
+      continue;
+    }
+    fail(parser, "expected effect operation declaration");
+    break;
+  }
+  expect(parser, "}", "expected '}' after effect body");
+  return effect;
+}
+
+static void push_effect(EffectDeclVec *vec, EffectDecl effect) {
+  if (vec->len + 1 > vec->cap) {
+    vec->cap = vec->cap == 0 ? 4 : vec->cap * 2;
+    vec->items = realloc(vec->items, vec->cap * sizeof(EffectDecl));
+  }
+  vec->items[vec->len++] = effect;
+}
+
 static EnumDecl parse_enum(Parser *parser) {
   Token *start = current(parser);
   EnumDecl item = {0};
@@ -1027,6 +1078,10 @@ Program z_parse(TokenVec *tokens, ZDiag *diag) {
       push_shape(&program.shapes, parse_shape(&parser, is_public));
       continue;
     }
+    if (check(&parser, "effect")) {
+      push_effect(&program.effects, parse_effect(&parser, is_public));
+      continue;
+    }
     if (check(&parser, "enum")) {
       push_enum(&program.enums, parse_enum(&parser));
       continue;
@@ -1082,6 +1137,22 @@ static void free_stmt_vec(StmtVec *vec) {
       free_stmt_vec(&stmt->match_arms.items[arm_index].body);
     }
     free(stmt->match_arms.items);
+    if (stmt->handler_ops) {
+      FunctionVec *hops = (FunctionVec *)stmt->handler_ops;
+      for (size_t op_index = 0; op_index < hops->len; op_index++) {
+        Function *op = &hops->items[op_index];
+        free(op->name);
+        free(op->return_type);
+        for (size_t p = 0; p < op->params.len; p++) {
+          free(op->params.items[p].name);
+          free(op->params.items[p].type);
+        }
+        free(op->params.items);
+        free_stmt_vec(&op->body);
+      }
+      free(hops->items);
+      free(stmt->handler_ops);
+    }
     free(stmt);
   }
   free(vec->items);
@@ -1229,4 +1300,24 @@ void z_free_program(Program *program) {
   program->functions.items = NULL;
   program->functions.len = 0;
   program->functions.cap = 0;
+  for (size_t i = 0; i < program->effects.len; i++) {
+    EffectDecl *effect = &program->effects.items[i];
+    free(effect->name);
+    for (size_t j = 0; j < effect->operations.len; j++) {
+      Function *op = &effect->operations.items[j];
+      free(op->name);
+      free(op->return_type);
+      for (size_t k = 0; k < op->params.len; k++) {
+        free(op->params.items[k].name);
+        free(op->params.items[k].type);
+      }
+      free(op->params.items);
+      free_stmt_vec(&op->body);
+    }
+    free(effect->operations.items);
+  }
+  free(program->effects.items);
+  program->effects.items = NULL;
+  program->effects.len = 0;
+  program->effects.cap = 0;
 }

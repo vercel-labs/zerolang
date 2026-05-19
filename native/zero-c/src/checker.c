@@ -568,6 +568,27 @@ static bool scope_set_moved(Scope *scope, const char *name, bool moved) {
   return false;
 }
 
+static void scope_remove(Scope *scope, const char *name) {
+  for (Scope *cursor = scope; cursor; cursor = cursor->parent) {
+    for (size_t i = 0; i < cursor->len; i++) {
+      if (strcmp(cursor->names[i], name) == 0) {
+        free(cursor->names[i]);
+        free(cursor->types[i]);
+        for (size_t j = i; j + 1 < cursor->len; j++) {
+          cursor->names[j] = cursor->names[j + 1];
+          cursor->types[j] = cursor->types[j + 1];
+          cursor->mutable[j] = cursor->mutable[j + 1];
+          cursor->moved[j] = cursor->moved[j + 1];
+          cursor->is_param[j] = cursor->is_param[j + 1];
+          cursor->value_provenance[j] = cursor->value_provenance[j + 1];
+        }
+        cursor->len--;
+        return;
+      }
+    }
+  }
+}
+
 static bool scope_is_param(Scope *scope, const char *name) {
   for (Scope *cursor = scope; cursor; cursor = cursor->parent) {
     for (size_t i = 0; i < cursor->len; i++) {
@@ -1820,6 +1841,14 @@ static bool function_exists(const Program *program, const char *name) {
 static const Function *find_function(const Program *program, const char *name) {
   for (size_t i = 0; i < program->functions.len; i++) {
     if (strcmp(program->functions.items[i].name, name) == 0) return &program->functions.items[i];
+  }
+  return NULL;
+}
+
+static const EffectDecl *find_effect(const Program *program, const char *name) {
+  if (!name) return NULL;
+  for (size_t i = 0; i < program->effects.len; i++) {
+    if (strcmp(program->effects.items[i].name, name) == 0) return &program->effects.items[i];
   }
   return NULL;
 }
@@ -7001,6 +7030,8 @@ static bool check_scalar_match(const Program *program, const Function *fun, cons
   return true;
 }
 
+static bool check_handler_function(const Program *program, const Function *fun, const Function *handler, Scope *scope, ZDiag *diag);
+
 static bool check_stmt(const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {
   if (stmt->kind == STMT_LET) {
     for (size_t i = 0; i < scope->len; i++) {
@@ -7075,6 +7106,27 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
       return set_diag_detail(diag, 1002, "raised error is not declared by this function", stmt->line, stmt->column, "error listed in raises { ... }", actual, "add the error name to this function's raises set");
     }
     return true;
+  }
+  if (stmt->kind == STMT_WITH) {
+    EffectDecl *effect = find_effect(program, stmt->name);
+    if (!effect) {
+      char message[256];
+      snprintf(message, sizeof(message), "unknown effect '%s'", stmt->name ? stmt->name : "<error>");
+      return set_diag_detail(diag, 6201, message, stmt->line, stmt->column, "declared effect", stmt->name, "declare the effect before using it");
+    }
+    Scope handler_scope = {.parent = scope};
+    FunctionVec *handler_ops = (FunctionVec *)stmt->handler_ops;
+    for (size_t i = 0; i < handler_ops->len; i++) {
+      if (!check_handler_function(program, fun, &handler_ops->items[i], &handler_scope, diag)) {
+        scope_free(&handler_scope);
+        return false;
+      }
+    }
+    scope_free(&handler_scope);
+    Scope body_scope = {.parent = scope};
+    bool ok = check_stmt_vec_with_loop(program, fun, &stmt->else_body, &body_scope, diag, loop_depth);
+    scope_free(&body_scope);
+    return ok;
   }
   if (stmt->kind == STMT_DEFER) return check_expr(program, stmt->expr, scope, diag);
   if (stmt->kind == STMT_RETURN) {
@@ -7322,6 +7374,18 @@ static bool validate_drop_method(const Shape *shape, const Function *method, ZDi
   }
   (void)shape;
   return true;
+}
+
+static bool check_handler_function(const Program *program, const Function *fun, const Function *handler, Scope *scope, ZDiag *diag) {
+  for (size_t i = 0; i < handler->params.len; i++) {
+    Param *param = &handler->params.items[i];
+    scope_add(scope, param->name, param->type, false);
+  }
+  bool ok = check_stmt_vec(program, handler, &handler->body, scope, diag);
+  for (size_t i = 0; i < handler->params.len; i++) {
+    scope_remove(scope, handler->params.items[i].name);
+  }
+  return ok;
 }
 
 static bool check_shape_method_body(const Program *program, const Shape *shape, const Function *method, ZDiag *diag) {

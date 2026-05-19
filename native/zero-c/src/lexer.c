@@ -19,10 +19,10 @@ static Token make_token(TokenKind kind, char *text, int line, int column, size_t
 
 static bool is_keyword(const char *text) {
   const char *keywords[] = {
-    "as", "break", "check", "choice", "const", "continue", "defer", "else", "enum", "export", "extern", "false", "for", "fun",
-    "if", "import", "in", "let", "match", "meta", "mut", "null", "packed", "pub",
+    "as", "break", "check", "choice", "const", "continue", "defer", "effect", "else", "enum", "export", "extern", "false", "for", "fun",
+    "handledBy", "if", "import", "in", "let", "match", "meta", "mut", "null", "packed", "pub",
     "raise", "raises", "rescue", "return", "shape", "static", "test", "true", "type",
-    "use", "var", "while", NULL
+    "use", "var", "while", "with", NULL
   };
   for (int i = 0; keywords[i]; i++) {
     if (strcmp(text, keywords[i]) == 0) return true;
