@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST_ALLOW_LOCAL !== "1") {
@@ -1057,6 +1057,17 @@ assert.equal(explainTar002Body.schemaVersion, 1);
 assert.equal(explainTar002Body.code, "TAR002");
 assert.equal(explainTar002Body.repair.id, "choose-target-with-required-capability");
 
+const explainBld004 = await execFileAsync(zero, ["explain", "--json", "BLD004"]);
+const explainBld004Body = JSON.parse(explainBld004.stdout);
+assert.equal(explainBld004Body.schemaVersion, 1);
+assert.equal(explainBld004Body.code, "BLD004");
+assert.equal(explainBld004Body.category, "build");
+assert.equal(explainBld004Body.repair.id, "install-libcurl-dev");
+assert.match(explainBld004Body.summary, /libcurl/i);
+
+const explainBld004Text = await execFileAsync(zero, ["explain", "BLD004"]);
+assert.match(explainBld004Text.stdout, /net capability requires libcurl/i);
+
 const explainText = await execFileAsync(zero, ["explain", "TYP009"]);
 assert.match(explainText.stdout, /Mutable storage required/);
 
@@ -1325,6 +1336,66 @@ assert.equal(darwinArm64Target.httpRuntime.provider, targetsBody.host === "darwi
 assert.equal(darwinArm64Target.httpRuntime.tlsVerification, targetsBody.host === "darwin-arm64");
 if (targetsBody.host === "darwin-arm64") {
   assert.equal(darwinArm64Target.httpRuntime.customCa.env, "ZERO_HTTP_TEST_CA_BUNDLE");
+  // P2-11: supported host httpRuntime advertises whether the host can
+  // actually link libcurl, so silent-stub builds are observable.
+  assert.equal(darwinArm64Target.httpRuntime.status, "supported");
+  assert.equal(typeof darwinArm64Target.httpRuntime.hostLinkable, "boolean");
+}
+// unsupported targets must not claim a host libcurl link path.
+assert.equal(linuxMuslTarget.httpRuntime.hostLinkable, undefined);
+
+// P2-11: a `net` build on a host that cannot link libcurl must fail loudly
+// with BLD004 instead of silently producing a no-op-stub binary. We simulate
+// "no libcurl" with a stub cc that rejects the `-lcurl` link probe and forwards
+// everything else to the real cc, so the rest of the toolchain still works.
+if (runnableDirectTarget) {
+  const stubCc = `${outDir}/nocurl-cc`;
+  await writeFile(
+    stubCc,
+    [
+      "#!/bin/sh",
+      "for arg in \"$@\"; do",
+      "  case \"$arg\" in",
+      "    -lcurl*) echo 'stub-cc: libcurl unavailable' >&2; exit 1;;",
+      "  esac",
+      "done",
+      "exec cc \"$@\"",
+      "",
+    ].join("\n"),
+  );
+  await chmod(stubCc, 0o755);
+
+  const stubAbs = `${process.cwd()}/${stubCc}`;
+  const netNoCurl = await execFileAsync(zero, [
+    "build",
+    "--json",
+    "--emit",
+    "exe",
+    "--target",
+    runnableDirectTarget,
+    "--cc",
+    stubAbs,
+    "conformance/native/pass/std-http-fetch.0",
+    "--out",
+    `${outDir}/std-http-fetch-nocurl`,
+  ]).catch((error) => error);
+  assert(netNoCurl instanceof Error, "net build without libcurl must fail loudly");
+  const netNoCurlBody = JSON.parse(netNoCurl.stdout);
+  assert.equal(netNoCurlBody.diagnostics[0].code, "BLD004");
+  assert.match(netNoCurlBody.diagnostics[0].message, /libcurl/i);
+
+  // With the real host toolchain the same net build still succeeds unchanged.
+  const netWithCurl = await execFileAsync(zero, [
+    "build",
+    "--emit",
+    "exe",
+    "--target",
+    runnableDirectTarget,
+    "conformance/native/pass/std-http-fetch.0",
+    "--out",
+    `${outDir}/std-http-fetch-curl`,
+  ]);
+  assert.match(netWithCurl.stdout, /std-http-fetch-curl/);
 }
 assert.equal(linuxArm64Target.directBackend.status, "native-exe");
 assert.equal(linuxArm64Target.directBackend.objectEmitter, "zero-elf-aarch64");

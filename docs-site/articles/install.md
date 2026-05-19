@@ -47,6 +47,38 @@ make -C native/zero-c
 bin/zero --version
 ```
 
+`make -C native/zero-c` stamps the short git commit into the binary, so a
+from-source build reports its real commit instead of `unknown`:
+
+```sh
+bin/zero --version --json
+```
+
+The JSON output reports `commit`, plus separate `hostCompiler` and
+`targetCompiler` facts. `hostCompiler` is the native `cc` that links host
+executables; `targetCompiler` is the cross toolchain used for non-host
+targets. A missing cross toolchain (`"targetCompiler": {"status": "missing"}`)
+does not mean the host compiler is missing — the two are reported
+independently. When git is unavailable at build time the commit falls back to
+`unknown` and `make` still succeeds.
+
+### libcurl is required for the `net` capability
+
+Programs that use `std.http.fetch(...)` (the `net` capability) link the system
+libcurl as their HTTP runtime provider. If the build host has no libcurl
+development files (`curl/curl.h` and the libcurl library), building a `net`
+program fails loudly with diagnostic `BLD004` instead of silently producing a
+binary whose HTTP calls always fail:
+
+```sh
+bin/zero explain BLD004
+```
+
+Install the libcurl development package to fix it (for example
+`libcurl4-openssl-dev` on Debian/Ubuntu, or `brew install curl` on macOS).
+`zero targets --json` reports `httpRuntime.hostLinkable` so you can check host
+readiness before building.
+
 The repository validation commands are:
 
 ```sh
