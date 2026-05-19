@@ -1365,6 +1365,18 @@ static const char *std_call_arg_type(const char *name, size_t index) {
   return NULL;
 }
 
+// std.fs path parameters are declared as String but lower through the same
+// {ptr,len} byte view as Span<u8>/[N]u8. Dynamically constructed paths cannot
+// become a String (no String constructor), so the checker widens these path
+// arguments to also accept byte spans/arrays. Every fs path input is a String
+// argument; the byte payloads (write/atomicWrite) are Span<u8>, so keying off
+// the declared String type keeps this rule precise and self-maintaining.
+static bool std_call_arg_is_fs_path(const char *name, size_t index) {
+  if (strncmp(name, "std.fs.", strlen("std.fs.")) != 0) return false;
+  const char *expected = std_call_arg_type(name, index);
+  return expected && strcmp(expected, "String") == 0;
+}
+
 static bool type_has_generic_arg(const char *type, const char *name, const char **inner, size_t *inner_len) {
   if (!type || !name) return false;
   size_t name_len = strlen(name);
@@ -5039,7 +5051,26 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           }
           for (size_t i = 0; i < expr->args.len; i++) {
             const char *expected = std_call_arg_type(std_name.data, i);
-            if (!check_expr_expected(program, expr->args.items[i], scope, diag, expected)) {
+            // A std.fs path argument is declared String but is lowered as a
+            // {ptr,len} byte view, so widen the expected type to the byte
+            // span when a Span<u8>/MutSpan<u8>/[N]u8 path is supplied. This
+            // lets dynamically constructed (non-literal) paths reach the
+            // filesystem without a String constructor.
+            bool fs_path_arg = std_call_arg_is_fs_path(std_name.data, i);
+            const char *expected_for_check = expected;
+            if (fs_path_arg) {
+              const char *probe = expr_type(program, expr->args.items[i], scope);
+              if (expr->args.items[i]->kind == EXPR_IDENT) {
+                const char *scope_probe = scope_type(scope, expr->args.items[i]->text);
+                if (scope_probe) probe = scope_probe;
+              }
+              if (probe && (type_is_named_generic(probe, "Span") ||
+                            type_is_named_generic(probe, "MutSpan") ||
+                            probe[0] == '[')) {
+                expected_for_check = "Span<u8>";
+              }
+            }
+            if (!check_expr_expected(program, expr->args.items[i], scope, diag, expected_for_check)) {
               zbuf_free(&std_name);
               return false;
             }
@@ -5049,18 +5080,24 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               if (scope_actual) actual = scope_actual;
             }
             bool span_array_arg = false;
-            bool expected_span = expected && type_is_named_generic(expected, "Span");
-            bool expected_mut_span = expected && type_is_named_generic(expected, "MutSpan");
+            bool expected_span = expected_for_check && type_is_named_generic(expected_for_check, "Span");
+            bool expected_mut_span = expected_for_check && type_is_named_generic(expected_for_check, "MutSpan");
             bool inline_array_literal = expr->args.items[i] && expr->args.items[i]->kind == EXPR_ARRAY_LITERAL;
-            if (expected && actual && actual[0] == '[' && (expected_span || (expected_mut_span && !inline_array_literal))) {
+            if (expected_for_check && actual && actual[0] == '[' && (expected_span || (expected_mut_span && !inline_array_literal))) {
               char expected_element[128];
               char actual_element[128];
-              if (span_element_text(expected, expected_element, sizeof(expected_element)) &&
+              if (span_element_text(expected_for_check, expected_element, sizeof(expected_element)) &&
                   fixed_array_type_parts(actual, NULL, 0, actual_element, sizeof(actual_element))) {
                 span_array_arg = types_compatible(expected_element, actual_element);
               }
             }
-            if (expected && !span_array_arg && !types_compatible(expected, actual)) {
+            // A byte span/array path satisfies a widened String path parameter.
+            bool fs_path_span_arg = fs_path_arg && actual &&
+                                    (type_is_named_generic(actual, "Span") ||
+                                     type_is_named_generic(actual, "MutSpan") ||
+                                     actual[0] == '[');
+            if (expected_for_check && !span_array_arg && !fs_path_span_arg &&
+                !types_compatible(expected_for_check, actual)) {
               char message[256];
               snprintf(message, sizeof(message), "argument %zu to '%s' has incompatible type", i + 1, std_name.data);
               zbuf_free(&std_name);
