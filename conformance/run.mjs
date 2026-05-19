@@ -2325,4 +2325,30 @@ for (const [fixture, code] of [
   assert.match(result.stderr, code);
 }
 
+// Diagnostic completeness: a no-main file with a real type error must report
+// the real diagnostic, not have it masked by the missing-main check (APP001).
+const noMainTypeError = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/no-main-type-error.0"]).catch((error) => error);
+assert.notEqual(noMainTypeError.code, 0);
+const noMainTypeErrorBody = JSON.parse(noMainTypeError.stdout);
+assert.equal(noMainTypeErrorBody.ok, false);
+assert.equal(noMainTypeErrorBody.diagnostics[0].code, "TYP002");
+assert.equal(noMainTypeErrorBody.diagnostics[0].line, 2);
+assert.ok(!noMainTypeErrorBody.diagnostics.some((diagnostic) => diagnostic.code === "APP001"));
+
+// The missing-main diagnostic still fires when there are no other errors and
+// no entry point, with the entrypoint repair id.
+const missingMain = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/missing-main.0"]).catch((error) => error);
+assert.notEqual(missingMain.code, 0);
+const missingMainBody = JSON.parse(missingMain.stdout);
+assert.equal(missingMainBody.ok, false);
+assert.equal(missingMainBody.diagnostics[0].code, "APP001");
+assert.equal(missingMainBody.diagnostics[0].repair.id, "add-main-entry-point");
+
+const explainApp001 = await execFileAsync(zero, ["explain", "--json", "APP001"]);
+const explainApp001Body = JSON.parse(explainApp001.stdout);
+assert.equal(explainApp001Body.schemaVersion, 1);
+assert.equal(explainApp001Body.code, "APP001");
+assert.equal(explainApp001Body.category, "app");
+assert.equal(explainApp001Body.repair.id, "add-main-entry-point");
+
 console.log("conformance ok");
