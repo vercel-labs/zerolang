@@ -5,7 +5,12 @@ OUT := $(ROOT)/.zero/bin/zero
 NODE_TS := node --experimental-strip-types --disable-warning=ExperimentalWarning
 BUILD_STAMP := $(OUT).build
 HOST_ID := $(shell uname -s 2>/dev/null || echo unknown)-$(shell uname -m 2>/dev/null || echo unknown)
-BUILD_ID := $(HOST_ID)|$(CC)|$(CFLAGS)
+# Stamp the short git commit into the binary so `zero --version --json` reports
+# a real commit on from-source builds. Falls back to "unknown" when git is
+# unavailable or this is not a checkout; `make` itself must never fail here.
+ZERO_GIT_COMMIT := $(shell git -C $(ROOT) rev-parse --short HEAD 2>/dev/null || echo unknown)
+COMMIT_FLAGS := -DZERO_GIT_COMMIT='"$(ZERO_GIT_COMMIT)"'
+BUILD_ID := $(HOST_ID)|$(CC)|$(CFLAGS)|$(ZERO_GIT_COMMIT)
 SRC := $(wildcard src/*.c)
 INCLUDES := $(wildcard include/*.h) $(wildcard src/*.inc)
 EMBEDDED_SKILLS := src/embedded_skills.inc
@@ -27,7 +32,7 @@ $(EMBEDDED_SKILLS): $(ROOT)/scripts/embed-skill-data.mts $(SKILL_INPUTS)
 
 $(OUT): $(BUILD_STAMP) $(SRC) $(INCLUDES) $(EMBEDDED_SKILLS)
 	@mkdir -p $(dir $(OUT))
-	$(CC) $(CFLAGS) -Iinclude $(SRC) -o $(OUT)
+	$(CC) $(CFLAGS) $(COMMIT_FLAGS) -Iinclude $(SRC) -o $(OUT)
 
 clean:
 	rm -f $(OUT) $(BUILD_STAMP)

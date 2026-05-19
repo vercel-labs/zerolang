@@ -75,6 +75,7 @@ typedef struct {
 } ShipArtifacts;
 
 static void print_command_help(const char *command);
+static int zero_mkdir(const char *path);
 
 static const char *diag_code(int code) {
   switch (code) {
@@ -84,6 +85,7 @@ static const char *diag_code(int code) {
     case 2001: return "APP001";
     case 2002: return "BLD002";
     case 2003: return "BLD003";
+    case 2004: return "BLD004";
     case 3002: return "NAM002";
     case 3003: return "NAM003";
     case 3004: return "NAM004";
@@ -480,9 +482,18 @@ static void append_parse_json(ZBuf *buf, const char *source_file, const Program 
   zbuf_append(buf, program && program->functions.len ? "\n  ]\n}\n" : "]\n}\n");
 }
 
+#ifndef ZERO_GIT_COMMIT
+#define ZERO_GIT_COMMIT "unknown"
+#endif
+
 static const char *zero_commit(void) {
+  // An explicit ZERO_COMMIT env override wins (used by packaging that builds
+  // outside the git tree); otherwise report the commit stamped at build time
+  // by the Makefile / release workflow.
   const char *commit = getenv("ZERO_COMMIT");
-  return commit && commit[0] ? commit : "unknown";
+  if (commit && commit[0]) return commit;
+  const char *stamped = ZERO_GIT_COMMIT;
+  return stamped && stamped[0] ? stamped : "unknown";
 }
 
 static bool command_available(const char *name) {
@@ -600,6 +611,54 @@ static bool compile_zero_runtime_object(const char *runtime_object_file, const Z
     snprintf(diag->help, sizeof(diag->help), "install a host C compiler or pass --cc for the runtime link plan");
   }
   return ok;
+}
+
+// Probe whether the link plan can actually see the libcurl development files
+// (curl/curl.h and the libcurl import). The embedded HTTP provider compiles to
+// a silent no-op stub under __has_include when curl/curl.h is absent, so
+// without this check a `net` build "succeeds" but std.http.fetch always fails
+// at runtime. Compiling + linking a tiny probe against the *real* toolchain
+// plan is the only reliable signal (a `cc -I` search path can differ from the
+// link path), so reuse the same plan that the runtime object/link will use.
+static bool host_libcurl_available(const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target) {
+  static const char probe_src[] =
+    "#include <curl/curl.h>\n"
+    "int main(void){ return curl_easy_init() ? 0 : 0; }\n";
+  char src_path[64];
+  char exe_path[64];
+  long pid = (long)getpid();
+  snprintf(src_path, sizeof(src_path), ".zero/.zero-curl-probe-%ld.c", pid);
+  snprintf(exe_path, sizeof(exe_path), ".zero/.zero-curl-probe-%ld", pid);
+  (void)zero_mkdir(".zero");
+  FILE *f = fopen(src_path, "wb");
+  if (!f) return false;
+  fwrite(probe_src, 1, sizeof(probe_src) - 1, f);
+  fclose(f);
+  const char *object_files[1] = {src_path};
+  bool ok = z_toolchain_link_objects(
+    plan, target, object_files, 1, exe_path,
+    "",
+    "-lcurl >/dev/null 2>&1"
+  );
+  (void)command;
+  remove(src_path);
+  remove(exe_path);
+  return ok;
+}
+
+static bool require_host_libcurl(const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  if (host_libcurl_available(plan, command, target)) return true;
+  if (diag) {
+    diag->code = 2004;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "net capability requires libcurl development files");
+    snprintf(diag->expected, sizeof(diag->expected), "curl/curl.h and the libcurl library are available to the host link plan");
+    snprintf(diag->actual, sizeof(diag->actual), "the host toolchain cannot compile or link against libcurl, so std.http.fetch would silently degrade to a no-op stub");
+    snprintf(diag->help, sizeof(diag->help), "install the libcurl development package (e.g. libcurl4-openssl-dev on Debian/Ubuntu, `brew install curl` on macOS), or pass --cc/ZERO_CC to a toolchain that can see libcurl; run `zero explain BLD004`");
+  }
+  return false;
 }
 
 static bool compile_zero_http_curl_object(const char *runtime_object_file, const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target, ZDiag *diag) {
@@ -2521,6 +2580,7 @@ static const char *diag_repair_id(int code) {
     case 3030: return "return-owned-value";
     case 3031: return "make-c-abi-safe";
     case 2003: return "use-direct-emitter";
+    case 2004: return "install-libcurl-dev";
     case 3032: return "match-generic-type-arguments";
     case 3033: return "make-generic-argument-types-match";
     case 3034: return "add-explicit-generic-type-arguments";
@@ -2571,6 +2631,7 @@ static const char *diag_repair_summary(int code) {
     case 3030: return "Return an owned value, or keep references to local bindings inside the current function.";
     case 3031: return "Use explicit scalar, ref, or mutref types at C ABI boundaries and keep exported C functions non-raising.";
     case 2003: return "Use a direct emitter such as --emit exe or --emit obj.";
+    case 2004: return "Install the libcurl development files (curl/curl.h and libcurl) so the net capability can link its HTTP runtime provider.";
     case 3032: return "Pass one type argument for each generic parameter, or remove type arguments from non-generic calls.";
     case 3033: return "Make all values that bind the same generic parameter use the same concrete type.";
     case 3034: return "Add explicit generic type arguments when the compiler cannot infer them from runtime arguments.";
@@ -2678,6 +2739,16 @@ static const ExplainInfo explain_infos[] = {
     "Use a direct emitter such as `--emit exe` or `--emit obj`.",
     "zero build --emit c examples/hello.0",
     "zero build --emit exe examples/hello.0",
+  },
+  {
+    "BLD004",
+    "build",
+    "net capability requires libcurl development files",
+    "A program used the net capability (std.http.fetch) but the build host has no libcurl development headers/library, so the HTTP runtime provider cannot be linked.",
+    "Zero links libcurl as the audited HTTP provider; without it the runtime would silently degrade to a no-op stub, so the build fails loudly instead.",
+    "Install the libcurl development package (for example libcurl4-openssl-dev on Debian/Ubuntu, curl via Homebrew on macOS), or build for a target that does not require the net capability.",
+    "zero build examples/http-get.0 # on a host without curl/curl.h",
+    "sudo apt-get install libcurl4-openssl-dev && zero build examples/http-get.0",
   },
   {
     "TYP009",
@@ -2947,6 +3018,7 @@ static void print_explain_json(const ExplainInfo *info) {
   append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
                                          strcmp(info->code, "TAR002") == 0 ? 6002 :
                                          strcmp(info->code, "BLD003") == 0 ? 2003 :
+                                         strcmp(info->code, "BLD004") == 0 ? 2004 :
                                          strcmp(info->code, "TYP009") == 0 ? 3010 :
                                          strcmp(info->code, "TYP023") == 0 ? 3032 :
                                          strcmp(info->code, "TYP024") == 0 ? 3033 :
@@ -5454,6 +5526,16 @@ static int print_version_command(bool json) {
   bool target_cc_available = target_cc_override || bundled_target_cc_available;
   char *target_cc_version = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_available ? command_first_line("zig version 2>/dev/null") : z_strdup(""));
 
+  // The host C compiler is what actually links host executables, and is
+  // distinct from the cross "target compiler". Report it accurately so
+  // `zero --version --json` no longer conflates the two (P2-10): a missing
+  // cross toolchain is not the same as a missing host cc.
+  bool host_cc_override = target_cc_override;
+  bool host_cc_available = host_cc_override || command_available("cc");
+  char *host_cc_version = host_cc_override
+    ? z_strdup("configured via ZERO_CC")
+    : (host_cc_available ? command_first_line("cc --version 2>/dev/null") : z_strdup(""));
+
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"version\": ");
@@ -5464,9 +5546,17 @@ static int print_version_command(bool json) {
   append_json_string(&buf, z_host_target());
   zbuf_append(&buf, ",\n  \"backend\": \"zero-c\",\n  \"targets\": ");
   z_append_target_names_json(&buf);
-  zbuf_append(&buf, ",\n  \"targetCompiler\": {\"available\": ");
+  zbuf_append(&buf, ",\n  \"hostCompiler\": {\"available\": ");
+  zbuf_append(&buf, host_cc_available ? "true" : "false");
+  zbuf_append(&buf, ", \"kind\": \"host C compiler\", \"status\": ");
+  append_json_string(&buf, host_cc_available ? "present" : "missing");
+  zbuf_append(&buf, ", \"version\": ");
+  append_json_string(&buf, host_cc_version);
+  zbuf_append(&buf, "},\n  \"targetCompiler\": {\"available\": ");
   zbuf_append(&buf, target_cc_available ? "true" : "false");
-  zbuf_append(&buf, ", \"kind\": \"target-capable C compiler\", \"version\": ");
+  zbuf_append(&buf, ", \"kind\": \"target-capable C compiler\", \"status\": ");
+  append_json_string(&buf, target_cc_available ? "present" : "missing");
+  zbuf_append(&buf, ", \"version\": ");
   append_json_string(&buf, target_cc_version);
   zbuf_append(&buf, "},\n  \"crossCompilation\": {\"ready\": ");
   zbuf_append(&buf, target_cc_available ? "true" : "false");
@@ -5474,6 +5564,7 @@ static int print_version_command(bool json) {
   fputs(buf.data, stdout);
   zbuf_free(&buf);
   free(target_cc_version);
+  free(host_cc_version);
   return 0;
 }
 
@@ -9473,6 +9564,7 @@ int main(int argc, char **argv) {
     input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, strcmp(object_emitter, "zero-macho64") == 0 ? "direct-macho64-object-runtime-link" : "direct-elf64-object-runtime-link"));
     bool wrote_object = z_write_binary_file(object_file, (const unsigned char *)object.data, object.len, &diag);
     if (wrote_object) wrote_object = compile_zero_runtime_object(runtime_object_file, &runtime_toolchain, &command, target, &diag);
+    if (wrote_object && needs_http_runtime) wrote_object = require_host_libcurl(&runtime_toolchain, &command, target, &diag);
     if (wrote_object && needs_http_runtime) wrote_object = compile_zero_http_curl_object(http_object_file, &runtime_toolchain, &command, target, &diag);
     input.object_ms = now_ms() - phase_started;
     if (!wrote_object) {
