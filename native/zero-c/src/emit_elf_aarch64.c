@@ -33,7 +33,7 @@ static bool a64_diag(ZDiag *diag, const char *message, int line, int column, con
     diag->code = 4004;
     diag->line = line > 0 ? line : 1;
     diag->column = column > 0 ? column : 1;
-    diag->length = (diag->line && diag->column) ? (column * line) : 1;
+    diag->length = 1;
     
     snprintf(diag->message, sizeof(diag->message), "%s", message);
     snprintf(diag->expected, sizeof(diag->expected), "direct AArch64 ELF object MVP subset");
