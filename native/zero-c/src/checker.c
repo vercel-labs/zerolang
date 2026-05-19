@@ -7068,6 +7068,26 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
     }
     return true;
   }
+  if (stmt->kind == STMT_WITH) {
+    EffectDecl *effect = find_effect(program, stmt->name);
+    if (!effect) {
+      char message[256];
+      snprintf(message, sizeof(message), "unknown effect '%s'", stmt->name ? stmt->name : "<error>");
+      return set_diag_detail(diag, 6201, message, stmt->line, stmt->column, "declared effect", stmt->name, "declare the effect before using it");
+    }
+    Scope handler_scope = {.parent = scope};
+    if (stmt->handler_ops) {
+      FunctionVec *handler_ops = (FunctionVec *)stmt->handler_ops;
+      for (size_t i = 0; i < handler_ops->len; i++) {
+        if (!check_handler_function(program, fun, &handler_ops->items[i], &handler_scope, diag)) {
+          scope_free(&handler_scope);
+          return false;
+        }
+      }
+    }
+    scope_free(&handler_scope);
+    return true;
+  }
   if (stmt->kind == STMT_DEFER) return check_expr(program, stmt->expr, scope, diag);
   if (stmt->kind == STMT_RETURN) {
     if (!check_expr_expected(program, stmt->expr, scope, diag, fun->return_type)) return false;

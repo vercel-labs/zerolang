@@ -1102,6 +1102,22 @@ static void free_stmt_vec(StmtVec *vec) {
       free_stmt_vec(&stmt->match_arms.items[arm_index].body);
     }
     free(stmt->match_arms.items);
+    if (stmt->handler_ops) {
+      FunctionVec *hops = (FunctionVec *)stmt->handler_ops;
+      for (size_t op_index = 0; op_index < hops->len; op_index++) {
+        Function *op = &hops->items[op_index];
+        free(op->name);
+        free(op->return_type);
+        for (size_t p = 0; p < op->params.len; p++) {
+          free(op->params.items[p].name);
+          free(op->params.items[p].type);
+        }
+        free(op->params.items);
+        free_stmt_vec(&op->body);
+      }
+      free(hops->items);
+      free(stmt->handler_ops);
+    }
     free(stmt);
   }
   free(vec->items);
