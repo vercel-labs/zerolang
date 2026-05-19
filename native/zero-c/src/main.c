@@ -2650,6 +2650,16 @@ static void print_diag_json(const char *path, const ZDiag *diag);
 
 static const ExplainInfo explain_infos[] = {
   {
+    "PAR100",
+    "parse",
+    "Parser syntax error",
+    "The parser could not turn the source text into a valid Zero syntax tree.",
+    "Zero reports parser failures as a stable diagnostic code so agents can repair syntax before trying type or build fixes.",
+    "Inspect the reported span, fix the malformed syntax, then rerun the same zero check command.",
+    "pub fun main(world: World) -> Void raises {",
+    "pub fun main(world: World) -> Void raises {\n    check world.out.write(\"hello\\n\")\n}",
+  },
+  {
     "TAR001",
     "target",
     "Unknown target",
@@ -2945,6 +2955,7 @@ static void print_explain_json(const ExplainInfo *info) {
   append_json_string(&buf, info->why);
   zbuf_append(&buf, ",\n  \"repair\": {\"id\": ");
   append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
+                                         strcmp(info->code, "PAR100") == 0 ? 100 :
                                          strcmp(info->code, "TAR002") == 0 ? 6002 :
                                          strcmp(info->code, "BLD003") == 0 ? 2003 :
                                          strcmp(info->code, "TYP009") == 0 ? 3010 :

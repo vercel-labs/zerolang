@@ -1057,6 +1057,13 @@ assert.equal(explainTar002Body.schemaVersion, 1);
 assert.equal(explainTar002Body.code, "TAR002");
 assert.equal(explainTar002Body.repair.id, "choose-target-with-required-capability");
 
+const explainPar100 = await execFileAsync(zero, ["explain", "--json", "PAR100"]);
+const explainPar100Body = JSON.parse(explainPar100.stdout);
+assert.equal(explainPar100Body.schemaVersion, 1);
+assert.equal(explainPar100Body.code, "PAR100");
+assert.equal(explainPar100Body.category, "parse");
+assert.match(explainPar100Body.summary, /syntax/);
+
 const explainText = await execFileAsync(zero, ["explain", "TYP009"]);
 assert.match(explainText.stdout, /Mutable storage required/);
 
