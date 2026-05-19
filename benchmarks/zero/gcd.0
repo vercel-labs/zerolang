@@ -1,0 +1,22 @@
+fun gcd(a: i32, b: i32) -> i32 {
+    let mut x = a
+    let mut y = b
+    while y != 0 {
+        let next = x % y
+        x = y
+        y = next
+    }
+    return x
+}
+
+pub fun main(world: World) -> Void raises {
+    let mut i = 0
+    let mut result = 0
+    while i < 100000 {
+        result = gcd(1071, 462)
+        i = i + 1
+    }
+    if result == 21 {
+        check world.out.write("gcd\n")
+    }
+}
