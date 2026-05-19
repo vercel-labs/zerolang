@@ -1,0 +1,3 @@
+pub fun main() -> Void {
+  let value = 1;
+}

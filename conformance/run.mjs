@@ -752,6 +752,17 @@ for (const [fixture, message] of [
   assert.equal(parseFailureBody.diagnostics[0].repair.id, "repair-syntax");
 }
 
+const semicolonParseFailure = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/parse-unexpected-semicolon.0"]).catch((error) => error);
+assert.notEqual(semicolonParseFailure.code, 0);
+const semicolonParseFailureBody = JSON.parse(semicolonParseFailure.stdout);
+assert.equal(semicolonParseFailureBody.diagnostics[0].code, "PAR100");
+assert.equal(semicolonParseFailureBody.diagnostics[0].message, "unexpected semicolon");
+assert.equal(semicolonParseFailureBody.diagnostics[0].expected, "Zero syntax without semicolon terminators");
+assert.equal(semicolonParseFailureBody.diagnostics[0].actual, ";");
+assert.equal(semicolonParseFailureBody.diagnostics[0].help, "remove the semicolon; Zero statements do not use semicolon terminators");
+assert.equal(semicolonParseFailureBody.diagnostics[0].fixSafety, "behavior-preserving");
+assert.equal(semicolonParseFailureBody.diagnostics[0].repair.id, "remove-unexpected-semicolon");
+
 const missingImportJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/missing-import"]).catch((error) => error);
 assert.notEqual(missingImportJson.code, 0);
 const missingImportBody = JSON.parse(missingImportJson.stdout);
@@ -1059,6 +1070,13 @@ assert.equal(explainTar002Body.repair.id, "choose-target-with-required-capabilit
 
 const explainText = await execFileAsync(zero, ["explain", "TYP009"]);
 assert.match(explainText.stdout, /Mutable storage required/);
+
+for (const code of ["PAR100", "APP001", "CIMP001", "NAM003"]) {
+  const explained = await execFileAsync(zero, ["explain", "--json", code]);
+  const explainedBody = JSON.parse(explained.stdout);
+  assert.equal(explainedBody.code, code);
+  assert.equal(typeof explainedBody.repair.id, "string");
+}
 
 const fixPlanJson = await execFileAsync(zero, ["fix", "--plan", "--json", "conformance/native/fail/mem-copy-immutable-dst.0"]);
 const fixPlanBody = JSON.parse(fixPlanJson.stdout);
