@@ -891,7 +891,7 @@ static bool set_diag_detail(
 }
 
 static bool is_builtin_value(const char *name) {
-  return strcmp(name, "Response") == 0 || strcmp(name, "std") == 0;
+  return strcmp(name, "std") == 0;
 }
 
 static void member_name_buf(const Expr *expr, ZBuf *buf) {
@@ -1079,7 +1079,6 @@ static const char *std_call_return_type(const Expr *callee) {
   else if (strcmp(name.data, "std.fs.atomicWrite") == 0) result = "Bool";
   else if (strcmp(name.data, "std.fs.fileLen") == 0) result = "Maybe<usize>";
   else if (strcmp(name.data, "std.fs.fileLenOrRaise") == 0) result = "usize";
-  else if (strcmp(name.data, "Response.text") == 0) result = "Response";
   zbuf_free(&name);
   return result;
 }
@@ -1223,7 +1222,6 @@ static int std_call_arg_count(const char *name) {
   if (strcmp(name, "std.fs.atomicWrite") == 0) return 3;
   if (strcmp(name, "std.fs.fileLen") == 0) return 1;
   if (strcmp(name, "std.fs.fileLenOrRaise") == 0) return 1;
-  if (strcmp(name, "Response.text") == 0) return 1;
   return -1;
 }
 
@@ -1364,7 +1362,6 @@ static const char *std_call_arg_type(const char *name, size_t index) {
   if (strcmp(name, "std.fs.atomicWrite") == 0) return index == 2 ? "Span<u8>" : "String";
   if (strcmp(name, "std.fs.fileLen") == 0) return "mutref<File>";
   if (strcmp(name, "std.fs.fileLenOrRaise") == 0) return "mutref<File>";
-  if (strcmp(name, "Response.text") == 0) return "String";
   return NULL;
 }
 
@@ -4175,7 +4172,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
       if (is_builtin_value(expr->text) && !scope_has(scope, expr->text)) {
         char message[256];
         snprintf(message, sizeof(message), "builtin namespace '%s' cannot be used as a runtime value", expr->text);
-        return set_diag_detail(diag, 3005, message, expr->line, expr->column, "runtime value", "builtin namespace", "use a supported member call such as Response.text(...) or std.fs.host()");
+        return set_diag_detail(diag, 3005, message, expr->line, expr->column, "runtime value", "builtin namespace", "use a supported member call such as std.fs.host()");
       }
       {
         const char *actual = scope_type(scope, expr->text);
@@ -7464,7 +7461,7 @@ static bool is_builtin_type_name(const char *name) {
     "World", "WorldStream", "Fs", "File", "ByteBuf", "NullAlloc", "FixedBufAlloc", "PageAlloc", "GeneralAlloc",
     "Vec", "Map", "Set", "Duration", "RandSource", "ProcStatus", "Address", "Net", "Conn", "Listener",
     "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "BufferedReader", "BufferedWriter",
-    "Request", "Response", "Env", "Args", "Clock", "Rand", "Proc", "Alloc",
+    "Env", "Args", "Clock", "Rand", "Proc", "Alloc",
     "Maybe", "Span", "MutSpan", "ref", "mutref", "owned",
     NULL
   };

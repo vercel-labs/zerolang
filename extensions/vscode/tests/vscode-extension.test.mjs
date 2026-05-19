@@ -21,13 +21,12 @@ describe("VS Code extension manifest", () => {
     assert.equal(snippets.path, "./snippets/zero.json");
   });
 
-  it("ships snippets for main, shape, fun, test, and web handlers", async () => {
+  it("ships snippets for main, shape, fun, and test", async () => {
     const snippets = JSON.parse(await readFile("snippets/zero.json", "utf8"));
     assert.ok(snippets.main);
     assert.ok(snippets.shape);
     assert.ok(snippets.function);
     assert.ok(snippets.test);
-    assert.ok(snippets["GET route"]);
   });
 
   it("highlights core Zero keywords and types", async () => {
@@ -41,7 +40,7 @@ describe("VS Code extension manifest", () => {
     assert.match(matches, /raises/);
     assert.match(matches, /shape/);
     assert.match(matches, /World/);
-    assert.match(matches, /Vercel/);
+    assert.doesNotMatch(matches, /Vercel|Request|Response/);
   });
 
   it("highlights comments, strings, and numbers", async () => {

@@ -35,15 +35,6 @@
     ],
     "description": "Zero test block"
   },
-  "GET route": {
-    "prefix": "get",
-    "body": [
-      "pub fun GET(req: Request, ctx: Vercel) -> Response raises {",
-      "    return Response.text(\"$1\")",
-      "}"
-    ],
-    "description": "Zero Vercel GET route"
-  },
   "if": {
     "prefix": "if",
     "body": [

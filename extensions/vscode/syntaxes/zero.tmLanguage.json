@@ -93,7 +93,7 @@
       "patterns": [
         {
           "name": "support.type.primitive.zero",
-          "match": "\\b(?:Bool|Void|Type|char|usize|isize|u[0-9]+|i[0-9]+|f(?:16|32|64)|c_(?:int|long|size|char)|World|Alloc|Fs|Net|Env|Args|Clock|Rand|Proc|Sync|Vercel|Request|Response)\\b"
+          "match": "\\b(?:Bool|Void|Type|char|usize|isize|u[0-9]+|i[0-9]+|f(?:16|32|64)|c_(?:int|long|size|char)|World|Alloc|Fs|Net|Env|Args|Clock|Rand|Proc|Sync)\\b"
         },
         {
           "name": "support.type.container.zero",

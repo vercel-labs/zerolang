@@ -13,7 +13,7 @@ const GRAMMARS = {
     ["string", /"(?:[^"\\]|\\.)*"/],
     ["char", /'(?:[^'\\\n]|\\(?:[nrt0'"\\]|x[0-9A-Fa-f]{2}))'/],
     ["keyword", /\b(?:pub|fun|let|mut|var|return|if|else|while|for|in|match|check|rescue|raise|raises|use|import|shape|interface|enum|choice|type|const|as|break|continue|defer|export|extern|packed|static|meta|test|and|or|not|true|false|null)\b/],
-    ["type", /\b(?:Void|World|Self|Bool|bool|char|u4|u8|u16|u32|u64|i8|i16|i32|i64|usize|isize|f16|f32|f64|Span|MutSpan|Maybe|Alloc|Arena|FixedBufAlloc|GeneralAlloc|NullAlloc|PageAlloc|ref|mutref|owned|Slice|Array|String|Error|Io|Fs|Net|Env|Args|Clock|Rand|Proc|Sync|Cancel|Reader|Writer|File|Path|Conn|Listener|Address|Config|Request|Response|Headers|Cookies|RouteParams|Type|Field|c_int|c_long|c_size|cstr|[A-Z][A-Za-z0-9_]*)\b/],
+    ["type", /\b(?:Void|World|Self|Bool|bool|char|u4|u8|u16|u32|u64|i8|i16|i32|i64|usize|isize|f16|f32|f64|Span|MutSpan|Maybe|Alloc|Arena|FixedBufAlloc|GeneralAlloc|NullAlloc|PageAlloc|ref|mutref|owned|Slice|Array|String|Error|Io|Fs|Net|Env|Args|Clock|Rand|Proc|Sync|Cancel|Reader|Writer|File|Path|Conn|Listener|Address|Config|Type|Field|c_int|c_long|c_size|cstr|[A-Z][A-Za-z0-9_]*)\b/],
     ["function", /\b[a-z_]\w*(?=\s*\()/],
     ["number", /\b(?:\d+\.\d+(?:[eE][+-]?\d+)?|0x[0-9a-fA-F_]+|0b[01_]+|0o[0-7_]+|\d[\d_]*(?:_[A-Za-z][A-Za-z0-9_]*)?)\b/],
     ["variable", /\b[a-z_]\w*(?=\.)/],
