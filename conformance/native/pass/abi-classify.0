@@ -1,0 +1,25 @@
+shape Point {
+    x: i32
+    y: i32
+}
+
+fun scalarParam(value: usize) -> usize {
+    return value
+}
+
+fun fatptrParam(bytes: Span<u8>, index: usize) -> Maybe<u8> raises {
+    return std.mem.get(bytes, index)
+}
+
+fun aggParam(point: Point) -> i32 {
+    return point.x + point.y
+}
+
+pub fun main(world: World) -> Void raises {
+    let bytes: [2]u8 = [4, 5]
+    let probe = fatptrParam(bytes, 1)
+    let point = Point{ x: 2, y: 3 }
+    if scalarParam(7) == 7 && aggParam(point) == 5 && probe.has {
+        check world.out.write("abi classify ok\n")
+    }
+}

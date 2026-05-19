@@ -443,6 +443,7 @@ for (const fixture of [
   "conformance/check/pass/static-interface-basic.0",
   "conformance/native/pass/static-interface-mutref.0",
   "conformance/native/pass/static-interface-static-param.0",
+  "conformance/native/pass/abi-classify.0",
   "conformance/check/pass/top-level-const.0",
   "conformance/check/pass/const-arithmetic.0",
   "conformance/check/pass/type-alias-basic.0",
@@ -2637,6 +2638,28 @@ assert.equal(cAbiDumpBody.generatedHeader.available, true);
 assert.match(cAbiDumpBody.generatedHeader.text, /int32_t zero_add\(int32_t a, int32_t b\);/);
 const abiCheck = await execFileAsync(zero, ["abi", "check", "--json", "conformance/native/pass/const-layout.0"]);
 assert.equal(JSON.parse(abiCheck.stdout).ok, true);
+
+const abiClassifyDump = await execFileAsync(zero, ["abi", "dump", "--json", "conformance/native/pass/abi-classify.0"]);
+const abiClassifyBody = JSON.parse(abiClassifyDump.stdout);
+const abiScalarFn = abiClassifyBody.functionAbi.find((item) => item.name === "scalarParam");
+assert.equal(abiScalarFn.return.abiClass, "scalar");
+assert.equal(abiScalarFn.params[0].abiClass, "scalar");
+const abiFatptrFn = abiClassifyBody.functionAbi.find((item) => item.name === "fatptrParam");
+assert.equal(abiFatptrFn.params[0].type, "Span<u8>");
+assert.equal(abiFatptrFn.params[0].abiClass, "fatptr");
+assert.equal(abiFatptrFn.return.abiClass, "maybe");
+const abiAggFn = abiClassifyBody.functionAbi.find((item) => item.name === "aggParam");
+assert.equal(abiAggFn.params[0].abiClass, "agg_mem");
+const abiMainFn = abiClassifyBody.functionAbi.find((item) => item.name === "main");
+assert.equal(abiMainFn.return.abiClass, "void");
+
+const abiFatptrDiag = await execFileAsync(zero, [
+  "build", "--json", "--emit", "obj", "--target", "linux-musl-x64",
+  "conformance/native/pass/abi-classify.0", "--out", `${outDir}/abi-classify.o`,
+]).catch((error) => error);
+const abiFatptrDiagBody = JSON.parse(abiFatptrDiag.stdout);
+assert.equal(abiFatptrDiagBody.diagnostics[0].code, "CGEN004");
+assert.match(abiFatptrDiagBody.diagnostics[0].message, /\(abi class: (fatptr|maybe|agg_mem)\)/);
 
 for (const runtimeFixture of [
   ["conformance/native/pass/indexing-primitives.0", "indexing-primitives", { stdout: "indexing primitives ok\n" }],

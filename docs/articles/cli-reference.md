@@ -157,3 +157,9 @@ zero abi check|dump [--json] [--target <target>] <input>
 zero tokens --json <input>
 zero parse --json <input>
 ```
+
+`zero abi dump --json` includes a `functionAbi` array that reports the System V
+AMD64-flavoured ABI class (`scalar`, `fatptr`, `ptr`, `maybe`, `agg_regs`,
+`agg_mem`, or `void`) for every parameter and return value. See
+[Target Capabilities](./target-capabilities.md) for the class meanings and how
+they surface in `CGEN004`.
