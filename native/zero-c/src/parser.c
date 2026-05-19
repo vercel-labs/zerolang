@@ -607,6 +607,25 @@ static Stmt *parse_statement(Parser *parser) {
     stmt->expr = parse_expr(parser);
     return stmt;
   }
+  if (match(parser, "with")) {
+    Stmt *stmt = new_stmt(STMT_WITH, start);
+    Token *effect_name = expect_ident(parser, "expected effect name after with");
+    if (effect_name) stmt->name = z_strdup(effect_name->text);
+    expect(parser, "handledBy", "expected 'handledBy' after effect name");
+    expect(parser, "{", "expected '{' before handler body");
+    while (!check(parser, "}") && current(parser)->kind != TOK_EOF && parser->diag->code == 0) {
+      if (check(parser, "pub") || check(parser, "fun")) {
+        Function op = parse_function(parser);
+        if (!stmt->handler_ops) stmt->handler_ops = calloc(1, sizeof(FunctionVec));
+        push_function((FunctionVec *)stmt->handler_ops, op);
+        continue;
+      }
+      fail(parser, "expected handler function declaration");
+      break;
+    }
+    expect(parser, "}", "expected '}' after handler body");
+    return stmt;
+  }
   if (match(parser, "return")) {
     Stmt *stmt = new_stmt(STMT_RETURN, start);
     if (!check(parser, "}")) stmt->expr = parse_expr(parser);
