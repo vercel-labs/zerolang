@@ -65,6 +65,9 @@ static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag
   *out = 0;
   for (size_t i = 0; i < fun->instr_len; i++) {
     const IrInstr *instr = &fun->instrs[i];
+    if (instr->kind == IR_INSTR_INDEX_FILL || instr->kind == IR_INSTR_FIELD_FILL) {
+      return a64_diag(diag, "direct AArch64 ELF object backend does not yet lower counted array/field fill loops", instr->line, instr->column, fun->name);
+    }
     if (instr->kind != IR_INSTR_RETURN || !instr->value || instr->value->kind != IR_VALUE_INT || instr->value->int_value > 65535) continue;
     *out = (uint32_t)instr->value->int_value;
     return true;
