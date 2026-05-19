@@ -1702,6 +1702,34 @@ static void append_c_export_header_json(ZBuf *buf, const Program *program) {
 
 static void append_c_imports_json(ZBuf *buf, const Program *program, const ZTargetInfo *target);
 
+static void append_abi_functions_json(ZBuf *buf, const Program *program) {
+  zbuf_append(buf, "[");
+  for (size_t i = 0; program && i < program->functions.len; i++) {
+    const Function *fun = &program->functions.items[i];
+    if (i > 0) zbuf_append(buf, ",");
+    zbuf_append(buf, "{\"name\":");
+    append_json_string(buf, fun->name);
+    zbuf_append(buf, ",\"return\":{\"type\":");
+    append_json_string(buf, fun->return_type ? fun->return_type : "Void");
+    zbuf_append(buf, ",\"abiClass\":");
+    append_json_string(buf, zero_abi_class_name(zero_abi_classify(fun->return_type)));
+    zbuf_append(buf, "},\"params\":[");
+    for (size_t param_index = 0; param_index < fun->params.len; param_index++) {
+      const Param *param = &fun->params.items[param_index];
+      if (param_index > 0) zbuf_append(buf, ",");
+      zbuf_append(buf, "{\"name\":");
+      append_json_string(buf, param->name);
+      zbuf_append(buf, ",\"type\":");
+      append_json_string(buf, param->type);
+      zbuf_append(buf, ",\"abiClass\":");
+      append_json_string(buf, zero_abi_class_name(zero_abi_classify(param->type)));
+      zbuf_append(buf, "}");
+    }
+    zbuf_append(buf, "]}");
+  }
+  zbuf_append(buf, "]");
+}
+
 static void append_abi_dump_json(ZBuf *buf, const SourceInput *input, const Program *program, const ZTargetInfo *target) {
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
   append_json_string(buf, input ? input->source_file : "");
@@ -1719,6 +1747,8 @@ static void append_abi_dump_json(ZBuf *buf, const SourceInput *input, const Prog
   append_abi_shapes_json(buf, program, target);
   zbuf_append(buf, ",\n  \"enums\": ");
   append_abi_enums_json(buf, program);
+  zbuf_append(buf, ",\n  \"functionAbi\": ");
+  append_abi_functions_json(buf, program);
   zbuf_append(buf, ",\n  \"cImports\": ");
   append_c_imports_json(buf, program, target);
   zbuf_append(buf, ",\n  \"cExports\": ");
@@ -3012,8 +3042,8 @@ static const ExplainInfo explain_infos[] = {
     "CGEN004",
     "codegen",
     "Direct backend unsupported",
-    "The selected direct backend cannot emit this target, object format, architecture, executable kind, or source feature yet.",
-    "Direct backends are target-specific and must report unsupported targets instead of routing through a removed compatibility backend.",
+    "The selected direct backend cannot emit this target, object format, architecture, executable kind, or source feature yet. Parameter and return rejections name the System V ABI class (scalar, fatptr, ptr, maybe, agg_regs, agg_mem) the backend would need to lower, e.g. \"(abi class: fatptr)\"; the direct backends currently lower only the scalar and void classes.",
+    "Direct backends are target-specific and must report unsupported targets instead of routing through a removed compatibility backend. Run zero abi dump --json to see the abiClass of every parameter and return value.",
     "Choose a target whose `zero targets --json` directBackend facts advertise the requested artifact, or use `--emit obj` where executable emission is not implemented.",
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",
     "zero build --emit obj --target linux-x64 examples/direct-call-add.0",
