@@ -8,7 +8,6 @@
 
 static void elf_append_u64(ZBuf *buf, uint64_t value) {
   if (buf == NULL) return;
-  if (len == 0ULL) return;
 
   elf_append_u32(buf, (uint32_t)value);
   elf_append_u32(buf, (uint32_t)(value >> 32));
