@@ -920,449 +920,77 @@ static bool is_world_stream_write_call(const Expr *expr, Scope *scope) {
   return expr && expr->kind == EXPR_CALL && is_world_stream_write_callee(expr->left, scope);
 }
 
-static int std_http_error_code(const char *name) {
-  if (!name) return -1;
-  if (strcmp(name, "std.http.errorNone") == 0) return 0;
-  if (strcmp(name, "std.http.errorInvalidUrl") == 0) return 1;
-  if (strcmp(name, "std.http.errorUnsupportedProtocol") == 0) return 2;
-  if (strcmp(name, "std.http.errorDns") == 0) return 3;
-  if (strcmp(name, "std.http.errorConnect") == 0) return 4;
-  if (strcmp(name, "std.http.errorTls") == 0) return 5;
-  if (strcmp(name, "std.http.errorTimeout") == 0) return 6;
-  if (strcmp(name, "std.http.errorTooLarge") == 0) return 7;
-  if (strcmp(name, "std.http.errorProviderUnavailable") == 0) return 8;
-  if (strcmp(name, "std.http.errorIo") == 0) return 9;
-  if (strcmp(name, "std.http.errorInvalidRequest") == 0) return 10;
-  return -1;
+typedef struct {
+  const char *name;
+  const char *ret;
+  int arg_count;
+  const char *args[4];
+} StdSig;
+
+#define STD_CALL_0(NAME, RET) \
+  { .name = (NAME), .ret = (RET), .arg_count = 0, .args = {NULL, NULL, NULL, NULL} },
+#define STD_CALL_1(NAME, RET, A0) \
+  { .name = (NAME), .ret = (RET), .arg_count = 1, .args = {(A0), NULL, NULL, NULL} },
+#define STD_CALL_2(NAME, RET, A0, A1) \
+  { .name = (NAME), .ret = (RET), .arg_count = 2, .args = {(A0), (A1), NULL, NULL} },
+#define STD_CALL_3(NAME, RET, A0, A1, A2) \
+  { .name = (NAME), .ret = (RET), .arg_count = 3, .args = {(A0), (A1), (A2), NULL} },
+#define STD_CALL_4(NAME, RET, A0, A1, A2, A3) \
+  { .name = (NAME), .ret = (RET), .arg_count = 4, .args = {(A0), (A1), (A2), (A3)} },
+
+static const StdSig STD_SIGS[] = {
+#include "std_calls.inc"
+};
+
+#undef STD_CALL_0
+#undef STD_CALL_1
+#undef STD_CALL_2
+#undef STD_CALL_3
+#undef STD_CALL_4
+
+#define STD_SIGS_LEN (sizeof STD_SIGS / sizeof STD_SIGS[0])
+
+static const StdSig *std_call_lookup(const char *name) {
+  if (!name) return NULL;
+  size_t lo = 0;
+  size_t hi = STD_SIGS_LEN;
+  while (lo < hi) {
+    size_t mid = lo + (hi - lo) / 2;
+    int c = strcmp(STD_SIGS[mid].name, name);
+    if (c == 0) return &STD_SIGS[mid];
+    if (c < 0) lo = mid + 1;
+    else hi = mid;
+  }
+  return NULL;
 }
 
-static const char *std_call_return_type(const Expr *callee) {
-  ZBuf name;
-  zbuf_init(&name);
-  member_name_buf(callee, &name);
-  const char *result = "Unknown";
-  if (strcmp(name.data, "std.codec.crc32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.codec.crc32Bytes") == 0) result = "u32";
-  else if (strcmp(name.data, "std.codec.encodedVarintLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.codec.readU8") == 0) result = "u8";
-  else if (strcmp(name.data, "std.codec.readU16") == 0) result = "u16";
-  else if (strcmp(name.data, "std.codec.readU32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.codec.writeU16") == 0) result = "u32";
-  else if (strcmp(name.data, "std.codec.writeU32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.codec.base64EncodedLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.codec.base64Encode") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.codec.hexEncode") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.codec.utf8Valid") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.codec.urlEncode") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.mem.copy") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.fill") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.eql") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.mem.span") == 0) result = "Span<u8>";
-  else if (strcmp(name.data, "std.mem.len") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.get") == 0) result = "Unknown";
-  else if (strcmp(name.data, "std.mem.eqlBytes") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.mem.nullAlloc") == 0) result = "NullAlloc";
-  else if (strcmp(name.data, "std.mem.fixedBufAlloc") == 0) result = "FixedBufAlloc";
-  else if (strcmp(name.data, "std.mem.arena") == 0) result = "FixedBufAlloc";
-  else if (strcmp(name.data, "std.mem.pageAlloc") == 0) result = "PageAlloc";
-  else if (strcmp(name.data, "std.mem.generalAlloc") == 0) result = "GeneralAlloc";
-  else if (strcmp(name.data, "std.mem.allocBytes") == 0) result = "Maybe<MutSpan<u8>>";
-  else if (strcmp(name.data, "std.mem.byteBuf") == 0) result = "Maybe<owned<ByteBuf>>";
-  else if (strcmp(name.data, "std.mem.vec") == 0) result = "Vec";
-  else if (strcmp(name.data, "std.mem.vecPush") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.mem.vecLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.vecCapacity") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.mapEmpty") == 0) result = "Map";
-  else if (strcmp(name.data, "std.mem.mapLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.setEmpty") == 0) result = "Set";
-  else if (strcmp(name.data, "std.mem.setLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.bufBytes") == 0) result = "MutSpan<u8>";
-  else if (strcmp(name.data, "std.mem.bufLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.mem.reset") == 0) result = "Void";
-  else if (strcmp(name.data, "std.mem.capacity") == 0) result = "usize";
-  else if (strcmp(name.data, "std.path.basename") == 0) result = "String";
-  else if (strcmp(name.data, "std.path.dirname") == 0) result = "String";
-  else if (strcmp(name.data, "std.path.extension") == 0) result = "String";
-  else if (strcmp(name.data, "std.path.join") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.path.normalize") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.path.relative") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.io.bufferedReader") == 0) result = "BufferedReader";
-  else if (strcmp(name.data, "std.io.bufferedWriter") == 0) result = "BufferedWriter";
-  else if (strcmp(name.data, "std.io.readerCapacity") == 0) result = "usize";
-  else if (strcmp(name.data, "std.io.writerCapacity") == 0) result = "usize";
-  else if (strcmp(name.data, "std.io.copy") == 0) result = "usize";
-  else if (strcmp(name.data, "std.parse.isAsciiDigit") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.parse.isAsciiAlpha") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.parse.isIdentifierStart") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.parse.isWhitespace") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.parse.scanDigits") == 0) result = "usize";
-  else if (strcmp(name.data, "std.parse.scanIdentifier") == 0) result = "usize";
-  else if (strcmp(name.data, "std.parse.parseU8") == 0) result = "Maybe<u8>";
-  else if (strcmp(name.data, "std.parse.parseU16") == 0) result = "Maybe<u16>";
-  else if (strcmp(name.data, "std.parse.parseU32") == 0) result = "Maybe<u32>";
-  else if (strcmp(name.data, "std.json.validate") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.json.validateBytes") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.json.parse") == 0) result = "Maybe<JsonDoc>";
-  else if (strcmp(name.data, "std.json.parseBytes") == 0) result = "Maybe<JsonDoc>";
-  else if (strcmp(name.data, "std.json.streamTokens") == 0) result = "usize";
-  else if (strcmp(name.data, "std.json.streamTokensBytes") == 0) result = "usize";
-  else if (strcmp(name.data, "std.json.writeString") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.json.decodeBoundary") == 0) result = "String";
-  else if (strcmp(name.data, "std.time.ms") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.seconds") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.add") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.sub") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.min") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.max") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.monotonic") == 0) result = "Duration";
-  else if (strcmp(name.data, "std.time.wallSeconds") == 0) result = "i64";
-  else if (strcmp(name.data, "std.time.asMsFloor") == 0) result = "i32";
-  else if (strcmp(name.data, "std.time.lessThan") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.rand.seed") == 0) result = "RandSource";
-  else if (strcmp(name.data, "std.rand.nextU32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.rand.entropyU32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.proc.spawn") == 0) result = "ProcStatus";
-  else if (strcmp(name.data, "std.proc.exitCode") == 0) result = "i32";
-  else if (strcmp(name.data, "std.crypto.hash32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.crypto.hmac32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.crypto.constantTimeEql") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.crypto.secureRandomU32") == 0) result = "u32";
-  else if (strcmp(name.data, "std.net.address") == 0) result = "Address";
-  else if (strcmp(name.data, "std.net.host") == 0) result = "Net";
-  else if (strcmp(name.data, "std.net.dnsName") == 0) result = "String";
-  else if (strcmp(name.data, "std.net.connect") == 0) result = "Maybe<Conn>";
-  else if (strcmp(name.data, "std.net.listen") == 0) result = "Maybe<Listener>";
-  else if (strcmp(name.data, "std.net.withTimeout") == 0) result = "Address";
-  else if (strcmp(name.data, "std.http.parseMethod") == 0) result = "HttpMethod";
-  else if (strcmp(name.data, "std.http.client") == 0) result = "HttpClient";
-  else if (strcmp(name.data, "std.http.server") == 0) result = "HttpServer";
-  else if (strcmp(name.data, "std.http.fetch") == 0) result = "HttpResult";
-  else if (strcmp(name.data, "std.http.resultOk") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.http.resultStatus") == 0) result = "u16";
-  else if (strcmp(name.data, "std.http.resultBodyLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.http.resultError") == 0) result = "HttpError";
-  else if (std_http_error_code(name.data) >= 0) result = "HttpError";
-  else if (strcmp(name.data, "std.http.responseLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.http.responseHeadersLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.http.responseBodyOffset") == 0) result = "usize";
-  else if (strcmp(name.data, "std.http.headerValue") == 0) result = "HttpHeaderValue";
-  else if (strcmp(name.data, "std.http.headerFound") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.http.headerOffset") == 0) result = "usize";
-  else if (strcmp(name.data, "std.http.headerLen") == 0) result = "usize";
-  else if (strcmp(name.data, "std.http.tlsBoundary") == 0) result = "String";
-  else if (strcmp(name.data, "std.args.len") == 0) result = "usize";
-  else if (strcmp(name.data, "std.args.get") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.env.get") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.fs.host") == 0) result = "Fs";
-  else if (strcmp(name.data, "std.fs.open") == 0) result = "Maybe<owned<File>>";
-  else if (strcmp(name.data, "std.fs.openOrRaise") == 0) result = "owned<File>";
-  else if (strcmp(name.data, "std.fs.create") == 0) result = "Maybe<owned<File>>";
-  else if (strcmp(name.data, "std.fs.createOrRaise") == 0) result = "owned<File>";
-  else if (strcmp(name.data, "std.fs.read") == 0) result = "usize";
-  else if (strcmp(name.data, "std.fs.readOrRaise") == 0) result = "usize";
-  else if (strcmp(name.data, "std.fs.write") == 0) result = "usize";
-  else if (strcmp(name.data, "std.fs.writeAll") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.writeAllOrRaise") == 0) result = "Void";
-  else if (strcmp(name.data, "std.fs.close") == 0) result = "Void";
-  else if (strcmp(name.data, "std.fs.readAll") == 0) result = "Maybe<owned<ByteBuf>>";
-  else if (strcmp(name.data, "std.fs.readAllOrRaise") == 0) result = "owned<ByteBuf>";
-  else if (strcmp(name.data, "std.fs.readBytes") == 0) result = "Maybe<usize>";
-  else if (strcmp(name.data, "std.fs.writeBytes") == 0) result = "Maybe<usize>";
-  else if (strcmp(name.data, "std.fs.exists") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.isDir") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.makeDir") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.removeDir") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.remove") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.rename") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.dirEntryCount") == 0) result = "Maybe<usize>";
-  else if (strcmp(name.data, "std.fs.tempName") == 0) result = "Maybe<String>";
-  else if (strcmp(name.data, "std.fs.atomicWrite") == 0) result = "Bool";
-  else if (strcmp(name.data, "std.fs.fileLen") == 0) result = "Maybe<usize>";
-  else if (strcmp(name.data, "std.fs.fileLenOrRaise") == 0) result = "usize";
-  zbuf_free(&name);
-  return result;
+#ifndef NDEBUG
+__attribute__((constructor))
+static void check_std_sigs_sorted(void) {
+  for (size_t i = 1; i < STD_SIGS_LEN; i++) {
+    if (strcmp(STD_SIGS[i - 1].name, STD_SIGS[i].name) >= 0) {
+      fprintf(stderr, "STD_SIGS not sorted: '%s' >= '%s' at index %zu\n",
+              STD_SIGS[i - 1].name, STD_SIGS[i].name, i);
+      abort();
+    }
+  }
+}
+#endif
+
+static const char *std_call_return_type(const char *name) {
+  const StdSig *sig = std_call_lookup(name);
+  return sig ? sig->ret : "Unknown";
 }
 
 static int std_call_arg_count(const char *name) {
-  if (strcmp(name, "std.codec.crc32") == 0) return 1;
-  if (strcmp(name, "std.codec.crc32Bytes") == 0) return 1;
-  if (strcmp(name, "std.codec.encodedVarintLen") == 0) return 1;
-  if (strcmp(name, "std.codec.readU8") == 0) return 1;
-  if (strcmp(name, "std.codec.readU16") == 0) return 1;
-  if (strcmp(name, "std.codec.readU32") == 0) return 1;
-  if (strcmp(name, "std.codec.writeU16") == 0) return 1;
-  if (strcmp(name, "std.codec.writeU32") == 0) return 1;
-  if (strcmp(name, "std.codec.base64EncodedLen") == 0) return 1;
-  if (strcmp(name, "std.codec.base64Encode") == 0) return 2;
-  if (strcmp(name, "std.codec.hexEncode") == 0) return 2;
-  if (strcmp(name, "std.codec.utf8Valid") == 0) return 1;
-  if (strcmp(name, "std.codec.urlEncode") == 0) return 2;
-  if (strcmp(name, "std.mem.copy") == 0) return 2;
-  if (strcmp(name, "std.mem.fill") == 0) return 2;
-  if (strcmp(name, "std.mem.eql") == 0) return 2;
-  if (strcmp(name, "std.mem.span") == 0) return 1;
-  if (strcmp(name, "std.mem.len") == 0) return 1;
-  if (strcmp(name, "std.mem.get") == 0) return 2;
-  if (strcmp(name, "std.mem.eqlBytes") == 0) return 2;
-  if (strcmp(name, "std.mem.nullAlloc") == 0) return 0;
-  if (strcmp(name, "std.mem.fixedBufAlloc") == 0) return 1;
-  if (strcmp(name, "std.mem.arena") == 0) return 1;
-  if (strcmp(name, "std.mem.pageAlloc") == 0) return 0;
-  if (strcmp(name, "std.mem.generalAlloc") == 0) return 0;
-  if (strcmp(name, "std.mem.allocBytes") == 0) return 2;
-  if (strcmp(name, "std.mem.byteBuf") == 0) return 2;
-  if (strcmp(name, "std.mem.vec") == 0) return 1;
-  if (strcmp(name, "std.mem.vecPush") == 0) return 2;
-  if (strcmp(name, "std.mem.vecLen") == 0) return 1;
-  if (strcmp(name, "std.mem.vecCapacity") == 0) return 1;
-  if (strcmp(name, "std.mem.mapEmpty") == 0) return 0;
-  if (strcmp(name, "std.mem.mapLen") == 0) return 1;
-  if (strcmp(name, "std.mem.setEmpty") == 0) return 0;
-  if (strcmp(name, "std.mem.setLen") == 0) return 1;
-  if (strcmp(name, "std.mem.bufBytes") == 0) return 1;
-  if (strcmp(name, "std.mem.bufLen") == 0) return 1;
-  if (strcmp(name, "std.mem.reset") == 0) return 1;
-  if (strcmp(name, "std.mem.capacity") == 0) return 1;
-  if (strcmp(name, "std.path.basename") == 0) return 1;
-  if (strcmp(name, "std.path.dirname") == 0) return 1;
-  if (strcmp(name, "std.path.extension") == 0) return 1;
-  if (strcmp(name, "std.path.join") == 0) return 3;
-  if (strcmp(name, "std.path.normalize") == 0) return 2;
-  if (strcmp(name, "std.path.relative") == 0) return 3;
-  if (strcmp(name, "std.io.bufferedReader") == 0) return 1;
-  if (strcmp(name, "std.io.bufferedWriter") == 0) return 1;
-  if (strcmp(name, "std.io.readerCapacity") == 0) return 1;
-  if (strcmp(name, "std.io.writerCapacity") == 0) return 1;
-  if (strcmp(name, "std.io.copy") == 0) return 2;
-  if (strcmp(name, "std.parse.isAsciiDigit") == 0) return 1;
-  if (strcmp(name, "std.parse.isAsciiAlpha") == 0) return 1;
-  if (strcmp(name, "std.parse.isIdentifierStart") == 0) return 1;
-  if (strcmp(name, "std.parse.isWhitespace") == 0) return 1;
-  if (strcmp(name, "std.parse.scanDigits") == 0) return 1;
-  if (strcmp(name, "std.parse.scanIdentifier") == 0) return 1;
-  if (strcmp(name, "std.parse.parseU8") == 0) return 1;
-  if (strcmp(name, "std.parse.parseU16") == 0) return 1;
-  if (strcmp(name, "std.parse.parseU32") == 0) return 1;
-  if (strcmp(name, "std.json.validate") == 0) return 1;
-  if (strcmp(name, "std.json.validateBytes") == 0) return 1;
-  if (strcmp(name, "std.json.parse") == 0) return 2;
-  if (strcmp(name, "std.json.parseBytes") == 0) return 2;
-  if (strcmp(name, "std.json.streamTokens") == 0) return 1;
-  if (strcmp(name, "std.json.streamTokensBytes") == 0) return 1;
-  if (strcmp(name, "std.json.writeString") == 0) return 2;
-  if (strcmp(name, "std.json.decodeBoundary") == 0) return 0;
-  if (strcmp(name, "std.time.ms") == 0) return 1;
-  if (strcmp(name, "std.time.seconds") == 0) return 1;
-  if (strcmp(name, "std.time.add") == 0) return 2;
-  if (strcmp(name, "std.time.sub") == 0) return 2;
-  if (strcmp(name, "std.time.asMsFloor") == 0) return 1;
-  if (strcmp(name, "std.time.min") == 0) return 2;
-  if (strcmp(name, "std.time.max") == 0) return 2;
-  if (strcmp(name, "std.time.lessThan") == 0) return 2;
-  if (strcmp(name, "std.time.monotonic") == 0) return 0;
-  if (strcmp(name, "std.time.wallSeconds") == 0) return 0;
-  if (strcmp(name, "std.rand.seed") == 0) return 1;
-  if (strcmp(name, "std.rand.nextU32") == 0) return 1;
-  if (strcmp(name, "std.rand.entropyU32") == 0) return 0;
-  if (strcmp(name, "std.proc.spawn") == 0) return 1;
-  if (strcmp(name, "std.proc.exitCode") == 0) return 1;
-  if (strcmp(name, "std.crypto.hash32") == 0) return 1;
-  if (strcmp(name, "std.crypto.hmac32") == 0) return 2;
-  if (strcmp(name, "std.crypto.constantTimeEql") == 0) return 2;
-  if (strcmp(name, "std.crypto.secureRandomU32") == 0) return 0;
-  if (strcmp(name, "std.net.address") == 0) return 2;
-  if (strcmp(name, "std.net.host") == 0) return 0;
-  if (strcmp(name, "std.net.dnsName") == 0) return 1;
-  if (strcmp(name, "std.net.connect") == 0) return 2;
-  if (strcmp(name, "std.net.listen") == 0) return 2;
-  if (strcmp(name, "std.net.withTimeout") == 0) return 2;
-  if (strcmp(name, "std.http.parseMethod") == 0) return 1;
-  if (strcmp(name, "std.http.client") == 0) return 1;
-  if (strcmp(name, "std.http.server") == 0) return 2;
-  if (strcmp(name, "std.http.fetch") == 0) return 4;
-  if (strcmp(name, "std.http.resultOk") == 0) return 1;
-  if (strcmp(name, "std.http.resultStatus") == 0) return 1;
-  if (strcmp(name, "std.http.resultBodyLen") == 0) return 1;
-  if (strcmp(name, "std.http.resultError") == 0) return 1;
-  if (std_http_error_code(name) >= 0) return 0;
-  if (strcmp(name, "std.http.responseLen") == 0) return 1;
-  if (strcmp(name, "std.http.responseHeadersLen") == 0) return 1;
-  if (strcmp(name, "std.http.responseBodyOffset") == 0) return 1;
-  if (strcmp(name, "std.http.headerValue") == 0) return 2;
-  if (strcmp(name, "std.http.headerFound") == 0) return 1;
-  if (strcmp(name, "std.http.headerOffset") == 0) return 1;
-  if (strcmp(name, "std.http.headerLen") == 0) return 1;
-  if (strcmp(name, "std.http.tlsBoundary") == 0) return 0;
-  if (strcmp(name, "std.args.len") == 0) return 0;
-  if (strcmp(name, "std.args.get") == 0) return 1;
-  if (strcmp(name, "std.env.get") == 0) return 1;
-  if (strcmp(name, "std.fs.host") == 0) return 0;
-  if (strcmp(name, "std.fs.open") == 0) return 2;
-  if (strcmp(name, "std.fs.openOrRaise") == 0) return 2;
-  if (strcmp(name, "std.fs.create") == 0) return 2;
-  if (strcmp(name, "std.fs.createOrRaise") == 0) return 2;
-  if (strcmp(name, "std.fs.read") == 0) return 2;
-  if (strcmp(name, "std.fs.readOrRaise") == 0) return 2;
-  if (strcmp(name, "std.fs.write") == 0) return 2;
-  if (strcmp(name, "std.fs.writeAll") == 0) return 2;
-  if (strcmp(name, "std.fs.writeAllOrRaise") == 0) return 2;
-  if (strcmp(name, "std.fs.close") == 0) return 1;
-  if (strcmp(name, "std.fs.readAll") == 0) return 4;
-  if (strcmp(name, "std.fs.readAllOrRaise") == 0) return 4;
-  if (strcmp(name, "std.fs.readBytes") == 0) return 2;
-  if (strcmp(name, "std.fs.writeBytes") == 0) return 2;
-  if (strcmp(name, "std.fs.exists") == 0) return 1;
-  if (strcmp(name, "std.fs.isDir") == 0) return 1;
-  if (strcmp(name, "std.fs.makeDir") == 0) return 1;
-  if (strcmp(name, "std.fs.removeDir") == 0) return 1;
-  if (strcmp(name, "std.fs.remove") == 0) return 1;
-  if (strcmp(name, "std.fs.rename") == 0) return 2;
-  if (strcmp(name, "std.fs.dirEntryCount") == 0) return 1;
-  if (strcmp(name, "std.fs.tempName") == 0) return 2;
-  if (strcmp(name, "std.fs.atomicWrite") == 0) return 3;
-  if (strcmp(name, "std.fs.fileLen") == 0) return 1;
-  if (strcmp(name, "std.fs.fileLenOrRaise") == 0) return 1;
-  return -1;
+  const StdSig *sig = std_call_lookup(name);
+  return sig ? sig->arg_count : -1;
 }
 
 static const char *std_call_arg_type(const char *name, size_t index) {
-  if (strcmp(name, "std.codec.crc32") == 0) return "String";
-  if (strcmp(name, "std.codec.crc32Bytes") == 0) return "Span<u8>";
-  if (strcmp(name, "std.codec.encodedVarintLen") == 0) return "u32";
-  if (strcmp(name, "std.codec.readU8") == 0) return "String";
-  if (strcmp(name, "std.codec.readU16") == 0) return "String";
-  if (strcmp(name, "std.codec.readU32") == 0) return "String";
-  if (strcmp(name, "std.codec.writeU16") == 0) return "u32";
-  if (strcmp(name, "std.codec.writeU32") == 0) return "u32";
-  if (strcmp(name, "std.codec.base64EncodedLen") == 0) return "usize";
-  if (strcmp(name, "std.codec.base64Encode") == 0) return index == 0 ? "MutSpan<u8>" : "Span<u8>";
-  if (strcmp(name, "std.codec.hexEncode") == 0) return index == 0 ? "MutSpan<u8>" : "Span<u8>";
-  if (strcmp(name, "std.codec.utf8Valid") == 0) return "Span<u8>";
-  if (strcmp(name, "std.codec.urlEncode") == 0) return index == 0 ? "MutSpan<u8>" : "String";
-  if (strcmp(name, "std.mem.copy") == 0) return index == 0 ? "MutSpan<u8>" : "Span<u8>";
-  if (strcmp(name, "std.mem.fill") == 0) return index == 0 ? "MutSpan<u8>" : "u8";
-  if (strcmp(name, "std.mem.eql") == 0) return "String";
-  if (strcmp(name, "std.mem.span") == 0) return "String";
-  if (strcmp(name, "std.mem.get") == 0) return index == 1 ? "usize" : NULL;
-  if (strcmp(name, "std.mem.fixedBufAlloc") == 0) return "MutSpan<u8>";
-  if (strcmp(name, "std.mem.arena") == 0) return "MutSpan<u8>";
-  if (strcmp(name, "std.mem.allocBytes") == 0) return index == 1 ? "usize" : NULL;
-  if (strcmp(name, "std.mem.byteBuf") == 0) return index == 1 ? "usize" : NULL;
-  if (strcmp(name, "std.mem.vec") == 0) return "MutSpan<u8>";
-  if (strcmp(name, "std.mem.vecPush") == 0) return index == 0 ? "mutref<Vec>" : "u8";
-  if (strcmp(name, "std.mem.vecLen") == 0) return "ref<Vec>";
-  if (strcmp(name, "std.mem.vecCapacity") == 0) return "ref<Vec>";
-  if (strcmp(name, "std.mem.mapLen") == 0) return "ref<Map>";
-  if (strcmp(name, "std.mem.setLen") == 0) return "ref<Set>";
-  if (strcmp(name, "std.mem.bufBytes") == 0) return "ref<ByteBuf>";
-  if (strcmp(name, "std.mem.bufLen") == 0) return "ref<ByteBuf>";
-  if (strcmp(name, "std.mem.reset") == 0) return "mutref<FixedBufAlloc>";
-  if (strcmp(name, "std.mem.capacity") == 0) return "FixedBufAlloc";
-  if (strcmp(name, "std.path.basename") == 0) return "String";
-  if (strcmp(name, "std.path.dirname") == 0) return "String";
-  if (strcmp(name, "std.path.extension") == 0) return "String";
-  if (strcmp(name, "std.path.join") == 0) return index == 0 ? "MutSpan<u8>" : "String";
-  if (strcmp(name, "std.path.normalize") == 0) return index == 0 ? "MutSpan<u8>" : "String";
-  if (strcmp(name, "std.path.relative") == 0) return index == 0 ? "MutSpan<u8>" : "String";
-  if (strcmp(name, "std.io.bufferedReader") == 0) return "MutSpan<u8>";
-  if (strcmp(name, "std.io.bufferedWriter") == 0) return "MutSpan<u8>";
-  if (strcmp(name, "std.io.readerCapacity") == 0) return "ref<BufferedReader>";
-  if (strcmp(name, "std.io.writerCapacity") == 0) return "ref<BufferedWriter>";
-  if (strcmp(name, "std.io.copy") == 0) return index == 0 ? "MutSpan<u8>" : "Span<u8>";
-  if (strcmp(name, "std.parse.isAsciiDigit") == 0) return "String";
-  if (strcmp(name, "std.parse.isAsciiAlpha") == 0) return "String";
-  if (strcmp(name, "std.parse.isIdentifierStart") == 0) return "String";
-  if (strcmp(name, "std.parse.isWhitespace") == 0) return "String";
-  if (strcmp(name, "std.parse.scanDigits") == 0) return "String";
-  if (strcmp(name, "std.parse.scanIdentifier") == 0) return "String";
-  if (strcmp(name, "std.parse.parseU8") == 0) return "String";
-  if (strcmp(name, "std.parse.parseU16") == 0) return "String";
-  if (strcmp(name, "std.parse.parseU32") == 0) return "String";
-  if (strcmp(name, "std.json.validate") == 0) return "String";
-  if (strcmp(name, "std.json.validateBytes") == 0) return "Span<u8>";
-  if (strcmp(name, "std.json.parse") == 0) return index == 1 ? "String" : NULL;
-  if (strcmp(name, "std.json.parseBytes") == 0) return index == 1 ? "Span<u8>" : NULL;
-  if (strcmp(name, "std.json.streamTokens") == 0) return "String";
-  if (strcmp(name, "std.json.streamTokensBytes") == 0) return "Span<u8>";
-  if (strcmp(name, "std.json.writeString") == 0) return index == 0 ? "MutSpan<u8>" : "String";
-  if (strcmp(name, "std.time.ms") == 0) return "i32";
-  if (strcmp(name, "std.time.seconds") == 0) return "i32";
-  if (strcmp(name, "std.time.add") == 0) return index == 0 ? "Duration" : "Duration";
-  if (strcmp(name, "std.time.sub") == 0) return index == 0 ? "Duration" : "Duration";
-  if (strcmp(name, "std.time.asMsFloor") == 0) return "Duration";
-  if (strcmp(name, "std.time.min") == 0) return "Duration";
-  if (strcmp(name, "std.time.max") == 0) return "Duration";
-  if (strcmp(name, "std.time.lessThan") == 0) return "Duration";
-  if (strcmp(name, "std.rand.seed") == 0) return "u32";
-  if (strcmp(name, "std.rand.nextU32") == 0) return "mutref<RandSource>";
-  if (strcmp(name, "std.proc.spawn") == 0) return "String";
-  if (strcmp(name, "std.proc.exitCode") == 0) return "ProcStatus";
-  if (strcmp(name, "std.crypto.hash32") == 0) return "Span<u8>";
-  if (strcmp(name, "std.crypto.hmac32") == 0) return "Span<u8>";
-  if (strcmp(name, "std.crypto.constantTimeEql") == 0) return index == 0 ? "Span<u8>" : "Span<u8>";
-  if (strcmp(name, "std.net.address") == 0) return index == 0 ? "String" : "u16";
-  if (strcmp(name, "std.net.dnsName") == 0) return "Address";
-  if (strcmp(name, "std.net.connect") == 0) return index == 0 ? "Net" : "Address";
-  if (strcmp(name, "std.net.listen") == 0) return index == 0 ? "Net" : "Address";
-  if (strcmp(name, "std.net.withTimeout") == 0) return index == 0 ? "Address" : "Duration";
-  if (strcmp(name, "std.http.parseMethod") == 0) return "String";
-  if (strcmp(name, "std.http.client") == 0) return "Net";
-  if (strcmp(name, "std.http.server") == 0) return index == 0 ? "Net" : "Address";
-  if (strcmp(name, "std.http.fetch") == 0) {
-    if (index == 0) return "HttpClient";
-    if (index == 1) return "Span<u8>";
-    if (index == 2) return "MutSpan<u8>";
-    return "Duration";
-  }
-  if (strcmp(name, "std.http.resultOk") == 0 ||
-      strcmp(name, "std.http.resultStatus") == 0 ||
-      strcmp(name, "std.http.resultBodyLen") == 0 ||
-      strcmp(name, "std.http.resultError") == 0) return "HttpResult";
-  if (strcmp(name, "std.http.responseLen") == 0 ||
-      strcmp(name, "std.http.responseHeadersLen") == 0 ||
-      strcmp(name, "std.http.responseBodyOffset") == 0) return "Span<u8>";
-  if (strcmp(name, "std.http.headerValue") == 0) return "Span<u8>";
-  if (strcmp(name, "std.http.headerFound") == 0 ||
-      strcmp(name, "std.http.headerOffset") == 0 ||
-      strcmp(name, "std.http.headerLen") == 0) return "HttpHeaderValue";
-  if (strcmp(name, "std.args.get") == 0) return "usize";
-  if (strcmp(name, "std.env.get") == 0) return "String";
-  if (strcmp(name, "std.fs.open") == 0) return index == 0 ? "Fs" : "String";
-  if (strcmp(name, "std.fs.openOrRaise") == 0) return index == 0 ? "Fs" : "String";
-  if (strcmp(name, "std.fs.create") == 0) return index == 0 ? "Fs" : "String";
-  if (strcmp(name, "std.fs.createOrRaise") == 0) return index == 0 ? "Fs" : "String";
-  if (strcmp(name, "std.fs.read") == 0) return index == 0 ? "String" : "MutSpan<u8>";
-  if (strcmp(name, "std.fs.readOrRaise") == 0) return index == 0 ? "mutref<File>" : "MutSpan<u8>";
-  if (strcmp(name, "std.fs.write") == 0) return "String";
-  if (strcmp(name, "std.fs.writeAll") == 0) return index == 0 ? "mutref<File>" : "Span<u8>";
-  if (strcmp(name, "std.fs.writeAllOrRaise") == 0) return index == 0 ? "mutref<File>" : "Span<u8>";
-  if (strcmp(name, "std.fs.close") == 0) return "mutref<File>";
-  if (strcmp(name, "std.fs.readAll") == 0) {
-    if (index == 1) return "Fs";
-    if (index == 2) return "String";
-    if (index == 3) return "usize";
-    return NULL;
-  }
-  if (strcmp(name, "std.fs.readAllOrRaise") == 0) {
-    if (index == 1) return "Fs";
-    if (index == 2) return "String";
-    if (index == 3) return "usize";
-    return NULL;
-  }
-  if (strcmp(name, "std.fs.readBytes") == 0) return index == 0 ? "String" : "MutSpan<u8>";
-  if (strcmp(name, "std.fs.writeBytes") == 0) return index == 0 ? "String" : "Span<u8>";
-  if (strcmp(name, "std.fs.exists") == 0) return "String";
-  if (strcmp(name, "std.fs.isDir") == 0) return "String";
-  if (strcmp(name, "std.fs.makeDir") == 0) return "String";
-  if (strcmp(name, "std.fs.removeDir") == 0) return "String";
-  if (strcmp(name, "std.fs.remove") == 0) return "String";
-  if (strcmp(name, "std.fs.rename") == 0) return "String";
-  if (strcmp(name, "std.fs.dirEntryCount") == 0) return "String";
-  if (strcmp(name, "std.fs.tempName") == 0) return index == 0 ? "MutSpan<u8>" : "String";
-  if (strcmp(name, "std.fs.atomicWrite") == 0) return index == 2 ? "Span<u8>" : "String";
-  if (strcmp(name, "std.fs.fileLen") == 0) return "mutref<File>";
-  if (strcmp(name, "std.fs.fileLenOrRaise") == 0) return "mutref<File>";
-  return NULL;
+  const StdSig *sig = std_call_lookup(name);
+  if (!sig || index >= (size_t)sig->arg_count) return NULL;
+  return sig->args[index];
 }
 
 static bool type_has_generic_arg(const char *type, const char *name, const char **inner, size_t *inner_len) {
@@ -3824,7 +3452,12 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
           return constrained_return_type;
         }
         if (expr->left->left && expr->left->left->kind == EXPR_IDENT && find_choice(program, expr->left->left->text)) return expr->left->left->text;
-        return std_call_return_type(expr->left);
+        ZBuf callee_name;
+        zbuf_init(&callee_name);
+        member_name_buf(expr->left, &callee_name);
+        const char *result = std_call_return_type(callee_name.data);
+        zbuf_free(&callee_name);
+        return result;
       }
       return "Unknown";
     }
@@ -5067,7 +4700,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
               return set_diag_detail(diag, 3012, message, expr->args.items[i]->line, expr->args.items[i]->column, expected, actual, "pass a compatible value");
             }
           }
-          set_expr_resolved_type(expr, std_call_return_type(expr->left));
+          set_expr_resolved_type(expr, std_call_return_type(std_name.data));
         } else if (strncmp(std_name.data, "std.", strlen("std.")) == 0) {
           char message[256];
           snprintf(message, sizeof(message), "unknown std helper '%s'", std_name.data);
