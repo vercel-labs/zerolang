@@ -29,7 +29,7 @@ cc -o /tmp/agent-sum /tmp/agent-sum.o
 
 ## Agent constraints (pilot benchmark)
 
-From a Haiku pilot on five CLI tasks ([results](https://github.com/HKTITAN/zero-agent-bench/blob/main/results/PILOT.md)):
+From benchmarks on [zerolang.ai](https://zerolang.ai) CLI tasks ([full results](https://github.com/HKTITAN/zero-agent-bench/blob/main/results/RESULTS.md), [pilot](https://github.com/HKTITAN/zero-agent-bench/blob/main/results/PILOT.md)):
 
 - Avoid `!` negation and `else if` (use positive branches and nested `if`).
 - Prefer `argv[1]` file paths over `world.stdin` when reading input.
