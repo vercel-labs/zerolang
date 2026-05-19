@@ -345,7 +345,7 @@ static int precedence(const char *op) {
 }
 
 static Expr *new_expr(ExprKind kind, Token *token) {
-  Expr *expr = calloc(1, sizeof(Expr));
+  Expr *expr = z_checked_calloc(1, sizeof(Expr));
   expr->kind = kind;
   expr->line = token->line;
   expr->column = token->column;
@@ -562,7 +562,7 @@ static Expr *parse_expr(Parser *parser) {
 }
 
 static Stmt *new_stmt(StmtKind kind, Token *token) {
-  Stmt *stmt = calloc(1, sizeof(Stmt));
+  Stmt *stmt = z_checked_calloc(1, sizeof(Stmt));
   stmt->kind = kind;
   stmt->line = token->line;
   stmt->column = token->column;

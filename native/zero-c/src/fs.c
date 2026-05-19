@@ -236,11 +236,11 @@ static char *normalize_path_text(const char *path) {
       if (segment_count > 0 && strcmp(segments[segment_count - 1], "..") != 0) {
         segment_count--;
       } else if (!absolute) {
-        segments = realloc(segments, (segment_count + 1) * sizeof(char *));
+        segments = z_checked_reallocarray(segments, segment_count + 1, sizeof(char *));
         segments[segment_count++] = start;
       }
     } else {
-      segments = realloc(segments, (segment_count + 1) * sizeof(char *));
+      segments = z_checked_reallocarray(segments, segment_count + 1, sizeof(char *));
       segments[segment_count++] = start;
     }
     if (!saved) break;
@@ -280,13 +280,13 @@ static unsigned long long fs_mix_hash_text(unsigned long long hash, const char *
 }
 
 static void source_input_push_file(SourceInput *input, const char *path) {
-  input->source_files = realloc(input->source_files, (input->source_file_count + 1) * sizeof(char *));
+  input->source_files = z_checked_reallocarray(input->source_files, input->source_file_count + 1, sizeof(char *));
   input->source_files[input->source_file_count++] = z_strdup(path);
 }
 
 static void source_input_push_source_line(SourceInput *input, const char *path, int original_line) {
-  input->source_line_paths = realloc(input->source_line_paths, (input->source_line_count + 1) * sizeof(char *));
-  input->source_line_numbers = realloc(input->source_line_numbers, (input->source_line_count + 1) * sizeof(int));
+  input->source_line_paths = z_checked_reallocarray(input->source_line_paths, input->source_line_count + 1, sizeof(char *));
+  input->source_line_numbers = z_checked_reallocarray(input->source_line_numbers, input->source_line_count + 1, sizeof(int));
   input->source_line_paths[input->source_line_count] = z_strdup(path);
   input->source_line_numbers[input->source_line_count] = original_line > 0 ? original_line : 1;
   input->source_line_count++;
@@ -298,26 +298,26 @@ static void source_input_push_final_source_line(SourceInput *input) {
 }
 
 static void source_input_push_import(SourceInput *input, const char *name) {
-  input->imports = realloc(input->imports, (input->import_count + 1) * sizeof(char *));
+  input->imports = z_checked_reallocarray(input->imports, input->import_count + 1, sizeof(char *));
   input->imports[input->import_count++] = z_strdup(name);
 }
 
 static void source_input_push_module(SourceInput *input, const char *name, const char *path) {
-  input->module_names = realloc(input->module_names, (input->module_count + 1) * sizeof(char *));
-  input->module_paths = realloc(input->module_paths, (input->module_count + 1) * sizeof(char *));
+  input->module_names = z_checked_reallocarray(input->module_names, input->module_count + 1, sizeof(char *));
+  input->module_paths = z_checked_reallocarray(input->module_paths, input->module_count + 1, sizeof(char *));
   input->module_names[input->module_count] = z_strdup(name);
   input->module_paths[input->module_count] = z_strdup(path);
   input->module_count++;
 }
 
 static void source_input_push_import_edge(SourceInput *input, const char *from, const char *to, const char *path, const char *source_path, int line, int column, int length) {
-  input->import_from = realloc(input->import_from, (input->import_edge_count + 1) * sizeof(char *));
-  input->import_to = realloc(input->import_to, (input->import_edge_count + 1) * sizeof(char *));
-  input->import_paths = realloc(input->import_paths, (input->import_edge_count + 1) * sizeof(char *));
-  input->import_source_paths = realloc(input->import_source_paths, (input->import_edge_count + 1) * sizeof(char *));
-  input->import_lines = realloc(input->import_lines, (input->import_edge_count + 1) * sizeof(int));
-  input->import_columns = realloc(input->import_columns, (input->import_edge_count + 1) * sizeof(int));
-  input->import_lengths = realloc(input->import_lengths, (input->import_edge_count + 1) * sizeof(int));
+  input->import_from = z_checked_reallocarray(input->import_from, input->import_edge_count + 1, sizeof(char *));
+  input->import_to = z_checked_reallocarray(input->import_to, input->import_edge_count + 1, sizeof(char *));
+  input->import_paths = z_checked_reallocarray(input->import_paths, input->import_edge_count + 1, sizeof(char *));
+  input->import_source_paths = z_checked_reallocarray(input->import_source_paths, input->import_edge_count + 1, sizeof(char *));
+  input->import_lines = z_checked_reallocarray(input->import_lines, input->import_edge_count + 1, sizeof(int));
+  input->import_columns = z_checked_reallocarray(input->import_columns, input->import_edge_count + 1, sizeof(int));
+  input->import_lengths = z_checked_reallocarray(input->import_lengths, input->import_edge_count + 1, sizeof(int));
   input->import_from[input->import_edge_count] = z_strdup(from);
   input->import_to[input->import_edge_count] = z_strdup(to);
   input->import_paths[input->import_edge_count] = z_strdup(path ? path : "");
@@ -329,7 +329,7 @@ static void source_input_push_import_edge(SourceInput *input, const char *from, 
 }
 
 static void source_input_push_dependency(SourceInput *input, const ZManifestDependency *dep, const char *resolved_manifest, const char *resolved_name, const char *resolved_version, const char *status, bool direct) {
-  input->dependencies = realloc(input->dependencies, (input->dependency_count + 1) * sizeof(SourceDependency));
+  input->dependencies = z_checked_reallocarray(input->dependencies, input->dependency_count + 1, sizeof(SourceDependency));
   SourceDependency *item = &input->dependencies[input->dependency_count++];
   memset(item, 0, sizeof(*item));
   item->name = z_strdup(dep && dep->name ? dep->name : "");
@@ -379,10 +379,10 @@ static bool source_input_push_symbol(SourceInput *input, const char *module, con
       }
     }
   }
-  input->symbol_names = realloc(input->symbol_names, (input->symbol_count + 1) * sizeof(char *));
-  input->symbol_modules = realloc(input->symbol_modules, (input->symbol_count + 1) * sizeof(char *));
-  input->symbol_kinds = realloc(input->symbol_kinds, (input->symbol_count + 1) * sizeof(char *));
-  input->symbol_public = realloc(input->symbol_public, (input->symbol_count + 1) * sizeof(bool));
+  input->symbol_names = z_checked_reallocarray(input->symbol_names, input->symbol_count + 1, sizeof(char *));
+  input->symbol_modules = z_checked_reallocarray(input->symbol_modules, input->symbol_count + 1, sizeof(char *));
+  input->symbol_kinds = z_checked_reallocarray(input->symbol_kinds, input->symbol_count + 1, sizeof(char *));
+  input->symbol_public = z_checked_reallocarray(input->symbol_public, input->symbol_count + 1, sizeof(bool));
   input->symbol_names[input->symbol_count] = z_strdup(name);
   input->symbol_modules[input->symbol_count] = z_strdup(module);
   input->symbol_kinds[input->symbol_count] = z_strdup(kind ? kind : "unknown");
@@ -761,7 +761,7 @@ static bool resolve_imported_source(const char *path, const char *src_root, Sour
   char *source = z_read_file(path, diag);
   if (!source) return false;
   char *module_name = module_name_from_path(src_root, path);
-  *stack = realloc(*stack, (*stack_len + 1) * sizeof(char *));
+  *stack = z_checked_reallocarray(*stack, *stack_len + 1, sizeof(char *));
   (*stack)[(*stack_len)++] = z_strdup(path);
   bool ok = scan_imports_and_append_dependencies(source, src_root, module_name, path, input, combined, diag, stack, stack_len);
   free((*stack)[--(*stack_len)]);
@@ -967,12 +967,12 @@ static char *json_get_array_path(const char *json, const char **path, size_t pat
 }
 
 static void manifest_push_c_lib(ZManifest *manifest, ZManifestCLib lib) {
-  manifest->c_libs = realloc(manifest->c_libs, (manifest->c_lib_count + 1) * sizeof(ZManifestCLib));
+  manifest->c_libs = z_checked_reallocarray(manifest->c_libs, manifest->c_lib_count + 1, sizeof(ZManifestCLib));
   manifest->c_libs[manifest->c_lib_count++] = lib;
 }
 
 static void manifest_push_dependency(ZManifest *manifest, ZManifestDependency dep) {
-  manifest->dependencies = realloc(manifest->dependencies, (manifest->dependency_count + 1) * sizeof(ZManifestDependency));
+  manifest->dependencies = z_checked_reallocarray(manifest->dependencies, manifest->dependency_count + 1, sizeof(ZManifestDependency));
   manifest->dependencies[manifest->dependency_count++] = dep;
 }
 
@@ -1293,7 +1293,7 @@ static bool resolve_manifest_dependencies(const char *manifest_path, const ZMani
       return false;
     }
     source_input_push_dependency(out, dep, dep_manifest_path, resolved_name, resolved_version, "path-resolved", direct);
-    *stack = realloc(*stack, (*stack_len + 1) * sizeof(char *));
+    *stack = z_checked_reallocarray(*stack, *stack_len + 1, sizeof(char *));
     (*stack)[(*stack_len)++] = z_strdup(dep_manifest_path);
     bool ok = resolve_manifest_dependencies(dep_manifest_path, &parsed_dep, out, diag, stack, stack_len, false);
     free((*stack)[--(*stack_len)]);
@@ -1359,7 +1359,7 @@ bool z_resolve_source(const char *input, SourceInput *out, ZDiag *diag) {
     out->manifest_hash = fs_fnv1a_text(manifest);
     char **dependency_stack = NULL;
     size_t dependency_stack_len = 0;
-    dependency_stack = realloc(dependency_stack, sizeof(char *));
+    dependency_stack = z_checked_reallocarray(dependency_stack, 1, sizeof(char *));
     dependency_stack[dependency_stack_len++] = z_strdup(manifest_path);
     bool deps_ok = resolve_manifest_dependencies(manifest_path, &parsed_manifest, out, diag, &dependency_stack, &dependency_stack_len, true);
     while (dependency_stack_len > 0) free(dependency_stack[--dependency_stack_len]);

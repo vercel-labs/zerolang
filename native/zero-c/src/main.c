@@ -1573,7 +1573,7 @@ static char *read_optional_file(const char *path) {
     return NULL;
   }
   rewind(file);
-  char *data = calloc((size_t)size + 1, 1);
+  char *data = z_checked_calloc((size_t)size + 1, 1);
   if (size > 0 && fread(data, 1, (size_t)size, file) != (size_t)size) {
     free(data);
     fclose(file);
@@ -3619,11 +3619,7 @@ static void print_artifact(const char *path, long long elapsed_ms) {
 static int run_executable_artifact(const char *exe_file, const Command *command) {
   int run_argc = command ? command->run_argc : 0;
   if (run_argc < 0) run_argc = 0;
-  char **child_argv = (char **)calloc((size_t)run_argc + 2, sizeof(char *));
-  if (!child_argv) {
-    fprintf(stderr, "zero run: out of memory\n");
-    return 1;
-  }
+  char **child_argv = (char **)z_checked_calloc((size_t)run_argc + 2, sizeof(char *));
   child_argv[0] = (char *)exe_file;
   for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
   child_argv[run_argc + 1] = NULL;
@@ -6174,10 +6170,10 @@ static TestValue test_value_copy(const TestValue *value) {
   copy.string_value = value->string_value ? z_strdup(value->string_value) : NULL;
   copy.field_len = value->field_len;
   if (copy.field_len > 0) {
-    copy.fields = calloc(copy.field_len, sizeof(TestFieldValue));
+    copy.fields = z_checked_calloc(copy.field_len, sizeof(TestFieldValue));
     for (size_t i = 0; i < copy.field_len; i++) {
       copy.fields[i].name = z_strdup(value->fields[i].name);
-      copy.fields[i].value = calloc(1, sizeof(TestValue));
+      copy.fields[i].value = z_checked_calloc(1, sizeof(TestValue));
       *copy.fields[i].value = test_value_copy(value->fields[i].value);
     }
   }
@@ -6203,8 +6199,8 @@ static bool test_env_set(TestEnv *env, const char *name, const TestValue *value)
     }
   }
   if (env->len + 1 > env->cap) {
-    env->cap = env->cap == 0 ? 8 : env->cap * 2;
-    env->items = realloc(env->items, env->cap * sizeof(TestBinding));
+    env->cap = z_grow_capacity(env->cap, env->len + 1, 8);
+    env->items = z_checked_reallocarray(env->items, env->cap, sizeof(TestBinding));
   }
   env->items[env->len].name = z_strdup(name);
   env->items[env->len].value = test_value_copy(value);
@@ -6381,10 +6377,10 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
     case EXPR_SHAPE_LITERAL:
       out->kind = TEST_VALUE_SHAPE;
       out->field_len = expr->fields.len;
-      out->fields = calloc(out->field_len ? out->field_len : 1, sizeof(TestFieldValue));
+      out->fields = z_checked_calloc(out->field_len ? out->field_len : 1, sizeof(TestFieldValue));
       for (size_t i = 0; i < expr->fields.len; i++) {
         out->fields[i].name = z_strdup(expr->fields.items[i].name);
-        out->fields[i].value = calloc(1, sizeof(TestValue));
+        out->fields[i].value = z_checked_calloc(1, sizeof(TestValue));
         if (!test_eval_expr(program, env, expr->fields.items[i].value, out->fields[i].value, failure)) return false;
       }
       return true;
@@ -6456,7 +6452,7 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
         return false;
       }
       const char *callee_name = name.data ? name.data : "";
-      TestValue *args = calloc(expr->args.len ? expr->args.len : 1, sizeof(TestValue));
+      TestValue *args = z_checked_calloc(expr->args.len ? expr->args.len : 1, sizeof(TestValue));
       for (size_t i = 0; i < expr->args.len; i++) {
         if (!test_eval_expr(program, env, expr->args.items[i], &args[i], failure)) {
           for (size_t j = 0; j <= i; j++) test_value_free(&args[j]);
@@ -7103,14 +7099,8 @@ static bool direct_split_generic_args(const char *inner, size_t inner_len, char 
         return false;
       }
       if (len + 1 > cap) {
-        cap = cap == 0 ? 4 : cap * 2;
-        char **next = realloc(items, cap * sizeof(char *));
-        if (!next) {
-          for (size_t j = 0; j < len; j++) free(items[j]);
-          free(items);
-          return false;
-        }
-        items = next;
+        cap = z_grow_capacity(cap, len + 1, 4);
+        items = z_checked_reallocarray(items, cap, sizeof(char *));
       }
       items[len++] = z_strndup(inner + start, end - start);
       start = i + 1;
@@ -7479,20 +7469,18 @@ static void direct_collect_shape_specializations_from_type(ZBuf *buf, DirectGene
     char **args = NULL;
     size_t arg_len = 0;
     if (direct_type_generic_arg_list(resolved, shape->name, &args, &arg_len) && arg_len == shape->type_params.len) {
-      char **specialized_args = calloc(arg_len, sizeof(char *));
-      if (specialized_args) {
-        for (size_t arg_index = 0; arg_index < arg_len; arg_index++) {
-          specialized_args[arg_index] = shape->type_params.items[arg_index].is_static
-            ? direct_canonical_static_arg(program, args[arg_index])
-            : NULL;
-          if (!specialized_args[arg_index]) specialized_args[arg_index] = z_strdup(args[arg_index]);
-          direct_collect_shape_specializations_from_type(buf, state, program, specialized_args[arg_index], NULL, 0);
-        }
-        char *name = direct_shape_specialized_name(shape, specialized_args, arg_len);
-        append_direct_generic_specialization_item(buf, state, name);
-        free(name);
-        direct_free_type_arg_list(specialized_args, arg_len);
+      char **specialized_args = z_checked_calloc(arg_len, sizeof(char *));
+      for (size_t arg_index = 0; arg_index < arg_len; arg_index++) {
+        specialized_args[arg_index] = shape->type_params.items[arg_index].is_static
+          ? direct_canonical_static_arg(program, args[arg_index])
+          : NULL;
+        if (!specialized_args[arg_index]) specialized_args[arg_index] = z_strdup(args[arg_index]);
+        direct_collect_shape_specializations_from_type(buf, state, program, specialized_args[arg_index], NULL, 0);
       }
+      char *name = direct_shape_specialized_name(shape, specialized_args, arg_len);
+      append_direct_generic_specialization_item(buf, state, name);
+      free(name);
+      direct_free_type_arg_list(specialized_args, arg_len);
     }
     direct_free_type_arg_list(args, arg_len);
   }
@@ -7555,44 +7543,42 @@ static void direct_collect_generic_function_specializations_from_expr(ZBuf *buf,
     const Function *fun = find_program_function(program, expr->left->text);
     if (fun && fun->type_params.len > 0) {
       size_t specialized_len = fun->type_params.len;
-      DirectGenericBinding *specialized = calloc(specialized_len, sizeof(DirectGenericBinding));
-      if (specialized) {
-        for (size_t i = 0; i < specialized_len; i++) {
-          specialized[i].name = fun->type_params.items[i].name;
-          specialized[i].is_static = fun->type_params.items[i].is_static;
-        }
-        const TypeArgVec *type_args = direct_call_type_args(expr);
-        if (type_args && type_args->len == specialized_len) {
-          for (size_t i = 0; i < specialized_len; i++) {
-            char *arg = direct_substitute_type(program, type_args->items[i].type, bindings, binding_len);
-            direct_set_binding(program, specialized, specialized_len, specialized[i].name, arg);
-            free(arg);
-          }
-        } else {
-          size_t arg_len = expr->args.len < fun->params.len ? expr->args.len : fun->params.len;
-          for (size_t i = 0; i < arg_len; i++) {
-            char *actual = direct_substitute_type(program, expr->args.items[i]->resolved_type, bindings, binding_len);
-            direct_bind_type_pattern(program, fun->params.items[i].type, actual, specialized, specialized_len);
-            free(actual);
-          }
-        }
-        if (expr->resolved_type && fun->return_type) {
-          char *actual_return = direct_substitute_type(program, expr->resolved_type, bindings, binding_len);
-          direct_bind_type_pattern(program, fun->return_type, actual_return, specialized, specialized_len);
-          free(actual_return);
-        }
-        if (direct_bindings_complete(specialized, specialized_len)) {
-          char *name = direct_function_specialized_name(fun, specialized, specialized_len);
-          bool wrote = append_direct_generic_specialization_item(buf, state, name);
-          if (wrote) {
-            direct_collect_shape_specializations_from_stmt_vec(buf, state, program, &fun->body, specialized, specialized_len);
-            direct_collect_generic_function_specializations_from_stmt_vec(buf, state, program, &fun->body, specialized, specialized_len);
-          }
-          free(name);
-        }
-        direct_free_bindings(specialized, specialized_len);
-        free(specialized);
+      DirectGenericBinding *specialized = z_checked_calloc(specialized_len, sizeof(DirectGenericBinding));
+      for (size_t i = 0; i < specialized_len; i++) {
+        specialized[i].name = fun->type_params.items[i].name;
+        specialized[i].is_static = fun->type_params.items[i].is_static;
       }
+      const TypeArgVec *type_args = direct_call_type_args(expr);
+      if (type_args && type_args->len == specialized_len) {
+        for (size_t i = 0; i < specialized_len; i++) {
+          char *arg = direct_substitute_type(program, type_args->items[i].type, bindings, binding_len);
+          direct_set_binding(program, specialized, specialized_len, specialized[i].name, arg);
+          free(arg);
+        }
+      } else {
+        size_t arg_len = expr->args.len < fun->params.len ? expr->args.len : fun->params.len;
+        for (size_t i = 0; i < arg_len; i++) {
+          char *actual = direct_substitute_type(program, expr->args.items[i]->resolved_type, bindings, binding_len);
+          direct_bind_type_pattern(program, fun->params.items[i].type, actual, specialized, specialized_len);
+          free(actual);
+        }
+      }
+      if (expr->resolved_type && fun->return_type) {
+        char *actual_return = direct_substitute_type(program, expr->resolved_type, bindings, binding_len);
+        direct_bind_type_pattern(program, fun->return_type, actual_return, specialized, specialized_len);
+        free(actual_return);
+      }
+      if (direct_bindings_complete(specialized, specialized_len)) {
+        char *name = direct_function_specialized_name(fun, specialized, specialized_len);
+        bool wrote = append_direct_generic_specialization_item(buf, state, name);
+        if (wrote) {
+          direct_collect_shape_specializations_from_stmt_vec(buf, state, program, &fun->body, specialized, specialized_len);
+          direct_collect_generic_function_specializations_from_stmt_vec(buf, state, program, &fun->body, specialized, specialized_len);
+        }
+        free(name);
+      }
+      direct_free_bindings(specialized, specialized_len);
+      free(specialized);
     }
   }
   direct_collect_generic_function_specializations_from_expr(buf, state, program, expr->left, bindings, binding_len);

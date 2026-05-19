@@ -248,7 +248,7 @@ static char *origin_path_join(const char *prefix, const char *suffix) {
   size_t left_len = strlen(left);
   size_t right_len = strlen(right);
   const char *separator = right[0] == '[' ? "" : ".";
-  char *joined = malloc(left_len + right_len + strlen(separator) + 1);
+  char *joined = z_checked_malloc(left_len + right_len + strlen(separator) + 1);
   snprintf(joined, left_len + right_len + strlen(separator) + 1, "%s%s%s", left, separator, right);
   return joined;
 }
@@ -766,10 +766,10 @@ static ProvenanceScopeSnapshot *provenance_scope_snapshot_capture(Scope *scope) 
   ProvenanceScopeSnapshot *head = NULL;
   ProvenanceScopeSnapshot *tail = NULL;
   for (Scope *cursor = scope; cursor; cursor = cursor->parent) {
-    ProvenanceScopeSnapshot *frame = calloc(1, sizeof(ProvenanceScopeSnapshot));
+    ProvenanceScopeSnapshot *frame = z_checked_calloc(1, sizeof(ProvenanceScopeSnapshot));
     frame->scope = cursor;
     frame->len = cursor->len;
-    frame->origins = calloc(frame->len, sizeof(ValueProvenance));
+    frame->origins = z_checked_calloc(frame->len, sizeof(ValueProvenance));
     for (size_t i = 0; i < frame->len; i++) {
       value_provenance_add_all(&frame->origins[i], &cursor->value_provenance[i]);
     }
@@ -2313,7 +2313,7 @@ static bool validate_generic_constraints(const Program *program, const Function 
       free_type_arg_list(constraint_args, constraint_arg_len);
       return set_diag_detail(diag, 3038, message, call->line, call->column, "concrete shape type", actual_type ? actual_type : "Unknown", "pass a shape with matching static methods");
     }
-    GenericBinding *interface_bindings = calloc(interface->type_params.len, sizeof(GenericBinding));
+    GenericBinding *interface_bindings = z_checked_calloc(interface->type_params.len, sizeof(GenericBinding));
     for (size_t i = 0; i < interface->type_params.len; i++) {
       interface_bindings[i].name = interface->type_params.items[i].name;
       interface_bindings[i].type = type_substitute_generic(i < constraint_arg_len ? constraint_args[i] : "Unknown", bindings, binding_len);
@@ -2742,7 +2742,7 @@ static char *shape_field_type_for_owner(const Shape *shape, const char *owner_ty
     char **args = NULL;
     size_t arg_len = 0;
     if (type_generic_arg_list(owner_type, shape->name, &args, &arg_len) && arg_len == shape->type_params.len) {
-      GenericBinding *bindings = calloc(arg_len, sizeof(GenericBinding));
+      GenericBinding *bindings = z_checked_calloc(arg_len, sizeof(GenericBinding));
       for (size_t i = 0; i < arg_len; i++) {
         bindings[i].name = shape->type_params.items[i].name;
         bindings[i].type = z_strdup(args[i]);
@@ -2841,7 +2841,7 @@ static bool meta_cache_get(const char *key, MetaValue *out) {
 }
 
 static void meta_cache_put(const char *key, MetaValue value) {
-  MetaCacheEntry *entry = calloc(1, sizeof(MetaCacheEntry));
+  MetaCacheEntry *entry = z_checked_calloc(1, sizeof(MetaCacheEntry));
   entry->key = z_strdup(key);
   entry->value = value;
   entry->next = meta_cache;
@@ -3230,7 +3230,7 @@ static char *receiver_self_arg_type(const char *receiver_type, bool requires_mut
 
 static bool build_receiver_shape_method_bindings(const Program *program, const Shape *shape, const Function *method, const Expr *call, const char *self_arg_type, Scope *scope, ZDiag *diag, GenericBinding **out_bindings, size_t *out_len) {
   size_t binding_len = 1 + (shape ? shape->type_params.len : 0);
-  GenericBinding *bindings = calloc(binding_len, sizeof(GenericBinding));
+  GenericBinding *bindings = z_checked_calloc(binding_len, sizeof(GenericBinding));
   bindings[0].name = "Self";
   for (size_t i = 0; shape && i < shape->type_params.len; i++) bindings[i + 1].name = shape->type_params.items[i].name;
   const TypeArgVec *type_args = call_type_args(call);
@@ -3321,7 +3321,7 @@ static bool bind_shape_method_from_expected_self(const Program *program, const S
 
 static bool build_shape_method_bindings(const Program *program, const Shape *shape, const Function *method, const Expr *call, Scope *scope, const char *expected, ZDiag *diag, GenericBinding **out_bindings, size_t *out_len) {
   size_t binding_len = 1 + (shape ? shape->type_params.len : 0);
-  GenericBinding *bindings = calloc(binding_len, sizeof(GenericBinding));
+  GenericBinding *bindings = z_checked_calloc(binding_len, sizeof(GenericBinding));
   bindings[0].name = "Self";
   for (size_t i = 0; shape && i < shape->type_params.len; i++) bindings[i + 1].name = shape->type_params.items[i].name;
   const TypeArgVec *type_args = call_type_args(call);
@@ -3774,7 +3774,7 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
         const Function *fun = find_function(program, expr->left->text);
         if (!fun) return "Unknown";
         if (function_is_generic(fun)) {
-          GenericBinding *bindings = calloc(fun->type_params.len, sizeof(GenericBinding));
+          GenericBinding *bindings = z_checked_calloc(fun->type_params.len, sizeof(GenericBinding));
           for (size_t i = 0; i < fun->type_params.len; i++) bindings[i].name = fun->type_params.items[i].name;
           ZDiag ignored = {0};
           if (build_generic_bindings(program, fun, expr, scope, &ignored, bindings, fun->type_params.len, NULL)) {
@@ -3818,7 +3818,7 @@ static const char *expr_type(const Program *program, const Expr *expr, Scope *sc
           char **constraint_args = NULL;
           size_t constraint_arg_len = 0;
           constrained_interface_for_type_param(program, checking_function, expr->left->left->text, &constraint_args, &constraint_arg_len);
-          GenericBinding *interface_bindings = calloc(interface->type_params.len, sizeof(GenericBinding));
+          GenericBinding *interface_bindings = z_checked_calloc(interface->type_params.len, sizeof(GenericBinding));
           for (size_t i = 0; i < interface->type_params.len; i++) {
             interface_bindings[i].name = interface->type_params.items[i].name;
             interface_bindings[i].type = z_strdup(i < constraint_arg_len ? constraint_args[i] : "Unknown");
@@ -4653,7 +4653,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           char **constraint_args = NULL;
           size_t constraint_arg_len = 0;
           constrained_interface_for_type_param(program, checking_function, expr->left->left->text, &constraint_args, &constraint_arg_len);
-          GenericBinding *interface_bindings = calloc(interface->type_params.len, sizeof(GenericBinding));
+          GenericBinding *interface_bindings = z_checked_calloc(interface->type_params.len, sizeof(GenericBinding));
           for (size_t i = 0; i < interface->type_params.len; i++) {
             interface_bindings[i].name = interface->type_params.items[i].name;
             interface_bindings[i].type = z_strdup(i < constraint_arg_len ? constraint_args[i] : "Unknown");
@@ -4720,7 +4720,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           return set_diag_detail(diag, 3032, "non-generic function cannot take type arguments", expr->line, expr->column, "call without <...>", "type arguments on non-generic function", "remove the explicit type arguments or make the function generic");
         }
         if (fun && function_is_generic(fun)) {
-          GenericBinding *bindings = calloc(fun->type_params.len, sizeof(GenericBinding));
+          GenericBinding *bindings = z_checked_calloc(fun->type_params.len, sizeof(GenericBinding));
           for (size_t binding_index = 0; binding_index < fun->type_params.len; binding_index++) bindings[binding_index].name = fun->type_params.items[binding_index].name;
           if (!build_generic_bindings(program, fun, expr, scope, diag, bindings, fun->type_params.len, expected)) {
             generic_bindings_free(bindings, fun->type_params.len);
@@ -5177,7 +5177,7 @@ static bool check_expr_expected(const Program *program, const Expr *expr, Scope 
           return set_diag_detail(diag, 3034, "generic shape literal requires an explicit annotated type", expr->line, expr->column, "let value: Shape<T> = Shape { ... }", expected ? expected : "untyped shape literal", "add an explicit generic shape type annotation");
         }
         shape_binding_len = shape->type_params.len;
-        shape_bindings = calloc(shape_binding_len, sizeof(GenericBinding));
+        shape_bindings = z_checked_calloc(shape_binding_len, sizeof(GenericBinding));
         for (size_t i = 0; i < shape_binding_len; i++) {
           shape_bindings[i].name = shape->type_params.items[i].name;
           if (shape->type_params.items[i].is_static) {
@@ -5508,7 +5508,7 @@ static bool generic_call_bindings_from_checked_call(const Program *program, cons
   if (!callee || !function_is_generic(callee) || !call || !out_bindings || !out_len) return false;
 
   size_t binding_len = callee->type_params.len;
-  GenericBinding *bindings = calloc(binding_len, sizeof(GenericBinding));
+  GenericBinding *bindings = z_checked_calloc(binding_len, sizeof(GenericBinding));
   for (size_t i = 0; i < binding_len; i++) bindings[i].name = callee->type_params.items[i].name;
 
   const TypeArgVec *type_args = call_type_args(call);
@@ -5557,7 +5557,7 @@ static bool build_constrained_interface_bindings_for_provenance(const Program *p
   char **constraint_args = NULL;
   size_t constraint_arg_len = 0;
   constrained_interface_for_type_param(program, context_fun, callee->left->text, &constraint_args, &constraint_arg_len);
-  GenericBinding *bindings = calloc(interface->type_params.len, sizeof(GenericBinding));
+  GenericBinding *bindings = z_checked_calloc(interface->type_params.len, sizeof(GenericBinding));
   for (size_t i = 0; i < interface->type_params.len; i++) {
     bindings[i].name = interface->type_params.items[i].name;
     bindings[i].type = provenance_context_type_text(i < constraint_arg_len ? constraint_args[i] : "Unknown", context_bindings, context_binding_len);
@@ -6154,7 +6154,7 @@ static void assignment_provenance_snapshot_clear(const Expr *target, Scope *scop
   *snapshot = (AssignmentProvenanceSnapshot){0};
   if (!target || !scope) return;
   if (!collect_assignment_target_places(target, scope, &snapshot->targets)) return;
-  snapshot->previous = calloc(snapshot->targets.len, sizeof(ValueProvenance));
+  snapshot->previous = z_checked_calloc(snapshot->targets.len, sizeof(ValueProvenance));
   for (size_t i = 0; i < snapshot->targets.len; i++) {
     Place *place = &snapshot->targets.items[i];
     ValueProvenance full = {0};
@@ -6342,8 +6342,8 @@ static bool collect_return_value_provenance_from_stmt_vec(const Program *program
         return added;
       }
       ProvenanceScopeSnapshot *before = provenance_scope_snapshot_capture(scope);
-      ProvenanceScopeSnapshot **arm_states = calloc(stmt->match_arms.len, sizeof(ProvenanceScopeSnapshot *));
-      bool *arm_continues = calloc(stmt->match_arms.len, sizeof(bool));
+      ProvenanceScopeSnapshot **arm_states = z_checked_calloc(stmt->match_arms.len, sizeof(ProvenanceScopeSnapshot *));
+      bool *arm_continues = z_checked_calloc(stmt->match_arms.len, sizeof(bool));
       const char *match_type = stmt->resolved_type ? stmt->resolved_type : (stmt->expr ? expr_type(program, stmt->expr, scope) : "Unknown");
       const Choice *item_choice = find_choice(program, match_type);
       for (size_t arm_index = 0; arm_index < stmt->match_arms.len; arm_index++) {
@@ -6975,8 +6975,8 @@ static bool check_scalar_match(const Program *program, const Function *fun, cons
     }
   }
   ProvenanceScopeSnapshot *before = provenance_scope_snapshot_capture(scope);
-  ProvenanceScopeSnapshot **arm_states = calloc(stmt->match_arms.len, sizeof(ProvenanceScopeSnapshot *));
-  bool *arm_continues = calloc(stmt->match_arms.len, sizeof(bool));
+  ProvenanceScopeSnapshot **arm_states = z_checked_calloc(stmt->match_arms.len, sizeof(ProvenanceScopeSnapshot *));
+  bool *arm_continues = z_checked_calloc(stmt->match_arms.len, sizeof(bool));
   for (size_t arm_index = 0; arm_index < stmt->match_arms.len; arm_index++) {
     provenance_scope_snapshot_restore(before);
     Scope arm_scope = {.parent = scope};
@@ -7224,8 +7224,8 @@ static bool check_stmt(const Program *program, const Function *fun, const Stmt *
       if (!seen && !has_fallback) return set_diag_detail(diag, 3106, "non-exhaustive match", stmt->line, stmt->column, "one arm for every variant case", cases->items[case_index].name, "add the missing match arm or a fallback `._` arm");
     }
     ProvenanceScopeSnapshot *before = provenance_scope_snapshot_capture(scope);
-    ProvenanceScopeSnapshot **arm_states = calloc(stmt->match_arms.len, sizeof(ProvenanceScopeSnapshot *));
-    bool *arm_continues = calloc(stmt->match_arms.len, sizeof(bool));
+    ProvenanceScopeSnapshot **arm_states = z_checked_calloc(stmt->match_arms.len, sizeof(ProvenanceScopeSnapshot *));
+    bool *arm_continues = z_checked_calloc(stmt->match_arms.len, sizeof(bool));
     for (size_t arm_index = 0; arm_index < stmt->match_arms.len; arm_index++) {
       provenance_scope_snapshot_restore(before);
       Scope arm_scope = {.parent = scope};
@@ -7327,7 +7327,7 @@ static bool validate_drop_method(const Shape *shape, const Function *method, ZDi
 static bool check_shape_method_body(const Program *program, const Shape *shape, const Function *method, ZDiag *diag) {
   Scope scope = {0};
   size_t binding_len = 1 + shape->type_params.len;
-  GenericBinding *bindings = calloc(binding_len, sizeof(GenericBinding));
+  GenericBinding *bindings = z_checked_calloc(binding_len, sizeof(GenericBinding));
   bindings[0].name = "Self";
   bindings[0].type = shape_open_instance_type(shape);
   for (size_t i = 0; i < shape->type_params.len; i++) {

@@ -189,7 +189,7 @@ static void push_target(ZTargetInfo current) {
   if (!current.object_format) current.object_format = z_strdup("unknown");
   if (!current.linker) current.linker = z_strdup("cc");
   if (!current.capabilities) current.capabilities = z_strdup("\"memory\", \"stdio\"");
-  targets = realloc(targets, (target_count + 2) * sizeof(ZTargetInfo));
+  targets = z_checked_reallocarray(targets, target_count + 2, sizeof(ZTargetInfo));
   targets[target_count++] = current;
   targets[target_count] = (ZTargetInfo){0};
 }
