@@ -2914,7 +2914,7 @@ static const ExplainInfo explain_infos[] = {
     "codegen",
     "Direct backend unsupported",
     "The selected direct backend cannot emit this target, object format, architecture, executable kind, or source feature yet.",
-    "Direct backends are target-specific and must report unsupported targets instead of routing through a removed compatibility backend.",
+    "Direct backends are target-specific and must report unsupported targets instead of routing through a removed compatibility backend. Hosted std.fs/std.time/std.rand programs build as self-contained executables on direct emitters that lower those operations (the ELF64 x86-64 backend uses inline syscalls); emitters without that lowering keep reporting CGEN004.",
     "Choose a target whose `zero targets --json` directBackend facts advertise the requested artifact, or use `--emit obj` where executable emission is not implemented.",
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",
     "zero build --emit obj --target linux-x64 examples/direct-call-add.0",
@@ -8139,6 +8139,22 @@ static bool self_host_subset_compatible(const Program *program, const Capability
   return caps_allowed;
 }
 
+// The direct ELF64 (x86-64 Linux) executable backend lowers the hosted
+// std.fs/std.time/std.rand surface with inline Linux syscalls, so it can emit
+// a fully self-contained static executable without a libc/runtime cc link.
+// Other direct exe emitters have no such lowering and still report CGEN004 at
+// emit time, so gating on this emitter keeps unsupported targets honest.
+static bool direct_exe_emitter_handles_hosted_runtime(const char *exe_emitter) {
+  return exe_emitter && strcmp(exe_emitter, "zero-elf64-exe") == 0;
+}
+
+// A hosted program (std.fs/std.time/std.rand, etc.) can still take the bare
+// direct-exe fast path when the selected emitter is able to lower it directly.
+static bool direct_exe_supports_hosted_program(const char *exe_emitter, const Program *program, const CapabilitySummary *caps) {
+  if (self_host_subset_compatible(program, caps)) return true;
+  return direct_exe_emitter_handles_hosted_runtime(exe_emitter);
+}
+
 static void append_self_host_subset_json(ZBuf *buf, const Program *program, const CapabilitySummary *caps, const ZTargetInfo *target) {
   bool compatible = self_host_subset_compatible(program, caps);
   zbuf_append(buf, "{\"contractVersion\":1,\"stage\":\"native-bootstrap\"");
@@ -8332,7 +8348,7 @@ static bool target_readiness_select_diag(const Command *command, const SourceInp
   const char *emitter = z_direct_exe_emitter(target);
   bool supported_exe = emitter && strcmp(emitter, "none") != 0 && requested_exe_backend_matches(command, emitter);
   CapabilitySummary caps = program_capabilities(program);
-  bool default_direct_exe = supported_exe && (!command || !command->backend) && self_host_subset_compatible(program, &caps);
+  bool default_direct_exe = supported_exe && (!command || !command->backend) && direct_exe_supports_hosted_program(emitter, program, &caps);
   bool requested_direct_exe = supported_exe && command && command->backend && command->backend[0];
   if (default_direct_exe || requested_direct_exe) return target_readiness_dry_emit(command, target, ir, diag);
   init_direct_backend_diag(diag, command, input, target, emit_kind, "direct executable backend is not implemented for this target/backend pair; use --emit obj for direct target objects or choose a supported direct executable target");
@@ -9536,7 +9552,7 @@ int main(int argc, char **argv) {
     z_free_source(&input);
     return 0;
   }
-  bool default_direct_exe = artifact_command && command.emit == EMIT_EXE && direct_exe_emitter && strcmp(direct_exe_emitter, "none") != 0 && !command.backend && self_host_subset_compatible(&program, &direct_exe_caps);
+  bool default_direct_exe = artifact_command && command.emit == EMIT_EXE && direct_exe_emitter && strcmp(direct_exe_emitter, "none") != 0 && !command.backend && direct_exe_supports_hosted_program(direct_exe_emitter, &program, &direct_exe_caps);
   bool requested_direct_exe = artifact_command && command.emit == EMIT_EXE && command.backend &&
                               (strcmp(command.backend, "zero-elf64") == 0 ||
                                strcmp(command.backend, "zero-elf-aarch64") == 0 ||
