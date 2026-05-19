@@ -1,0 +1,29 @@
+pub fun main(world: World) -> Void raises {
+    let mut path_buf: [40]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let prefix = std.mem.span(".zero/conformance/")
+    let prefix_len = std.mem.len(prefix)
+    let mut i: usize = 0
+    while i < prefix_len {
+        path_buf[i] = prefix[i]
+        i = i + 1
+    }
+    let name = std.mem.span("fs-span-path.bin")
+    let name_len = std.mem.len(name)
+    let mut j: usize = 0
+    while j < name_len {
+        path_buf[prefix_len + j] = name[j]
+        j = j + 1
+    }
+    let total = prefix_len + name_len
+    let path_span = path_buf[0..total]
+    let bytes: [3]u8 = [88, 0, 89]
+    let mut read_buf: [3]u8 = [0, 0, 0]
+
+    let written = std.fs.writeBytes(path_span, bytes)
+    let read = std.fs.readBytes(path_span, read_buf)
+
+    if written.has && written.value == 3 && read.has && read.value == 3 &&
+        read_buf[0] == 88_u8 && read_buf[1] == 0_u8 && read_buf[2] == 89_u8 {
+        check world.out.write("fs span path ok\n")
+    }
+}
