@@ -1768,6 +1768,30 @@ assert.equal(explainTar002Body.schemaVersion, 1);
 assert.equal(explainTar002Body.code, "TAR002");
 assert.equal(explainTar002Body.repair.id, "choose-target-with-required-capability");
 
+const explainTyp001 = await execFileAsync(zero, ["explain", "--json", "TYP001"]);
+const explainTyp001Body = JSON.parse(explainTyp001.stdout);
+assert.equal(explainTyp001Body.code, "TYP001");
+assert.equal(explainTyp001Body.category, "type");
+assert.equal(explainTyp001Body.repair.id, "provide-runtime-value");
+
+const explainTyp002 = await execFileAsync(zero, ["explain", "--json", "TYP002"]);
+const explainTyp002Body = JSON.parse(explainTyp002.stdout);
+assert.equal(explainTyp002Body.code, "TYP002");
+assert.equal(explainTyp002Body.category, "type");
+assert.equal(explainTyp002Body.repair.id, "match-expected-type");
+
+const explainStd002 = await execFileAsync(zero, ["explain", "--json", "STD002"]);
+const explainStd002Body = JSON.parse(explainStd002.stdout);
+assert.equal(explainStd002Body.code, "STD002");
+assert.equal(explainStd002Body.category, "stdlib");
+assert.equal(explainStd002Body.repair.id, "use-known-stdlib-helper");
+
+const explainImp001 = await execFileAsync(zero, ["explain", "--json", "IMP001"]);
+const explainImp001Body = JSON.parse(explainImp001.stdout);
+assert.equal(explainImp001Body.code, "IMP001");
+assert.equal(explainImp001Body.category, "import");
+assert.equal(explainImp001Body.repair.id, "fix-import-path");
+
 const explainText = await execFileAsync(zero, ["explain", "TYP009"]);
 assert.match(explainText.stdout, /Mutable storage required/);
 
