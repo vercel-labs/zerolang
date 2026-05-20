@@ -6309,7 +6309,7 @@ static bool test_env_set_indexed(TestEnv *env, const char *name, size_t index, c
   return false;
 }
 
-static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, bool *broke, TestRunFailure *failure) {
+static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, bool *broke, bool *continued, TestRunFailure *failure) {
   for (size_t i = 0; body && i < body->len; i++) {
     Stmt *stmt = body->items[i];
     if (!stmt) continue;
@@ -6358,8 +6358,8 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
       if (!test_eval_expr(program, env, stmt->expr, &condition, failure)) return false;
       bool branch = test_value_truthy(&condition);
       test_value_free(&condition);
-      if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, broke, failure)) return false;
-      if (*returned || *broke) return true;
+      if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, broke, continued, failure)) return false;
+      if (*returned || *broke || *continued) return true;
     } else if (stmt->kind == STMT_WHILE) {
       for (int guard = 0; guard < 100000; guard++) {
         TestValue condition = {0};
@@ -6368,14 +6368,17 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
         test_value_free(&condition);
         if (!loop) break;
         bool inner_broke = false;
-        if (!test_eval_stmt_vec(program, env, &stmt->then_body, return_value, returned, &inner_broke, failure)) return false;
+        bool inner_continued = false;
+        if (!test_eval_stmt_vec(program, env, &stmt->then_body, return_value, returned, &inner_broke, &inner_continued, failure)) return false;
         if (*returned) return true;
         if (inner_broke) break;
+        // inner_continued: skip rest of body, re-evaluate condition
       }
     } else if (stmt->kind == STMT_BREAK) {
       *broke = true;
       return true;
     } else if (stmt->kind == STMT_CONTINUE) {
+      *continued = true;
       return true;
     } else if (stmt->kind == STMT_ASSIGN) {
       TestValue value = {0};
@@ -6439,7 +6442,8 @@ static bool test_eval_function(const Program *program, const Function *fun, cons
   for (size_t i = 0; i < arg_len; i++) test_env_set(&local, fun->params.items[i].name, &args[i]);
   bool returned = false;
   bool broke = false;
-  bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, &broke, failure);
+  bool continued = false;
+  bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, &broke, &continued, failure);
   if (ok && caller_env && mutref_sources) {
     for (size_t i = 0; i < arg_len; i++) {
       if (!mutref_sources[i]) continue;
