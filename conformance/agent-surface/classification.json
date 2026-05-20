@@ -75,6 +75,14 @@
       "runner": "assert-target-ready"
     },
     {
+      "id": "direct-generic-specialization-name-collision",
+      "path": "conformance/agent-surface/fixtures/direct-generic-specialization-name-collision.0",
+      "classification": "unsupported-program-shape",
+      "currentBehavior": "check-pass-target-blocked-CGEN004",
+      "followUp": "Keep direct generic specialization names from silently resolving to unrelated concrete functions.",
+      "runner": "assert-target-blocked"
+    },
+    {
       "id": "polymorphic-recursion-growth",
       "path": "conformance/agent-surface/fixtures/polymorphic-recursion-growth.0",
       "classification": "unsupported-language-feature",

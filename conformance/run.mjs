@@ -336,6 +336,7 @@ for (const fixture of [
   "conformance/native/pass/generic-function-basic.0",
   "conformance/native/pass/generic-nested-calls.0",
   "conformance/native/pass/generic-specialization-reuse.0",
+  "conformance/native/pass/generic-multi-specialization.0",
   "conformance/native/pass/generic-shape-basic.0",
   "conformance/native/pass/generic-shape-multi.0",
   "conformance/native/pass/generic-shape-methods.0",
@@ -407,6 +408,7 @@ for (const fixture of [
   "conformance/check/pass/generic-method-outer-param-inference.0",
   "conformance/native/pass/generic-nested-calls.0",
   "conformance/native/pass/generic-specialization-reuse.0",
+  "conformance/native/pass/generic-multi-specialization.0",
   "conformance/check/pass/generic-shape-basic.0",
   "conformance/check/pass/generic-shape-multi.0",
   "conformance/check/pass/generic-shape-methods.0",
@@ -472,6 +474,7 @@ assert.deepEqual(agentSurfaceClassification.fixtures.map((item) => item.id), [
   "method-generic-self-shadowing",
   "interface-method-generic-binding",
   "direct-generic-recursion",
+  "direct-generic-specialization-name-collision",
   "polymorphic-recursion-growth",
   "mutual-polymorphic-recursion-growth",
   "mutual-polymorphic-recursion-inferred-growth",
@@ -523,6 +526,22 @@ assert.equal(agentSurfaceDirectGenericReadinessBody.ok, true);
 assert.equal(agentSurfaceDirectGenericReadinessBody.targetReadiness.ok, true);
 assert.equal(agentSurfaceDirectGenericReadinessBody.targetReadiness.buildable, true);
 assert.equal(agentSurfaceDirectGenericReadinessBody.targetReadiness.diagnostics.length, 0);
+
+const agentSurfaceDirectGenericCollisionReadiness = await execFileAsync(zero, [
+  "check",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "linux-musl-x64",
+  "conformance/agent-surface/fixtures/direct-generic-specialization-name-collision.0",
+]);
+const agentSurfaceDirectGenericCollisionReadinessBody = JSON.parse(agentSurfaceDirectGenericCollisionReadiness.stdout);
+assert.equal(agentSurfaceDirectGenericCollisionReadinessBody.ok, true);
+assert.equal(agentSurfaceDirectGenericCollisionReadinessBody.targetReadiness.ok, false);
+assert.equal(agentSurfaceDirectGenericCollisionReadinessBody.targetReadiness.buildable, false);
+assert.equal(agentSurfaceDirectGenericCollisionReadinessBody.targetReadiness.diagnostics[0].code, "CGEN004");
+assert.match(agentSurfaceDirectGenericCollisionReadinessBody.targetReadiness.diagnostics[0].message, /specialization name collides/);
 
 const agentSurfacePolymorphicRecursion = await execFileAsync(zero, ["check", "--json", "conformance/agent-surface/fixtures/polymorphic-recursion-growth.0"]).catch((error) => error);
 assert.notEqual(agentSurfacePolymorphicRecursion.code, 0);
@@ -2588,6 +2607,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/mutref-indexed-lvalues.0", "mutref-indexed-lvalues", { stdout: "mutref indexed lvalues ok\n" }],
   ["conformance/native/pass/generic-mem.0", "generic-mem", { stdout: "generic mem ok\n" }],
   ["conformance/native/pass/generic-nested-calls.0", "generic-nested-calls", { stdout: "generic nested calls ok\n" }],
+  ["conformance/native/pass/generic-multi-specialization.0", "generic-multi-specialization", { stdout: "generic multi specialization ok\n" }],
   ["conformance/native/pass/static-interface-mutref.0", "static-interface-mutref", { stdout: "static interface mutref ok\n" }],
   ["conformance/native/pass/owned-transfer.0", "owned-transfer", { stdout: "owned transfer ok\n" }],
   ["conformance/native/pass/owned-drop-cleanup.0", "owned-drop-cleanup", { stdout: "owned drop cleanup ok\n" }],

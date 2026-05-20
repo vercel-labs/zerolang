@@ -1,4 +1,5 @@
 #include "zero.h"
+#include "specialize.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -8,6 +9,7 @@
 
 #define IR_READONLY_DATA_BASE 1024u
 #define IR_READONLY_DATA_LIMIT 65536u
+#define IR_SPECIALIZATION_PLAN_LIMIT 1024u
 
 static Expr *clone_expr(const Expr *expr);
 static Stmt *clone_stmt(const Stmt *stmt);
@@ -1082,19 +1084,7 @@ static const TypeArgVec *ir_call_type_args(const Expr *call) {
 }
 
 static char *ir_specialized_function_name(const Function *fun, const TypeArgVec *type_args) {
-  ZBuf buf;
-  zbuf_init(&buf);
-  zbuf_append(&buf, fun && fun->name ? fun->name : "");
-  for (size_t i = 0; type_args && i < type_args->len; i++) {
-    zbuf_append(&buf, "__");
-    const char *type = type_args->items[i].type ? type_args->items[i].type : "Unknown";
-    for (const char *p = type; *p; p++) {
-      char c = *p;
-      if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') zbuf_append_char(&buf, c);
-      else zbuf_append_char(&buf, '_');
-    }
-  }
-  return buf.data;
+  return z_specialized_function_name(fun, type_args);
 }
 
 static const char *ir_substitute_type_param(const Function *fun, const TypeArgVec *type_args, const char *type) {
@@ -2445,11 +2435,6 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           return false;
         }
       }
-      if (callee->type_params.len > 1) {
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend generic calls currently support one type parameter", expr->line, expr->column, callee->name);
-        return false;
-      }
       if (callee->params.len != expr->args.len) {
         free(specialized_name);
         ir_mark_unsupported(ir, "direct backend call argument count does not match callee", expr->line, expr->column, callee->name);
@@ -3249,38 +3234,62 @@ static bool ir_function_vec_has_name(const FunctionVec *functions, const char *n
   return false;
 }
 
-static void ir_collect_generic_specializations_from_expr(FunctionVec *functions, const Program *program, const Expr *expr);
+static bool ir_collect_generic_specializations_from_expr(FunctionVec *functions, ZSpecializationPlan *plan, IrProgram *ir, const Program *program, const Expr *expr);
 
-static void ir_collect_generic_specializations_from_stmt_vec(FunctionVec *functions, const Program *program, const StmtVec *body) {
+static bool ir_collect_generic_specializations_from_stmt_vec(FunctionVec *functions, ZSpecializationPlan *plan, IrProgram *ir, const Program *program, const StmtVec *body) {
   for (size_t i = 0; body && i < body->len; i++) {
     const Stmt *stmt = body->items[i];
     if (!stmt) continue;
-    ir_collect_generic_specializations_from_expr(functions, program, stmt->target);
-    ir_collect_generic_specializations_from_expr(functions, program, stmt->expr);
-    ir_collect_generic_specializations_from_expr(functions, program, stmt->range_end);
-    ir_collect_generic_specializations_from_stmt_vec(functions, program, &stmt->then_body);
-    ir_collect_generic_specializations_from_stmt_vec(functions, program, &stmt->else_body);
+    if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, stmt->target)) return false;
+    if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, stmt->expr)) return false;
+    if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, stmt->range_end)) return false;
+    if (!ir_collect_generic_specializations_from_stmt_vec(functions, plan, ir, program, &stmt->then_body)) return false;
+    if (!ir_collect_generic_specializations_from_stmt_vec(functions, plan, ir, program, &stmt->else_body)) return false;
     for (size_t arm_index = 0; arm_index < stmt->match_arms.len; arm_index++) {
-      ir_collect_generic_specializations_from_stmt_vec(functions, program, &stmt->match_arms.items[arm_index].body);
+      if (!ir_collect_generic_specializations_from_stmt_vec(functions, plan, ir, program, &stmt->match_arms.items[arm_index].body)) return false;
     }
   }
+  return true;
 }
 
-static void ir_collect_generic_specializations_from_expr(FunctionVec *functions, const Program *program, const Expr *expr) {
-  if (!expr) return;
+static bool ir_collect_generic_specializations_from_expr(FunctionVec *functions, ZSpecializationPlan *plan, IrProgram *ir, const Program *program, const Expr *expr) {
+  if (!expr) return true;
   if (expr->kind == EXPR_CALL && expr->left && expr->left->kind == EXPR_IDENT) {
     const Function *callee = ir_find_source_function(program, expr->left->text, NULL);
     const TypeArgVec *type_args = ir_call_type_args(expr);
-    if (callee && callee->type_params.len > 0 && type_args && type_args->len == callee->type_params.len && callee->type_params.len == 1) {
-      char *specialized_name = ir_specialized_function_name(callee, type_args);
-      if (!ir_function_vec_has_name(functions, specialized_name)) ir_push_specialized_function(functions, callee, type_args);
+    if (callee && callee->type_params.len > 0 && type_args && type_args->len == callee->type_params.len) {
+      char *specialized_name = NULL;
+      ZSpecializationAddResult add_result = z_specialization_plan_add(plan, callee, type_args, &specialized_name);
+      if (add_result == Z_SPECIALIZATION_ADD_LIMIT) {
+        free(specialized_name);
+        ir_mark_unsupported(ir, "direct backend generic specialization plan exceeded its instantiation limit", expr->line, expr->column, callee->name);
+        return false;
+      }
+      if (add_result == Z_SPECIALIZATION_ADD_NAME_COLLISION) {
+        free(specialized_name);
+        ir_mark_unsupported(ir, "direct backend generic specialization name is ambiguous", expr->line, expr->column, callee->name);
+        return false;
+      }
+      if (add_result == Z_SPECIALIZATION_ADD_ADDED) {
+        if (ir_function_vec_has_name(functions, specialized_name)) {
+          free(specialized_name);
+          ir_mark_unsupported(ir, "direct backend generic specialization name collides with an existing function", expr->line, expr->column, callee->name);
+          return false;
+        }
+        ir_push_specialized_function(functions, callee, type_args);
+      }
       free(specialized_name);
     }
   }
-  ir_collect_generic_specializations_from_expr(functions, program, expr->left);
-  ir_collect_generic_specializations_from_expr(functions, program, expr->right);
-  for (size_t i = 0; i < expr->args.len; i++) ir_collect_generic_specializations_from_expr(functions, program, expr->args.items[i]);
-  for (size_t i = 0; i < expr->fields.len; i++) ir_collect_generic_specializations_from_expr(functions, program, expr->fields.items[i].value);
+  if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, expr->left)) return false;
+  if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, expr->right)) return false;
+  for (size_t i = 0; i < expr->args.len; i++) {
+    if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, expr->args.items[i])) return false;
+  }
+  for (size_t i = 0; i < expr->fields.len; i++) {
+    if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, expr->fields.items[i].value)) return false;
+  }
+  return true;
 }
 
 static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program, const SourceInput *input) {
@@ -3299,8 +3308,16 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
   for (size_t i = 0; i < program->functions.len; i++) {
     if (!program->functions.items[i].is_test && program->functions.items[i].type_params.len == 0) push_function_clone(&direct_functions, &program->functions.items[i]);
   }
+  ZSpecializationPlan specialization_plan;
+  z_specialization_plan_init(&specialization_plan, IR_SPECIALIZATION_PLAN_LIMIT);
   for (size_t i = 0; i < direct_functions.len; i++) {
-    ir_collect_generic_specializations_from_stmt_vec(&direct_functions, program, &direct_functions.items[i].body);
+    if (!ir_collect_generic_specializations_from_stmt_vec(&direct_functions, &specialization_plan, ir, program, &direct_functions.items[i].body)) {
+      z_specialization_plan_free(&specialization_plan);
+      Program temp_program = {0};
+      temp_program.functions = direct_functions;
+      z_free_program(&temp_program);
+      return;
+    }
   }
   IrFunctionOrder *order = z_checked_calloc(direct_functions.len ? direct_functions.len : 1, sizeof(IrFunctionOrder));
   char **stable_ids = z_checked_calloc(direct_functions.len ? direct_functions.len : 1, sizeof(char *));
@@ -3322,6 +3339,7 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
       free(order);
       for (size_t stable_index = 0; stable_index < direct_functions.len; stable_index++) free(stable_ids[stable_index]);
       free(stable_ids);
+      z_specialization_plan_free(&specialization_plan);
       Program temp_program = {0};
       temp_program.functions = direct_functions;
       z_free_program(&temp_program);
@@ -3331,6 +3349,7 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
   free(order);
   for (size_t stable_index = 0; stable_index < direct_functions.len; stable_index++) free(stable_ids[stable_index]);
   free(stable_ids);
+  z_specialization_plan_free(&specialization_plan);
   Program temp_program = {0};
   temp_program.functions = direct_functions;
   z_free_program(&temp_program);
