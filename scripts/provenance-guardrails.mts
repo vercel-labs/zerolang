@@ -269,10 +269,12 @@ for (const name of requiredFunctions) {
 
 for (const kind of [
   "Z_CALL_FUNCTION",
+  "Z_CALL_STDLIB",
   "Z_CALL_SHAPE_NAMESPACE",
   "Z_CALL_RECEIVER",
   "Z_CALL_CONSTRAINED_INTERFACE",
   "Z_CALL_CONCRETE_CONSTRAINED_SHAPE",
+  "Z_CALL_CHOICE_CONSTRUCTOR",
 ]) {
   assertIncludes("shared call resolver", callResolve, kind);
   assertIncludes("checker provenance call resolver", checker, kind);

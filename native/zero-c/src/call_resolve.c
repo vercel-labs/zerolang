@@ -9,9 +9,18 @@ void z_call_resolution_init(ZCallResolution *resolution) {
 
 void z_call_resolution_free(ZCallResolution *resolution) {
   if (!resolution) return;
+  free(resolution->callee_name);
   free(resolution->return_type);
   free(resolution->effect_summary_key);
   *resolution = (ZCallResolution){0};
+}
+
+void z_call_resolution_set_callee_name(ZCallResolution *resolution, const char *name) {
+  if (!resolution) return;
+  if (resolution->callee_name == name) return;
+  char *copy = name ? z_strdup(name) : NULL;
+  free(resolution->callee_name);
+  resolution->callee_name = copy;
 }
 
 void z_call_resolution_set_return_type(ZCallResolution *resolution, const char *return_type) {

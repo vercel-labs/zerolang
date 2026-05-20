@@ -23,7 +23,10 @@ typedef struct {
   const Function *callee;
   const Shape *shape;
   const InterfaceDecl *interface;
+  const Choice *choice;
+  const Param *choice_case;
   size_t param_offset;
+  char *callee_name;
   char *return_type;
   char *effect_summary_key;
   bool fallible;
@@ -31,6 +34,7 @@ typedef struct {
 
 void z_call_resolution_init(ZCallResolution *resolution);
 void z_call_resolution_free(ZCallResolution *resolution);
+void z_call_resolution_set_callee_name(ZCallResolution *resolution, const char *name);
 void z_call_resolution_set_return_type(ZCallResolution *resolution, const char *return_type);
 void z_call_resolution_set_effect_summary_key(ZCallResolution *resolution, const char *key);
 const char *z_call_kind_name(ZCallKind kind);
