@@ -24,7 +24,7 @@ export function SiteHeader({ stars }: { stars: string }) {
           </Link>
           <Search />
           <a
-            href={`https://github.com/${process.env.NEXT_PUBLIC_GITHUB_REPO || "vercel-labs/zero"}`}
+            href={`https://github.com/${process.env.NEXT_PUBLIC_GITHUB_REPO || "vercel-labs/zerolang"}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-sm text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
