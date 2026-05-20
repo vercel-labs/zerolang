@@ -395,6 +395,8 @@ for (const fixture of [
   "conformance/check/pass/generic-function-basic.0",
   "conformance/check/pass/generic-array-inference.0",
   "conformance/check/pass/generic-static-forwarding.0",
+  "conformance/check/pass/generic-static-method-forwarding.0",
+  "conformance/check/pass/generic-const-shadowing.0",
   "conformance/native/pass/generic-nested-calls.0",
   "conformance/native/pass/generic-specialization-reuse.0",
   "conformance/check/pass/generic-shape-basic.0",

@@ -70,6 +70,7 @@ struct Scope {
   bool *mutable;
   bool *moved;
   bool *is_param;
+  bool *is_type_param;
   bool *is_static_param;
   int *decl_line;
   int *decl_column;
@@ -486,6 +487,7 @@ static void scope_add_ex(Scope *scope, const char *name, const char *type, bool 
     scope->mutable = z_checked_reallocarray(scope->mutable, next_cap, sizeof(bool));
     scope->moved = z_checked_reallocarray(scope->moved, next_cap, sizeof(bool));
     scope->is_param = z_checked_reallocarray(scope->is_param, next_cap, sizeof(bool));
+    scope->is_type_param = z_checked_reallocarray(scope->is_type_param, next_cap, sizeof(bool));
     scope->is_static_param = z_checked_reallocarray(scope->is_static_param, next_cap, sizeof(bool));
     scope->decl_line = z_checked_reallocarray(scope->decl_line, next_cap, sizeof(int));
     scope->decl_column = z_checked_reallocarray(scope->decl_column, next_cap, sizeof(int));
@@ -497,6 +499,7 @@ static void scope_add_ex(Scope *scope, const char *name, const char *type, bool 
   scope->mutable[scope->len - 1] = mutable;
   scope->moved[scope->len - 1] = false;
   scope->is_param[scope->len - 1] = is_param;
+  scope->is_type_param[scope->len - 1] = false;
   scope->is_static_param[scope->len - 1] = false;
   scope->decl_line[scope->len - 1] = line;
   scope->decl_column[scope->len - 1] = column;
@@ -513,6 +516,11 @@ static void scope_add_decl(Scope *scope, const char *name, const char *type, boo
 
 static void scope_add_param_decl(Scope *scope, const char *name, const char *type, int line, int column) {
   scope_add_ex(scope, name, type, false, true, line, column);
+}
+
+static void scope_add_type_param(Scope *scope, const char *name) {
+  scope_add_ex(scope, name, "Type", false, false, 0, 0);
+  if (scope && scope->len > 0) scope->is_type_param[scope->len - 1] = true;
 }
 
 static void scope_add_static_param(Scope *scope, const char *name, const char *type) {
@@ -901,6 +909,7 @@ static void scope_free(Scope *scope) {
   free(scope->mutable);
   free(scope->moved);
   free(scope->is_param);
+  free(scope->is_type_param);
   free(scope->is_static_param);
   free(scope->decl_line);
   free(scope->decl_column);
@@ -2048,7 +2057,7 @@ static void recursive_generic_scope_add_function_bindings(const Function *fun, G
   for (size_t i = 0; i < fun->type_params.len; i++) {
     const Param *type_param = &fun->type_params.items[i];
     if (type_param->is_static) scope_add_static_param(scope, type_param->name, type_param->type);
-    else scope_add(scope, type_param->name, "Type", false);
+    else scope_add_type_param(scope, type_param->name);
   }
   for (size_t i = 0; i < fun->params.len; i++) {
     const Param *param = &fun->params.items[i];
@@ -2616,21 +2625,43 @@ static bool type_pattern_references_any_generic_param(const Function *fun, const
   return false;
 }
 
-static size_t append_type_core_static_const_binders(const Program *program, ZTypeBinderDecl *decls, size_t len, ZTypeBinderId first_id) {
-  size_t added = 0;
+static bool type_core_binder_decl_name_exists(const ZTypeBinderDecl *decls, size_t len, const char *name) {
+  if (!decls || !name) return false;
+  for (size_t i = 0; i < len; i++) {
+    if (decls[i].name && strcmp(decls[i].name, name) == 0) return true;
+  }
+  return false;
+}
+
+static bool scope_type_name_shadows_static_const(Scope *scope, const char *name) {
+  if (!scope || !name) return false;
+  for (Scope *cursor = scope; cursor; cursor = cursor->parent) {
+    for (size_t i = 0; i < cursor->len; i++) {
+      if (!cursor->names[i] || strcmp(cursor->names[i], name) != 0) continue;
+      if (cursor->is_type_param && cursor->is_type_param[i]) return true;
+    }
+  }
+  return false;
+}
+
+static size_t append_type_core_static_const_binders(const Program *program, Scope *shadow_scope, ZTypeBinderDecl *decls, size_t len, ZTypeBinderId first_id) {
+  size_t ordinal = 0;
   for (size_t i = 0; program && i < program->consts.len; i++) {
     const ConstDecl *item = &program->consts.items[i];
     if (!item->name || !item->type || !is_static_value_param_type(program, item->type)) continue;
     char *canonical = canonical_static_arg_for_type(program, item->name, item->type);
     if (!canonical) continue;
     free(canonical);
+    ZTypeBinderId id = (ZTypeBinderId)(first_id + ordinal);
+    ordinal++;
+    if (type_core_binder_decl_name_exists(decls, len, item->name)) continue;
+    if (scope_type_name_shadows_static_const(shadow_scope, item->name)) continue;
     decls[len++] = (ZTypeBinderDecl){
       .name = item->name,
       .kind = Z_TYPE_BINDER_STATIC,
-      .id = (ZTypeBinderId)(first_id + added),
+      .id = id,
       .static_type = item->type,
     };
-    added++;
   }
   return len;
 }
@@ -2686,7 +2717,7 @@ static void function_type_pattern_binder_scope(const Program *program, const Fun
     };
   }
   size_t len = fun->type_params.len;
-  len = append_type_core_static_const_binders(program, decls, len, (ZTypeBinderId)(fun->type_params.len + 1));
+  len = append_type_core_static_const_binders(program, NULL, decls, len, (ZTypeBinderId)(fun->type_params.len + 1));
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
@@ -2696,7 +2727,7 @@ static void function_type_actual_binder_scope(const Program *program, const Func
   ZTypeBinderId const_id = (ZTypeBinderId)(fun->type_params.len + 1);
   size_t const_count = type_core_static_const_binder_count(program);
   size_t len = append_type_core_scope_static_param_binders(actual_scope, decls, 0, (ZTypeBinderId)(const_id + const_count));
-  len = append_type_core_static_const_binders(program, decls, len, const_id);
+  len = append_type_core_static_const_binders(program, actual_scope, decls, len, const_id);
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
@@ -2732,7 +2763,7 @@ static ZUnifyBinding *checker_unify_trace_push(ZUnifyTrace *trace) {
   return &trace->items[trace->len++];
 }
 
-static bool seed_type_core_static_const_bindings(const Program *program, const ZTypeBinderScope *scope, ZUnifyTrace *trace) {
+static bool seed_type_core_static_const_bindings(const Program *program, const ZTypeBinderScope *scope, ZTypeBinderId first_const_id, ZUnifyTrace *trace) {
   if (!program || !scope || !trace) return true;
   if (scope->len == 0) return true;
   if (!trace->items) {
@@ -2742,6 +2773,7 @@ static bool seed_type_core_static_const_bindings(const Program *program, const Z
   for (size_t i = 0; i < scope->len; i++) {
     const ZTypeBinderDecl *decl = &scope->items[i];
     if (decl->kind != Z_TYPE_BINDER_STATIC) continue;
+    if (decl->id < first_const_id) continue;
     char *canonical = canonical_static_arg_for_type(program, decl->name, decl->static_type);
     if (!canonical) continue;
     ZStaticValue value = {0};
@@ -2775,7 +2807,7 @@ static bool infer_generic_type_from_pattern_type_core(const Program *program, co
   z_type_arena_init(&arena);
   ZUnifyTrace trace;
   z_unify_trace_init(&trace);
-  seed_type_core_static_const_bindings(program, &pattern_scope, &trace);
+  seed_type_core_static_const_bindings(program, &pattern_scope, (ZTypeBinderId)(fun->type_params.len + 1), &trace);
   ZTypeParseError error = {0};
   ZTypeId pattern_type = Z_TYPE_ID_INVALID;
   ZTypeId actual_type = Z_TYPE_ID_INVALID;
@@ -2965,7 +2997,7 @@ static void flow_scope_add_function_bindings(const Function *fun, Scope *scope) 
   for (size_t type_param_index = 0; type_param_index < fun->type_params.len; type_param_index++) {
     const Param *type_param = &fun->type_params.items[type_param_index];
     if (type_param->is_static) scope_add_static_param(scope, type_param->name, type_param->type);
-    else scope_add(scope, type_param->name, "Type", false);
+    else scope_add_type_param(scope, type_param->name);
   }
   for (size_t param_index = 0; param_index < fun->params.len; param_index++) {
     const Param *param = &fun->params.items[param_index];
@@ -3733,7 +3765,7 @@ static void type_core_inference_pattern_scope(const Program *program, GenericBin
       .static_type = binders[i].is_static ? (binders[i].static_type ? binders[i].static_type : "usize") : NULL,
     };
   }
-  len = append_type_core_static_const_binders(program, decls, len, (ZTypeBinderId)(binder_len + 1));
+  len = append_type_core_static_const_binders(program, NULL, decls, len, (ZTypeBinderId)(binder_len + 1));
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
@@ -3743,7 +3775,7 @@ static void type_core_inference_actual_scope(const Program *program, Scope *actu
   ZTypeBinderId const_id = (ZTypeBinderId)(binder_len + 1);
   size_t const_count = type_core_static_const_binder_count(program);
   size_t len = append_type_core_scope_static_param_binders(actual_scope, decls, 0, (ZTypeBinderId)(const_id + const_count));
-  len = append_type_core_static_const_binders(program, decls, len, const_id);
+  len = append_type_core_static_const_binders(program, actual_scope, decls, len, const_id);
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
@@ -3799,7 +3831,7 @@ static bool infer_type_core_bindings(const Program *program, Scope *actual_scope
   z_type_arena_init(&arena);
   ZUnifyTrace trace;
   z_unify_trace_init(&trace);
-  seed_type_core_static_const_bindings(program, &pattern_scope, &trace);
+  seed_type_core_static_const_bindings(program, &pattern_scope, (ZTypeBinderId)(binder_len + 1), &trace);
   ZTypeParseError error = {0};
   ZTypeId pattern_type = Z_TYPE_ID_INVALID;
   ZTypeId actual_type = Z_TYPE_ID_INVALID;
@@ -3864,7 +3896,7 @@ static void shape_method_init_bindings(const Shape *shape, const Function *metho
   for (size_t i = 0; method && i < method->type_params.len; i++) bindings[method_offset + i].name = method->type_params.items[i].name;
 }
 
-static bool bind_type_arg_to_param(const Program *program, const Param *param, const TypeArg *arg, GenericBinding *binding, const Expr *call, ZDiag *diag) {
+static bool bind_type_arg_to_param(const Program *program, Scope *scope, const Param *param, const TypeArg *arg, GenericBinding *binding, const Expr *call, ZDiag *diag) {
   if (!param || !arg || !binding) return true;
   free(binding->type);
   binding->type = NULL;
@@ -3872,6 +3904,10 @@ static bool bind_type_arg_to_param(const Program *program, const Param *param, c
     const char *static_type = param->type ? param->type : "usize";
     if (!is_static_value_param_type(program, static_type)) {
       return set_diag_detail(diag, 3043, "static value parameter type is not supported", param->line, param->column, "integer, Bool, or enum static parameter", static_type, "use a concrete integer, Bool, or enum type for this static parameter");
+    }
+    if (scope_static_param_matches_type(program, scope, arg->type, static_type)) {
+      binding->type = z_strdup(arg->type);
+      return true;
     }
     binding->type = canonical_static_arg_for_type(program, arg->type, static_type);
     if (!binding->type) {
@@ -3883,15 +3919,15 @@ static bool bind_type_arg_to_param(const Program *program, const Param *param, c
   return true;
 }
 
-static bool bind_type_arg_range_to_params(const Program *program, const ParamVec *params, size_t param_offset, const TypeArgVec *type_args, size_t arg_offset, size_t count, GenericBinding *bindings, const Expr *call, ZDiag *diag) {
+static bool bind_type_arg_range_to_params(const Program *program, Scope *scope, const ParamVec *params, size_t param_offset, const TypeArgVec *type_args, size_t arg_offset, size_t count, GenericBinding *bindings, const Expr *call, ZDiag *diag) {
   if (!params || !type_args || !bindings) return count == 0;
   for (size_t i = 0; i < count; i++) {
-    if (!bind_type_arg_to_param(program, &params->items[i], &type_args->items[arg_offset + i], &bindings[param_offset + i], call, diag)) return false;
+    if (!bind_type_arg_to_param(program, scope, &params->items[i], &type_args->items[arg_offset + i], &bindings[param_offset + i], call, diag)) return false;
   }
   return true;
 }
 
-static bool finish_type_param_bindings(const Program *program, const ParamVec *params, size_t binding_offset, GenericBinding *bindings, const Expr *call, ZDiag *diag, const char *message, const char *help) {
+static bool finish_type_param_bindings(const Program *program, Scope *scope, const ParamVec *params, size_t binding_offset, GenericBinding *bindings, const Expr *call, ZDiag *diag, const char *message, const char *help) {
   if (!params || params->len == 0) return true;
   for (size_t i = 0; i < params->len; i++) {
     const Param *param = &params->items[i];
@@ -3906,6 +3942,7 @@ static bool finish_type_param_bindings(const Program *program, const ParamVec *p
     if (!is_static_value_param_type(program, static_type)) {
       return set_diag_detail(diag, 3043, "static value parameter type is not supported", param->line, param->column, "integer, Bool, or enum static parameter", static_type, "use a concrete integer, Bool, or enum type for this static parameter");
     }
+    if (scope_static_param_matches_type(program, scope, binding->type, static_type)) continue;
     char *canonical = canonical_static_arg_for_type(program, binding->type, static_type);
     if (!canonical) {
       return set_diag_detail(diag, 3044, "static value argument must be deterministic and concrete", call ? call->line : param->line, call ? call->column : param->column, static_value_expected_label(program, static_type), binding->type ? binding->type : "Unknown", "pass an explicit literal, top-level const, or supported meta value with the static parameter type");
@@ -3916,7 +3953,7 @@ static bool finish_type_param_bindings(const Program *program, const ParamVec *p
   return true;
 }
 
-static bool bind_shape_method_explicit_type_args(const Program *program, const Shape *shape, const Function *method, const Expr *call, bool receiver_style, ZDiag *diag, GenericBinding *bindings, bool *out_bound_shape, bool *out_bound_method) {
+static bool bind_shape_method_explicit_type_args(const Program *program, Scope *scope, const Shape *shape, const Function *method, const Expr *call, bool receiver_style, ZDiag *diag, GenericBinding *bindings, bool *out_bound_shape, bool *out_bound_method) {
   if (out_bound_shape) *out_bound_shape = false;
   if (out_bound_method) *out_bound_method = false;
   const TypeArgVec *type_args = call_type_args(call);
@@ -3925,14 +3962,14 @@ static bool bind_shape_method_explicit_type_args(const Program *program, const S
   size_t method_len = method ? method->type_params.len : 0;
   size_t method_offset = shape_method_method_binding_offset(shape);
   if (type_args->len == shape_len + method_len && shape_len + method_len > 0) {
-    if (!bind_type_arg_range_to_params(program, shape ? &shape->type_params : NULL, 1, type_args, 0, shape_len, bindings, call, diag)) return false;
-    if (!bind_type_arg_range_to_params(program, method ? &method->type_params : NULL, method_offset, type_args, shape_len, method_len, bindings, call, diag)) return false;
+    if (!bind_type_arg_range_to_params(program, scope, shape ? &shape->type_params : NULL, 1, type_args, 0, shape_len, bindings, call, diag)) return false;
+    if (!bind_type_arg_range_to_params(program, scope, method ? &method->type_params : NULL, method_offset, type_args, shape_len, method_len, bindings, call, diag)) return false;
     if (out_bound_shape) *out_bound_shape = shape_len > 0;
     if (out_bound_method) *out_bound_method = method_len > 0;
     return true;
   }
   if (receiver_style && method_len > 0 && type_args->len == method_len) {
-    if (!bind_type_arg_range_to_params(program, &method->type_params, method_offset, type_args, 0, method_len, bindings, call, diag)) return false;
+    if (!bind_type_arg_range_to_params(program, scope, &method->type_params, method_offset, type_args, 0, method_len, bindings, call, diag)) return false;
     if (out_bound_method) *out_bound_method = true;
     return true;
   }
@@ -3945,7 +3982,7 @@ static bool bind_shape_method_explicit_type_args(const Program *program, const S
   return set_diag_detail(diag, 3046, receiver_style ? "generic receiver method type argument count mismatch" : "generic shape method type argument count mismatch", call->line, call->column, expected, "wrong generic method argument count", receiver_style ? "pass method type arguments after the receiver or omit them when inferable" : "pass explicit shape arguments followed by method type arguments, or omit them when inferable");
 }
 
-static bool bind_shape_params_from_self(const Program *program, const Shape *shape, GenericBinding *bindings, size_t binding_len, ZDiag *diag, const Expr *call) {
+static bool bind_shape_params_from_self(const Program *program, Scope *scope, const Shape *shape, GenericBinding *bindings, size_t binding_len, ZDiag *diag, const Expr *call) {
   const char *self_type = generic_binding_lookup(bindings, binding_len, "Self");
   if (!self_type) return true;
   char owner_type[192];
@@ -3959,8 +3996,15 @@ static bool bind_shape_params_from_self(const Program *program, const Shape *sha
   }
   bool ok = true;
   for (size_t i = 0; i < shape->type_params.len && ok; i++) {
-    char *value = shape->type_params.items[i].is_static ? canonical_static_arg_for_type(program, args[i], shape->type_params.items[i].type) : z_strdup(args[i]);
-    if (shape->type_params.items[i].is_static && !value) {
+    char *value = NULL;
+    if (shape->type_params.items[i].is_static) {
+      const char *static_type = shape->type_params.items[i].type ? shape->type_params.items[i].type : "usize";
+      if (scope_static_param_matches_type(program, scope, args[i], static_type)) value = z_strdup(args[i]);
+      else value = canonical_static_arg_for_type(program, args[i], static_type);
+    } else {
+      value = z_strdup(args[i]);
+    }
+    if (!value) {
       ok = set_diag_detail(diag, 3044, "static value argument must be deterministic and concrete", call->line, call->column, static_value_expected_label(program, shape->type_params.items[i].type), args[i], "pass an explicit literal, top-level const, or supported meta value with the static parameter type");
     } else {
       ok = generic_binding_set(program, bindings, binding_len, shape->type_params.items[i].name, value);
@@ -4007,7 +4051,7 @@ static bool build_receiver_shape_method_bindings(CheckContext *ctx, const Progra
   shape_method_init_bindings(shape, method, bindings);
   bool bound_shape_args = false;
   bool bound_method_args = false;
-  if (!bind_shape_method_explicit_type_args(program, shape, method, call, true, diag, bindings, &bound_shape_args, &bound_method_args)) {
+  if (!bind_shape_method_explicit_type_args(program, scope, shape, method, call, true, diag, bindings, &bound_shape_args, &bound_method_args)) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
@@ -4033,12 +4077,12 @@ static bool build_receiver_shape_method_bindings(CheckContext *ctx, const Progra
       return set_diag_detail(diag, 3047, "receiver method argument conflicts with inferred Self type", call->args.items[param_index - 1]->line, call->args.items[param_index - 1]->column, "one concrete shape instantiation", actual, "make all receiver method arguments use the same shape instantiation");
     }
   }
-  if (!bind_shape_params_from_self(program, shape, bindings, binding_len, diag, call)) {
+  if (!bind_shape_params_from_self(program, scope, shape, bindings, binding_len, diag, call)) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
   }
-  if (!finish_type_param_bindings(program, method ? &method->type_params : NULL, shape_method_method_binding_offset(shape), bindings, call, diag, "generic receiver method arguments cannot be inferred", "pass explicit method type arguments or make them inferable from the receiver call")) {
+  if (!finish_type_param_bindings(program, scope, method ? &method->type_params : NULL, shape_method_method_binding_offset(shape), bindings, call, diag, "generic receiver method arguments cannot be inferred", "pass explicit method type arguments or make them inferable from the receiver call")) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
@@ -4063,7 +4107,7 @@ static bool build_receiver_shape_method_bindings(CheckContext *ctx, const Progra
   return true;
 }
 
-static bool bind_shape_method_from_expected_self(const Program *program, const Shape *shape, const Function *method, const Expr *call, const char *expected, GenericBinding *bindings, size_t binding_len, ZDiag *diag) {
+static bool bind_shape_method_from_expected_self(const Program *program, Scope *scope, const Shape *shape, const Function *method, const Expr *call, const char *expected, GenericBinding *bindings, size_t binding_len, ZDiag *diag) {
   if (!program || !shape || !method || !expected || !method->return_type || strcmp(method->return_type, "Self") != 0) return true;
   char **args = NULL;
   size_t arg_len = 0;
@@ -4073,7 +4117,10 @@ static bool bind_shape_method_from_expected_self(const Program *program, const S
   }
   for (size_t i = 0; i < shape->type_params.len; i++) {
     if (shape->type_params.items[i].is_static) {
-      char *value = canonical_static_arg_for_type(program, args[i], shape->type_params.items[i].type);
+      const char *static_type = shape->type_params.items[i].type ? shape->type_params.items[i].type : "usize";
+      char *value = scope_static_param_matches_type(program, scope, args[i], static_type)
+        ? z_strdup(args[i])
+        : canonical_static_arg_for_type(program, args[i], static_type);
       if (!value) {
         free_type_arg_list(args, arg_len);
         return set_diag_detail(diag, 3044, "static value argument must be deterministic and concrete", call->line, call->column, static_value_expected_label(program, shape->type_params.items[i].type), args[i], "pass an explicit literal, top-level const, or supported meta value with the static parameter type");
@@ -4101,7 +4148,7 @@ static bool build_shape_method_bindings(CheckContext *ctx, const Program *progra
   shape_method_init_bindings(shape, method, bindings);
   bool bound_shape_args = false;
   bool bound_method_args = false;
-  if (!bind_shape_method_explicit_type_args(program, shape, method, call, false, diag, bindings, &bound_shape_args, &bound_method_args)) {
+  if (!bind_shape_method_explicit_type_args(program, scope, shape, method, call, false, diag, bindings, &bound_shape_args, &bound_method_args)) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
@@ -4109,7 +4156,7 @@ static bool build_shape_method_bindings(CheckContext *ctx, const Program *progra
   if (bound_shape_args) {
     bindings[0].type = shape_concrete_instance_type(shape, bindings, binding_len);
   }
-  if (!bound_shape_args && !bind_shape_method_from_expected_self(program, shape, method, call, expected, bindings, binding_len, diag)) {
+  if (!bound_shape_args && !bind_shape_method_from_expected_self(program, scope, shape, method, call, expected, bindings, binding_len, diag)) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
@@ -4139,12 +4186,12 @@ static bool build_shape_method_bindings(CheckContext *ctx, const Program *progra
       return set_diag_detail(diag, 3047, "shape method return type conflicts with expected type", call->line, call->column, "one consistent method instantiation", expected, "use explicit method type arguments when the expected type conflicts");
     }
   }
-  if (!bind_shape_params_from_self(program, shape, bindings, binding_len, diag, call)) {
+  if (!bind_shape_params_from_self(program, scope, shape, bindings, binding_len, diag, call)) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
   }
-  if (!finish_type_param_bindings(program, method ? &method->type_params : NULL, shape_method_method_binding_offset(shape), bindings, call, diag, "generic shape method arguments cannot be inferred", "pass explicit method type arguments or make them inferable from the call")) {
+  if (!finish_type_param_bindings(program, scope, method ? &method->type_params : NULL, shape_method_method_binding_offset(shape), bindings, call, diag, "generic shape method arguments cannot be inferred", "pass explicit method type arguments or make them inferable from the call")) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
@@ -4311,7 +4358,7 @@ static bool build_constrained_interface_method_bindings(CheckContext *ctx, const
       free(bindings);
       return set_diag_detail(diag, 3046, "generic interface method type argument count mismatch", call->line, call->column, expected, "wrong generic interface method argument count", "pass explicit method type arguments matching the interface method declaration");
     }
-    if (!bind_type_arg_range_to_params(program, &method->type_params, method_offset, type_args, 0, method->type_params.len, bindings, call, diag)) {
+    if (!bind_type_arg_range_to_params(program, scope, &method->type_params, method_offset, type_args, 0, method->type_params.len, bindings, call, diag)) {
       generic_bindings_free(bindings, binding_len);
       free(bindings);
       return false;
@@ -4335,7 +4382,7 @@ static bool build_constrained_interface_method_bindings(CheckContext *ctx, const
     }
   }
 
-  if (!finish_type_param_bindings(program, &method->type_params, method_offset, bindings, call, diag, "generic interface method arguments cannot be inferred", "pass explicit method type arguments or make them inferable from the constrained call")) {
+  if (!finish_type_param_bindings(program, scope, &method->type_params, method_offset, bindings, call, diag, "generic interface method arguments cannot be inferred", "pass explicit method type arguments or make them inferable from the constrained call")) {
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     return false;
@@ -8228,7 +8275,7 @@ static bool check_shape_method_body(CheckContext *ctx, const Program *program, c
     if (shape->type_params.items[i].is_static) {
       scope_add_static_param(&scope, shape->type_params.items[i].name, shape->type_params.items[i].type);
     } else {
-      scope_add(&scope, shape->type_params.items[i].name, "Type", false);
+      scope_add_type_param(&scope, shape->type_params.items[i].name);
     }
   }
   size_t method_offset = shape_method_method_binding_offset(shape);
@@ -8237,7 +8284,7 @@ static bool check_shape_method_body(CheckContext *ctx, const Program *program, c
     if (method->type_params.items[i].is_static) {
       scope_add_static_param(&scope, method->type_params.items[i].name, method->type_params.items[i].type);
     } else {
-      scope_add(&scope, method->type_params.items[i].name, "Type", false);
+      scope_add_type_param(&scope, method->type_params.items[i].name);
     }
   }
   for (size_t i = 0; i < method->params.len; i++) {
@@ -8893,7 +8940,7 @@ bool z_check_program(const Program *program, ZDiag *diag) {
     for (size_t type_param_index = 0; type_param_index < fun->type_params.len; type_param_index++) {
       const Param *type_param = &fun->type_params.items[type_param_index];
       if (type_param->is_static) scope_add_static_param(&scope, type_param->name, type_param->type);
-      else scope_add(&scope, type_param->name, "Type", false);
+      else scope_add_type_param(&scope, type_param->name);
     }
     for (size_t param_index = 0; param_index < fun->params.len; param_index++) {
       Param *param = &fun->params.items[param_index];
