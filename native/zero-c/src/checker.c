@@ -1865,6 +1865,7 @@ static bool types_compatible(const Program *program, const char *expected, const
 static bool types_compatible_in_scope(const Program *program, Scope *scope, const char *expected, const char *actual);
 static bool scope_static_param_type(Scope *scope, const char *name, const char **out_type);
 static bool scope_type_name_shadows_static_const(Scope *scope, const char *name);
+static const char *visible_concrete_type_name_kind(const Program *program, const char *name);
 static bool validate_type_names(const Program *program, const char *type, const ParamVec *primary, const ParamVec *secondary, bool allow_self, ZDiag *diag, int line, int column);
 static bool static_type_param_name_known_for_type(const Program *program, const ParamVec *primary, const ParamVec *secondary, const char *name, const char *expected_type);
 static const Shape *find_shape_for_type(const Program *program, const char *type);
@@ -1954,6 +1955,28 @@ static const char *generic_binding_lookup(GenericBinding *bindings, size_t len, 
 
 static void generic_bindings_free(GenericBinding *bindings, size_t len) {
   for (size_t i = 0; i < len; i++) free(bindings[i].type);
+}
+
+static char **generic_binding_type_snapshot(GenericBinding *bindings, size_t len) {
+  char **snapshot = z_checked_calloc(len ? len : 1, sizeof(char *));
+  for (size_t i = 0; i < len; i++) {
+    if (bindings[i].type) snapshot[i] = z_strdup(bindings[i].type);
+  }
+  return snapshot;
+}
+
+static void generic_binding_type_snapshot_restore(GenericBinding *bindings, size_t len, char **snapshot) {
+  if (!bindings || !snapshot) return;
+  for (size_t i = 0; i < len; i++) {
+    free(bindings[i].type);
+    bindings[i].type = snapshot[i] ? z_strdup(snapshot[i]) : NULL;
+  }
+}
+
+static void generic_binding_type_snapshot_free(char **snapshot, size_t len) {
+  if (!snapshot) return;
+  for (size_t i = 0; i < len; i++) free(snapshot[i]);
+  free(snapshot);
 }
 
 static void resolved_provenance_call_free(ResolvedProvenanceCall *resolved) {
@@ -2671,7 +2694,20 @@ static bool scope_type_name_shadows_static_const(Scope *scope, const char *name)
   return false;
 }
 
-static size_t append_type_core_static_const_binders(const Program *program, Scope *shadow_scope, ZTypeBinderDecl *decls, size_t len, ZTypeBinderId first_id) {
+static bool static_const_name_is_ambiguous_type_arg(const Program *program, const char *name) {
+  return visible_concrete_type_name_kind(program, name) != NULL;
+}
+
+static bool program_has_ambiguous_type_arg_static_consts(const Program *program) {
+  for (size_t i = 0; program && i < program->consts.len; i++) {
+    const ConstDecl *item = &program->consts.items[i];
+    if (!item->name || !item->type || !is_static_value_param_type(program, item->type)) continue;
+    if (static_const_name_is_ambiguous_type_arg(program, item->name)) return true;
+  }
+  return false;
+}
+
+static size_t append_type_core_static_const_binders(const Program *program, Scope *shadow_scope, ZTypeBinderDecl *decls, size_t len, ZTypeBinderId first_id, bool omit_ambiguous_type_args) {
   size_t ordinal = 0;
   for (size_t i = 0; program && i < program->consts.len; i++) {
     const ConstDecl *item = &program->consts.items[i];
@@ -2683,6 +2719,7 @@ static size_t append_type_core_static_const_binders(const Program *program, Scop
     ordinal++;
     if (type_core_binder_decl_name_exists(decls, len, item->name)) continue;
     if (scope_type_name_shadows_static_const(shadow_scope, item->name)) continue;
+    if (omit_ambiguous_type_args && static_const_name_is_ambiguous_type_arg(program, item->name)) continue;
     decls[len++] = (ZTypeBinderDecl){
       .name = item->name,
       .kind = Z_TYPE_BINDER_STATIC,
@@ -2731,7 +2768,7 @@ static size_t append_type_core_scope_static_param_binders(Scope *scope, ZTypeBin
   return len;
 }
 
-static void function_type_pattern_binder_scope(const Program *program, const Function *fun, ZTypeBinderDecl *decls, ZTypeBinderScope *scope) {
+static void function_type_pattern_binder_scope(const Program *program, const Function *fun, ZTypeBinderDecl *decls, ZTypeBinderScope *scope, bool omit_ambiguous_type_args) {
   if (scope) *scope = (ZTypeBinderScope){0};
   if (!function_is_generic(fun) || !decls || !scope) return;
   for (size_t i = 0; i < fun->type_params.len; i++) {
@@ -2744,17 +2781,17 @@ static void function_type_pattern_binder_scope(const Program *program, const Fun
     };
   }
   size_t len = fun->type_params.len;
-  len = append_type_core_static_const_binders(program, NULL, decls, len, (ZTypeBinderId)(fun->type_params.len + 1));
+  len = append_type_core_static_const_binders(program, NULL, decls, len, (ZTypeBinderId)(fun->type_params.len + 1), omit_ambiguous_type_args);
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
-static void function_type_actual_binder_scope(const Program *program, const Function *fun, Scope *actual_scope, ZTypeBinderDecl *decls, ZTypeBinderScope *scope) {
+static void function_type_actual_binder_scope(const Program *program, const Function *fun, Scope *actual_scope, ZTypeBinderDecl *decls, ZTypeBinderScope *scope, bool omit_ambiguous_type_args) {
   if (scope) *scope = (ZTypeBinderScope){0};
   if (!function_is_generic(fun) || !decls || !scope) return;
   ZTypeBinderId const_id = (ZTypeBinderId)(fun->type_params.len + 1);
   size_t const_count = type_core_static_const_binder_count(program);
   size_t len = append_type_core_scope_static_param_binders(actual_scope, decls, 0, (ZTypeBinderId)(const_id + const_count));
-  len = append_type_core_static_const_binders(program, actual_scope, decls, len, const_id);
+  len = append_type_core_static_const_binders(program, actual_scope, decls, len, const_id, omit_ambiguous_type_args);
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
@@ -2818,7 +2855,7 @@ static bool seed_type_core_static_const_bindings(const Program *program, const Z
   return true;
 }
 
-static bool infer_generic_type_from_pattern_type_core(const Program *program, const Function *fun, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len) {
+static bool infer_generic_type_from_pattern_type_core_attempt(const Program *program, const Function *fun, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len, bool omit_ambiguous_type_args) {
   if (!pattern || !actual) return true;
   if (!type_pattern_references_any_generic_param(fun, pattern)) return true;
   size_t max_binders = fun->type_params.len + (program ? program->consts.len : 0);
@@ -2827,8 +2864,8 @@ static bool infer_generic_type_from_pattern_type_core(const Program *program, co
   ZTypeBinderDecl *actual_decls = z_checked_calloc(max_binders ? max_binders : 1, sizeof(ZTypeBinderDecl));
   ZTypeBinderScope pattern_scope = {0};
   ZTypeBinderScope actual_type_scope = {0};
-  function_type_pattern_binder_scope(program, fun, pattern_decls, &pattern_scope);
-  function_type_actual_binder_scope(program, fun, actual_scope, actual_decls, &actual_type_scope);
+  function_type_pattern_binder_scope(program, fun, pattern_decls, &pattern_scope, omit_ambiguous_type_args);
+  function_type_actual_binder_scope(program, fun, actual_scope, actual_decls, &actual_type_scope, omit_ambiguous_type_args);
 
   ZTypeArena arena;
   z_type_arena_init(&arena);
@@ -2846,6 +2883,21 @@ static bool infer_generic_type_from_pattern_type_core(const Program *program, co
   z_type_arena_free(&arena);
   free(actual_decls);
   free(pattern_decls);
+  return ok;
+}
+
+static bool infer_generic_type_from_pattern_type_core(const Program *program, const Function *fun, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len) {
+  bool may_retry = program_has_ambiguous_type_arg_static_consts(program);
+  char **snapshot = may_retry ? generic_binding_type_snapshot(bindings, binding_len) : NULL;
+  bool ok = infer_generic_type_from_pattern_type_core_attempt(program, fun, actual_scope, pattern, actual, bindings, binding_len, false);
+  if (ok || !may_retry) {
+    generic_binding_type_snapshot_free(snapshot, binding_len);
+    return ok;
+  }
+  generic_binding_type_snapshot_restore(bindings, binding_len, snapshot);
+  ok = infer_generic_type_from_pattern_type_core_attempt(program, fun, actual_scope, pattern, actual, bindings, binding_len, true);
+  if (!ok) generic_binding_type_snapshot_restore(bindings, binding_len, snapshot);
+  generic_binding_type_snapshot_free(snapshot, binding_len);
   return ok;
 }
 
@@ -3778,7 +3830,7 @@ static bool type_pattern_references_inference_binder(GenericBinding *bindings, s
   return false;
 }
 
-static void type_core_inference_pattern_scope(const Program *program, GenericBinding *bindings, size_t binding_len, const TypeCoreInferenceBinder *binders, size_t binder_len, ZTypeBinderDecl *decls, ZTypeBinderScope *scope) {
+static void type_core_inference_pattern_scope(const Program *program, GenericBinding *bindings, size_t binding_len, const TypeCoreInferenceBinder *binders, size_t binder_len, ZTypeBinderDecl *decls, ZTypeBinderScope *scope, bool omit_ambiguous_type_args) {
   if (scope) *scope = (ZTypeBinderScope){0};
   if (!bindings || !decls || !scope) return;
   size_t len = 0;
@@ -3792,17 +3844,17 @@ static void type_core_inference_pattern_scope(const Program *program, GenericBin
       .static_type = binders[i].is_static ? (binders[i].static_type ? binders[i].static_type : "usize") : NULL,
     };
   }
-  len = append_type_core_static_const_binders(program, NULL, decls, len, (ZTypeBinderId)(binder_len + 1));
+  len = append_type_core_static_const_binders(program, NULL, decls, len, (ZTypeBinderId)(binder_len + 1), omit_ambiguous_type_args);
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
-static void type_core_inference_actual_scope(const Program *program, Scope *actual_scope, size_t binder_len, ZTypeBinderDecl *decls, ZTypeBinderScope *scope) {
+static void type_core_inference_actual_scope(const Program *program, Scope *actual_scope, size_t binder_len, ZTypeBinderDecl *decls, ZTypeBinderScope *scope, bool omit_ambiguous_type_args) {
   if (scope) *scope = (ZTypeBinderScope){0};
   if (!decls || !scope) return;
   ZTypeBinderId const_id = (ZTypeBinderId)(binder_len + 1);
   size_t const_count = type_core_static_const_binder_count(program);
   size_t len = append_type_core_scope_static_param_binders(actual_scope, decls, 0, (ZTypeBinderId)(const_id + const_count));
-  len = append_type_core_static_const_binders(program, actual_scope, decls, len, const_id);
+  len = append_type_core_static_const_binders(program, actual_scope, decls, len, const_id, omit_ambiguous_type_args);
   *scope = (ZTypeBinderScope){.items = decls, .len = len};
 }
 
@@ -3842,7 +3894,7 @@ static bool apply_type_core_inference_trace(const Program *program, Scope *scope
   return true;
 }
 
-static bool infer_type_core_bindings(const Program *program, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len, const TypeCoreInferenceBinder *binders, size_t binder_len) {
+static bool infer_type_core_bindings_attempt(const Program *program, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len, const TypeCoreInferenceBinder *binders, size_t binder_len, bool omit_ambiguous_type_args) {
   if (!pattern || !actual) return true;
   if (binder_len == 0 || !type_pattern_references_inference_binder(bindings, binding_len, binders, binder_len, pattern)) return true;
   size_t max_binders = binder_len + (program ? program->consts.len : 0);
@@ -3851,8 +3903,8 @@ static bool infer_type_core_bindings(const Program *program, Scope *actual_scope
   ZTypeBinderDecl *actual_decls = z_checked_calloc(max_binders ? max_binders : 1, sizeof(ZTypeBinderDecl));
   ZTypeBinderScope pattern_scope = {0};
   ZTypeBinderScope actual_type_scope = {0};
-  type_core_inference_pattern_scope(program, bindings, binding_len, binders, binder_len, pattern_decls, &pattern_scope);
-  type_core_inference_actual_scope(program, actual_scope, binder_len, actual_decls, &actual_type_scope);
+  type_core_inference_pattern_scope(program, bindings, binding_len, binders, binder_len, pattern_decls, &pattern_scope, omit_ambiguous_type_args);
+  type_core_inference_actual_scope(program, actual_scope, binder_len, actual_decls, &actual_type_scope, omit_ambiguous_type_args);
 
   ZTypeArena arena;
   z_type_arena_init(&arena);
@@ -3871,6 +3923,21 @@ static bool infer_type_core_bindings(const Program *program, Scope *actual_scope
   z_type_arena_free(&arena);
   free(actual_decls);
   free(pattern_decls);
+  return ok;
+}
+
+static bool infer_type_core_bindings(const Program *program, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len, const TypeCoreInferenceBinder *binders, size_t binder_len) {
+  bool may_retry = program_has_ambiguous_type_arg_static_consts(program);
+  char **snapshot = may_retry ? generic_binding_type_snapshot(bindings, binding_len) : NULL;
+  bool ok = infer_type_core_bindings_attempt(program, actual_scope, pattern, actual, bindings, binding_len, binders, binder_len, false);
+  if (ok || !may_retry) {
+    generic_binding_type_snapshot_free(snapshot, binding_len);
+    return ok;
+  }
+  generic_binding_type_snapshot_restore(bindings, binding_len, snapshot);
+  ok = infer_type_core_bindings_attempt(program, actual_scope, pattern, actual, bindings, binding_len, binders, binder_len, true);
+  if (!ok) generic_binding_type_snapshot_restore(bindings, binding_len, snapshot);
+  generic_binding_type_snapshot_free(snapshot, binding_len);
   return ok;
 }
 
