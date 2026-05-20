@@ -937,6 +937,17 @@ assert.equal(invalidCheckEmit.body.ok, false);
 assert.equal(invalidCheckEmit.body.diagnostics[0].code, "BLD002");
 assert.equal(invalidCheckEmit.body.diagnostics[0].actual, "--emit bogus");
 assert.equal(invalidCheckEmit.body.targetReadiness, undefined);
+assert.equal(invalidCheckEmit.body.runSupport, undefined);
+const helloRunSupport = json(["check", "--json", "examples/hello.0"]).body;
+assert.equal(helloRunSupport.ok, true);
+assert.equal(helloRunSupport.targetReadiness.ok, true);
+assert.equal(helloRunSupport.runSupport.schemaVersion, 1);
+assert.equal(helloRunSupport.runSupport.checkOk, true);
+assert.equal(helloRunSupport.runSupport.targetReadinessOk, true);
+assert.equal(helloRunSupport.runSupport.runnableOnHost, true);
+assert.equal(helloRunSupport.runSupport.zeroRunExpected, true);
+assert.equal(helloRunSupport.runSupport.supportLevel, "run-host");
+assert.equal(helloRunSupport.runSupport.target, helloRunSupport.targetReadiness.target);
 const backendBlockedReadiness = json(["check", "--json", "--emit", "obj", "--target", "linux-musl-x64", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0"]).body;
 assert.equal(backendBlockedReadiness.ok, true);
 assert.equal(backendBlockedReadiness.diagnostics.length, 0);
@@ -953,6 +964,11 @@ assert.deepEqual(backendBlockedReadiness.targetReadiness.diagnostics[0].backendB
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
+assert.equal(backendBlockedReadiness.runSupport.checkOk, true);
+assert.equal(backendBlockedReadiness.runSupport.targetReadinessOk, false);
+assert.equal(backendBlockedReadiness.runSupport.runnableOnHost, false);
+assert.equal(backendBlockedReadiness.runSupport.zeroRunExpected, false);
+assert.equal(backendBlockedReadiness.runSupport.supportLevel, "check-only");
 const directExeBlockedReadiness = json(["check", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-call-add.0"]).body;
 assert.equal(directExeBlockedReadiness.ok, true);
 assert.equal(directExeBlockedReadiness.diagnostics.length, 0);

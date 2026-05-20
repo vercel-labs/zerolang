@@ -30,15 +30,26 @@ Inside the Zero repository checkout, prefer `bin/zero` over a global `zero`. For
 zero check --json <file-or-package>
 ```
 
-4. When the compiler reports a diagnostic, inspect structured fields first:
+4. If `ok` is true, inspect `runSupport` before running or promising an
+   executable:
+
+```sh
+zero check --json <file-or-package> | jq '.runSupport'
+```
+
+Use `runSupport.runnableOnHost` for `zero run` decisions. Treat
+`runSupport.supportLevel: "check-only"` as checker coverage only, then inspect
+`targetReadiness.diagnostics` for backend blockers such as `CGEN004`.
+
+5. When the compiler reports a diagnostic, inspect structured fields first:
 
 ```sh
 zero explain <diagnostic-code>
 zero fix --plan --json <file-or-package>
 ```
 
-5. If behavior changes, add or update a `test` block or conformance fixture.
-6. Validate with the narrowest command that covers the changed surface.
+6. If behavior changes, add or update a `test` block or conformance fixture.
+7. Validate with the narrowest command that covers the changed surface.
 
 ## Agent Rules
 

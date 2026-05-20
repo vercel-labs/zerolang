@@ -2,6 +2,17 @@
 
 Use these examples as the hands-on path through Zero. Start at the top, run `bin/zero check`, and open the matching docs article when you want an explanation.
 
+`zero check --json` includes `runSupport` so agents and scripts can tell whether
+a checked example is runnable on the current host or only build/check ready. The
+support levels used below are:
+
+- `run-host`: `zero run <input>` is expected to work on the current host.
+- `build-cross`: the example can be built for the selected target, but not run
+  by `zero run` on this host.
+- `build-artifact`: the selected emit mode creates a non-executable artifact.
+- `check-only`: parse/typecheck succeeds, but target readiness reports backend
+  or toolchain blockers for the requested artifact.
+
 ## Profile And Size Checks
 
 Use `hello.0` and `fixed-vec.0` to compare profile contracts and size metadata:
@@ -17,35 +28,35 @@ Build JSON reports `profileSemantics` and `profileBudget`. Size JSON adds `sizeB
 
 ## First Programs
 
-| Example | What it teaches | Try it |
-| --- | --- | --- |
-| `hello.0` | `pub fun main`, `World`, `check`, stdout | `bin/zero check examples/hello.0` |
-| `hello-let.0` | immutable `let` bindings | `bin/zero check examples/hello-let.0` |
-| `add.0` | helper functions, `return`, `if` / `else` | `bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add` |
-| `direct-u8-helper-call.0` | direct backend signed LEB literals, byte arrays, and helper calls | `bin/zero check examples/direct-u8-helper-call.0` |
-| `direct-array-bounds-trap.0` | direct backend stack-memory bounds traps | `bin/zero check examples/direct-array-bounds-trap.0` |
-| `direct-string-len.0` | direct backend string literal length for compiler token scans | `bin/zero check examples/direct-string-len.0` |
-| `direct-string-literal.0` | direct backend readonly string data segments and byte loads | `bin/zero check examples/direct-string-literal.0` |
-| `direct-span-read.0` | direct backend readonly string slices as byte-span views | `bin/zero check examples/direct-span-read.0` |
-| `direct-string-eql.0` | direct backend byte-span equality over readonly string views | `bin/zero check examples/direct-string-eql.0` |
-| `direct-byte-view-locals.0` | direct backend local `String`/`Span<u8>` pointer-length byte views | `bin/zero check examples/direct-byte-view-locals.0` |
-| `direct-mutspan-len.0` | direct backend local `MutSpan<u8>` pointer-length byte views | `bin/zero check examples/direct-mutspan-len.0` |
-| `direct-byte-copy-fill.0` | direct backend mutable byte copy/fill over fixed buffers | `bin/zero check examples/direct-byte-copy-fill.0` |
-| `direct-alloc-bump.0` | direct backend explicit `FixedBufAlloc` bump allocation over caller storage | `bin/zero check examples/direct-alloc-bump.0` |
-| `direct-alloc-overflow.0` | direct backend fixed-buffer allocation overflow returns `Maybe.none` without hidden heap growth | `bin/zero check examples/direct-alloc-overflow.0` |
-| `direct-token-shape.0` | direct backend stack layout for shape literals, field loads, defaults, and field stores | `bin/zero check examples/direct-token-shape.0` |
-| `direct-enum-match.0` | direct backend compact enum cases and exhaustive match branches without matcher tables | `bin/zero check examples/direct-enum-match.0` |
-| `direct-raises-basic.0` | direct backend packed error-result propagation for `raise` and `check` | `bin/zero check examples/direct-raises-basic.0` |
-| `direct-rescue-basic.0` | direct backend local `rescue` fallback over a raised error | `bin/zero check examples/direct-rescue-basic.0` |
-| `direct-byte-buf.0` | direct backend monomorphic byte buffer push, length, capacity, and overflow checks | `bin/zero check examples/direct-byte-buf.0` |
-| `direct-generic-identity.0` | direct backend explicit generic function specialization without runtime metadata | `bin/zero check examples/direct-generic-identity.0` |
-| `direct-generic-fixedbuf.0` | direct backend generic storage shape with concrete type and static value arguments | `bin/zero check examples/direct-generic-fixedbuf.0` |
-| `direct-generic-vec.0` | direct backend generic fixed-capacity vector layout for byte, token, and AST-node element kinds | `bin/zero check examples/direct-generic-vec.0` |
-| `direct-i64-return.0` | direct ELF64 object backend support for i64/u64 values | `bin/zero build --emit obj --target linux-musl-x64 examples/direct-i64-return.0 --out .zero/out/direct-i64-return.o` |
-| `direct-byte-view-reloc.0` | direct ELF64 readonly byte-view relocations for string-backed span locals | `bin/zero build --emit obj --target linux-musl-x64 examples/direct-byte-view-reloc.0 --out .zero/out/direct-byte-view-reloc.o` |
-| `functions.0` | calling functions and ignoring return values | `bin/zero check examples/functions.0` |
-| `branch.0` | booleans and branches | `bin/zero check examples/branch.0` |
-| `countdown.0` | `while` loop syntax | `bin/zero check examples/countdown.0` |
+| Example | Support | What it teaches | Try it |
+| --- | --- | --- | --- |
+| `hello.0` | `run-host` | `pub fun main`, `World`, `check`, stdout | `bin/zero run examples/hello.0` |
+| `hello-let.0` | `run-host` | immutable `let` bindings | `bin/zero run examples/hello-let.0` |
+| `add.0` | `build-cross` | helper functions, `return`, `if` / `else` | `bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add` |
+| `direct-u8-helper-call.0` | `check-only` | direct backend signed LEB literals, byte arrays, and helper calls | `bin/zero check examples/direct-u8-helper-call.0` |
+| `direct-array-bounds-trap.0` | `check-only` | direct backend stack-memory bounds traps | `bin/zero check examples/direct-array-bounds-trap.0` |
+| `direct-string-len.0` | `check-only` | direct backend string literal length for compiler token scans | `bin/zero check examples/direct-string-len.0` |
+| `direct-string-literal.0` | `check-only` | direct backend readonly string data segments and byte loads | `bin/zero check examples/direct-string-literal.0` |
+| `direct-span-read.0` | `check-only` | direct backend readonly string slices as byte-span views | `bin/zero check examples/direct-span-read.0` |
+| `direct-string-eql.0` | `check-only` | direct backend byte-span equality over readonly string views | `bin/zero check examples/direct-string-eql.0` |
+| `direct-byte-view-locals.0` | `check-only` | direct backend local `String`/`Span<u8>` pointer-length byte views | `bin/zero check examples/direct-byte-view-locals.0` |
+| `direct-mutspan-len.0` | `check-only` | direct backend local `MutSpan<u8>` pointer-length byte views | `bin/zero check examples/direct-mutspan-len.0` |
+| `direct-byte-copy-fill.0` | `check-only` | direct backend mutable byte copy/fill over fixed buffers | `bin/zero check examples/direct-byte-copy-fill.0` |
+| `direct-alloc-bump.0` | `check-only` | direct backend explicit `FixedBufAlloc` bump allocation over caller storage | `bin/zero check examples/direct-alloc-bump.0` |
+| `direct-alloc-overflow.0` | `check-only` | direct backend fixed-buffer allocation overflow returns `Maybe.none` without hidden heap growth | `bin/zero check examples/direct-alloc-overflow.0` |
+| `direct-token-shape.0` | `check-only` | direct backend stack layout for shape literals, field loads, defaults, and field stores | `bin/zero check examples/direct-token-shape.0` |
+| `direct-enum-match.0` | `check-only` | direct backend compact enum cases and exhaustive match branches without matcher tables | `bin/zero check examples/direct-enum-match.0` |
+| `direct-raises-basic.0` | `check-only` | direct backend packed error-result propagation for `raise` and `check` | `bin/zero check examples/direct-raises-basic.0` |
+| `direct-rescue-basic.0` | `check-only` | direct backend local `rescue` fallback over a raised error | `bin/zero check examples/direct-rescue-basic.0` |
+| `direct-byte-buf.0` | `check-only` | direct backend monomorphic byte buffer push, length, capacity, and overflow checks | `bin/zero check examples/direct-byte-buf.0` |
+| `direct-generic-identity.0` | `check-only` | direct backend explicit generic function specialization without runtime metadata | `bin/zero check examples/direct-generic-identity.0` |
+| `direct-generic-fixedbuf.0` | `check-only` | direct backend generic storage shape with concrete type and static value arguments | `bin/zero check examples/direct-generic-fixedbuf.0` |
+| `direct-generic-vec.0` | `check-only` | direct backend generic fixed-capacity vector layout for byte, token, and AST-node element kinds | `bin/zero check examples/direct-generic-vec.0` |
+| `direct-i64-return.0` | `build-artifact` | direct ELF64 object backend support for i64/u64 values | `bin/zero build --emit obj --target linux-musl-x64 examples/direct-i64-return.0 --out .zero/out/direct-i64-return.o` |
+| `direct-byte-view-reloc.0` | `build-artifact` | direct ELF64 readonly byte-view relocations for string-backed span locals | `bin/zero build --emit obj --target linux-musl-x64 examples/direct-byte-view-reloc.0 --out .zero/out/direct-byte-view-reloc.o` |
+| `functions.0` | `check-only` | calling functions and ignoring return values | `bin/zero check examples/functions.0` |
+| `branch.0` | `check-only` | booleans and branches | `bin/zero check examples/branch.0` |
+| `countdown.0` | `check-only` | `while` loop syntax | `bin/zero check examples/countdown.0` |
 
 ## Data And Types
 
@@ -110,7 +121,9 @@ These examples are the small native workflow set used by docs and tests:
 
 ## Build A Runnable Program
 
-Most examples are designed for `check`. To build and run an executable, use a CLI entry point:
+Most examples are designed for `check` or cross-build coverage. Use
+`zero check --json <input>` and read `runSupport.supportLevel` when in doubt. To
+build and run an executable, use a CLI entry point:
 
 ```sh
 bin/zero dev --json --target linux-musl-x64 examples/add.0

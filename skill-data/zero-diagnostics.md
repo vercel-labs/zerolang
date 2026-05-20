@@ -31,6 +31,17 @@ Important fields from `zero check --json`:
 - `repair`: optional repair id and summary
 - `related`: extra spans or facts
 
+On successful checks, inspect `runSupport` before assuming a program can be
+executed on the current machine:
+
+- `runSupport.supportLevel`: `run-host`, `build-cross`, `build-artifact`, or `check-only`
+- `runSupport.runnableOnHost`: whether `zero run <input>` is expected to work
+- `runSupport.targetReadinessOk`: whether backend/toolchain readiness passed
+- `targetReadiness.diagnostics`: backend or toolchain blockers when readiness fails
+
+Treat `ok: true` with `runSupport.supportLevel: "check-only"` as a valid
+language check, not a runnable program.
+
 Do not scrape terminal prose when JSON is available.
 
 ## Fix Safety
@@ -57,6 +68,9 @@ Apply only the edit you can justify from the source and fix plan. Treat `require
 - `TAR001`: unknown target; inspect `zero targets`.
 - `TAR002`: capability unavailable for selected target.
 - `BLD003`: removed backend flag; use direct emitters.
+- `CGEN004`: language check passed, but the selected backend cannot emit the
+  requested artifact or source feature yet; inspect `targetReadiness` and
+  `runSupport`.
 
 ## Agent Triage
 
