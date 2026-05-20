@@ -354,6 +354,7 @@ for (const fixture of [
   "conformance/native/pass/generic-inferred-specialized-call.0",
   "conformance/native/pass/generic-nested-local-specialization.0",
   "conformance/native/pass/generic-static-array-specialization.0",
+  "conformance/native/pass/generic-static-forwarded-array-specialization.0",
   "conformance/native/pass/generic-shape-basic.0",
   "conformance/native/pass/generic-shape-multi.0",
   "conformance/native/pass/generic-shape-methods.0",
@@ -429,6 +430,7 @@ for (const fixture of [
   "conformance/native/pass/generic-inferred-specialized-call.0",
   "conformance/native/pass/generic-nested-local-specialization.0",
   "conformance/native/pass/generic-static-array-specialization.0",
+  "conformance/native/pass/generic-static-forwarded-array-specialization.0",
   "conformance/check/pass/generic-shape-basic.0",
   "conformance/check/pass/generic-shape-multi.0",
   "conformance/check/pass/generic-shape-methods.0",
@@ -2604,6 +2606,8 @@ for (const runtimeFixture of [
 await assertDirectRuntimeRequired("conformance/native/pass/generic-function-basic.0", "generic-function-basic-required", { stdout: "generic function ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-nested-calls.0", "generic-nested-calls-required", { stdout: "generic nested calls ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-inferred-specialized-call.0", "generic-inferred-specialized-call-required", { stdout: "generic inferred specialized call ok\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/generic-static-array-specialization.0", "generic-static-array-specialization-required", { stdout: "generic static array specialization ok\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/generic-static-forwarded-array-specialization.0", "generic-static-forwarded-array-specialization-required", { stdout: "generic static forwarded array specialization ok\n" });
 
 const abiDump = await execFileAsync(zero, ["abi", "dump", "--json", "conformance/native/pass/const-layout.0"]);
 const abiDumpBody = JSON.parse(abiDump.stdout);
@@ -2635,6 +2639,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/generic-inferred-specialized-call.0", "generic-inferred-specialized-call", { stdout: "generic inferred specialized call ok\n" }],
   ["conformance/native/pass/generic-nested-local-specialization.0", "generic-nested-local-specialization", { stdout: "generic nested local specialization ok\n" }],
   ["conformance/native/pass/generic-static-array-specialization.0", "generic-static-array-specialization", { stdout: "generic static array specialization ok\n" }],
+  ["conformance/native/pass/generic-static-forwarded-array-specialization.0", "generic-static-forwarded-array-specialization", { stdout: "generic static forwarded array specialization ok\n" }],
   ["conformance/native/pass/static-interface-mutref.0", "static-interface-mutref", { stdout: "static interface mutref ok\n" }],
   ["conformance/native/pass/owned-transfer.0", "owned-transfer", { stdout: "owned transfer ok\n" }],
   ["conformance/native/pass/owned-drop-cleanup.0", "owned-drop-cleanup", { stdout: "owned drop cleanup ok\n" }],

@@ -3242,6 +3242,20 @@ static const char *ir_specialization_arg_for_binder(const Function *fun, const T
   return type_args->items[index].type;
 }
 
+static ZTypeBinderDecl *ir_specialization_binder_decls(const Function *fun) {
+  if (!fun || fun->type_params.len == 0) return NULL;
+  ZTypeBinderDecl *decls = z_checked_calloc(fun->type_params.len, sizeof(ZTypeBinderDecl));
+  for (size_t i = 0; i < fun->type_params.len; i++) {
+    decls[i] = (ZTypeBinderDecl){
+      .name = fun->type_params.items[i].name,
+      .kind = fun->type_params.items[i].is_static ? Z_TYPE_BINDER_STATIC : Z_TYPE_BINDER_TYPE,
+      .id = (ZTypeBinderId)(i + 1),
+      .static_type = fun->type_params.items[i].type ? fun->type_params.items[i].type : "usize"
+    };
+  }
+  return decls;
+}
+
 static void ir_specialize_type_core_into(ZBuf *buf, const ZTypeArena *arena, ZTypeId type, const Function *fun, const TypeArgVec *type_args);
 
 static void ir_specialize_static_value_into(ZBuf *buf, const ZStaticValue *value, const Function *fun, const TypeArgVec *type_args) {
@@ -3294,18 +3308,31 @@ static void ir_specialize_type_core_into(ZBuf *buf, const ZTypeArena *arena, ZTy
   }
 }
 
+static char *ir_specialize_static_arg_text(const char *text, const Function *fun, const TypeArgVec *type_args) {
+  if (!text || !fun || !type_args || fun->type_params.len == 0) return NULL;
+  ZTypeBinderDecl *decls = ir_specialization_binder_decls(fun);
+  ZTypeBinderScope scope = {.items = decls, .len = fun->type_params.len};
+  ZStaticValue value = {0};
+  ZTypeParseError error = {0};
+  if (!z_static_value_parse_with_binders(text, &scope, &value, &error) || value.kind != Z_STATIC_VALUE_BINDER) {
+    z_static_value_free(&value);
+    free(decls);
+    return NULL;
+  }
+  ZBuf buf;
+  zbuf_init(&buf);
+  ir_specialize_static_value_into(&buf, &value, fun, type_args);
+  z_static_value_free(&value);
+  free(decls);
+  return buf.data ? buf.data : z_strdup("");
+}
+
 static char *ir_specialize_type_text(const char *type, const Function *fun, const TypeArgVec *type_args) {
   if (!type) return z_strdup("Unknown");
   if (!fun || !type_args || fun->type_params.len == 0) return z_strdup(type);
-  ZTypeBinderDecl *decls = z_checked_calloc(fun->type_params.len, sizeof(ZTypeBinderDecl));
-  for (size_t i = 0; i < fun->type_params.len; i++) {
-    decls[i] = (ZTypeBinderDecl){
-      .name = fun->type_params.items[i].name,
-      .kind = fun->type_params.items[i].is_static ? Z_TYPE_BINDER_STATIC : Z_TYPE_BINDER_TYPE,
-      .id = (ZTypeBinderId)(i + 1),
-      .static_type = fun->type_params.items[i].type ? fun->type_params.items[i].type : "usize"
-    };
-  }
+  char *static_arg = ir_specialize_static_arg_text(type, fun, type_args);
+  if (static_arg) return static_arg;
+  ZTypeBinderDecl *decls = ir_specialization_binder_decls(fun);
   ZTypeBinderScope scope = {.items = decls, .len = fun->type_params.len};
   ZTypeArena arena;
   z_type_arena_init(&arena);

@@ -1,0 +1,16 @@
+fun inner<static N: usize>() -> usize {
+    let bytes: [N]u8 = [1_u8; N]
+    return std.mem.len(bytes)
+}
+
+fun outer<static N: usize>() -> usize {
+    return inner<N>()
+}
+
+pub fun main(world: World) -> Void raises {
+    if outer<4>() == 4 {
+        check world.out.write("generic static forwarded array specialization ok\n")
+    } else {
+        check world.out.write("generic static forwarded array specialization broke\n")
+    }
+}
