@@ -2061,8 +2061,8 @@ static bool generic_binding_set(const Program *program, GenericBinding *bindings
   return generic_binding_set_with_static_context(program, NULL, NULL, bindings, len, name, type);
 }
 
-static char *type_substitute_generic(const char *type, GenericBinding *bindings, size_t binding_len);
 static char *type_substitute_generic_signature(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len);
+static char *type_substitute_generic_signature_open_bindings(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len);
 static char *type_substitute_interface_method_signature(const Program *program, const char *type, GenericBinding *interface_bindings, size_t interface_binding_len, const Function *required, const Function *method);
 static char *type_substitute_static_arg_signature(const Program *program, const char *text, GenericBinding *bindings, size_t binding_len);
 static bool infer_generic_type_from_pattern(const Program *program, const Function *fun, Scope *actual_scope, const char *pattern, const char *actual, GenericBinding *bindings, size_t binding_len);
@@ -2115,8 +2115,8 @@ static bool recursive_generic_bindings_keep_origin_stable(const Function *origin
   return true;
 }
 
-static char *recursive_generic_context_type_text(const char *type, GenericBinding *context_bindings, size_t context_binding_len) {
-  return type_substitute_generic(type ? type : "Unknown", context_bindings, context_binding_len);
+static char *recursive_generic_context_type_text(const Program *program, const char *type, GenericBinding *context_bindings, size_t context_binding_len) {
+  return type_substitute_generic_signature_open_bindings(program, type ? type : "Unknown", context_bindings, context_binding_len);
 }
 
 static char *recursive_generic_expr_type_text(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, GenericBinding *context_bindings, size_t context_binding_len) {
@@ -2124,10 +2124,10 @@ static char *recursive_generic_expr_type_text(CheckContext *ctx, const Program *
     const char *scoped_type = scope_type(scope, expr->text);
     if (scoped_type) return z_strdup(scoped_type);
   }
-  return recursive_generic_context_type_text(expr_type(ctx, program, expr, scope), context_bindings, context_binding_len);
+  return recursive_generic_context_type_text(program, expr_type(ctx, program, expr, scope), context_bindings, context_binding_len);
 }
 
-static void recursive_generic_scope_add_function_bindings(const Function *fun, GenericBinding *context_bindings, size_t context_binding_len, Scope *scope) {
+static void recursive_generic_scope_add_function_bindings(const Program *program, const Function *fun, GenericBinding *context_bindings, size_t context_binding_len, Scope *scope) {
   if (!fun || !scope) return;
   for (size_t i = 0; i < fun->type_params.len; i++) {
     const Param *type_param = &fun->type_params.items[i];
@@ -2136,7 +2136,7 @@ static void recursive_generic_scope_add_function_bindings(const Function *fun, G
   }
   for (size_t i = 0; i < fun->params.len; i++) {
     const Param *param = &fun->params.items[i];
-    char *param_type = recursive_generic_context_type_text(param->type, context_bindings, context_binding_len);
+    char *param_type = recursive_generic_context_type_text(program, param->type, context_bindings, context_binding_len);
     scope_add_param_decl(scope, param->name, param_type, param->line, param->column);
     free(param_type);
   }
@@ -2146,7 +2146,7 @@ static void recursive_generic_scope_add_stmt_binding(CheckContext *ctx, const Pr
   if (!stmt || stmt->kind != STMT_LET || !stmt->name || !scope) return;
   const char *raw_type = stmt->resolved_type ? stmt->resolved_type : stmt->type;
   if (!raw_type && stmt->expr) raw_type = expr_type(ctx, program, stmt->expr, scope);
-  char *binding_type = recursive_generic_context_type_text(raw_type, context_bindings, context_binding_len);
+  char *binding_type = recursive_generic_context_type_text(program, raw_type, context_bindings, context_binding_len);
   scope_add(scope, stmt->name, binding_type, stmt->mutable_binding);
   free(binding_type);
 }
@@ -2162,7 +2162,7 @@ static bool recursive_generic_call_bindings_for_context(CheckContext *ctx, const
       return false;
     }
     for (size_t i = 0; i < callee->type_params.len; i++) {
-      bindings[i].type = recursive_generic_context_type_text(type_args->items[i].type, context_bindings, context_binding_len);
+      bindings[i].type = recursive_generic_context_type_text(program, type_args->items[i].type, context_bindings, context_binding_len);
     }
   } else {
     for (size_t i = 0; i < callee->params.len && i < call->args.len; i++) {
@@ -2205,7 +2205,7 @@ static bool validate_recursive_generic_cycle_in_stmt_vec(CheckContext *ctx, cons
     if (stmt->kind == STMT_FOR) {
       Scope body_scope = {.parent = scope};
       const char *iter_type = stmt->resolved_type ? stmt->resolved_type : (stmt->expr ? expr_type(ctx, program, stmt->expr, scope) : "Unknown");
-      char *context_iter_type = recursive_generic_context_type_text(iter_type, context_bindings, context_binding_len);
+      char *context_iter_type = recursive_generic_context_type_text(program, iter_type, context_bindings, context_binding_len);
       if (stmt->name) scope_add(&body_scope, stmt->name, context_iter_type ? context_iter_type : "Unknown", false);
       free(context_iter_type);
       bool body_ok = validate_recursive_generic_cycle_in_stmt_vec(ctx, program, origin, &stmt->then_body, &body_scope, context_bindings, context_binding_len, diag, depth, depth_limit);
@@ -2227,7 +2227,7 @@ static bool validate_recursive_generic_cycle_in_stmt_vec(CheckContext *ctx, cons
       Scope arm_scope = {.parent = scope};
       if (stmt->kind == STMT_MATCH && arm->payload_name && stmt->expr) {
         const char *match_type = stmt->resolved_type ? stmt->resolved_type : expr_type(ctx, program, stmt->expr, scope);
-        char *context_match_type = recursive_generic_context_type_text(match_type, context_bindings, context_binding_len);
+        char *context_match_type = recursive_generic_context_type_text(program, match_type, context_bindings, context_binding_len);
         const Choice *item_choice = find_choice(program, context_match_type);
         const Param *item_case = item_choice ? find_case(&item_choice->cases, arm->case_name) : NULL;
         if (item_case && item_case->type) scope_add(&arm_scope, arm->payload_name, item_case->type, false);
@@ -2276,7 +2276,7 @@ static bool validate_recursive_generic_cycle_in_expr(CheckContext *ctx, const Pr
 static bool validate_recursive_generic_cycle_in_function(CheckContext *ctx, const Program *program, const Function *origin, const Function *callee, GenericBinding *context_bindings, size_t context_binding_len, ZDiag *diag, size_t depth, size_t depth_limit) {
   diag = check_context_diag(ctx, diag);
   Scope scope = {0};
-  recursive_generic_scope_add_function_bindings(callee, context_bindings, context_binding_len, &scope);
+  recursive_generic_scope_add_function_bindings(program, callee, context_bindings, context_binding_len, &scope);
   bool ok = validate_recursive_generic_cycle_in_stmt_vec(ctx, program, origin, &callee->body, &scope, context_bindings, context_binding_len, diag, depth, depth_limit);
   scope_free(&scope);
   return ok;
@@ -2636,94 +2636,26 @@ static GenericBinding *shape_interface_method_signature_bindings(const Program *
   return bindings;
 }
 
-static char *type_substitute_generic(const char *type, GenericBinding *bindings, size_t binding_len) {
-  if (!type) return z_strdup("Unknown");
-  const char *bound = generic_binding_lookup(bindings, binding_len, type);
-  if (bound) return z_strdup(bound);
-  if (strncmp(type, "const ", strlen("const ")) == 0) {
-    char *inner = type_substitute_generic(type + strlen("const "), bindings, binding_len);
-    ZBuf buf;
-    zbuf_init(&buf);
-    zbuf_append(&buf, "const ");
-    zbuf_append(&buf, inner);
-    free(inner);
-    return buf.data;
-  }
-  if (type[0] == '[') {
-    const char *close = strchr(type, ']');
-    if (close && close[1]) {
-      char *length = z_strndup(type + 1, (size_t)(close - type - 1));
-      const char *length_bound = generic_binding_lookup(bindings, binding_len, length);
-      char *inner = type_substitute_generic(close + 1, bindings, binding_len);
-      ZBuf buf;
-      zbuf_init(&buf);
-      zbuf_append_char(&buf, '[');
-      zbuf_append(&buf, length_bound ? length_bound : length);
-      zbuf_append_char(&buf, ']');
-      zbuf_append(&buf, inner);
-      free(length);
-      free(inner);
-      return buf.data;
-    }
-  }
-  const char *generic_names[] = {"Maybe", "Span", "MutSpan", "ref", "mutref", "owned", NULL};
-  for (size_t i = 0; generic_names[i]; i++) {
-    const char *inner = NULL;
-    size_t inner_len = 0;
-    if (type_has_generic_arg(type, generic_names[i], &inner, &inner_len)) {
-      char *inner_text = z_strndup(inner, inner_len);
-      char *substituted = type_substitute_generic(inner_text, bindings, binding_len);
-      ZBuf buf;
-      zbuf_init(&buf);
-      zbuf_appendf(&buf, "%s<%s>", generic_names[i], substituted);
-      free(inner_text);
-      free(substituted);
-      return buf.data;
-    }
-  }
-  const char *open = strchr(type, '<');
-  const char *close = strrchr(type, '>');
-  if (open && close && close[1] == 0 && open > type) {
-    char *name = z_strndup(type, (size_t)(open - type));
-    char **args = NULL;
-    size_t arg_len = 0;
-    if (type_generic_arg_list(type, name, &args, &arg_len)) {
-      ZBuf buf;
-      zbuf_init(&buf);
-      zbuf_append(&buf, name);
-      zbuf_append_char(&buf, '<');
-      for (size_t arg_index = 0; arg_index < arg_len; arg_index++) {
-        if (arg_index > 0) zbuf_append(&buf, ",");
-        char *substituted = type_substitute_generic(args[arg_index], bindings, binding_len);
-        zbuf_append(&buf, substituted);
-        free(substituted);
-      }
-      zbuf_append_char(&buf, '>');
-      free_type_arg_list(args, arg_len);
-      free(name);
-      return buf.data;
-    }
-    free(name);
-  }
-  return z_strdup(type);
-}
-
 static bool generic_binding_is_self_alias(const GenericBinding *binding) {
   return binding && binding->name && binding->type && strcmp(binding->name, binding->type) == 0;
 }
 
-static size_t append_type_core_substitution_binders(GenericBinding *bindings, size_t binding_len, ZTypeBinderDecl *decls, size_t len) {
+static size_t append_type_core_substitution_binders_from(GenericBinding *bindings, size_t binding_len, ZTypeBinderDecl *decls, size_t len, ZTypeBinderId first_id) {
   if (!decls) return len;
   for (size_t i = 0; i < binding_len; i++) {
     if (!bindings || !bindings[i].name) continue;
     decls[len++] = (ZTypeBinderDecl){
       .name = bindings[i].name,
       .kind = bindings[i].is_static ? Z_TYPE_BINDER_STATIC : Z_TYPE_BINDER_TYPE,
-      .id = (ZTypeBinderId)(i + 1),
+      .id = (ZTypeBinderId)(first_id + i),
       .static_type = bindings[i].is_static ? static_type_or_usize(bindings[i].static_type) : NULL,
     };
   }
   return len;
+}
+
+static size_t append_type_core_substitution_binders(GenericBinding *bindings, size_t binding_len, ZTypeBinderDecl *decls, size_t len) {
+  return append_type_core_substitution_binders_from(bindings, binding_len, decls, len, 1);
 }
 
 static void type_core_substitution_source_scope(const Program *program, GenericBinding *bindings, size_t binding_len, ZTypeBinderDecl *decls, ZTypeBinderScope *scope) {
@@ -2762,7 +2694,7 @@ static bool seed_type_core_substitution_bindings(ZTypeArena *arena, const ZTypeB
   return true;
 }
 
-static char *type_substitute_generic_signature(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
+static char *type_substitute_generic_signature_inner(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len, bool open_binding_values) {
   if (!type) return z_strdup("Unknown");
   size_t max_binders = binding_len + type_core_static_const_binder_count(program);
   ZTypeBinderDecl *decls = z_checked_calloc(max_binders ? max_binders : 1, sizeof(ZTypeBinderDecl));
@@ -2770,7 +2702,15 @@ static char *type_substitute_generic_signature(const Program *program, const cha
   ZTypeBinderScope source_scope = {0};
   ZTypeBinderScope binding_scope = {0};
   type_core_substitution_source_scope(program, bindings, binding_len, decls, &source_scope);
-  type_core_substitution_binding_scope(program, bindings, binding_len, binding_decls, &binding_scope);
+  if (open_binding_values) {
+    // Recursive generic analysis may bind a callee parameter to an origin parameter
+    // with the same text name; give binding values distinct IDs so growth stays visible.
+    ZTypeBinderId first_open_id = (ZTypeBinderId)(binding_len + type_core_static_const_binder_count(program) + 1);
+    size_t len = append_type_core_substitution_binders_from(bindings, binding_len, binding_decls, 0, first_open_id);
+    binding_scope = (ZTypeBinderScope){.items = binding_decls, .len = len, .arg_kind = type_core_generic_arg_kind_for_program, .arg_kind_context = program};
+  } else {
+    type_core_substitution_binding_scope(program, bindings, binding_len, binding_decls, &binding_scope);
+  }
 
   ZTypeArena arena;
   z_type_arena_init(&arena);
@@ -2790,6 +2730,14 @@ static char *type_substitute_generic_signature(const Program *program, const cha
   free(binding_decls);
   free(decls);
   return result ? result : z_strdup("Unknown");
+}
+
+static char *type_substitute_generic_signature(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
+  return type_substitute_generic_signature_inner(program, type, bindings, binding_len, false);
+}
+
+static char *type_substitute_generic_signature_open_bindings(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
+  return type_substitute_generic_signature_inner(program, type, bindings, binding_len, true);
 }
 
 static char *type_substitute_static_arg_signature(const Program *program, const char *text, GenericBinding *bindings, size_t binding_len) {
@@ -2835,7 +2783,7 @@ static const char *expr_resolved_type_for_current_context(const CheckContext *ct
   if (!expr || !expr->resolved_type) return NULL;
   if (ctx && ctx->return_provenance_expr_bindings && ctx->return_provenance_expr_binding_len > 0) {
     static char substituted_type[256];
-    char *substituted = type_substitute_generic(expr->resolved_type, ctx->return_provenance_expr_bindings, ctx->return_provenance_expr_binding_len);
+    char *substituted = type_substitute_generic_signature(ctx->program, expr->resolved_type, ctx->return_provenance_expr_bindings, ctx->return_provenance_expr_binding_len);
     snprintf(substituted_type, sizeof(substituted_type), "%s", substituted ? substituted : "Unknown");
     free(substituted);
     return substituted_type;
@@ -2843,18 +2791,20 @@ static const char *expr_resolved_type_for_current_context(const CheckContext *ct
   return expr->resolved_type;
 }
 
-static char *provenance_context_type_text(const CheckContext *ctx, const char *type, GenericBinding *bindings, size_t binding_len) {
-  if (bindings && binding_len > 0) return type_substitute_generic(type, bindings, binding_len);
+static char *provenance_context_type_text(const CheckContext *ctx, const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
+  const Program *substitution_program = program ? program : (ctx ? ctx->program : NULL);
+  if (bindings && binding_len > 0) return type_substitute_generic_signature(substitution_program, type, bindings, binding_len);
   if (ctx && ctx->return_provenance_expr_bindings && ctx->return_provenance_expr_binding_len > 0) {
-    return type_substitute_generic(type, ctx->return_provenance_expr_bindings, ctx->return_provenance_expr_binding_len);
+    return type_substitute_generic_signature(substitution_program, type, ctx->return_provenance_expr_bindings, ctx->return_provenance_expr_binding_len);
   }
   return z_strdup(type ? type : "Unknown");
 }
 
-static void provenance_context_substitute_bindings(const CheckContext *ctx, GenericBinding *bindings, size_t binding_len, GenericBinding *context_bindings, size_t context_binding_len) {
+static void provenance_context_substitute_bindings(const CheckContext *ctx, const Program *program, GenericBinding *bindings, size_t binding_len, GenericBinding *context_bindings, size_t context_binding_len) {
   if (!bindings || binding_len == 0) return;
   GenericBinding *source_bindings = context_bindings;
   size_t source_len = context_binding_len;
+  const Program *substitution_program = program ? program : (ctx ? ctx->program : NULL);
   if ((!source_bindings || source_len == 0) && ctx && ctx->return_provenance_expr_bindings && ctx->return_provenance_expr_binding_len > 0) {
     source_bindings = ctx->return_provenance_expr_bindings;
     source_len = ctx->return_provenance_expr_binding_len;
@@ -2862,7 +2812,7 @@ static void provenance_context_substitute_bindings(const CheckContext *ctx, Gene
   if (!source_bindings || source_len == 0) return;
   for (size_t i = 0; i < binding_len; i++) {
     if (!bindings[i].type) continue;
-    char *substituted = type_substitute_generic(bindings[i].type, source_bindings, source_len);
+    char *substituted = type_substitute_generic_signature(substitution_program, bindings[i].type, source_bindings, source_len);
     free(bindings[i].type);
     bindings[i].type = substituted;
   }
@@ -4675,7 +4625,7 @@ static bool build_constrained_interface_method_bindings(CheckContext *ctx, const
   GenericBinding *bindings = z_checked_calloc(binding_len ? binding_len : 1, sizeof(GenericBinding));
   interface_method_init_bindings(interface, method, bindings);
   for (size_t i = 0; i < interface->type_params.len; i++) {
-    bindings[i].type = provenance_context_type_text(ctx, i < constraint_arg_len ? constraint_args[i] : "Unknown", context_bindings, context_binding_len);
+    bindings[i].type = provenance_context_type_text(ctx, program, i < constraint_arg_len ? constraint_args[i] : "Unknown", context_bindings, context_binding_len);
   }
   free_type_arg_list(constraint_args, constraint_arg_len);
 
@@ -6900,7 +6850,7 @@ static bool generic_call_bindings_from_checked_call(CheckContext *ctx, const Pro
       return false;
     }
     for (size_t i = 0; i < binding_len; i++) {
-      bindings[i].type = provenance_context_type_text(ctx, type_args->items[i].type, NULL, 0);
+      bindings[i].type = provenance_context_type_text(ctx, program, type_args->items[i].type, NULL, 0);
     }
     *out_bindings = bindings;
     *out_len = binding_len;
@@ -6924,10 +6874,10 @@ static bool generic_call_bindings_from_checked_call(CheckContext *ctx, const Pro
   return true;
 }
 
-static char *call_param_type_text(const Function *callee, size_t param_index, GenericBinding *bindings, size_t binding_len) {
+static char *call_param_type_text(const Program *program, const Function *callee, size_t param_index, GenericBinding *bindings, size_t binding_len) {
   if (!callee || param_index >= callee->params.len) return z_strdup("Unknown");
   const char *param_type = callee->params.items[param_index].type;
-  if (bindings && binding_len > 0) return type_substitute_generic(param_type, bindings, binding_len);
+  if (bindings && binding_len > 0) return type_substitute_generic_signature(program, param_type, bindings, binding_len);
   return z_strdup(param_type ? param_type : "Unknown");
 }
 
@@ -6950,7 +6900,7 @@ static bool resolve_provenance_call(CheckContext *ctx, const Program *program, c
         resolved_provenance_call_free(out);
         return false;
       }
-      provenance_context_substitute_bindings(ctx, out->bindings, out->binding_len, context_bindings, context_binding_len);
+      provenance_context_substitute_bindings(ctx, program, out->bindings, out->binding_len, context_bindings, context_binding_len);
     }
     return true;
   }
@@ -6970,7 +6920,7 @@ static bool resolve_provenance_call(CheckContext *ctx, const Program *program, c
       resolved_provenance_call_free(out);
       return false;
     }
-    provenance_context_substitute_bindings(ctx, out->bindings, out->binding_len, context_bindings, context_binding_len);
+    provenance_context_substitute_bindings(ctx, program, out->bindings, out->binding_len, context_bindings, context_binding_len);
     return true;
   }
 
@@ -6987,7 +6937,7 @@ static bool resolve_provenance_call(CheckContext *ctx, const Program *program, c
       resolved_provenance_call_free(out);
       return false;
     }
-    provenance_context_substitute_bindings(ctx, out->bindings, out->binding_len, context_bindings, context_binding_len);
+    provenance_context_substitute_bindings(ctx, program, out->bindings, out->binding_len, context_bindings, context_binding_len);
     return true;
   }
 
@@ -7033,7 +6983,7 @@ static bool resolve_provenance_call(CheckContext *ctx, const Program *program, c
     return false;
   }
   free(self_arg_type);
-  provenance_context_substitute_bindings(ctx, out->bindings, out->binding_len, context_bindings, context_binding_len);
+  provenance_context_substitute_bindings(ctx, program, out->bindings, out->binding_len, context_bindings, context_binding_len);
   return true;
 }
 
@@ -7245,7 +7195,7 @@ static bool call_result_value_provenance(CheckContext *ctx, const Program *progr
   }
 
   if (resolved.receiver && resolved.callee->params.len > 0) {
-    char *param_type = call_param_type_text(resolved.callee, 0, resolved.bindings, resolved.binding_len);
+    char *param_type = call_param_type_text(program, resolved.callee, 0, resolved.bindings, resolved.binding_len);
     if (type_is_named_generic(param_type, "ref") || type_is_named_generic(param_type, "mutref")) {
       if (expr_reference_provenance_as(ctx, program, resolved.receiver, scope, origins, return_mut)) {
         added = true;
@@ -7260,7 +7210,7 @@ static bool call_result_value_provenance(CheckContext *ctx, const Program *progr
   }
 
   for (size_t i = 0; i < expr->args.len && i + resolved.param_offset < resolved.callee->params.len; i++) {
-    char *param_type = call_param_type_text(resolved.callee, i + resolved.param_offset, resolved.bindings, resolved.binding_len);
+    char *param_type = call_param_type_text(program, resolved.callee, i + resolved.param_offset, resolved.bindings, resolved.binding_len);
     bool reference_param = type_is_named_generic(param_type, "ref") || type_is_named_generic(param_type, "mutref");
     free(param_type);
     if (!reference_param) continue;
@@ -7547,9 +7497,9 @@ static void assignment_provenance_snapshot_restore(Scope *scope, AssignmentProve
 
 static size_t function_return_provenance_depth = 0;
 
-static char *return_provenance_type_text(const char *type, GenericBinding *bindings, size_t binding_len) {
+static char *return_provenance_type_text(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
   if (!type) return NULL;
-  if (bindings && binding_len > 0) return type_substitute_generic(type, bindings, binding_len);
+  if (bindings && binding_len > 0) return type_substitute_generic_signature(program, type, bindings, binding_len);
   return z_strdup(type);
 }
 
@@ -7570,7 +7520,7 @@ static bool collect_return_value_provenance_from_stmt_vec(CheckContext *ctx, con
       }
       const char *binding_type = stmt->resolved_type ? stmt->resolved_type : stmt->type;
       if (!binding_type && stmt->expr) binding_type = expr_type(ctx, program, stmt->expr, scope);
-      char *substituted_type = return_provenance_type_text(binding_type, bindings, binding_len);
+      char *substituted_type = return_provenance_type_text(program, binding_type, bindings, binding_len);
       if (stmt->name) {
         scope_add(scope, stmt->name, substituted_type ? substituted_type : "Unknown", stmt->mutable_binding);
         register_borrow_binding(ctx, program, stmt, scope);
@@ -7688,7 +7638,7 @@ static bool collect_return_value_provenance_from_stmt_vec(CheckContext *ctx, con
       ProvenanceScopeSnapshot *before = provenance_scope_snapshot_capture(scope);
       Scope body_scope = {.parent = scope};
       const char *iter_type = stmt->resolved_type ? stmt->resolved_type : (stmt->expr ? expr_type(ctx, program, stmt->expr, scope) : "Unknown");
-      char *substituted_iter_type = return_provenance_type_text(iter_type, bindings, binding_len);
+      char *substituted_iter_type = return_provenance_type_text(program, iter_type, bindings, binding_len);
       if (stmt->name) scope_add(&body_scope, stmt->name, substituted_iter_type ? substituted_iter_type : "Unknown", false);
       free(substituted_iter_type);
       if (collect_return_value_provenance_from_stmt_vec(ctx, program, fun, &stmt->then_body, &body_scope, bindings, binding_len, out, may_return, complete)) added = true;
@@ -7719,7 +7669,7 @@ static bool collect_return_value_provenance_from_stmt_vec(CheckContext *ctx, con
         if (arm->payload_name && item_choice) {
           const Param *item_case = find_case(&item_choice->cases, arm->case_name);
           if (item_case && item_case->type) {
-            char *payload_type = return_provenance_type_text(item_case->type, bindings, binding_len);
+            char *payload_type = return_provenance_type_text(program, item_case->type, bindings, binding_len);
             scope_add(&arm_scope, arm->payload_name, payload_type ? payload_type : "Unknown", false);
             register_match_payload_binding_provenance(ctx, program, stmt->expr, scope, &arm_scope, arm->payload_name, arm->case_name);
             free(payload_type);
@@ -7778,7 +7728,7 @@ static bool function_provenance_summary(CheckContext *ctx, const Program *progra
   for (size_t param_index = 0; param_index < fun->params.len; param_index++) {
     const Param *param = &fun->params.items[param_index];
     if (param->name) {
-      char *param_type = return_provenance_type_text(param->type, bindings, binding_len);
+      char *param_type = return_provenance_type_text(program, param->type, bindings, binding_len);
       scope_add_param_decl(&scope, param->name, param_type ? param_type : "Unknown", param->line, param->column);
       if (type_is_named_generic(param_type, "mutref")) {
         seed_param_storage_value_provenance(program, &scope, param->name, param_type ? param_type : "Unknown");
@@ -7796,7 +7746,7 @@ static bool function_provenance_summary(CheckContext *ctx, const Program *progra
   for (size_t param_index = 0; param_index < fun->params.len; param_index++) {
     const Param *param = &fun->params.items[param_index];
     if (!param->name) continue;
-    char *param_type = call_param_type_text(fun, param_index, bindings, binding_len);
+    char *param_type = call_param_type_text(program, fun, param_index, bindings, binding_len);
     bool mutref_param = type_is_named_generic(param_type, "mutref");
     free(param_type);
     if (!mutref_param) continue;
@@ -7919,7 +7869,7 @@ static bool instantiate_call_provenance_entry(CheckContext *ctx, const Program *
 
   bool added = false;
   ValueProvenance actual_origins = {0};
-  char *param_type = call_param_type_text(callee, param_index, bindings, binding_len);
+  char *param_type = call_param_type_text(program, callee, param_index, bindings, binding_len);
   bool reference_param = type_is_named_generic(param_type, "ref") || type_is_named_generic(param_type, "mutref");
   free(param_type);
   if (reference_param && callee->params.items[param_index].name &&
@@ -8082,7 +8032,7 @@ static bool apply_provenance_call_storage_effects(CheckContext *ctx, const Progr
   bool complete = function_storage_effect_summary(ctx, program, resolved->callee, resolved->bindings, resolved->binding_len, &effects);
   if (!complete) {
     for (size_t i = 0; i < resolved->callee->params.len; i++) {
-      char *param_type = call_param_type_text(resolved->callee, i, resolved->bindings, resolved->binding_len);
+      char *param_type = call_param_type_text(program, resolved->callee, i, resolved->bindings, resolved->binding_len);
       bool mutref_param = type_is_named_generic(param_type, "mutref");
       free(param_type);
       if (!mutref_param) continue;
