@@ -7637,6 +7637,64 @@ static bool check_scalar_match(CheckContext *ctx, const Program *program, const 
   return true;
 }
 
+static bool expr_is_positive_int_literal(const Expr *expr) {
+  if (!expr || expr->kind != EXPR_NUMBER || !expr->text) return false;
+  for (const char *cursor = expr->text; *cursor; cursor++) {
+    if (*cursor == '_') continue;
+    if (*cursor < '0' || *cursor > '9') return false;
+  }
+  for (const char *cursor = expr->text; *cursor; cursor++) {
+    if (*cursor >= '1' && *cursor <= '9') return true;
+  }
+  return false;
+}
+
+static bool expr_is_int_literal_gt_one(const Expr *expr) {
+  if (!expr_is_positive_int_literal(expr)) return false;
+  size_t digits = 0;
+  char first = 0;
+  for (const char *cursor = expr->text; *cursor; cursor++) {
+    if (*cursor == '_') continue;
+    if (digits == 0) first = *cursor;
+    digits++;
+  }
+  if (digits > 1) return true;
+  return first > '1';
+}
+
+static bool expr_is_strict_decrease(const Expr *expr, const char *measure) {
+  if (!expr || expr->kind != EXPR_BINARY || !expr->text || !expr->left || !expr->right) return false;
+  if (expr->left->kind != EXPR_IDENT || !expr->left->text) return false;
+  if (strcmp(expr->left->text, measure) != 0) return false;
+  if (strcmp(expr->text, "-") == 0) return expr_is_positive_int_literal(expr->right);
+  if (strcmp(expr->text, "/") == 0) return expr_is_int_literal_gt_one(expr->right);
+  return false;
+}
+
+static bool stmt_vec_has_strict_decrease(const StmtVec *body, const char *measure);
+
+static bool stmt_has_strict_decrease(const Stmt *stmt, const char *measure) {
+  if (!stmt) return false;
+  if (stmt->kind == STMT_ASSIGN && stmt->target && stmt->target->kind == EXPR_IDENT && stmt->target->text &&
+      strcmp(stmt->target->text, measure) == 0 && expr_is_strict_decrease(stmt->expr, measure)) {
+    return true;
+  }
+  if (stmt_vec_has_strict_decrease(&stmt->then_body, measure)) return true;
+  if (stmt_vec_has_strict_decrease(&stmt->else_body, measure)) return true;
+  for (size_t i = 0; i < stmt->match_arms.len; i++) {
+    if (stmt_vec_has_strict_decrease(&stmt->match_arms.items[i].body, measure)) return true;
+  }
+  return false;
+}
+
+static bool stmt_vec_has_strict_decrease(const StmtVec *body, const char *measure) {
+  if (!body) return false;
+  for (size_t i = 0; i < body->len; i++) {
+    if (stmt_has_strict_decrease(body->items[i], measure)) return true;
+  }
+  return false;
+}
+
 static bool check_stmt(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {
   diag = check_context_diag(ctx, diag);
   if (stmt->kind == STMT_LET) {
@@ -7771,6 +7829,21 @@ static bool check_stmt(CheckContext *ctx, const Program *program, const Function
     if (!check_expr_expected(ctx, program, stmt->expr, scope, diag, "Bool")) return false;
     const char *condition_type = expr_type(ctx, program, stmt->expr, scope);
     if (!is_bool_type(condition_type)) return set_diag_detail(diag, 3016, "condition must be Bool", stmt->expr->line, stmt->expr->column, "Bool", condition_type, "compare explicitly or produce a Bool value");
+    if (stmt->decreases) {
+      if (!check_expr(ctx, program, stmt->decreases, scope, diag)) return false;
+      if (stmt->decreases->kind != EXPR_IDENT || !stmt->decreases->text) {
+        return set_diag_detail(diag, 11001, "decreases measure must be a single mutable binding", stmt->decreases->line, stmt->decreases->column, "identifier of a let mut binding", "non-identifier expression", "use a single mutable integer binding as the decreases measure");
+      }
+      const char *measure_type = expr_type(ctx, program, stmt->decreases, scope);
+      if (!is_int_type(measure_type)) {
+        return set_diag_detail(diag, 11001, "decreases measure must be an integer", stmt->decreases->line, stmt->decreases->column, "integer-typed binding", measure_type ? measure_type : "unknown", "use a mutable integer binding as the decreases measure");
+      }
+      if (!stmt_vec_has_strict_decrease(&stmt->then_body, stmt->decreases->text)) {
+        char message[256];
+        snprintf(message, sizeof(message), "could not prove the decreases measure '%s' strictly decreases on every iteration", stmt->decreases->text);
+        return set_diag_detail(diag, 11001, message, stmt->decreases->line, stmt->decreases->column, "an assignment such as <var> = <var> - K or <var> = <var> / N inside the loop body", "no recognized decreasing assignment in the loop body", "assign the measure to a strictly smaller value before the next iteration");
+      }
+    }
     ProvenanceScopeSnapshot *before = provenance_scope_snapshot_capture(scope);
     Scope body_scope = {.parent = scope};
     bool ok = check_stmt_vec_with_loop(ctx, program, fun, &stmt->then_body, &body_scope, diag, loop_depth + 1);

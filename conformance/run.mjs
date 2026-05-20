@@ -416,6 +416,7 @@ for (const fixture of [
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/check/pass/memory-types.0",
   "conformance/check/pass/checker-type-forms.0",
+  "conformance/check/pass/decreases-countdown.0",
   "conformance/check/pass/package",
   "conformance/check/pass/imports",
   "examples/memory-package",
@@ -932,6 +933,20 @@ for (const [fixture, message] of [
   assert.equal(parseFailureBody.diagnostics[0].fixSafety, "requires-human-review");
   assert.equal(parseFailureBody.diagnostics[0].repair.id, "repair-syntax");
 }
+
+const decreasesFailJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/decreases-no-progress.0"]).catch((error) => error);
+assert.notEqual(decreasesFailJson.code, 0);
+const decreasesFailBody = JSON.parse(decreasesFailJson.stdout);
+assert.equal(decreasesFailBody.diagnostics[0].code, "TER001");
+assert.match(decreasesFailBody.diagnostics[0].message, /strictly decreases/);
+assert.equal(decreasesFailBody.diagnostics[0].fixSafety, "behavior-preserving");
+assert.equal(decreasesFailBody.diagnostics[0].repair.id, "ensure-decreasing-measure");
+
+const explainTer001 = await execFileAsync(zero, ["explain", "--json", "TER001"]);
+const explainTer001Body = JSON.parse(explainTer001.stdout);
+assert.equal(explainTer001Body.code, "TER001");
+assert.equal(explainTer001Body.category, "termination");
+assert.equal(explainTer001Body.repair.id, "ensure-decreasing-measure");
 
 const missingImportJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/missing-import"]).catch((error) => error);
 assert.notEqual(missingImportJson.code, 0);
