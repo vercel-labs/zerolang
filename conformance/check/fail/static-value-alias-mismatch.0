@@ -1,0 +1,21 @@
+shape FixedVec<T, static N: usize> {
+    value: T,
+}
+
+type FourVec = FixedVec<u8,4>
+
+shape Box<T> {
+    item: T,
+}
+
+fun first<T>(box: ref<Box<T>>) -> T {
+    return box.item
+}
+
+fun caller(box: ref<Box<FixedVec<u8,5>>>) -> FourVec {
+    return first<FourVec>(box)
+}
+
+pub fun main(world: World) -> Void raises {
+    check world.out.write("bad static alias mismatch\n")
+}

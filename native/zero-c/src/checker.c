@@ -5282,196 +5282,231 @@ static bool type_core_generic_arg_kind_for_program(const void *context, const ch
   return true;
 }
 
+static bool type_core_parse_for_program(const Program *program, ZTypeArena *arena, const char *text, ZTypeId *out) {
+  ZTypeBinderScope scope = {.arg_kind = type_core_generic_arg_kind_for_program, .arg_kind_context = program};
+  ZTypeParseError error = {0};
+  return z_type_parse_with_binders(arena, text, &scope, out, &error);
+}
+
+static bool type_core_apply_is(const ZTypeArena *arena, ZTypeId type, const char *name) {
+  return z_type_kind(arena, type) == Z_TYPE_NODE_APPLY && z_type_name(arena, type) && strcmp(z_type_name(arena, type), name) == 0;
+}
+
+static ZTypeId type_core_single_type_arg(const ZTypeArena *arena, ZTypeId type) {
+  if (z_type_kind(arena, type) != Z_TYPE_NODE_APPLY || z_type_apply_arg_len(arena, type) != 1) return Z_TYPE_ID_INVALID;
+  const ZTypeArg *arg = z_type_apply_arg(arena, type, 0);
+  return arg && arg->kind == Z_TYPE_ARG_TYPE ? arg->as.type : Z_TYPE_ID_INVALID;
+}
+
+static bool type_core_static_values_match_in_scope(const Program *program, Scope *scope, const ZStaticValue *expected, const ZStaticValue *actual, const char *static_type) {
+  char *expected_text = z_static_value_format(expected);
+  char *actual_text = z_static_value_format(actual);
+  bool ok = false;
+  if (expected_text && actual_text) {
+    ok = static_type && static_type[0]
+      ? static_arg_texts_match_for_type_in_scope(program, scope, expected_text, actual_text, static_type)
+      : static_arg_texts_match_in_scope(program, scope, expected_text, actual_text);
+  }
+  free(expected_text);
+  free(actual_text);
+  return ok;
+}
+
+static bool type_core_static_values_mismatch(const Program *program, const ZStaticValue *expected, const ZStaticValue *actual, const char *static_type) {
+  char *expected_text = z_static_value_format(expected);
+  char *actual_text = z_static_value_format(actual);
+  char *expected_static = NULL;
+  char *actual_static = NULL;
+  if (expected_text && actual_text) {
+    expected_static = static_type && static_type[0] ? canonical_static_arg_for_type(program, expected_text, static_type) : canonical_static_arg(program, expected_text);
+    actual_static = static_type && static_type[0] ? canonical_static_arg_for_type(program, actual_text, static_type) : canonical_static_arg(program, actual_text);
+  }
+  bool mismatch = expected_static && actual_static && strcmp(expected_static, actual_static) != 0;
+  free(expected_text);
+  free(actual_text);
+  free(expected_static);
+  free(actual_static);
+  return mismatch;
+}
+
+static bool type_core_types_compatible_inner(const Program *program, Scope *scope, ZTypeArena *arena, ZTypeId expected, ZTypeId actual, size_t depth);
+
+static bool type_core_alias_compatible(const Program *program, Scope *scope, ZTypeArena *arena, ZTypeId alias_node, ZTypeId other, bool alias_is_expected, size_t depth) {
+  if (z_type_kind(arena, alias_node) != Z_TYPE_NODE_NAME) return false;
+  const char *name = z_type_name(arena, alias_node);
+  const char *resolved = resolve_alias_type(program, name);
+  if (!name || !resolved || strcmp(name, resolved) == 0) return false;
+  ZTypeId resolved_type = Z_TYPE_ID_INVALID;
+  if (!type_core_parse_for_program(program, arena, resolved, &resolved_type)) return false;
+  return alias_is_expected
+    ? type_core_types_compatible_inner(program, scope, arena, resolved_type, other, depth + 1)
+    : type_core_types_compatible_inner(program, scope, arena, other, resolved_type, depth + 1);
+}
+
+static bool type_core_apply_args_compatible(const Program *program, Scope *scope, ZTypeArena *arena, const char *name, ZTypeId expected, ZTypeId actual, size_t depth) {
+  size_t expected_len = z_type_apply_arg_len(arena, expected);
+  size_t actual_len = z_type_apply_arg_len(arena, actual);
+  if (expected_len != actual_len) return false;
+  const ParamVec *type_params = generic_type_params_for_name(program, name);
+  if (type_params && expected_len != type_params->len) return false;
+  for (size_t i = 0; i < expected_len; i++) {
+    const ZTypeArg *expected_arg = z_type_apply_arg(arena, expected, i);
+    const ZTypeArg *actual_arg = z_type_apply_arg(arena, actual, i);
+    if (!expected_arg || !actual_arg || expected_arg->kind != actual_arg->kind) return false;
+    const Param *param = type_params && i < type_params->len ? &type_params->items[i] : NULL;
+    if (expected_arg->kind == Z_TYPE_ARG_STATIC) {
+      const char *static_type = param && param->is_static ? param->type : NULL;
+      if (!type_core_static_values_match_in_scope(program, scope, &expected_arg->as.static_value, &actual_arg->as.static_value, static_type)) return false;
+    } else if (!type_core_types_compatible_inner(program, scope, arena, expected_arg->as.type, actual_arg->as.type, depth + 1)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool type_core_types_compatible_inner(const Program *program, Scope *scope, ZTypeArena *arena, ZTypeId expected, ZTypeId actual, size_t depth) {
+  if (depth > 64) return false;
+  if (z_type_equal(arena, expected, actual)) return true;
+  if (type_core_alias_compatible(program, scope, arena, expected, actual, true, depth)) return true;
+  if (type_core_alias_compatible(program, scope, arena, actual, expected, false, depth)) return true;
+
+  ZTypeNodeKind expected_kind = z_type_kind(arena, expected);
+  ZTypeNodeKind actual_kind = z_type_kind(arena, actual);
+  if (expected_kind == Z_TYPE_NODE_CONST) {
+    ZTypeId actual_inner = actual_kind == Z_TYPE_NODE_CONST ? z_type_const_inner(arena, actual) : actual;
+    return type_core_types_compatible_inner(program, scope, arena, z_type_const_inner(arena, expected), actual_inner, depth + 1);
+  }
+  if (actual_kind == Z_TYPE_NODE_CONST) return false;
+
+  if (expected_kind == Z_TYPE_NODE_APPLY && type_core_apply_is(arena, expected, "owned")) {
+    ZTypeId expected_inner = type_core_single_type_arg(arena, expected);
+    ZTypeId actual_inner = type_core_apply_is(arena, actual, "owned") ? type_core_single_type_arg(arena, actual) : actual;
+    return expected_inner != Z_TYPE_ID_INVALID && actual_inner != Z_TYPE_ID_INVALID &&
+           type_core_types_compatible_inner(program, scope, arena, expected_inner, actual_inner, depth + 1);
+  }
+
+  if (expected_kind == Z_TYPE_NODE_APPLY && type_core_apply_is(arena, expected, "Span")) {
+    ZTypeId expected_inner = type_core_single_type_arg(arena, expected);
+    if (expected_inner == Z_TYPE_ID_INVALID) return false;
+    if (actual_kind == Z_TYPE_NODE_ARRAY) {
+      return type_core_types_compatible_inner(program, scope, arena, expected_inner, z_type_array_element(arena, actual), depth + 1);
+    }
+    if (type_core_apply_is(arena, actual, "MutSpan")) {
+      ZTypeId actual_inner = type_core_single_type_arg(arena, actual);
+      return actual_inner != Z_TYPE_ID_INVALID &&
+             type_core_types_compatible_inner(program, scope, arena, expected_inner, actual_inner, depth + 1);
+    }
+  }
+
+  if (expected_kind == Z_TYPE_NODE_APPLY && type_core_apply_is(arena, expected, "ref") && type_core_apply_is(arena, actual, "mutref")) {
+    ZTypeId expected_inner = type_core_single_type_arg(arena, expected);
+    ZTypeId actual_inner = type_core_single_type_arg(arena, actual);
+    return expected_inner != Z_TYPE_ID_INVALID && actual_inner != Z_TYPE_ID_INVALID &&
+           type_core_types_compatible_inner(program, scope, arena, expected_inner, actual_inner, depth + 1);
+  }
+
+  if (expected_kind == Z_TYPE_NODE_ARRAY && actual_kind == Z_TYPE_NODE_ARRAY) {
+    if (!type_core_static_values_match_in_scope(program, scope, z_type_array_length(arena, expected), z_type_array_length(arena, actual), NULL)) return false;
+    return type_core_types_compatible_inner(program, scope, arena, z_type_array_element(arena, expected), z_type_array_element(arena, actual), depth + 1);
+  }
+
+  if (expected_kind == Z_TYPE_NODE_APPLY && actual_kind == Z_TYPE_NODE_APPLY) {
+    const char *expected_name = z_type_name(arena, expected);
+    const char *actual_name = z_type_name(arena, actual);
+    if (!expected_name || !actual_name || strcmp(expected_name, actual_name) != 0) return false;
+    return type_core_apply_args_compatible(program, scope, arena, expected_name, expected, actual, depth + 1);
+  }
+
+  return false;
+}
+
 static bool types_compatible_in_scope(const Program *program, Scope *scope, const char *expected, const char *actual) {
   expected = resolve_alias_type(program, expected);
   actual = resolve_alias_type(program, actual);
   if (!expected || strcmp(expected, "Unknown") == 0) return true;
   if (!actual || strcmp(actual, "Unknown") == 0) return true;
   if (strcmp(expected, actual) == 0) return true;
-  if (type_is_const(expected)) return types_compatible_in_scope(program, scope, type_strip_const(expected), type_strip_const(actual));
-  if (type_is_const(actual) && !type_is_const(expected)) return false;
-  if (is_int_type(expected) && is_int_type(actual)) return strcmp(expected, actual) == 0;
-  if (is_float_type(expected) && is_float_type(actual)) return strcmp(expected, actual) == 0;
-  if (type_is_named_generic(expected, "owned")) {
-    const char *expected_inner = NULL;
-    const char *actual_inner = NULL;
-    size_t expected_len = 0;
-    size_t actual_len = 0;
-    type_has_generic_arg(expected, "owned", &expected_inner, &expected_len);
-    bool actual_is_owned = type_has_generic_arg(actual, "owned", &actual_inner, &actual_len);
-    char *expected_type = z_strndup(expected_inner, expected_len);
-    char *actual_type = actual_is_owned ? z_strndup(actual_inner, actual_len) : z_strdup(actual);
-    bool ok = types_compatible_in_scope(program, scope, expected_type, actual_type);
-    free(expected_type);
-    free(actual_type);
-    return ok;
-  }
-  if (type_is_named_generic(expected, "Span") && actual[0] == '[') {
-    const char *expected_inner = NULL;
-    size_t expected_len = 0;
-    const char *actual_close = strchr(actual, ']');
-    if (!actual_close || !actual_close[1]) return false;
-    type_has_generic_arg(expected, "Span", &expected_inner, &expected_len);
-    char *expected_type = z_strndup(expected_inner, expected_len);
-    bool ok = types_compatible_in_scope(program, scope, expected_type, actual_close + 1);
-    free(expected_type);
-    return ok;
-  }
-  if (type_is_named_generic(expected, "Span") && type_is_named_generic(actual, "MutSpan")) {
-    const char *expected_inner = NULL;
-    const char *actual_inner = NULL;
-    size_t expected_len = 0;
-    size_t actual_len = 0;
-    type_has_generic_arg(expected, "Span", &expected_inner, &expected_len);
-    type_has_generic_arg(actual, "MutSpan", &actual_inner, &actual_len);
-    char *expected_type = z_strndup(expected_inner, expected_len);
-    char *actual_type = z_strndup(actual_inner, actual_len);
-    bool ok = types_compatible_in_scope(program, scope, expected_type, actual_type);
-    free(expected_type);
-    free(actual_type);
-    return ok;
-  }
-  if (type_is_named_generic(expected, "ref") && type_is_named_generic(actual, "mutref")) {
-    const char *expected_inner = NULL;
-    const char *actual_inner = NULL;
-    size_t expected_len = 0;
-    size_t actual_len = 0;
-    type_has_generic_arg(expected, "ref", &expected_inner, &expected_len);
-    type_has_generic_arg(actual, "mutref", &actual_inner, &actual_len);
-    char *expected_type = z_strndup(expected_inner, expected_len);
-    char *actual_type = z_strndup(actual_inner, actual_len);
-    bool ok = types_compatible_in_scope(program, scope, expected_type, actual_type);
-    free(expected_type);
-    free(actual_type);
-    return ok;
-  }
-  for (size_t i = 0; i < 5; i++) {
-    const char *name = i == 0 ? "Span" : (i == 1 ? "MutSpan" : (i == 2 ? "Maybe" : (i == 3 ? "ref" : "mutref")));
-    if (type_is_named_generic(expected, name) && type_is_named_generic(actual, name)) {
-      const char *expected_inner = NULL;
-      const char *actual_inner = NULL;
-      size_t expected_len = 0;
-      size_t actual_len = 0;
-      type_has_generic_arg(expected, name, &expected_inner, &expected_len);
-      type_has_generic_arg(actual, name, &actual_inner, &actual_len);
-      char *expected_type = z_strndup(expected_inner, expected_len);
-      char *actual_type = z_strndup(actual_inner, actual_len);
-      bool ok = types_compatible_in_scope(program, scope, expected_type, actual_type);
-      free(expected_type);
-      free(actual_type);
-      return ok;
-    }
-  }
-  if (expected[0] == '[' && actual[0] == '[') {
-    const char *expected_close = strchr(expected, ']');
-    const char *actual_close = strchr(actual, ']');
-    if (!expected_close || !actual_close) return false;
-    char *expected_length = z_strndup(expected + 1, (size_t)(expected_close - expected - 1));
-    char *actual_length = z_strndup(actual + 1, (size_t)(actual_close - actual - 1));
-    bool same_length = static_arg_texts_match_in_scope(program, scope, expected_length, actual_length);
-    free(expected_length);
-    free(actual_length);
-    if (!same_length) return false;
-    return types_compatible_in_scope(program, scope, expected_close + 1, actual_close + 1);
-  }
-  const char *expected_open = strchr(expected, '<');
-  const char *actual_open = strchr(actual, '<');
-  if (expected_open && actual_open && expected_open > expected && actual_open > actual) {
-    size_t name_len = (size_t)(expected_open - expected);
-    if (name_len == (size_t)(actual_open - actual) && strncmp(expected, actual, name_len) == 0) {
-      char *name = z_strndup(expected, name_len);
-      char **expected_args = NULL;
-      char **actual_args = NULL;
-      size_t expected_arg_len = 0;
-      size_t actual_arg_len = 0;
-      bool ok = type_generic_arg_list(expected, name, &expected_args, &expected_arg_len) &&
-                type_generic_arg_list(actual, name, &actual_args, &actual_arg_len) &&
-                expected_arg_len == actual_arg_len;
-      const ParamVec *type_params = ok ? generic_type_params_for_name(program, name) : NULL;
-      if (ok && type_params && expected_arg_len != type_params->len) ok = false;
-      for (size_t i = 0; ok && i < expected_arg_len; i++) {
-        const Param *param = type_params && i < type_params->len ? &type_params->items[i] : NULL;
-        if (param && param->is_static) {
-          ok = static_arg_texts_match_for_type_in_scope(program, scope, expected_args[i], actual_args[i], param->type);
-        } else {
-          ok = types_compatible_in_scope(program, scope, expected_args[i], actual_args[i]);
-        }
-      }
-      free_type_arg_list(expected_args, expected_arg_len);
-      free_type_arg_list(actual_args, actual_arg_len);
-      free(name);
-      return ok;
-    }
-  }
-  return false;
+
+  ZTypeArena arena;
+  z_type_arena_init(&arena);
+  ZTypeId expected_type = Z_TYPE_ID_INVALID;
+  ZTypeId actual_type = Z_TYPE_ID_INVALID;
+  bool ok = type_core_parse_for_program(program, &arena, expected, &expected_type) &&
+            type_core_parse_for_program(program, &arena, actual, &actual_type) &&
+            type_core_types_compatible_inner(program, scope, &arena, expected_type, actual_type, 0);
+  z_type_arena_free(&arena);
+  return ok;
 }
 
 static bool types_compatible(const Program *program, const char *expected, const char *actual) {
   return types_compatible_in_scope(program, NULL, expected, actual);
 }
 
+static bool type_core_static_value_mismatch_inner(const Program *program, ZTypeArena *arena, ZTypeId expected, ZTypeId actual, size_t depth) {
+  if (depth > 64) return false;
+  ZTypeNodeKind expected_kind = z_type_kind(arena, expected);
+  ZTypeNodeKind actual_kind = z_type_kind(arena, actual);
+  if (expected_kind == Z_TYPE_NODE_NAME) {
+    const char *name = z_type_name(arena, expected);
+    const char *resolved = resolve_alias_type(program, name);
+    if (name && resolved && strcmp(name, resolved) != 0) {
+      ZTypeId resolved_type = Z_TYPE_ID_INVALID;
+      if (!type_core_parse_for_program(program, arena, resolved, &resolved_type)) return false;
+      return type_core_static_value_mismatch_inner(program, arena, resolved_type, actual, depth + 1);
+    }
+  }
+  if (actual_kind == Z_TYPE_NODE_NAME) {
+    const char *name = z_type_name(arena, actual);
+    const char *resolved = resolve_alias_type(program, name);
+    if (name && resolved && strcmp(name, resolved) != 0) {
+      ZTypeId resolved_type = Z_TYPE_ID_INVALID;
+      if (!type_core_parse_for_program(program, arena, resolved, &resolved_type)) return false;
+      return type_core_static_value_mismatch_inner(program, arena, expected, resolved_type, depth + 1);
+    }
+  }
+  if (expected_kind == Z_TYPE_NODE_CONST) {
+    ZTypeId actual_inner = actual_kind == Z_TYPE_NODE_CONST ? z_type_const_inner(arena, actual) : actual;
+    return type_core_static_value_mismatch_inner(program, arena, z_type_const_inner(arena, expected), actual_inner, depth + 1);
+  }
+  if (expected_kind == Z_TYPE_NODE_ARRAY && actual_kind == Z_TYPE_NODE_ARRAY) {
+    return type_core_static_values_mismatch(program, z_type_array_length(arena, expected), z_type_array_length(arena, actual), NULL) ||
+           type_core_static_value_mismatch_inner(program, arena, z_type_array_element(arena, expected), z_type_array_element(arena, actual), depth + 1);
+  }
+  if (expected_kind != Z_TYPE_NODE_APPLY || actual_kind != Z_TYPE_NODE_APPLY) return false;
+  const char *expected_name = z_type_name(arena, expected);
+  const char *actual_name = z_type_name(arena, actual);
+  if (!expected_name || !actual_name || strcmp(expected_name, actual_name) != 0) return false;
+  size_t expected_len = z_type_apply_arg_len(arena, expected);
+  size_t actual_len = z_type_apply_arg_len(arena, actual);
+  if (expected_len != actual_len) return false;
+  const ParamVec *type_params = generic_type_params_for_name(program, expected_name);
+  for (size_t i = 0; i < expected_len; i++) {
+    const ZTypeArg *expected_arg = z_type_apply_arg(arena, expected, i);
+    const ZTypeArg *actual_arg = z_type_apply_arg(arena, actual, i);
+    if (!expected_arg || !actual_arg || expected_arg->kind != actual_arg->kind) continue;
+    const Param *param = type_params && i < type_params->len ? &type_params->items[i] : NULL;
+    if (expected_arg->kind == Z_TYPE_ARG_STATIC) {
+      const char *static_type = param && param->is_static ? param->type : NULL;
+      if (type_core_static_values_mismatch(program, &expected_arg->as.static_value, &actual_arg->as.static_value, static_type)) return true;
+    } else if (type_core_static_value_mismatch_inner(program, arena, expected_arg->as.type, actual_arg->as.type, depth + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool type_static_value_mismatch(const Program *program, const char *expected, const char *actual) {
   expected = resolve_alias_type(program, expected);
   actual = resolve_alias_type(program, actual);
   if (!expected || !actual) return false;
-  const char *wrappers[] = {"ref", "mutref", "owned", "Span", "MutSpan", "Maybe", NULL};
-  for (size_t i = 0; wrappers[i]; i++) {
-    const char *expected_inner = NULL;
-    const char *actual_inner = NULL;
-    size_t expected_len = 0;
-    size_t actual_len = 0;
-    if (type_has_generic_arg(expected, wrappers[i], &expected_inner, &expected_len) &&
-        type_has_generic_arg(actual, wrappers[i], &actual_inner, &actual_len)) {
-      char *expected_text = z_strndup(expected_inner, expected_len);
-      char *actual_text = z_strndup(actual_inner, actual_len);
-      bool mismatch = type_static_value_mismatch(program, expected_text, actual_text);
-      free(expected_text);
-      free(actual_text);
-      return mismatch;
-    }
-  }
-  if (expected[0] == '[' && actual[0] == '[') {
-    const char *expected_close = strchr(expected, ']');
-    const char *actual_close = strchr(actual, ']');
-    if (!expected_close || !actual_close) return false;
-    char *expected_length = z_strndup(expected + 1, (size_t)(expected_close - expected - 1));
-    char *actual_length = z_strndup(actual + 1, (size_t)(actual_close - actual - 1));
-    char *expected_static = canonical_static_arg(program, expected_length);
-    char *actual_static = canonical_static_arg(program, actual_length);
-    bool mismatch = expected_static && actual_static && strcmp(expected_static, actual_static) != 0;
-    free(expected_length);
-    free(actual_length);
-    free(expected_static);
-    free(actual_static);
-    return mismatch;
-  }
-  const char *expected_open = strchr(expected, '<');
-  const char *actual_open = strchr(actual, '<');
-  if (!expected_open || !actual_open || expected_open == expected || actual_open == actual) return false;
-  size_t name_len = (size_t)(expected_open - expected);
-  if (name_len != (size_t)(actual_open - actual) || strncmp(expected, actual, name_len) != 0) return false;
-  char *name = z_strndup(expected, name_len);
-  const Shape *shape = find_shape(program, name);
-  char **expected_args = NULL;
-  char **actual_args = NULL;
-  size_t expected_arg_len = 0;
-  size_t actual_arg_len = 0;
-  bool mismatch = false;
-  if (shape && type_generic_arg_list(expected, name, &expected_args, &expected_arg_len) &&
-      type_generic_arg_list(actual, name, &actual_args, &actual_arg_len) &&
-      expected_arg_len == actual_arg_len && expected_arg_len == shape->type_params.len) {
-    for (size_t i = 0; i < expected_arg_len; i++) {
-      if (!shape->type_params.items[i].is_static) continue;
-      char *expected_static = canonical_static_arg(program, expected_args[i]);
-      char *actual_static = canonical_static_arg(program, actual_args[i]);
-      if (expected_static && actual_static && strcmp(expected_static, actual_static) != 0) mismatch = true;
-      free(expected_static);
-      free(actual_static);
-    }
-  }
-  free_type_arg_list(expected_args, expected_arg_len);
-  free_type_arg_list(actual_args, actual_arg_len);
-  free(name);
+  ZTypeArena arena;
+  z_type_arena_init(&arena);
+  ZTypeId expected_type = Z_TYPE_ID_INVALID;
+  ZTypeId actual_type = Z_TYPE_ID_INVALID;
+  bool mismatch = type_core_parse_for_program(program, &arena, expected, &expected_type) &&
+                  type_core_parse_for_program(program, &arena, actual, &actual_type) &&
+                  type_core_static_value_mismatch_inner(program, &arena, expected_type, actual_type, 0);
+  z_type_arena_free(&arena);
   return mismatch;
 }
 

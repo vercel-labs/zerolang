@@ -1769,6 +1769,14 @@ assert.match(staticMismatchBody.diagnostics[0].expected, /FixedVec<u8,8>/);
 assert.match(staticMismatchBody.diagnostics[0].actual, /FixedVec<u8,cap>/);
 assert.equal(staticMismatchBody.diagnostics[0].repair.id, "match-static-value-argument");
 
+const staticAliasMismatchJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/static-value-alias-mismatch.0"]).catch((error) => error);
+assert.notEqual(staticAliasMismatchJson.code, 0);
+const staticAliasMismatchBody = JSON.parse(staticAliasMismatchJson.stdout);
+assert.equal(staticAliasMismatchBody.diagnostics[0].code, "STC003");
+assert.match(staticAliasMismatchBody.diagnostics[0].expected, /Box<FourVec>/);
+assert.match(staticAliasMismatchBody.diagnostics[0].actual, /Box<FixedVec<u8,5>>/);
+assert.equal(staticAliasMismatchBody.diagnostics[0].repair.id, "match-static-value-argument");
+
 const staticBoolEnumMismatchJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/static-value-bool-enum-mismatch.0"]).catch((error) => error);
 assert.notEqual(staticBoolEnumMismatchJson.code, 0);
 const staticBoolEnumMismatchBody = JSON.parse(staticBoolEnumMismatchJson.stdout);
