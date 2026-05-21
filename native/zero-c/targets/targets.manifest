@@ -10,7 +10,7 @@ libc = "default"
 libcMode = "host-default"
 exeSuffix = ""
 zigTarget = "aarch64-macos"
-capabilities = ["memory", "stdio", "args", "env", "fs", "time", "rand", "net", "proc"]
+capabilities = ["memory", "stdio", "stdin", "args", "env", "fs", "time", "rand", "net", "proc"]
 
 [[target]]
 name = "darwin-x64"
@@ -38,7 +38,7 @@ libc = "musl"
 libcMode = "bundled-libc"
 exeSuffix = ""
 zigTarget = "x86_64-linux-musl"
-capabilities = ["memory", "stdio", "args", "env", "fs", "time", "rand"]
+capabilities = ["memory", "stdio", "stdin", "args", "env", "fs", "time", "rand"]
 
 [[target]]
 name = "linux-musl-arm64"
