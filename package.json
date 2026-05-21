@@ -33,6 +33,7 @@
     "resolve-zero-root:test": "node --test scripts/resolve-zero-root.test.mjs",
     "extension:test": "pnpm run extension:sync-snippets && pnpm run extension:sync-snippets:test && pnpm run resolve-zero-root:test && turbo run test --filter=./extensions/vscode",
     "extension:zed:prepare": "pnpm run extension:sync-snippets && pnpm --filter=./extensions/zed run prepare:dev",
+    "extension:zed:check-rust": "pnpm --filter=./extensions/zed run check:rust",
     "extension:zed:test": "pnpm --filter=./extensions/zed run test",
     "native:install": "make -C native/zero-c install-local",
     "native:smoke": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/native-smoke.mts",
