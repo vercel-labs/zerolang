@@ -851,6 +851,35 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         if (wide) elf_append_u8(code, 0x48);
         elf_append_u8(code, value->binary_op == IR_BIN_AND ? 0x21 : 0x09);
         elf_append_u8(code, 0xc8);
+      } else if (value->binary_op == IR_BIN_BITAND) {
+        if (wide) elf_append_u8(code, 0x48);
+        elf_append_u8(code, 0x21);
+        elf_append_u8(code, 0xc8);
+      } else if (value->binary_op == IR_BIN_BITOR) {
+        if (wide) elf_append_u8(code, 0x48);
+        elf_append_u8(code, 0x09);
+        elf_append_u8(code, 0xc8);
+      } else if (value->binary_op == IR_BIN_BITXOR) {
+        if (wide) elf_append_u8(code, 0x48);
+        elf_append_u8(code, 0x31);
+        elf_append_u8(code, 0xc8);
+      } else if (value->binary_op == IR_BIN_SHL) {
+        // shl r/m, cl
+        if (wide) elf_append_u8(code, 0x48);
+        elf_append_u8(code, 0xd3);
+        elf_append_u8(code, 0xe0);
+      } else if (value->binary_op == IR_BIN_SHR) {
+        if (elf_type_is_unsigned(value->type)) {
+          // shr r/m, cl
+          if (wide) elf_append_u8(code, 0x48);
+          elf_append_u8(code, 0xd3);
+          elf_append_u8(code, 0xe8);
+        } else {
+          // sar r/m, cl
+          if (wide) elf_append_u8(code, 0x48);
+          elf_append_u8(code, 0xd3);
+          elf_append_u8(code, 0xf8);
+        }
       } else if (value->binary_op == IR_BIN_DIV) {
         if (elf_type_is_unsigned(value->type)) {
           if (wide) elf_append_u8(code, 0x48);
@@ -896,6 +925,38 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         return elf_diag(diag, "direct ELF64 binary operator is unsupported", value->line, value->column, "unsupported operator");
       }
       return true;
+    }
+    case IR_VALUE_UNARY: {
+      if (!value->left) return elf_diag(diag, "direct ELF64 unary requires an operand", value->line, value->column, "missing operand");
+      if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+      bool wide_u = elf_type_is_i64(value->type);
+      if (value->unary_op == IR_UNARY_NEG) {
+        // neg r/m
+        if (wide_u) elf_append_u8(code, 0x48);
+        elf_append_u8(code, 0xf7);
+        elf_append_u8(code, 0xd8);
+        return true;
+      }
+      if (value->unary_op == IR_UNARY_BITNOT) {
+        // not r/m
+        if (wide_u) elf_append_u8(code, 0x48);
+        elf_append_u8(code, 0xf7);
+        elf_append_u8(code, 0xd0);
+        return true;
+      }
+      if (value->unary_op == IR_UNARY_NOT) {
+        // test eax, eax ; sete al ; movzx eax, al
+        elf_append_u8(code, 0x85);
+        elf_append_u8(code, 0xc0);
+        elf_append_u8(code, 0x0f);
+        elf_append_u8(code, 0x94);
+        elf_append_u8(code, 0xc0);
+        elf_append_u8(code, 0x0f);
+        elf_append_u8(code, 0xb6);
+        elf_append_u8(code, 0xc0);
+        return true;
+      }
+      return elf_diag(diag, "direct ELF64 unary operator is unsupported", value->line, value->column, "unsupported unary operator");
     }
     case IR_VALUE_COMPARE: {
       if (!value->left || !value->right || !elf_type_is_supported_scalar(value->left->type) || value->left->type != value->right->type) {
