@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -7,6 +8,11 @@ const execFileAsync = promisify(execFile);
 const cc = process.env.CC ?? "cc";
 const out = `/tmp/zero-row-syntax-smoke-${process.pid}`;
 const checkOut = `/tmp/zero-row-syntax-check-smoke-${process.pid}`;
+const passDir = "native/zero-c/tests/row_syntax/pass";
+const passFiles = (await readdir(passDir))
+  .filter((name) => name.endsWith(".row"))
+  .sort()
+  .map((name) => path.join(passDir, name));
 
 try {
   await execFileAsync(cc, [
@@ -46,7 +52,7 @@ try {
     "-o",
     checkOut,
   ]);
-  const checkResult = await execFileAsync(checkOut);
+  const checkResult = await execFileAsync(checkOut, passFiles);
   if (!checkResult.stdout.includes("row syntax check smoke ok")) {
     throw new Error(`unexpected row syntax check smoke output: ${checkResult.stdout}`);
   }

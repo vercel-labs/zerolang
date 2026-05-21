@@ -1,0 +1,11 @@
+fn factorial u32 n u32
+  mut result u32 1
+  mut index u32 2
+  while <= index n
+    set result (* result index)
+    set index (+ index 1)
+  ret result
+
+pub fn main Void world World !
+  if == (factorial 6) 720
+    check world.out.write "factorial ok\n"

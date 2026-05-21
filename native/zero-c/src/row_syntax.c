@@ -18,6 +18,12 @@ typedef struct {
   ZDiag *diag;
 } RowExprParser;
 
+typedef struct {
+  ZRowTrivia *items;
+  size_t len;
+  size_t cap;
+} RowPendingTrivia;
+
 static void row_push_token(ZRowTokenVec *vec, ZRowToken token) {
   if (vec->len + 1 > vec->cap) {
     vec->cap = z_grow_capacity(vec->cap, vec->len + 1, 64);
@@ -32,6 +38,14 @@ static void row_push_node(ZRowTree *tree, ZRowNode node) {
     tree->items = z_checked_reallocarray(tree->items, tree->cap, sizeof(ZRowNode));
   }
   tree->items[tree->len++] = node;
+}
+
+static void row_push_tree_trivia(ZRowTree *tree, ZRowTrivia trivia) {
+  if (tree->trivia_len + 1 > tree->trivia_cap) {
+    tree->trivia_cap = z_grow_capacity(tree->trivia_cap, tree->trivia_len + 1, 32);
+    tree->trivia = z_checked_reallocarray(tree->trivia, tree->trivia_cap, sizeof(ZRowTrivia));
+  }
+  tree->trivia[tree->trivia_len++] = trivia;
 }
 
 static void *row_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
@@ -200,7 +214,26 @@ static bool row_scan_string(const char *source, size_t *offset, int *column, ZRo
       if (escaped == 'n') row_append_char(&value, &len, &cap, '\n');
       else if (escaped == 'r') row_append_char(&value, &len, &cap, '\r');
       else if (escaped == 't') row_append_char(&value, &len, &cap, '\t');
-      else row_append_char(&value, &len, &cap, escaped);
+      else if (escaped == 'x') {
+        char high_ch = source[*offset];
+        char low_ch = high_ch ? source[*offset + 1] : 0;
+        int high = row_hex_digit(high_ch);
+        int low = row_hex_digit(low_ch);
+        if (high < 0 || low < 0) {
+          free(value);
+          row_diag(diag, line, start_column, 1, "malformed hex string escape", "two hex digits", "use an escape like '\\x41'");
+          return false;
+        }
+        unsigned byte = (unsigned)((high << 4) | low);
+        if (byte == 0) {
+          free(value);
+          row_diag(diag, line, start_column, 1, "string literal cannot contain a zero byte", "nonzero byte", NULL);
+          return false;
+        }
+        row_append_char(&value, &len, &cap, (char)byte);
+        *offset += 2;
+        *column += 2;
+      } else row_append_char(&value, &len, &cap, escaped);
     } else {
       row_append_char(&value, &len, &cap, next);
     }
@@ -464,6 +497,8 @@ ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag) {
   return tokens;
 }
 
+static bool row_newline_is_blank(const ZRowTokenVec *tokens, size_t index, size_t first_token);
+
 bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZDiag *diag) {
   if (facts) memset(facts, 0, sizeof(*facts));
   size_t depth = 0;
@@ -486,6 +521,7 @@ bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZD
         in_row = false;
         break;
       case Z_ROW_TOKEN_NEWLINE:
+        if (!in_row && facts && row_newline_is_blank(tokens, i, Z_ROW_NO_PARENT)) facts->blank_line_count++;
         in_row = false;
         break;
       case Z_ROW_TOKEN_COMMENT:
@@ -518,6 +554,68 @@ static bool row_parent_stack_push(size_t **items, size_t *len, size_t *cap, size
   return true;
 }
 
+static void row_pending_trivia_push(RowPendingTrivia *pending, ZRowTrivia trivia) {
+  if (pending->len + 1 > pending->cap) {
+    pending->cap = z_grow_capacity(pending->cap, pending->len + 1, 16);
+    pending->items = z_checked_reallocarray(pending->items, pending->cap, sizeof(ZRowTrivia));
+  }
+  pending->items[pending->len++] = trivia;
+}
+
+static size_t row_comment_indent_depth(const ZRowToken *token, size_t fallback_depth) {
+  if (!token || token->column <= 1) return fallback_depth;
+  size_t indent = (size_t)(token->column - 1);
+  return indent / 2;
+}
+
+static void row_attach_pending_trivia(RowPendingTrivia *pending, ZRowTree *tree, size_t row, size_t row_parent, size_t row_depth) {
+  size_t write = 0;
+  for (size_t i = 0; i < pending->len; i++) {
+    ZRowTrivia trivia = pending->items[i];
+    bool attach = false;
+    if (trivia.kind == Z_ROW_TRIVIA_BLANK_LINE) {
+      attach = trivia.indent_depth == row_depth || trivia.parent == row_parent;
+    } else {
+      attach = trivia.indent_depth == row_depth && trivia.parent == row_parent;
+    }
+
+    if (attach) {
+      if (trivia.kind != Z_ROW_TRIVIA_BLANK_LINE) trivia.kind = Z_ROW_TRIVIA_LEADING_COMMENT;
+      trivia.row = row;
+      trivia.parent = row_parent;
+      row_push_tree_trivia(tree, trivia);
+    } else {
+      pending->items[write++] = pending->items[i];
+    }
+  }
+  pending->len = write;
+}
+
+static void row_flush_block_trivia(RowPendingTrivia *pending, ZRowTree *tree, size_t min_depth) {
+  size_t write = 0;
+  for (size_t i = 0; i < pending->len; i++) {
+    ZRowTrivia trivia = pending->items[i];
+    if (trivia.indent_depth > min_depth && trivia.parent != Z_ROW_NO_PARENT) {
+      if (trivia.kind != Z_ROW_TRIVIA_BLANK_LINE) trivia.kind = Z_ROW_TRIVIA_BLOCK_COMMENT;
+      row_push_tree_trivia(tree, trivia);
+    } else {
+      pending->items[write++] = pending->items[i];
+    }
+  }
+  pending->len = write;
+}
+
+static void row_flush_terminal_trivia(RowPendingTrivia *pending, ZRowTree *tree) {
+  for (size_t i = 0; i < pending->len; i++) {
+    ZRowTrivia trivia = pending->items[i];
+    if (trivia.row != Z_ROW_NO_PARENT || trivia.parent != Z_ROW_NO_PARENT) {
+      if (trivia.kind != Z_ROW_TRIVIA_BLANK_LINE) trivia.kind = Z_ROW_TRIVIA_BLOCK_COMMENT;
+    }
+    row_push_tree_trivia(tree, trivia);
+  }
+  pending->len = 0;
+}
+
 static size_t row_finalize_node(ZRowTree *tree, size_t parent, size_t first_token, size_t token_count, size_t depth, const ZRowTokenVec *tokens) {
   const ZRowToken *start = &tokens->items[first_token];
   row_push_node(tree, (ZRowNode){
@@ -529,6 +627,43 @@ static size_t row_finalize_node(ZRowTree *tree, size_t parent, size_t first_toke
     .column = start->column
   });
   return tree->len - 1;
+}
+
+static size_t row_finalize_node_with_trivia(
+  ZRowTree *tree,
+  RowPendingTrivia *pending,
+  size_t parent,
+  size_t first_token,
+  size_t token_count,
+  size_t depth,
+  size_t trailing_comment,
+  const ZRowTokenVec *tokens
+) {
+  size_t row = row_finalize_node(tree, parent, first_token, token_count, depth, tokens);
+  row_attach_pending_trivia(pending, tree, row, parent, depth);
+  if (trailing_comment != Z_ROW_NO_PARENT) {
+    const ZRowToken *comment = &tokens->items[trailing_comment];
+    row_push_tree_trivia(tree, (ZRowTrivia){
+      .kind = Z_ROW_TRIVIA_TRAILING_COMMENT,
+      .row = row,
+      .parent = parent,
+      .token = trailing_comment,
+      .indent_depth = depth,
+      .line = comment->line,
+      .column = comment->column
+    });
+  }
+  return row;
+}
+
+static bool row_newline_is_blank(const ZRowTokenVec *tokens, size_t index, size_t first_token) {
+  if (first_token != Z_ROW_NO_PARENT || !tokens || index >= tokens->len) return false;
+  if (index == 0) return true;
+  const ZRowToken *newline = &tokens->items[index];
+  const ZRowToken *prev = &tokens->items[index - 1];
+  if (prev->kind == Z_ROW_TOKEN_COMMENT && prev->line == newline->line) return false;
+  if (prev->kind == Z_ROW_TOKEN_INDENT || prev->kind == Z_ROW_TOKEN_DEDENT) return false;
+  return true;
 }
 
 static bool row_dedent_leads_to_eof(const ZRowTokenVec *tokens, size_t index) {
@@ -1576,11 +1711,13 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
   size_t parent_len = 0;
   size_t parent_cap = 0;
   row_parent_stack_push(&parents, &parent_len, &parent_cap, Z_ROW_NO_PARENT);
+  RowPendingTrivia pending = {0};
 
   size_t depth = 0;
   size_t last_row = Z_ROW_NO_PARENT;
   size_t first_token = Z_ROW_NO_PARENT;
   size_t token_count = 0;
+  size_t trailing_comment = Z_ROW_NO_PARENT;
 
   for (size_t i = 0; i < tokens->len; i++) {
     const ZRowToken *token = &tokens->items[i];
@@ -1589,11 +1726,13 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
         if (first_token != Z_ROW_NO_PARENT) {
           row_diag(diag, token->line, token->column, 1, "indent appeared before row newline", "newline before indent", NULL);
           free(parents);
+          free(pending.items);
           return false;
         }
         if (last_row == Z_ROW_NO_PARENT) {
           row_diag(diag, token->line, token->column, 1, "indented row has no parent row", "parent row before indentation", NULL);
           free(parents);
+          free(pending.items);
           return false;
         }
         depth++;
@@ -1605,35 +1744,69 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
           if (!row_dedent_leads_to_eof(tokens, i)) {
             row_diag(diag, token->line, token->column, 1, "dedent appeared before row newline", "newline before dedent", NULL);
             free(parents);
+            free(pending.items);
             return false;
           }
-          last_row = row_finalize_node(tree, parents[depth], first_token, token_count, depth, tokens);
+          last_row = row_finalize_node_with_trivia(tree, &pending, parents[depth], first_token, token_count, depth, trailing_comment, tokens);
           first_token = Z_ROW_NO_PARENT;
           token_count = 0;
+          trailing_comment = Z_ROW_NO_PARENT;
         }
         if (depth == 0) {
           row_diag(diag, token->line, token->column, 1, "row layout contains an unmatched dedent", "matching indentation", NULL);
           free(parents);
+          free(pending.items);
           return false;
         }
         depth--;
+        row_flush_block_trivia(&pending, tree, depth);
         break;
       case Z_ROW_TOKEN_NEWLINE:
         if (first_token != Z_ROW_NO_PARENT) {
-          last_row = row_finalize_node(tree, parents[depth], first_token, token_count, depth, tokens);
+          last_row = row_finalize_node_with_trivia(tree, &pending, parents[depth], first_token, token_count, depth, trailing_comment, tokens);
           first_token = Z_ROW_NO_PARENT;
           token_count = 0;
+          trailing_comment = Z_ROW_NO_PARENT;
+        } else if (row_newline_is_blank(tokens, i, first_token)) {
+          row_pending_trivia_push(&pending, (ZRowTrivia){
+            .kind = Z_ROW_TRIVIA_BLANK_LINE,
+            .row = last_row,
+            .parent = depth < parent_len ? parents[depth] : Z_ROW_NO_PARENT,
+            .token = Z_ROW_NO_PARENT,
+            .indent_depth = depth,
+            .line = token->line,
+            .column = token->column
+          });
         }
         break;
       case Z_ROW_TOKEN_COMMENT:
+        if (first_token != Z_ROW_NO_PARENT) {
+          trailing_comment = i;
+        } else {
+          size_t comment_depth = row_comment_indent_depth(token, depth);
+          size_t comment_parent = comment_depth < parent_len ? parents[comment_depth] : Z_ROW_NO_PARENT;
+          if (comment_parent == Z_ROW_NO_PARENT && comment_depth > depth) comment_parent = last_row;
+          row_pending_trivia_push(&pending, (ZRowTrivia){
+            .kind = Z_ROW_TRIVIA_LEADING_COMMENT,
+            .row = last_row,
+            .parent = comment_parent,
+            .token = i,
+            .indent_depth = comment_depth,
+            .line = token->line,
+            .column = token->column
+          });
+        }
         break;
       case Z_ROW_TOKEN_EOF:
         if (first_token != Z_ROW_NO_PARENT) {
-          last_row = row_finalize_node(tree, parents[depth], first_token, token_count, depth, tokens);
+          last_row = row_finalize_node_with_trivia(tree, &pending, parents[depth], first_token, token_count, depth, trailing_comment, tokens);
           first_token = Z_ROW_NO_PARENT;
           token_count = 0;
+          trailing_comment = Z_ROW_NO_PARENT;
         }
         (void)last_row;
+        row_flush_block_trivia(&pending, tree, 0);
+        row_flush_terminal_trivia(&pending, tree);
         break;
       default:
         if (first_token == Z_ROW_NO_PARENT) {
@@ -1647,15 +1820,166 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
   }
 
   free(parents);
+  free(pending.items);
   return true;
+}
+
+static void row_format_newline(ZBuf *buf) {
+  if (!buf->data || buf->len == 0 || buf->data[buf->len - 1] != '\n') zbuf_append_char(buf, '\n');
+}
+
+static void row_format_blank_line(ZBuf *buf) {
+  row_format_newline(buf);
+  if (buf->len < 2 || buf->data[buf->len - 2] != '\n') zbuf_append_char(buf, '\n');
+}
+
+static void row_format_indent(ZBuf *buf, size_t depth) {
+  for (size_t i = 0; i < depth; i++) zbuf_append(buf, "  ");
+}
+
+static void row_format_string(ZBuf *buf, const char *text) {
+  zbuf_append_char(buf, '"');
+  for (const unsigned char *ch = (const unsigned char *)(text ? text : ""); *ch; ch++) {
+    if (*ch == '\n') zbuf_append(buf, "\\n");
+    else if (*ch == '\r') zbuf_append(buf, "\\r");
+    else if (*ch == '\t') zbuf_append(buf, "\\t");
+    else if (*ch == '"' || *ch == '\\') {
+      zbuf_append_char(buf, '\\');
+      zbuf_append_char(buf, (char)*ch);
+    } else if (*ch < 32) {
+      zbuf_appendf(buf, "\\x%02x", (unsigned)*ch);
+    } else {
+      zbuf_append_char(buf, (char)*ch);
+    }
+  }
+  zbuf_append_char(buf, '"');
+}
+
+static void row_format_char(ZBuf *buf, const char *text) {
+  unsigned value = (unsigned)strtoul(text ? text : "0", NULL, 10);
+  zbuf_append_char(buf, '\'');
+  if (value == '\n') zbuf_append(buf, "\\n");
+  else if (value == '\r') zbuf_append(buf, "\\r");
+  else if (value == '\t') zbuf_append(buf, "\\t");
+  else if (value == '\'') zbuf_append(buf, "\\'");
+  else if (value == '\\') zbuf_append(buf, "\\\\");
+  else if (value >= 32 && value < 127) zbuf_append_char(buf, (char)value);
+  else zbuf_appendf(buf, "\\x%02x", value & 0xff);
+  zbuf_append_char(buf, '\'');
+}
+
+static void row_format_token(ZBuf *buf, const ZRowToken *token) {
+  if (!token) return;
+  if (token->kind == Z_ROW_TOKEN_STRING) row_format_string(buf, token->text);
+  else if (token->kind == Z_ROW_TOKEN_CHAR) row_format_char(buf, token->text);
+  else zbuf_append(buf, token->text);
+}
+
+static bool row_blank_trivia_precedes_row(const ZRowTree *tree, const ZRowTrivia *trivia, size_t row) {
+  return tree && trivia && trivia->kind == Z_ROW_TRIVIA_BLANK_LINE && row < tree->len && trivia->line <= tree->items[row].line;
+}
+
+static void row_format_prefix_trivia(ZBuf *buf, const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row) {
+  for (size_t i = 0; tree && i < tree->trivia_len; i++) {
+    const ZRowTrivia *trivia = &tree->trivia[i];
+    if (trivia->row != row) continue;
+    if (trivia->kind == Z_ROW_TRIVIA_BLANK_LINE) {
+      if (!row_blank_trivia_precedes_row(tree, trivia, row)) continue;
+      row_format_blank_line(buf);
+    } else if (trivia->kind == Z_ROW_TRIVIA_LEADING_COMMENT && tokens && trivia->token < tokens->len) {
+      row_format_indent(buf, trivia->indent_depth);
+      zbuf_append(buf, tokens->items[trivia->token].text);
+      row_format_newline(buf);
+    }
+  }
+}
+
+static const ZRowTrivia *row_format_trailing_trivia(const ZRowTree *tree, size_t row) {
+  for (size_t i = 0; tree && i < tree->trivia_len; i++) {
+    if (tree->trivia[i].row == row && tree->trivia[i].kind == Z_ROW_TRIVIA_TRAILING_COMMENT) return &tree->trivia[i];
+  }
+  return NULL;
+}
+
+static void row_format_block_trivia(ZBuf *buf, const ZRowTokenVec *tokens, const ZRowTree *tree, size_t parent) {
+  for (size_t i = 0; tree && i < tree->trivia_len; i++) {
+    const ZRowTrivia *trivia = &tree->trivia[i];
+    if (trivia->kind != Z_ROW_TRIVIA_BLOCK_COMMENT && trivia->kind != Z_ROW_TRIVIA_BLANK_LINE) continue;
+    if (trivia->kind != Z_ROW_TRIVIA_BLANK_LINE && (!tokens || trivia->token >= tokens->len)) continue;
+    size_t anchor = trivia->row == Z_ROW_NO_PARENT ? trivia->parent : trivia->row;
+    if (anchor != parent) continue;
+    if (trivia->kind == Z_ROW_TRIVIA_BLANK_LINE) {
+      if (trivia->row != Z_ROW_NO_PARENT && row_blank_trivia_precedes_row(tree, trivia, trivia->row)) continue;
+      row_format_blank_line(buf);
+      continue;
+    }
+    row_format_indent(buf, trivia->indent_depth);
+    zbuf_append(buf, tokens->items[trivia->token].text);
+    row_format_newline(buf);
+  }
+}
+
+static bool row_trivia_is_unanchored(const ZRowTrivia *trivia) {
+  return trivia && trivia->row == Z_ROW_NO_PARENT && trivia->parent == Z_ROW_NO_PARENT;
+}
+
+static void row_format_unanchored_trivia(ZBuf *buf, const ZRowTokenVec *tokens, const ZRowTree *tree) {
+  for (size_t i = 0; tree && i < tree->trivia_len; i++) {
+    const ZRowTrivia *trivia = &tree->trivia[i];
+    if (!row_trivia_is_unanchored(trivia)) continue;
+    if (trivia->kind == Z_ROW_TRIVIA_BLANK_LINE) {
+      if (!buf->data || buf->len == 0) zbuf_append_char(buf, '\n');
+      else row_format_blank_line(buf);
+      continue;
+    }
+    if (!tokens || trivia->token >= tokens->len) continue;
+    row_format_indent(buf, trivia->indent_depth);
+    zbuf_append(buf, tokens->items[trivia->token].text);
+    row_format_newline(buf);
+  }
+}
+
+char *z_format_row_layout(const ZRowTokenVec *tokens, const ZRowTree *tree) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  if (!tokens || !tree) return z_strdup("");
+
+  row_format_unanchored_trivia(&buf, tokens, tree);
+  for (size_t row = 0; row < tree->len; row++) {
+    const ZRowNode *node = &tree->items[row];
+    row_format_prefix_trivia(&buf, tokens, tree, row);
+    row_format_indent(&buf, node->indent_depth);
+    size_t end = node->first_token + node->token_count;
+    for (size_t i = node->first_token; i < end && i < tokens->len; i++) {
+      if (i > node->first_token) {
+        const ZRowToken *prev = &tokens->items[i - 1];
+        const ZRowToken *token = &tokens->items[i];
+        if (token->offset != prev->offset + prev->length) zbuf_append_char(&buf, ' ');
+      }
+      row_format_token(&buf, &tokens->items[i]);
+    }
+    const ZRowTrivia *trailing = row_format_trailing_trivia(tree, row);
+    if (trailing && trailing->token < tokens->len) {
+      zbuf_append_char(&buf, ' ');
+      zbuf_append(&buf, tokens->items[trailing->token].text);
+    }
+    row_format_newline(&buf);
+    row_format_block_trivia(&buf, tokens, tree, row);
+  }
+
+  return buf.data ? buf.data : z_strdup("");
 }
 
 void z_free_row_tree(ZRowTree *tree) {
   if (!tree) return;
   free(tree->items);
+  free(tree->trivia);
   tree->items = NULL;
+  tree->trivia = NULL;
   tree->len = 0;
   tree->cap = 0;
+  tree->trivia_len = 0;
+  tree->trivia_cap = 0;
 }
 
 void z_free_row_tokens(ZRowTokenVec *tokens) {

@@ -1,0 +1,16 @@
+pub fn main Void world World !
+  mut bytes [9]u8 [122 101 114 111 32 108 97 110 103]
+  mut index usize 0
+  while < index 4
+    let saved u8 bytes[index]
+    set bytes[index] bytes[(+ index 5)]
+    set bytes[(+ index 5)] saved
+    set index (+ index 1)
+  let first Bool && (== bytes[0] 108) (== bytes[1] 97)
+  let second Bool && (== bytes[2] 110) (== bytes[3] 103)
+  let third Bool && (== bytes[4] 32) (== bytes[5] 122)
+  let fourth Bool && (== bytes[6] 101) (== bytes[7] 114)
+  let grouped Bool && (&& first second) (&& third fourth)
+  let ok Bool && grouped (== bytes[8] 111)
+  if ok
+    check world.out.write "word reverse ok\n"

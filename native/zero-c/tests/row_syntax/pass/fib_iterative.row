@@ -1,0 +1,14 @@
+fn fib u32 n u32
+  mut index u32 0
+  mut a u32 0
+  mut b u32 1
+  while < index n
+    let next u32 + a b
+    set a b
+    set b next
+    set index (+ index 1)
+  ret a
+
+pub fn main Void world World !
+  if == (fib 10) 55
+    check world.out.write "fib iterative ok\n"

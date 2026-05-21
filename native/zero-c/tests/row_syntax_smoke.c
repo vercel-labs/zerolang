@@ -102,6 +102,21 @@ static bool has_text(const ZRowTokenVec *tokens, ZRowTokenKind kind, const char 
   return false;
 }
 
+static size_t count_trivia(const ZRowTree *tree, ZRowTriviaKind kind) {
+  size_t count = 0;
+  for (size_t i = 0; i < tree->trivia_len; i++) {
+    if (tree->trivia[i].kind == kind) count++;
+  }
+  return count;
+}
+
+static const ZRowTrivia *find_trivia(const ZRowTree *tree, ZRowTriviaKind kind, size_t row) {
+  for (size_t i = 0; i < tree->trivia_len; i++) {
+    if (tree->trivia[i].kind == kind && tree->trivia[i].row == row) return &tree->trivia[i];
+  }
+  return NULL;
+}
+
 static Program parse_row_program(const char *source, ZRowTokenVec *tokens, ZRowTree *tree) {
   ZDiag diag = {0};
   *tokens = z_row_tokenize(source, &diag);
@@ -145,7 +160,275 @@ static void tokenizes_layout_and_trivia(void) {
   expect(z_row_analyze_layout(&tokens, &facts, &diag), diag.message);
   expect(facts.row_count == 3, "expected three source rows");
   expect(facts.comment_count == 2, "expected two comments");
+  expect(facts.blank_line_count == 0, "expected no blank-line separators");
   expect(facts.max_indent_depth == 1, "expected one indentation level");
+
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  expect(tree.trivia_len == 2, "expected row trivia attachments");
+  const ZRowTrivia *leading = find_trivia(&tree, Z_ROW_TRIVIA_LEADING_COMMENT, 0);
+  expect(leading != NULL, "expected leading comment on function row");
+  expect(strcmp(tokens.items[leading->token].text, "# leading comment") == 0, "expected leading comment token");
+  const ZRowTrivia *trailing = find_trivia(&tree, Z_ROW_TRIVIA_TRAILING_COMMENT, 1);
+  expect(trailing != NULL, "expected trailing comment on let row");
+  expect(strcmp(tokens.items[trailing->token].text, "# trailing comment") == 0, "expected trailing comment token");
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void attaches_comment_and_blank_line_trivia(void) {
+  const char *source =
+    "# file header\n"
+    "pub fn main Void\n"
+    "  # first binding\n"
+    "  let value i32 1 # same row\n"
+    "\n"
+    "  # return group\n"
+    "  ret value\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowSyntaxFacts facts = {0};
+  expect(z_row_analyze_layout(&tokens, &facts, &diag), diag.message);
+  expect(facts.blank_line_count == 1, "expected one blank line in layout facts");
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  expect(tree.len == 3, "expected three rows with trivia");
+  expect(count_trivia(&tree, Z_ROW_TRIVIA_LEADING_COMMENT) == 3, "expected three leading comments");
+  expect(count_trivia(&tree, Z_ROW_TRIVIA_TRAILING_COMMENT) == 1, "expected one trailing comment");
+  expect(count_trivia(&tree, Z_ROW_TRIVIA_BLANK_LINE) == 1, "expected one blank-line separator");
+  const ZRowTrivia *file_header = find_trivia(&tree, Z_ROW_TRIVIA_LEADING_COMMENT, 0);
+  expect(file_header && strcmp(tokens.items[file_header->token].text, "# file header") == 0, "expected file header on function");
+  const ZRowTrivia *binding_comment = find_trivia(&tree, Z_ROW_TRIVIA_LEADING_COMMENT, 1);
+  expect(binding_comment && strcmp(tokens.items[binding_comment->token].text, "# first binding") == 0, "expected binding leading comment");
+  const ZRowTrivia *same_row = find_trivia(&tree, Z_ROW_TRIVIA_TRAILING_COMMENT, 1);
+  expect(same_row && strcmp(tokens.items[same_row->token].text, "# same row") == 0, "expected same-row trailing comment");
+  const ZRowTrivia *separator = find_trivia(&tree, Z_ROW_TRIVIA_BLANK_LINE, 2);
+  expect(separator && separator->line == 5, "expected blank line before return row");
+  const ZRowTrivia *return_comment = find_trivia(&tree, Z_ROW_TRIVIA_LEADING_COMMENT, 2);
+  expect(return_comment && strcmp(tokens.items[return_comment->token].text, "# return group") == 0, "expected return leading comment");
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void attaches_block_comment_to_empty_block(void) {
+  const char *source =
+    "pub fn main Void\n"
+    "  # intentionally empty\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  expect(tree.len == 1, "expected one row with block comment");
+  expect(count_trivia(&tree, Z_ROW_TRIVIA_BLOCK_COMMENT) == 1, "expected one block comment");
+  expect(tree.trivia[0].parent == 0, "expected block comment parent row");
+  expect(strcmp(tokens.items[tree.trivia[0].token].text, "# intentionally empty") == 0, "expected block comment token");
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_empty_block_comment_before_sibling(void) {
+  const char *source =
+    "pub fn main Void\n"
+    "  if ready\n"
+    "    # skipped branch\n"
+    "  if done\n"
+    "    check world.out.write \"done\\n\"\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected empty block comment to stay with original parent");
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_block_footer_comment_after_child_rows(void) {
+  const char *source =
+    "pub fn main Void\n"
+    "  if ready\n"
+    "    check world.out.write \"ready\\n\"\n"
+    "    # branch footer\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected block footer comment to stay after child rows");
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_row_layout_with_trivia(void) {
+  const char *source =
+    "# file header\n"
+    "pub   fn   main Void\n"
+    "  # first binding\n"
+    "  let   value i32 1 # same row\n"
+    "\n"
+    "  check world.out.write \"ok\\n\"\n";
+  const char *expected =
+    "# file header\n"
+    "pub fn main Void\n"
+    "  # first binding\n"
+    "  let value i32 1 # same row\n"
+    "\n"
+    "  check world.out.write \"ok\\n\"\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, expected) == 0, "expected formatted row layout with trivia");
+
+  ZDiag second_diag = {0};
+  ZRowTokenVec second_tokens = z_row_tokenize(formatted, &second_diag);
+  expect(second_diag.code == 0, second_diag.message);
+  ZRowTree second_tree = {0};
+  expect(z_row_parse_layout(&second_tokens, &second_tree, &second_diag), second_diag.message);
+  char *formatted_again = z_format_row_layout(&second_tokens, &second_tree);
+  expect(strcmp(formatted_again, expected) == 0, "expected row formatter to be idempotent");
+  free(formatted_again);
+  z_free_row_tree(&second_tree);
+  z_free_row_tokens(&second_tokens);
+
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_blank_line_before_dedented_sibling(void) {
+  const char *source =
+    "pub fn main Void\n"
+    "  if ready\n"
+    "    check world.out.write \"ready\\n\"\n"
+    "\n"
+    "  if done\n"
+    "    check world.out.write \"done\\n\"\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected blank line before dedented sibling to be preserved");
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_terminal_top_level_comment(void) {
+  const char *source =
+    "const answer u32 42\n"
+    "# keep me\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected terminal top-level comment to be preserved");
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_comment_only_row_layout(void) {
+  const char *source = "# file docs\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  expect(tree.len == 0, "expected no row nodes for comment-only source");
+  expect(tree.trivia_len == 1, "expected unanchored comment trivia");
+  expect(tree.trivia[0].row == Z_ROW_NO_PARENT, "expected comment without row anchor");
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected comment-only row layout to be preserved");
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_blank_comment_only_row_layout(void) {
+  const char *source =
+    "\n"
+    "# file docs\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  expect(tree.len == 0, "expected no row nodes for blank/comment-only source");
+  expect(count_trivia(&tree, Z_ROW_TRIVIA_BLANK_LINE) == 1, "expected unanchored blank-line trivia");
+  expect(count_trivia(&tree, Z_ROW_TRIVIA_LEADING_COMMENT) == 1, "expected unanchored comment trivia");
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected blank/comment-only row layout to be preserved");
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_non_ascii_string_as_parseable_bytes(void) {
+  const char *source =
+    "pub fn main Void\n"
+    "  check world.out.write \"\303\251\\n\"\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected non-ASCII string bytes to remain parseable");
+
+  ZDiag second_diag = {0};
+  ZRowTokenVec second_tokens = z_row_tokenize(formatted, &second_diag);
+  expect(second_diag.code == 0, second_diag.message);
+  ZRowTree second_tree = {0};
+  expect(z_row_parse_layout(&second_tokens, &second_tree, &second_diag), second_diag.message);
+  char *formatted_again = z_format_row_layout(&second_tokens, &second_tree);
+  expect(strcmp(formatted_again, source) == 0, "expected non-ASCII string formatting to be idempotent");
+  free(formatted_again);
+  z_free_row_tree(&second_tree);
+  z_free_row_tokens(&second_tokens);
+
+  free(formatted);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+}
+
+static void formats_control_string_escape_as_parseable_bytes(void) {
+  const char *source =
+    "pub fn main Void\n"
+    "  check world.out.write \"\\x08\"\n";
+  ZDiag diag = {0};
+  ZRowTokenVec tokens = z_row_tokenize(source, &diag);
+  expect(diag.code == 0, diag.message);
+  ZRowTree tree = {0};
+  expect(z_row_parse_layout(&tokens, &tree, &diag), diag.message);
+  char *formatted = z_format_row_layout(&tokens, &tree);
+  expect(strcmp(formatted, source) == 0, "expected control string escape to remain parseable");
+
+  ZDiag second_diag = {0};
+  ZRowTokenVec second_tokens = z_row_tokenize(formatted, &second_diag);
+  expect(second_diag.code == 0, second_diag.message);
+  ZRowTree second_tree = {0};
+  expect(z_row_parse_layout(&second_tokens, &second_tree, &second_diag), second_diag.message);
+  char *formatted_again = z_format_row_layout(&second_tokens, &second_tree);
+  expect(strcmp(formatted_again, source) == 0, "expected control string formatting to be idempotent");
+  free(formatted_again);
+  z_free_row_tree(&second_tree);
+  z_free_row_tokens(&second_tokens);
+
+  free(formatted);
+  z_free_row_tree(&tree);
   z_free_row_tokens(&tokens);
 }
 
@@ -857,6 +1140,17 @@ static void rejects_export_c_on_non_function_rows(void) {
 
 int main(void) {
   tokenizes_layout_and_trivia();
+  attaches_comment_and_blank_line_trivia();
+  attaches_block_comment_to_empty_block();
+  formats_empty_block_comment_before_sibling();
+  formats_block_footer_comment_after_child_rows();
+  formats_row_layout_with_trivia();
+  formats_blank_line_before_dedented_sibling();
+  formats_terminal_top_level_comment();
+  formats_comment_only_row_layout();
+  formats_blank_comment_only_row_layout();
+  formats_non_ascii_string_as_parseable_bytes();
+  formats_control_string_escape_as_parseable_bytes();
   tracks_nested_dedents();
   accepts_trailing_whitespace_only_rows();
   accepts_indented_final_row_without_newline();

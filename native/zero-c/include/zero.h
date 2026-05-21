@@ -105,10 +105,28 @@ typedef struct {
 typedef struct {
   size_t row_count;
   size_t comment_count;
+  size_t blank_line_count;
   size_t max_indent_depth;
 } ZRowSyntaxFacts;
 
 #define Z_ROW_NO_PARENT ((size_t)-1)
+
+typedef enum {
+  Z_ROW_TRIVIA_LEADING_COMMENT,
+  Z_ROW_TRIVIA_TRAILING_COMMENT,
+  Z_ROW_TRIVIA_BLOCK_COMMENT,
+  Z_ROW_TRIVIA_BLANK_LINE
+} ZRowTriviaKind;
+
+typedef struct {
+  ZRowTriviaKind kind;
+  size_t row;
+  size_t parent;
+  size_t token;
+  size_t indent_depth;
+  int line;
+  int column;
+} ZRowTrivia;
 
 typedef struct {
   size_t parent;
@@ -123,6 +141,9 @@ typedef struct {
   ZRowNode *items;
   size_t len;
   size_t cap;
+  ZRowTrivia *trivia;
+  size_t trivia_len;
+  size_t trivia_cap;
 } ZRowTree;
 
 typedef enum {
@@ -845,6 +866,7 @@ ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag);
 bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZDiag *diag);
 bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag);
 Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *diag);
+char *z_format_row_layout(const ZRowTokenVec *tokens, const ZRowTree *tree);
 void z_free_row_tree(ZRowTree *tree);
 void z_free_row_tokens(ZRowTokenVec *tokens);
 

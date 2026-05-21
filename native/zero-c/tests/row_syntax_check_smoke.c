@@ -39,6 +39,17 @@ static void check_row_source(const char *name, const char *source) {
   z_free_row_tokens(&tokens);
 }
 
+static void check_row_file(const char *path) {
+  ZDiag diag = {0};
+  char *source = z_read_file(path, &diag);
+  if (diag.code != 0) {
+    fprintf(stderr, "%s read failed: %s\n", path, diag.message);
+    exit(1);
+  }
+  check_row_source(path, source);
+  free(source);
+}
+
 static void function_calls_check(void) {
   check_row_source(
     "function calls",
@@ -184,7 +195,7 @@ static void named_error_rejects_without_brackets(void) {
   z_free_row_tokens(&tokens);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
   function_calls_check();
   zero_arg_and_uppercase_member_calls_check();
   check_space_call_expression_check();
@@ -195,6 +206,9 @@ int main(void) {
   public_data_declarations_check();
   lowercase_primitive_annotations_check();
   named_error_rejects_without_brackets();
+  for (int i = 1; i < argc; i++) {
+    check_row_file(argv[i]);
+  }
   printf("row syntax check smoke ok\n");
   return 0;
 }

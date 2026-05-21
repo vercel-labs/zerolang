@@ -1,0 +1,12 @@
+fn gcd u32 a u32 b u32
+  mut left u32 a
+  mut right u32 b
+  while != right 0
+    let rem u32 % left right
+    set left right
+    set right rem
+  ret left
+
+pub fn main Void world World !
+  if == (gcd 84 30) 6
+    check world.out.write "gcd ok\n"
