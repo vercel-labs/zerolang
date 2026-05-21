@@ -18,7 +18,13 @@ Security vulnerabilities should be expected. zerolang is not ready for productio
 
 ## Quick Start
 
-Install the latest release:
+### Homebrew (macOS/Linux)
+
+```bash
+brew install zerolang
+```
+
+### Install Script
 
 ```bash
 curl -fsSL https://zerolang.ai/install.sh | bash
