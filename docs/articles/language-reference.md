@@ -414,6 +414,33 @@ The native compiler does not yet support:
 - assignment through calls or temporaries
 - profile-specific bounds-check elision
 
+## Operators
+
+Zero parses prefix and binary operators with the following precedence (lowest
+to highest, all binary operators are left-associative):
+
+| Tier | Operators | Notes |
+| --- | --- | --- |
+| 1 | `\|\|` | logical or, short-circuits, `Bool` operands |
+| 2 | `&&` | logical and, short-circuits, `Bool` operands |
+| 3 | `==` `!=` `<` `<=` `>` `>=` | equality and ordered comparison |
+| 4 | `\|` | bitwise or |
+| 5 | `^` | bitwise xor |
+| 6 | `&` | bitwise and (binary `&`; unary `&` is the borrow operator) |
+| 7 | `<<` `>>` | shift; `>>` is logical for unsigned types and arithmetic for signed |
+| 8 | `+` `-` `+%` `+|` | additive (wrapping and saturating include their modifier) |
+| 9 | `*` `/` `%` | multiplicative |
+| unary | `-` `!` `~` | numeric negation, logical not, bitwise not |
+
+Bitwise `&`, `|`, `^`, and the shifts `<<`, `>>` require integer operands of
+matching width and signedness. Shift amounts must be unsigned integers and
+strictly smaller than the left operand's bit width; larger constants are
+rejected at check time as `TYP002`. Unary `-` requires a signed integer or
+float; unary `~` requires an integer; unary `!` requires a `Bool`.
+
+Two adjacent `>` tokens with no whitespace between them are parsed as `>>`,
+so `Foo<Bar<T>>` still closes cleanly when no shift is intended.
+
 ## Control Flow
 
 Use `if` / `else` for branches:
