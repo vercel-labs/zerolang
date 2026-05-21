@@ -545,7 +545,42 @@ static void macho_emit_binary_reg(ZBuf *text, IrBinaryOp op, unsigned dst, unsig
     append_u32le(text, sf | 0x4b000000u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
   } else if (op == IR_BIN_MUL) {
     append_u32le(text, sf | 0x1b000000u | ((rhs & 31u) << 16) | (31u << 10) | ((lhs & 31u) << 5) | (dst & 31u));
+  } else if (op == IR_BIN_BITAND) {
+    append_u32le(text, sf | 0x0a000000u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
+  } else if (op == IR_BIN_BITOR) {
+    append_u32le(text, sf | 0x2a000000u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
+  } else if (op == IR_BIN_BITXOR) {
+    append_u32le(text, sf | 0x4a000000u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
   }
+}
+
+static void macho_emit_shift_reg(ZBuf *text, IrBinaryOp op, IrTypeKind type, unsigned dst, unsigned lhs, unsigned rhs, bool wide) {
+  uint32_t sf = wide ? 0x80000000u : 0;
+  if (op == IR_BIN_SHL) {
+    // LSLV: sf 0 0 1101 0110 Rm 0010 00 Rn Rd
+    append_u32le(text, sf | 0x1ac02000u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
+  } else {
+    bool is_unsigned = (type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_U32 || type == IR_TYPE_U64 || type == IR_TYPE_USIZE);
+    if (is_unsigned) {
+      // LSRV
+      append_u32le(text, sf | 0x1ac02400u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
+    } else {
+      // ASRV
+      append_u32le(text, sf | 0x1ac02800u | ((rhs & 31u) << 16) | ((lhs & 31u) << 5) | (dst & 31u));
+    }
+  }
+}
+
+static void macho_emit_neg_reg(ZBuf *text, unsigned dst, unsigned src, bool wide) {
+  uint32_t sf = wide ? 0x80000000u : 0;
+  // SUB Rd, XZR(31), Rm
+  append_u32le(text, sf | 0x4b000000u | ((src & 31u) << 16) | (31u << 5) | (dst & 31u));
+}
+
+static void macho_emit_mvn_reg(ZBuf *text, unsigned dst, unsigned src, bool wide) {
+  uint32_t sf = wide ? 0x80000000u : 0;
+  // ORN Rd, XZR, Rm => MVN
+  append_u32le(text, sf | 0x2a2003e0u | ((src & 31u) << 16) | (dst & 31u));
 }
 
 static void macho_emit_div_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs, bool is_unsigned, bool wide) {
@@ -1107,7 +1142,9 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
         return true;
       }
       if (value->binary_op != IR_BIN_ADD && value->binary_op != IR_BIN_SUB && value->binary_op != IR_BIN_MUL &&
-          value->binary_op != IR_BIN_DIV && value->binary_op != IR_BIN_MOD) return macho_diag_at(diag, "direct AArch64 Mach-O binary operator is unsupported", value->line, value->column, "unsupported operator");
+          value->binary_op != IR_BIN_DIV && value->binary_op != IR_BIN_MOD &&
+          value->binary_op != IR_BIN_BITAND && value->binary_op != IR_BIN_BITOR && value->binary_op != IR_BIN_BITXOR &&
+          value->binary_op != IR_BIN_SHL && value->binary_op != IR_BIN_SHR) return macho_diag_at(diag, "direct AArch64 Mach-O binary operator is unsupported", value->line, value->column, "unsupported operator");
       if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
       if (!macho_emit_store_scratch(text, 8, value->left ? value->left->type : IR_TYPE_I32, scratch_slot, value->left, diag)) return false;
       if (!macho_emit_value_to_reg_at(text, fun, value->right, 9, frame_size, scratch_slot + 1, ctx, diag)) return false;
@@ -1118,10 +1155,36 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       } else if (value->binary_op == IR_BIN_MOD) {
         macho_emit_div_reg(text, 10, 8, 9, macho_type_is_unsigned(value->type), wide);
         macho_emit_msub_reg(text, reg, 10, 9, 8, wide);
+      } else if (value->binary_op == IR_BIN_SHL || value->binary_op == IR_BIN_SHR) {
+        macho_emit_shift_reg(text, value->binary_op, value->type, reg, 8, 9, wide);
       } else {
         macho_emit_binary_reg(text, value->binary_op, reg, 8, 9, wide);
       }
       return true;
+    case IR_VALUE_UNARY: {
+      if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O unary requires an operand", value->line, value->column, "missing operand");
+      if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+      bool wide_u = macho_type_is_scalar64(value->type);
+      if (value->unary_op == IR_UNARY_NEG) {
+        macho_emit_neg_reg(text, reg, 8, wide_u);
+        return true;
+      }
+      if (value->unary_op == IR_UNARY_BITNOT) {
+        macho_emit_mvn_reg(text, reg, 8, wide_u);
+        return true;
+      }
+      if (value->unary_op == IR_UNARY_NOT) {
+        // Bool not: result = (operand == 0) ? 1 : 0 via CBZ-based skip.
+        size_t zero_branch = macho_emit_cbz_w_placeholder(text, 8);
+        macho_emit_movz_w(text, reg, 0);
+        size_t end_patch = macho_emit_b_placeholder(text);
+        macho_patch_cond19(text, zero_branch, text->len);
+        macho_emit_movz_w(text, reg, 1);
+        macho_patch_branch26(text, end_patch, text->len);
+        return true;
+      }
+      return macho_diag_at(diag, "direct AArch64 Mach-O unary operator is unsupported", value->line, value->column, "unsupported unary operator");
+    }
     case IR_VALUE_COMPARE: {
       if (!value->left || !value->right) {
         return macho_diag_at(diag, "direct AArch64 Mach-O comparison requires two operands", value->line, value->column, "invalid comparison");

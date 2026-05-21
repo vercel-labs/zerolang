@@ -1,0 +1,29 @@
+pub fun main(world: World) -> Void raises {
+    let a: i32 = 0x0F & 0xF0
+    let b: i32 = 0x0F | 0xF0
+    let c: i32 = 0x0F ^ 0xFF
+    let d: i32 = 1 << 4
+    let e: i32 = 0x80 >> 3
+    let f: i32 = ~0
+    let g: i32 = 1 | 2 & 4
+    let h: i32 = (1 | 2) & 3
+    let i: i32 = 1 << 2 | 1
+    let j: i32 = 1 + 2 << 1
+    // UTF-8 encode the codepoint formed from a UTF-16 surrogate pair.
+    // High 0xD83D + Low 0xDE00 -> U+1F600 (grinning face).
+    let highSurrogate: u32 = 0xD83D_u32
+    let lowSurrogate: u32 = 0xDE00_u32
+    let codepoint: u32 = ((highSurrogate - 0xD800_u32) << 10_u32) + (lowSurrogate - 0xDC00_u32) + 0x10000_u32
+    let byte0: u32 = 0xF0_u32 | (codepoint >> 18_u32)
+    let byte1: u32 = 0x80_u32 | ((codepoint >> 12_u32) & 0x3F_u32)
+    let byte2: u32 = 0x80_u32 | ((codepoint >> 6_u32) & 0x3F_u32)
+    let byte3: u32 = 0x80_u32 | (codepoint & 0x3F_u32)
+    let okBitwise: Bool = a == 0 && b == 0xFF && c == 0xF0 && d == 16 && e == 0x10 && f == -1
+    let okPrecedence: Bool = g == 1 && h == 3 && i == 5 && j == 6
+    let okUtf8: Bool = codepoint == 0x1F600_u32 && byte0 == 0xF0_u32 && byte1 == 0x9F_u32 && byte2 == 0x98_u32 && byte3 == 0x80_u32
+    if okBitwise && okPrecedence && okUtf8 {
+        check world.out.write("bitwise ok\n")
+    } else {
+        check world.out.write("bitwise fail\n")
+    }
+}

@@ -57,10 +57,41 @@ static bool a64_diag(ZDiag *diag, const char *message, int line, int column, con
   return false;
 }
 
+static bool a64_value_contains_new_opcode(const IrValue *value) {
+  if (!value) return false;
+  if (value->kind == IR_VALUE_UNARY) return true;
+  if (value->kind == IR_VALUE_BINARY) {
+    if (value->binary_op == IR_BIN_BITAND || value->binary_op == IR_BIN_BITOR ||
+        value->binary_op == IR_BIN_BITXOR || value->binary_op == IR_BIN_SHL ||
+        value->binary_op == IR_BIN_SHR) return true;
+  }
+  if (a64_value_contains_new_opcode(value->left)) return true;
+  if (a64_value_contains_new_opcode(value->right)) return true;
+  if (a64_value_contains_new_opcode(value->index)) return true;
+  for (size_t i = 0; i < value->arg_len; i++) {
+    if (a64_value_contains_new_opcode(value->args[i])) return true;
+  }
+  return false;
+}
+
+static bool a64_instr_contains_new_opcode(const IrInstr *instrs, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    const IrInstr *instr = &instrs[i];
+    if (a64_value_contains_new_opcode(instr->value)) return true;
+    if (a64_value_contains_new_opcode(instr->index)) return true;
+    if (a64_instr_contains_new_opcode(instr->then_instrs, instr->then_len)) return true;
+    if (a64_instr_contains_new_opcode(instr->else_instrs, instr->else_len)) return true;
+  }
+  return false;
+}
+
 static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag) {
   if (!fun) return a64_diag(diag, "direct AArch64 ELF object backend requires a function", 1, 1, "missing function");
   if (fun->return_type != IR_TYPE_VOID && fun->return_type != IR_TYPE_U8 && fun->return_type != IR_TYPE_I32 && fun->return_type != IR_TYPE_U32 && fun->return_type != IR_TYPE_USIZE) {
     return a64_diag(diag, "direct AArch64 ELF object backend currently supports primitive 32-bit-or-smaller integer returns", fun->line, fun->column, fun->name);
+  }
+  if (a64_instr_contains_new_opcode(fun->instrs, fun->instr_len)) {
+    return a64_diag(diag, "direct AArch64 ELF object backend does not yet lower unary or bitwise/shift operators", fun->line, fun->column, fun->name);
   }
   *out = 0;
   for (size_t i = 0; i < fun->instr_len; i++) {

@@ -31,7 +31,10 @@ static bool is_keyword(const char *text) {
 }
 
 static bool two_char_symbol(const char *source, size_t offset) {
-  const char *symbols[] = {"->", "=>", "..", "==", "!=", "<=", ">=", "&&", "||", "+%", "+|", NULL};
+  // `>>` is intentionally NOT lexed here: it would conflict with closing
+  // nested generic type arguments like `Foo<Bar<T>>`. The parser recognises
+  // two adjacent `>` tokens as the right-shift operator instead.
+  const char *symbols[] = {"->", "=>", "..", "==", "!=", "<=", ">=", "&&", "||", "+%", "+|", "<<", NULL};
   for (int i = 0; symbols[i]; i++) {
     if (source[offset] == symbols[i][0] && source[offset + 1] == symbols[i][1]) return true;
   }
@@ -204,7 +207,7 @@ TokenVec z_tokenize(const char *source, ZDiag *diag) {
       continue;
     }
 
-    if (strchr("(){}[],.;:<>=+-*/%!&", ch)) {
+    if (strchr("(){}[],.;:<>=+-*/%!&|^~", ch)) {
       push_token(&tokens, make_token(TOK_SYMBOL, z_strndup(source + offset, 1), start_line, start_column, start, 1));
       offset++;
       column++;

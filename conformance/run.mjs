@@ -312,6 +312,9 @@ for (const fixture of [
   "conformance/native/pass/array-repeat-literal.0",
   "conformance/native/pass/array-repeat-record-field.0",
   "conformance/native/pass/integer-widths.0",
+  "conformance/native/pass/ops-unary-neg.0",
+  "conformance/native/pass/ops-not.0",
+  "conformance/native/pass/ops-bitwise.0",
   "conformance/native/pass/std-codec-widths.0",
   "conformance/native/pass/std-crypto-hmac32.0",
   "conformance/native/pass/parse-integers.0",
@@ -2593,6 +2596,9 @@ for (const runtimeFixture of [
   ["conformance/native/pass/std-fs-bytes.0", "std-fs-bytes", { stdout: "fs bytes ok\n", stderr: "fs bytes err ok\n" }],
   ["conformance/native/pass/std-fs-resource.0", "std-fs-resource", { stdout: "fs resource ok\n", file: { name: "std-fs-resource.txt", text: "zero file\n" } }],
   ["conformance/native/pass/integer-widths.0", "integer-widths", { stdout: "integer widths ok\n" }],
+  ["conformance/native/pass/ops-unary-neg.0", "ops-unary-neg", { stdout: "unary neg ok\n" }],
+  ["conformance/native/pass/ops-not.0", "ops-not", { stdout: "not ok\n" }],
+  ["conformance/native/pass/ops-bitwise.0", "ops-bitwise", { stdout: "bitwise ok\n" }],
   ["conformance/native/pass/std-codec-widths.0", "std-codec-widths", { stdout: "codec widths ok\n" }],
   ["conformance/native/pass/std-crypto-hmac32.0", "std-crypto-hmac32", { stdout: "crypto hmac32 ok\n" }],
   ["conformance/native/pass/parse-integers.0", "parse-integers", { stdout: "parse integers ok\n" }],
@@ -2842,6 +2848,10 @@ assert.match(badChoicePayload.stderr, /VAR004/);
 const allocatorInvalid = await execFileAsync(zero, ["check", "conformance/native/fail/allocator-invalid.0"]).catch((error) => error);
 assert.notEqual(allocatorInvalid.code, 0);
 assert.match(allocatorInvalid.stderr, /STD003/);
+
+const shiftOverflow = await execFileAsync(zero, ["check", "conformance/native/fail/shift-overflow.0"]).catch((error) => error);
+assert.notEqual(shiftOverflow.code, 0);
+assert.match(shiftOverflow.stderr, /TYP002/);
 
 const allocatorImmutableFixedBuf = await execFileAsync(zero, ["check", "conformance/native/fail/allocator-immutable-fixedbuf.0"]).catch((error) => error);
 assert.notEqual(allocatorImmutableFixedBuf.code, 0);

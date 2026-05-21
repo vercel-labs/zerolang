@@ -479,7 +479,9 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       coff_emit_load_local_eax(text, fun, value->local_index);
       return true;
     case IR_VALUE_BINARY:
-      if (value->binary_op != IR_BIN_ADD && value->binary_op != IR_BIN_SUB && value->binary_op != IR_BIN_MUL) return coff_diag_at(diag, "direct COFF binary operator is unsupported", value->line, value->column, "unsupported operator");
+      if (value->binary_op != IR_BIN_ADD && value->binary_op != IR_BIN_SUB && value->binary_op != IR_BIN_MUL &&
+          value->binary_op != IR_BIN_BITAND && value->binary_op != IR_BIN_BITOR && value->binary_op != IR_BIN_BITXOR &&
+          value->binary_op != IR_BIN_SHL && value->binary_op != IR_BIN_SHR) return coff_diag_at(diag, "direct COFF binary operator is unsupported", value->line, value->column, "unsupported operator");
       if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
       append_u8(text, 0x50);
       if (!coff_emit_value(text, fun, value->right, ctx, diag)) return false;
@@ -490,11 +492,53 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
         append_u8(text, 0x0f);
         append_u8(text, 0xaf);
         append_u8(text, 0xc1);
+      } else if (value->binary_op == IR_BIN_BITAND) {
+        append_u8(text, 0x21);
+        append_u8(text, 0xc8);
+      } else if (value->binary_op == IR_BIN_BITOR) {
+        append_u8(text, 0x09);
+        append_u8(text, 0xc8);
+      } else if (value->binary_op == IR_BIN_BITXOR) {
+        append_u8(text, 0x31);
+        append_u8(text, 0xc8);
+      } else if (value->binary_op == IR_BIN_SHL) {
+        append_u8(text, 0xd3);
+        append_u8(text, 0xe0);
+      } else if (value->binary_op == IR_BIN_SHR) {
+        bool sign = !(value->type == IR_TYPE_U8 || value->type == IR_TYPE_U16 || value->type == IR_TYPE_U32 || value->type == IR_TYPE_U64 || value->type == IR_TYPE_USIZE);
+        append_u8(text, 0xd3);
+        append_u8(text, sign ? 0xf8 : 0xe8);
       } else {
         append_u8(text, value->binary_op == IR_BIN_ADD ? 0x01 : 0x29);
         append_u8(text, 0xc8);
       }
       return true;
+    case IR_VALUE_UNARY: {
+      if (!value->left) return coff_diag_at(diag, "direct COFF unary requires an operand", value->line, value->column, "missing operand");
+      if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+      if (value->unary_op == IR_UNARY_NEG) {
+        append_u8(text, 0xf7);
+        append_u8(text, 0xd8);
+        return true;
+      }
+      if (value->unary_op == IR_UNARY_BITNOT) {
+        append_u8(text, 0xf7);
+        append_u8(text, 0xd0);
+        return true;
+      }
+      if (value->unary_op == IR_UNARY_NOT) {
+        append_u8(text, 0x85);
+        append_u8(text, 0xc0);
+        append_u8(text, 0x0f);
+        append_u8(text, 0x94);
+        append_u8(text, 0xc0);
+        append_u8(text, 0x0f);
+        append_u8(text, 0xb6);
+        append_u8(text, 0xc0);
+        return true;
+      }
+      return coff_diag_at(diag, "direct COFF unary operator is unsupported", value->line, value->column, "unsupported unary operator");
+    }
     case IR_VALUE_COMPARE:
       if (!value->left || !value->right) return coff_diag_at(diag, "direct COFF comparison requires two operands", value->line, value->column, "invalid comparison");
       if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
