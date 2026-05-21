@@ -1,0 +1,205 @@
+================================================================================
+shape literal expression
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let point = Point { x: 40, y: 2 }
+    let empty = Empty {}
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        value: (shape_literal
+          name: (uppercase_identifier)
+          (field_init
+            name: (identifier)
+            value: (number_literal))
+          (field_init
+            name: (identifier)
+            value: (number_literal))))
+      (let_statement
+        name: (identifier)
+        value: (shape_literal
+          name: (uppercase_identifier))))))
+
+================================================================================
+borrow and rescue expressions
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let value = check fallible() rescue err { 0 }
+    let shared = &point
+    let writable = &mut point
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        value: (rescue_expression
+          (check_expression
+            (call_expression
+              callee: (identifier)))
+          error: (identifier)
+          fallback: (block
+            (expression_statement
+              (number_literal)))))
+      (let_statement
+        name: (identifier)
+        value: (borrow_expression
+          (identifier)))
+      (let_statement
+        name: (identifier)
+        value: (borrow_expression
+          (identifier))))))
+
+================================================================================
+slice ranges
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let a = view[1..3]
+    let b = view[1..]
+    let c = view[..3]
+    let d = view[..]
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        value: (index_expression
+          target: (identifier)
+          (slice_range
+            start: (number_literal)
+            end: (number_literal))))
+      (let_statement
+        name: (identifier)
+        value: (index_expression
+          target: (identifier)
+          (slice_range
+            start: (number_literal))))
+      (let_statement
+        name: (identifier)
+        value: (index_expression
+          target: (identifier)
+          (slice_range
+            end: (number_literal))))
+      (let_statement
+        name: (identifier)
+        value: (index_expression
+          target: (identifier)
+          (slice_range))))))
+
+================================================================================
+defer statement and meta expression
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let file = open()
+    defer file.close()
+    let info = meta sizeof
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        value: (call_expression
+          callee: (identifier)))
+      (defer_statement
+        (call_expression
+          callee: (member_expression
+            target: (identifier)
+            name: (identifier))))
+      (let_statement
+        name: (identifier)
+        value: (meta_expression
+          (identifier))))))
+
+================================================================================
+for-range with break and continue
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    for i in 0..10 {
+        if i == 5 {
+            break
+        }
+        if i == 2 {
+            continue
+        }
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (for_statement
+        variable: (identifier)
+        start: (number_literal)
+        end: (number_literal)
+        body: (block
+          (if_statement
+            condition: (binary_expression
+              left: (identifier)
+              right: (number_literal))
+            then: (block
+              (break_statement)))
+          (if_statement
+            condition: (binary_expression
+              left: (identifier)
+              right: (number_literal))
+            then: (block
+              (continue_statement))))))))

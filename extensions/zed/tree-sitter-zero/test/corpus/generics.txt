@@ -1,0 +1,107 @@
+================================================================================
+generic shape with static value param
+================================================================================
+
+shape FixedVec<T, static N: usize> {
+    len: usize = 0,
+    items: [N]T,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (shape_declaration
+    name: (identifier)
+    (generic_params
+      (generic_param
+        (identifier))
+      (generic_param
+        (identifier)
+        (scalar_type)))
+    (field_declaration
+      name: (identifier)
+      type: (scalar_type)
+      default: (number_literal))
+    (field_declaration
+      name: (identifier)
+      type: (array_type
+        (identifier)
+        (named_type
+          (identifier))))))
+
+================================================================================
+generic call with type args
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let a: i32 = identity<i32>(41)
+    let b: u8 = identity<u8, 4>(7_u8)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        type: (scalar_type)
+        value: (call_expression
+          callee: (identifier)
+          type_args: (generic_call_args
+            (scalar_type))
+          (number_literal)))
+      (let_statement
+        name: (identifier)
+        type: (scalar_type)
+        value: (call_expression
+          callee: (identifier)
+          type_args: (generic_call_args
+            (scalar_type)
+            (number_literal))
+          (number_literal))))))
+
+================================================================================
+generic param with type bound
+================================================================================
+
+fun readValue<T: Readable<T>>(value: ref<T>) -> i32 {
+    return T.read(value)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (generic_params
+      (generic_param
+        (identifier)
+        (named_type
+          (identifier)
+          (generic_args
+            (named_type
+              (identifier))))))
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (named_type
+          (identifier)
+          (generic_args
+            (named_type
+              (identifier))))))
+    return_type: (scalar_type)
+    body: (block
+      (return_statement
+        (call_expression
+          callee: (member_expression
+            target: (uppercase_identifier)
+            name: (identifier))
+          (identifier))))))

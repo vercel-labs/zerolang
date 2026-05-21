@@ -1,0 +1,78 @@
+================================================================================
+interface with generics and method signature
+================================================================================
+
+pub interface Reader<T> {
+    fun read() -> T raises
+    fun close()
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (interface_declaration
+    name: (identifier)
+    (generic_params
+      (generic_param
+        (identifier)))
+    (interface_method
+      name: (identifier)
+      (parameter_list)
+      return_type: (named_type
+        (identifier))
+      (raises_clause))
+    (interface_method
+      name: (identifier)
+      (parameter_list))))
+
+================================================================================
+type alias with generics
+================================================================================
+
+pub type Bytes<N> = [N]u8
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    (generic_params
+      (generic_param
+        (identifier)))
+    value: (array_type
+      (identifier)
+      (scalar_type))))
+
+================================================================================
+extern c symbol with alias
+================================================================================
+
+extern c "memcpy" as memcpy
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (extern_c_declaration
+    (string_literal)
+    (identifier)))
+
+================================================================================
+extern shape with fields
+================================================================================
+
+pub extern shape Stat {
+    size: i64,
+    mode: u32,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (extern_shape_declaration
+    name: (identifier)
+    (field_declaration
+      name: (identifier)
+      type: (scalar_type))
+    (field_declaration
+      name: (identifier)
+      type: (scalar_type))))

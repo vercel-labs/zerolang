@@ -1,0 +1,17 @@
+id = "zero-lang"
+name = "Zero"
+description = "Syntax highlighting and language support for the Zero programming language."
+version = "0.1.3"
+schema_version = 1
+authors = ["Zero Language Maintainers"]
+repository = "https://github.com/vercel-labs/zerolang"
+
+# Grammar is vendored at ./tree-sitter-zero and referenced via a file:// URL.
+# The install script (scripts/install.mjs) substitutes the absolute path on
+# this machine before invoking Zed's dev-extension installer. Before publishing
+# to the Zed marketplace, the grammar should be split into its own git repo
+# (e.g. vercel-labs/tree-sitter-zero) and this block should point at that repo
+# with a pinned `rev`.
+[grammars.zero]
+repository = "file://ZERO_GRAMMAR_PATH"
+rev = "main"

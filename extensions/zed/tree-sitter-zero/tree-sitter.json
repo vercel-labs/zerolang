@@ -1,0 +1,29 @@
+{
+  "grammars": [
+    {
+      "name": "zero",
+      "camelcase": "Zero",
+      "scope": "source.zero",
+      "path": ".",
+      "file-types": ["0"],
+      "injection-regex": "^zero$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.3",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for the Zero programming language, vendored for the Zed extension.",
+    "authors": [
+      { "name": "Kenny Gatdula" },
+      { "name": "Zero Language Maintainers" }
+    ]
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false
+  }
+}

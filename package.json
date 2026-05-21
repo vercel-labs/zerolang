@@ -27,6 +27,7 @@
     "docs:start": "turbo run start --filter=./docs",
     "docs:test": "turbo run test --filter=./docs",
     "extension:install:cursor": "pnpm --filter=./extensions/vscode run install:cursor",
+    "extension:install:zed": "pnpm --filter=./extensions/zed run install:zed",
     "extension:test": "turbo run test --filter=./extensions/vscode",
     "native:install": "make -C native/zero-c install-local",
     "native:smoke": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/native-smoke.mts",

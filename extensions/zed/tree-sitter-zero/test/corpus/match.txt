@@ -1,0 +1,148 @@
+================================================================================
+match choice with payload binding
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    match result {
+        .ok => value {
+            check world.out.write("ok\n")
+        }
+        .err => message {
+            check world.out.write("err\n")
+        }
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (expression_statement
+        (match_expression
+          scrutinee: (identifier)
+          (match_arm
+            pattern: (choice_pattern
+              (identifier))
+            binding: (identifier)
+            body: (block
+              (expression_statement
+                (check_expression
+                  (call_expression
+                    callee: (member_expression
+                      target: (member_expression
+                        target: (identifier)
+                        name: (identifier))
+                      name: (identifier))
+                    (string_literal))))))
+          (match_arm
+            pattern: (choice_pattern
+              (identifier))
+            binding: (identifier)
+            body: (block
+              (expression_statement
+                (check_expression
+                  (call_expression
+                    callee: (member_expression
+                      target: (member_expression
+                        target: (identifier)
+                        name: (identifier))
+                      name: (identifier))
+                    (string_literal)))))))))))
+
+================================================================================
+match with wildcard and scalar patterns
+================================================================================
+
+fun boolScore(value: Bool) -> i32 {
+    match value {
+        true { return 1 }
+        false { return 2 }
+        ._ { return 0 }
+    }
+    return 0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    body: (block
+      (expression_statement
+        (match_expression
+          scrutinee: (identifier)
+          (match_arm
+            pattern: (bool_literal)
+            body: (block
+              (return_statement
+                (number_literal))))
+          (match_arm
+            pattern: (bool_literal)
+            body: (block
+              (return_statement
+                (number_literal))))
+          (match_arm
+            pattern: (wildcard_pattern)
+            body: (block
+              (return_statement
+                (number_literal))))))
+      (return_statement
+        (number_literal)))))
+
+================================================================================
+match with guards and range patterns
+================================================================================
+
+fun bucket(value: u8, enabled: Bool) -> i32 {
+    match value {
+        0 if enabled { return 10 }
+        1..3 { return 20 }
+    }
+    return 0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type))
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    body: (block
+      (expression_statement
+        (match_expression
+          scrutinee: (identifier)
+          (match_arm
+            pattern: (number_literal)
+            guard: (identifier)
+            body: (block
+              (return_statement
+                (number_literal))))
+          (match_arm
+            pattern: (range_pattern
+              (number_literal)
+              (number_literal))
+            body: (block
+              (return_statement
+                (number_literal))))))
+      (return_statement
+        (number_literal)))))

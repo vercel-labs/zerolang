@@ -1,0 +1,10 @@
+# Local git repo created by scripts/install.mjs so Zed can clone the vendored
+# grammar via `file://`. Never push this.
+tree-sitter-zero/.git/
+
+# Build artifacts from local tree-sitter generate or test
+tree-sitter-zero/build/
+node_modules/
+
+# Zed clones the grammar into this dir during dev-extension install
+grammars/

@@ -1,0 +1,290 @@
+================================================================================
+empty main
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block)))
+
+================================================================================
+shape, choice, enum, use, const
+================================================================================
+
+use std.codec
+
+const limit: i32 = 100
+
+shape Point {
+    x: i32,
+    y: i32,
+}
+
+choice Result {
+    ok: i32,
+    err: i32,
+}
+
+enum Mode : u8 {
+    fast,
+    slow,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_declaration
+    (dotted_path
+      (identifier)
+      (identifier)))
+  (const_declaration
+    name: (identifier)
+    type: (scalar_type)
+    value: (number_literal))
+  (shape_declaration
+    name: (identifier)
+    (field_declaration
+      name: (identifier)
+      type: (scalar_type))
+    (field_declaration
+      name: (identifier)
+      type: (scalar_type)))
+  (choice_declaration
+    name: (identifier)
+    (choice_case
+      name: (identifier)
+      payload: (scalar_type))
+    (choice_case
+      name: (identifier)
+      payload: (scalar_type)))
+  (enum_declaration
+    name: (identifier)
+    backing: (scalar_type)
+    (identifier)
+    (identifier)))
+
+================================================================================
+function with named error set and raise
+================================================================================
+
+fun validate(ok: Bool) -> i32 raises { InvalidInput } {
+    if ok == false {
+        raise InvalidInput
+    }
+    return 42
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause
+      (error_set
+        (identifier)))
+    body: (block
+      (if_statement
+        condition: (binary_expression
+          left: (identifier)
+          right: (bool_literal))
+        then: (block
+          (raise_statement
+            (identifier))))
+      (return_statement
+        (number_literal)))))
+
+================================================================================
+let mut with annotated type and array literal
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let mut clear: [7]u8 = [27, 91, 50, 74, 27, 91, 72]
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        type: (array_type
+          (integer_literal)
+          (scalar_type))
+        value: (array_literal
+          (number_literal)
+          (number_literal)
+          (number_literal)
+          (number_literal)
+          (number_literal)
+          (number_literal)
+          (number_literal))))))
+
+================================================================================
+while with comparison and check world.out.write
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let mut n: i32 = 0
+    while n < 3 {
+        check world.out.write(n as u8)
+        n = n + 1
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        type: (scalar_type)
+        value: (number_literal))
+      (while_statement
+        condition: (binary_expression
+          left: (identifier)
+          right: (number_literal))
+        body: (block
+          (expression_statement
+            (check_expression
+              (call_expression
+                callee: (member_expression
+                  target: (member_expression
+                    target: (identifier)
+                    name: (identifier))
+                  name: (identifier))
+                (cast_expression
+                  value: (identifier)
+                  type: (scalar_type)))))
+          (assignment_statement
+            target: (identifier)
+            value: (binary_expression
+              left: (identifier)
+              right: (number_literal))))))))
+
+================================================================================
+if / else if / else
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let x: i32 = 7
+    if x < 0 {
+        let a: i32 = 1
+    } else if x == 0 {
+        let b: i32 = 2
+    } else {
+        let c: i32 = 3
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        type: (scalar_type)
+        value: (number_literal))
+      (if_statement
+        condition: (binary_expression
+          left: (identifier)
+          right: (number_literal))
+        then: (block
+          (let_statement
+            name: (identifier)
+            type: (scalar_type)
+            value: (number_literal)))
+        else: (if_statement
+          condition: (binary_expression
+            left: (identifier)
+            right: (number_literal))
+          then: (block
+            (let_statement
+              name: (identifier)
+              type: (scalar_type)
+              value: (number_literal)))
+          else: (block
+            (let_statement
+              name: (identifier)
+              type: (scalar_type)
+              value: (number_literal))))))))
+
+================================================================================
+indexed assignment and cast inside index
+================================================================================
+
+pub fun main(world: World) -> Void raises {
+    let mut pixel: [3]u8 = [0, 0, 0]
+    pixel[(1 + 1) as usize] = 65
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        name: (identifier)
+        type: (scalar_type)))
+    return_type: (scalar_type)
+    (raises_clause)
+    body: (block
+      (let_statement
+        name: (identifier)
+        type: (array_type
+          (integer_literal)
+          (scalar_type))
+        value: (array_literal
+          (number_literal)
+          (number_literal)
+          (number_literal)))
+      (assignment_statement
+        target: (index_expression
+          target: (identifier)
+          index: (cast_expression
+            value: (parenthesized_expression
+              (binary_expression
+                left: (number_literal)
+                right: (number_literal)))
+            type: (scalar_type)))
+        value: (number_literal)))))
