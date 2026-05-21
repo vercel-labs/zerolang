@@ -1,36 +1,21 @@
 #include "zero.h"
+#include "elf_common.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static void a64_append_u8(ZBuf *buf, unsigned value) {
-  zbuf_append_char(buf, (char)(value & 0xff));
-}
-
-static void a64_append_u16(ZBuf *buf, uint16_t value) {
-  a64_append_u8(buf, value);
-  a64_append_u8(buf, value >> 8);
-}
-
-static void a64_append_u32(ZBuf *buf, uint32_t value) {
-  a64_append_u8(buf, value);
-  a64_append_u8(buf, value >> 8);
-  a64_append_u8(buf, value >> 16);
-  a64_append_u8(buf, value >> 24);
-}
-
-static void a64_append_u64(ZBuf *buf, uint64_t value) {
-  a64_append_u32(buf, (uint32_t)value);
-  a64_append_u32(buf, (uint32_t)(value >> 32));
-}
-
 static void a64_append_bytes(ZBuf *buf, const unsigned char *bytes, size_t len) {
+  if (buf == NULL) return;
+  if (len == 0ULL) return;
+
   for (size_t i = 0; i < len; i++) a64_append_u8(buf, bytes[i]);
 }
 
 static void a64_append_zeros(ZBuf *buf, size_t len) {
+  if (len == 0ULL) return;
+
   for (size_t i = 0; i < len; i++) a64_append_u8(buf, 0);
 }
 
@@ -49,6 +34,7 @@ static bool a64_diag(ZDiag *diag, const char *message, int line, int column, con
     diag->line = line > 0 ? line : 1;
     diag->column = column > 0 ? column : 1;
     diag->length = 1;
+    
     snprintf(diag->message, sizeof(diag->message), "%s", message);
     snprintf(diag->expected, sizeof(diag->expected), "direct AArch64 ELF object MVP subset");
     snprintf(diag->actual, sizeof(diag->actual), "%s", actual ? actual : "unsupported construct");
@@ -73,6 +59,8 @@ static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag
 }
 
 static void a64_emit_function_text(ZBuf *text, uint32_t literal) {
+  if (text == NULL) return;
+  
   a64_append_u32(text, 0x52800000u | ((literal & 0xffffu) << 5)); // movz w0, #literal
   if (literal > 0xffffu) {
     a64_append_u32(text, 0x72a00000u | (((literal >> 16) & 0xffffu) << 5)); // movk w0, #literal>>16, lsl #16
@@ -313,6 +301,8 @@ bool z_emit_elf_aarch64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag)
   uint64_t file_size = text_offset + text.len;
 
   zbuf_init(out);
+
+  /// NOTE: this constructs an ELF header for the Linux SysV ABI.
   const unsigned char ident[] = {0x7f, 'E', 'L', 'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   a64_append_bytes(out, ident, sizeof(ident));
   a64_append_u16(out, 2);
