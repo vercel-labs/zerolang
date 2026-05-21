@@ -465,6 +465,7 @@ for (const fixture of [
   "examples/static-method.0",
   "examples/static-interface.0",
   "examples/ownership-cleanup.0",
+  "conformance/native/pass/else-if-chain.0",
 ]) {
   await execFileAsync(zero, ["check", fixture]);
 }

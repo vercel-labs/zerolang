@@ -622,7 +622,14 @@ static Stmt *parse_statement(Parser *parser) {
     Stmt *stmt = new_stmt(STMT_IF, start);
     stmt->expr = parse_expr(parser);
     stmt->then_body = parse_block(parser);
-    if (match(parser, "else")) stmt->else_body = parse_block(parser);
+    if (match(parser, "else")) {
+      if (check(parser, "if")) {
+        Stmt *nested = parse_statement(parser);
+        if (nested) push_stmt(&stmt->else_body, nested);
+      } else {
+        stmt->else_body = parse_block(parser);
+      }
+    }
     return stmt;
   }
   if (match(parser, "while")) {
