@@ -1074,6 +1074,20 @@ static bool ir_binary_op(const char *text, IrBinaryOp *out) {
   else if (strcmp(text, "%") == 0) *out = IR_BIN_MOD;
   else if (strcmp(text, "&&") == 0) *out = IR_BIN_AND;
   else if (strcmp(text, "||") == 0) *out = IR_BIN_OR;
+  else if (strcmp(text, "&") == 0) *out = IR_BIN_BITAND;
+  else if (strcmp(text, "|") == 0) *out = IR_BIN_BITOR;
+  else if (strcmp(text, "^") == 0) *out = IR_BIN_BITXOR;
+  else if (strcmp(text, "<<") == 0) *out = IR_BIN_SHL;
+  else if (strcmp(text, ">>") == 0) *out = IR_BIN_SHR;
+  else return false;
+  return true;
+}
+
+static bool ir_unary_op(const char *text, IrUnaryOp *out) {
+  if (!text) return false;
+  if (strcmp(text, "-") == 0) *out = IR_UNARY_NEG;
+  else if (strcmp(text, "!") == 0) *out = IR_UNARY_NOT;
+  else if (strcmp(text, "~") == 0) *out = IR_UNARY_BITNOT;
   else return false;
   return true;
 }
@@ -2602,10 +2616,35 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         ir_free_value(right);
         return false;
       }
+      if ((op == IR_BIN_SHL || op == IR_BIN_SHR) && right && left && right->type != left->type && right->kind == IR_VALUE_INT) {
+        right->type = left->type;
+      }
       IrValue *value = ir_new_value(ir, IR_VALUE_BINARY, type, expr->line, expr->column);
       value->binary_op = op;
       value->left = left;
       value->right = right;
+      *out = value;
+      return true;
+    }
+    case EXPR_UNARY: {
+      IrUnaryOp uop = IR_UNARY_NEG;
+      if (!ir_unary_op(expr->text, &uop)) {
+        ir_mark_unsupported(ir, "direct backend unary operator is unsupported", expr->line, expr->column, expr->text ? expr->text : "?");
+        return false;
+      }
+      IrTypeKind type = ir_type_kind(expr->resolved_type);
+      if (!(type == IR_TYPE_BOOL || ir_type_is_value(type))) {
+        ir_mark_unsupported(ir, "direct backend unary expression type is unsupported", expr->line, expr->column, expr->resolved_type);
+        return false;
+      }
+      IrValue *operand = NULL;
+      if (!ir_lower_expr(program, ir, fun, expr->left, &operand)) {
+        ir_free_value(operand);
+        return false;
+      }
+      IrValue *value = ir_new_value(ir, IR_VALUE_UNARY, type, expr->line, expr->column);
+      value->unary_op = uop;
+      value->left = operand;
       *out = value;
       return true;
     }

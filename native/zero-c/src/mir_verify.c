@@ -664,12 +664,49 @@ static bool mir_verify_binary_value_contract(IrProgram *ir, const IrValue *value
   if (!mir_verify_direct_primitive_value(ir, value, "MIR verifier found binary result type mismatch", "binary result")) return false;
   if ((value->binary_op == IR_BIN_ADD || value->binary_op == IR_BIN_SUB ||
        value->binary_op == IR_BIN_MUL || value->binary_op == IR_BIN_DIV ||
-       value->binary_op == IR_BIN_MOD) &&
+       value->binary_op == IR_BIN_MOD ||
+       value->binary_op == IR_BIN_BITAND || value->binary_op == IR_BIN_BITOR ||
+       value->binary_op == IR_BIN_BITXOR ||
+       value->binary_op == IR_BIN_SHL || value->binary_op == IR_BIN_SHR) &&
       value->type == IR_TYPE_BOOL) {
     mir_verify_mark_unsupported(ir, "MIR verifier found invalid boolean arithmetic", value->line, value->column, "arithmetic result is Bool");
     return false;
   }
+  if (value->binary_op == IR_BIN_SHL || value->binary_op == IR_BIN_SHR) {
+    if (!value->left || !value->right || !mir_type_is_integer_value(value->left->type) || !mir_type_is_integer_value(value->right->type)) {
+      mir_verify_mark_unsupported(ir, "MIR verifier found shift operand type mismatch", value->line, value->column, "shift operands must be integers");
+      return false;
+    }
+    if (value->type != value->left->type) {
+      mir_verify_mark_unsupported(ir, "MIR verifier found shift result type mismatch", value->line, value->column, "shift result must match left operand type");
+      return false;
+    }
+    return true;
+  }
   return mir_verify_same_type_operands(ir, value, "MIR verifier found binary operand type mismatch", "binary");
+}
+
+static bool mir_verify_unary_value_contract(IrProgram *ir, const IrValue *value) {
+  if (!value || !value->left) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found unary missing operand", value ? value->line : 0, value ? value->column : 0, "unary operand missing");
+    return false;
+  }
+  if (value->unary_op == IR_UNARY_NOT) {
+    if (value->type != IR_TYPE_BOOL || value->left->type != IR_TYPE_BOOL) {
+      mir_verify_mark_unsupported(ir, "MIR verifier found unary not operand type mismatch", value->line, value->column, "logical not requires Bool");
+      return false;
+    }
+    return true;
+  }
+  if (!mir_type_is_integer_value(value->left->type)) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found unary operand non-integer", value->line, value->column, "unary operand must be integer");
+    return false;
+  }
+  if (value->type != value->left->type) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found unary result type mismatch", value->line, value->column, "unary result must match operand type");
+    return false;
+  }
+  return true;
 }
 
 static bool mir_verify_compare_value_contract(IrProgram *ir, const IrValue *value) {
@@ -860,6 +897,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     }
     case IR_VALUE_BINARY:
       return mir_verify_binary_value_contract(ir, value);
+    case IR_VALUE_UNARY:
+      return mir_verify_unary_value_contract(ir, value);
     case IR_VALUE_COMPARE:
       return mir_verify_compare_value_contract(ir, value);
     case IR_VALUE_CALL:

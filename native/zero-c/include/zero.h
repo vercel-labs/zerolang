@@ -137,6 +137,7 @@ typedef enum {
   EXPR_SLICE,
   EXPR_CALL,
   EXPR_BINARY,
+  EXPR_UNARY,
   EXPR_CAST,
   EXPR_BORROW,
   EXPR_CHECK,
@@ -452,6 +453,7 @@ typedef enum {
   IR_VALUE_BOOL,
   IR_VALUE_LOCAL,
   IR_VALUE_BINARY,
+  IR_VALUE_UNARY,
   IR_VALUE_COMPARE,
   IR_VALUE_CALL,
   IR_VALUE_INDEX_LOAD,
@@ -529,8 +531,19 @@ typedef enum {
   IR_BIN_DIV,
   IR_BIN_MOD,
   IR_BIN_AND,
-  IR_BIN_OR
+  IR_BIN_OR,
+  IR_BIN_BITAND,
+  IR_BIN_BITOR,
+  IR_BIN_BITXOR,
+  IR_BIN_SHL,
+  IR_BIN_SHR
 } IrBinaryOp;
+
+typedef enum {
+  IR_UNARY_NEG,
+  IR_UNARY_NOT,
+  IR_UNARY_BITNOT
+} IrUnaryOp;
 
 typedef enum {
   IR_CMP_EQ,
@@ -557,6 +570,7 @@ struct IrValue {
   IrTypeKind element_type;
   unsigned error_code;
   IrBinaryOp binary_op;
+  IrUnaryOp unary_op;
   IrCompareOp compare_op;
   IrValue **args;
   size_t arg_len;

@@ -3874,12 +3874,43 @@ static bool eval_meta_value_uncached(CheckContext *ctx, const Program *program, 
       } else if (strcmp(expr->text, "%") == 0) {
         if (right.number == 0) return false;
         *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = left.number % right.number};
+      } else if (strcmp(expr->text, "&") == 0) *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = left.number & right.number};
+      else if (strcmp(expr->text, "|") == 0) *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = left.number | right.number};
+      else if (strcmp(expr->text, "^") == 0) *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = left.number ^ right.number};
+      else if (strcmp(expr->text, "<<") == 0) {
+        if (right.number >= 64) return false;
+        *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = left.number << right.number};
+      } else if (strcmp(expr->text, ">>") == 0) {
+        if (right.number >= 64) return false;
+        *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = left.number >> right.number};
       } else if (strcmp(expr->text, "<") == 0) *out = (MetaValue){.kind = META_VALUE_BOOL, .boolean = left.number < right.number};
       else if (strcmp(expr->text, "<=") == 0) *out = (MetaValue){.kind = META_VALUE_BOOL, .boolean = left.number <= right.number};
       else if (strcmp(expr->text, ">") == 0) *out = (MetaValue){.kind = META_VALUE_BOOL, .boolean = left.number > right.number};
       else if (strcmp(expr->text, ">=") == 0) *out = (MetaValue){.kind = META_VALUE_BOOL, .boolean = left.number >= right.number};
       else return false;
       return true;
+    }
+    case EXPR_UNARY: {
+      MetaValue operand = {0};
+      if (!eval_meta_value(ctx, program, expr->left, &operand, depth + 1, steps)) return false;
+      if (!expr->text) return false;
+      if (strcmp(expr->text, "!") == 0) {
+        if (operand.kind != META_VALUE_BOOL) return false;
+        *out = (MetaValue){.kind = META_VALUE_BOOL, .boolean = !operand.boolean};
+        return true;
+      }
+      if (strcmp(expr->text, "~") == 0) {
+        if (operand.kind != META_VALUE_NUMBER) return false;
+        *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = ~operand.number};
+        return true;
+      }
+      if (strcmp(expr->text, "-") == 0) {
+        if (operand.kind != META_VALUE_NUMBER) return false;
+        if (operand.number != 0) return false;
+        *out = (MetaValue){.kind = META_VALUE_NUMBER, .number = 0};
+        return true;
+      }
+      return false;
     }
     default:
       return false;
@@ -5283,7 +5314,10 @@ static const char *expr_type(CheckContext *ctx, const Program *program, const Ex
       if (strcmp(expr->text, "==") == 0 || strcmp(expr->text, "!=") == 0 || strcmp(expr->text, "<") == 0 ||
           strcmp(expr->text, "<=") == 0 || strcmp(expr->text, ">") == 0 || strcmp(expr->text, ">=") == 0 ||
           strcmp(expr->text, "&&") == 0 || strcmp(expr->text, "||") == 0) return "Bool";
-      return "i32";
+      return expr->left ? expr_type(ctx, program, expr->left, scope) : "i32";
+    case EXPR_UNARY:
+      if (expr->text && strcmp(expr->text, "!") == 0) return "Bool";
+      return expr->left ? expr_type(ctx, program, expr->left, scope) : "i32";
     case EXPR_MEMBER:
       if (expr->left) {
         if (expr->left->kind == EXPR_IDENT && find_enum(program, expr->left->text)) return expr->left->text;
@@ -6721,6 +6755,8 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
       bool comparison = strcmp(expr->text, "==") == 0 || strcmp(expr->text, "!=") == 0 || strcmp(expr->text, "<") == 0 ||
         strcmp(expr->text, "<=") == 0 || strcmp(expr->text, ">") == 0 || strcmp(expr->text, ">=") == 0;
       bool logical = strcmp(expr->text, "&&") == 0 || strcmp(expr->text, "||") == 0;
+      bool bitwise = strcmp(expr->text, "&") == 0 || strcmp(expr->text, "|") == 0 || strcmp(expr->text, "^") == 0;
+      bool shift = strcmp(expr->text, "<<") == 0 || strcmp(expr->text, ">>") == 0;
       if (!check_expr_expected(ctx, program, expr->left, scope, diag, expected && (is_int_type(expected) || is_float_type(expected)) ? expected : NULL)) return false;
       const char *left_type = expr_type(ctx, program, expr->left, scope);
       if (logical) {
@@ -6764,6 +6800,42 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
         set_expr_resolved_type(expr, "Bool");
         return true;
       }
+      if (bitwise) {
+        if (!is_int_type(left_type) || !is_int_type(right_type)) {
+          return set_diag_detail(diag, 3006, "bitwise operators require integer operands", expr->line, expr->column, "matching integer operands", is_float_type(left_type) || is_float_type(right_type) ? "float operand" : "non-integer operand", "use integers with the same width and signedness for &, |, and ^");
+        }
+        if (strcmp(left_type, right_type) != 0) {
+          return set_diag_detail(diag, 3006, "bitwise operands must have the same integer type", expr->line, expr->column, left_type, right_type, "match the operand types before applying &, |, or ^");
+        }
+        set_expr_resolved_type(expr, left_type);
+        return true;
+      }
+      if (shift) {
+        if (!is_int_type(left_type)) {
+          return set_diag_detail(diag, 3006, "shift operators require an integer left operand", expr->line, expr->column, "integer left operand", left_type, "shift an integer value");
+        }
+        if (!is_int_type(right_type)) {
+          return set_diag_detail(diag, 3006, "shift amount must be an unsigned integer", expr->line, expr->column, "usize or unsigned integer shift amount", right_type, "use an unsigned integer such as usize or u32 for the shift amount");
+        }
+        if (expr->right && expr->right->kind == EXPR_NUMBER) {
+          ParsedIntegerLiteral parsed = {0};
+          if (parse_integer_literal(expr->right->text, &parsed)) {
+            unsigned long long width = 0;
+            if (strcmp(left_type, "i8") == 0 || strcmp(left_type, "u8") == 0) width = 8;
+            else if (strcmp(left_type, "i16") == 0 || strcmp(left_type, "u16") == 0) width = 16;
+            else if (strcmp(left_type, "i32") == 0 || strcmp(left_type, "u32") == 0) width = 32;
+            else if (strcmp(left_type, "i64") == 0 || strcmp(left_type, "u64") == 0) width = 64;
+            else if (strcmp(left_type, "usize") == 0 || strcmp(left_type, "isize") == 0) width = 64;
+            if (width > 0 && parsed.value >= width) {
+              char message[160];
+              snprintf(message, sizeof(message), "shift amount must be smaller than %llu", width);
+              return set_diag_detail(diag, 3006, "shift amount exceeds operand bit width", expr->right->line, expr->right->column, message, expr->right->text, "use a shift amount strictly smaller than the operand's bit width");
+            }
+          }
+        }
+        set_expr_resolved_type(expr, left_type);
+        return true;
+      }
       if (!((is_int_type(left_type) && is_int_type(right_type)) || (is_float_type(left_type) && is_float_type(right_type)))) {
         return set_diag_detail(diag, 3006, "arithmetic operators require matching numeric operands", expr->line, expr->column, "matching integer or float operands", is_char_type(left_type) || is_char_type(right_type) ? "char operand" : "mixed or non-numeric operand", "keep integers, floats, and chars separate");
       }
@@ -6772,6 +6844,41 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
       }
       set_expr_resolved_type(expr, left_type);
       return true;
+    }
+    case EXPR_UNARY: {
+      if (!expr->text || !expr->left) return set_diag_detail(diag, 100, "malformed unary expression", expr->line, expr->column, "unary operator", "missing operator or operand", "use -x, !x, or ~x with a valid operand");
+      const char *op = expr->text;
+      if (strcmp(op, "!") == 0) {
+        if (!check_expr_expected(ctx, program, expr->left, scope, diag, "Bool")) return false;
+        const char *operand_type = expr_type(ctx, program, expr->left, scope);
+        if (!is_bool_type(operand_type)) {
+          return set_diag_detail(diag, 3006, "logical not requires a Bool operand", expr->line, expr->column, "Bool", operand_type, "apply ! to a Bool value");
+        }
+        set_expr_resolved_type(expr, "Bool");
+        return true;
+      }
+      if (strcmp(op, "-") == 0) {
+        if (!check_expr_expected(ctx, program, expr->left, scope, diag, expected && (is_int_type(expected) || is_float_type(expected)) ? expected : NULL)) return false;
+        const char *operand_type = expr_type(ctx, program, expr->left, scope);
+        if (!is_int_type(operand_type) && !is_float_type(operand_type)) {
+          return set_diag_detail(diag, 3006, "unary negation requires a numeric operand", expr->line, expr->column, "integer or float operand", operand_type, "negate an integer or float value");
+        }
+        if (is_int_type(operand_type) && operand_type[0] == 'u') {
+          return set_diag_detail(diag, 3006, "unary negation requires a signed numeric operand", expr->line, expr->column, "signed integer or float operand", operand_type, "cast to a signed integer type or use a signed literal");
+        }
+        set_expr_resolved_type(expr, operand_type);
+        return true;
+      }
+      if (strcmp(op, "~") == 0) {
+        if (!check_expr_expected(ctx, program, expr->left, scope, diag, expected && is_int_type(expected) ? expected : NULL)) return false;
+        const char *operand_type = expr_type(ctx, program, expr->left, scope);
+        if (!is_int_type(operand_type)) {
+          return set_diag_detail(diag, 3006, "bitwise not requires an integer operand", expr->line, expr->column, "integer operand", operand_type, "apply ~ to an integer value");
+        }
+        set_expr_resolved_type(expr, operand_type);
+        return true;
+      }
+      return set_diag_detail(diag, 100, "unsupported unary operator", expr->line, expr->column, "- ! ~", op, "use one of the supported unary operators");
     }
     case EXPR_SHAPE_LITERAL: {
       const Shape *shape = find_shape(program, expr->text);

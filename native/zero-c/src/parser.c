@@ -339,8 +339,12 @@ static int precedence(const char *op) {
   if (strcmp(op, "&&") == 0) return 2;
   if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 ||
       strcmp(op, "<=") == 0 || strcmp(op, ">") == 0 || strcmp(op, ">=") == 0) return 3;
-  if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0 || strcmp(op, "+%") == 0 || strcmp(op, "+|") == 0) return 4;
-  if (strcmp(op, "*") == 0 || strcmp(op, "/") == 0 || strcmp(op, "%") == 0) return 5;
+  if (strcmp(op, "|") == 0) return 4;
+  if (strcmp(op, "^") == 0) return 5;
+  if (strcmp(op, "&") == 0) return 6;
+  if (strcmp(op, "<<") == 0 || strcmp(op, ">>") == 0) return 7;
+  if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0 || strcmp(op, "+%") == 0 || strcmp(op, "+|") == 0) return 8;
+  if (strcmp(op, "*") == 0 || strcmp(op, "/") == 0 || strcmp(op, "%") == 0) return 9;
   return -1;
 }
 
@@ -514,6 +518,13 @@ static Expr *parse_unary(Parser *parser) {
     bool mutable_borrow = match(parser, "mut");
     Expr *expr = new_expr(EXPR_BORROW, borrow_token);
     expr->mutable_borrow = mutable_borrow;
+    expr->left = parse_unary(parser);
+    return expr;
+  }
+  if (match(parser, "!") || match(parser, "~") || match(parser, "-")) {
+    Token *op_token = previous(parser);
+    Expr *expr = new_expr(EXPR_UNARY, op_token);
+    expr->text = z_strdup(op_token->text);
     expr->left = parse_unary(parser);
     return expr;
   }
