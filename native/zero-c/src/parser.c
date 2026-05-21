@@ -121,6 +121,7 @@ static bool match_kind(Parser *parser, TokenKind kind) {
   return true;
 }
 
+
 static bool fail(Parser *parser, const char *message) {
   parser->diag->code = 100;
   parser->diag->line = current(parser)->line;
@@ -531,19 +532,33 @@ static Expr *parse_unary(Parser *parser) {
   return parse_postfix(parser);
 }
 
+// Recognise an adjacent `>` `>` token pair as the `>>` shift operator. The
+// lexer keeps these as two single tokens so generic-argument terminators like
+// `Foo<Bar<T>>` continue to work; only here in expression position do we
+// fold them into a shift token.
+static bool current_is_right_shift(Parser *parser) {
+  Token *tok = current(parser);
+  if (!tok || !tok->text || strcmp(tok->text, ">") != 0) return false;
+  if (parser->index + 1 >= parser->tokens->len) return false;
+  Token *next = &parser->tokens->items[parser->index + 1];
+  return next->text && strcmp(next->text, ">") == 0 && tok->offset + tok->length == next->offset;
+}
+
 static Expr *parse_binary(Parser *parser, int min_precedence) {
   Expr *left = parse_unary(parser);
   if (!left) return NULL;
   while (true) {
-    int prec = precedence(current(parser)->text);
+    bool right_shift = current_is_right_shift(parser);
+    int prec = right_shift ? 7 : precedence(current(parser)->text);
     if (prec < min_precedence) return left;
     Token *op = current(parser);
     parser->index++;
+    if (right_shift) parser->index++;
     Expr *right = parse_binary(parser, prec + 1);
     Expr *binary = new_expr(EXPR_BINARY, op);
     binary->left = left;
     binary->right = right;
-    binary->text = z_strdup(op->text);
+    binary->text = z_strdup(right_shift ? ">>" : op->text);
     left = binary;
   }
 }

@@ -1,0 +1,14 @@
+pub fun main(world: World) -> Void raises {
+    let a: i32 = -1
+    let b: i32 = 5
+    let c: i32 = -b
+    let d: i32 = -(2 + 3)
+    let e: i64 = -1000000000
+    let f: i32 = - -7
+    let g: i32 = 10 + -3
+    if a == -1 && c == -5 && d == -5 && e < 0 && f == 7 && g == 7 {
+        check world.out.write("unary neg ok\n")
+    } else {
+        check world.out.write("unary neg fail\n")
+    }
+}

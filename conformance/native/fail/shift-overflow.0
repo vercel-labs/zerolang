@@ -1,0 +1,7 @@
+pub fun main(world: World) -> Void raises {
+    let x: i32 = 1
+    let y: i32 = x << 32
+    if y == 0 {
+        check world.out.write("never\n")
+    }
+}

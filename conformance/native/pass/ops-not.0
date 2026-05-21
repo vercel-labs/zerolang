@@ -1,0 +1,13 @@
+pub fun main(world: World) -> Void raises {
+    let p: Bool = true
+    let q: Bool = !p
+    let r: Bool = !!p
+    let s: Bool = !(1 == 2)
+    let t: Bool = !true || !false
+    let u: Bool = !(true && false)
+    if !q && r && s && t && u {
+        check world.out.write("not ok\n")
+    } else {
+        check world.out.write("not fail\n")
+    }
+}
