@@ -287,6 +287,8 @@ for (const fixture of [
   "conformance/native/pass/choice-match-payload-return-origin.0",
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/native/pass/null-maybe.0",
+  "conformance/native/pass/maybe-some.0",
+  "conformance/native/pass/maybe-coerce-return.0",
   "conformance/native/pass/meta-typed-target-type.0",
   "conformance/native/pass/std-args.0",
   "conformance/native/pass/std-env.0",
@@ -2361,6 +2363,12 @@ const uncheckedFallibleBody = JSON.parse(uncheckedFallibleJson.stdout);
 assert.equal(uncheckedFallibleBody.diagnostics[0].code, "ERR003");
 assert.equal(uncheckedFallibleBody.diagnostics[0].fixSafety, "api-changing");
 
+const maybeBareWithoutContextJson = await execFileAsync(zero, ["check", "--json", "conformance/native/fail/maybe-bare-without-context.0"]).catch((error) => error);
+assert.notEqual(maybeBareWithoutContextJson.code, 0);
+const maybeBareWithoutContextBody = JSON.parse(maybeBareWithoutContextJson.stdout);
+assert.equal(maybeBareWithoutContextBody.diagnostics[0].code, "TYP011");
+assert.match(maybeBareWithoutContextBody.diagnostics[0].message, /Maybe\.none requires an explicit Maybe<T> context/);
+
 const errorSetMismatchJson = await execFileAsync(zero, ["check", "--json", "conformance/native/fail/error-set-mismatch.0"]).catch((error) => error);
 assert.notEqual(errorSetMismatchJson.code, 0);
 const errorSetMismatchBody = JSON.parse(errorSetMismatchJson.stdout);
@@ -2587,6 +2595,8 @@ for (const runtimeFixture of [
   ["conformance/native/pass/match-fallback.0", "match-fallback", { stdout: "match fallback ok\n" }],
   ["conformance/native/pass/match-choice-fallback.0", "match-choice-fallback", { stdout: "choice fallback ok\n" }],
   ["conformance/native/pass/null-maybe.0", "null-maybe", { stdout: /null maybe ok/ }],
+  ["conformance/native/pass/maybe-some.0", "maybe-some", { stdout: /maybe some ok/ }],
+  ["conformance/native/pass/maybe-coerce-return.0", "maybe-coerce-return", { stdout: /maybe coerce return ok/ }],
   ["conformance/native/pass/std-args.0", "std-args", { stdout: "alpha\n", args: ["alpha", "beta"] }],
   ["conformance/native/pass/std-env.0", "std-env", { stdout: "env ok\n", env: { ZERO_CONFORMANCE_ENV: "agent-env" } }],
   ["conformance/native/pass/std-fs.0", "std-fs", { stdout: "fs ok\n", file: { name: "std-fs-write.txt", text: "zero write\n" } }],

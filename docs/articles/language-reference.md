@@ -336,8 +336,13 @@ or from `u8`, and it is not accepted in integer arithmetic.
 `f16`, Unicode scalar literals, and char arrays are not part of the current
 public surface. `Void` is used when a function returns no useful value.
 
-Optional values use `Maybe<T>`. Use `null` only where the expected type is a
-`Maybe<T>`; untyped `null` is rejected.
+Optional values use `Maybe<T>`. Construct a present value with
+`Maybe.some(value)` and an absent value with `Maybe.none` (equivalent to
+`null` in a `Maybe<T>` context). A plain `T` value coerces to
+`Maybe.some(value)` in a position that expects `Maybe<T>` (return,
+let-with-annotation, or argument). Untyped `null` and bare `Maybe.none`
+without an explicit `Maybe<T>` context are rejected. Test presence with
+`.has` and read the payload with `.value` after proving `.has`.
 
 Memory-oriented APIs use types such as `Span<T>`, `MutSpan<T>`, `ref<T>`,
 `mutref<T>`, and `Alloc`. The hosted file slice also exposes `Fs`, `File`, and
