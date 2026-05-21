@@ -1,0 +1,15 @@
+shape Box {
+    n: i32,
+}
+
+fun unbox(b: Box) -> i32 {
+    return b.n
+}
+
+pub fun main(world: World) -> Void raises {
+    if unbox((Box { n: 7 })) == 7 {
+        check world.out.write("cond paren ok\n")
+    } else {
+        check world.out.write("cond paren failed\n")
+    }
+}

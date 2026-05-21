@@ -1,0 +1,8 @@
+pub fun main(world: World) -> Void raises {
+    let nums: [4]i32 = [10, 20, 30, 40,]
+    if nums[0] + nums[3] == 50 {
+        check world.out.write("trailing-comma array ok\n")
+    } else {
+        check world.out.write("trailing-comma array failed\n")
+    }
+}

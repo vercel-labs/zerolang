@@ -1,0 +1,19 @@
+fun classify(value: i32) -> i32 {
+    if value == 1 {
+        return 10
+    } else if value == 2 {
+        return 20
+    } else if value == 3 {
+        return 30
+    } else {
+        return 0
+    }
+}
+
+pub fun main(world: World) -> Void raises {
+    if classify(2) == 20 && classify(3) == 30 && classify(9) == 0 {
+        check world.out.write("else-if chain ok\n")
+    } else {
+        check world.out.write("else-if chain failed\n")
+    }
+}

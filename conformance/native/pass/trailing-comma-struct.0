@@ -1,0 +1,13 @@
+shape Point {
+    x: i32,
+    y: i32,
+}
+
+pub fun main(world: World) -> Void raises {
+    let p = Point { x: 1, y: 2, }
+    if p.x + p.y == 3 {
+        check world.out.write("trailing-comma struct ok\n")
+    } else {
+        check world.out.write("trailing-comma struct failed\n")
+    }
+}

@@ -1,0 +1,20 @@
+fun search(buf: [8]i32, n: i32) -> i32 {
+    let R: i32 = 7
+    let mut j: i32 = 0
+    while j < n {
+        if buf[j] == R {
+            return j
+        }
+        j = j + 1
+    }
+    return 99
+}
+
+pub fun main(world: World) -> Void raises {
+    let nums: [8]i32 = [1, 2, 3, 4, 5, 6, 7, 8]
+    if search(nums, 8) == 6 {
+        check world.out.write("cond ident ok\n")
+    } else {
+        check world.out.write("cond ident failed\n")
+    }
+}
