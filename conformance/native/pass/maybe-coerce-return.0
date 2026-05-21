@@ -1,0 +1,14 @@
+fun produce(flag: Bool) -> Maybe<u8> {
+    if flag {
+        return 42_u8
+    }
+    return null
+}
+
+pub fun main(world: World) -> Void raises {
+    let present = produce(true)
+    let absent = produce(false)
+    if present.has && absent.has == false {
+        check world.out.write("maybe coerce return ok\n")
+    }
+}

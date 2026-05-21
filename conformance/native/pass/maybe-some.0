@@ -1,0 +1,7 @@
+pub fun main(world: World) -> Void raises {
+    let present: Maybe<u8> = Maybe.some(42_u8)
+    let absent: Maybe<u8> = Maybe.none
+    if present.has && absent.has == false {
+        check world.out.write("maybe some ok\n")
+    }
+}

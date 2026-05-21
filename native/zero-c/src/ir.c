@@ -1169,6 +1169,20 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
     }
     case EXPR_NUMBER: {
       IrTypeKind type = ir_type_kind(expr->resolved_type);
+      if (type == IR_TYPE_MAYBE_SCALAR) {
+        IrTypeKind element = ir_maybe_scalar_element_type(expr->resolved_type);
+        if (element == IR_TYPE_UNSUPPORTED) {
+          ir_mark_unsupported(ir, "direct backend Maybe element type is unsupported", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "unknown Maybe type");
+          return false;
+        }
+        unsigned long long parsed = 0;
+        if (!ir_parse_integer_literal(expr->text, &parsed)) {
+          ir_mark_unsupported(ir, "direct backend integer literal is malformed", expr->line, expr->column, expr->text);
+          return false;
+        }
+        *out = ir_new_maybe_scalar_literal(ir, true, element, parsed, expr->line, expr->column);
+        return true;
+      }
       if (!ir_type_is_value(type)) {
         ir_mark_unsupported(ir, "direct backend numeric expression type is unsupported", expr->line, expr->column, expr->resolved_type);
         return false;
@@ -1206,6 +1220,14 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       return true;
     }
     case EXPR_MEMBER: {
+      if (expr->left && expr->left->kind == EXPR_IDENT &&
+          expr->left->text && strcmp(expr->left->text, "Maybe") == 0 &&
+          expr->text && strcmp(expr->text, "none") == 0) {
+        IrTypeKind element = ir_maybe_scalar_element_type(expr->resolved_type);
+        if (element == IR_TYPE_UNSUPPORTED) element = IR_TYPE_I32;
+        *out = ir_new_maybe_scalar_literal(ir, false, element, 0, expr->line, expr->column);
+        return true;
+      }
       if (expr->left && expr->left->kind == EXPR_IDENT) {
         const EnumDecl *item_enum = ir_find_enum(program, expr->left->text);
         unsigned long long case_value = 0;
@@ -1333,6 +1355,24 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
     }
     case EXPR_CALL: {
       char *callee_name = ir_expr_callee_name(expr->left);
+      if (strcmp(callee_name, "Maybe.some") == 0 && expr->args.len == 1) {
+        IrTypeKind element = ir_maybe_scalar_element_type(expr->resolved_type);
+        if (element == IR_TYPE_UNSUPPORTED) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend Maybe.some currently supports primitive scalar element types", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "unknown Maybe type");
+          return false;
+        }
+        const Expr *arg = expr->args.items[0];
+        unsigned long long number = 0;
+        if (!arg || arg->kind != EXPR_NUMBER || !ir_parse_integer_literal(arg->text, &number)) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend Maybe.some currently requires an integer literal payload", expr->line, expr->column, "non-literal Maybe.some payload");
+          return false;
+        }
+        free(callee_name);
+        *out = ir_new_maybe_scalar_literal(ir, true, element, number, expr->line, expr->column);
+        return true;
+      }
       if ((strcmp(callee_name, "std.codec.readU8") == 0 ||
            strcmp(callee_name, "std.codec.readU16") == 0 ||
            strcmp(callee_name, "std.codec.readU32") == 0) &&

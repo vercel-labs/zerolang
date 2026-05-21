@@ -1469,6 +1469,20 @@ static bool type_has_generic_arg(const char *type, const char *name, const char 
   return *inner_len > 0;
 }
 
+static bool is_maybe_none_expr(const Expr *expr) {
+  return expr && expr->kind == EXPR_MEMBER && expr->left && expr->left->kind == EXPR_IDENT &&
+    expr->left->text && strcmp(expr->left->text, "Maybe") == 0 &&
+    expr->text && strcmp(expr->text, "none") == 0;
+}
+
+static bool is_maybe_some_call(const Expr *expr) {
+  if (!expr || expr->kind != EXPR_CALL || !expr->left || expr->left->kind != EXPR_MEMBER) return false;
+  const Expr *callee = expr->left;
+  return callee->left && callee->left->kind == EXPR_IDENT &&
+    callee->left->text && strcmp(callee->left->text, "Maybe") == 0 &&
+    callee->text && strcmp(callee->text, "some") == 0;
+}
+
 static bool split_generic_args(const char *inner, size_t inner_len, char ***out_items, size_t *out_len) {
   char **items = NULL;
   size_t len = 0;
@@ -5123,6 +5137,17 @@ static const char *expr_type(CheckContext *ctx, const Program *program, const Ex
   if (!expr) return "Void";
   const char *resolved_type = expr_resolved_type_for_current_context(ctx, expr);
   if (resolved_type) return resolved_type;
+  if (is_maybe_none_expr(expr)) return expr->resolved_type ? expr->resolved_type : "Unknown";
+  if (is_maybe_some_call(expr)) {
+    if (expr->resolved_type) return expr->resolved_type;
+    if (expr->args.len == 1) {
+      const char *inner_type = expr_type(ctx, program, expr->args.items[0], scope);
+      static char some_type[192];
+      snprintf(some_type, sizeof(some_type), "Maybe<%s>", inner_type ? inner_type : "Unknown");
+      return some_type;
+    }
+    return "Unknown";
+  }
   switch (expr->kind) {
     case EXPR_STRING: return "String";
     case EXPR_CHAR: return "char";
@@ -5819,16 +5844,69 @@ static bool check_stdlib_table_arg_range_expected(CheckContext *ctx, const Progr
 static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {
   diag = check_context_diag(ctx, diag);
   if (!expr) return true;
-  if (expr->kind == EXPR_NUMBER) {
-    if (is_float_literal_text(expr->text)) return validate_float_literal_for_type(expr, expected, diag);
-    return validate_integer_literal_for_type(expr, expected, diag);
-  }
   if (expr->kind == EXPR_NULL) {
     if (expected && type_is_named_generic(expected, "Maybe")) {
       set_expr_resolved_type(expr, expected);
       return true;
     }
     return set_diag_detail(diag, 3017, "null requires an explicit Maybe<T> context", expr->line, expr->column, "Maybe<T>", expected ? expected : "untyped null", "add a Maybe<T> annotation or use a non-null value");
+  }
+  if (is_maybe_none_expr(expr)) {
+    if (expected && type_is_named_generic(expected, "Maybe")) {
+      set_expr_resolved_type(expr, expected);
+      return true;
+    }
+    return set_diag_detail(diag, 3017, "Maybe.none requires an explicit Maybe<T> context", expr->line, expr->column, "Maybe<T>", expected ? expected : "untyped Maybe.none", "annotate the destination type or use Maybe.some(value) at a typed position");
+  }
+  if (is_maybe_some_call(expr)) {
+    if (expr->args.len != 1) {
+      return set_diag_detail(diag, 3004, "Maybe.some expects one argument", expr->line, expr->column, "Maybe.some(value)", "wrong argument count", "pass exactly one value to Maybe.some");
+    }
+    const char *inner_expected = NULL;
+    char inner_buf[160];
+    if (expected && type_is_named_generic(expected, "Maybe")) {
+      const char *inner = NULL;
+      size_t inner_len = 0;
+      if (type_has_generic_arg(expected, "Maybe", &inner, &inner_len) && inner_len < sizeof(inner_buf)) {
+        snprintf(inner_buf, sizeof(inner_buf), "%.*s", (int)inner_len, inner);
+        inner_expected = inner_buf;
+      }
+    }
+    if (!check_expr_expected(ctx, program, expr->args.items[0], scope, diag, inner_expected)) return false;
+    const char *actual_inner = expr_type(ctx, program, expr->args.items[0], scope);
+    if (inner_expected && actual_inner && !types_compatible_in_scope(program, scope, inner_expected, actual_inner)) {
+      return set_diag_detail(diag, 3005, "Maybe.some payload type does not match expected Maybe<T>", expr->args.items[0]->line, expr->args.items[0]->column, inner_expected, actual_inner, "pass a value matching the expected Maybe element type");
+    }
+    char resolved[192];
+    snprintf(resolved, sizeof(resolved), "Maybe<%s>", inner_expected ? inner_expected : (actual_inner ? actual_inner : "Unknown"));
+    set_expr_resolved_type(expr, resolved);
+    return true;
+  }
+  if (expected && type_is_named_generic(expected, "Maybe")) {
+    const char *inner = NULL;
+    size_t inner_len = 0;
+    if (type_has_generic_arg(expected, "Maybe", &inner, &inner_len)) {
+      char inner_buf[160];
+      if (inner_len < sizeof(inner_buf)) {
+        snprintf(inner_buf, sizeof(inner_buf), "%.*s", (int)inner_len, inner);
+        const char *predicted = expr_type(ctx, program, expr, scope);
+        if (predicted && !type_is_named_generic(predicted, "Maybe") && strcmp(predicted, "Unknown") != 0 &&
+            types_compatible_in_scope(program, scope, inner_buf, predicted)) {
+          if (!check_expr_expected(ctx, program, expr, scope, diag, inner_buf)) return false;
+          set_expr_resolved_type(expr, expected);
+          return true;
+        }
+        if (expr->kind == EXPR_NUMBER) {
+          if (!check_expr_expected(ctx, program, expr, scope, diag, inner_buf)) return false;
+          set_expr_resolved_type(expr, expected);
+          return true;
+        }
+      }
+    }
+  }
+  if (expr->kind == EXPR_NUMBER) {
+    if (is_float_literal_text(expr->text)) return validate_float_literal_for_type(expr, expected, diag);
+    return validate_integer_literal_for_type(expr, expected, diag);
   }
   switch (expr->kind) {
     case EXPR_IDENT:

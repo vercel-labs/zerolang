@@ -2770,6 +2770,16 @@ static const ExplainInfo explain_infos[] = {
     "let mut bytes: [4]u8 = [0, 0, 0, 0]\nstd.mem.fill(bytes, 0_u8)",
   },
   {
+    "TYP011",
+    "type",
+    "Maybe<T> context required",
+    "`null` or `Maybe.none` was used outside an explicit `Maybe<T>` context.",
+    "Zero keeps optional flow visible: untyped `null` and bare `Maybe.none` need a destination type so the compiler can pick the element type, while `Maybe.some(value)` works anywhere a present optional is acceptable.",
+    "Annotate the destination (return type, let binding, or argument) as `Maybe<T>`, or replace bare `Maybe.none` with `Maybe.some(value)` when the absence is unintended.",
+    "let value = Maybe.none",
+    "let value: Maybe<u8> = Maybe.none",
+  },
+  {
     "TYP023",
     "type",
     "Generic type argument mismatch",

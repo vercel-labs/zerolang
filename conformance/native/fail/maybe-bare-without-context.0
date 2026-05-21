@@ -1,0 +1,4 @@
+pub fun main(world: World) -> Void raises {
+    let value = Maybe.none
+    check world.out.write("bare maybe none\n")
+}
