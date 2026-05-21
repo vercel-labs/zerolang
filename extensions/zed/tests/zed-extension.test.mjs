@@ -48,7 +48,47 @@ describe("Zed extension manifest", () => {
     assert.ok(snippets.shape);
     assert.ok(snippets.function);
     assert.ok(snippets.test);
+    assert.ok(snippets.if);
+    assert.ok(snippets.while);
     assert.ok(snippets["GET route"]);
+  });
+
+  it("declares block comment support in language config", async () => {
+    const config = toml.parse(await readFile("languages/zero/config.toml", "utf8"));
+
+    assert.deepEqual(config.block_comment, ["/*", "*/"]);
+  });
+
+  it("parses representative Zero files without tree-sitter ERROR nodes", async () => {
+    const grammarDir = join(extensionDir, "tree-sitter-zero");
+    const sampleFiles = [
+      "examples/std-http-headers.0",
+      "examples/std-http-json.0",
+      "examples/std-http-request.0",
+      "examples/std-json-bytes.0",
+      "conformance/native/pass/array-repeat-literal.0",
+      "conformance/native/pass/array-repeat-record-field.0",
+      "conformance/native/pass/generic-static-array-specialization.0",
+      "conformance/native/pass/generic-static-forwarded-array-specialization.0",
+      "conformance/native/pass/std-http-fetch.0",
+      "examples/static-interface.0",
+      "examples/direct-enum-match.0",
+    ];
+
+    for (const relativePath of sampleFiles) {
+      let output = "";
+      try {
+        const { stdout, stderr } = await execFileAsync(
+          "npx",
+          ["tree-sitter", "parse", join(repoRoot, relativePath)],
+          { cwd: grammarDir, windowsHide: true },
+        );
+        output = `${stdout}\n${stderr}`;
+      } catch (error) {
+        output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+      }
+      assert.doesNotMatch(output, /\(ERROR /, `expected ${relativePath} to parse without ERROR nodes`);
+    }
   });
 
   it("prepares a dev extension with a fetchable local grammar repository", async () => {

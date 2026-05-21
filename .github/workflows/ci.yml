@@ -63,6 +63,9 @@ jobs:
       - name: Extension tests
         run: pnpm run extension:test
 
+      - name: Zed extension tests
+        run: pnpm run extension:zed:test
+
       - name: Command contract snapshots
         run: pnpm run command-contracts:local
 

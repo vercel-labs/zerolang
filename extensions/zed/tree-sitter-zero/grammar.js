@@ -12,6 +12,8 @@ const PREC = {
 module.exports = grammar({
   name: "zero",
 
+  conflicts: ($) => [[$.type_arguments, $.generic_type], [$.type_arguments, $.type_identifier]],
+
   extras: ($) => [/\s/, $.line_comment, $.block_comment],
 
   word: ($) => $.identifier,
@@ -25,6 +27,7 @@ module.exports = grammar({
         $.shape_declaration,
         $.choice_declaration,
         $.enum_declaration,
+        $.interface_declaration,
         $.impl_declaration,
         $.import_declaration,
         $.use_declaration,
@@ -34,7 +37,7 @@ module.exports = grammar({
         $.test_declaration,
       ),
 
-    visibility: () => choice("pub", "export"),
+    visibility: () => choice("pub", "export", seq("export", "c")),
 
     modifier: () => choice("meta", "static"),
 
@@ -46,8 +49,8 @@ module.exports = grammar({
         field("name", $.identifier),
         optional($.type_parameters),
         $.parameter_list,
-        optional(seq("raises", $.type_expression)),
         optional(seq("->", $.type_expression)),
+        optional("raises"),
         choice(field("body", $.block), ";"),
       ),
 
@@ -71,7 +74,7 @@ module.exports = grammar({
         "choice",
         field("name", $.identifier),
         optional($.type_parameters),
-        field("body", $.declaration_block),
+        field("body", $.variant_block),
       ),
 
     enum_declaration: ($) =>
@@ -81,7 +84,30 @@ module.exports = grammar({
         "enum",
         field("name", $.identifier),
         optional($.type_parameters),
-        field("body", $.declaration_block),
+        optional(seq(":", field("backing", $.type_expression))),
+        field("body", $.variant_block),
+      ),
+
+    interface_declaration: ($) =>
+      seq(
+        repeat($.modifier),
+        optional($.visibility),
+        "interface",
+        field("name", $.identifier),
+        optional($.type_parameters),
+        field("body", $.interface_block),
+      ),
+
+    interface_block: ($) => seq("{", repeat($.interface_method), "}"),
+
+    interface_method: ($) =>
+      seq(
+        "fun",
+        field("name", $.identifier),
+        optional($.type_parameters),
+        $.parameter_list,
+        optional(seq("->", $.type_expression)),
+        optional(choice(field("body", $.block), ";")),
       ),
 
     impl_declaration: ($) =>
@@ -89,6 +115,8 @@ module.exports = grammar({
 
     declaration_block: ($) =>
       seq("{", repeat(choice($.declaration, $.field_declaration, $.statement)), "}"),
+
+    variant_block: ($) => seq("{", repeat($.variant_declaration), "}"),
 
     field_declaration: ($) =>
       seq(
@@ -131,7 +159,7 @@ module.exports = grammar({
         $.expression_statement,
       ),
 
-    let_statement: ($) => seq("let", field("name", $.identifier), optional(seq(":", $.type_expression)), "=", $._expression, optional(";")),
+    let_statement: ($) => seq("let", optional("mut"), field("name", $.identifier), optional(seq(":", $.type_expression)), "=", $._expression, optional(";")),
 
     var_statement: ($) => seq("var", field("name", $.identifier), optional(seq(":", $.type_expression)), "=", $._expression, optional(";")),
 
@@ -147,7 +175,13 @@ module.exports = grammar({
 
     if_statement: ($) => seq("if", $._expression, $.block, optional(seq("else", choice($.block, $.if_statement)))),
 
-    match_statement: ($) => seq("match", $._expression, $.declaration_block),
+    match_statement: ($) => prec(PREC.call + 1, seq("match", field("subject", $.identifier), $.match_block)),
+
+    match_block: ($) => seq("{", repeat($.match_arm), "}"),
+
+    match_arm: ($) => seq(field("pattern", $.match_pattern), field("body", $.block)),
+
+    match_pattern: ($) => choice(seq(".", field("name", $.identifier)), $._expression),
 
     while_statement: ($) => seq("while", $._expression, $.block),
 
@@ -161,7 +195,20 @@ module.exports = grammar({
 
     parameter: ($) => seq(optional(choice("let", "mut", "var")), field("name", $.identifier), optional(seq(":", $.type_expression)), optional(seq("=", $._expression))),
 
-    type_parameters: ($) => seq("<", commaSep1(choice($.identifier, seq("static", $.identifier))), optional(","), ">"),
+    type_parameters: ($) =>
+      seq(
+        "<",
+        commaSep1(
+          choice(
+            $.identifier,
+            seq("static", $.identifier),
+            seq("static", field("name", $.identifier), ":", field("constraint", $.type_expression)),
+            seq(field("name", $.identifier), ":", field("constraint", $.type_expression)),
+          ),
+        ),
+        optional(","),
+        ">",
+      ),
 
     type_expression: ($) =>
       choice(
@@ -171,7 +218,10 @@ module.exports = grammar({
         $.generic_type,
         $.pointer_type,
         $.function_type,
+        $.array_type,
       ),
+
+    array_type: ($) => seq("[", field("length", choice($.number_literal, $.identifier)), "]", $.type_expression),
 
     generic_type: ($) => prec(1, seq(choice($.type_identifier, $.container_type), "<", commaSep1($.type_expression), optional(","), ">")),
 
@@ -180,7 +230,7 @@ module.exports = grammar({
     function_type: ($) => prec.right(seq("fun", $.parameter_list, optional(seq("->", $.type_expression)))),
 
     primitive_type: () =>
-      token(choice("Bool", "Void", "Type", "char", "usize", "isize", /u[0-9]+/, /i[0-9]+/, /f(16|32|64)/, /c_(int|long|size|char)/, "World", "Alloc", "Fs", "Net", "Env", "Args", "Clock", "Rand", "Proc", "Sync", "Vercel", "Request", "Response")),
+      token(choice("Bool", "Void", "Type", "Self", "char", "usize", "isize", /u[0-9]+/, /i[0-9]+/, /f(16|32|64)/, /c_(int|long|size|char)/, "World", "Alloc", "Fs", "Net", "Env", "Args", "Clock", "Rand", "Proc", "Sync", "Vercel", "Request", "Response")),
 
     container_type: () => token(choice("Maybe", "Span", "Vec", "String")),
 
@@ -192,6 +242,8 @@ module.exports = grammar({
         $.identifier,
         $.call_expression,
         $.member_expression,
+        $.index_expression,
+        $.range_expression,
         $.shape_literal,
         $.array_literal,
         $.unary_expression,
@@ -204,13 +256,21 @@ module.exports = grammar({
 
     literal: ($) => choice($.string_literal, $.char_literal, $.number_literal, "true", "false", "null"),
 
-    call_expression: ($) => prec(PREC.call, seq(field("function", choice($.identifier, $.member_expression)), $.argument_list)),
+    call_expression: ($) =>
+      prec(PREC.call, seq(field("function", choice($.identifier, $.member_expression)), optional($.type_arguments), $.argument_list)),
+
+    type_arguments: ($) => seq("<", commaSep1(choice($.type_expression, $.number_literal, $.identifier)), optional(","), ">"),
 
     argument_list: ($) => seq("(", optional(commaSep(choice($.argument, $._expression))), optional(","), ")"),
 
     argument: ($) => seq(field("name", $.identifier), ":", $._expression),
 
     member_expression: ($) => prec(PREC.member, seq($._expression, ".", field("property", $.identifier))),
+
+    index_expression: ($) => prec(PREC.member, seq($._expression, "[", $._expression, "]")),
+
+    range_expression: ($) =>
+      prec(PREC.member, seq($._expression, "[", field("start", $._expression), "..", field("end", $._expression), "]")),
 
     shape_literal: ($) => prec(PREC.call, seq($.identifier, "{", optional(commaSep($.argument)), optional(","), "}")),
 

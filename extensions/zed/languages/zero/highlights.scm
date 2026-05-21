@@ -31,6 +31,7 @@
   "fun"
   "impl"
   "import"
+  "interface"
   "let"
   "meta"
   "mut"

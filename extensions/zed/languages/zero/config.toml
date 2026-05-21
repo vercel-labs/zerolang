@@ -2,6 +2,7 @@ name = "Zero"
 grammar = "zero"
 path_suffixes = ["0"]
 line_comments = ["// "]
+block_comment = ["/*", "*/"]
 tab_size = 4
 hard_tabs = false
 
