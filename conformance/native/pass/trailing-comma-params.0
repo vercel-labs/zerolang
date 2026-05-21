@@ -1,0 +1,16 @@
+fun add(left: i32, right: i32,) -> i32 {
+    return left + right
+}
+
+fun classify<T,>(value: T,) -> T {
+    return value
+}
+
+pub fun main(world: World) -> Void raises {
+    let total: i32 = add(40, 2,)
+    if total == 42 && classify<i32,>(7,) == 7 {
+        check world.out.write("trailing-comma params ok\n")
+    } else {
+        check world.out.write("trailing-comma params failed\n")
+    }
+}

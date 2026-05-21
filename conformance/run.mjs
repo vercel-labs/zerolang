@@ -466,6 +466,9 @@ for (const fixture of [
   "examples/static-interface.0",
   "examples/ownership-cleanup.0",
   "conformance/native/pass/else-if-chain.0",
+  "conformance/native/pass/trailing-comma-params.0",
+  "conformance/native/pass/trailing-comma-array.0",
+  "conformance/native/pass/trailing-comma-struct.0",
 ]) {
   await execFileAsync(zero, ["check", fixture]);
 }

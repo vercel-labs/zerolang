@@ -211,6 +211,7 @@ static ParamVec parse_params(Parser *parser) {
   if (!expect(parser, "(", "expected '(' before parameters")) return params;
   if (match(parser, ")")) return params;
   do {
+    if (check(parser, ")")) break;
     bool is_static = match(parser, "static");
     Token *name = expect_ident(parser, "expected parameter name");
     if (!name) return params;
@@ -233,6 +234,7 @@ static ParamVec parse_type_params(Parser *parser) {
   if (!match(parser, "<")) return params;
   if (match(parser, ">")) return params;
   do {
+    if (check(parser, ">")) break;
     bool is_static = match(parser, "static");
     Token *name = expect_ident(parser, "expected generic parameter name");
     if (!name) return params;
@@ -303,6 +305,7 @@ static TypeArgVec parse_type_args(Parser *parser) {
   if (!expect(parser, "<", "expected '<' before type arguments")) return args;
   if (match(parser, ">")) return args;
   do {
+    if (check(parser, ">")) break;
     Token *start = current(parser);
     TypeArg arg = {
       .type = parse_generic_arg_text(parser),
@@ -320,6 +323,7 @@ static ParamVec parse_error_set(Parser *parser) {
   if (!expect(parser, "{", "expected '{' before error set")) return errors;
   if (match(parser, "}")) return errors;
   do {
+    if (check(parser, "}")) break;
     Token *name = expect_ident(parser, "expected error name");
     if (!name) return errors;
     Param error = {
@@ -361,6 +365,7 @@ static Expr *parse_primary(Parser *parser) {
       expr->text = z_strdup(token->text);
       if (!match(parser, "}")) {
         do {
+          if (check(parser, "}")) break;
           Token *field_name = expect_ident(parser, "expected shape literal field name");
           if (!field_name) return expr;
           expect(parser, ":", "expected ':' after shape literal field name");
@@ -420,6 +425,7 @@ static Expr *parse_primary(Parser *parser) {
         if (count) push_expr(&expr->args, count);
       } else {
         while (match(parser, ",")) {
+          if (check(parser, "]")) break;
           Expr *item = parse_expr(parser);
           if (item) push_expr(&expr->args, item);
         }
@@ -484,6 +490,7 @@ static Expr *parse_postfix(Parser *parser) {
       call->left = expr;
       if (!match(parser, ")")) {
         do {
+          if (check(parser, ")")) break;
           Expr *arg = parse_expr(parser);
           if (arg) push_expr(&call->args, arg);
         } while (match(parser, ","));
