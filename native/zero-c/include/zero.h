@@ -844,6 +844,7 @@ void z_free_tokens(TokenVec *tokens);
 ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag);
 bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZDiag *diag);
 bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag);
+Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *diag);
 void z_free_row_tree(ZRowTree *tree);
 void z_free_row_tokens(ZRowTokenVec *tokens);
 
