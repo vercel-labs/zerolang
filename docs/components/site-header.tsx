@@ -11,7 +11,7 @@ export function SiteHeader({ stars }: { stars: string }) {
         <div className="flex items-center gap-2">
           <Link href="/" className="flex items-center gap-2">
             <LogoIcon width="16" height="14" />
-            <span className={`${GeistPixelSquare.className} text-lg`}>zero</span>
+            <span className={`${GeistPixelSquare.className} text-lg`}>zerolang</span>
           </Link>
         </div>
 

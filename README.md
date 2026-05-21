@@ -1,14 +1,14 @@
 # zerolang
 
-Zero is an experiment in building an agent-first programming language.
+zerolang is an experiment in building an agent-first programming language.
 
 The project is exploring what changes when agents are primary users from day one: a language that can be learned on the fly, tooling that exposes structured facts for debugging and repair, and a standard library broad enough that most programs do not start with a dependency search.
 
-Zero is pre-1 and intentionally unstable. The project will make breaking changes while it searches for the language, library, and tooling patterns that work best for agents. Treat today's syntax and APIs as something to explore, not something to memorize. If that sounds useful, try it with us: run examples, inspect the structured output, and send feedback about what helps agents work better.
+zerolang is pre-1 and intentionally unstable. The project will make breaking changes while it searches for the language, library, and tooling patterns that work best for agents. Treat today's syntax and APIs as something to explore, not something to memorize. If that sounds useful, try it with us: run examples, inspect the structured output, and send feedback about what helps agents work better.
 
-Security vulnerabilities should be expected. Zero is not ready for production systems, sensitive data, or trusted infrastructure. If you plan to run or develop Zero, do so in an isolated, disposable environment.
+Security vulnerabilities should be expected. zerolang is not ready for production systems, sensitive data, or trusted infrastructure. If you plan to run or develop zerolang, do so in an isolated, disposable environment.
 
-## What Zero Is Aiming For
+## What zerolang Is Aiming For
 
 - Agent-first learnability: a small, regular language surface that agents can pick up quickly from examples, docs, and compiler feedback.
 - Standard-library depth: common capabilities should live in documented, coherent library APIs instead of scattered dependency stacks.
