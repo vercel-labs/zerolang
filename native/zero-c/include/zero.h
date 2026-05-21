@@ -263,6 +263,7 @@ struct Stmt {
   Expr *target;
   Expr *expr;
   Expr *range_end;
+  Expr *decreases;
   StmtVec then_body;
   StmtVec else_body;
   MatchArmVec match_arms;

@@ -628,6 +628,9 @@ static Stmt *parse_statement(Parser *parser) {
   if (match(parser, "while")) {
     Stmt *stmt = new_stmt(STMT_WHILE, start);
     stmt->expr = parse_expr(parser);
+    if (match(parser, "decreases")) {
+      stmt->decreases = parse_expr(parser);
+    }
     stmt->then_body = parse_block(parser);
     return stmt;
   }
@@ -1074,6 +1077,7 @@ static void free_stmt_vec(StmtVec *vec) {
     free_expr(stmt->target);
     free_expr(stmt->expr);
     free_expr(stmt->range_end);
+    free_expr(stmt->decreases);
     free_stmt_vec(&stmt->then_body);
     free_stmt_vec(&stmt->else_body);
     for (size_t arm_index = 0; arm_index < stmt->match_arms.len; arm_index++) {

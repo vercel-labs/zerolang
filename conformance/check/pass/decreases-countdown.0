@@ -1,0 +1,7 @@
+pub fun main(world: World) -> Void raises {
+    let mut i: u32 = 3
+    while i > 0 decreases i {
+        check world.out.write("tick\n")
+        i = i - 1
+    }
+}

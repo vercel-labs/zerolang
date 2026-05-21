@@ -158,6 +158,7 @@ static const char *diag_code(int code) {
     case 9002: return "PKG002";
     case 9003: return "PKG003";
     case 9004: return "PKG004";
+    case 11001: return "TER001";
     default: return "PAR100";
   }
 }
@@ -2543,6 +2544,7 @@ static const char *diag_fix_safety(int code) {
     case 3047:
     case 3048:
     case 3049:
+    case 11001:
       return "behavior-preserving";
     default:
       return "requires-human-review";
@@ -2596,6 +2598,7 @@ static const char *diag_repair_id(int code) {
     case 9002: return "break-package-dependency-cycle";
     case 9003: return "choose-one-package-version";
     case 9004: return "choose-target-compatible-package";
+    case 11001: return "ensure-decreasing-measure";
     default: return code == 0 ? "repair-syntax" : "manual-review";
   }
 }
@@ -2647,6 +2650,7 @@ static const char *diag_repair_summary(int code) {
     case 9002: return "Remove the package cycle or move shared code into an acyclic dependency.";
     case 9003: return "Resolve the graph to one version of each package name.";
     case 9004: return "Select a target supported by the dependency or gate the dependency behind a compatible target.";
+    case 11001: return "Assign the decreases measure to a strictly smaller value on every loop iteration, for example with `m = m - 1` or `m = m / 2`.";
     default: return code == 0 ? "Repair the syntax at the reported parser span, then rerun zero check." : "Inspect the diagnostic fields and choose a repair manually.";
   }
 }
@@ -2979,6 +2983,16 @@ static const ExplainInfo explain_infos[] = {
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",
     "zero build --emit obj --target linux-x64 examples/direct-call-add.0",
   },
+  {
+    "TER001",
+    "termination",
+    "Decreases measure does not strictly decrease",
+    "A `while` loop annotated with `decreases <measure>` does not have an assignment that strictly decreases the measure inside its body.",
+    "Zero treats `decreases` as a per-loop termination contract, so the checker must be able to point at a strictly decreasing assignment before allowing the loop to compile.",
+    "Assign the decreases measure to a strictly smaller value on every iteration, such as `m = m - 1` or `m = m / 2`.",
+    "let mut i: u32 = 3\nwhile i > 0 decreases i {\n    check world.out.write(\"tick\\n\")\n}",
+    "let mut i: u32 = 3\nwhile i > 0 decreases i {\n    check world.out.write(\"tick\\n\")\n    i = i - 1\n}",
+  },
   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -3031,7 +3045,8 @@ static void print_explain_json(const ExplainInfo *info) {
                                          strcmp(info->code, "ERR002") == 0 ? 1002 :
                                          strcmp(info->code, "ERR003") == 0 ? 1003 :
                                          strcmp(info->code, "STD003") == 0 ? 3012 :
-                                         strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
+                                         strcmp(info->code, "CGEN004") == 0 ? 4004 :
+                                         strcmp(info->code, "TER001") == 0 ? 11001 : 0));
   zbuf_append(&buf, ", \"summary\": ");
   append_json_string(&buf, info->canonical_repair);
   zbuf_append(&buf, "},\n  \"examples\": {\"bad\": ");
