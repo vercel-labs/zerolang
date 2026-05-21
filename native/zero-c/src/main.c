@@ -739,6 +739,7 @@ typedef struct {
   bool proc;
   bool web;
   bool world;
+  bool stdin;
 } CapabilitySummary;
 
 #define STD_HELPER_MAX 192
@@ -1038,6 +1039,7 @@ static void capability_summary_set(CapabilitySummary *caps, const char *capabili
   else if (strcmp(capability, "proc") == 0) caps->proc = true;
   else if (strcmp(capability, "web") == 0) caps->web = true;
   else if (strcmp(capability, "world") == 0) caps->world = true;
+  else if (strcmp(capability, "stdin") == 0) caps->stdin = true;
 }
 
 static void append_capability_json_array(ZBuf *buf, const CapabilitySummary *caps) {
@@ -1064,6 +1066,7 @@ static void append_capability_json_array(ZBuf *buf, const CapabilitySummary *cap
   APPEND_CAP("proc", caps && caps->proc);
   APPEND_CAP("web", caps && caps->web);
   APPEND_CAP("world", caps && caps->world);
+  APPEND_CAP("stdin", caps && caps->stdin);
 #undef APPEND_CAP
   zbuf_append(buf, "]");
 }
@@ -1316,6 +1319,14 @@ static void collect_capabilities_from_expr(const Expr *expr, CapabilitySummary *
   if (expr->kind == EXPR_CALL) {
     char *callee = expr_callee_name(expr->left);
     collect_capabilities_from_std_name(callee, caps);
+    if (callee) {
+      size_t callee_len = strlen(callee);
+      const char *suffix = ".in.read";
+      size_t suffix_len = strlen(suffix);
+      if (callee_len >= suffix_len && strcmp(callee + callee_len - suffix_len, suffix) == 0) {
+        caps->stdin = true;
+      }
+    }
     free(callee);
   }
   collect_capabilities_from_expr(expr->left, caps);
@@ -1402,6 +1413,7 @@ static CapabilitySummary program_capabilities(const Program *program) {
     caps.proc = caps.proc || fun_caps.proc;
     caps.web = caps.web || fun_caps.web;
     caps.world = caps.world || fun_caps.world;
+    caps.stdin = caps.stdin || fun_caps.stdin;
   }
   for (size_t i = 0; program && i < program->shapes.len; i++) {
     for (size_t field_index = 0; field_index < program->shapes.items[i].fields.len; field_index++) {
@@ -1423,6 +1435,7 @@ static CapabilitySummary program_capabilities(const Program *program) {
       caps.proc = caps.proc || fun_caps.proc;
       caps.web = caps.web || fun_caps.web;
       caps.world = caps.world || fun_caps.world;
+      caps.stdin = caps.stdin || fun_caps.stdin;
     }
   }
   return caps;
@@ -1484,6 +1497,18 @@ static bool validate_target_capabilities(const Program *program, const ZTargetIn
     snprintf(diag->expected, sizeof(diag->expected), "target with stdio capability");
     snprintf(diag->actual, sizeof(diag->actual), "target %s lacks stdio", target ? target->name : "<unknown>");
     snprintf(diag->help, sizeof(diag->help), "select a target with stdio or use a narrower capability");
+    return false;
+  }
+  if (caps.stdin && !z_target_has_capability(target, "stdin")) {
+    diag->code = 6002;
+    diag->path = path;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "target does not provide stdin capability");
+    snprintf(diag->expected, sizeof(diag->expected), "target with stdin capability");
+    snprintf(diag->actual, sizeof(diag->actual), "target %s lacks stdin", target ? target->name : "<unknown>");
+    snprintf(diag->help, sizeof(diag->help), "build for a target that declares stdin or remove world.in.read from this program");
     return false;
   }
   return true;
@@ -8641,6 +8666,7 @@ static void append_graph_json(ZBuf *buf, const SourceInput *input, const Program
   target_caps.net = z_target_has_capability(target, "net");
   target_caps.proc = z_target_has_capability(target, "proc");
   target_caps.web = z_target_has_capability(target, "web");
+  target_caps.stdin = z_target_has_capability(target, "stdin");
   append_capability_json_array(buf, &target_caps);
   zbuf_append(buf, ",\"requiredCapabilitySupport\":");
   append_target_capability_facts_json(buf, target, &caps);

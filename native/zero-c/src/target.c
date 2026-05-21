@@ -19,7 +19,7 @@ static const char *fallback_manifest =
 "libcMode = \"host-default\"\n"
 "exeSuffix = \"\"\n"
 "zigTarget = \"aarch64-macos\"\n"
-"capabilities = [\"memory\", \"stdio\", \"args\", \"env\", \"fs\", \"time\", \"rand\", \"net\", \"proc\"]\n"
+"capabilities = [\"memory\", \"stdio\", \"stdin\", \"args\", \"env\", \"fs\", \"time\", \"rand\", \"net\", \"proc\"]\n"
 "[[target]]\n"
 "name = \"darwin-x64\"\n"
 "aliases = [\"x86_64-macos\"]\n"
@@ -45,7 +45,7 @@ static const char *fallback_manifest =
 "libcMode = \"bundled-libc\"\n"
 "exeSuffix = \"\"\n"
 "zigTarget = \"x86_64-linux-musl\"\n"
-"capabilities = [\"memory\", \"stdio\", \"args\", \"env\", \"fs\", \"time\", \"rand\"]\n"
+"capabilities = [\"memory\", \"stdio\", \"stdin\", \"args\", \"env\", \"fs\", \"time\", \"rand\"]\n"
 "[[target]]\n"
 "name = \"linux-musl-arm64\"\n"
 "aliases = [\"aarch64-linux-musl\"]\n"
@@ -296,7 +296,7 @@ const char *z_target_sysroot_env_name(const ZTargetInfo *target) {
 }
 
 static void append_target_capabilities_json(ZBuf *buf, const ZTargetInfo *target) {
-  const char *capabilities[] = {"memory", "stdio", "args", "env", "fs", "net", "proc", "time", "rand", "web", NULL};
+  const char *capabilities[] = {"memory", "stdio", "stdin", "args", "env", "fs", "net", "proc", "time", "rand", "web", NULL};
   zbuf_append(buf, "[");
   bool first = true;
   for (int i = 0; capabilities[i]; i++) {
@@ -311,7 +311,7 @@ static void append_target_capabilities_json(ZBuf *buf, const ZTargetInfo *target
 }
 
 static void append_target_capability_facts_json(ZBuf *buf, const ZTargetInfo *target) {
-  const char *capabilities[] = {"memory", "stdio", "args", "env", "fs", "net", "proc", "time", "rand", "web", NULL};
+  const char *capabilities[] = {"memory", "stdio", "stdin", "args", "env", "fs", "net", "proc", "time", "rand", "web", NULL};
   zbuf_append(buf, "[");
   for (int i = 0; capabilities[i]; i++) {
     if (i > 0) zbuf_append(buf, ", ");

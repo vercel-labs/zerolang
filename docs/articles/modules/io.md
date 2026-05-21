@@ -9,6 +9,7 @@ Runnable today:
 | `std.io.readerCapacity(&reader)` | `usize` | Reports reader storage capacity. |
 | `std.io.writerCapacity(&writer)` | `usize` | Reports writer storage capacity. |
 | `std.io.copy(dst, src)` | `usize` | Copies bytes into caller-owned mutable storage. |
+| `world.in.read(buffer)` | `usize` | Reads bytes from process stdin into a caller-owned mutable byte buffer. Returns `0` on end-of-file. Requires the `stdin` target capability. |
 
 Metadata labels:
 
@@ -38,4 +39,6 @@ pub fun main(world: World) -> Void raises {
 `std.io` is a caller-owned buffer surface, not an ambient process I/O layer.
 
 Process stdin/stdout stays behind explicit capabilities such as `World` and
-`Io`.
+`Io`. The `World.in.read(buffer)` stream is the only process stdin surface and
+is gated on the `stdin` target capability so non-host targets cannot quietly
+inherit ambient input.

@@ -32,6 +32,8 @@ typedef enum {
 
 int zero_world_write(int fd, const char *buf, unsigned len);
 
+unsigned zero_world_read(int fd, char *buf, unsigned len);
+
 int64_t zero_json_parse_bytes(ZeroByteView input);
 
 uint64_t zero_http_fetch_result(

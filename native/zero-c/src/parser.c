@@ -158,6 +158,20 @@ static Token *expect_ident(Parser *parser, const char *message) {
   return NULL;
 }
 
+// Member names after '.' may be a plain identifier or the contextual
+// keyword `in` (used by the World stdin stream `world.in.read(...)`).
+// Only `in` is admitted here so the rest of the grammar keeps treating
+// keywords as reserved.
+static Token *expect_member_name(Parser *parser, const char *message) {
+  if (match_kind(parser, TOK_IDENT)) return previous(parser);
+  if (current(parser)->kind == TOK_KEYWORD && strcmp(current(parser)->text, "in") == 0) {
+    parser->index++;
+    return previous(parser);
+  }
+  fail(parser, message);
+  return NULL;
+}
+
 static Expr *parse_expr(Parser *parser);
 static StmtVec parse_block(Parser *parser);
 static void free_expr(Expr *expr);
@@ -437,7 +451,7 @@ static Expr *parse_postfix(Parser *parser) {
   if (!expr) return NULL;
   while (true) {
     if (match(parser, ".")) {
-      Token *property = expect_ident(parser, "expected field name after '.'");
+      Token *property = expect_member_name(parser, "expected field name after '.'");
       if (!property) return expr;
       Expr *member = new_expr(EXPR_MEMBER, property);
       member->left = expr;

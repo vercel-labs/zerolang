@@ -412,6 +412,7 @@ for (const fixture of [
   "conformance/native/pass/std-mem-arena.0",
   "conformance/native/pass/std-mem-collections.0",
   "conformance/native/pass/owned-byte-buffer.0",
+  "conformance/native/pass/world-stdin.0",
   "conformance/check/pass/generic-function-basic.0",
   "conformance/check/pass/generic-array-inference.0",
   "conformance/check/pass/generic-static-explicit-shadowing.0",
@@ -2236,6 +2237,12 @@ assert.notEqual(targetProcUnsupportedJson.code, 0);
 const targetProcUnsupportedBody = JSON.parse(targetProcUnsupportedJson.stdout);
 assert.equal(targetProcUnsupportedBody.diagnostics[0].code, "TAR002");
 assert.match(targetProcUnsupportedBody.diagnostics[0].actual, /lacks Proc/);
+
+const targetStdinUnsupportedJson = await execFileAsync(zero, ["check", "--json", "--target", "linux-arm64", "conformance/check/fail/target-stdin-unsupported.0"]).catch((error) => error);
+assert.notEqual(targetStdinUnsupportedJson.code, 0);
+const targetStdinUnsupportedBody = JSON.parse(targetStdinUnsupportedJson.stdout);
+assert.equal(targetStdinUnsupportedBody.diagnostics[0].code, "TAR002");
+assert.match(targetStdinUnsupportedBody.diagnostics[0].actual, /lacks stdin/);
 
 const cHeaderGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/c-header-import.0"]);
 const cHeaderGraphBody = JSON.parse(cHeaderGraph.stdout);

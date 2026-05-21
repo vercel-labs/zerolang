@@ -27,6 +27,7 @@ Only the current host target exposes the full hosted capability set:
 - `proc`
 - `rand`
 - `stdio`
+- `stdin`
 - `time`
 
 Non-host targets expose only the capabilities listed for that target in
@@ -89,6 +90,22 @@ The same network surface fails clearly on a target without `net`:
 ```sh
 zero check --json --target linux-musl-x64 conformance/check/fail/target-net-unsupported.0
 ```
+
+## Process Stdin
+
+The `stdin` capability gates `world.in.read(buffer)`, the only public process
+stdin surface. Host targets that ship interactive stdio (`darwin-arm64`,
+`linux-musl-x64`) declare `stdin`; targets without it reject `world.in.read`
+at check time with `TAR002`:
+
+```sh
+zero check --json --target linux-arm64 conformance/check/fail/target-stdin-unsupported.0
+```
+
+`world.in.read` writes bytes into a caller-owned `MutSpan<u8>` buffer and
+returns the number of bytes written; `0` signals end-of-file. It is infallible
+(no `check` prefix required) so the calling function does not need `raises`
+solely to read input.
 
 ## Target-Neutral Memory
 

@@ -1002,6 +1002,22 @@ static bool is_world_stream_write_call(const Expr *expr, Scope *scope) {
   return expr && expr->kind == EXPR_CALL && is_world_stream_write_callee(expr->left, scope);
 }
 
+// Recognizes `world.in.read` where `world` is a `World` capability.
+static bool is_world_stream_read_callee(const Expr *callee, Scope *scope) {
+  if (!callee || callee->kind != EXPR_MEMBER || !callee->text || strcmp(callee->text, "read") != 0) return false;
+  const Expr *stream = callee->left;
+  if (!stream || stream->kind != EXPR_MEMBER || !stream->text) return false;
+  if (strcmp(stream->text, "in") != 0) return false;
+  const Expr *root = stream->left;
+  if (!root || root->kind != EXPR_IDENT || !root->text) return false;
+  const char *root_type = scope_type(scope, root->text);
+  return root_type && strcmp(root_type, "World") == 0;
+}
+
+static bool is_world_stream_read_call(const Expr *expr, Scope *scope) {
+  return expr && expr->kind == EXPR_CALL && is_world_stream_read_callee(expr->left, scope);
+}
+
 static int std_http_error_code(const char *name) {
   if (!name) return -1;
   if (strcmp(name, "std.http.errorNone") == 0) return 0;
@@ -5170,6 +5186,7 @@ static const char *expr_type(CheckContext *ctx, const Program *program, const Ex
       }
       if (expr->left && expr->left->kind == EXPR_MEMBER) {
         if (is_world_stream_write_callee(expr->left, scope)) return "Void";
+        if (is_world_stream_read_callee(expr->left, scope)) return "usize";
         ZCallResolution resolution = {0};
         if (resolve_shape_namespace_call(program, expr, &resolution)) {
           const Shape *shape = resolution.shape;
@@ -5294,6 +5311,7 @@ static const char *expr_type(CheckContext *ctx, const Program *program, const Ex
         if (owned_inner_text(left_type, owned_shape_type, sizeof(owned_shape_type))) left_type = owned_shape_type;
         if (ref_inner_text(left_type, ref_shape_type, sizeof(ref_shape_type))) left_type = ref_shape_type;
         if (strcmp(left_type, "World") == 0 && (strcmp(expr->text, "out") == 0 || strcmp(expr->text, "err") == 0)) return "WorldStream";
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "in") == 0) return "WorldStream";
         const Shape *shape = find_shape_for_type(program, left_type);
         if (shape) {
           const Param *field = find_shape_field(shape, expr->text);
@@ -5651,7 +5669,8 @@ static bool check_call_callee(CheckContext *ctx, const Program *program, const E
     member_name_buf(callee, &name);
     bool std_namespace = strncmp(name.data, "std.", strlen("std.")) == 0;
     zbuf_free(&name);
-    if (std_namespace || is_world_stream_write_callee(callee, scope)) return true;
+    if (std_namespace || is_world_stream_write_callee(callee, scope) ||
+        is_world_stream_read_callee(callee, scope)) return true;
     return check_expr(ctx, program, callee, scope, diag);
   }
   return check_expr(ctx, program, callee, scope, diag);
@@ -5907,6 +5926,9 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
         if (ref_inner_text(left_type, ref_shape_type, sizeof(ref_shape_type))) left_type = ref_shape_type;
         if (strcmp(left_type, "World") == 0 && (strcmp(expr->text, "out") == 0 || strcmp(expr->text, "err") == 0)) {
           return set_diag_detail(diag, 3005, "World stream member cannot be used as a runtime value", expr->line, expr->column, "world.out.write(...) or world.err.write(...)", expr->text, "call write directly on the stream capability");
+        }
+        if (strcmp(left_type, "World") == 0 && strcmp(expr->text, "in") == 0) {
+          return set_diag_detail(diag, 3005, "World stream member cannot be used as a runtime value", expr->line, expr->column, "world.in.read(buffer)", expr->text, "call read directly on the stream capability");
         }
         const Shape *shape = find_shape_for_type(program, left_type);
         if (shape) {
@@ -6213,7 +6235,8 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
         z_call_resolution_free(&builtin_std_resolution);
         bool builtin_member_callee = strncmp(callee_name.data, "std.", strlen("std.")) == 0 ||
           stdlib_member_callee ||
-          is_world_stream_write_callee(expr->left, scope);
+          is_world_stream_write_callee(expr->left, scope) ||
+          is_world_stream_read_callee(expr->left, scope);
         zbuf_free(&callee_name);
         bool namespace_owner = receiver && receiver->kind == EXPR_IDENT && find_shape(program, receiver->text);
         char **receiver_constraint_args = NULL;
@@ -6450,6 +6473,16 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
           return set_diag_detail(diag, 1003, "fallible World stream write must be checked", expr->line, expr->column, "check world.out.write(...)", "unchecked World stream write", "prefix the write with check in a function marked raises");
         }
         set_expr_resolved_type(expr, "Void");
+        return true;
+      }
+      if (is_world_stream_read_call(expr, scope)) {
+        if (expr->args.len != 1) return set_diag_detail(diag, 3004, "World stream read expects one argument", expr->line, expr->column, "world.in.read(buffer)", "wrong argument count", "pass exactly one mutable byte buffer argument");
+        if (!check_expr_expected(ctx, program, expr->args.items[0], scope, diag, "MutSpan<u8>")) return false;
+        const char *actual = expr_type(ctx, program, expr->args.items[0], scope);
+        if (!types_compatible_in_scope(program, scope, "MutSpan<u8>", actual)) {
+          return set_diag_detail(diag, 3005, "World stream read argument has incompatible type", expr->args.items[0]->line, expr->args.items[0]->column, "MutSpan<u8>", actual, "pass a mutable byte buffer to receive input bytes");
+        }
+        set_expr_resolved_type(expr, "usize");
         return true;
       }
       {

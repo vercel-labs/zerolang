@@ -6,10 +6,12 @@
 #include <io.h>
 typedef int ZeroWriteResult;
 #define ZERO_RUNTIME_WRITE _write
+#define ZERO_RUNTIME_READ _read
 #else
 #include <unistd.h>
 typedef ssize_t ZeroWriteResult;
 #define ZERO_RUNTIME_WRITE write
+#define ZERO_RUNTIME_READ read
 #endif
 
 int zero_world_write(int fd, const char *buf, unsigned len) {
@@ -28,6 +30,18 @@ int zero_world_write(int fd, const char *buf, unsigned len) {
     remaining -= (unsigned)written;
   }
   return 0;
+}
+
+unsigned zero_world_read(int fd, char *buf, unsigned len) {
+  if (len == 0 || !buf) return 0;
+  for (;;) {
+    ZeroWriteResult got = ZERO_RUNTIME_READ(fd, buf, len);
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      return 0;
+    }
+    return (unsigned)got;
+  }
 }
 
 typedef struct {
