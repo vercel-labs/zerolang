@@ -1,0 +1,16 @@
+test "frame time is positive" {
+    let frame_time: f64 = 1.0 / 60.0
+    let threshold: f64 = 1.0 / 65.0
+    expect(frame_time> threshold)
+}
+
+test "float comparison ordering" {
+    let half: f64 = 1.0 / 2.0
+    let third: f64 = 1.0 / 3.0
+    expect(half> third)
+}
+
+test "float arithmetic identities" {
+    let a: f64 = 2.5 + 1.5
+    expect(a == 4.0)
+}
