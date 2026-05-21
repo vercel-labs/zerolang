@@ -2120,7 +2120,8 @@ static void append_package_cache_audit_json(ZBuf *buf, const SourceInput *input,
 
 static void append_self_host_routing_json(ZBuf *buf, const char *command_name, const char *emit_kind, const Program *program, const CapabilitySummary *caps, const ZTargetInfo *target);
 static void append_target_capability_facts_json(ZBuf *buf, const ZTargetInfo *target, const CapabilitySummary *caps);
-static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command);
+static bool append_target_readiness_json(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command);
+static void append_run_support_json(ZBuf *buf, const ZTargetInfo *target, const Command *command, bool readiness_ok);
 static const char *emit_kind_name(EmitKind emit);
 static void append_backend_blocker_json(ZBuf *buf, const ZBackendBlocker *blocker);
 static void complete_backend_blocker_diag(ZDiag *diag, const ZTargetInfo *target, const Command *command, const char *emit_kind, const char *stage);
@@ -2234,8 +2235,14 @@ static void print_check_json_success(const char *path, SourceInput *input, const
   append_hash_json(&buf, "manifestHash", fnv1a_text(manifest ? manifest : ""));
   zbuf_append(&buf, "\n  },\n  \"compileTime\": ");
   append_compile_time_json(&buf, program, input, target);
+  ZBuf readiness;
+  zbuf_init(&readiness);
+  bool readiness_ok = append_target_readiness_json(&readiness, input, program, target, command);
   zbuf_append(&buf, ",\n  \"targetReadiness\": ");
-  append_target_readiness_json(&buf, input, program, target, command);
+  zbuf_append(&buf, readiness.data ? readiness.data : "{}");
+  zbuf_append(&buf, ",\n  \"runSupport\": ");
+  append_run_support_json(&buf, target, command, readiness_ok);
+  zbuf_free(&readiness);
   zbuf_append(&buf, ",\n  \"compilerPhases\": ");
   append_compiler_phases_json(&buf, input);
   zbuf_append(&buf, ",\n  \"compilerCaches\": ");
@@ -8445,7 +8452,7 @@ static void append_target_readiness_diagnostic_json(ZBuf *buf, const char *path,
   zbuf_append(buf, ",\"related\":[]}");
 }
 
-static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command) {
+static bool append_target_readiness_json(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command) {
   ZDiag diag = {0};
   IrProgram ir = {0};
   bool ready = true;
@@ -8493,6 +8500,43 @@ static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Pr
   if (!ready) append_target_readiness_diagnostic_json(buf, input ? input->source_file : NULL, &diag);
   zbuf_append(buf, "]}");
   z_free_ir_program(&ir);
+  return ready;
+}
+
+static void append_run_support_json(ZBuf *buf, const ZTargetInfo *target, const Command *command, bool readiness_ok) {
+  const char *emit_kind = emit_kind_name(command ? command->emit : EMIT_EXE);
+  bool host_target = z_target_is_host(target);
+  bool exe_emit = command ? command->emit == EMIT_EXE : true;
+  bool runnable_on_host = readiness_ok && host_target && exe_emit;
+  zbuf_append(buf, "{\"schemaVersion\":1,\"checkOk\":true,\"target\":");
+  append_json_string(buf, target && target->name ? target->name : z_host_target());
+  zbuf_append(buf, ",\"hostTarget\":");
+  append_json_string(buf, z_host_target());
+  zbuf_append(buf, ",\"emit\":");
+  append_json_string(buf, emit_kind);
+  zbuf_appendf(buf, ",\"targetReadinessOk\":%s,\"runnableOnHost\":%s,\"zeroRunExpected\":%s",
+               readiness_ok ? "true" : "false",
+               runnable_on_host ? "true" : "false",
+               runnable_on_host ? "true" : "false");
+  zbuf_append(buf, ",\"supportLevel\":");
+  if (runnable_on_host) {
+    append_json_string(buf, "run-host");
+  } else if (readiness_ok) {
+    append_json_string(buf, exe_emit ? "build-cross" : "build-artifact");
+  } else {
+    append_json_string(buf, "check-only");
+  }
+  zbuf_append(buf, ",\"reason\":");
+  if (!readiness_ok) {
+    append_json_string(buf, "language check passed, but target readiness reported backend, target, or toolchain blockers");
+  } else if (!exe_emit) {
+    append_json_string(buf, "selected emit kind is not an executable run target");
+  } else if (!host_target) {
+    append_json_string(buf, "selected target differs from the host; build the artifact and run it on a matching host");
+  } else {
+    append_json_string(buf, "selected host executable is ready for zero run");
+  }
+  zbuf_append(buf, "}");
 }
 
 static void append_release_matrix_target_support_json(ZBuf *buf) {
