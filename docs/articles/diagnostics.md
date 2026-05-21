@@ -123,7 +123,7 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `OWN001`: owned value use after move, or generic containers that would own unconstrained generic payloads
 - `TYP010`: conditions must be `Bool`
 - `TYP002`: type mismatch in assignments, literals, returns, or shape defaults
-- `TYP011`: `null` requires a `Maybe<T>` context
+- `TYP011`: `null` or `Maybe.none` requires a `Maybe<T>` context
 - `TYP012`: `break` requires an enclosing loop
 - `TYP013`: `continue` requires an enclosing loop
 - `TYP014`: range loop bounds must be integer-compatible
