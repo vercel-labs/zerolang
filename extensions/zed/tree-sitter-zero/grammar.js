@@ -214,7 +214,15 @@ module.exports = grammar({
 
     shape_literal: ($) => prec(PREC.call, seq($.identifier, "{", optional(commaSep($.argument)), optional(","), "}")),
 
-    array_literal: ($) => seq("[", optional(commaSep($._expression)), optional(","), "]"),
+    array_literal: ($) =>
+      seq(
+        "[",
+        choice(
+          seq(optional(commaSep($._expression)), optional(",")),
+          seq(field("value", $._expression), ";", field("count", $._expression)),
+        ),
+        "]",
+      ),
 
     unary_expression: ($) => prec(PREC.unary, seq(choice("!", "-", "&", "*"), $._expression)),
 
