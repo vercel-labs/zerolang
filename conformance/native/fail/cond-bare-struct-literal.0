@@ -1,0 +1,9 @@
+shape Box {
+    n: i32,
+}
+
+fun main(world: World) -> Void {
+    while Box { n: 1 } == Box { n: 2 } {
+        return
+    }
+}

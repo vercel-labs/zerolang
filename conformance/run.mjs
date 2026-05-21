@@ -469,6 +469,8 @@ for (const fixture of [
   "conformance/native/pass/trailing-comma-params.0",
   "conformance/native/pass/trailing-comma-array.0",
   "conformance/native/pass/trailing-comma-struct.0",
+  "conformance/native/pass/cond-ident-before-block.0",
+  "conformance/native/pass/cond-paren-struct-literal.0",
 ]) {
   await execFileAsync(zero, ["check", fixture]);
 }
@@ -979,6 +981,7 @@ for (const [fixture, message] of [
   ["conformance/check/fail/parse-missing-brace.0", /expected '\}'/],
   ["conformance/check/fail/parse-missing-comma.0", /expected '\{'/],
   ["conformance/check/fail/parse-bad-type-args.0", /expected '\}'/],
+  ["conformance/native/fail/cond-bare-struct-literal.0", /shape literal not allowed here/],
 ]) {
   const parseFailure = await execFileAsync(zero, ["check", "--json", fixture]).catch((error) => error);
   assert.notEqual(parseFailure.code, 0);

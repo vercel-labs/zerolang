@@ -2979,6 +2979,16 @@ static const ExplainInfo explain_infos[] = {
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",
     "zero build --emit obj --target linux-x64 examples/direct-call-add.0",
   },
+  {
+    "PAR100",
+    "parser",
+    "Parser rejected the source",
+    "The parser could not produce an AST. The diagnostic message names the construct that did not match the grammar.",
+    "Zero keeps the surface syntax small and explicit; ambiguous or malformed input is reported eagerly instead of being heuristically repaired.",
+    "Adjust the source so it matches the language reference. For shape literals in `if`/`while`/`for`/`match` headers, wrap the literal in parentheses so the `{` that follows opens the body block.",
+    "while Box { n: 1 } == Box { n: 2 } {\n    return\n}",
+    "while (Box { n: 1 }) == (Box { n: 2 }) {\n    return\n}",
+  },
   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
 };
 

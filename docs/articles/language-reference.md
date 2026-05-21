@@ -428,6 +428,18 @@ if value == 42 {
 
 Conditions must be `Bool`; integers and pointers do not coerce to truthy or falsey values.
 
+Chain branches with `else if`:
+
+```zero
+if value == 1 {
+    check world.out.write("one\n")
+} else if value == 2 {
+    check world.out.write("two\n")
+} else {
+    check world.out.write("other\n")
+}
+```
+
 Use `while` for loops:
 
 ```zero
@@ -450,6 +462,31 @@ for index in 0..4 {
 Use `break` to exit the nearest loop and `continue` to skip to the next iteration.
 
 Use `return` to exit a function with a value.
+
+Inside `if`, `while`, `for`, and `match` headers the `{` that follows the
+condition opens the body block, so a bare shape literal there would be
+ambiguous. Wrap the shape literal in parentheses when you need it in a
+condition:
+
+```zero
+if compare((Point { x: 1, y: 2 }), origin) {
+    check world.out.write("at origin\n")
+}
+```
+
+Comma-separated lists — function parameters and arguments, generic
+parameters and type arguments, array literals, shape-literal field
+inits, and `raises { ... }` error sets — accept a single optional
+trailing comma:
+
+```zero
+fun add(left: i32, right: i32,) -> i32 {
+    return left + right
+}
+
+let nums: [4]i32 = [10, 20, 30, 40,]
+let point = Point { x: 1, y: 2, }
+```
 
 ## Effects And Errors
 

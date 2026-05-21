@@ -8,6 +8,15 @@ typedef struct {
   TokenVec *tokens;
   size_t index;
   ZDiag *diag;
+  /* When true, parsers must reject a top-level shape literal because the
+     surrounding context expects a block-introducing '{' (if/while/for/match
+     conditions). Parenthesized sub-expressions reset this flag so users can
+     opt in with explicit parens. */
+  bool no_struct_literal;
+  /* When true, subsequent calls to fail()/fail_at() become no-ops so a
+     precise upstream diagnostic is preserved instead of being overwritten by
+     a cascade of follow-on parser errors. */
+  bool diag_sticky;
 } Parser;
 
 static void *parser_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
@@ -122,6 +131,7 @@ static bool match_kind(Parser *parser, TokenKind kind) {
 }
 
 static bool fail(Parser *parser, const char *message) {
+  if (parser->diag_sticky) return false;
   parser->diag->code = 100;
   parser->diag->line = current(parser)->line;
   parser->diag->column = current(parser)->column;
@@ -130,6 +140,7 @@ static bool fail(Parser *parser, const char *message) {
 }
 
 static bool fail_at(Parser *parser, Token *token, const char *message) {
+  if (parser->diag_sticky) return false;
   parser->diag->code = 100;
   parser->diag->line = token ? token->line : current(parser)->line;
   parser->diag->column = token ? token->column : current(parser)->column;
@@ -159,6 +170,7 @@ static Token *expect_ident(Parser *parser, const char *message) {
 }
 
 static Expr *parse_expr(Parser *parser);
+static Expr *parse_cond_expr(Parser *parser);
 static StmtVec parse_block(Parser *parser);
 static void free_expr(Expr *expr);
 
@@ -359,7 +371,49 @@ static Expr *new_expr(ExprKind kind, Token *token) {
 static Expr *parse_primary(Parser *parser) {
   Token *token = current(parser);
   if (match_kind(parser, TOK_IDENT)) {
-    if (token->text[0] >= 'A' && token->text[0] <= 'Z' && check(parser, "{")) {
+    if (parser->no_struct_literal && token->text[0] >= 'A' && token->text[0] <= 'Z' && check(parser, "{")) {
+      /* Detect an unambiguous shape-literal attempt in a control-flow
+         condition (identifier followed by '{' then 'name:'). Emit a
+         dedicated diagnostic suggesting parentheses; otherwise treat the
+         identifier as a plain reference so the '{' opens the block. */
+      size_t lookahead = parser->index;
+      if (lookahead + 1 < parser->tokens->len &&
+          parser->tokens->items[lookahead].text[0] == '{' &&
+          parser->tokens->items[lookahead + 1].kind == TOK_IDENT &&
+          lookahead + 2 < parser->tokens->len &&
+          strcmp(parser->tokens->items[lookahead + 2].text, ":") == 0) {
+        /* Skip over the shape literal body so the surrounding block-opener
+           '{' is recognised cleanly. We swallow tokens until the matching
+           '}' is consumed. */
+        parser->index++; /* consume opening '{' */
+        int depth = 1;
+        while (current(parser)->kind != TOK_EOF && depth > 0) {
+          if (check(parser, "{")) {
+            depth++;
+            parser->index++;
+          } else if (check(parser, "}")) {
+            depth--;
+            parser->index++;
+          } else {
+            parser->index++;
+          }
+        }
+        /* Report after the skip so this diagnostic is the final one. */
+        parser->diag->code = 100;
+        parser->diag->line = token->line;
+        parser->diag->column = token->column;
+        snprintf(parser->diag->message, sizeof(parser->diag->message),
+                 "shape literal not allowed here; wrap it in parentheses");
+        snprintf(parser->diag->help, sizeof(parser->diag->help),
+                 "control-flow conditions reserve '{' for the block body; write '(%s { ... })' to use a shape literal",
+                 token->text);
+        parser->diag_sticky = true;
+        Expr *expr = new_expr(EXPR_IDENT, token);
+        expr->text = z_strdup(token->text);
+        return expr;
+      }
+    }
+    if (!parser->no_struct_literal && token->text[0] >= 'A' && token->text[0] <= 'Z' && check(parser, "{")) {
       parser->index++;
       Expr *expr = new_expr(EXPR_SHAPE_LITERAL, token);
       expr->text = z_strdup(token->text);
@@ -410,11 +464,16 @@ static Expr *parse_primary(Parser *parser) {
     return new_expr(EXPR_NULL, previous(parser));
   }
   if (match(parser, "(")) {
+    bool saved = parser->no_struct_literal;
+    parser->no_struct_literal = false;
     Expr *expr = parse_expr(parser);
     expect(parser, ")", "expected ')' after expression");
+    parser->no_struct_literal = saved;
     return expr;
   }
   if (match(parser, "[")) {
+    bool saved = parser->no_struct_literal;
+    parser->no_struct_literal = false;
     Expr *expr = new_expr(EXPR_ARRAY_LITERAL, token);
     if (!match(parser, "]")) {
       Expr *first = parse_expr(parser);
@@ -432,6 +491,7 @@ static Expr *parse_primary(Parser *parser) {
       }
       expect(parser, "]", "expected ']' after array literal");
     }
+    parser->no_struct_literal = saved;
     return expr;
   }
   fail(parser, "expected expression");
@@ -457,6 +517,8 @@ static Expr *parse_postfix(Parser *parser) {
     }
     if (match(parser, "[")) {
       Token *index_token = previous(parser);
+      bool saved = parser->no_struct_literal;
+      parser->no_struct_literal = false;
       if (match(parser, "..")) {
         Expr *slice = new_expr(EXPR_SLICE, index_token);
         slice->left = expr;
@@ -465,6 +527,7 @@ static Expr *parse_postfix(Parser *parser) {
         push_expr(&slice->args, end);
         expect(parser, "]", "expected ']' after slice expression");
         expr = slice;
+        parser->no_struct_literal = saved;
         continue;
       }
       Expr *start = parse_expr(parser);
@@ -476,6 +539,7 @@ static Expr *parse_postfix(Parser *parser) {
         push_expr(&slice->args, end);
         expect(parser, "]", "expected ']' after slice expression");
         expr = slice;
+        parser->no_struct_literal = saved;
         continue;
       }
       Expr *index = new_expr(EXPR_INDEX, index_token);
@@ -483,11 +547,14 @@ static Expr *parse_postfix(Parser *parser) {
       index->right = start;
       expect(parser, "]", "expected ']' after index expression");
       expr = index;
+      parser->no_struct_literal = saved;
       continue;
     }
     if (match(parser, "(")) {
       Expr *call = new_expr(EXPR_CALL, expr ? &parser->tokens->items[parser->index - 1] : current(parser));
       call->left = expr;
+      bool saved = parser->no_struct_literal;
+      parser->no_struct_literal = false;
       if (!match(parser, ")")) {
         do {
           if (check(parser, ")")) break;
@@ -497,6 +564,7 @@ static Expr *parse_postfix(Parser *parser) {
         expect(parser, ")", "expected ')' after arguments");
       }
       expr = call;
+      parser->no_struct_literal = saved;
       continue;
     }
     return expr;
@@ -542,6 +610,19 @@ static Expr *parse_binary(Parser *parser, int min_precedence) {
     binary->text = z_strdup(op->text);
     left = binary;
   }
+}
+
+/* parse_cond_expr is used for the head expression in control-flow forms
+   (if/while/for/match) where '{' is reserved for the body block. A bare
+   shape literal `Foo { ... }` would otherwise consume the body opener and
+   yield a confusing diagnostic; this entry point flips a parser flag so
+   the primary parser can detect that case and surface a precise error. */
+static Expr *parse_cond_expr(Parser *parser) {
+  bool saved = parser->no_struct_literal;
+  parser->no_struct_literal = true;
+  Expr *expr = parse_expr(parser);
+  parser->no_struct_literal = saved;
+  return expr;
 }
 
 static Expr *parse_expr(Parser *parser) {
@@ -627,7 +708,7 @@ static Stmt *parse_statement(Parser *parser) {
   }
   if (match(parser, "if")) {
     Stmt *stmt = new_stmt(STMT_IF, start);
-    stmt->expr = parse_expr(parser);
+    stmt->expr = parse_cond_expr(parser);
     stmt->then_body = parse_block(parser);
     if (match(parser, "else")) {
       if (check(parser, "if")) {
@@ -641,7 +722,7 @@ static Stmt *parse_statement(Parser *parser) {
   }
   if (match(parser, "while")) {
     Stmt *stmt = new_stmt(STMT_WHILE, start);
-    stmt->expr = parse_expr(parser);
+    stmt->expr = parse_cond_expr(parser);
     stmt->then_body = parse_block(parser);
     return stmt;
   }
@@ -651,9 +732,9 @@ static Stmt *parse_statement(Parser *parser) {
     if (!name) return stmt;
     stmt->name = z_strdup(name->text);
     expect(parser, "in", "expected 'in' after loop binding");
-    stmt->expr = parse_expr(parser);
+    stmt->expr = parse_cond_expr(parser);
     expect(parser, "..", "expected '..' in range loop");
-    stmt->range_end = parse_expr(parser);
+    stmt->range_end = parse_cond_expr(parser);
     stmt->then_body = parse_block(parser);
     return stmt;
   }
@@ -665,7 +746,7 @@ static Stmt *parse_statement(Parser *parser) {
   }
   if (match(parser, "match")) {
     Stmt *stmt = new_stmt(STMT_MATCH, start);
-    stmt->expr = parse_expr(parser);
+    stmt->expr = parse_cond_expr(parser);
     expect(parser, "{", "expected '{' before match arms");
     while (!check(parser, "}") && current(parser)->kind != TOK_EOF && parser->diag->code == 0) {
       match(parser, ".");
@@ -994,7 +1075,7 @@ static UseImport parse_use_import(Parser *parser) {
 }
 
 Program z_parse(TokenVec *tokens, ZDiag *diag) {
-  Parser parser = {tokens, 0, diag};
+  Parser parser = {tokens, 0, diag, false, false};
   Program program = {0};
   while (current(&parser)->kind != TOK_EOF && diag->code == 0) {
     if (check(&parser, "use")) {
