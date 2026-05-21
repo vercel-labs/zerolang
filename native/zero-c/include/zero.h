@@ -75,6 +75,57 @@ typedef struct {
 } TokenVec;
 
 typedef enum {
+  Z_ROW_TOKEN_WORD,
+  Z_ROW_TOKEN_STRING,
+  Z_ROW_TOKEN_CHAR,
+  Z_ROW_TOKEN_NUMBER,
+  Z_ROW_TOKEN_SYMBOL,
+  Z_ROW_TOKEN_COMMENT,
+  Z_ROW_TOKEN_NEWLINE,
+  Z_ROW_TOKEN_INDENT,
+  Z_ROW_TOKEN_DEDENT,
+  Z_ROW_TOKEN_EOF
+} ZRowTokenKind;
+
+typedef struct {
+  ZRowTokenKind kind;
+  char *text;
+  int line;
+  int column;
+  size_t offset;
+  size_t length;
+} ZRowToken;
+
+typedef struct {
+  ZRowToken *items;
+  size_t len;
+  size_t cap;
+} ZRowTokenVec;
+
+typedef struct {
+  size_t row_count;
+  size_t comment_count;
+  size_t max_indent_depth;
+} ZRowSyntaxFacts;
+
+#define Z_ROW_NO_PARENT ((size_t)-1)
+
+typedef struct {
+  size_t parent;
+  size_t first_token;
+  size_t token_count;
+  size_t indent_depth;
+  int line;
+  int column;
+} ZRowNode;
+
+typedef struct {
+  ZRowNode *items;
+  size_t len;
+  size_t cap;
+} ZRowTree;
+
+typedef enum {
   EXPR_IDENT,
   EXPR_STRING,
   EXPR_CHAR,
@@ -790,6 +841,11 @@ bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const ch
 
 TokenVec z_tokenize(const char *source, ZDiag *diag);
 void z_free_tokens(TokenVec *tokens);
+ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag);
+bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZDiag *diag);
+bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag);
+void z_free_row_tree(ZRowTree *tree);
+void z_free_row_tokens(ZRowTokenVec *tokens);
 
 Program z_parse(TokenVec *tokens, ZDiag *diag);
 void z_free_program(Program *program);
