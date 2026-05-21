@@ -307,6 +307,7 @@ for (const fixture of [
   "conformance/native/pass/std-json-inline-bytes.0",
   "conformance/native/pass/std-json-duplicate-keys.0",
   "conformance/native/pass/std-json-allocator-capacity.0",
+  "conformance/native/pass/std-json-nav.0",
   "conformance/native/pass/std-platform-basics.0",
   "conformance/native/pass/std-mem-arrays.0",
   "conformance/native/pass/array-repeat-literal.0",

@@ -12,6 +12,15 @@ Runnable today:
 | `std.json.streamTokensBytes(bytes)` | `usize` | Counts stream tokens from a `Span<u8>` payload. |
 | `std.json.writeString(buffer, text)` | `Maybe<String>` | Writes an escaped JSON string into caller storage. |
 | `std.json.decodeBoundary()` | `String` | Documents the typed decode boundary exposed by current metadata. |
+| `std.json.root(doc)` | `JsonNode` | Returns the root node of a parsed document over the existing arena tree. |
+| `std.json.kind(node)` | `JsonKind` | Reports the node kind (object, array, string, number, bool, or null). |
+| `std.json.get(node, key)` | `Maybe<JsonNode>` | Looks up an object member by `Span<u8>` key; `null` when absent. |
+| `std.json.at(node, i)` | `Maybe<JsonNode>` | Indexes an array element; `null` when out of range. |
+| `std.json.len(node)` | `usize` | Element count for arrays or member count for objects. |
+| `std.json.string(node, out)` | `Maybe<usize>` | Decodes an unescaped UTF-8 string (including `\uXXXX` and surrogate pairs) into caller storage; returns the byte length written. |
+| `std.json.int(node)` | `Maybe<i64>` | Reads an integer number node; `null` when not an integer. |
+| `std.json.float(node)` | `Maybe<f64>` | Reads a floating-point number node; `null` when not a number. |
+| `std.json.bool(node)` | `Maybe<Bool>` | Reads a boolean node; `null` when not a bool. |
 
 Metadata labels:
 
@@ -53,12 +62,47 @@ pub fun main(world: World) -> Void raises {
 }
 ```
 
+Typed navigation over a parsed document:
+
+```zero
+pub fun main(world: World) -> Void raises {
+    let mut arena_buf: [256]u8 = [0_u8; 256]
+    let mut arena = std.mem.fixedBufAlloc(arena_buf)
+    let parsed = std.json.parse(arena, "{\"choices\":[{\"message\":{\"content\":\"hi\\n\"}}]}")
+    if parsed.has {
+        let root = std.json.root(parsed.value)
+        let choices = std.json.get(root, std.mem.span("choices"))
+        if choices.has {
+            let first = std.json.at(choices.value, 0)
+            if first.has {
+                let message = std.json.get(first.value, std.mem.span("message"))
+                if message.has {
+                    let content = std.json.get(message.value, std.mem.span("content"))
+                    let mut text: [16]u8 = [0_u8; 16]
+                    if content.has && std.json.string(content.value, text).has {
+                        check world.out.write("json nav ok\n")
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
 ## Design Notes
 
 JSON should not fake allocation-free semantics. Validation and streaming stay
 allocation-free.
 
-Parsing into an owned document requires an explicit allocator. The current
-`JsonDoc` value is opaque; examples inspect `Maybe.has` and use token streaming
-for allocation-free summaries. String and byte-span entry points share the same
-JSON subset.
+Parsing into an owned document requires an explicit allocator. Typed navigation
+(`root`/`kind`/`get`/`at`/`len`/`string`/`int`/`float`/`bool`) reads the existing
+arena-backed tree in place rather than re-parsing; `string` unescapes `\uXXXX`
+escapes and surrogate pairs into caller storage. String and byte-span entry
+points share the same JSON subset.
+
+Navigation accessor signatures use aggregate values (`JsonNode`, `Maybe<...>`,
+`Span<u8>`, `MutSpan<u8>`) whose ABI exceeds the current direct-backend
+register-width limit, so native executable lowering is deferred to the separate
+aggregate-ABI work. The accessor surface is fully type-checked today; the
+`std-json-nav.0` conformance fixture runs at host check level alongside
+`std-platform-basics.0`.

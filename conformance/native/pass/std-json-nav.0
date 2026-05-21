@@ -1,0 +1,43 @@
+pub fun main(world: World) -> Void raises {
+    let payload = "{\"choices\":[{\"message\":{\"content\":\"hi\\n\"}}],\"emoji\":\"\\uD83D\\uDE00\"}"
+    let mut arena_buf: [256]u8 = [0_u8; 256]
+    let mut arena = std.mem.fixedBufAlloc(arena_buf)
+    let parsed = std.json.parse(arena, payload)
+    if parsed.has {
+        let doc = parsed.value
+        let root = std.json.root(doc)
+        let choices = std.json.get(root, std.mem.span("choices"))
+        if choices.has {
+            let first = std.json.at(choices.value, 0)
+            if first.has {
+                let message = std.json.get(first.value, std.mem.span("message"))
+                if message.has {
+                    let content = std.json.get(message.value, std.mem.span("content"))
+                    if content.has {
+                        let mut text_buf: [16]u8 = [0_u8; 16]
+                        let written = std.json.string(content.value, text_buf)
+                        let emoji = std.json.get(root, std.mem.span("emoji"))
+                        if written.has &&
+                            written.value == 3 &&
+                            text_buf[0] == 104_u8 &&
+                            text_buf[1] == 105_u8 &&
+                            text_buf[2] == 10_u8 &&
+                            std.json.len(choices.value) == 1 &&
+                            emoji.has {
+                            let mut emoji_buf: [8]u8 = [0_u8; 8]
+                            let emoji_written = std.json.string(emoji.value, emoji_buf)
+                            if emoji_written.has &&
+                                emoji_written.value == 4 &&
+                                emoji_buf[0] == 240_u8 &&
+                                emoji_buf[1] == 159_u8 &&
+                                emoji_buf[2] == 152_u8 &&
+                                emoji_buf[3] == 128_u8 {
+                                check world.out.write("json nav ok\n")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
