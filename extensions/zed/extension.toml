@@ -9,3 +9,7 @@ repository = "https://github.com/zerolang/zero"
 [grammars.zero]
 repository = "file://tree-sitter-zero"
 rev = "main"
+
+[language_servers.zero-lsp]
+name = "Zero Language Server"
+languages = ["Zero"]

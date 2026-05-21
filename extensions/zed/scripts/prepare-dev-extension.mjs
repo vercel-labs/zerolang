@@ -24,8 +24,14 @@ await rm(grammarRepoDir, { force: true, recursive: true });
 await mkdir(outDir, { recursive: true });
 await mkdir(grammarRepoDir, { recursive: true });
 
-for (const path of ["languages", "snippets", "README.md"]) {
+for (const path of ["languages", "snippets", "README.md", "Cargo.toml", "src"]) {
   await cp(join(extensionDir, path), join(outDir, path), { recursive: true });
+}
+
+try {
+  await cp(join(extensionDir, "Cargo.lock"), join(outDir, "Cargo.lock"));
+} catch {
+  // Optional until the first `cargo build` generates a lockfile.
 }
 
 for (const path of ["grammar.js", "package.json", "tree-sitter.json", "src", "test"]) {

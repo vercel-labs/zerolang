@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "prepare:dev": "node scripts/prepare-dev-extension.mjs",
+    "build:wasm": "cargo build --target wasm32-wasip2 --release",
     "grammar:test": "npm install --prefix tree-sitter-zero && sh -c 'cd tree-sitter-zero && npx tree-sitter test'",
     "test": "node --test tests/*.test.mjs && npm run grammar:test"
   },

@@ -60,6 +60,14 @@
 (call_expression function: (identifier) @function)
 (call_expression function: (member_expression property: (identifier) @function.method))
 
+(parameter name: (identifier) @variable.parameter)
+(field_declaration name: (identifier) @property)
+(let_statement name: (identifier) @variable)
+(var_statement name: (identifier) @variable)
+(match_pattern name: (identifier) @variable)
+
+(member_expression property: (identifier) @property)
+
 [
   "->"
   "=>"

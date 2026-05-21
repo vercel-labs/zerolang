@@ -55,11 +55,7 @@
   },
   "GET route": {
     "prefix": "get",
-    "body": [
-      "pub fun GET(request: Request, world: World) -> Response {",
-      "    $0",
-      "}"
-    ],
+    "body": ["pub fun GET(request: Request, world: World) -> Response {", "    $0", "}"],
     "description": "Web GET handler"
   }
 }

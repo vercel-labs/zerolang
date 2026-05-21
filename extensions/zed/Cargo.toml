@@ -1,0 +1,12 @@
+[package]
+name = "zero-zed-extension"
+version = "0.1.3"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/extension.rs"
+
+[dependencies]
+zed_extension_api = "0.7.0"

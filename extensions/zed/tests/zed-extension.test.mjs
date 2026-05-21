@@ -59,6 +59,21 @@ describe("Zed extension manifest", () => {
     assert.deepEqual(config.block_comment, ["/*", "*/"]);
   });
 
+  it("declares Zero language server metadata", async () => {
+    const manifest = toml.parse(await readFile("extension.toml", "utf8"));
+
+    assert.equal(manifest.language_servers["zero-lsp"].name, "Zero Language Server");
+    assert.deepEqual(manifest.language_servers["zero-lsp"].languages, ["Zero"]);
+  });
+
+  it("highlights parameters and local bindings", async () => {
+    const highlights = await readFile("languages/zero/highlights.scm", "utf8");
+
+    assert.match(highlights, /@variable\.parameter/);
+    assert.match(highlights, /@variable/);
+    assert.match(highlights, /@property/);
+  });
+
   it("parses representative Zero files without tree-sitter ERROR nodes", async () => {
     const grammarDir = join(extensionDir, "tree-sitter-zero");
     const sampleFiles = [
