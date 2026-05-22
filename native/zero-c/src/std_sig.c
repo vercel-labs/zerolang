@@ -141,6 +141,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.fs.exists", "Bool", 1, "fs", "host", "no allocation", true},
   {"std.fs.readBytes", "Maybe<usize>", 2, "fs", "host", "writes caller buffer", true},
   {"std.fs.writeBytes", "Maybe<usize>", 2, "fs", "host", "no allocation", true},
+  {"std.fs.appendBytes", "Maybe<usize>", 2, "fs", "host", "no allocation", true},
   {"std.fs.isDir", "Bool", 1, "fs", "host", "no allocation", true},
   {"std.fs.makeDir", "Bool", 1, "fs", "host", "creates a directory", true},
   {"std.fs.removeDir", "Bool", 1, "fs", "host", "removes a directory", true},

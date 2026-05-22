@@ -1977,6 +1977,24 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if (strcmp(callee_name, "std.fs.appendBytes") == 0 && expr->args.len == 2) {
+        IrValue *path = NULL;
+        IrValue *bytes = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &path) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &bytes)) {
+          ir_free_value(path);
+          ir_free_value(bytes);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_FS_APPEND_BYTES_PATH, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->left = path;
+        value->right = bytes;
+        value->element_type = IR_TYPE_USIZE;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (strcmp(callee_name, "std.fs.readBytes") == 0 && expr->args.len == 2) {
         IrValue *path = NULL;
         IrValue *buf = NULL;

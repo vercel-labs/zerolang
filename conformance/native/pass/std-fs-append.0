@@ -1,0 +1,10 @@
+pub fn main Void world World !
+  let first [4]u8 [104, 101, 108, 111]
+  let second [3]u8 [10, 119, 111]
+  mut read_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let _r0 std.fs.remove ".zero/conformance/std-fs-append.bin"
+  let a std.fs.appendBytes ".zero/conformance/std-fs-append.bin" first
+  let b std.fs.appendBytes ".zero/conformance/std-fs-append.bin" second
+  let n std.fs.read ".zero/conformance/std-fs-append.bin" read_buf
+  if && (&& (&& (&& (&& a.has b.has) (== n 7)) (== read_buf[0] 104_u8)) (== read_buf[3] 111_u8)) (&& (== read_buf[4] 10_u8) (== read_buf[5] 119_u8))
+    check world.out.write "fs append ok\n"

@@ -1145,6 +1145,7 @@ static const char *std_call_arg_type(const char *name, size_t index) {
   }
   if (strcmp(name, "std.fs.readBytes") == 0) return index == 0 ? "String" : "MutSpan<u8>";
   if (strcmp(name, "std.fs.writeBytes") == 0) return index == 0 ? "String" : "Span<u8>";
+  if (strcmp(name, "std.fs.appendBytes") == 0) return index == 0 ? "String" : "Span<u8>";
   if (strcmp(name, "std.fs.exists") == 0) return "String";
   if (strcmp(name, "std.fs.isDir") == 0) return "String";
   if (strcmp(name, "std.fs.makeDir") == 0) return "String";

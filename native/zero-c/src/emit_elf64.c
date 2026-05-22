@@ -1484,8 +1484,10 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return true;
     }
     case IR_VALUE_FS_WRITE_PATH:
-    case IR_VALUE_FS_WRITE_BYTES_PATH: {
-      if (!elf_emit_openat_path(code, fun, value->left, 577, 0644, ctx, diag)) return false;
+    case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH: {
+      unsigned open_flags = (value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) ? 1089u : 577u;
+      if (!elf_emit_openat_path(code, fun, value->left, open_flags, 0644, ctx, diag)) return false;
       elf_append_u8(code, 0x48);
       elf_append_u8(code, 0x85);
       elf_append_u8(code, 0xc0);

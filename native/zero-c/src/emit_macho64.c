@@ -673,6 +673,164 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       if (!fun->locals[value->local_index].is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field load requires record local", value->line, value->column, "non-record local");
       macho_emit_load_field(text, fun, reg, value->local_index, value->field_offset, value->type, frame_size);
       return true;
+    case IR_VALUE_BYTE_VIEW_EQ: {
+      if (!value->left || !value->right) return macho_diag_at(diag, "direct AArch64 Mach-O byte-view equality requires two byte views", value->line, value->column, "missing byte view");
+      if (!macho_emit_byte_view_len_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 8, IR_TYPE_U32, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->right, 9, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 8, IR_TYPE_U32, scratch_slot, value->left, diag)) return false;
+      z_aarch64_emit_cmp_w(text, 8, 9);
+      size_t same_len = z_aarch64_emit_b_cond_placeholder(text, 0);
+      z_aarch64_emit_movz_w(text, reg, 0);
+      size_t end_patch_neq = z_aarch64_emit_b_placeholder(text);
+      z_aarch64_patch_cond19(text, same_len, text->len);
+      size_t zero_len = z_aarch64_emit_cbz_w_placeholder(text, 8);
+      if (!macho_emit_store_scratch(text, 8, IR_TYPE_U32, scratch_slot, value->left, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 10, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 10, IR_TYPE_U64, scratch_slot + 1, value->left, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 11, frame_size, scratch_slot + 2, ctx, diag)) return false;
+      if (!macho_emit_load_scratch(text, 10, IR_TYPE_U64, scratch_slot + 1, value->left, diag)) return false;
+      if (!macho_emit_load_scratch(text, 8, IR_TYPE_U32, scratch_slot, value->left, diag)) return false;
+      size_t loop = text->len;
+      z_aarch64_emit_load_b_imm(text, 12, 10, 0);
+      z_aarch64_emit_load_b_imm(text, 13, 11, 0);
+      z_aarch64_emit_cmp_w(text, 12, 13);
+      size_t mismatch = z_aarch64_emit_b_cond_placeholder(text, 1);
+      z_aarch64_emit_add_x_imm(text, 10, 10, 1);
+      z_aarch64_emit_add_x_imm(text, 11, 11, 1);
+      z_aarch64_emit_sub_w_imm(text, 8, 8, 1);
+      size_t loop_back_patch = text->len;
+      z_aarch64_append_u32(text, 0x35000000u | (8u & 31u));
+      z_aarch64_patch_cond19(text, loop_back_patch, loop);
+      z_aarch64_patch_cond19(text, zero_len, text->len);
+      z_aarch64_emit_movz_w(text, reg, 1);
+      size_t end_patch_eq = z_aarch64_emit_b_placeholder(text);
+      z_aarch64_patch_cond19(text, mismatch, text->len);
+      z_aarch64_emit_movz_w(text, reg, 0);
+      z_aarch64_patch_branch26(text, end_patch_eq, text->len);
+      z_aarch64_patch_branch26(text, end_patch_neq, text->len);
+      return true;
+    }
+    case IR_VALUE_FS_EXISTS:
+    case IR_VALUE_FS_IS_DIR:
+    case IR_VALUE_FS_MAKE_DIR:
+    case IR_VALUE_FS_REMOVE:
+    case IR_VALUE_FS_REMOVE_DIR: {
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+      switch (value->kind) {
+        case IR_VALUE_FS_EXISTS:
+          z_aarch64_emit_movz_w(text, 1, 0);                          // mode = F_OK
+          z_aarch64_emit_movz_x(text, 16, 0x02000021ull);              // SYS_access
+          z_aarch64_emit_svc(text, 0x80);
+          break;
+        case IR_VALUE_FS_MAKE_DIR:
+          z_aarch64_emit_movz_w(text, 1, 0755u);                       // mode
+          z_aarch64_emit_movz_x(text, 16, 0x02000088ull);              // SYS_mkdir
+          z_aarch64_emit_svc(text, 0x80);
+          break;
+        case IR_VALUE_FS_REMOVE:
+          z_aarch64_emit_movz_x(text, 16, 0x0200000aull);              // SYS_unlink
+          z_aarch64_emit_svc(text, 0x80);
+          break;
+        case IR_VALUE_FS_REMOVE_DIR:
+          z_aarch64_emit_movz_x(text, 16, 0x02000089ull);              // SYS_rmdir
+          z_aarch64_emit_svc(text, 0x80);
+          break;
+        case IR_VALUE_FS_IS_DIR: {
+          z_aarch64_emit_sub_sp_imm(text, 144);
+          z_aarch64_emit_add_x_imm(text, 1, 31, 0);                    // mov x1, sp
+          z_aarch64_emit_movz_x(text, 16, 0x02000152ull);              // SYS_stat64
+          z_aarch64_emit_svc(text, 0x80);
+          size_t fail = z_aarch64_emit_b_cond_placeholder(text, 2);    // b.cs fail
+          z_aarch64_append_u32(text, 0x79400be1u);                     // ldrh w1, [sp, #4]
+          z_aarch64_emit_movz_w(text, 2, 0170000u);                    // S_IFMT
+          z_aarch64_append_u32(text, 0x0a020021u);                     // and w1, w1, w2
+          z_aarch64_emit_movz_w(text, 2, 0040000u);                    // S_IFDIR
+          z_aarch64_emit_cmp_w(text, 1, 2);
+          size_t neq = z_aarch64_emit_b_cond_placeholder(text, 1);     // b.ne neq
+          z_aarch64_emit_movz_w(text, 0, 1);
+          size_t end_eq = z_aarch64_emit_b_placeholder(text);
+          z_aarch64_patch_cond19(text, fail, text->len);
+          z_aarch64_patch_cond19(text, neq, text->len);
+          z_aarch64_emit_movz_w(text, 0, 0);
+          z_aarch64_patch_branch26(text, end_eq, text->len);
+          z_aarch64_emit_add_sp_imm(text, 144);
+          if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+          return true;
+        }
+        default: break;
+      }
+      size_t err = z_aarch64_emit_b_cond_placeholder(text, 2);         // b.cs err
+      z_aarch64_emit_movz_w(text, 0, 1);
+      size_t end_ok = z_aarch64_emit_b_placeholder(text);
+      z_aarch64_patch_cond19(text, err, text->len);
+      z_aarch64_emit_movz_w(text, 0, 0);
+      z_aarch64_patch_branch26(text, end_ok, text->len);
+      if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+      return true;
+    }
+    case IR_VALUE_FS_WRITE_PATH:
+    case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH: {
+      // Stash data pointer and length before clobbering x0/x1/x2 with open args.
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 19, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 19, IR_TYPE_U64, scratch_slot, value->right, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->right, 20, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 20, IR_TYPE_U32, scratch_slot + 1, value->right, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot + 2, ctx, diag)) return false;
+      // Darwin O_WRONLY|O_CREAT|O_TRUNC = 0x601; O_WRONLY|O_CREAT|O_APPEND = 0x209.
+      unsigned open_flags = (value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) ? 0x0209u : 0x0601u;
+      z_aarch64_emit_movz_w(text, 1, open_flags);
+      z_aarch64_emit_movz_w(text, 2, 0644u);
+      z_aarch64_emit_movz_x(text, 16, 0x02000005ull);                // SYS_open
+      z_aarch64_emit_svc(text, 0x80);
+      size_t open_failed = z_aarch64_emit_b_cond_placeholder(text, 2);
+      macho_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->right, diag);
+      macho_emit_load_scratch(text, 2, IR_TYPE_U32, scratch_slot + 1, value->right, diag);
+      z_aarch64_emit_mov_x(text, 19, 0);                              // save fd in x19
+      z_aarch64_emit_movz_x(text, 16, 0x02000004ull);                // SYS_write
+      z_aarch64_emit_svc(text, 0x80);
+      z_aarch64_emit_mov_x(text, 20, 0);                              // save bytes written
+      z_aarch64_emit_mov_x(text, 0, 19);
+      z_aarch64_emit_movz_x(text, 16, 0x02000006ull);                // SYS_close
+      z_aarch64_emit_svc(text, 0x80);
+      z_aarch64_emit_mov_x(text, 0, 20);
+      size_t end_ok = z_aarch64_emit_b_placeholder(text);
+      z_aarch64_patch_cond19(text, open_failed, text->len);
+      z_aarch64_emit_movz_w(text, 0, 0);
+      z_aarch64_patch_branch26(text, end_ok, text->len);
+      if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+      return true;
+    }
+    case IR_VALUE_FS_READ_PATH:
+    case IR_VALUE_FS_READ_BYTES_PATH: {
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 19, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 19, IR_TYPE_U64, scratch_slot, value->right, diag)) return false;
+      if (!macho_emit_byte_view_len_at(text, fun, value->right, 20, frame_size, scratch_slot + 1, ctx, diag)) return false;
+      if (!macho_emit_store_scratch(text, 20, IR_TYPE_U32, scratch_slot + 1, value->right, diag)) return false;
+      if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot + 2, ctx, diag)) return false;
+      z_aarch64_emit_movz_w(text, 1, 0);                              // O_RDONLY
+      z_aarch64_emit_movz_w(text, 2, 0);
+      z_aarch64_emit_movz_x(text, 16, 0x02000005ull);                // SYS_open
+      z_aarch64_emit_svc(text, 0x80);
+      size_t open_failed = z_aarch64_emit_b_cond_placeholder(text, 2);
+      macho_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->right, diag);
+      macho_emit_load_scratch(text, 2, IR_TYPE_U32, scratch_slot + 1, value->right, diag);
+      z_aarch64_emit_mov_x(text, 19, 0);
+      z_aarch64_emit_movz_x(text, 16, 0x02000003ull);                // SYS_read
+      z_aarch64_emit_svc(text, 0x80);
+      z_aarch64_emit_mov_x(text, 20, 0);
+      z_aarch64_emit_mov_x(text, 0, 19);
+      z_aarch64_emit_movz_x(text, 16, 0x02000006ull);                // SYS_close
+      z_aarch64_emit_svc(text, 0x80);
+      z_aarch64_emit_mov_x(text, 0, 20);
+      size_t end_ok = z_aarch64_emit_b_placeholder(text);
+      z_aarch64_patch_cond19(text, open_failed, text->len);
+      z_aarch64_emit_movz_w(text, 0, 0);
+      z_aarch64_patch_branch26(text, end_ok, text->len);
+      if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+      return true;
+    }
     default: {
       char actual[64];
       snprintf(actual, sizeof(actual), "unsupported value kind %d", value ? (int)value->kind : -1);
