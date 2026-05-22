@@ -109,10 +109,10 @@
     {
       "id": "stdlib-signature-parity",
       "path": "scripts/compiler-metrics.mts",
-      "classification": "metadata-drift-risk",
-      "currentBehavior": "report-only",
-      "followUp": "Use one standard-library signature and capability source for checker, CLI metadata, and lowering.",
-      "runner": "report-only"
+      "classification": "enforced-structure-guardrail",
+      "currentBehavior": "budget-pass-no-violations",
+      "followUp": "Keep compiler structure budgets enforced for file size, strcmp growth, large functions, and stdlib signature parity until one standard-library signature and capability source replaces duplicated metadata.",
+      "runner": "assert-budget-pass"
     },
     {
       "id": "borrow-lexical-lifetime",
