@@ -39,9 +39,9 @@ const fileBudgets = {
   "native/zero-c/src/emit_macho64.c": { maxLines: 1400, maxStrcmpCalls: 2 },
   "native/zero-c/src/macho_emit_state.c": { maxLines: 210, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_emit_state.h": { maxLines: 90, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_elf64.c": { maxLines: 2175, maxStrcmpCalls: 3 },
+  "native/zero-c/src/emit_elf64.c": { maxLines: 2130, maxStrcmpCalls: 3 },
   "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 205, maxStrcmpCalls: 1 },
-  "native/zero-c/src/emit_coff.c": { maxLines: 905, maxStrcmpCalls: 1 },
+  "native/zero-c/src/emit_coff.c": { maxLines: 900, maxStrcmpCalls: 1 },
   "native/zero-c/src/fs.c": { maxLines: 1250, maxStrcmpCalls: 32 },
   "native/zero-c/src/mir_verify.c": { maxLines: 1300, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
@@ -54,14 +54,14 @@ const fileBudgets = {
   "native/zero-c/src/type_core.h": { maxLines: 150, maxStrcmpCalls: 0 },
   "native/zero-c/src/unify.c": { maxLines: 500, maxStrcmpCalls: 14 },
   "native/zero-c/src/unify.h": { maxLines: 75, maxStrcmpCalls: 0 },
-  "native/zero-c/src/x64_emit.c": { maxLines: 505, maxStrcmpCalls: 0 },
-  "native/zero-c/src/x64_emit.h": { maxLines: 80, maxStrcmpCalls: 0 },
+  "native/zero-c/src/x64_emit.c": { maxLines: 590, maxStrcmpCalls: 0 },
+  "native/zero-c/src/x64_emit.h": { maxLines: 95, maxStrcmpCalls: 0 },
 };
 
 const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1484],
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 1170],
-  ["native/zero-c/src/emit_elf64.c|static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 805],
+  ["native/zero-c/src/emit_elf64.c|static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 770],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 924],
   ["native/zero-c/src/emit_macho64.c|bool z_emit_macho64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag) {", 157],
   ["native/zero-c/src/emit_elf64.c|bool z_emit_elf64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {", 125],
@@ -73,7 +73,7 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/checker.c|static const char *expr_type(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope) {", 205],
   ["native/zero-c/src/emit_macho64.c|static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, bool restore_process_args, MachOEmitContext *ctx, ZDiag *diag) {", 193],
   ["native/zero-c/src/checker.c|static bool collect_return_value_provenance_from_stmt_vec(CheckContext *ctx, const Program *program, const Function *fun, const StmtVec *body, Scope *scope, GenericBinding *bindings, size_t binding_len, ValueProvenance *out, bool *may_return, bool *complete) {", 192],
-  ["native/zero-c/src/emit_coff.c|static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {", 160],
+  ["native/zero-c/src/emit_coff.c|static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {", 155],
   ["native/zero-c/src/row_syntax.c|ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag) {", 177],
   ["native/zero-c/src/ir.c|static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Stmt *stmt, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {", 172],
   ["native/zero-c/src/emit_coff.c|static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, CoffEmitContext *ctx, ZDiag *diag) {", 155],
@@ -686,6 +686,12 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
       paths: backendFormats.x64.formatFilesWithLocalEncodingPrimitives,
     });
   }
+  if (backendFormats.x64.formatFilesWithRawStackRegisterBytes.length > 0) {
+    violations.push({
+      kind: "x64-stack-register-byte-in-format-file",
+      paths: backendFormats.x64.formatFilesWithRawStackRegisterBytes,
+    });
+  }
   if (!backendFormats.aarch64.sharedEncodingPrimitives ||
       !backendFormats.aarch64.elfUsesSharedEncodingPrimitives ||
       !backendFormats.aarch64.machoUsesSharedEncodingPrimitives) {
@@ -867,6 +873,15 @@ const backendFormats = {
       /\bz_x64_emit_inc_rsp_offset64\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_add_rax_rsp_offset\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_cmp_rax_rsp_offset\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_cmp_reg_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_mov_reg_from_rax\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_load_reg8_base_index\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_movzx_reg32_base_index_u8\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_store_base_index_reg8\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_cmp_base_index_reg8\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_cmp_base_index_u8\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_lea_base_index_disp_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_xor_r8d_r8d\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_jcc32_placeholder\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_prologue\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_epilogue\s*\(/.test(x64EmitSource) &&
@@ -929,6 +944,15 @@ const backendFormats = {
       /\bz_x64_emit_inc_rsp_offset64\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_add_rax_rsp_offset\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_cmp_rax_rsp_offset\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_cmp_reg_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_mov_reg_from_rax\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_load_reg8_base_index\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_movzx_reg32_base_index_u8\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_store_base_index_reg8\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_cmp_base_index_reg8\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_cmp_base_index_u8\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_lea_base_index_disp_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_xor_r8d_r8d\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_jcc32_placeholder\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_prologue\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_epilogue\s*\(/.test(elfX64Source) &&
@@ -991,6 +1015,7 @@ const backendFormats = {
       /\bz_x64_emit_push_rax\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_pop_rax\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_mov_rcx_from_rax\s*\(/.test(coffX64Source) &&
+      /\bz_x64_emit_mov_reg_from_rax\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_mov_eax_from_ecx\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_shl_rcx_imm8\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_load_eax_ptr_rax_u8\s*\(/.test(coffX64Source) &&
@@ -1015,6 +1040,12 @@ const backendFormats = {
       ["native/zero-c/src/emit_coff.c", coffX64Source],
     ]
       .filter(([, text]) => /\bstatic\s+(?:void|size_t)\s+(?:z_x64_|elf_append_u(?:8|32|64)|elf_append_bytes|elf_append_zeros|elf_align|elf_pad_to|append_u8|append_u32le|append_bytes)\b/.test(text))
+      .map(([path]) => path),
+    formatFilesWithRawStackRegisterBytes: [
+      ["native/zero-c/src/emit_elf64.c", elfX64Source],
+      ["native/zero-c/src/emit_coff.c", coffX64Source],
+    ]
+      .filter(([, text]) => /\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x5[089a-f]\s*\)/i.test(text))
       .map(([path]) => path),
   },
   aarch64: {

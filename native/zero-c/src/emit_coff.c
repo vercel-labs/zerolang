@@ -286,7 +286,7 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       if (value->arg_len > 4) return coff_diag_at(diag, "direct COFF call supports at most four integer arguments", value->line, value->column, "too many arguments");
       for (size_t i = 0; i < value->arg_len; i++) {
         if (!coff_emit_value(text, fun, value->args[i], ctx, diag)) return false;
-        z_x64_append_u8(text, 0x50);
+        z_x64_emit_push_rax(text);
       }
       for (size_t i = value->arg_len; i > 0; i--) {
         z_x64_emit_pop_reg64(text, param_regs[i - 1]);
@@ -310,9 +310,9 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       z_x64_emit_mov_eax_u32(text, 0);
       size_t end_patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
       z_x64_patch_rel32(text, ok_patch, text->len);
-      z_x64_append_u8(text, 0x50);
+      z_x64_emit_push_rax(text);
       if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
-      z_x64_append_u8(text, 0x59);
+      z_x64_emit_pop_reg64(text, 1);
       coff_emit_load_local_slot_reg(text, fun, value->local_index, 0, 2, true);
       z_x64_emit_add_rdx_rcx(text, true);
       z_x64_emit_store_ptr_rdx_al(text);
@@ -340,17 +340,17 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
         return true;
       }
       if (!value->index || !coff_emit_value(text, fun, value->index, ctx, diag)) return false;
-      z_x64_append_u8(text, 0x50);
+      z_x64_emit_push_rax(text);
       if (!coff_emit_byte_view_len(text, fun, value->left, ctx, diag)) return false;
       z_x64_emit_mov_rcx_from_rax(text, false);
-      z_x64_append_u8(text, 0x58);
+      z_x64_emit_pop_rax(text);
       z_x64_emit_cmp_rax_rcx(text, false);
       size_t ok_patch = z_x64_emit_jcc32_placeholder(text, 0x82);
       z_x64_emit_ud2(text);
       z_x64_patch_rel32(text, ok_patch, text->len);
-      z_x64_append_u8(text, 0x50);
+      z_x64_emit_push_rax(text);
       if (!coff_emit_byte_view_ptr(text, fun, value->left, ctx, diag)) return false;
-      z_x64_append_u8(text, 0x59);
+      z_x64_emit_pop_reg64(text, 1);
       z_x64_emit_add_rax_rcx(text, true);
       z_x64_emit_load_eax_ptr_rax_u8(text);
       return true;
@@ -366,9 +366,9 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE)) {
         if (!value->index || !coff_emit_value(text, fun, value->index, ctx, diag)) return false;
         coff_emit_u8_array_bounds_check(text, local);
-        z_x64_append_u8(text, 0x50);
+        z_x64_emit_push_rax(text);
         coff_emit_array_base_rdx(text, fun, value->array_index);
-        z_x64_append_u8(text, 0x59);
+        z_x64_emit_pop_reg64(text, 1);
         z_x64_emit_shl_rcx_imm8(text, 2);
         z_x64_emit_add_rdx_rcx(text, true);
         z_x64_emit_load_eax_ptr_rdx(text);
@@ -377,9 +377,9 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       if (!local->is_array || local->element_type != IR_TYPE_U8) return coff_diag_at(diag, "direct COFF indexed load requires [N]u8 or integer arrays", value->line, value->column, "unsupported array local");
       if (!value->index || !coff_emit_value(text, fun, value->index, ctx, diag)) return false;
       coff_emit_u8_array_bounds_check(text, local);
-      z_x64_append_u8(text, 0x50);
+      z_x64_emit_push_rax(text);
       coff_emit_array_base_rdx(text, fun, value->array_index);
-      z_x64_append_u8(text, 0x59);
+      z_x64_emit_pop_reg64(text, 1);
       z_x64_emit_add_rdx_rcx(text, true);
       z_x64_emit_load_eax_ptr_rdx_u8(text);
       return true;
@@ -402,12 +402,10 @@ static bool coff_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *i
 static bool coff_emit_world_write(ZBuf *text, const IrFunction *fun, const IrInstr *instr, CoffEmitContext *ctx, ZDiag *diag) {
   if (!instr || !instr->value) return coff_diag_at(diag, "direct COFF World write requires bytes", instr ? instr->line : 1, instr ? instr->column : 1, "missing byte view");
   if (!coff_emit_byte_view_ptr(text, fun, instr->value, ctx, diag)) return false;
-  z_x64_append_u8(text, 0x50); // push rax, preserve ptr while computing len
+  z_x64_emit_push_rax(text); // preserve ptr while computing len
   if (!coff_emit_byte_view_len(text, fun, instr->value, ctx, diag)) return false;
-  z_x64_append_u8(text, 0x41);
-  z_x64_append_u8(text, 0x89);
-  z_x64_append_u8(text, 0xc0); // mov r8d, eax
-  z_x64_append_u8(text, 0x5a); // pop rdx
+  z_x64_emit_mov_reg_from_rax(text, 8, false);
+  z_x64_emit_pop_reg64(text, 2);
   z_x64_append_u8(text, 0xb9);
   z_x64_append_u32(text, instr->field_offset == 2 ? 2u : 1u); // ecx = fd
   z_x64_emit_sub_rsp(text, 32);
@@ -456,10 +454,10 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
     if (fun->locals[instr->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) {
       if (!instr->value || instr->value->kind != IR_VALUE_ALLOC_BYTES || instr->value->local_index >= fun->local_len || fun->locals[instr->value->local_index].type != IR_TYPE_ALLOC) return coff_diag_at(diag, "direct COFF allocation source is invalid", instr->line, instr->column, "invalid allocation");
       if (!coff_emit_value(text, fun, instr->value->left, ctx, diag)) return false;
-      z_x64_append_u8(text, 0x50);
+      z_x64_emit_push_rax(text);
       coff_emit_load_local_slot_eax(text, fun, instr->value->local_index, 12);
       coff_emit_load_local_slot_reg(text, fun, instr->value->local_index, 8, 1, false);
-      z_x64_append_u8(text, 0x58);
+      z_x64_emit_pop_rax(text);
       z_x64_append_u8(text, 0x89);
       z_x64_append_u8(text, 0xc2);
       z_x64_emit_add_rax_rcx(text, false);
@@ -509,9 +507,9 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
     if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE)) {
       if (!instr->index || !coff_emit_value(text, fun, instr->index, ctx, diag)) return false;
       coff_emit_u8_array_bounds_check(text, local);
-      z_x64_append_u8(text, 0x50);
+      z_x64_emit_push_rax(text);
       if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
-      z_x64_append_u8(text, 0x59);
+      z_x64_emit_pop_reg64(text, 1);
       coff_emit_array_base_rdx(text, fun, instr->array_index);
       z_x64_emit_shl_rcx_imm8(text, 2);
       z_x64_emit_add_rdx_rcx(text, true);
@@ -521,9 +519,9 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
     if (!local->is_array || local->element_type != IR_TYPE_U8) return coff_diag_at(diag, "direct COFF indexed store requires [N]u8 or integer arrays", instr->line, instr->column, "unsupported array local");
     if (!instr->index || !coff_emit_value(text, fun, instr->index, ctx, diag)) return false;
     coff_emit_u8_array_bounds_check(text, local);
-    z_x64_append_u8(text, 0x50);
+    z_x64_emit_push_rax(text);
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
-    z_x64_append_u8(text, 0x59);
+    z_x64_emit_pop_reg64(text, 1);
     coff_emit_array_base_rdx(text, fun, instr->array_index);
     z_x64_emit_add_rdx_rcx(text, true);
     z_x64_emit_store_ptr_rdx_al(text);

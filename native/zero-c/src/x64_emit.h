@@ -23,6 +23,15 @@ void z_x64_emit_mov_rsp_offset_u32(ZBuf *buf, unsigned offset, uint32_t value, b
 void z_x64_emit_inc_rsp_offset64(ZBuf *buf, unsigned offset);
 void z_x64_emit_add_rax_rsp_offset(ZBuf *buf, unsigned offset);
 void z_x64_emit_cmp_rax_rsp_offset(ZBuf *buf, unsigned offset);
+void z_x64_emit_cmp_reg_reg(ZBuf *buf, unsigned lhs, unsigned rhs, bool wide);
+void z_x64_emit_mov_reg_from_rax(ZBuf *buf, unsigned reg, bool wide);
+void z_x64_emit_load_reg8_base_index(ZBuf *buf, unsigned dst_reg, unsigned base_reg, unsigned index_reg);
+void z_x64_emit_movzx_reg32_base_index_u8(ZBuf *buf, unsigned dst_reg, unsigned base_reg, unsigned index_reg);
+void z_x64_emit_store_base_index_reg8(ZBuf *buf, unsigned base_reg, unsigned index_reg, unsigned src_reg);
+void z_x64_emit_cmp_base_index_reg8(ZBuf *buf, unsigned base_reg, unsigned index_reg, unsigned reg);
+void z_x64_emit_cmp_base_index_u8(ZBuf *buf, unsigned base_reg, unsigned index_reg, unsigned value);
+void z_x64_emit_lea_base_index_disp_reg(ZBuf *buf, unsigned dst_reg, unsigned base_reg, unsigned index_reg, unsigned disp);
+void z_x64_emit_xor_r8d_r8d(ZBuf *buf);
 void z_x64_emit_push_reg64(ZBuf *buf, unsigned reg);
 void z_x64_emit_pop_reg64(ZBuf *buf, unsigned reg);
 void z_x64_emit_push_rax(ZBuf *buf);

@@ -157,6 +157,90 @@ void z_x64_emit_cmp_rax_rsp_offset(ZBuf *buf, unsigned offset) {
   z_x64_emit_rsp_offset_reg(buf, 0x3b, 0, offset, true);
 }
 
+void z_x64_emit_cmp_reg_reg(ZBuf *buf, unsigned lhs, unsigned rhs, bool wide) {
+  unsigned rex = wide ? 0x48 : 0x40;
+  if (rhs >= 8) rex |= 0x04;
+  if (lhs >= 8) rex |= 0x01;
+  if (rex != 0x40) z_x64_append_u8(buf, rex);
+  z_x64_append_u8(buf, 0x39);
+  z_x64_append_u8(buf, 0xc0 | ((rhs & 7u) << 3) | (lhs & 7u));
+}
+
+void z_x64_emit_mov_reg_from_rax(ZBuf *buf, unsigned reg, bool wide) {
+  unsigned rex = wide ? 0x48 : 0x40;
+  if (reg >= 8) rex |= 0x01;
+  if (rex != 0x40) z_x64_append_u8(buf, rex);
+  z_x64_append_u8(buf, 0x89);
+  z_x64_append_u8(buf, 0xc0 | (reg & 7u));
+}
+
+static void z_x64_emit_base_index_reg(ZBuf *buf, unsigned opcode, unsigned reg, unsigned base_reg, unsigned index_reg, bool wide) {
+  unsigned rex = wide ? 0x48 : 0x40;
+  if (reg >= 8) rex |= 0x04;
+  if (index_reg >= 8) rex |= 0x02;
+  if (base_reg >= 8) rex |= 0x01;
+  if (rex != 0x40) z_x64_append_u8(buf, rex);
+  z_x64_append_u8(buf, opcode);
+  z_x64_append_u8(buf, ((reg & 7u) << 3) | 0x04);
+  z_x64_append_u8(buf, ((index_reg & 7u) << 3) | (base_reg & 7u));
+}
+
+void z_x64_emit_load_reg8_base_index(ZBuf *buf, unsigned dst_reg, unsigned base_reg, unsigned index_reg) {
+  z_x64_emit_base_index_reg(buf, 0x8a, dst_reg, base_reg, index_reg, false);
+}
+
+void z_x64_emit_movzx_reg32_base_index_u8(ZBuf *buf, unsigned dst_reg, unsigned base_reg, unsigned index_reg) {
+  unsigned rex = 0x40;
+  if (dst_reg >= 8) rex |= 0x04;
+  if (index_reg >= 8) rex |= 0x02;
+  if (base_reg >= 8) rex |= 0x01;
+  if (rex != 0x40) z_x64_append_u8(buf, rex);
+  z_x64_append_u8(buf, 0x0f);
+  z_x64_append_u8(buf, 0xb6);
+  z_x64_append_u8(buf, ((dst_reg & 7u) << 3) | 0x04);
+  z_x64_append_u8(buf, ((index_reg & 7u) << 3) | (base_reg & 7u));
+}
+
+void z_x64_emit_store_base_index_reg8(ZBuf *buf, unsigned base_reg, unsigned index_reg, unsigned src_reg) {
+  z_x64_emit_base_index_reg(buf, 0x88, src_reg, base_reg, index_reg, false);
+}
+
+void z_x64_emit_cmp_base_index_reg8(ZBuf *buf, unsigned base_reg, unsigned index_reg, unsigned reg) {
+  z_x64_emit_base_index_reg(buf, 0x38, reg, base_reg, index_reg, false);
+}
+
+void z_x64_emit_cmp_base_index_u8(ZBuf *buf, unsigned base_reg, unsigned index_reg, unsigned value) {
+  z_x64_emit_base_index_reg(buf, 0x80, 7, base_reg, index_reg, false);
+  z_x64_append_u8(buf, value);
+}
+
+void z_x64_emit_lea_base_index_disp_reg(ZBuf *buf, unsigned dst_reg, unsigned base_reg, unsigned index_reg, unsigned disp) {
+  unsigned rex = 0x48;
+  if (dst_reg >= 8) rex |= 0x04;
+  if (index_reg >= 8) rex |= 0x02;
+  if (base_reg >= 8) rex |= 0x01;
+  z_x64_append_u8(buf, rex);
+  z_x64_append_u8(buf, 0x8d);
+  if (disp == 0) {
+    z_x64_append_u8(buf, ((dst_reg & 7u) << 3) | 0x04);
+    z_x64_append_u8(buf, ((index_reg & 7u) << 3) | (base_reg & 7u));
+  } else if (disp <= 127) {
+    z_x64_append_u8(buf, 0x40 | ((dst_reg & 7u) << 3) | 0x04);
+    z_x64_append_u8(buf, ((index_reg & 7u) << 3) | (base_reg & 7u));
+    z_x64_append_u8(buf, disp);
+  } else {
+    z_x64_append_u8(buf, 0x80 | ((dst_reg & 7u) << 3) | 0x04);
+    z_x64_append_u8(buf, ((index_reg & 7u) << 3) | (base_reg & 7u));
+    z_x64_append_u32(buf, disp);
+  }
+}
+
+void z_x64_emit_xor_r8d_r8d(ZBuf *buf) {
+  z_x64_append_u8(buf, 0x45);
+  z_x64_append_u8(buf, 0x31);
+  z_x64_append_u8(buf, 0xc0);
+}
+
 void z_x64_emit_push_reg64(ZBuf *buf, unsigned reg) {
   if (reg >= 8) z_x64_append_u8(buf, 0x41);
   z_x64_append_u8(buf, 0x50 + (reg & 7u));
