@@ -107,6 +107,49 @@ zero size --json --target linux-musl-x64 examples/memory-package
 
 Both outputs include `requiresCapabilities`, `targetSupport`, and `stdlibHelpers`.
 
+## ABI Classification
+
+`zero abi dump --json` reports a `functionAbi` array describing, for every
+function, the System V AMD64-flavoured ABI class of each parameter and the
+return value:
+
+```sh
+zero abi dump --json conformance/native/pass/abi-classify.0
+```
+
+Each `abiClass` is one of:
+
+- `void` — no value class (`Void` returns)
+- `scalar` — `iN`/`uN`/`usize`/`Bool`/`char`/`f32`/`f64` in one register
+- `fatptr` — `Span<T>`/`MutSpan<T>`/`String` as a `{ptr,len}` pair
+- `ptr` — `ref`/`mutref`/`owned` as a thin pointer
+- `maybe` — `Maybe<T>` as a `{has,value}` aggregate
+- `agg_regs` — small all-scalar shapes flattened into registers
+- `agg_mem` — larger aggregates passed via a hidden pointer (sret on return)
+
+The direct backends currently lower only the `scalar` and `void` classes.
+When a function uses any other class, the backend reports `CGEN004` with the
+class named inline, e.g. `direct backend parameter type is unsupported
+(abi class: fatptr)`, so the blocker is actionable without guessing.
+
+### Scalar floats at the return position
+
+Within the `scalar` class, `f32` and `f64` *return values* are lowered today
+on the System V AMD64 (`zero-elf64`) direct backend only:
+
+| Backend          | f32/f64 return                                                          |
+| ---------------- | ----------------------------------------------------------------------- |
+| `zero-elf64`     | Real lowering. Result returned in `xmm0` via `movss`/`movsd`.           |
+| `zero-macho64`   | Explicit `CGEN004`. AAPCS64 `s0`/`d0` lowering is the named follow-up.  |
+| `zero-coff-x64`  | Explicit `CGEN004`. The xmm0 path mostly carries over but is deferred.  |
+| `zero-elf-aarch64` | Explicit `CGEN004` in `a64_reject_unsupported_function`, never the silent-drop "MVP subset" path. |
+
+Float *parameters*, float *locals*, and float *arithmetic* in expressions
+remain `CGEN004` across every direct backend; only the function-return
+position has been moved across the line in this slice. Aggregate
+(`Span`/`MutSpan`/`String`/`Maybe`/shape) param and return marshalling is
+likewise still rejected and is the next slice of P0-1.
+
 ## Repair Commands
 
 Use `zero explain` for human and JSON explanations:

@@ -443,6 +443,9 @@ for (const fixture of [
   "conformance/check/pass/static-interface-basic.0",
   "conformance/native/pass/static-interface-mutref.0",
   "conformance/native/pass/static-interface-static-param.0",
+  "conformance/native/pass/abi-classify.0",
+  "conformance/native/pass/return-f32.0",
+  "conformance/native/pass/return-f64.0",
   "conformance/check/pass/top-level-const.0",
   "conformance/check/pass/const-arithmetic.0",
   "conformance/check/pass/type-alias-basic.0",
@@ -2570,6 +2573,67 @@ assert.equal(cAbiDumpBody.generatedHeader.available, true);
 assert.match(cAbiDumpBody.generatedHeader.text, /int32_t zero_add\(int32_t a, int32_t b\);/);
 const abiCheck = await execFileAsync(zero, ["abi", "check", "--json", "conformance/native/pass/const-layout.0"]);
 assert.equal(JSON.parse(abiCheck.stdout).ok, true);
+
+const abiClassifyDump = await execFileAsync(zero, ["abi", "dump", "--json", "conformance/native/pass/abi-classify.0"]);
+const abiClassifyBody = JSON.parse(abiClassifyDump.stdout);
+const abiScalarFn = abiClassifyBody.functionAbi.find((item) => item.name === "scalarParam");
+assert.equal(abiScalarFn.return.abiClass, "scalar");
+assert.equal(abiScalarFn.params[0].abiClass, "scalar");
+const abiFatptrFn = abiClassifyBody.functionAbi.find((item) => item.name === "fatptrParam");
+assert.equal(abiFatptrFn.params[0].type, "Span<u8>");
+assert.equal(abiFatptrFn.params[0].abiClass, "fatptr");
+assert.equal(abiFatptrFn.return.abiClass, "maybe");
+const abiAggFn = abiClassifyBody.functionAbi.find((item) => item.name === "aggParam");
+assert.equal(abiAggFn.params[0].abiClass, "agg_mem");
+const abiMainFn = abiClassifyBody.functionAbi.find((item) => item.name === "main");
+assert.equal(abiMainFn.return.abiClass, "void");
+
+const abiFatptrDiag = await execFileAsync(zero, [
+  "build", "--json", "--emit", "obj", "--target", "linux-musl-x64",
+  "conformance/native/pass/abi-classify.0", "--out", `${outDir}/abi-classify.o`,
+]).catch((error) => error);
+const abiFatptrDiagBody = JSON.parse(abiFatptrDiag.stdout);
+assert.equal(abiFatptrDiagBody.diagnostics[0].code, "CGEN004");
+assert.match(abiFatptrDiagBody.diagnostics[0].message, /\(abi class: (fatptr|maybe|agg_mem)\)/);
+
+// f32/f64 return lowering: the elf64 direct backend now materialises a scalar
+// float literal into xmm0 and returns it via the SysV AMD64 floating-point
+// register convention.  On the linux-musl-x64 host (the linux CI box) the
+// fixtures execute end-to-end; on darwin-arm64 the host-runnable target is
+// macho64, which keeps the explicit CGEN004 path (see below) — the
+// `assertCommonRuntimeOrUnsupported` helper accepts either outcome by design.
+await assertCommonRuntimeOrUnsupported("conformance/native/pass/return-f32.0", "return-f32", { stdout: "return f32 ok\n" });
+await assertCommonRuntimeOrUnsupported("conformance/native/pass/return-f64.0", "return-f64", { stdout: "return f64 ok\n" });
+
+// macho64 (the host runnable target on darwin) still rejects f32 returns
+// with an explicit CGEN004; this assertion guards the "no silent drop"
+// invariant while the AAPCS64 / Darwin-arm64 float-return lowering is the
+// named follow-up.
+const macho64FloatReturnDiag = await execFileAsync(zero, [
+  "build", "--json", "--emit", "obj", "--target", "darwin-arm64",
+  "conformance/native/pass/return-f32.0", "--out", `${outDir}/return-f32-darwin-arm64.o`,
+]).catch((error) => error);
+const macho64FloatReturnDiagBody = JSON.parse(macho64FloatReturnDiag.stdout);
+assert.equal(macho64FloatReturnDiagBody.diagnostics[0].code, "CGEN004");
+assert.match(macho64FloatReturnDiagBody.diagnostics[0].message, /AArch64 Mach-O object backend currently supports only Void and primitive integer returns|direct backend return type is unsupported \(abi class: scalar\)/);
+
+// aarch64-elf likewise rejects with an explicit CGEN004, NOT the silent-drop
+// "MVP subset" trap that PR #122 / PR #188 protected against.
+const aarch64ElfFloatReturnDiag = await execFileAsync(zero, [
+  "build", "--json", "--emit", "obj", "--target", "linux-arm64",
+  "conformance/native/pass/return-f32.0", "--out", `${outDir}/return-f32-linux-arm64.o`,
+]).catch((error) => error);
+const aarch64ElfFloatReturnDiagBody = JSON.parse(aarch64ElfFloatReturnDiag.stdout);
+assert.equal(aarch64ElfFloatReturnDiagBody.diagnostics[0].code, "CGEN004");
+assert.match(aarch64ElfFloatReturnDiagBody.diagnostics[0].message, /AArch64 ELF object backend does not yet lower f32\/f64 returns|direct backend return type is unsupported \(abi class: scalar\)/);
+
+// coff likewise rejects with an explicit CGEN004.
+const coffFloatReturnDiag = await execFileAsync(zero, [
+  "build", "--json", "--emit", "obj", "--target", "win32-x64.exe",
+  "conformance/native/pass/return-f32.0", "--out", `${outDir}/return-f32-win32-x64.obj`,
+]).catch((error) => error);
+const coffFloatReturnDiagBody = JSON.parse(coffFloatReturnDiag.stdout);
+assert.equal(coffFloatReturnDiagBody.diagnostics[0].code, "CGEN004");
 
 for (const runtimeFixture of [
   ["conformance/native/pass/indexing-primitives.0", "indexing-primitives", { stdout: "indexing primitives ok\n" }],

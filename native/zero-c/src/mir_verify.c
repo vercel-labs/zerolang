@@ -15,6 +15,8 @@ static const char *mir_type_kind_name(IrTypeKind type) {
     case IR_TYPE_U32: return "u32";
     case IR_TYPE_I64: return "i64";
     case IR_TYPE_U64: return "u64";
+    case IR_TYPE_F32: return "f32";
+    case IR_TYPE_F64: return "f64";
     case IR_TYPE_BYTE_VIEW: return "ByteView";
     case IR_TYPE_ALLOC: return "Alloc";
     case IR_TYPE_VEC: return "Vec";
@@ -31,8 +33,18 @@ static bool mir_type_is_value(IrTypeKind type) {
   return type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_USIZE || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_I64 || type == IR_TYPE_U64;
 }
 
+static bool mir_type_is_float(IrTypeKind type) {
+  return type == IR_TYPE_F32 || type == IR_TYPE_F64;
+}
+
 static bool mir_type_is_direct_abi(IrTypeKind type) {
   return type == IR_TYPE_BOOL || mir_type_is_value(type);
+}
+
+/* Returns may carry the additional float-class scalars (f32/f64); the verifier
+ * accepts them only at the return-type position, mirroring the IR rule. */
+static bool mir_type_is_direct_abi_return(IrTypeKind type) {
+  return mir_type_is_direct_abi(type) || mir_type_is_float(type);
 }
 
 static bool mir_type_is_direct_fallible_value(IrTypeKind type) {
@@ -54,9 +66,11 @@ static unsigned mir_type_byte_size(IrTypeKind type) {
     case IR_TYPE_U16: return 2;
     case IR_TYPE_I32:
     case IR_TYPE_USIZE:
-    case IR_TYPE_U32: return 4;
+    case IR_TYPE_U32:
+    case IR_TYPE_F32: return 4;
     case IR_TYPE_I64:
-    case IR_TYPE_U64: return 8;
+    case IR_TYPE_U64:
+    case IR_TYPE_F64: return 8;
     default: return 0;
   }
 }
@@ -277,7 +291,7 @@ static bool mir_verify_direct_function_contract(IrProgram *ir, const IrFunction 
       mir_verify_mark_unsupported(ir, "MIR verifier found invalid fallible return representation", fun->line, fun->column, actual);
       return false;
     }
-  } else if (fun->return_type != IR_TYPE_VOID && !mir_type_is_direct_abi(fun->return_type)) {
+  } else if (fun->return_type != IR_TYPE_VOID && !mir_type_is_direct_abi_return(fun->return_type)) {
     char actual[128];
     snprintf(actual, sizeof(actual), "return %s", mir_type_kind_name(fun->return_type));
     mir_verify_mark_unsupported(ir, "MIR verifier found non-ABI return type", fun->line, fun->column, actual);
@@ -675,7 +689,8 @@ static bool mir_verify_binary_value_contract(IrProgram *ir, const IrValue *value
 static bool mir_verify_compare_value_contract(IrProgram *ir, const IrValue *value) {
   if (!mir_verify_value_type(ir, value, IR_TYPE_BOOL, "MIR verifier found compare result type mismatch", "compare result")) return false;
   if (!value->left || !value->right || value->left->type != value->right->type ||
-      !(value->left->type == IR_TYPE_BOOL || mir_type_is_integer_value(value->left->type))) {
+      !(value->left->type == IR_TYPE_BOOL || mir_type_is_integer_value(value->left->type) ||
+        mir_type_is_float(value->left->type))) {
     char actual[192];
     snprintf(actual, sizeof(actual), "compare left %s right %s",
              value->left ? mir_type_kind_name(value->left->type) : "missing",
@@ -844,6 +859,10 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
   if (!value) return true;
   switch (value->kind) {
     case IR_VALUE_INT:
+      /* IR_VALUE_INT doubles as the carrier for float literals: int_value
+       * holds the IEEE 754 bit pattern (32-bit pattern in low bits for f32,
+       * full 64-bit pattern for f64). */
+      if (mir_type_is_float(value->type)) return true;
       return mir_verify_value_is_integer(ir, value, "MIR verifier found integer literal type mismatch", "integer literal");
     case IR_VALUE_BOOL:
       return mir_verify_value_type(ir, value, IR_TYPE_BOOL, "MIR verifier found boolean literal type mismatch", "boolean literal");

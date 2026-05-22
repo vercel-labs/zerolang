@@ -77,6 +77,14 @@ static bool elf_type_is_supported_scalar(IrTypeKind type) {
   return elf_type_is_scalar(type) || elf_type_is_i64(type);
 }
 
+static bool elf_type_is_float(IrTypeKind type) {
+  return type == IR_TYPE_F32 || type == IR_TYPE_F64;
+}
+
+static bool elf_type_is_f64(IrTypeKind type) {
+  return type == IR_TYPE_F64;
+}
+
 static bool elf_type_is_unsigned(IrTypeKind type) {
   return type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_USIZE || type == IR_TYPE_U32 || type == IR_TYPE_U64;
 }
@@ -92,6 +100,8 @@ static const char *elf_type_name(IrTypeKind type) {
     case IR_TYPE_U32: return "u32";
     case IR_TYPE_I64: return "i64";
     case IR_TYPE_U64: return "u64";
+    case IR_TYPE_F32: return "f32";
+    case IR_TYPE_F64: return "f64";
     case IR_TYPE_MAYBE_SCALAR: return "Maybe<usize>";
     default: return "unsupported";
   }
@@ -613,6 +623,98 @@ static void elf_emit_packed_error_rax(ZBuf *code, unsigned code_value) {
   elf_append_u64(code, ((uint64_t)code_value) << 32);
 }
 
+/* Load a 32-bit float IEEE 754 bit pattern into xmm0 via mov eax, imm32 + movd
+ * xmm0, eax.  This avoids needing rodata for scalar-float literals: total 8
+ * bytes (b8 imm32, then 66 0f 6e c0). */
+static void elf_emit_movss_xmm0_imm32(ZBuf *code, uint32_t bits) {
+  elf_append_u8(code, 0xb8);
+  elf_append_u32(code, bits);
+  elf_append_u8(code, 0x66);
+  elf_append_u8(code, 0x0f);
+  elf_append_u8(code, 0x6e);
+  elf_append_u8(code, 0xc0);
+}
+
+/* Load a 64-bit double IEEE 754 bit pattern into xmm0 via movabs rax, imm64 +
+ * movq xmm0, rax (48 b8 imm64, then 66 48 0f 6e c0). */
+static void elf_emit_movsd_xmm0_imm64(ZBuf *code, uint64_t bits) {
+  elf_append_u8(code, 0x48);
+  elf_append_u8(code, 0xb8);
+  elf_append_u64(code, bits);
+  elf_append_u8(code, 0x66);
+  elf_append_u8(code, 0x48);
+  elf_append_u8(code, 0x0f);
+  elf_append_u8(code, 0x6e);
+  elf_append_u8(code, 0xc0);
+}
+
+/* Save the xmm0 scalar (4 or 8 bytes) to [rsp-16], then leave it spilled with
+ * sub rsp, 16; downstream pop_xmm pairs with it.  We use 16-byte slots to
+ * preserve 16-byte stack alignment that the SysV ABI requires across calls
+ * even though scalar floats only need 4 or 8 bytes. */
+static void elf_emit_push_xmm0(ZBuf *code, IrTypeKind type) {
+  /* sub rsp, 16 */
+  elf_append_u8(code, 0x48);
+  elf_append_u8(code, 0x83);
+  elf_append_u8(code, 0xec);
+  elf_append_u8(code, 0x10);
+  if (elf_type_is_f64(type)) {
+    /* movsd [rsp], xmm0  ->  F2 0F 11 04 24 */
+    elf_append_u8(code, 0xf2);
+    elf_append_u8(code, 0x0f);
+    elf_append_u8(code, 0x11);
+    elf_append_u8(code, 0x04);
+    elf_append_u8(code, 0x24);
+  } else {
+    /* movss [rsp], xmm0  ->  F3 0F 11 04 24 */
+    elf_append_u8(code, 0xf3);
+    elf_append_u8(code, 0x0f);
+    elf_append_u8(code, 0x11);
+    elf_append_u8(code, 0x04);
+    elf_append_u8(code, 0x24);
+  }
+}
+
+static void elf_emit_pop_xmm(ZBuf *code, unsigned dst_xmm, IrTypeKind type) {
+  if (elf_type_is_f64(type)) {
+    /* movsd xmm_dst, [rsp]  ->  F2 0F 10 /r */
+    elf_append_u8(code, 0xf2);
+    elf_append_u8(code, 0x0f);
+    elf_append_u8(code, 0x10);
+    elf_append_u8(code, 0x04 | ((dst_xmm & 7u) << 3));
+    elf_append_u8(code, 0x24);
+  } else {
+    elf_append_u8(code, 0xf3);
+    elf_append_u8(code, 0x0f);
+    elf_append_u8(code, 0x10);
+    elf_append_u8(code, 0x04 | ((dst_xmm & 7u) << 3));
+    elf_append_u8(code, 0x24);
+  }
+  /* add rsp, 16 */
+  elf_append_u8(code, 0x48);
+  elf_append_u8(code, 0x83);
+  elf_append_u8(code, 0xc4);
+  elf_append_u8(code, 0x10);
+}
+
+/* UCOMISS xmm1, xmm0 (F32) or UCOMISD xmm1, xmm0 (F64).  After execution:
+ *   ZF=1 if equal; PF=1 if unordered (NaN).
+ * For == and != we combine with PF: equality requires ZF=1 AND PF=0. */
+static void elf_emit_ucomis_xmm1_xmm0(ZBuf *code, IrTypeKind type) {
+  if (elf_type_is_f64(type)) {
+    /* UCOMISD xmm1, xmm0 -> 66 0F 2E /r with /r = 11 001 000 */
+    elf_append_u8(code, 0x66);
+    elf_append_u8(code, 0x0f);
+    elf_append_u8(code, 0x2e);
+    elf_append_u8(code, 0xc8);
+  } else {
+    /* UCOMISS xmm1, xmm0 -> 0F 2E /r */
+    elf_append_u8(code, 0x0f);
+    elf_append_u8(code, 0x2e);
+    elf_append_u8(code, 0xc8);
+  }
+}
+
 static bool elf_emit_rodata_ptr_rax(ZBuf *code, unsigned data_offset, ElfEmitContext *ctx, ZDiag *diag, const IrValue *value) {
   elf_append_u8(code, 0x48);
   elf_append_u8(code, 0xb8);
@@ -746,7 +848,8 @@ static bool elf_emit_byte_view_ptr(ZBuf *code, const IrFunction *fun, const IrVa
 
 static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   if (!value) return elf_diag(diag, "direct ELF64 expression is missing", 1, 1, "missing expression");
-  if (!elf_type_is_supported_scalar(value->type) && !((value->kind == IR_VALUE_CALL || value->kind == IR_VALUE_CHECK) && value->type == IR_TYPE_VOID) &&
+  if (!elf_type_is_supported_scalar(value->type) && !elf_type_is_float(value->type) &&
+      !((value->kind == IR_VALUE_CALL || value->kind == IR_VALUE_CHECK) && value->type == IR_TYPE_VOID) &&
       value->kind != IR_VALUE_MAYBE_HAS && value->kind != IR_VALUE_VEC_LEN && value->kind != IR_VALUE_VEC_CAPACITY &&
       value->kind != IR_VALUE_VEC_PUSH && value->kind != IR_VALUE_ARGS_LEN &&
       value->type != IR_TYPE_MAYBE_SCALAR && value->kind != IR_VALUE_FS_CLOSE_FILE) {
@@ -755,6 +858,20 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
   switch (value->kind) {
     case IR_VALUE_BOOL:
     case IR_VALUE_INT:
+      if (elf_type_is_float(value->type)) {
+        /* For float-typed integer values, int_value carries the IEEE 754 bit
+         * pattern of the literal; the SysV AMD64 ABI returns scalar floats in
+         * xmm0, so we materialize the literal into xmm0 directly.  This is
+         * the only float code path that reaches the emitter today: the IR
+         * lowering only accepts f32/f64 at the function-return position, not
+         * as locals or arguments. */
+        if (elf_type_is_f64(value->type)) {
+          elf_emit_movsd_xmm0_imm64(code, (uint64_t)value->int_value);
+        } else {
+          elf_emit_movss_xmm0_imm32(code, (uint32_t)value->int_value);
+        }
+        return true;
+      }
       if (elf_type_is_i64(value->type)) {
         elf_append_u8(code, 0x48);
         elf_append_u8(code, 0xb8);
@@ -846,7 +963,56 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return true;
     }
     case IR_VALUE_COMPARE: {
-      if (!value->left || !value->right || !elf_type_is_supported_scalar(value->left->type) || value->left->type != value->right->type) {
+      if (!value->left || !value->right || value->left->type != value->right->type) {
+        return elf_diag(diag, "direct ELF64 comparison operands must have the same supported integer or float type", value->line, value->column, "unsupported comparison");
+      }
+      if (elf_type_is_float(value->left->type)) {
+        /* SysV scalar-float compare: evaluate left into xmm0, spill to the
+         * stack, evaluate right into xmm0, then ucomis{s,d} xmm1, xmm0 with
+         * xmm1=left and xmm0=right.  Only == / != are lowered for now —
+         * ordered compares need careful unordered (PF) handling that the
+         * narrow scope of this PR does not yet exercise. */
+        if (value->compare_op != IR_CMP_EQ && value->compare_op != IR_CMP_NE) {
+          return elf_diag(diag, "direct ELF64 ordered float comparison is unsupported", value->line, value->column, "ordered float comparison");
+        }
+        if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+        elf_emit_push_xmm0(code, value->left->type);
+        if (!elf_emit_value(code, fun, value->right, ctx, diag)) return false;
+        elf_emit_pop_xmm(code, 1u, value->left->type);
+        elf_emit_ucomis_xmm1_xmm0(code, value->left->type);
+        /* Combine ZF/PF for IEEE 754 equality:
+         *   eq: ZF=1 AND PF=0  -> setnp al; setpe cl ... no, simpler:
+         *     setne al  (al = ZF == 0)
+         *     setp cl   (cl = PF)
+         *     or al, cl (al = (left != right) OR unordered)
+         *     xor al, 1 (al = (left == right) AND ordered)
+         *   ne: opposite -> al = (left != right) OR unordered (the natural
+         *       interpretation of "not equal" in IEEE 754 is True when
+         *       unordered, mirroring C's `a != b` semantics with NaN).
+         */
+        /* setne al */
+        elf_append_u8(code, 0x0f);
+        elf_append_u8(code, 0x95);
+        elf_append_u8(code, 0xc0);
+        /* setp cl */
+        elf_append_u8(code, 0x0f);
+        elf_append_u8(code, 0x9a);
+        elf_append_u8(code, 0xc1);
+        /* or al, cl */
+        elf_append_u8(code, 0x08);
+        elf_append_u8(code, 0xc8);
+        if (value->compare_op == IR_CMP_EQ) {
+          /* xor al, 1 */
+          elf_append_u8(code, 0x34);
+          elf_append_u8(code, 0x01);
+        }
+        /* movzx eax, al */
+        elf_append_u8(code, 0x0f);
+        elf_append_u8(code, 0xb6);
+        elf_append_u8(code, 0xc0);
+        return true;
+      }
+      if (!elf_type_is_supported_scalar(value->left->type)) {
         return elf_diag(diag, "direct ELF64 comparison operands must have the same supported integer type", value->line, value->column, "unsupported comparison");
       }
       bool wide = elf_type_is_i64(value->left->type);
@@ -1832,8 +1998,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
 
 static bool elf_validate_function(const IrFunction *fun, ZDiag *diag) {
   if (fun->param_count > 8) return elf_diag(diag, "direct ELF64 object backend supports at most eight parameters", fun->line, fun->column, fun->name);
-  if (fun->return_type != IR_TYPE_VOID && !elf_type_is_supported_scalar(fun->return_type)) {
-    return elf_diag(diag, "direct ELF64 object backend currently supports only Void and primitive integer returns", fun->line, fun->column, elf_type_name(fun->return_type));
+  if (fun->return_type != IR_TYPE_VOID && !elf_type_is_supported_scalar(fun->return_type) && !elf_type_is_float(fun->return_type)) {
+    return elf_diag(diag, "direct ELF64 object backend currently supports only Void, primitive integer, and f32/f64 returns", fun->line, fun->column, elf_type_name(fun->return_type));
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].is_array) {
