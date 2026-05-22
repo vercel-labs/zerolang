@@ -50,31 +50,6 @@ typedef struct {
 } ZDiag;
 
 typedef enum {
-  TOK_IDENT,
-  TOK_KEYWORD,
-  TOK_STRING,
-  TOK_CHAR,
-  TOK_NUMBER,
-  TOK_SYMBOL,
-  TOK_EOF
-} TokenKind;
-
-typedef struct {
-  TokenKind kind;
-  char *text;
-  int line;
-  int column;
-  size_t offset;
-  size_t length;
-} Token;
-
-typedef struct {
-  Token *items;
-  size_t len;
-  size_t cap;
-} TokenVec;
-
-typedef enum {
   Z_ROW_TOKEN_WORD,
   Z_ROW_TOKEN_STRING,
   Z_ROW_TOKEN_CHAR,
@@ -849,7 +824,6 @@ char *z_strndup(const char *text, size_t len);
 char *z_read_file(const char *path, ZDiag *diag);
 bool z_write_file(const char *path, const char *text, ZDiag *diag);
 bool z_write_binary_file(const char *path, const unsigned char *data, size_t len, ZDiag *diag);
-bool z_resolve_source(const char *input, SourceInput *out, ZDiag *diag);
 bool z_map_source_diag(const SourceInput *input, ZDiag *diag);
 void z_free_source(SourceInput *input);
 bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag);
@@ -861,8 +835,6 @@ bool z_toolchain_compile_c_object(const ZToolchainPlan *plan, const char *profil
 bool z_toolchain_link_objects(const ZToolchainPlan *plan, const ZTargetInfo *target, const char *const *object_files, size_t object_count, const char *exe_file, const char *pre_link_flags, const char *post_object_flags);
 bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const char *profile, const ZTargetInfo *target);
 
-TokenVec z_tokenize(const char *source, ZDiag *diag);
-void z_free_tokens(TokenVec *tokens);
 ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag);
 bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZDiag *diag);
 bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag);
@@ -871,7 +843,6 @@ char *z_format_row_layout(const ZRowTokenVec *tokens, const ZRowTree *tree);
 void z_free_row_tree(ZRowTree *tree);
 void z_free_row_tokens(ZRowTokenVec *tokens);
 
-Program z_parse(TokenVec *tokens, ZDiag *diag);
 void z_free_program(Program *program);
 
 bool z_check_program(const Program *program, ZDiag *diag);

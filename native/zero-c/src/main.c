@@ -370,19 +370,6 @@ static int embedded_skills_command(int argc, char **argv, bool json) {
   return embedded_skills_error(json, message);
 }
 
-static const char *token_kind_name(TokenKind kind) {
-  switch (kind) {
-    case TOK_IDENT: return "ident";
-    case TOK_KEYWORD: return "keyword";
-    case TOK_STRING: return "string";
-    case TOK_CHAR: return "char";
-    case TOK_NUMBER: return "number";
-    case TOK_SYMBOL: return "symbol";
-    case TOK_EOF: return "eof";
-  }
-  return "unknown";
-}
-
 static const char *row_token_kind_name(ZRowTokenKind kind) {
   switch (kind) {
     case Z_ROW_TOKEN_WORD: return "word";
@@ -397,29 +384,6 @@ static const char *row_token_kind_name(ZRowTokenKind kind) {
     case Z_ROW_TOKEN_EOF: return "eof";
   }
   return "unknown";
-}
-
-static void append_tokens_json(ZBuf *buf, const char *source_file, const TokenVec *tokens) {
-  zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, source_file);
-  zbuf_append(buf, ",\n  \"tokens\": [\n");
-  for (size_t i = 0; tokens && i < tokens->len; i++) {
-    const Token *token = &tokens->items[i];
-    zbuf_append(buf, "    {\"kind\": ");
-    append_json_string(buf, token_kind_name(token->kind));
-    zbuf_append(buf, ", \"text\": ");
-    append_json_string(buf, token->text);
-    zbuf_appendf(
-      buf,
-      ", \"line\": %d, \"column\": %d, \"offset\": %zu, \"length\": %zu}%s\n",
-      token->line,
-      token->column,
-      token->offset,
-      token->length,
-      i + 1 < tokens->len ? "," : ""
-    );
-  }
-  zbuf_append(buf, "  ]\n}\n");
 }
 
 static void append_row_tokens_json(ZBuf *buf, const char *source_file, const ZRowTokenVec *tokens) {
@@ -4202,27 +4166,37 @@ static bool resolve_direct_row_package_source(const char *input_path, SourceInpu
   *handled = false;
   char *manifest_path = direct_manifest_path_for_input(input_path);
   if (!manifest_path) return false;
+  *handled = true;
 
   char *manifest = z_read_file(manifest_path, diag);
   if (!manifest) {
+    diag->path = z_strdup(manifest_path);
     free(manifest_path);
     return false;
   }
   ZManifest parsed_manifest = {0};
   if (!z_parse_manifest_json(manifest, &parsed_manifest, diag)) {
-    diag->path = manifest_path;
+    diag->path = z_strdup(manifest_path);
     free(manifest);
-    *handled = true;
+    free(manifest_path);
     return false;
   }
   if (!parsed_manifest.main_path || !is_row_source_path(parsed_manifest.main_path)) {
+    diag->code = 2002;
+    diag->path = z_strdup(manifest_path);
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "target main source must use current Zero syntax");
+    snprintf(diag->expected, sizeof(diag->expected), ".0 or .row source file");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", parsed_manifest.main_path ? parsed_manifest.main_path : "missing targets.cli.main");
+    snprintf(diag->help, sizeof(diag->help), "set targets.cli.main to a current Zero source file");
     z_free_manifest(&parsed_manifest);
     free(manifest);
     free(manifest_path);
     return false;
   }
 
-  *handled = true;
   bool ok = z_resolve_package_metadata(manifest_path, manifest, &parsed_manifest, input, diag);
   if (ok) {
     char *source_file = direct_join_path(input->package_root, parsed_manifest.main_path);
@@ -4251,101 +4225,44 @@ static bool resolve_direct_row_package_source(const char *input_path, SourceInpu
   return ok;
 }
 
-static bool load_command_source(const char *input_path, SourceInput *input, bool *row_source, ZDiag *diag) {
-  *row_source = false;
+static void set_source_input_diag(const char *input_path, ZDiag *diag) {
+  diag->code = 2002;
+  diag->line = 1;
+  diag->column = 1;
+  diag->length = 1;
+  snprintf(diag->message, sizeof(diag->message), "expected Zero source file or package");
+  snprintf(diag->expected, sizeof(diag->expected), ".0 source file, .row source file, zero.json, or package directory");
+  snprintf(diag->actual, sizeof(diag->actual), "%s", input_path ? input_path : "");
+  snprintf(diag->help, sizeof(diag->help), "pass a current Zero source file or a package with targets.cli.main");
+}
+
+static bool load_command_source(const char *input_path, SourceInput *input, ZDiag *diag) {
   if (is_row_source_path(input_path)) {
-    *row_source = true;
     return load_direct_row_source(input_path, input, diag);
   }
   bool handled_row_package = false;
   if (resolve_direct_row_package_source(input_path, input, diag, &handled_row_package)) {
-    *row_source = true;
     return true;
   }
   if (handled_row_package) return false;
-  if (has_suffix(input_path, ".0")) {
-    input->source_file = z_strdup(input_path);
-    input->source = z_read_file(input_path, diag);
-    return input->source != NULL;
-  }
-  return z_resolve_source(input_path, input, diag);
+  set_source_input_diag(input_path, diag);
+  return false;
 }
 
-static bool compile_input(const char *input_path, const ZTargetInfo *target, SourceInput *input, Program *program, ZDiag *diag) {
+static bool check_row_input(const ZTargetInfo *target, SourceInput *input, Program *program, ZDiag *diag, long long resolve_started_ms) {
+  input->resolve_ms = now_ms() - resolve_started_ms;
+  diag->path = input->source_file;
   long long phase_started = now_ms();
-  bool handled_row_package = false;
-  if (resolve_direct_row_package_source(input_path, input, diag, &handled_row_package)) {
-    input->resolve_ms = now_ms() - phase_started;
-    diag->path = input->source_file;
-    phase_started = now_ms();
-    if (!parse_row_source_text(input->source, program, diag)) {
-      z_map_source_diag(input, diag);
-      return false;
-    }
-    input->parse_ms = now_ms() - phase_started;
-    input->interface_ms = input->resolve_ms;
-    input->parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(input, NULL, NULL, "parse-tree"));
-    input->interface_cache_hit = compiler_cache_touch("interface", source_interface_hash(input));
-    input->check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(input, target, NULL, "checked-body"));
-    input->specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(input, target, "release", "specialization"));
-    z_set_check_target(target);
-    phase_started = now_ms();
-    if (!z_check_program(program, diag)) {
-      z_map_source_diag(input, diag);
-      return false;
-    }
-    input->check_ms = now_ms() - phase_started;
-    return true;
+  if (!parse_row_source_text(input->source, program, diag)) {
+    z_map_source_diag(input, diag);
+    return false;
   }
-  if (handled_row_package) return false;
-
-  if (is_row_source_path(input_path)) {
-    if (!resolve_direct_row_source(input_path, input, diag)) return false;
-    input->resolve_ms = now_ms() - phase_started;
-    diag->path = input->source_file;
-    phase_started = now_ms();
-    if (!parse_row_source_text(input->source, program, diag)) {
-      z_map_source_diag(input, diag);
-      return false;
-    }
-    input->parse_ms = now_ms() - phase_started;
-    input->interface_ms = input->resolve_ms;
-    input->parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(input, NULL, NULL, "parse-tree"));
-    input->interface_cache_hit = compiler_cache_touch("interface", source_interface_hash(input));
-    input->check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(input, target, NULL, "checked-body"));
-    input->specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(input, target, "release", "specialization"));
-    z_set_check_target(target);
-    phase_started = now_ms();
-    if (!z_check_program(program, diag)) {
-      z_map_source_diag(input, diag);
-      return false;
-    }
-    input->check_ms = now_ms() - phase_started;
-    return true;
-  }
-
-  if (!z_resolve_source(input_path, input, diag)) return false;
-  input->resolve_ms = now_ms() - phase_started;
+  input->parse_ms = now_ms() - phase_started;
   input->interface_ms = input->resolve_ms;
   input->parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(input, NULL, NULL, "parse-tree"));
   input->interface_cache_hit = compiler_cache_touch("interface", source_interface_hash(input));
   input->check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(input, target, NULL, "checked-body"));
   input->specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(input, target, "release", "specialization"));
-  diag->path = input->source_file;
-  phase_started = now_ms();
-  TokenVec tokens = z_tokenize(input->source, diag);
-  if (diag->code != 0) {
-    z_map_source_diag(input, diag);
-    z_free_tokens(&tokens);
-    return false;
-  }
-  *program = z_parse(&tokens, diag);
-  z_free_tokens(&tokens);
-  input->parse_ms = now_ms() - phase_started;
-  if (diag->code != 0) {
-    z_map_source_diag(input, diag);
-    return false;
-  }
   z_set_check_target(target);
   phase_started = now_ms();
   if (!z_check_program(program, diag)) {
@@ -4354,6 +4271,23 @@ static bool compile_input(const char *input_path, const ZTargetInfo *target, Sou
   }
   input->check_ms = now_ms() - phase_started;
   return true;
+}
+
+static bool compile_input(const char *input_path, const ZTargetInfo *target, SourceInput *input, Program *program, ZDiag *diag) {
+  long long phase_started = now_ms();
+  bool handled_row_package = false;
+  if (resolve_direct_row_package_source(input_path, input, diag, &handled_row_package)) {
+    return check_row_input(target, input, program, diag, phase_started);
+  }
+  if (handled_row_package) return false;
+
+  if (is_row_source_path(input_path)) {
+    if (!resolve_direct_row_source(input_path, input, diag)) return false;
+    return check_row_input(target, input, program, diag, phase_started);
+  }
+
+  set_source_input_diag(input_path, diag);
+  return false;
 }
 
 static bool has_suffix(const char *path, const char *suffix) {
@@ -5886,327 +5820,6 @@ static void print_ship_text(const ShipArtifacts *artifacts, long long elapsed_ms
   printf("debug symbols: %s\n", artifacts->debug_path);
   printf("size report: %s\n", artifacts->size_path);
   printf("sbom: %s\n", artifacts->sbom_path);
-}
-
-typedef struct {
-  ZBuf out;
-  int indent;
-  int paren_depth;
-  int bracket_depth;
-  int angle_depth;
-  bool brace_stack[256];
-  size_t brace_depth;
-  bool at_line_start;
-  bool pending_block;
-  bool in_function_header;
-  bool next_brace_is_error_set;
-  bool dot_at_line_start;
-  char previous[32];
-} FormatState;
-
-static bool fmt_is_ident_char(char ch) {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_';
-}
-
-static bool fmt_is_two_char_symbol(const char *source, size_t offset) {
-  const char *symbols[] = {"->", "=>", "..", "==", "!=", "<=", ">=", "&&", "||", "+%", "+|", NULL};
-  for (int i = 0; symbols[i]; i++) {
-    if (source[offset] == symbols[i][0] && source[offset + 1] == symbols[i][1]) return true;
-  }
-  return false;
-}
-
-static void fmt_trim_spaces(FormatState *fmt) {
-  while (fmt->out.len > 0 && fmt->out.data[fmt->out.len - 1] == ' ') {
-    fmt->out.data[--fmt->out.len] = 0;
-  }
-}
-
-static void fmt_indent_if_needed(FormatState *fmt) {
-  if (!fmt->at_line_start) return;
-  for (int i = 0; i < fmt->indent; i++) zbuf_append(&fmt->out, "    ");
-  fmt->at_line_start = false;
-}
-
-static void fmt_newline(FormatState *fmt) {
-  fmt_trim_spaces(fmt);
-  if (fmt->out.len == 0 || fmt->out.data[fmt->out.len - 1] != '\n') zbuf_append_char(&fmt->out, '\n');
-  fmt->at_line_start = true;
-  fmt->dot_at_line_start = false;
-}
-
-static void fmt_blank_line(FormatState *fmt) {
-  fmt_newline(fmt);
-  if (fmt->out.len < 2 || fmt->out.data[fmt->out.len - 2] != '\n') zbuf_append_char(&fmt->out, '\n');
-  fmt->at_line_start = true;
-}
-
-static bool fmt_previous_is_opening_punct(const FormatState *fmt) {
-  return strcmp(fmt->previous, "(") == 0 ||
-         strcmp(fmt->previous, "[") == 0 ||
-         strcmp(fmt->previous, "]") == 0 ||
-         strcmp(fmt->previous, "<") == 0 ||
-         strcmp(fmt->previous, ".") == 0 ||
-         strcmp(fmt->previous, "&") == 0;
-}
-
-static bool fmt_no_space_before(const char *token, const FormatState *fmt) {
-  return strcmp(token, ")") == 0 ||
-         strcmp(token, "]") == 0 ||
-         strcmp(token, ",") == 0 ||
-         strcmp(token, ".") == 0 ||
-         strcmp(token, ":") == 0 ||
-         strcmp(token, "<") == 0 ||
-         strcmp(token, ">") == 0 ||
-         strcmp(token, "(") == 0 ||
-         strcmp(token, "[") == 0 ||
-         fmt_previous_is_opening_punct(fmt) ||
-         fmt->out.len == 0 ||
-         fmt->out.data[fmt->out.len - 1] == '\n' ||
-         fmt->out.data[fmt->out.len - 1] == ' ';
-}
-
-static bool fmt_space_after(const char *token) {
-  return strcmp(token, ":") == 0 ||
-         strcmp(token, ",") == 0 ||
-         strcmp(token, "=") == 0 ||
-         strcmp(token, "->") == 0 ||
-         strcmp(token, "=>") == 0 ||
-         strcmp(token, "==") == 0 ||
-         strcmp(token, "!=") == 0 ||
-         strcmp(token, "<=") == 0 ||
-         strcmp(token, ">=") == 0 ||
-         strcmp(token, "&&") == 0 ||
-         strcmp(token, "||") == 0 ||
-         strcmp(token, "+") == 0 ||
-         strcmp(token, "-") == 0 ||
-         strcmp(token, "*") == 0 ||
-         strcmp(token, "/") == 0 ||
-         strcmp(token, "%") == 0 ||
-         strcmp(token, "+%") == 0 ||
-         strcmp(token, "+|") == 0;
-}
-
-static bool fmt_space_before_operator(const char *token) {
-  return strcmp(token, "=") == 0 ||
-         strcmp(token, "->") == 0 ||
-         strcmp(token, "=>") == 0 ||
-         strcmp(token, "==") == 0 ||
-         strcmp(token, "!=") == 0 ||
-         strcmp(token, "<=") == 0 ||
-         strcmp(token, ">=") == 0 ||
-         strcmp(token, "&&") == 0 ||
-         strcmp(token, "||") == 0 ||
-         strcmp(token, "+") == 0 ||
-         strcmp(token, "-") == 0 ||
-         strcmp(token, "*") == 0 ||
-         strcmp(token, "/") == 0 ||
-         strcmp(token, "%") == 0 ||
-         strcmp(token, "+%") == 0 ||
-         strcmp(token, "+|") == 0;
-}
-
-static void fmt_append_token(FormatState *fmt, const char *token) {
-  fmt_indent_if_needed(fmt);
-  bool needs_space = !fmt_no_space_before(token, fmt) || fmt_space_before_operator(token);
-  if (needs_space && fmt->out.len > 0 && fmt->out.data[fmt->out.len - 1] != ' ' && fmt->out.data[fmt->out.len - 1] != '\n') {
-    zbuf_append_char(&fmt->out, ' ');
-  }
-  zbuf_append(&fmt->out, token);
-  if (fmt_space_after(token)) zbuf_append_char(&fmt->out, ' ');
-  snprintf(fmt->previous, sizeof(fmt->previous), "%s", token);
-}
-
-static bool fmt_token_starts_block_header(const char *token) {
-  return strcmp(token, "shape") == 0 ||
-         strcmp(token, "enum") == 0 ||
-         strcmp(token, "choice") == 0 ||
-         strcmp(token, "interface") == 0 ||
-         strcmp(token, "if") == 0 ||
-         strcmp(token, "while") == 0 ||
-         strcmp(token, "for") == 0 ||
-         strcmp(token, "match") == 0 ||
-         strcmp(token, "else") == 0 ||
-         strcmp(token, "rescue") == 0 ||
-         strcmp(token, "test") == 0;
-}
-
-static void fmt_handle_identifier_token(FormatState *fmt, const char *token) {
-  bool line_start = fmt->at_line_start;
-  fmt_append_token(fmt, token);
-  if (strcmp(token, "fun") == 0 || strcmp(token, "export") == 0 || strcmp(token, "test") == 0) {
-    fmt->in_function_header = true;
-  }
-  if (fmt_token_starts_block_header(token)) fmt->pending_block = true;
-  if (fmt->dot_at_line_start) {
-    fmt->pending_block = true;
-    fmt->dot_at_line_start = false;
-  }
-  if (line_start && strcmp(token, "pub") == 0) {
-    /* The declaration keyword following `pub` determines whether a block is pending. */
-  }
-}
-
-static void fmt_handle_open_brace(FormatState *fmt) {
-  bool is_error_set = fmt->next_brace_is_error_set;
-  bool is_block = !is_error_set && (fmt->pending_block || fmt->in_function_header);
-  fmt->next_brace_is_error_set = false;
-  if (is_block) {
-    fmt_indent_if_needed(fmt);
-    if (fmt->out.len > 0 && fmt->out.data[fmt->out.len - 1] != ' ' && fmt->out.data[fmt->out.len - 1] != '\n') zbuf_append_char(&fmt->out, ' ');
-    zbuf_append_char(&fmt->out, '{');
-    if (fmt->brace_depth < sizeof(fmt->brace_stack) / sizeof(fmt->brace_stack[0])) fmt->brace_stack[fmt->brace_depth++] = true;
-    fmt->indent++;
-    fmt->pending_block = false;
-    fmt->in_function_header = false;
-    snprintf(fmt->previous, sizeof(fmt->previous), "{");
-    fmt_newline(fmt);
-    return;
-  }
-  fmt_append_token(fmt, "{");
-  if (fmt->brace_depth < sizeof(fmt->brace_stack) / sizeof(fmt->brace_stack[0])) fmt->brace_stack[fmt->brace_depth++] = false;
-}
-
-static void fmt_handle_close_brace(FormatState *fmt) {
-  bool is_block = fmt->brace_depth > 0 ? fmt->brace_stack[fmt->brace_depth - 1] : true;
-  if (fmt->brace_depth > 0) fmt->brace_depth--;
-  if (is_block) {
-    if (!fmt->at_line_start) fmt_newline(fmt);
-    if (fmt->indent > 0) fmt->indent--;
-    fmt_indent_if_needed(fmt);
-    zbuf_append_char(&fmt->out, '}');
-    snprintf(fmt->previous, sizeof(fmt->previous), "}");
-    return;
-  }
-  if (fmt->out.len > 0 && fmt->out.data[fmt->out.len - 1] != ' ' && fmt->out.data[fmt->out.len - 1] != '{') {
-    zbuf_append_char(&fmt->out, ' ');
-  }
-  fmt_append_token(fmt, "}");
-}
-
-static char *format_source_minimal(const char *source) {
-  FormatState fmt = {0};
-  zbuf_init(&fmt.out);
-  fmt.at_line_start = true;
-  const char *input = source ? source : "";
-  size_t i = 0;
-  while (input[i]) {
-    if (input[i] == ' ' || input[i] == '\t' || input[i] == '\r' || input[i] == '\n') {
-      int newlines = 0;
-      while (input[i] == ' ' || input[i] == '\t' || input[i] == '\r' || input[i] == '\n') {
-        if (input[i] == '\n') newlines++;
-        i++;
-      }
-      if (newlines > 1 && fmt.indent == 0 && fmt.out.len > 0) fmt_blank_line(&fmt);
-      else if (newlines > 0 && fmt.out.len > 0 && !fmt.at_line_start) fmt_newline(&fmt);
-      continue;
-    }
-    if (input[i] == '/' && input[i + 1] == '/') {
-      fmt_indent_if_needed(&fmt);
-      if (fmt.out.len > 0 && fmt.out.data[fmt.out.len - 1] != ' ' && fmt.out.data[fmt.out.len - 1] != '\n') zbuf_append_char(&fmt.out, ' ');
-      while (input[i] && input[i] != '\n') zbuf_append_char(&fmt.out, input[i++]);
-      fmt_newline(&fmt);
-      continue;
-    }
-    if (input[i] == '"') {
-      fmt_indent_if_needed(&fmt);
-      if (!fmt_no_space_before("\"", &fmt)) zbuf_append_char(&fmt.out, ' ');
-      zbuf_append_char(&fmt.out, input[i++]);
-      bool escaped = false;
-      while (input[i]) {
-        char ch = input[i++];
-        zbuf_append_char(&fmt.out, ch);
-        if (escaped) escaped = false;
-        else if (ch == '\\') escaped = true;
-        else if (ch == '"') break;
-      }
-      snprintf(fmt.previous, sizeof(fmt.previous), "literal");
-      continue;
-    }
-    if (input[i] == '\'') {
-      fmt_indent_if_needed(&fmt);
-      if (!fmt_no_space_before("'", &fmt)) zbuf_append_char(&fmt.out, ' ');
-      zbuf_append_char(&fmt.out, input[i++]);
-      bool escaped = false;
-      while (input[i]) {
-        char ch = input[i++];
-        zbuf_append_char(&fmt.out, ch);
-        if (escaped) escaped = false;
-        else if (ch == '\\') escaped = true;
-        else if (ch == '\'') break;
-      }
-      snprintf(fmt.previous, sizeof(fmt.previous), "literal");
-      continue;
-    }
-    if (fmt_is_ident_char(input[i]) && !(input[i] >= '0' && input[i] <= '9')) {
-      size_t start = i++;
-      while (fmt_is_ident_char(input[i])) i++;
-      char *token = z_strndup(input + start, i - start);
-      fmt_handle_identifier_token(&fmt, token);
-      if (strcmp(token, "raises") == 0) {
-        size_t lookahead = i;
-        while (input[lookahead] == ' ' || input[lookahead] == '\t' || input[lookahead] == '\r' || input[lookahead] == '\n') lookahead++;
-        if (input[lookahead] == '{') {
-          lookahead++;
-          while (input[lookahead] == ' ' || input[lookahead] == '\t' || input[lookahead] == '\r' || input[lookahead] == '\n') lookahead++;
-          fmt.next_brace_is_error_set = input[lookahead] >= 'A' && input[lookahead] <= 'Z';
-        }
-      }
-      free(token);
-      continue;
-    }
-    if (input[i] >= '0' && input[i] <= '9') {
-      size_t start = i++;
-      while (fmt_is_ident_char(input[i]) || input[i] == '.' || input[i] == '_') {
-        if (input[i] == '.' && input[i + 1] == '.') break;
-        i++;
-      }
-      char *token = z_strndup(input + start, i - start);
-      fmt_append_token(&fmt, token);
-      free(token);
-      continue;
-    }
-    char token[3] = {0};
-    if (fmt_is_two_char_symbol(input, i)) {
-      token[0] = input[i];
-      token[1] = input[i + 1];
-      i += 2;
-    } else {
-      token[0] = input[i++];
-    }
-    if (strcmp(token, "{") == 0) {
-      fmt_handle_open_brace(&fmt);
-    } else if (strcmp(token, "}") == 0) {
-      fmt_handle_close_brace(&fmt);
-    } else {
-      if (strcmp(token, "(") == 0) fmt.paren_depth++;
-      else if (strcmp(token, ")") == 0 && fmt.paren_depth > 0) fmt.paren_depth--;
-      else if (strcmp(token, "[") == 0) fmt.bracket_depth++;
-      else if (strcmp(token, "]") == 0 && fmt.bracket_depth > 0) fmt.bracket_depth--;
-      else if (strcmp(token, "<") == 0) fmt.angle_depth++;
-      else if (strcmp(token, ">") == 0 && fmt.angle_depth > 0) fmt.angle_depth--;
-      if (strcmp(token, ".") == 0 && strcmp(fmt.previous, "}") == 0 && !fmt.at_line_start) {
-        fmt_newline(&fmt);
-      }
-      bool line_start = fmt.at_line_start;
-      fmt_append_token(&fmt, token);
-      if (strcmp(token, ".") == 0 && line_start) fmt.dot_at_line_start = true;
-      if (strcmp(token, ",") == 0 &&
-          fmt.brace_depth > 0 &&
-          fmt.brace_stack[fmt.brace_depth - 1] &&
-          fmt.paren_depth == 0 &&
-          fmt.bracket_depth == 0 &&
-          fmt.angle_depth == 0) {
-        fmt_newline(&fmt);
-      }
-    }
-  }
-  fmt_trim_spaces(&fmt);
-  if (fmt.out.len == 0 || fmt.out.data[fmt.out.len - 1] != '\n') zbuf_append_char(&fmt.out, '\n');
-  while (fmt.out.len > 1 && fmt.out.data[fmt.out.len - 1] == '\n' && fmt.out.data[fmt.out.len - 2] == '\n') {
-    fmt.out.data[--fmt.out.len] = 0;
-  }
-  return fmt.out.data;
 }
 
 static int print_version_command(bool json) {
@@ -9827,8 +9440,7 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "fmt") == 0) {
     SourceInput fmt_input = {0};
-    bool row_source = false;
-    if (!load_command_source(command.input, &fmt_input, &row_source, &diag)) {
+    if (!load_command_source(command.input, &fmt_input, &diag)) {
       if (command.json) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
@@ -9840,7 +9452,7 @@ int main(int argc, char **argv) {
       return 1;
     }
     diag.path = fmt_input.source_file;
-    char *formatted = row_source ? format_row_source_text(fmt_input.source, &diag) : format_source_minimal(fmt_input.source);
+    char *formatted = format_row_source_text(fmt_input.source, &diag);
     if (!formatted || diag.code != 0) {
       z_map_source_diag(&fmt_input, &diag);
       if (command.json) print_diag_json(diag.path ? diag.path : command.input, &diag);
@@ -9868,8 +9480,7 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "tokens") == 0) {
     SourceInput token_input = {0};
-    bool row_source = false;
-    if (!load_command_source(command.input, &token_input, &row_source, &diag)) {
+    if (!load_command_source(command.input, &token_input, &diag)) {
       if (command.json) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
@@ -9881,60 +9492,34 @@ int main(int argc, char **argv) {
       return 1;
     }
     diag.path = token_input.source_file;
-    if (row_source) {
-      ZRowTokenVec tokens = z_row_tokenize(token_input.source, &diag);
-      if (diag.code != 0) {
-        z_map_source_diag(&token_input, &diag);
-        if (command.json) print_diag_json(diag.path ? diag.path : command.input, &diag);
-        else print_diag(diag.path ? diag.path : command.input, &diag);
-        z_free_row_tokens(&tokens);
-        z_free_source(&token_input);
-        return 1;
-      }
-      if (command.json) {
-        ZBuf buf;
-        zbuf_init(&buf);
-        append_row_tokens_json(&buf, token_input.source_file, &tokens);
-        fputs(buf.data, stdout);
-        zbuf_free(&buf);
-      } else {
-        for (size_t i = 0; i < tokens.len; i++) {
-          printf("%s %s %d:%d\n", row_token_kind_name(tokens.items[i].kind), tokens.items[i].text, tokens.items[i].line, tokens.items[i].column);
-        }
-      }
-      z_free_row_tokens(&tokens);
-      z_free_source(&token_input);
-      return 0;
-    }
-    TokenVec tokens = z_tokenize(token_input.source, &diag);
+    ZRowTokenVec tokens = z_row_tokenize(token_input.source, &diag);
     if (diag.code != 0) {
       z_map_source_diag(&token_input, &diag);
       if (command.json) print_diag_json(diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
-      z_free_tokens(&tokens);
+      z_free_row_tokens(&tokens);
       z_free_source(&token_input);
       return 1;
     }
     if (command.json) {
       ZBuf buf;
       zbuf_init(&buf);
-      append_tokens_json(&buf, token_input.source_file, &tokens);
+      append_row_tokens_json(&buf, token_input.source_file, &tokens);
       fputs(buf.data, stdout);
       zbuf_free(&buf);
     } else {
       for (size_t i = 0; i < tokens.len; i++) {
-        printf("%s %s %d:%d\n", token_kind_name(tokens.items[i].kind), tokens.items[i].text, tokens.items[i].line, tokens.items[i].column);
+        printf("%s %s %d:%d\n", row_token_kind_name(tokens.items[i].kind), tokens.items[i].text, tokens.items[i].line, tokens.items[i].column);
       }
     }
-    z_free_tokens(&tokens);
+    z_free_row_tokens(&tokens);
     z_free_source(&token_input);
     return 0;
   }
 
   if (strcmp(command.command, "parse") == 0) {
     SourceInput parse_input = {0};
-    bool row_source = false;
-    if (!load_command_source(command.input, &parse_input, &row_source, &diag)) {
+    if (!load_command_source(command.input, &parse_input, &diag)) {
       if (command.json) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
@@ -9947,19 +9532,12 @@ int main(int argc, char **argv) {
     }
     diag.path = parse_input.source_file;
     Program parsed = {0};
-    TokenVec tokens = {0};
-    if (row_source) {
-      parse_row_source_text(parse_input.source, &parsed, &diag);
-    } else {
-      tokens = z_tokenize(parse_input.source, &diag);
-      if (diag.code == 0) parsed = z_parse(&tokens, &diag);
-    }
+    parse_row_source_text(parse_input.source, &parsed, &diag);
     if (diag.code != 0) {
       z_map_source_diag(&parse_input, &diag);
       if (command.json) print_diag_json(diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_program(&parsed);
-      z_free_tokens(&tokens);
       z_free_source(&parse_input);
       return 1;
     }
@@ -9973,7 +9551,6 @@ int main(int argc, char **argv) {
       printf("parse ok: %s\n", parse_input.source_file ? parse_input.source_file : command.input);
     }
     z_free_program(&parsed);
-    z_free_tokens(&tokens);
     z_free_source(&parse_input);
     return 0;
   }
