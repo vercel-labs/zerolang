@@ -39,6 +39,10 @@ size_t z_x64_emit_jmp32_placeholder(ZBuf *buf, unsigned opcode) {
   return patch;
 }
 
+size_t z_x64_emit_call32_placeholder(ZBuf *buf) {
+  return z_x64_emit_jmp32_placeholder(buf, 0xe8);
+}
+
 size_t z_x64_emit_jcc32_placeholder(ZBuf *buf, unsigned condition) {
   z_x64_append_u8(buf, 0x0f);
   z_x64_append_u8(buf, condition);
@@ -158,12 +162,37 @@ void z_x64_emit_div_rax_rcx(ZBuf *buf, bool wide, bool uns, bool keep_remainder)
   }
 }
 
-void z_x64_emit_cmp_rax_rcx_to_bool(ZBuf *buf, unsigned setcc_opcode, bool wide) {
+void z_x64_emit_test_rax_rax(ZBuf *buf, bool wide) {
+  z_x64_emit_wide_prefix(buf, wide);
+  z_x64_append_u8(buf, 0x85);
+  z_x64_append_u8(buf, 0xc0);
+}
+
+void z_x64_emit_test_ecx_ecx(ZBuf *buf) {
+  z_x64_append_u8(buf, 0x85);
+  z_x64_append_u8(buf, 0xc9);
+}
+
+void z_x64_emit_cmp_rax_rcx(ZBuf *buf, bool wide) {
   z_x64_emit_wide_prefix(buf, wide);
   z_x64_append_u8(buf, 0x39);
   z_x64_append_u8(buf, 0xc8);
+}
+
+void z_x64_emit_cmp_rax_rcx_to_bool(ZBuf *buf, unsigned setcc_opcode, bool wide) {
+  z_x64_emit_cmp_rax_rcx(buf, wide);
   z_x64_append_u8(buf, 0x0f);
   z_x64_append_u8(buf, setcc_opcode);
+  z_x64_append_u8(buf, 0xc0);
+  z_x64_append_u8(buf, 0x0f);
+  z_x64_append_u8(buf, 0xb6);
+  z_x64_append_u8(buf, 0xc0);
+}
+
+void z_x64_emit_bool_from_nonnegative_rax(ZBuf *buf) {
+  z_x64_emit_test_rax_rax(buf, true);
+  z_x64_append_u8(buf, 0x0f);
+  z_x64_append_u8(buf, 0x99);
   z_x64_append_u8(buf, 0xc0);
   z_x64_append_u8(buf, 0x0f);
   z_x64_append_u8(buf, 0xb6);

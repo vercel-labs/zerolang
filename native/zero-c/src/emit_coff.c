@@ -295,9 +295,7 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
         z_x64_emit_pop_reg64(text, param_regs[i - 1]);
       }
       z_x64_emit_sub_rsp(text, 32);
-      z_x64_append_u8(text, 0xe8);
-      size_t patch = text->len;
-      z_x64_append_u32(text, 0);
+      size_t patch = z_x64_emit_call32_placeholder(text);
       z_x64_emit_add_rsp(text, 32);
       return z_coff_record_call_patch(ctx, patch, value->callee_index, value, diag);
     }
@@ -310,8 +308,7 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec push requires a Vec local", value->line, value->column, "invalid Vec local");
       coff_emit_load_local_slot_eax(text, fun, value->local_index, 8);
       coff_emit_load_local_slot_reg(text, fun, value->local_index, 12, 1, false);
-      z_x64_append_u8(text, 0x39);
-      z_x64_append_u8(text, 0xc8);
+      z_x64_emit_cmp_rax_rcx(text, false);
       size_t ok_patch = z_x64_emit_jcc32_placeholder(text, 0x82);
       z_x64_emit_mov_eax_u32(text, 0);
       size_t end_patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
@@ -355,8 +352,7 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       z_x64_append_u8(text, 0x89);
       z_x64_append_u8(text, 0xc1);
       z_x64_append_u8(text, 0x58);
-      z_x64_append_u8(text, 0x39);
-      z_x64_append_u8(text, 0xc8);
+      z_x64_emit_cmp_rax_rcx(text, false);
       size_t ok_patch = z_x64_emit_jcc32_placeholder(text, 0x82);
       z_x64_emit_ud2(text);
       z_x64_patch_rel32(text, ok_patch, text->len);
@@ -437,12 +433,9 @@ static bool coff_emit_world_write(ZBuf *text, const IrFunction *fun, const IrIns
   z_x64_append_u8(text, 0xb9);
   z_x64_append_u32(text, instr->field_offset == 2 ? 2u : 1u); // ecx = fd
   z_x64_emit_sub_rsp(text, 32);
-  z_x64_append_u8(text, 0xe8);
-  size_t patch = text->len;
-  z_x64_append_u32(text, 0);
+  size_t patch = z_x64_emit_call32_placeholder(text);
   z_x64_emit_add_rsp(text, 32);
-  z_x64_append_u8(text, 0x85);
-  z_x64_append_u8(text, 0xc0); // test eax, eax
+  z_x64_emit_test_rax_rax(text, false);
   size_t ok_patch = z_x64_emit_jcc32_placeholder(text, 0x84);
   z_x64_emit_ud2(text); // ud2 on runtime write failure
   z_x64_patch_rel32(text, ok_patch, text->len);
@@ -493,8 +486,7 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
       z_x64_append_u8(text, 0xc2);
       z_x64_append_u8(text, 0x01);
       z_x64_append_u8(text, 0xc8);
-      z_x64_append_u8(text, 0x39);
-      z_x64_append_u8(text, 0xc8);
+      z_x64_emit_cmp_rax_rcx(text, false);
       size_t ok_patch = z_x64_emit_jcc32_placeholder(text, 0x86);
       z_x64_emit_mov_eax_u32(text, 0);
       coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
@@ -580,8 +572,7 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
   }
   if (instr->kind == IR_INSTR_IF) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
-    z_x64_append_u8(text, 0x85);
-    z_x64_append_u8(text, 0xc0);
+    z_x64_emit_test_rax_rax(text, false);
     size_t false_patch = z_x64_emit_jcc32_placeholder(text, 0x84);
     if (!coff_emit_instrs(text, fun, instr->then_instrs, instr->then_len, ctx, diag)) return false;
     if (instr->else_len > 0) {
@@ -597,8 +588,7 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
   if (instr->kind == IR_INSTR_WHILE) {
     size_t loop_start = text->len;
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
-    z_x64_append_u8(text, 0x85);
-    z_x64_append_u8(text, 0xc0);
+    z_x64_emit_test_rax_rax(text, false);
     size_t false_patch = z_x64_emit_jcc32_placeholder(text, 0x84);
     if (!coff_emit_instrs(text, fun, instr->then_instrs, instr->then_len, ctx, diag)) return false;
     size_t loop_patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
@@ -822,9 +812,7 @@ static void coff_emit_import_call(ZBuf *text, ZCoffImportPatch *patches, size_t 
 
 static size_t coff_emit_exe_start_stub(ZBuf *text, ZCoffImportPatch *import_patches, size_t *import_patch_len) {
   z_x64_emit_sub_rsp(text, 40);
-  z_x64_append_u8(text, 0xe8);
-  size_t main_patch = text->len;
-  z_x64_append_u32(text, 0);
+  size_t main_patch = z_x64_emit_call32_placeholder(text);
   z_x64_append_u8(text, 0x89);
   z_x64_append_u8(text, 0xc1); // mov ecx, eax
   coff_emit_import_call(text, import_patches, import_patch_len, Z_COFF_IMPORT_EXIT_PROCESS);
