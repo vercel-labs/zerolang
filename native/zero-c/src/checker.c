@@ -976,6 +976,11 @@ static bool is_builtin_value(const char *name) {
   return strcmp(name, "std") == 0;
 }
 
+/* Forward declarations for C import call resolution (defined near validate_c_imports) */
+static const CImport *find_c_import_for_callee(const Program *program, const Expr *callee);
+static const char *c_import_call_return_type(const Program *program, const Expr *call_expr);
+static bool check_c_import_call(const Program *program, const Expr *expr, Scope *scope, ZDiag *diag);
+
 static void member_name_buf(const Expr *expr, ZBuf *buf) {
   if (!expr) return;
   if (expr->kind == EXPR_IDENT) {
@@ -5170,6 +5175,11 @@ static const char *expr_type(CheckContext *ctx, const Program *program, const Ex
       }
       if (expr->left && expr->left->kind == EXPR_MEMBER) {
         if (is_world_stream_write_callee(expr->left, scope)) return "Void";
+        /* C import call return type */
+        {
+          const char *c_ret = c_import_call_return_type(program, expr);
+          if (c_ret) return c_ret;
+        }
         ZCallResolution resolution = {0};
         if (resolve_shape_namespace_call(program, expr, &resolution)) {
           const Shape *shape = resolution.shape;
@@ -5638,6 +5648,9 @@ static bool check_call_callee(CheckContext *ctx, const Program *program, const E
     if (fun) return true;
     return check_expr(ctx, program, callee, scope, diag);
   }
+  if (callee->kind == EXPR_MEMBER && find_namespace_shape_method(program, callee, NULL)) return true;
+  if (callee->kind == EXPR_MEMBER && find_constrained_interface_method(program, callee, NULL)) return true;
+  if (callee->kind == EXPR_MEMBER && find_c_import_for_callee(program, callee)) return true;
   if (callee->kind == EXPR_MEMBER) {
     ZCallResolution resolution = {0};
     if (resolve_shape_namespace_call(program, call, &resolution) ||
@@ -6215,6 +6228,10 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
           stdlib_member_callee ||
           is_world_stream_write_callee(expr->left, scope);
         zbuf_free(&callee_name);
+        /* C import call: alias.func_name(...) — must check before receiver lookup */
+        if (find_c_import_for_callee(program, expr->left)) {
+          return check_c_import_call(program, expr, scope, diag);
+        }
         bool namespace_owner = receiver && receiver->kind == EXPR_IDENT && find_shape(program, receiver->text);
         char **receiver_constraint_args = NULL;
         size_t receiver_constraint_arg_len = 0;
@@ -6430,6 +6447,10 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
           free(interface_bindings);
           z_call_resolution_free(&resolution);
           return true;
+        }
+        /* C import call: alias.func_name(...) */
+        if (find_c_import_for_callee(program, expr->left)) {
+          return check_c_import_call(program, expr, scope, diag);
         }
       }
       if (!check_call_callee(ctx, program, expr, scope, diag)) return false;
@@ -9435,6 +9456,256 @@ static bool c_header_has_function_like_macro(const char *header) {
     if (*cursor == '(') return true;
   }
   return false;
+}
+
+/* ---- C import call resolution ---- */
+
+/* Map a C type string to a Zero type string.
+   Returns a pointer to a static buffer — valid until next call. */
+static const char *c_type_to_zero(const char *c_type) {
+  static char buf[128];
+  /* strip leading/trailing whitespace */
+  while (*c_type == ' ' || *c_type == '\t') c_type++;
+  size_t len = strlen(c_type);
+  while (len > 0 && (c_type[len - 1] == ' ' || c_type[len - 1] == '\t')) len--;
+  char trimmed[128];
+  if (len >= sizeof(trimmed)) len = sizeof(trimmed) - 1;
+  memcpy(trimmed, c_type, len);
+  trimmed[len] = '\0';
+
+  /* void return */
+  if (strcmp(trimmed, "void") == 0) { snprintf(buf, sizeof(buf), "Void"); return buf; }
+  /* any pointer type → usize (opaque handle) */
+  if (strchr(trimmed, '*')) { snprintf(buf, sizeof(buf), "usize"); return buf; }
+  /* const char (no pointer, rare) */
+  if (strcmp(trimmed, "char") == 0) { snprintf(buf, sizeof(buf), "u8"); return buf; }
+  if (strcmp(trimmed, "int") == 0 || strcmp(trimmed, "signed int") == 0) { snprintf(buf, sizeof(buf), "i32"); return buf; }
+  if (strcmp(trimmed, "unsigned int") == 0 || strcmp(trimmed, "unsigned") == 0) { snprintf(buf, sizeof(buf), "u32"); return buf; }
+  if (strcmp(trimmed, "long") == 0 || strcmp(trimmed, "signed long") == 0) { snprintf(buf, sizeof(buf), "i64"); return buf; }
+  if (strcmp(trimmed, "unsigned long") == 0) { snprintf(buf, sizeof(buf), "u64"); return buf; }
+  if (strcmp(trimmed, "size_t") == 0 || strcmp(trimmed, "unsigned long long") == 0) { snprintf(buf, sizeof(buf), "usize"); return buf; }
+  if (strcmp(trimmed, "long long") == 0 || strcmp(trimmed, "signed long long") == 0) { snprintf(buf, sizeof(buf), "i64"); return buf; }
+  if (strcmp(trimmed, "short") == 0 || strcmp(trimmed, "signed short") == 0) { snprintf(buf, sizeof(buf), "i32"); return buf; }
+  if (strcmp(trimmed, "unsigned short") == 0) { snprintf(buf, sizeof(buf), "u32"); return buf; }
+  if (strcmp(trimmed, "float") == 0 || strcmp(trimmed, "double") == 0) { snprintf(buf, sizeof(buf), "usize"); return buf; }
+  /* fallback: treat as opaque usize */
+  snprintf(buf, sizeof(buf), "usize");
+  return buf;
+}
+
+/* Parse C header text to find function declaration for `func_name`.
+   On success fills ret_zero_type (Zero return type string) and
+   param_zero_types[] (array of param Zero type strings, up to max_params).
+   Returns true if found. */
+static bool c_parse_function_decl(
+    const char *header, const char *func_name,
+    char *ret_zero_type, size_t ret_size,
+    char param_zero_types[][64], size_t max_params, size_t *out_param_count) {
+  if (!header || !func_name || !ret_zero_type || !param_zero_types || !out_param_count) return false;
+  *out_param_count = 0;
+
+  const char *cursor = header;
+  size_t fname_len = strlen(func_name);
+
+  while (*cursor) {
+    /* Find next occurrence of func_name */
+    const char *found = strstr(cursor, func_name);
+    if (!found) break;
+    cursor = found + fname_len;
+
+    /* Must be followed by '(' (possibly with whitespace) */
+    const char *after = found + fname_len;
+    while (*after == ' ' || *after == '\t') after++;
+    if (*after != '(') continue;
+
+    /* Make sure the character before func_name is not alphanumeric or '_'
+       (i.e., func_name is not part of a longer identifier) */
+    if (found > header) {
+      char prev = *(found - 1);
+      if ((prev >= 'A' && prev <= 'Z') || (prev >= 'a' && prev <= 'z') ||
+          (prev >= '0' && prev <= '9') || prev == '_') continue;
+    }
+    /* Also ensure func_name itself is not a substring of a longer name */
+    char next_c = *(found + fname_len);
+    if ((next_c >= 'A' && next_c <= 'Z') || (next_c >= 'a' && next_c <= 'z') ||
+        (next_c >= '0' && next_c <= '9') || next_c == '_') continue;
+
+    /* Scan backwards from found to get the return type.
+       Return type is everything on the same "declaration line" before func_name. */
+    const char *line_start = found;
+    while (line_start > header && *(line_start - 1) != '\n') line_start--;
+    /* skip leading whitespace on the line */
+    while (*line_start == ' ' || *line_start == '\t') line_start++;
+    /* skip preprocessor lines */
+    if (*line_start == '#') continue;
+
+    /* extract return type token(s): everything from line_start to found, strip trailing space */
+    size_t ret_raw_len = (size_t)(found - line_start);
+    char ret_raw[128] = {0};
+    if (ret_raw_len >= sizeof(ret_raw)) ret_raw_len = sizeof(ret_raw) - 1;
+    memcpy(ret_raw, line_start, ret_raw_len);
+    /* strip trailing whitespace */
+    size_t rl = strlen(ret_raw);
+    while (rl > 0 && (ret_raw[rl - 1] == ' ' || ret_raw[rl - 1] == '\t')) rl--;
+    ret_raw[rl] = '\0';
+
+    /* Map C return type to Zero type */
+    const char *zero_ret = c_type_to_zero(ret_raw);
+    snprintf(ret_zero_type, ret_size, "%s", zero_ret);
+
+    /* Parse parameters inside '(...)' */
+    const char *params_start = after + 1; /* skip '(' */
+    /* find matching ')' */
+    const char *params_end = strchr(params_start, ')');
+    if (!params_end) continue;
+
+    /* extract raw param string */
+    char params_raw[512] = {0};
+    size_t params_len = (size_t)(params_end - params_start);
+    if (params_len >= sizeof(params_raw)) params_len = sizeof(params_raw) - 1;
+    memcpy(params_raw, params_start, params_len);
+    params_raw[params_len] = '\0';
+
+    /* void params */
+    char trimmed_params[512];
+    const char *p = params_raw;
+    while (*p == ' ' || *p == '\t') p++;
+    snprintf(trimmed_params, sizeof(trimmed_params), "%s", p);
+    if (strcmp(trimmed_params, "void") == 0 || trimmed_params[0] == '\0') {
+      *out_param_count = 0;
+      return true;
+    }
+
+    /* split by comma, map each param type */
+    size_t count = 0;
+    char *tok = trimmed_params;
+    char *end_tok = tok + strlen(tok);
+    while (tok < end_tok && count < max_params) {
+      /* find next comma */
+      char *comma = strchr(tok, ',');
+      if (!comma) comma = end_tok;
+      /* extract one param declaration */
+      char param_decl[128] = {0};
+      size_t pd_len = (size_t)(comma - tok);
+      if (pd_len >= sizeof(param_decl)) pd_len = sizeof(param_decl) - 1;
+      memcpy(param_decl, tok, pd_len);
+      param_decl[pd_len] = '\0';
+      /* strip leading/trailing space */
+      char *pd = param_decl;
+      while (*pd == ' ' || *pd == '\t') pd++;
+      size_t pdl = strlen(pd);
+      while (pdl > 0 && (pd[pdl - 1] == ' ' || pd[pdl - 1] == '\t')) pdl--;
+      pd[pdl] = '\0';
+
+      /* The param type is everything up to (but not including) the last identifier token.
+         For "int a" the type is "int"; for "const char *s" the type is "const char *";
+         for "int" alone (no name), the whole thing is the type. */
+      /* Find last whitespace-separated word that could be a parameter name.
+         If the last char is '*', the entire thing is a pointer type with no name. */
+      char param_type[128];
+      snprintf(param_type, sizeof(param_type), "%s", pd);
+      if (pd[pdl - 1] != '*') {
+        /* find last word boundary */
+        size_t last_space = pdl;
+        while (last_space > 0 && pd[last_space - 1] != ' ' && pd[last_space - 1] != '\t' && pd[last_space - 1] != '*') last_space--;
+        if (last_space > 0) {
+          /* everything before last_space is the type */
+          char candidate[128] = {0};
+          if (last_space >= sizeof(candidate)) last_space = sizeof(candidate) - 1;
+          memcpy(candidate, pd, last_space);
+          candidate[last_space] = '\0';
+          /* strip trailing whitespace */
+          size_t cl = strlen(candidate);
+          while (cl > 0 && (candidate[cl - 1] == ' ' || candidate[cl - 1] == '\t')) cl--;
+          candidate[cl] = '\0';
+          if (cl > 0) snprintf(param_type, sizeof(param_type), "%s", candidate);
+        }
+      }
+
+      const char *zero_param = c_type_to_zero(param_type);
+      snprintf(param_zero_types[count], 64, "%s", zero_param);
+      count++;
+      tok = comma + 1;
+    }
+    *out_param_count = count;
+    return true;
+  }
+  return false;
+}
+
+/* Determine if an EXPR_MEMBER callee refers to a C import alias call.
+   callee must be EXPR_MEMBER with left == EXPR_IDENT (the alias name) and text (the func name).
+   Returns the matching CImport or NULL. */
+static const CImport *find_c_import_for_callee(const Program *program, const Expr *callee) {
+  if (!program || !callee || callee->kind != EXPR_MEMBER) return NULL;
+  if (!callee->left || callee->left->kind != EXPR_IDENT) return NULL;
+  const char *alias = callee->left->text;
+  for (size_t i = 0; i < program->c_imports.len; i++) {
+    if (program->c_imports.items[i].alias && strcmp(program->c_imports.items[i].alias, alias) == 0) {
+      return &program->c_imports.items[i];
+    }
+  }
+  return NULL;
+}
+
+/* Get the Zero return type of a C import call expression.
+   Returns NULL if not a C import call. */
+static const char *c_import_call_return_type(const Program *program, const Expr *call_expr) {
+  if (!call_expr || call_expr->kind != EXPR_CALL) return NULL;
+  const Expr *callee = call_expr->left;
+  const CImport *import = find_c_import_for_callee(program, callee);
+  if (!import || !import->header || !callee->text) return NULL;
+  ZDiag rd = {0};
+  char *header = z_read_file(import->header, &rd);
+  if (!header) return NULL;
+  static char ret_type[128];
+  char param_types[16][64];
+  size_t param_count = 0;
+  bool found = c_parse_function_decl(header, callee->text, ret_type, sizeof(ret_type), param_types, 16, &param_count);
+  free(header);
+  if (!found) return NULL;
+  return ret_type;
+}
+
+/* Type-check a C import call. Called from check_expr EXPR_CALL branch. */
+static bool check_c_import_call(const Program *program, const Expr *expr, Scope *scope, ZDiag *diag) {
+  const Expr *callee = expr->left;
+  const CImport *import = find_c_import_for_callee(program, callee);
+  if (!import) return false; /* not a c import call */
+  if (!callee->text) {
+    return set_diag_detail(diag, 8003, "extern c call has no function name", expr->line, expr->column, "alias.function_name(...)", "missing function name", "use the form alias.func_name(...)");
+  }
+  ZDiag rd = {0};
+  char *header = z_read_file(import->header, &rd);
+  if (!header) {
+    return set_diag_detail(diag, 8001, "extern c header could not be read", expr->line, expr->column, "readable C header path", import->header ? import->header : "<missing>", "ensure the header file is accessible");
+  }
+  char ret_zero_type[128];
+  char param_zero_types[16][64];
+  size_t param_count = 0;
+  bool found = c_parse_function_decl(header, callee->text, ret_zero_type, sizeof(ret_zero_type), param_zero_types, 16, &param_count);
+  free(header);
+  if (!found) {
+    char message[256];
+    snprintf(message, sizeof(message), "function '%s' not found in extern c header '%s'", callee->text, import->header);
+    return set_diag_detail(diag, 8004, message, expr->line, expr->column, "function declared in the imported C header", callee->text, "check the function name or add its declaration to the header");
+  }
+  /* Validate argument count */
+  if (param_count != expr->args.len) {
+    char message[256];
+    snprintf(message, sizeof(message), "extern c function '%s.%s' expects %zu argument(s), got %zu", import->alias, callee->text, param_count, expr->args.len);
+    return set_diag_detail(diag, 3004, message, expr->line, expr->column, "matching argument count", "wrong argument count", "update the call to match the C function signature");
+  }
+  /* Check each argument */
+  for (size_t i = 0; i < expr->args.len; i++) {
+    if (!check_expr(program, expr->args.items[i], scope, diag)) return false;
+    /* We do a lenient type check: accept any integer/usize/String for C params.
+       The C ABI is untyped at the Zero boundary — we trust the programmer to get it right. */
+    (void)param_zero_types[i];
+  }
+  /* Set resolved return type */
+  set_expr_resolved_type(expr, ret_zero_type);
+  return true;
 }
 
 static bool validate_c_imports(const Program *program, ZDiag *diag) {
