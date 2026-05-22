@@ -770,14 +770,17 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return true;
     }
     case IR_VALUE_FS_WRITE_PATH:
-    case IR_VALUE_FS_WRITE_BYTES_PATH: {
+    case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH: {
       // Stash data pointer and length before clobbering x0/x1/x2 with open args.
       if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 19, frame_size, scratch_slot, ctx, diag)) return false;
       if (!macho_emit_store_scratch(text, 19, IR_TYPE_U64, scratch_slot, value->right, diag)) return false;
       if (!macho_emit_byte_view_len_at(text, fun, value->right, 20, frame_size, scratch_slot + 1, ctx, diag)) return false;
       if (!macho_emit_store_scratch(text, 20, IR_TYPE_U32, scratch_slot + 1, value->right, diag)) return false;
       if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot + 2, ctx, diag)) return false;
-      z_aarch64_emit_movz_w(text, 1, 0x0601u);                      // O_WRONLY|O_CREAT|O_TRUNC
+      // Darwin O_WRONLY|O_CREAT|O_TRUNC = 0x601; O_WRONLY|O_CREAT|O_APPEND = 0x209.
+      unsigned open_flags = (value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) ? 0x0209u : 0x0601u;
+      z_aarch64_emit_movz_w(text, 1, open_flags);
       z_aarch64_emit_movz_w(text, 2, 0644u);
       z_aarch64_emit_movz_x(text, 16, 0x02000005ull);                // SYS_open
       z_aarch64_emit_svc(text, 0x80);

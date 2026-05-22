@@ -20,6 +20,7 @@ Runnable today:
 | `std.fs.readAllOrRaise(alloc, fs, path, limit)` | `owned<ByteBuf>` | Reads through an explicit allocator and size limit. |
 | `std.fs.readBytes(path, buf)` | `Maybe<usize>` | Reads bytes into caller storage. |
 | `std.fs.writeBytes(path, bytes)` | `Maybe<usize>` | Writes byte spans to a hosted path. |
+| `std.fs.appendBytes(path, bytes)` | `Maybe<usize>` | Appends byte spans to a hosted path. |
 | `std.fs.exists(path)` | `Bool` | Checks whether a hosted path exists. |
 | `std.fs.isDir(path)` | `Bool` | Checks whether a hosted path is a directory. |
 | `std.fs.makeDir(path)` | `Bool` | Creates a hosted directory. |
