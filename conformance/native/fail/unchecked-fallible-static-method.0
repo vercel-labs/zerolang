@@ -1,11 +1,8 @@
-shape S {
-    value: i32,
+type S
+  value i32
 
-    fun risky() -> Void raises { Bad } {
-        raise Bad
-    }
-}
+  fn risky Void ![Bad]
+    raise Bad
 
-pub fun main() -> Void raises { Bad } {
-    S.risky()
-}
+pub fn main Void ![Bad]
+  S.risky()

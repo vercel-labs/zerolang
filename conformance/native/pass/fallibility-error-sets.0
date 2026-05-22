@@ -1,27 +1,20 @@
-shape DropProbe {
-    marker: MutSpan<u8>,
+type DropProbe
+  marker MutSpan<u8>
 
-    fun drop(self: mutref<Self>) -> Void {
-        self.marker[0] = 1
-    }
-}
+  fn drop Void self mutref<Self>
+    set self.marker[0] 1
 
-fun maybe_fail(should_fail: Bool, marker: MutSpan<u8>) -> i32 raises { BadInput } {
-    let probe: owned<DropProbe> = DropProbe { marker: marker }
-    if should_fail {
-        raise BadInput
-    }
-    return 42
-}
+fn maybe_fail i32 should_fail Bool marker MutSpan<u8> ![BadInput]
+  let probe owned<DropProbe> DropProbe . marker marker
+  if should_fail
+    raise BadInput
+  ret 42
 
-fun run(marker: MutSpan<u8>) -> Void raises { BadInput } {
-    check maybe_fail(false, marker)
-}
+fn run Void marker MutSpan<u8> ![BadInput]
+  check maybe_fail false marker
 
-pub fun main(world: World) -> Void raises {
-    let mut marker: [1]u8 = [0]
-    check run(marker)
-    if marker[0] == 1_u8 {
-        check world.out.write("fallibility error sets ok\n")
-    }
-}
+pub fn main Void world World !
+  mut marker [1]u8 [0]
+  check run marker
+  if == marker[0] 1_u8
+    check world.out.write "fallibility error sets ok\n"

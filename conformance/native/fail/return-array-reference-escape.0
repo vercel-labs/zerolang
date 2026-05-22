@@ -1,7 +1,5 @@
-pub fun make() -> [1]ref<i32> {
-    let x = 1
-    return [&x]
-}
+pub fn make [1]ref<i32>
+  let x 1
+  ret [&x]
 
-pub fun main() -> Void {
-}
+pub fn main Void

@@ -54,29 +54,26 @@ zero graph --json --target linux-musl-x64 <input>
 ```zero
 use std.mem
 
-pub fun main(world: World) -> Void raises {
-    let bytes: Span<u8> = std.mem.span("zero")
-    if std.mem.len(bytes) == 4 {
-        check world.out.write("memory ok\n")
-    }
-}
+pub fn main Void world World !
+  let bytes Span<u8> std.mem.span "zero"
+  if == (std.mem.len bytes) 4
+    check world.out.write "memory ok\n"
 ```
 
 For writable buffers, use caller-owned fixed arrays and `MutSpan<T>`:
 
 ```zero
-let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-let writable: MutSpan<u8> = storage
-let copied = std.mem.copy(writable, std.mem.span("zero"))
+mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+let writable MutSpan<u8> storage
+let copied std.mem.copy writable (std.mem.span "zero")
 ```
 
 ## Maybe Pattern
 
 ```zero
-let first = std.args.get(1)
-if first.has {
-    check world.out.write(first.value)
-}
+let first std.args.get 1
+if first.has
+  check world.out.write first.value
 ```
 
 Use `check maybeValue` only when absence should propagate as a failure in a fallible function.
@@ -87,8 +84,8 @@ Hosted file APIs can use explicit handles:
 
 ```zero
 let fs = std.fs.host()
-let mut file: owned<File> = check std.fs.createOrRaise(fs, ".zero/out/log.txt")
-check std.fs.writeAllOrRaise(&mut file, std.mem.span("hello\n"))
+mut file owned<File> check std.fs.createOrRaise fs ".zero/out/log.txt"
+check std.fs.writeAllOrRaise (&mut file) (std.mem.span "hello\n")
 ```
 
 Owned resources are deterministic. Do not invent hidden heap, global logger, or ambient filesystem APIs.

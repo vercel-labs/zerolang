@@ -1,8 +1,6 @@
-fun reverseBytes(bytes: MutSpan<u8>) -> Void {
-    bytes[0] = 1
-}
+fn reverseBytes Void bytes MutSpan<u8>
+  set bytes[0] 1
 
-test "immutable buffer reverse" {
-    let bytes: [2]u8 = [0, 0]
-    reverseBytes(bytes)
-}
+test "immutable buffer reverse"
+  let bytes [2]u8 [0, 0]
+  reverseBytes bytes

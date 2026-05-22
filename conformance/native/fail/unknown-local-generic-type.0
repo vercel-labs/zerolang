@@ -1,3 +1,2 @@
-pub fun main() -> Void {
-    let x: Maybe<Nope> = null
-}
+pub fn main Void
+  let x Maybe<Nope> null

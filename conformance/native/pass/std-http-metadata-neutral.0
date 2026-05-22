@@ -1,9 +1,6 @@
-export c fun main() -> i32 {
-    let getA = std.http.parseMethod("GET")
-    let getB = std.http.parseMethod("GET")
-    if getA == getB &&
-        std.mem.len(std.mem.span("body")) == 4 {
-        return 7
-    }
-    return 99
-}
+export c fn main i32
+  let getA std.http.parseMethod "GET"
+  let getB std.http.parseMethod "GET"
+  if && (== getA getB) (== (std.mem.len (std.mem.span "body")) 4)
+    ret 7
+  ret 99

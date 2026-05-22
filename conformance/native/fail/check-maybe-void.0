@@ -1,9 +1,7 @@
-fun probe(bytes: Span<u8>) -> Void raises {
-    check std.mem.get(bytes, 0)
-}
+fn probe Void bytes Span<u8> !
+  check std.mem.get bytes 0
 
-pub fun main(world: World) -> Void raises {
-    let bytes: [1]u8 = [1]
-    check probe(bytes)
-    check world.out.write("bad maybe check")
-}
+pub fn main Void world World !
+  let bytes [1]u8 [1]
+  check probe bytes
+  check world.out.write "bad maybe check"

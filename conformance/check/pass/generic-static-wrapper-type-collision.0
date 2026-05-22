@@ -1,20 +1,16 @@
-const Foo: usize = 3
+const Foo usize 3
 
-shape Foo {
-    value: i32,
-}
+type Foo
+  value i32
 
-fun read(value: ref<Foo>) -> i32 {
-    return value.value
-}
+fn read i32 value ref<Foo>
+  ret value.value
 
-fun pass(value: Maybe<Foo>) -> Maybe<Foo> {
-    return value
-}
+fn pass Maybe<Foo> value Maybe<Foo>
+  ret value
 
-pub fun main() -> Void {
-    let foo: Foo = Foo { value: 7 }
-    let maybe: Maybe<Foo> = null
-    let result: Maybe<Foo> = pass(maybe)
-    expect(read(&foo) == 7 && result.has == false)
-}
+pub fn main Void
+  let foo Foo Foo . value 7
+  let maybe Maybe<Foo> null
+  let result Maybe<Foo> pass maybe
+  expect (&& (== (read (&foo)) 7) (== result.has false))

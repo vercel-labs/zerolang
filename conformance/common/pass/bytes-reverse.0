@@ -1,15 +1,12 @@
-pub fun main(world: World) -> Void raises {
-    let mut bytes: [5]u8 = [97, 98, 99, 100, 101]
-    let mut left: usize = 0
-    let mut right: usize = 4
-    while left < right {
-        let saved = bytes[left]
-        bytes[left] = bytes[right]
-        bytes[right] = saved
-        left = left + 1
-        right = right - 1
-    }
-    if bytes[0] == 101 && bytes[1] == 100 && bytes[2] == 99 && bytes[3] == 98 && bytes[4] == 97 {
-        check world.out.write("bytes reverse ok\n")
-    }
-}
+pub fn main Void world World !
+  mut bytes [5]u8 [97, 98, 99, 100, 101]
+  mut left usize 0
+  mut right usize 4
+  while < left right
+    let saved bytes[left]
+    set bytes[left] bytes[right]
+    set bytes[right] saved
+    set left + left 1
+    set right - right 1
+  if && (&& (&& (&& (== bytes[0] 101) (== bytes[1] 100)) (== bytes[2] 99)) (== bytes[3] 98)) (== bytes[4] 97)
+    check world.out.write "bytes reverse ok\n"

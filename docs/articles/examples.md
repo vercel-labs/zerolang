@@ -58,8 +58,8 @@ artifact size without executing the foreign binary.
 
 Core examples:
 
-- `examples/hello.0`: `World`, stdout, `check`, and `raises`.
-- `examples/point.0`: shapes, literals, fields, and helper functions.
+- `examples/hello.0`: `World`, stdout, `check`, and `!`.
+- `examples/point.0`: types, literals, fields, and helper functions.
 - `examples/result-choice.0`: enums, choices, payload binding, and `match`.
 - `examples/fixed-vec.0`: field defaults, static value parameters, constructor-style methods, and receiver calls.
 - `examples/fallibility.0`: named errors and explicit error sets.

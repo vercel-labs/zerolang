@@ -10,46 +10,42 @@ Use this when writing or reviewing `.0` source, especially if the model has no p
 ## Minimal Program
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    check world.out.write("hello from zero\n")
-}
+pub fn main Void world World !
+  check world.out.write "hello from zero\n"
 ```
 
-`pub fun` exports a function. `World` carries runtime capabilities. `raises` marks a fallible function. `check` calls a fallible operation and propagates failure.
+`pub fn` exports a function. `World` carries runtime capabilities. `!` marks a fallible function. `check` calls a fallible operation and propagates failure.
 
 ## Declarations
 
 Top-level declarations include:
 
 - `use std.mem` or `use helpers`
-- `const answer: i32 = 42`
-- `shape Point { x: i32, y: i32 }`
-- `enum Mode { off, on }`
-- `choice Result { ok: i32, err: String }`
-- `fun answer() -> i32 { return 42 }`
-- `pub fun main(...) -> Void ...`
-- `test "name" { expect(true) }`
+- `const answer i32 42`
+- `type Point` with indented fields such as `x i32`
+- `enum Mode` with indented cases such as `off`
+- `choice Result` with indented cases such as `ok i32`
+- `fn answer i32` with an indented `ret 42`
+- `pub fn main Void world World !`
+- `test "name"` with an indented `expect true`
 
 Use `.0` for source files.
 
 ## Values And Control Flow
 
 ```zero
-fun answer() -> i32 {
-    return 40 + 2
-}
+fn answer i32
+  ret + 40 2
 
-pub fun main(world: World) -> Void raises {
-    let value = answer()
-    if value == 42 {
-        check world.out.write("math works\n")
-    } else {
-        check world.out.write("math broke\n")
-    }
-}
+pub fn main Void world World !
+  let value answer()
+  if == value 42
+    check world.out.write "math works\n"
+  else
+    check world.out.write "math broke\n"
 ```
 
-Use `let` by default and `let mut` only when a binding changes. Conditions are `Bool`; do not rely on truthy integers or strings.
+Use `let` by default and `mut` only when a binding changes. Conditions are `Bool`; do not rely on truthy integers or strings.
 
 ## Types
 
@@ -67,64 +63,55 @@ Integer literals are checked against context. Use suffixes such as `_u8` or `_us
 ## Shapes, Enums, And Choices
 
 ```zero
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-enum Mode {
-    fast,
-    small,
-}
+enum Mode
+  fast
+  small
 
-choice Result {
-    ok: i32,
-    err: String,
-}
+choice Result
+  ok i32
+  err String
 ```
 
 Construct a shape with field names:
 
 ```zero
-let point = Point { x: 1, y: 2 }
+let point Point . x 1 y 2
 ```
 
 Choice payload cases use the choice name:
 
 ```zero
-let result = Result.ok(42)
+let result Result Result.ok 42
 ```
 
 Matches must be exhaustive unless they use the fallback arm `_`:
 
 ```zero
-match result {
-    .ok => value {
-        expect(value == 42)
-    }
-    .err => message {
-        expect(true)
-    }
-}
+match result
+  ok value
+    expect (== value 42)
+  err message
+    expect true
 ```
 
 ## Errors
 
 ```zero
-fun parse(ok: Bool) -> i32 raises { InvalidInput } {
-    if ok {
-        return 42
-    }
-    raise InvalidInput
-}
+fn parse i32 ok Bool ![InvalidInput]
+  if ok
+    ret 42
+  raise InvalidInput
 
-pub fun main() -> Void raises { InvalidInput } {
-    let value = check parse(true)
-    expect(value == 42)
-}
+pub fn main Void ![InvalidInput]
+  let value check (parse true)
+  expect (== value 42)
 ```
 
-`raises { ... }` restricts the error set. A plain `raises` marker is open. Calling a fallible function requires `check`.
+`![...]` restricts the error set. A plain `!` marker is open. Calling a fallible function requires `check`.
 
 ## Borrowing And Memory Views
 
@@ -137,30 +124,26 @@ pub fun main() -> Void raises { InvalidInput } {
 - `owned<T>` marks explicit resource ownership.
 
 ```zero
-fun bump(point: mutref<Point>) -> Void {
-    point.x = point.x + 1
-}
+fn bump Void point mutref<Point>
+  set point.x + point.x 1
 ```
 
 ## Generics
 
 ```zero
-shape Box<T> {
-    value: T,
-}
+type Box<T: Type>
+  value T
 
-fun id<T>(value: T) -> T {
-    return value
-}
+fn id<T: Type> T value T
+  ret value
 ```
 
 Static generic values are declared with `static`:
 
 ```zero
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
-}
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 ```
 
 If unsure, run `zero check --json <file>` and use the diagnostic span instead of inventing syntax.

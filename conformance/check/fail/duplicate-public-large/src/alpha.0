@@ -1,3 +1,2 @@
-pub fun alphaName() -> String {
-    return "alpha"
-}
+pub fn alphaName String
+  ret "alpha"

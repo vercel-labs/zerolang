@@ -3,18 +3,15 @@ use std.parse
 use std.time
 use types
 
-fun cleanup() -> Void {
-    return
-}
+fn cleanup Void
+  ret
 
-pub fun main(world: World) -> Void raises {
-    defer cleanup()
-    let mode: Mode = Mode.fast
-    let outcome: Outcome = Outcome.ok
-    let bytes = std.codec.readU32("abcd")
-    let digits = std.parse.scanDigits("123abc")
-    let duration = std.time.add(std.time.ms(1), std.time.seconds(1))
-    if digits == 3 && bytes > 0 && std.time.asMsFloor(duration) > 0 {
-        check world.out.write("package pass\n")
-    }
-}
+pub fn main Void world World !
+  defer cleanup()
+  let mode Mode Mode.fast
+  let outcome Outcome Outcome.ok
+  let bytes std.codec.readU32 "abcd"
+  let digits std.parse.scanDigits "123abc"
+  let duration std.time.add (std.time.ms 1) (std.time.seconds 1)
+  if && (&& (== digits 3) (> bytes 0)) (> (std.time.asMsFloor duration) 0)
+    check world.out.write "package pass\n"

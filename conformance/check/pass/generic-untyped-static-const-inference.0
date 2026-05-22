@@ -1,32 +1,27 @@
-const cap = 3
-const enabled = true
+const cap 3
 
-enum Mode : u8 {
-    fast,
-    tiny,
-}
+const enabled true
 
-const selected = Mode.fast
+const selected Mode.fast
 
-shape Gate<static enabledFlag: Bool, static selectedMode: Mode> {
-    value: i32,
-}
+type Gate<static enabledFlag: Bool, static selectedMode: Mode>
+  value i32
 
-fun head<T, static N: usize>(items: ref<[N]T>) -> T {
-    return items[0]
-}
+enum Mode u8
+  fast
+  tiny
 
-fun readGate<static enabledFlag: Bool, static selectedMode: Mode>(gate: ref<Gate<enabledFlag,selectedMode>>) -> i32 {
-    if enabledFlag {
-        return gate.value
-    }
-    return 0
-}
+fn head<T: Type, static N: usize> T items ref<[N]T>
+  ret items[0]
 
-pub fun main() -> Void {
-    let values: [cap]i32 = [3, 4, 5]
-    let first: i32 = head(&values)
-    let gate: Gate<enabled,selected> = Gate { value: 9 }
-    let gated: i32 = readGate(&gate)
-    expect(first == 3 && gated == 9)
-}
+fn readGate<static enabledFlag: Bool, static selectedMode: Mode> i32 gate ref<Gate<enabledFlag,selectedMode>>
+  if enabledFlag
+    ret gate.value
+  ret 0
+
+pub fn main Void
+  let values [cap]i32 [3, 4, 5]
+  let first i32 head (&values)
+  let gate Gate<enabled,selected> Gate . value 9
+  let gated i32 readGate (&gate)
+  expect (&& (== first 3) (== gated 9))

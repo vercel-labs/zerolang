@@ -1,8 +1,6 @@
-enum Status {
-    ready,
-}
+enum Status
+  ready
 
-pub fun main(world: World) -> Void raises {
-    let status: Status = Status.failed
-    check world.out.write("bad enum\n")
-}
+pub fn main Void world World !
+  let status Status Status.failed
+  check world.out.write "bad enum\n"

@@ -1,7 +1,5 @@
-pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
-    let body = std.fs.readAll(fs, fs, ".zero/missing.txt", 64)
-    if body.has {
-        check world.out.write("unexpected\n")
-    }
-}
+pub fn main Void world World !
+  let fs std.fs.host()
+  let body std.fs.readAll fs fs ".zero/missing.txt" 64
+  if body.has
+    check world.out.write "unexpected\n"

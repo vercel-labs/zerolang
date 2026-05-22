@@ -1,23 +1,23 @@
-fun boolScore(value: Bool) -> i32 {
-    match value {
-        true { return 1 }
-        false { return 2 }
-    }
-    return 0
-}
+fn boolScore i32 value Bool
+  match value
+    true
+      ret 1
+    false
+      ret 2
+  ret 0
 
-fun bucket(value: u8, enabled: Bool) -> i32 {
-    match value {
-        0 if enabled { return 10 }
-        0 { return 11 }
-        1..3 { return 20 }
-        4..255 { return 30 }
-    }
-    return 0
-}
+fn bucket i32 value u8 enabled Bool
+  match value
+    0 if enabled
+      ret 10
+    0
+      ret 11
+    1..3
+      ret 20
+    4..255
+      ret 30
+  ret 0
 
-pub fun main(world: World) -> Void raises {
-    if boolScore(true) == 1 && boolScore(false) == 2 && bucket(0_u8, true) == 10 && bucket(0_u8, false) == 11 && bucket(2_u8, true) == 20 && bucket(9_u8, true) == 30 {
-        check world.out.write("match scalar guards ok\n")
-    }
-}
+pub fn main Void world World !
+  if && (&& (&& (&& (&& (== (boolScore true) 1) (== (boolScore false) 2)) (== (bucket 0_u8 true) 10)) (== (bucket 0_u8 false) 11)) (== (bucket 2_u8 true) 20)) (== (bucket 9_u8 true) 30)
+    check world.out.write "match scalar guards ok\n"

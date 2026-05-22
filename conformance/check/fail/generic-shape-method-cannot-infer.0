@@ -1,12 +1,9 @@
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 
-    fun cap() -> usize {
-        return N
-    }
-}
+  fn cap usize
+    ret N
 
-pub fun main() -> Void {
-    let _cap = FixedVec.cap()
-}
+pub fn main Void
+  let _cap FixedVec.cap()

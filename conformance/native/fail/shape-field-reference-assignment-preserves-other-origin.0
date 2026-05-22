@@ -1,13 +1,11 @@
-shape Pair {
-    left: ref<i32>,
-    right: ref<i32>,
-}
+type Pair
+  left ref<i32>
+  right ref<i32>
 
-pub fun main() -> Void {
-    let mut x = 1
-    let mut y = 2
-    let mut z = 3
-    let mut pair: Pair = Pair { left: &x, right: &z }
-    pair.left = &y
-    z = 4
-}
+pub fn main Void
+  mut x 1
+  mut y 2
+  mut z 3
+  mut pair Pair Pair . left (&x) right (&z)
+  set pair.left &y
+  set z 4

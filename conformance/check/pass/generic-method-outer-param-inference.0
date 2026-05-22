@@ -1,39 +1,31 @@
-shape Pair<A, B> {
-    left: A,
-    right: B,
-}
+interface Projector<T: Type>
+  fn project<U: Type> U self ref<T> pair ref<Pair<T,U>>
 
-shape Box<T> {
-    value: T,
+type Pair<A: Type, B: Type>
+  left A
+  right B
 
-    fun rightOf<U>(self: ref<Self>, pair: ref<Pair<T,U>>) -> U {
-        return pair.right
-    }
-}
+type Box<T: Type>
+  value T
 
-interface Projector<T> {
-    fun project<U>(self: ref<T>, pair: ref<Pair<T,U>>) -> U
-}
+  fn rightOf<U: Type> U self ref<Self> pair ref<Pair<T,U>>
+    ret pair.right
 
-shape PlainBox {
-    value: i32,
+type PlainBox
+  value i32
 
-    fun project<U>(self: ref<Self>, pair: ref<Pair<Self,U>>) -> U {
-        return pair.right
-    }
-}
+  fn project<U: Type> U self ref<Self> pair ref<Pair<Self,U>>
+    ret pair.right
 
-fun project<T: Projector<T>, U>(value: ref<T>, pair: ref<Pair<T,U>>) -> U {
-    return T.project(value, pair)
-}
+fn project<T: Projector<T>, U: Type> U value ref<T> pair ref<Pair<T,U>>
+  ret T.project value pair
 
-pub fun main() -> Void {
-    let box: Box<i32> = Box { value: 1 }
-    let pair: Pair<i32,Bool> = Pair { left: 2, right: true }
-    let receiver: Bool = box.rightOf(&pair)
-    let namespaced: Bool = Box.rightOf(&box, &pair)
-    let plain: PlainBox = PlainBox { value: 3 }
-    let projectedPair: Pair<PlainBox,Bool> = Pair { left: PlainBox { value: 4 }, right: true }
-    let projected: Bool = project(&plain, &projectedPair)
-    expect(receiver && namespaced && projected)
-}
+pub fn main Void
+  let box Box<i32> Box . value 1
+  let pair Pair<i32,Bool> Pair . left 2 right true
+  let receiver Bool box.rightOf (&pair)
+  let namespaced Bool Box.rightOf (&box) (&pair)
+  let plain PlainBox PlainBox . value 3
+  let projectedPair Pair<PlainBox,Bool> Pair . left (PlainBox . value 4) right true
+  let projected Bool project (&plain) (&projectedPair)
+  expect (&& (&& receiver namespaced) projected)

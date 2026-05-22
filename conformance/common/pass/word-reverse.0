@@ -1,17 +1,10 @@
-pub fun main(world: World) -> Void raises {
-    let mut bytes: [9]u8 = [122, 101, 114, 111, 32, 108, 97, 110, 103]
-    let mut index: usize = 0
-    while index < 4 {
-        let saved = bytes[index]
-        bytes[index] = bytes[index + 5]
-        bytes[index + 5] = saved
-        index = index + 1
-    }
-    if bytes[0] == ('l' as u8) && bytes[1] == ('a' as u8) &&
-        bytes[2] == ('n' as u8) && bytes[3] == ('g' as u8) &&
-        bytes[4] == (' ' as u8) && bytes[5] == ('z' as u8) &&
-        bytes[6] == ('e' as u8) && bytes[7] == ('r' as u8) &&
-        bytes[8] == ('o' as u8) {
-        check world.out.write("word reverse ok\n")
-    }
-}
+pub fn main Void world World !
+  mut bytes [9]u8 [122, 101, 114, 111, 32, 108, 97, 110, 103]
+  mut index usize 0
+  while < index 4
+    let saved bytes[index]
+    set bytes[index] bytes[+ index 5]
+    set bytes[+ index 5] saved
+    set index + index 1
+  if && (&& (&& (&& (&& (&& (&& (&& (== bytes[0] (108 as u8)) (== bytes[1] (97 as u8))) (== bytes[2] (110 as u8))) (== bytes[3] (103 as u8))) (== bytes[4] (32 as u8))) (== bytes[5] (122 as u8))) (== bytes[6] (101 as u8))) (== bytes[7] (114 as u8))) (== bytes[8] (111 as u8))
+    check world.out.write "word reverse ok\n"

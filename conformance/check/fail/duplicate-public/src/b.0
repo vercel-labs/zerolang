@@ -1,3 +1,2 @@
-pub fun duplicate() -> i32 {
-    return 2
-}
+pub fn duplicate i32
+  ret 2

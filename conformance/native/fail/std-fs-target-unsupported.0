@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
-    let _exists = std.fs.exists(".zero/conformance/no-target-fs.txt")
-    check world.out.write("unreachable\n")
-}
+pub fn main Void world World !
+  let fs std.fs.host()
+  let _exists std.fs.exists ".zero/conformance/no-target-fs.txt"
+  check world.out.write "unreachable\n"

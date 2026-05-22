@@ -1,11 +1,8 @@
-const T: usize = 4
+const T usize 4
 
-fun needs<static M: usize>(items: ref<[M]i32>) -> Void {
-}
+fn needs<static M: usize> Void items ref<[M]i32>
 
-fun caller<T>(items: ref<[4]i32>) -> Void {
-    needs<T>(items)
-}
+fn caller<T: Type> Void items ref<[4]i32>
+  needs<T> items
 
-pub fun main() -> Void {
-}
+pub fn main Void

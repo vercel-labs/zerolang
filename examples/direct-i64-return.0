@@ -1,9 +1,7 @@
-export c fun main() -> i64 {
-  return 9223372036854775807
-}
+export c fn main i64
+  ret 9223372036854775807
 
-export c fun wide_sum() -> u64 {
-  let left: u64 = 4000000000
-  let right: u64 = 42
-  return left + right
-}
+export c fn wide_sum u64
+  let left u64 4000000000
+  let right u64 42
+  ret + left right

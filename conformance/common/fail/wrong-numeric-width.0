@@ -1,4 +1,3 @@
-test "wrong numeric width" {
-    let value: u8 = 256
-    expect(value == 0)
-}
+test "wrong numeric width"
+  let value u8 256
+  expect (== value 0)

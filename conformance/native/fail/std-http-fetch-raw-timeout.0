@@ -1,11 +1,9 @@
-export c fun main() -> i32 {
-    let net = std.net.host()
-    let client = std.http.client(net)
-    let request = std.mem.span("GET http://example.invalid\n\n")
-    let mut response: [64]u8 = [0_u8; 64]
-    let result = std.http.fetch(client, request, response, 1000)
-    if std.http.resultOk(result) {
-        return 1
-    }
-    return 0
-}
+export c fn main i32
+  let net std.net.host()
+  let client std.http.client net
+  let request std.mem.span "GET http://example.invalid\n\n"
+  mut response [64]u8 [0_u8;64]
+  let result std.http.fetch client request response 1000
+  if std.http.resultOk result
+    ret 1
+  ret 0

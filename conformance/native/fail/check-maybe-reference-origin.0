@@ -1,10 +1,9 @@
-pub fun main() -> Maybe<Void> raises {
-    let mut x = 1
-    let y = 2
-    let mut refs = [&x]
-    let maybe = std.mem.get(refs, 0)
-    let current = check maybe
-    refs = [&y]
-    x = 2
-    return null
-}
+pub fn main Maybe<Void> !
+  mut x 1
+  let y 2
+  mut refs [&x]
+  let maybe std.mem.get refs 0
+  let current check maybe
+  set refs [&y]
+  set x 2
+  ret null

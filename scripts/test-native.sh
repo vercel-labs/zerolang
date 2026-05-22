@@ -164,9 +164,8 @@ cat > "$project/zero.json" <<'PROJECT'
 PROJECT
 
 cat > "$project/src/main.0" <<'SOURCE'
-pub fun main(world: World) -> Void raises {
-    check world.out.write("native project\n")
-}
+pub fn main Void world World !
+  check world.out.write "native project\n"
 SOURCE
 
 run_native_or_gap "$project" .zero/native-test/project-exe "native project"
@@ -304,7 +303,7 @@ grep -q '"methods":' .zero/native-test/static-method-graph.json
 grep -q '"staticDispatch":true' .zero/native-test/static-method-graph.json
 bin/zero graph --json examples/type-alias.0 > .zero/native-test/type-alias-graph.json
 grep -q '"aliases":' .zero/native-test/type-alias-graph.json
-grep -q '"kind":"alias"' .zero/native-test/type-alias-graph.json
+grep -q '"kind":"type-alias"' .zero/native-test/type-alias-graph.json
 bin/zero graph --json --target linux-musl-x64 examples/memory-package > .zero/native-test/memory-package-graph.json
 grep -q '"fsAvailable":true' .zero/native-test/memory-package-graph.json
 grep -q '"requiresCapabilities": \["memory", "world"\]' .zero/native-test/memory-package-graph.json
@@ -339,14 +338,21 @@ const fs = require("node:fs");
 
 const body = JSON.parse(fs.readFileSync(".zero/native-test/lexer-tokens.json", "utf8"));
 assert.equal(body.schemaVersion, 1);
+assert.equal(body.syntax, "row");
 assert.deepEqual(body.tokens.slice(0, 4).map((token) => `${token.kind}:${token.text}`), [
-  "keyword:use",
-  "keyword:pub",
-  "keyword:fun",
-  "ident:main",
+  "word:use",
+  "word:std",
+  "symbol:.",
+  "word:mem",
 ]);
-assert.equal(body.tokens[5].offset, 21);
-assert.equal(body.tokens[12].line, 2);
+assert.deepEqual(body.tokens.slice(5, 9).map((token) => `${token.kind}:${token.text}`), [
+  "word:pub",
+  "word:fn",
+  "word:main",
+  "word:Void",
+]);
+assert.equal(body.tokens[5].offset, 12);
+assert.equal(body.tokens[12].line, 3);
 assert.equal(body.tokens.at(-1).kind, "eof");
 NODE
 
@@ -843,12 +849,10 @@ test ! -f .zero/native-test/direct-std-args-darwin.o.c
 grep -q '"path":"direct-macho64-object"' .zero/native-test/direct-std-args-darwin.json
 if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] && command -v cc >/dev/null 2>&1; then
   cat > .zero/native-test/direct-std-args-darwin-link.0 <<'SOURCE'
-pub fun main(world: World) -> Void raises {
-    let first = std.args.get(1)
-    if first.has {
-        check world.out.write(first.value)
-    }
-}
+pub fn main Void world World !
+  let first std.args.get 1
+  if first.has
+    check world.out.write first.value
 SOURCE
   cat > .zero/native-test/direct-std-args-darwin-runtime.c <<'SOURCE'
 #include <unistd.h>

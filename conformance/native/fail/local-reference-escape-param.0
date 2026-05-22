@@ -1,6 +1,4 @@
-pub fun leak(x: i32) -> ref<i32> {
-    return &x
-}
+pub fn leak ref<i32> x i32
+  ret &x
 
-pub fun main() -> Void {
-}
+pub fn main Void

@@ -1,34 +1,25 @@
-shape File {
-    fd: i32,
-}
+type File
+  fd i32
 
-fun make(fd: i32) -> owned<File> {
-    return File { fd: fd }
-}
+fn make owned<File> fd i32
+  ret File . fd fd
 
-fun pass(file: owned<File>) -> owned<File> {
-    return file
-}
+fn pass owned<File> file owned<File>
+  ret file
 
-fun close(file: owned<File>) -> Void {
-}
+fn close Void file owned<File>
 
-fun fd(file: owned<File>) -> i32 {
-    return file.fd
-}
+fn fd i32 file owned<File>
+  ret file.fd
 
-pub fun main(world: World) -> Void raises {
-    let mut current: owned<File> = make(1)
-    let next: owned<File> = pass(make(42))
-    current = next
-    let value = fd(current)
-
-    let cleanup: owned<File> = make(7)
-    defer close(cleanup)
-
-    if value == 42 {
-        check world.out.write("owned transfer ok\n")
-    } else {
-        check world.out.write("owned transfer failed\n")
-    }
-}
+pub fn main Void world World !
+  mut current owned<File> make 1
+  let next owned<File> pass (make 42)
+  set current next
+  let value fd current
+  let cleanup owned<File> make 7
+  defer close cleanup
+  if == value 42
+    check world.out.write "owned transfer ok\n"
+  else
+    check world.out.write "owned transfer failed\n"

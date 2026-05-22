@@ -1,13 +1,10 @@
-pub fun defaultName() -> String {
-    return "resource-cli.txt"
-}
+pub fn defaultName String
+  ret "resource-cli.txt"
 
-pub fun outputDir() -> String {
-    let dir = std.env.get("ZERO_RESOURCE_DIR") rescue missing { ".zero" }
-    return dir
-}
+pub fn outputDir String
+  let dir rescue (std.env.get "ZERO_RESOURCE_DIR") missing ".zero"
+  ret dir
 
-pub fun outputName() -> String {
-    let name = std.args.get(1) rescue missing { defaultName() }
-    return name
-}
+pub fn outputName String
+  let name rescue (std.args.get 1) missing defaultName()
+  ret name

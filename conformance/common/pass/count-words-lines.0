@@ -1,25 +1,19 @@
-pub fun main(world: World) -> Void raises {
-    let text = "zero lang\ncommon test"
-    let mut words = 0
-    let mut lines = 1
-    let mut inWord = false
-    let mut index: usize = 0
-    while index < 21 {
-        let ch = text[index]
-        if ch == ('\n' as u8) {
-            lines = lines + 1
-        }
-        if ch == (' ' as u8) || ch == ('\n' as u8) || ch == ('\t' as u8) {
-            inWord = false
-        } else {
-            if inWord == false {
-                words = words + 1
-                inWord = true
-            }
-        }
-        index = index + 1
-    }
-    if words == 4 && lines == 2 {
-        check world.out.write("count words lines ok\n")
-    }
-}
+pub fn main Void world World !
+  let text "zero lang\ncommon test"
+  mut words 0
+  mut lines 1
+  mut inWord false
+  mut index usize 0
+  while < index 21
+    let ch text[index]
+    if == ch (10 as u8)
+      set lines + lines 1
+    if || (|| (== ch (32 as u8)) (== ch (10 as u8))) (== ch (9 as u8))
+      set inWord false
+    else
+      if == inWord false
+        set words + words 1
+        set inWord true
+    set index + index 1
+  if && (== words 4) (== lines 2)
+    check world.out.write "count words lines ok\n"

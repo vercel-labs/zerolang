@@ -1,7 +1,5 @@
-fun validate_config(body: ref<ByteBuf>) -> usize raises { EmptyInput } {
-    let len = std.mem.bufLen(body)
-    if len == 0 {
-        raise EmptyInput
-    }
-    return len
-}
+fn validate_config usize body ref<ByteBuf> ![EmptyInput]
+  let len std.mem.bufLen body
+  if == len 0
+    raise EmptyInput
+  ret len

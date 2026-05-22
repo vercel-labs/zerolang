@@ -1,4 +1,3 @@
-pub fun main(world: World) -> Void raises {
-    let word: u32 = std.codec.readU16("AB")
-    check world.out.write("bad codec\n")
-}
+pub fn main Void world World !
+  let word u32 std.codec.readU16 "AB"
+  check world.out.write "bad codec\n"

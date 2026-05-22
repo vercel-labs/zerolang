@@ -1,6 +1,5 @@
-pub fun main(world: World) -> Void raises {
-    let dst: [4]u8 = [0, 0, 0, 0]
-    let src: [4]u8 = [122, 101, 114, 111]
-    let _copied = std.mem.copy(dst, src)
-    check world.out.write("unreachable\n")
-}
+pub fn main Void world World !
+  let dst [4]u8 [0, 0, 0, 0]
+  let src [4]u8 [122, 101, 114, 111]
+  let _copied std.mem.copy dst src
+  check world.out.write "unreachable\n"

@@ -59,13 +59,11 @@ record("unexpected-pass-contract", "golden", unexpectedPass.code !== 0 && unexpe
 });
 
 const validFuzz = join(outDir, "valid-fuzz.0");
-await writeFile(validFuzz, `fun add(a: i32, b: i32) -> i32 {
-    return a + b
-}
+await writeFile(validFuzz, `fn add i32 a i32 b i32
+  ret + a b
 
-test "fuzz valid arithmetic" {
-    expect(add(21, 21) == 42)
-}
+test "fuzz valid arithmetic"
+  expect (== (add 21 21) 42)
 `);
 const validTokens = await json(["tokens", "--json", validFuzz]);
 const validParse = await json(["parse", "--json", validFuzz]);
@@ -75,7 +73,7 @@ record("parser-checker-fuzz-valid", "fuzz", validTokens.body.tokens.length > 0 &
 });
 
 const invalidFuzz = join(outDir, "invalid-fuzz.0");
-await writeFile(invalidFuzz, "pub fun main( -> Void {\n");
+await writeFile(invalidFuzz, "pub fn main Void world\n");
 const invalidCheck = await json(["check", "--json", invalidFuzz], { allowFailure: true });
 record("parser-checker-fuzz-invalid", "fuzz", invalidCheck.code !== 0 && invalidCheck.body.diagnostics?.length > 0, {
   diagnostic: invalidCheck.body.diagnostics?.[0]?.code,
@@ -93,7 +91,7 @@ record("stdlib-parser-golden", "golden", stdlibJson.body.usedStdlibHelpers?.some
 });
 
 const crasher = join(outDir, "crasher-repro-unclosed-string.0");
-await writeFile(crasher, "pub fun main() -> Void { let value = \"unterminated\n");
+await writeFile(crasher, "pub fn main Void\n  let value \"unterminated\n");
 const crasherResult = await json(["check", "--json", crasher], { allowFailure: true });
 record("minimized-crasher-repro", "crasher", crasherResult.code !== 0 && crasherResult.body.diagnostics?.length > 0, {
   diagnostic: crasherResult.body.diagnostics?.[0]?.code,

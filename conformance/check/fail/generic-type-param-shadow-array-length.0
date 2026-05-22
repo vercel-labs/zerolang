@@ -1,7 +1,5 @@
-const T: usize = 4
+const T usize 4
 
-fun caller<T>(items: ref<[T]i32>) -> Void {
-}
+fn caller<T: Type> Void items ref<[T]i32>
 
-pub fun main() -> Void {
-}
+pub fn main Void

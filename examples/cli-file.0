@@ -1,17 +1,13 @@
-pub fun main(world: World) -> Void raises {
-    let first = std.args.get(1)
-    let mode = std.env.get("ZERO_CLI_FILE_MODE")
-    if first.has && std.mem.eql(first.value, "write") {
-        let bytes = std.mem.span(first.value)
-        let written = std.fs.writeBytes(".zero/out/cli-file.txt", bytes)
-        if written.has && written.value > 0 && std.fs.exists(".zero/out/cli-file.txt") {
-            if mode.has && std.mem.eql(mode.value, "verbose") {
-                check world.err.write(mode.value)
-                check world.err.write("\n")
-            }
-            check world.out.write("cli file ok\n")
-        }
-    } else {
-        check world.out.write("pass an argument\n")
-    }
-}
+pub fn main Void world World !
+  let first std.args.get 1
+  let mode std.env.get "ZERO_CLI_FILE_MODE"
+  if && first.has (std.mem.eql first.value "write")
+    let bytes std.mem.span first.value
+    let written std.fs.writeBytes ".zero/out/cli-file.txt" bytes
+    if && (&& written.has (> written.value 0)) (std.fs.exists ".zero/out/cli-file.txt")
+      if && mode.has (std.mem.eql mode.value "verbose")
+        check world.err.write mode.value
+        check world.err.write "\n"
+      check world.out.write "cli file ok\n"
+  else
+    check world.out.write "pass an argument\n"

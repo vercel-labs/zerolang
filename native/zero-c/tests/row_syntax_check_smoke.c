@@ -181,6 +181,31 @@ static void lowercase_primitive_annotations_check(void) {
   );
 }
 
+static void declarations_and_arrays_check(void) {
+  check_row_source(
+    "declarations and arrays",
+    "alias Bytes Span<u8>\n"
+    "\n"
+    "interface Id\n"
+    "  fn id<T> T value T\n"
+    "\n"
+    "extern type CPoint\n"
+    "  x i32\n"
+    "  y i32\n"
+    "\n"
+    "packed type PackedByte\n"
+    "  value u8\n"
+    "\n"
+    "const cap usize 4\n"
+    "const enabled meta target.hasCapability(\"memory\")\n"
+    "\n"
+    "pub fn main Void\n"
+    "  let values [4]u8 [1, 2, 3, 4]\n"
+    "  let zeroes [4]u8 [0;4]\n"
+    "  let first u8 values[0]\n"
+  );
+}
+
 static void named_error_rejects_without_brackets(void) {
   const char *source = "fn validate i32 ok Bool ! InvalidInput\n";
   ZDiag diag = {0};
@@ -205,6 +230,7 @@ int main(int argc, char **argv) {
   match_check();
   public_data_declarations_check();
   lowercase_primitive_annotations_check();
+  declarations_and_arrays_check();
   named_error_rejects_without_brackets();
   for (int i = 1; i < argc; i++) {
     check_row_file(argv[i]);

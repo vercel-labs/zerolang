@@ -1,15 +1,12 @@
-const cap: usize = 3
+const cap usize 3
 
-fun head<T, static N: usize>(items: ref<[N]T>) -> T {
-    return items[0]
-}
+fn head<T: Type, static N: usize> T items ref<[N]T>
+  ret items[0]
 
-fun forward<T, static N: usize>(items: ref<[N]T>) -> T {
-    return head(items)
-}
+fn forward<T: Type, static N: usize> T items ref<[N]T>
+  ret head items
 
-pub fun main() -> Void {
-    let values: [cap]i32 = [7, 8, 9]
-    let first: i32 = forward(&values)
-    expect(first == 7)
-}
+pub fn main Void
+  let values [cap]i32 [7, 8, 9]
+  let first i32 forward (&values)
+  expect (== first 7)

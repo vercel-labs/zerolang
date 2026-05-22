@@ -1,20 +1,15 @@
-interface Readable<T> {
-  fun read(self: ref<T>) -> i32
-}
+interface Readable<T: Type>
+  fn read i32 self ref<T>
 
-shape Counter {
-  value: i32,
+type Counter
+  value i32
 
-  fun read(self: i32) -> i32 {
-    return self
-  }
-}
+  fn read i32 self i32
+    ret self
 
-fun readValue<T: Readable<T>>(value: ref<T>) -> i32 {
-  return T.read(value)
-}
+fn readValue<T: Readable<T>> i32 value ref<T>
+  ret T.read value
 
-pub fun main() -> Void {
-  let counter: Counter = Counter { value: 42 }
-  expect(readValue<Counter>(&counter) == 42)
-}
+pub fn main Void
+  let counter Counter Counter . value 42
+  expect (== (readValue<Counter> (&counter)) 42)

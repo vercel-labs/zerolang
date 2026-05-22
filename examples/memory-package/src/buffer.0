@@ -1,12 +1,9 @@
-pub fun prepare() -> usize {
-    let mut dst: [18]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    return std.mem.copy(dst, std.mem.span("memory package ok\n"))
-}
+pub fn prepare usize
+  mut dst [18]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  ret std.mem.copy dst (std.mem.span "memory package ok\n")
 
-pub fun firstByte() -> u8 {
-    return "memory package ok\n"[0]
-}
+pub fn firstByte u8
+  ret "memory package ok\n"[0]
 
-pub fun messageOk() -> Bool {
-    return std.mem.eqlBytes("memory package ok\n"[0..18], std.mem.span("memory package ok\n"))
-}
+pub fn messageOk Bool
+  ret std.mem.eqlBytes "memory package ok\n"[0..18] (std.mem.span "memory package ok\n")

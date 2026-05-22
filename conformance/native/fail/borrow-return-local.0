@@ -1,13 +1,10 @@
-shape Point {
-    x: i32,
-}
+type Point
+  x i32
 
-fun leak() -> ref<Point> {
-    let point = Point { x: 1 }
-    return &point
-}
+fn leak ref<Point>
+  let point Point . x 1
+  ret &point
 
-pub fun main(world: World) -> Void raises {
-    let leaked = leak()
-    check world.out.write("returned local borrow")
-}
+pub fn main Void world World !
+  let leaked leak()
+  check world.out.write "returned local borrow"

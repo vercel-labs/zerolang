@@ -1,25 +1,19 @@
-fun seedInput(fs: Fs) -> Bool {
-    let created = std.fs.create(fs, ".zero/conformance/common-file-copy-input.txt")
-    if created.has {
-        let mut file: owned<File> = created.value
-        return std.fs.writeAll(&mut file, std.mem.span("zero file copy\n"))
-    }
-    return false
-}
+fn seedInput Bool fs Fs
+  let created std.fs.create fs ".zero/conformance/common-file-copy-input.txt"
+  if created.has
+    mut file owned<File> created.value
+    ret std.fs.writeAll (&mut file) (std.mem.span "zero file copy\n")
+  ret false
 
-pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
-    if seedInput(fs) {
-        let input = std.fs.open(fs, ".zero/conformance/common-file-copy-input.txt")
-        let output = std.fs.create(fs, ".zero/conformance/common-file-copy-output.txt")
-        if input.has && output.has {
-            let mut src: owned<File> = input.value
-            let mut dst: owned<File> = output.value
-            let mut buf: [15]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-            let read = std.fs.read(&mut src, buf)
-            if read.has && read.value == 15 && std.fs.writeAll(&mut dst, buf) {
-                check world.out.write("file copy ok\n")
-            }
-        }
-    }
-}
+pub fn main Void world World !
+  let fs std.fs.host()
+  if seedInput fs
+    let input std.fs.open fs ".zero/conformance/common-file-copy-input.txt"
+    let output std.fs.create fs ".zero/conformance/common-file-copy-output.txt"
+    if && input.has output.has
+      mut src owned<File> input.value
+      mut dst owned<File> output.value
+      mut buf [15]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      let read std.fs.read (&mut src) buf
+      if && (&& read.has (== read.value 15)) (std.fs.writeAll (&mut dst) buf)
+        check world.out.write "file copy ok\n"

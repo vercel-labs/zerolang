@@ -1,4 +1,5 @@
-type A = B
-type B = A
+alias A B
 
-pub fun main() -> Void {}
+alias B A
+
+pub fn main Void

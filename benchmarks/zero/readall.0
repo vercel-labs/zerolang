@@ -1,29 +1,21 @@
-pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
-    let created = std.fs.create(fs, ".zero/bench/zero-readall-input.txt")
-    if created.has {
-        let mut file: owned<File> = created.value
-        if std.fs.writeAll(&mut file, std.mem.span("readall payload\n")) == false {
-            return
-        }
-    }
-
-    let mut storage: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let mut i = 0
-    let mut hits = 0
-    while i < 1000 {
-        std.mem.reset(&mut alloc)
-        let body = std.fs.readAll(alloc, fs, ".zero/bench/zero-readall-input.txt", 64)
-        if body.has {
-            let mut buf: owned<ByteBuf> = body.value
-            if std.mem.eqlBytes(std.mem.bufBytes(&buf), std.mem.span("readall payload\n")) {
-                hits = hits + 1
-            }
-        }
-        i = i + 1
-    }
-    if hits == 1000 {
-        check world.out.write("readall\n")
-    }
-}
+pub fn main Void world World !
+  let fs std.fs.host()
+  let created std.fs.create fs ".zero/bench/zero-readall-input.txt"
+  if created.has
+    mut file owned<File> created.value
+    if == (std.fs.writeAll (&mut file) (std.mem.span "readall payload\n")) false
+      ret
+  mut storage [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  mut i 0
+  mut hits 0
+  while < i 1000
+    std.mem.reset (&mut alloc)
+    let body std.fs.readAll alloc fs ".zero/bench/zero-readall-input.txt" 64
+    if body.has
+      mut buf owned<ByteBuf> body.value
+      if std.mem.eqlBytes (std.mem.bufBytes (&buf)) (std.mem.span "readall payload\n")
+        set hits + hits 1
+    set i + i 1
+  if == hits 1000
+    check world.out.write "readall\n"

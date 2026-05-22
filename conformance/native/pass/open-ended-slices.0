@@ -1,37 +1,25 @@
-fun bytesTail(bytes: [5]u8) -> Span<u8> {
-    return bytes[2..]
-}
+fn bytesTail Span<u8> bytes [5]u8
+  ret bytes[2..]
 
-fun bytesPrefix(bytes: Span<u8>) -> Span<u8> {
-    return bytes[..3]
-}
+fn bytesPrefix Span<u8> bytes Span<u8>
+  ret bytes[..3]
 
-fun intWhole(values: [5]i32) -> Span<i32> {
-    return values[..]
-}
+fn intWhole Span<i32> values [5]i32
+  ret values[..]
 
-fun intTail(values: Span<i32>) -> Span<i32> {
-    return values[2..]
-}
+fn intTail Span<i32> values Span<i32>
+  ret values[2..]
 
-pub fun main(world: World) -> Void raises {
-    let bytes: [5]u8 = [65, 66, 67, 68, 69]
-    let bytesSpan = std.mem.span("ABCDE")
-    let tail = bytes[2..]
-    let prefix = bytesSpan[..3]
-    let whole = bytesSpan[..]
-    let values: [5]i32 = [10, 20, 30, 40, 50]
-    let numbers: Span<i32> = values
-    let intPrefix = values[..3]
-    let intTailView = numbers[2..]
-    let intWholeView = numbers[..]
-    if std.mem.len(tail) == 3 && tail[0] == 67 && tail[2] == 69 &&
-        std.mem.len(prefix) == 3 && prefix[2] == 67 &&
-        std.mem.len(whole) == 5 && whole[4] == 69 &&
-        bytesTail(bytes)[1] == 68 && bytesPrefix(bytesSpan)[0] == 65 &&
-        intPrefix[2] == 30 && intTailView[0] == 30 &&
-        intTailView[2] == 50 && intWholeView[4] == 50 &&
-        intWhole(values)[3] == 40 && intTail(numbers)[1] == 40 {
-        check world.out.write("open ended slices ok\n")
-    }
-}
+pub fn main Void world World !
+  let bytes [5]u8 [65, 66, 67, 68, 69]
+  let bytesSpan std.mem.span "ABCDE"
+  let tail bytes[2..]
+  let prefix bytesSpan[..3]
+  let whole bytesSpan[..]
+  let values [5]i32 [10, 20, 30, 40, 50]
+  let numbers Span<i32> values
+  let intPrefix values[..3]
+  let intTailView numbers[2..]
+  let intWholeView numbers[..]
+  if && (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (== (std.mem.len tail) 3) (== tail[0] 67)) (== tail[2] 69)) (== (std.mem.len prefix) 3)) (== prefix[2] 67)) (== (std.mem.len whole) 5)) (== whole[4] 69)) (== bytesTail(bytes)[1] 68)) (== bytesPrefix(bytesSpan)[0] 65)) (== intPrefix[2] 30)) (== intTailView[0] 30)) (== intTailView[2] 50)) (== intWholeView[4] 50)) (== intWhole(values)[3] 40)) (== intTail(numbers)[1] 40)
+    check world.out.write "open ended slices ok\n"

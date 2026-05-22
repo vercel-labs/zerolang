@@ -1,15 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let text: String = "slices"
-    let middle: Span<u8> = text[1..4]
-    let suffix: Span<u8> = text[2..]
-    let prefix: Span<u8> = text[..3]
-    let all: Span<u8> = text[..]
-    if "zero"[0] == 122 &&
-        text[1] == 108 &&
-        std.mem.eqlBytes(middle, std.mem.span("lic")) &&
-        std.mem.eqlBytes(suffix, std.mem.span("ices")) &&
-        std.mem.eqlBytes(prefix, std.mem.span("sli")) &&
-        std.mem.len(all) == 6 {
-        check world.out.write("string slices ok\n")
-    }
-}
+pub fn main Void world World !
+  let text String "slices"
+  let middle Span<u8> text[1..4]
+  let suffix Span<u8> text[2..]
+  let prefix Span<u8> text[..3]
+  let all Span<u8> text[..]
+  if && (&& (&& (&& (&& (== "zero"[0] 122) (== text[1] 108)) (std.mem.eqlBytes middle (std.mem.span "lic"))) (std.mem.eqlBytes suffix (std.mem.span "ices"))) (std.mem.eqlBytes prefix (std.mem.span "sli"))) (== (std.mem.len all) 6)
+    check world.out.write "string slices ok\n"

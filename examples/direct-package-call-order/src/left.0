@@ -1,19 +1,14 @@
-fun is_upper_a(code: u8) -> Bool {
-    if code == 65_u8 {
-        return true
-    }
-    return false
-}
+fn is_upper_a Bool code u8
+  if == code 65_u8
+    ret true
+  ret false
 
-fun left_score() -> i32 {
-    let bytes: [3]u8 = [65_u8, 90_u8, 65_u8]
-    let mut i: usize = 0
-    let mut score: i32 = 0
-    while i < 3 {
-        if is_upper_a(bytes[i]) {
-            score = score + 10
-        }
-        i = i + 1
-    }
-    return score
-}
+fn left_score i32
+  let bytes [3]u8 [65_u8, 90_u8, 65_u8]
+  mut i usize 0
+  mut score i32 0
+  while < i 3
+    if is_upper_a bytes[i]
+      set score + score 10
+    set i + i 1
+  ret score

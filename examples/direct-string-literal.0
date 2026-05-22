@@ -1,3 +1,2 @@
-export c fun main() -> u8 {
-    return "token"[0]
-}
+export c fn main u8
+  ret "token"[0]

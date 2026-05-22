@@ -92,7 +92,7 @@ export const docs: Doc[] = [
   {
     slug: "diagnostics",
     title: "Diagnostics",
-    description: "How to read compiler errors and use structured repair packets.",
+    description: "How to read compiler errors and use structured fix plans.",
     path: "/diagnostics",
     sourcePath: "/articles/diagnostics.md",
     section: "Reference",

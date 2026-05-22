@@ -1,2 +1,8 @@
-use pub fun main 123 0xff 0b101 42_u8 "hi" 'x' () // skip
-main
+use std.mem
+pub fn main Void
+  let decimal i32 123
+  let hex i32 0xff
+  let binary i32 0b101
+  let value u8 42_u8
+  let text String "hi"
+  let letter char 'x'

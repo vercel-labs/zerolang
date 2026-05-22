@@ -1,19 +1,14 @@
-fun value(i: i32) -> i32 raises { Miss } {
-    if i % 4 == 0 {
-        return i
-    }
-    raise Miss
-}
+fn value i32 i i32 ![Miss]
+  if == (% i 4) 0
+    ret i
+  raise Miss
 
-pub fun main(world: World) -> Void raises {
-    let mut i = 0
-    let mut total = 0
-    while i < 50000 {
-        let item = value(i) rescue err { 2 }
-        total = total + item
-        i = i + 1
-    }
-    if total > 0 {
-        check world.out.write("rescue\n")
-    }
-}
+pub fn main Void world World !
+  mut i 0
+  mut total 0
+  while < i 50000
+    let item rescue (value i) err 2
+    set total + total item
+    set i + i 1
+  if > total 0
+    check world.out.write "rescue\n"

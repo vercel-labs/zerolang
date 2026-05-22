@@ -1,31 +1,22 @@
-pub fun main(world: World) -> Void raises {
-    let maybe_request = std.args.get(1)
-    if maybe_request.has == false {
-        check world.err.write("usage: pass HTTP request envelope\n")
-        return
-    }
-    let maybe_name = std.args.get(2)
-
-    let net = std.net.host()
-    let client = std.http.client(net)
-    let mut response: [512]u8 = [0_u8; 512]
-    let result = std.http.fetch(client, std.mem.span(maybe_request.value), response, std.time.ms(5000))
-    let len = std.http.responseHeadersLen(response)
-    if maybe_name.has {
-        let value = std.http.headerValue(response, std.mem.span(maybe_name.value))
-        if std.http.headerFound(value) && std.http.headerLen(value) > 0 {
-            check world.out.write("http header found\n")
-            return
-        }
-        check world.err.write("http header missing\n")
-        return
-    }
-    if std.http.resultOk(result) &&
-        std.http.resultStatus(result) >= 200 &&
-        std.http.resultStatus(result) < 300 &&
-        len > 0 {
-        check world.out.write("http headers ok\n")
-        return
-    }
-    check world.err.write("http headers failed\n")
-}
+pub fn main Void world World !
+  let maybe_request std.args.get 1
+  if == maybe_request.has false
+    check world.err.write "usage: pass HTTP request envelope\n"
+    ret
+  let maybe_name std.args.get 2
+  let net std.net.host()
+  let client std.http.client net
+  mut response [512]u8 [0_u8;512]
+  let result std.http.fetch client (std.mem.span maybe_request.value) response (std.time.ms 5000)
+  let len std.http.responseHeadersLen response
+  if maybe_name.has
+    let value std.http.headerValue response (std.mem.span maybe_name.value)
+    if && (std.http.headerFound value) (> (std.http.headerLen value) 0)
+      check world.out.write "http header found\n"
+      ret
+    check world.err.write "http header missing\n"
+    ret
+  if && (&& (&& (std.http.resultOk result) (>= (std.http.resultStatus result) 200)) (< (std.http.resultStatus result) 300)) (> len 0)
+    check world.out.write "http headers ok\n"
+    ret
+  check world.err.write "http headers failed\n"

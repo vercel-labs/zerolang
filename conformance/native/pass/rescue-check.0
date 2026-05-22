@@ -1,12 +1,9 @@
-fun fail_value() -> i32 raises { Missing } {
-    raise Missing
-}
+fn fail_value i32 ![Missing]
+  raise Missing
 
-pub fun main(world: World) -> Void raises {
-    let mut small: [4]u8 = [0, 0, 0, 0]
-    let a: String = std.path.join(small, "too", "long") rescue err { "fallback" }
-    let b: i32 = fail_value() rescue err { 4 }
-    if std.mem.eql(a, "fallback") && b == 4 {
-        check world.out.write("rescue ok\n")
-    }
-}
+pub fn main Void world World !
+  mut small [4]u8 [0, 0, 0, 0]
+  let a String rescue (std.path.join small "too" "long") err "fallback"
+  let b i32 rescue (fail_value()) err 4
+  if && (std.mem.eql a "fallback") (== b 4)
+    check world.out.write "rescue ok\n"

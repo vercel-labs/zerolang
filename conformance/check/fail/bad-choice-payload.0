@@ -1,9 +1,7 @@
-choice Result {
-    ok: i32,
-    err: String,
-}
+choice Result
+  ok i32
+  err String
 
-pub fun main(world: World) -> Void raises {
-    let result: Result = Result.ok("nope")
-    check world.out.write("bad payload\n")
-}
+pub fn main Void world World !
+  let result Result Result.ok "nope"
+  check world.out.write "bad payload\n"

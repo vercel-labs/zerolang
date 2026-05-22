@@ -1,9 +1,7 @@
-shape Point {
-    x: i32,
-}
+type Point
+  x i32
 
-pub fun main(world: World) -> Void raises {
-    let point = Point { x: 1 }
-    let value = std.mem.get(point, 0)
-    check world.out.write("bad checked get")
-}
+pub fn main Void world World !
+  let point Point . x 1
+  let value std.mem.get point 0
+  check world.out.write "bad checked get"

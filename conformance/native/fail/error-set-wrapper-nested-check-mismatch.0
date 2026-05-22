@@ -1,16 +1,12 @@
-fun read() -> u8 raises { Bad } {
-    raise Bad
-}
+fn read u8 ![Bad]
+  raise Bad
 
-fun consume(value: u8) -> u8 raises { Other } {
-    return value
-}
+fn consume u8 value u8 ![Other]
+  ret value
 
-fun wrapper() -> u8 raises {
-    let value = check consume(check read())
-    return value
-}
+fn wrapper u8 !
+  let value check consume (check read())
+  ret value
 
-pub fun main() -> Void raises { Other } {
-    let value = check wrapper()
-}
+pub fn main Void ![Other]
+  let value check wrapper()

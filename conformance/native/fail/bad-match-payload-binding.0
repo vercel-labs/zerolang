@@ -1,16 +1,11 @@
-choice Result {
-    ok: i32,
-    done,
-}
+choice Result
+  ok i32
+  done
 
-pub fun main(world: World) -> Void raises {
-    let result: Result = Result.done
-    match result {
-        .ok => value {
-            check world.out.write("ok\n")
-        }
-        .done => value {
-            check world.out.write("done\n")
-        }
-    }
-}
+pub fn main Void world World !
+  let result Result Result.done
+  match result
+    ok value
+      check world.out.write "ok\n"
+    done value
+      check world.out.write "done\n"

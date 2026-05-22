@@ -1,16 +1,11 @@
-enum Mode {
-  fast,
-  slow,
-}
+enum Mode
+  fast
+  slow
 
-pub fun main() -> Void {
-  let mode: Mode = Mode.fast
-  match mode {
-    .fast {
-      expect(true)
-    }
-    ._ {
-      expect(true)
-    }
-  }
-}
+pub fn main Void
+  let mode Mode Mode.fast
+  match mode
+    fast
+      expect true
+    _
+      expect true

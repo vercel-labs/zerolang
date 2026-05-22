@@ -1,15 +1,11 @@
-fun factorial(n: u32) -> u32 {
-    let mut value: u32 = 1
-    let mut index: u32 = 2
-    while index <= n {
-        value = value * index
-        index = index + 1
-    }
-    return value
-}
+fn factorial u32 n u32
+  mut value u32 1
+  mut index u32 2
+  while <= index n
+    set value * value index
+    set index + index 1
+  ret value
 
-pub fun main(world: World) -> Void raises {
-    if factorial(6) == 720 {
-        check world.out.write("factorial ok\n")
-    }
-}
+pub fn main Void world World !
+  if == (factorial 6) 720
+    check world.out.write "factorial ok\n"

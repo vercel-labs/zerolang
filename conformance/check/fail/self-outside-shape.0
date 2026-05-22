@@ -1,7 +1,5 @@
-fun bad(value: Self) -> Void {
-    return
-}
+fn bad Void value Self
+  ret
 
-pub fun main() -> Void {
-    return
-}
+pub fn main Void
+  ret

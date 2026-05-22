@@ -1,5 +1,4 @@
 use a
 
-fun b() -> i32 {
-    return 2
-}
+fn b i32
+  ret 2

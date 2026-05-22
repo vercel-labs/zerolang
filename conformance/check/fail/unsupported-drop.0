@@ -1,9 +1,7 @@
-shape File {
-    fd: i32,
-}
+type File
+  fd i32
 
-pub fun main(world: World) -> Void raises {
-    let file = File { fd: 1 }
-    defer file.drop()
-    check world.out.write("drop\n")
-}
+pub fn main Void world World !
+  let file File . fd 1
+  defer file.drop()
+  check world.out.write "drop\n"

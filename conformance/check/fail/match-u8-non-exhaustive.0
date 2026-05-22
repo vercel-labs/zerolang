@@ -1,6 +1,4 @@
-pub fun main() -> Void {
-    let value: u8 = 1
-    match value {
-        0..10 {}
-    }
-}
+pub fn main Void
+  let value u8 1
+  match value
+    0..10

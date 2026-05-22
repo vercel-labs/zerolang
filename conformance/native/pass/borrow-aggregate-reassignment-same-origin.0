@@ -1,10 +1,8 @@
-shape Box {
-    value: mutref<i32>,
-}
+type Box
+  value mutref<i32>
 
-pub fun main() -> Void {
-    let mut x = 1
-    let mut box = Box { value: &mut x }
-    box.value = &mut x
-    box = Box { value: &mut x }
-}
+pub fn main Void
+  mut x 1
+  mut box Box . value (&mut x)
+  set box.value &mut x
+  set box Box . value (&mut x)

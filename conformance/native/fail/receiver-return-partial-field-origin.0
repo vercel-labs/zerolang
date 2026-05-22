@@ -1,19 +1,16 @@
-shape Box {
-    a: ref<i32>,
-    b: ref<i32>,
+type Box
+  a ref<i32>
+  b ref<i32>
 
-    fun replaceA(self: mutref<Self>, next: ref<i32>) -> Box {
-        self.a = next
-        return Box { a: next, b: self.b }
-    }
-}
+  fn replaceA Box self mutref<Self> next ref<i32>
+    set self.a next
+    ret Box . a next b self.b
 
-pub fun main() -> Void {
-    let mut x = 1
-    let y = 2
-    let z = 3
-    let mut box = Box { a: &z, b: &x }
-    let copy = box.replaceA(&y)
-    box.b = &y
-    x = 4
-}
+pub fn main Void
+  mut x 1
+  let y 2
+  let z 3
+  mut box Box . a (&z) b (&x)
+  let copy box.replaceA (&y)
+  set box.b &y
+  set x 4

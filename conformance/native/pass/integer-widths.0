@@ -1,32 +1,18 @@
-shape NumericBag {
-    tiny: u8
-    word: u16
-    count: u32
-    huge: u64
-    signed_tiny: i8
-    signed_word: i16
-    signed_count: i32
-    signed_huge: i64
-    size: usize
-    offset: isize
-}
+type NumericBag
+  tiny u8
+  word u16
+  count u32
+  huge u64
+  signed_tiny i8
+  signed_word i16
+  signed_count i32
+  signed_huge i64
+  size usize
+  offset isize
 
-pub fun main(world: World) -> Void raises {
-    let values = NumericBag{
-        tiny: 255,
-        word: 65535,
-        count: 4294967295,
-        huge: 18446744073709551615,
-        signed_tiny: 127,
-        signed_word: 32767,
-        signed_count: 2147483647,
-        signed_huge: 9223372036854775807,
-        size: 42,
-        offset: 7
-    }
-    let bytes: [3]u8 = [0, 127, 255]
-    let copied: usize = std.mem.len(bytes)
-    if values.tiny == 255 && values.word == 65535 && values.count > 0 && values.huge > 0 && values.signed_huge > 0 && copied == 3 {
-        check world.out.write("integer widths ok\n")
-    }
-}
+pub fn main Void world World !
+  let values NumericBag . tiny 255 word 65535 count 4294967295 huge 18446744073709551615 signed_tiny 127 signed_word 32767 signed_count 2147483647 signed_huge 9223372036854775807 size 42 offset 7
+  let bytes [3]u8 [0, 127, 255]
+  let copied usize std.mem.len bytes
+  if && (&& (&& (&& (&& (== values.tiny 255) (== values.word 65535)) (> values.count 0)) (> values.huge 0)) (> values.signed_huge 0)) (== copied 3)
+    check world.out.write "integer widths ok\n"

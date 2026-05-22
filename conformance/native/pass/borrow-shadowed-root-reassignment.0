@@ -1,10 +1,8 @@
-pub fun main() -> Void {
-    let mut x = 1
-    let z = 2
-    let mut r = &x
-    if true {
-        let x = 3
-        r = &z
-    }
-    x = 4
-}
+pub fn main Void
+  mut x 1
+  let z 2
+  mut r &x
+  if true
+    let x 3
+    set r &z
+  set x 4

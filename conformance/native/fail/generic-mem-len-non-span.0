@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let value: i32 = 42
-    if std.mem.len(value) == 0 {
-        check world.out.write("bad generic mem\n")
-    }
-}
+pub fn main Void world World !
+  let value i32 42
+  if == (std.mem.len value) 0
+    check world.out.write "bad generic mem\n"

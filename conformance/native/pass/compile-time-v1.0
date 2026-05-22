@@ -1,41 +1,40 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+const enabled Bool meta && (>= target.pointerWidth 32) (hasField Point "x")
 
-enum Mode : u8 {
-    fast,
-    tiny,
-}
+const selected Mode Mode.fast
 
-choice Event {
-    none,
-    tick: i32,
-}
+const field_count usize meta fieldCount Point
 
-const enabled: Bool = meta (target.pointerWidth >= 32 && hasField(Point, "x"))
-const selected: Mode = Mode.fast
-const field_count: usize = meta fieldCount(Point)
-const field_type: String = meta fieldType(Point, "x")
-const mode_cases: usize = meta enumCaseCount(Mode)
-const has_tiny: Bool = meta hasEnumCase(Mode, "tiny")
-const event_cases: usize = meta choiceCaseCount(Event)
-const has_tick: Bool = meta hasChoiceCase(Event, "tick")
+const field_type String meta fieldType Point "x"
 
-shape Gate<static enabledFlag: Bool, static selectedMode: Mode> {
-    value: i32,
-}
+const mode_cases usize meta enumCaseCount Mode
 
-fun readGate<static enabledFlag: Bool, static selectedMode: Mode>(gate: ref<Gate<enabledFlag,selectedMode>>) -> i32 {
-    if enabledFlag {
-        return gate.value
-    }
-    return 0
-}
+const has_tiny Bool meta hasEnumCase Mode "tiny"
 
-pub fun main(world: World) -> Void raises {
-    let gate: Gate<enabled,selected> = Gate { value: 29 }
-    if readGate<enabled, selected>(&gate) == 29 && field_count == 2 && mode_cases == 2 && event_cases == 2 && has_tiny && has_tick && std.mem.eql(field_type, "i32") {
-        check world.out.write("compile time v1 ok\n")
-    }
-}
+const event_cases usize meta choiceCaseCount Event
+
+const has_tick Bool meta hasChoiceCase Event "tick"
+
+type Point
+  x i32
+  y i32
+
+type Gate<static enabledFlag: Bool, static selectedMode: Mode>
+  value i32
+
+enum Mode u8
+  fast
+  tiny
+
+choice Event
+  none
+  tick i32
+
+fn readGate<static enabledFlag: Bool, static selectedMode: Mode> i32 gate ref<Gate<enabledFlag,selectedMode>>
+  if enabledFlag
+    ret gate.value
+  ret 0
+
+pub fn main Void world World !
+  let gate Gate<enabled,selected> Gate . value 29
+  if && (&& (&& (&& (&& (&& (== (readGate<enabled, selected> (&gate)) 29) (== field_count 2)) (== mode_cases 2)) (== event_cases 2)) has_tiny) has_tick) (std.mem.eql field_type "i32")
+    check world.out.write "compile time v1 ok\n"

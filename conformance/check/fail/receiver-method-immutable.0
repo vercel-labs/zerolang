@@ -1,17 +1,13 @@
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 
-    fun push(self: mutref<Self>, value: T) -> Void raises { Full } {
-        if self.len == (N) {
-            raise Full
-        }
-        self.items[self.len] = value
-        self.len = self.len + 1
-    }
-}
+  fn push Void self mutref<Self> value T ![Full]
+    if == self.len N
+      raise Full
+    set self.items[self.len] value
+    set self.len + self.len 1
 
-pub fun main() -> Void raises {
-    let vec: FixedVec<u8,4> = FixedVec { len: 0, items: [0, 0, 0, 0] }
-    check vec.push(1)
-}
+pub fn main Void !
+  let vec FixedVec<u8,4> FixedVec . len 0 items ([0, 0, 0, 0])
+  check vec.push 1

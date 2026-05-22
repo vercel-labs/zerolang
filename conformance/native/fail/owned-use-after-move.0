@@ -1,13 +1,10 @@
-shape File {
-    fd: i32,
-}
+type File
+  fd i32
 
-fun close(file: owned<File>) -> Void {
-}
+fn close Void file owned<File>
 
-pub fun main(world: World) -> Void raises {
-    let file: owned<File> = File { fd: 1 }
-    close(file)
-    close(file)
-    check world.out.write("use after move")
-}
+pub fn main Void world World !
+  let file owned<File> File . fd 1
+  close file
+  close file
+  check world.out.write "use after move"

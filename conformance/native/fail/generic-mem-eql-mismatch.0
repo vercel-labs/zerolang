@@ -1,9 +1,7 @@
-pub fun main(world: World) -> Void raises {
-    let ints: [2]i32 = [1, 2]
-    let bytes: [2]u8 = [1, 2]
-    let intSpan: Span<i32> = ints
-    let byteSpan: Span<u8> = bytes
-    if std.mem.eqlBytes(intSpan, byteSpan) {
-        check world.out.write("bad generic mem\n")
-    }
-}
+pub fn main Void world World !
+  let ints [2]i32 [1, 2]
+  let bytes [2]u8 [1, 2]
+  let intSpan Span<i32> ints
+  let byteSpan Span<u8> bytes
+  if std.mem.eqlBytes intSpan byteSpan
+    check world.out.write "bad generic mem\n"

@@ -1,8 +1,7 @@
-pub fun main() -> Void {
-    let mut x = 1
-    let y = 2
-    let mut refs = [&x]
-    let current = std.mem.get(refs, 0) rescue err { &y }
-    refs = [&y]
-    x = 2
-}
+pub fn main Void
+  mut x 1
+  let y 2
+  mut refs [&x]
+  let current rescue (std.mem.get refs 0) err &y
+  set refs [&y]
+  set x 2

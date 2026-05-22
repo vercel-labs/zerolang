@@ -1,6 +1,4 @@
-export c fun zero_fail() -> i32 raises { Failed } {
-    raise Failed
-}
+export c fn zero_fail i32 ![Failed]
+  raise Failed
 
-pub fun main() -> Void {
-}
+pub fn main Void

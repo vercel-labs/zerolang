@@ -1,28 +1,17 @@
-pub fun main(world: World) -> Void raises {
-    let _page = std.mem.pageAlloc()
-    let _general = std.mem.generalAlloc()
-    let nullAlloc = std.mem.nullAlloc()
-    let nullBytes = std.mem.allocBytes(nullAlloc, 1)
-
-    let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let bytes = std.mem.allocBytes(alloc, 4)
-
-    let mut vecStorage: [4]u8 = [0, 0, 0, 0]
-    let mut vec = std.mem.vec(vecStorage)
-    let pushed = std.mem.vecPush(&mut vec, 42_u8)
-    let map = std.mem.mapEmpty()
-    let set = std.mem.setEmpty()
-
-    if nullBytes.has == false &&
-        bytes.has &&
-        pushed &&
-        std.mem.vecLen(&vec) == 1 &&
-        std.mem.vecCapacity(&vec) == 4 &&
-        std.mem.mapLen(&map) == 0 &&
-        std.mem.setLen(&set) == 0 {
-        check world.out.write("allocator collections ok\n")
-    } else {
-        check world.out.write("allocator collections failed\n")
-    }
-}
+pub fn main Void world World !
+  let _page std.mem.pageAlloc()
+  let _general std.mem.generalAlloc()
+  let nullAlloc std.mem.nullAlloc()
+  let nullBytes std.mem.allocBytes nullAlloc 1
+  mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  let bytes std.mem.allocBytes alloc 4
+  mut vecStorage [4]u8 [0, 0, 0, 0]
+  mut vec std.mem.vec vecStorage
+  let pushed std.mem.vecPush (&mut vec) 42_u8
+  let map std.mem.mapEmpty()
+  let set std.mem.setEmpty()
+  if && (&& (&& (&& (&& (&& (== nullBytes.has false) bytes.has) pushed) (== (std.mem.vecLen (&vec)) 1)) (== (std.mem.vecCapacity (&vec)) 4)) (== (std.mem.mapLen (&map)) 0)) (== (std.mem.setLen (&set)) 0)
+    check world.out.write "allocator collections ok\n"
+  else
+    check world.out.write "allocator collections failed\n"

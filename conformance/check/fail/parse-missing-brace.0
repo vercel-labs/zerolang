@@ -1,2 +1,2 @@
-pub fun main() -> Void {
-    let value = 1
+pub fn main Void
+  let value (+ 1 2

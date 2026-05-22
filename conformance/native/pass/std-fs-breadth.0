@@ -1,15 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let data = std.mem.span("atomic data\n")
-    let wrote = std.fs.atomicWrite(".zero/conformance/std-fs-breadth.txt", ".zero/conformance/std-fs-breadth.tmp", data)
-    let entries = std.fs.dirEntryCount("conformance/native/pass")
-    let mut tmp_buf: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let temp = std.fs.tempName(tmp_buf, ".zero/conformance/std-fs")
-
-    if wrote &&
-        std.fs.exists(".zero/conformance/std-fs-breadth.txt") &&
-        entries.has &&
-        entries.value > 0 &&
-        temp.has {
-        check world.out.write("std fs breadth ok\n")
-    }
-}
+pub fn main Void world World !
+  let data std.mem.span "atomic data\n"
+  let wrote std.fs.atomicWrite ".zero/conformance/std-fs-breadth.txt" ".zero/conformance/std-fs-breadth.tmp" data
+  let entries std.fs.dirEntryCount "conformance/native/pass"
+  mut tmp_buf [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let temp std.fs.tempName tmp_buf ".zero/conformance/std-fs"
+  if && (&& (&& (&& wrote (std.fs.exists ".zero/conformance/std-fs-breadth.txt")) entries.has) (> entries.value 0)) temp.has
+    check world.out.write "std fs breadth ok\n"

@@ -111,6 +111,21 @@ static void row_push_choice(ChoiceVec *vec, Choice item) {
   vec->items[vec->len++] = item;
 }
 
+static void row_push_interface(InterfaceVec *vec, InterfaceDecl item) {
+  vec->items = row_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(InterfaceDecl));
+  vec->items[vec->len++] = item;
+}
+
+static void row_push_alias(TypeAliasVec *vec, TypeAlias item) {
+  vec->items = row_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeAlias));
+  vec->items[vec->len++] = item;
+}
+
+static void row_push_c_import(CImportVec *vec, CImport item) {
+  vec->items = row_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(CImport));
+  vec->items[vec->len++] = item;
+}
+
 static void row_push_match_arm(MatchArmVec *vec, MatchArm item) {
   vec->items = row_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(MatchArm));
   vec->items[vec->len++] = item;
@@ -706,7 +721,7 @@ static bool row_is_reserved_word(const char *text) {
   const char *keywords[] = {
     "as", "break", "check", "choice", "const", "continue", "defer", "else", "enum", "export", "extern", "false",
     "fn", "for", "fun", "if", "import", "in", "let", "match", "meta", "mut", "null", "packed", "pub",
-    "raise", "raises", "rescue", "ret", "return", "set", "shape", "static", "test", "true", "type",
+    "raise", "raises", "rescue", "ret", "return", "shape", "static", "test", "true", "type",
     "use", "var", "while", NULL
   };
   for (int i = 0; keywords[i]; i++) {
@@ -964,6 +979,16 @@ static Expr *row_parse_primary(RowExprParser *parser) {
   } else if (strcmp(token->text, "[") == 0) {
     expr = row_new_expr(EXPR_ARRAY_LITERAL, token);
     while (parser->pos < parser->end && !row_token_text(parser->tokens, parser->pos, "]")) {
+      if (row_token_text(parser->tokens, parser->pos, ",")) {
+        parser->pos++;
+        continue;
+      }
+      if (row_token_text(parser->tokens, parser->pos, ";")) {
+        parser->pos++;
+        expr->array_repeat = true;
+        row_push_expr(&expr->args, row_parse_expr_atom(parser));
+        break;
+      }
       row_push_expr(&expr->args, row_parse_expr_atom(parser));
     }
     row_expect_text(parser->tokens, &parser->pos, parser->end, parser->diag, "]", "expected ']' after array literal");
@@ -1073,6 +1098,12 @@ static Expr *row_parse_expr_atom(RowExprParser *parser) {
     return expr;
   }
   if (row_next_starts_shape_literal(parser)) return row_parse_shape_literal(parser);
+  if (parser->pos < parser->end && row_token_text(parser->tokens, parser->pos, "meta")) {
+    const ZRowToken *token = &parser->tokens->items[parser->pos++];
+    Expr *expr = row_new_expr(EXPR_META, token);
+    expr->left = row_parse_expr(parser);
+    return expr;
+  }
   if (parser->pos < parser->end && row_token_text(parser->tokens, parser->pos, "check")) {
     const ZRowToken *token = &parser->tokens->items[parser->pos++];
     Expr *expr = row_new_expr(EXPR_CHECK, token);
@@ -1491,15 +1522,97 @@ static char *row_join_tokens(const ZRowTokenVec *tokens, size_t start, size_t en
   return buf.data ? buf.data : z_strdup("");
 }
 
-static void row_parse_type_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, Program *program, ZDiag *diag) {
+static void row_parse_alias_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, Program *program, ZDiag *diag) {
   const ZRowNode *node = &tree->items[row_index];
   size_t pos = node->first_token;
   size_t end = node->first_token + node->token_count;
   if (row_token_text_at(tokens, pos, end, "pub")) pos++;
+  row_expect_text(tokens, &pos, end, diag, "alias", "expected alias declaration");
+  const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected alias name");
+
+  TypeAlias item = {.is_public = is_public, .line = node->line, .column = node->column};
+  if (name) item.name = z_strdup(name->text);
+  item.target = row_parse_type_text(tokens, &pos, end, diag);
+  if (!row_expect_end(tokens, pos, end, diag, "alias declaration")) return;
+  row_push_alias(&program->aliases, item);
+  row_reject_child_rows(tree, row_index, diag, "alias declaration");
+}
+
+static Function row_parse_interface_method_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, ZDiag *diag) {
+  Function method = row_parse_function_decl(tokens, tree, row_index, is_public, false, diag);
+  row_reject_child_rows(tree, row_index, diag, "interface method declaration");
+  return method;
+}
+
+static void row_parse_interface_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, Program *program, ZDiag *diag) {
+  const ZRowNode *node = &tree->items[row_index];
+  size_t pos = node->first_token;
+  size_t end = node->first_token + node->token_count;
+  if (row_token_text_at(tokens, pos, end, "pub")) pos++;
+  row_expect_text(tokens, &pos, end, diag, "interface", "expected interface declaration");
+  const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected interface name");
+
+  InterfaceDecl item = {.is_public = is_public, .line = node->line, .column = node->column};
+  if (name) item.name = z_strdup(name->text);
+  row_parse_type_params(tokens, &pos, end, &item.type_params, diag);
+  if (!row_expect_end(tokens, pos, end, diag, "interface declaration")) return;
+
+  for (size_t i = 0; i < tree->len && !row_has_diag(diag); i++) {
+    if (tree->items[i].parent != row_index) continue;
+    const ZRowNode *child = &tree->items[i];
+    size_t child_pos = child->first_token;
+    size_t child_end = child->first_token + child->token_count;
+    bool method_public = false;
+    if (row_token_text_at(tokens, child_pos, child_end, "pub")) {
+      method_public = true;
+      child_pos++;
+    }
+    if (!row_token_text_at(tokens, child_pos, child_end, "fn")) {
+      row_diag(diag, child->line, child->column, 1, "expected interface method declaration", "fn method declaration", NULL);
+      continue;
+    }
+    row_push_function(&item.methods, row_parse_interface_method_decl(tokens, tree, i, method_public, diag));
+  }
+
+  row_push_interface(&program->interfaces, item);
+}
+
+static void row_parse_c_import_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, Program *program, ZDiag *diag) {
+  const ZRowNode *node = &tree->items[row_index];
+  size_t pos = node->first_token;
+  size_t end = node->first_token + node->token_count;
+  row_expect_text(tokens, &pos, end, diag, "extern", "expected extern declaration");
+  row_expect_text(tokens, &pos, end, diag, "c", "expected 'c' after extern");
+  const ZRowToken *header = pos < end && tokens->items[pos].kind == Z_ROW_TOKEN_STRING ? &tokens->items[pos++] : NULL;
+  if (!header) {
+    const ZRowToken *token = pos < end ? &tokens->items[pos] : &tokens->items[node->first_token];
+    row_diag(diag, token->line, token->column, 1, "expected extern c header string", "header string", NULL);
+    return;
+  }
+  row_expect_text(tokens, &pos, end, diag, "as", "expected extern import alias");
+  const ZRowToken *alias = row_expect_word(tokens, &pos, end, diag, "expected extern alias");
+  if (!row_expect_end(tokens, pos, end, diag, "extern c declaration")) return;
+  if (alias) {
+    row_push_c_import(&program->c_imports, (CImport){
+      .header = z_strdup(header->text),
+      .alias = z_strdup(alias->text),
+      .line = node->line,
+      .column = node->column
+    });
+  }
+  row_reject_child_rows(tree, row_index, diag, "extern c declaration");
+}
+
+static void row_parse_type_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, const char *layout, Program *program, ZDiag *diag) {
+  const ZRowNode *node = &tree->items[row_index];
+  size_t pos = node->first_token;
+  size_t end = node->first_token + node->token_count;
+  if (row_token_text_at(tokens, pos, end, "pub")) pos++;
+  if (row_token_text_at(tokens, pos, end, "extern") || row_token_text_at(tokens, pos, end, "packed")) pos++;
   row_expect_text(tokens, &pos, end, diag, "type", "expected type declaration");
   const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected type name");
 
-  Shape shape = {.layout = z_strdup("auto"), .is_public = is_public, .line = node->line, .column = node->column};
+  Shape shape = {.layout = z_strdup(layout ? layout : "auto"), .is_public = is_public, .line = node->line, .column = node->column};
   if (name) shape.name = z_strdup(name->text);
   row_parse_type_params(tokens, &pos, end, &shape.type_params, diag);
   if (!row_expect_end(tokens, pos, end, diag, "type declaration")) return;
@@ -1605,11 +1718,23 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
       is_public = true;
       pos++;
     }
+    const char *shape_layout = NULL;
     if (row_token_text_at(tokens, pos, end, "export")) {
       export_token = &tokens->items[pos];
       export_c = true;
       pos++;
       if (row_token_text_at(tokens, pos, end, "c")) pos++;
+    } else if (row_token_text_at(tokens, pos, end, "extern")) {
+      if (row_token_text_at(tokens, pos + 1, end, "c")) {
+        row_parse_c_import_decl(tokens, tree, i, &program, diag);
+        if (row_has_diag(diag)) return program;
+        continue;
+      }
+      shape_layout = "extern";
+      pos++;
+    } else if (row_token_text_at(tokens, pos, end, "packed")) {
+      shape_layout = "packed";
+      pos++;
     }
     if (export_c && !row_token_text_at(tokens, pos, end, "fn")) {
       row_diag(diag, export_token ? export_token->line : node->line, export_token ? export_token->column : node->column, 1, "export c only applies to function declarations", "fn declaration", "remove export c or change the row to a function declaration");
@@ -1661,14 +1786,18 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
       const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected const name");
       ConstDecl item = {.is_public = is_public, .line = node->line, .column = node->column};
       if (name) item.name = z_strdup(name->text);
-      item.type = row_parse_type_text(tokens, &pos, end, diag);
+      if (row_explicit_type_annotation(tokens, pos, end, diag)) item.type = row_parse_type_text(tokens, &pos, end, diag);
       item.expr = row_parse_expr_range(tokens, pos, end, diag);
       row_push_const(&program.consts, item);
       row_reject_child_rows(tree, i, diag, "const declaration");
+    } else if (row_token_text_at(tokens, pos, end, "alias")) {
+      row_parse_alias_decl(tokens, tree, i, is_public, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "fn")) {
       row_push_function(&program.functions, row_parse_function_decl(tokens, tree, i, is_public, export_c, diag));
+    } else if (row_token_text_at(tokens, pos, end, "interface")) {
+      row_parse_interface_decl(tokens, tree, i, is_public, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "type")) {
-      row_parse_type_decl(tokens, tree, i, is_public, &program, diag);
+      row_parse_type_decl(tokens, tree, i, is_public, shape_layout, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "enum")) {
       row_parse_enum_decl(tokens, tree, i, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "choice")) {
@@ -1691,7 +1820,7 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
       };
       row_push_function(&program.functions, fun);
     } else {
-      row_diag(diag, node->line, node->column, 1, "expected row declaration", "use, const, fn, type, enum, choice, or test", NULL);
+      row_diag(diag, node->line, node->column, 1, "expected row declaration", "use, extern c, const, alias, interface, fn, type, enum, choice, or test", NULL);
       return program;
     }
     if (row_has_diag(diag)) return program;

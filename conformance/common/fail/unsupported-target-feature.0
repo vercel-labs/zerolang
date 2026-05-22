@@ -1,2 +1,1 @@
-pub fun main(net: Net) -> Void {
-}
+pub fn main Void net Net

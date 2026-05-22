@@ -1,7 +1,5 @@
-shape S {
-    x: i32,
-}
+type S
+  x i32
 
-pub fun main() -> Void {
-    let t = S
-}
+pub fn main Void
+  let t (S)

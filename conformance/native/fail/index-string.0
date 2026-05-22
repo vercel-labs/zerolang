@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let byte = "abc"[3]
-    if byte == 0 {
-        check world.out.write("unreachable\n")
-    }
-}
+pub fn main Void world World !
+  let byte "abc"[3]
+  if == byte 0
+    check world.out.write "unreachable\n"

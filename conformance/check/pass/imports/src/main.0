@@ -1,9 +1,7 @@
 use math
 use types
 
-pub fun main(world: World) -> Void raises {
-    let point = Point { value: add_one(41) }
-    if point.value == 42 {
-        check world.out.write("imports pass\n")
-    }
-}
+pub fn main Void world World !
+  let point Point . value (add_one 41)
+  if == point.value 42
+    check world.out.write "imports pass\n"

@@ -1,5 +1,4 @@
 use missing
 
-pub fun message() -> String {
-    return missingMessage()
-}
+pub fn message String
+  ret missingMessage()

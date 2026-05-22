@@ -1,7 +1,5 @@
-fun risky<T>(value: T) -> Void raises { Bad } {
-    raise Bad
-}
+fn risky<T: Type> Void value T ![Bad]
+  raise Bad
 
-pub fun main() -> Void raises { Bad } {
-    risky<i32>(1)
-}
+pub fn main Void ![Bad]
+  risky<i32> 1

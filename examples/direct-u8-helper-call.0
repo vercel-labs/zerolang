@@ -1,19 +1,14 @@
-fun is_letter_a(code: u8) -> Bool {
-    if code == 65_u8 {
-        return true
-    }
-    return false
-}
+fn is_letter_a Bool code u8
+  if == code 65_u8
+    ret true
+  ret false
 
-export c fun main() -> i32 {
-    let bytes: [2]u8 = [65_u8, 66_u8]
-    let mut i: usize = 0
-    let mut score: i32 = 0
-    while i < 2 {
-        if is_letter_a(bytes[i]) {
-            score = score + 1
-        }
-        i = i + 1
-    }
-    return score
-}
+export c fn main i32
+  let bytes [2]u8 [65_u8, 66_u8]
+  mut i usize 0
+  mut score i32 0
+  while < i 2
+    if is_letter_a bytes[i]
+      set score + score 1
+    set i + i 1
+  ret score

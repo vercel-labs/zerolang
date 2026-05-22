@@ -1,3 +1,2 @@
-fun right_score() -> i32 {
-    return 7
-}
+fn right_score i32
+  ret 7

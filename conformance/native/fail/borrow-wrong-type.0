@@ -1,17 +1,13 @@
-shape Point {
-    x: i32,
-}
+type Point
+  x i32
 
-shape Other {
-    value: i32,
-}
+type Other
+  value i32
 
-fun read_x(point: ref<Point>) -> i32 {
-    return point.x
-}
+fn read_x i32 point ref<Point>
+  ret point.x
 
-pub fun main(world: World) -> Void raises {
-    let other = Other { value: 1 }
-    let value = read_x(&other)
-    check world.out.write("wrong borrow type")
-}
+pub fn main Void world World !
+  let other Other . value 1
+  let value read_x (&other)
+  check world.out.write "wrong borrow type"

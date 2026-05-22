@@ -1,17 +1,13 @@
-shape Pair<T, U> {
-  left: T,
-  right: U,
-}
+type Pair<T: Type, U: Type>
+  left T
+  right U
 
-fun makePair<T, U>(left: T, right: U) -> Pair<T, U> {
-  return Pair { left: left, right: right }
-}
+fn makePair<T: Type, U: Type> Pair<T,U> left T right U
+  ret Pair . left left right right
 
-pub fun main(world: World) -> Void raises {
-  let pair: Pair<i32, u8> = makePair(7, 9_u8)
-  if pair.left == 7 && pair.right == 9_u8 {
-    check world.out.write("generic shape multi ok\n")
-  } else {
-    check world.out.write("generic shape multi broke\n")
-  }
-}
+pub fn main Void world World !
+  let pair Pair<i32,u8> makePair 7 9_u8
+  if && (== pair.left 7) (== pair.right 9_u8)
+    check world.out.write "generic shape multi ok\n"
+  else
+    check world.out.write "generic shape multi broke\n"

@@ -1,6 +1,5 @@
 use right
 use left
 
-export c fun main() -> i32 {
-    return left_score() + right_score()
-}
+export c fn main i32
+  ret + (left_score()) (right_score())

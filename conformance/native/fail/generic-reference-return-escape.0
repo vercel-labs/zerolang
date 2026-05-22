@@ -1,11 +1,8 @@
-fun id<T>(value: T) -> T {
-    return value
-}
+fn id<T: Type> T value T
+  ret value
 
-pub fun leak() -> ref<i32> {
-    let x = 1
-    return id<ref<i32>>(&x)
-}
+pub fn leak ref<i32>
+  let x 1
+  ret id<ref<i32>> (&x)
 
-pub fun main() -> Void {
-}
+pub fn main Void

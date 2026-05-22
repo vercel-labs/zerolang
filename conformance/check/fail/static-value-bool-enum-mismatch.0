@@ -1,18 +1,14 @@
-enum Mode : u8 {
-    fast,
-    tiny,
-}
+type Gate<static enabledFlag: Bool, static selectedMode: Mode>
+  value i32
 
-shape Gate<static enabledFlag: Bool, static selectedMode: Mode> {
-    value: i32,
-}
+enum Mode u8
+  fast
+  tiny
 
-fun readGate<static enabledFlag: Bool, static selectedMode: Mode>(gate: ref<Gate<enabledFlag,selectedMode>>) -> i32 {
-    return gate.value
-}
+fn readGate<static enabledFlag: Bool, static selectedMode: Mode> i32 gate ref<Gate<enabledFlag,selectedMode>>
+  ret gate.value
 
-pub fun main(world: World) -> Void raises {
-    let gate: Gate<true,Mode.fast> = Gate { value: 1 }
-    let _value = readGate<false, Mode.fast>(&gate)
-    check world.out.write("bad static bool enum mismatch\n")
-}
+pub fn main Void world World !
+  let gate Gate<true,Mode.fast> Gate . value 1
+  let _value readGate<false, Mode.fast> (&gate)
+  check world.out.write "bad static bool enum mismatch\n"

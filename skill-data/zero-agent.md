@@ -45,7 +45,7 @@ zero fix --plan --json <file-or-package>
 - Treat effects as capabilities, not ambient globals. Use `World`, `std.fs`, `std.args`, `std.env`, and similar APIs only where the target supports them.
 - Keep examples copyable and runnable from the repository or package root.
 - Prefer explicit types at public boundaries and when inference is unclear.
-- Use `Maybe<T>`, explicit `raises`, and `check` instead of hidden failure.
+- Use `Maybe<T>`, explicit `!` / `![...]`, and `check` instead of hidden failure.
 - Do not invent syntax. Load `zero-language` when unsure.
 - Do not invent CLI fields. Run the command with `--json` and read the data.
 

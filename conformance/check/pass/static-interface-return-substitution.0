@@ -1,26 +1,20 @@
-interface Sized<T, static N: usize> {
-    fun bytes(self: ref<T>) -> [N]u8
-}
+interface Sized<T: Type, static N: usize>
+  fn bytes [N]u8 self ref<T>
 
-shape Bytes<static N: usize> {
-    items: [N]u8,
+type Bytes<static N: usize>
+  items [N]u8
 
-    fun bytes(self: ref<Self>) -> [N]u8 {
-        return self.items
-    }
-}
+  fn bytes [N]u8 self ref<Self>
+    ret self.items
 
-fun readSized<T: Sized<T,N>, static N: usize>(value: ref<T>) -> [N]u8 {
-    return T.bytes(value)
-}
+fn readSized<T: Sized<T,N>, static N: usize> [N]u8 value ref<T>
+  ret T.bytes value
 
-fun readFour<T: Sized<T,4>>(value: ref<T>) -> [4]u8 {
-    return T.bytes(value)
-}
+fn readFour<T: Sized<T,4>> [4]u8 value ref<T>
+  ret T.bytes value
 
-pub fun main() -> Void {
-    let bytes: Bytes<4> = Bytes { items: [1, 2, 3, 4] }
-    let fromGeneric: [4]u8 = readSized<Bytes<4>,4>(&bytes)
-    let fromLiteral: [4]u8 = readFour<Bytes<4>>(&bytes)
-    expect(fromGeneric[3] == 4 && fromLiteral[0] == 1)
-}
+pub fn main Void
+  let bytes Bytes<4> Bytes . items ([1, 2, 3, 4])
+  let fromGeneric [4]u8 readSized<Bytes<4>, 4> (&bytes)
+  let fromLiteral [4]u8 readFour<Bytes<4>> (&bytes)
+  expect (&& (== fromGeneric[3] 4) (== fromLiteral[0] 1))

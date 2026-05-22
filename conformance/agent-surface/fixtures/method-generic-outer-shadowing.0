@@ -1,9 +1,7 @@
-shape Box<T> {
-    value: T,
+type Box<T: Type>
+  value T
 
-    fun keep<T>(value: T) -> T {
-        return value
-    }
-}
+  fn keep<T: Type> T value T
+    ret value
 
-pub fun main() -> Void {}
+pub fn main Void

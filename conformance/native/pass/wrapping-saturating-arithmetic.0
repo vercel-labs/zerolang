@@ -1,8 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let wrapped: u8 = 255_u8 +% 2_u8
-    let saturated: u8 = 250_u8 +| 10_u8
-    let checked: u8 = 40_u8 + 2_u8
-    if wrapped == 1_u8 && saturated == 255_u8 && checked == 42_u8 {
-        check world.out.write("wrapping saturating arithmetic ok\n")
-    }
-}
+pub fn main Void world World !
+  let wrapped u8 +% 255_u8 2_u8
+  let saturated u8 +| 250_u8 10_u8
+  let checked u8 + 40_u8 2_u8
+  if && (&& (== wrapped 1_u8) (== saturated 255_u8)) (== checked 42_u8)
+    check world.out.write "wrapping saturating arithmetic ok\n"

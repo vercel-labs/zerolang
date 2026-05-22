@@ -1,9 +1,9 @@
-const answer: i32 = 42
-const byte: u8 = 7_u8
+const answer i32 42
 
-pub fun main() -> Void {
-  let value: i32 = answer
-  let small: u8 = byte
-  expect(value == 42)
-  expect(small == 7_u8)
-}
+const byte u8 7_u8
+
+pub fn main Void
+  let value i32 answer
+  let small u8 byte
+  expect (== value 42)
+  expect (== small 7_u8)

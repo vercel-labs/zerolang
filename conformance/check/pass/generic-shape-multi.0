@@ -1,14 +1,11 @@
-shape Pair<T, U> {
-  left: T,
-  right: U,
-}
+type Pair<T: Type, U: Type>
+  left T
+  right U
 
-fun makePair<T, U>(left: T, right: U) -> Pair<T, U> {
-  return Pair { left: left, right: right }
-}
+fn makePair<T: Type, U: Type> Pair<T,U> left T right U
+  ret Pair . left left right right
 
-pub fun main() -> Void {
-  let pair: Pair<i32, u8> = makePair(7, 9_u8)
-  expect(pair.left == 7)
-  expect(pair.right == 9_u8)
-}
+pub fn main Void
+  let pair Pair<i32,u8> makePair 7 9_u8
+  expect (== pair.left 7)
+  expect (== pair.right 9_u8)

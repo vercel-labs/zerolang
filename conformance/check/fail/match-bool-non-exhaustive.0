@@ -1,6 +1,4 @@
-pub fun main() -> Void {
-    let value = true
-    match value {
-        true {}
-    }
-}
+pub fn main Void
+  let value true
+  match value
+    true

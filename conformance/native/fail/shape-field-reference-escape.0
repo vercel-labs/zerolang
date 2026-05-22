@@ -1,9 +1,7 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-pub fun main() -> ref<i32> {
-    let x = 1
-    let box: Box = Box { value: &x }
-    return box.value
-}
+pub fn main ref<i32>
+  let x 1
+  let box Box Box . value (&x)
+  ret box.value

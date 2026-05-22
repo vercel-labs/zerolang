@@ -1,7 +1,6 @@
 use std.mem
 
-pub fun main() -> Void {
-    let mut dst: [4]u8 = [0, 0, 0, 0]
-    let src: [4]u8 = [122, 101, 114, 111]
-    let _copied = std.mem.copy(dst, src)
-}
+pub fn main Void
+  mut dst [4]u8 [0, 0, 0, 0]
+  let src [4]u8 [122, 101, 114, 111]
+  let _copied std.mem.copy dst src

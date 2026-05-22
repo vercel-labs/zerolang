@@ -1,3 +1,2 @@
-test "expect rejects non-bool" {
-    expect(1)
-}
+test "expect rejects non-bool"
+  expect 1

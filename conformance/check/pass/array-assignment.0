@@ -1,8 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let values: [3]u8 = [1, 2, 3]
-    let mut count = 0
-    count = count + 1
-    if count == 1 {
-        check world.out.write("array assignment ok\n")
-    }
-}
+pub fn main Void world World !
+  let values [3]u8 [1, 2, 3]
+  mut count 0
+  set count + count 1
+  if == count 1
+    check world.out.write "array assignment ok\n"

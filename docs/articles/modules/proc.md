@@ -19,12 +19,10 @@ Metadata labels:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let status = std.proc.spawn("zero-noop")
-    if std.proc.exitCode(status) == 0 {
-        check world.out.write("proc ok\n")
-    }
-}
+pub fn main Void world World !
+  let status std.proc.spawn "zero-noop"
+  if == (std.proc.exitCode status) 0
+    check world.out.write "proc ok\n"
 ```
 
 ## Design Notes

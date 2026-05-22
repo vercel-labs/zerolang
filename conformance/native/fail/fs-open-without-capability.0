@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let opened = std.fs.open("not an Fs capability", ".zero/conformance/fs-open-without-capability.txt")
-    if opened.has {
-        check world.out.write("unexpected file\n")
-    }
-}
+pub fn main Void world World !
+  let opened std.fs.open "not an Fs capability" ".zero/conformance/fs-open-without-capability.txt"
+  if opened.has
+    check world.out.write "unexpected file\n"

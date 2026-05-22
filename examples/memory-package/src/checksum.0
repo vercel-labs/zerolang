@@ -1,3 +1,2 @@
-pub fun checksumOk(expected: u32) -> Bool {
-    return expected == 1120241454
-}
+pub fn checksumOk Bool expected u32
+  ret == expected 1120241454

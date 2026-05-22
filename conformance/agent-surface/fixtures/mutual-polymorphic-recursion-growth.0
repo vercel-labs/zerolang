@@ -1,14 +1,11 @@
-fun left<T>(value: T) -> Void {
-    let nested: Maybe<T> = null
-    right<Maybe<T>>(nested)
-}
+fn left<T: Type> Void value T
+  let nested Maybe<T> null
+  right<Maybe<T>> nested
 
-fun right<T>(value: T) -> Void {
-    let nested: Maybe<T> = null
-    left<Maybe<T>>(nested)
-}
+fn right<T: Type> Void value T
+  let nested Maybe<T> null
+  left<Maybe<T>> nested
 
-pub fun main(world: World) -> Void raises {
-    left<i32>(1)
-    check world.out.write("mutual polymorphic recursion ok\n")
-}
+pub fn main Void world World !
+  left<i32> 1
+  check world.out.write "mutual polymorphic recursion ok\n"

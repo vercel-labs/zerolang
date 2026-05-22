@@ -1,20 +1,16 @@
-const Foo: usize = 3
+const Foo usize 3
 
-shape Foo {
-    value: i32,
-}
+type Foo
+  value i32
 
-shape Mixed<T, static N: usize> {
-    value: T,
-    items: [N]i32,
-}
+type Mixed<T: Type, static N: usize>
+  value T
+  items [N]i32
 
-fun take<T, static N: usize>(item: ref<Mixed<T,N>>) -> T {
-    return item.value
-}
+fn take<T: Type, static N: usize> T item ref<Mixed<T,N>>
+  ret item.value
 
-pub fun main() -> Void {
-    let mixed: Mixed<Foo,Foo> = Mixed { value: Foo { value: 7 }, items: [1, 2, 3] }
-    let value: Foo = take(&mixed)
-    expect(value.value == 7)
-}
+pub fn main Void
+  let mixed Mixed<Foo,Foo> Mixed . value (Foo . value 7) items ([1, 2, 3])
+  let value Foo take (&mixed)
+  expect (== value.value 7)

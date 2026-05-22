@@ -1,15 +1,12 @@
-fun choose(left: ref<i32>, right: ref<i32>) -> ref<i32> {
-    if true {
-        return left
-    } else {
-        return left
-    }
-    return right
-}
+fn choose ref<i32> left ref<i32> right ref<i32>
+  if true
+    ret left
+  else
+    ret left
+  ret right
 
-pub fun main() -> Void {
-    let x = 1
-    let mut y = 2
-    let current = choose(&x, &y)
-    y = 3
-}
+pub fn main Void
+  let x 1
+  mut y 2
+  let current choose (&x) (&y)
+  set y 3

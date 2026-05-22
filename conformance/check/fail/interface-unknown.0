@@ -1,12 +1,9 @@
-shape Counter {
-  value: i32,
-}
+type Counter
+  value i32
 
-fun readValue<T: Missing<T>>(value: ref<T>) -> i32 {
-  return 0
-}
+fn readValue<T: Missing<T>> i32 value ref<T>
+  ret 0
 
-pub fun main() -> Void {
-  let counter: Counter = Counter { value: 1 }
-  expect(readValue<Counter>(&counter) == 1)
-}
+pub fn main Void
+  let counter Counter Counter . value 1
+  expect (== (readValue<Counter> (&counter)) 1)

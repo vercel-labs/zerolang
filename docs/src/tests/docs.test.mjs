@@ -75,7 +75,7 @@ describe("docs registry", () => {
     assert.match(await readDoc("getting-started"), /zero build --target linux-musl-x64/);
     assert.match(await readDoc("examples"), /bin\/zero check examples\/hello\.0/);
     const learnZero = await readDoc("learn-zero");
-    for (const topic of ["main", "let", "Write Functions", "shape", "Field Defaults", "Span", "check", "Run Tests", "Cross Targets", "Diagnostics"]) {
+    for (const topic of ["main", "let", "Write Functions", "type", "Field Defaults", "Span", "check", "Run Tests", "Cross Targets", "Diagnostics"]) {
       assert.match(learnZero, new RegExp(topic));
     }
     const diagnostics = await readDoc("diagnostics");
@@ -173,7 +173,7 @@ describe("docs registry", () => {
       assert.match(examples, new RegExp(releaseLoopTerm));
     }
     const learnZeroCleanup = await readDoc("learn-zero");
-    assert.match(learnZeroCleanup, /canonical non-raising `fun drop\(self: mutref<Self>\) -> Void`/);
+    assert.match(learnZeroCleanup, /canonical non-raising `fn drop Void self mutref<Self>`/);
     assert.doesNotMatch(learnZeroCleanup, /More advanced ownership and `?\.drop\(\)`? behavior is still implementation work/);
     assert.match(await readDoc("building-from-source"), /Building From Source/);
     for (const demoTerm of ["--release tiny", "fixed-capacity", "vtables", "generic registries", "hello-linux-musl", "hello-win32", "target report", "artifact size"]) {

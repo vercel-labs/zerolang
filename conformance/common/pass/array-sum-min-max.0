@@ -1,21 +1,16 @@
-pub fun main(world: World) -> Void raises {
-    let values: [5]i32 = [7, 2, 10, 4, 1]
-    let mut index: usize = 0
-    let mut sum = 0
-    let mut min = values[0]
-    let mut max = values[0]
-    while index < 5 {
-        let value = values[index]
-        sum = sum + value
-        if value < min {
-            min = value
-        }
-        if value > max {
-            max = value
-        }
-        index = index + 1
-    }
-    if sum == 24 && min == 1 && max == 10 {
-        check world.out.write("array sum min max ok\n")
-    }
-}
+pub fn main Void world World !
+  let values [5]i32 [7, 2, 10, 4, 1]
+  mut index usize 0
+  mut sum 0
+  mut min values[0]
+  mut max values[0]
+  while < index 5
+    let value values[index]
+    set sum + sum value
+    if < value min
+      set min value
+    if > value max
+      set max value
+    set index + index 1
+  if && (&& (== sum 24) (== min 1)) (== max 10)
+    check world.out.write "array sum min max ok\n"

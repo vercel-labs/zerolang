@@ -1,17 +1,13 @@
-shape Data {
-    value: i32,
-}
+type Data
+  value i32
 
-fun update(target: mutref<Data>) -> Void {
-    target.value = target.value + 1
-}
+fn update Void target mutref<Data>
+  set target.value + target.value 1
 
-pub fun main(world: World) -> Void raises {
-    let mut data: Data = Data { value: 0 }
-    let shared = &data
-    let observed = shared.value
-    update(&mut data)
-    if observed == 0 {
-        check world.out.write("borrow lexical lifetime current ok\n")
-    }
-}
+pub fn main Void world World !
+  mut data Data Data . value 0
+  let shared &data
+  let observed shared.value
+  update (&mut data)
+  if == observed 0
+    check world.out.write "borrow lexical lifetime current ok\n"

@@ -1,19 +1,15 @@
-shape Cell<T> {
-    value: ref<T>,
-}
+type Cell<T: Type>
+  value ref<T>
 
-fun replace<T>(cell: mutref<Cell<T>>, next: ref<T>) -> Void {
-    cell.value = next
-}
+fn replace<T: Type> Void cell mutref<Cell<T>> next ref<T>
+  set cell.value next
 
-fun wrapper<T>(cell: mutref<Cell<T>>, next: ref<T>) -> Void {
-    replace<T>(cell, next)
-}
+fn wrapper<T: Type> Void cell mutref<Cell<T>> next ref<T>
+  replace<T> cell next
 
-pub fun main() -> Void {
-    let mut old = 1
-    let mut next = 2
-    let mut cell: Cell<i32> = Cell { value: &old }
-    wrapper<i32>(&mut cell, &next)
-    next = 3
-}
+pub fn main Void
+  mut old 1
+  mut next 2
+  mut cell Cell<i32> Cell . value (&old)
+  wrapper<i32> (&mut cell) (&next)
+  set next 3

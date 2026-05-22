@@ -1,8 +1,6 @@
-shape NeedsItem {
-    count: usize = 0,
-    item: u8,
-}
+type NeedsItem
+  count usize 0
+  item u8
 
-pub fun main() -> Void {
-    let value: NeedsItem = NeedsItem {}
-}
+pub fn main Void
+  let value NeedsItem NeedsItem .

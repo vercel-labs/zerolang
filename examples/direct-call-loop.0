@@ -1,13 +1,10 @@
-fun sum_to(n: i32) -> i32 {
-    let mut i: i32 = 0
-    let mut sum: i32 = 0
-    while i <= n {
-        sum = sum + i
-        i = i + 1
-    }
-    return sum
-}
+fn sum_to i32 n i32
+  mut i i32 0
+  mut sum i32 0
+  while <= i n
+    set sum + sum i
+    set i + i 1
+  ret sum
 
-export c fun main() -> i32 {
-    return sum_to(4)
-}
+export c fn main i32
+  ret sum_to 4

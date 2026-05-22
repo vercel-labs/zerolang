@@ -14,18 +14,18 @@
 Integer literals support decimal, hexadecimal, binary, octal, `_` separators, and optional suffixes such as `_u8` or `_usize`.
 
 ```zero
-let count: u32 = 0x12c_u32
-let byte: u8 = 255
-let page: usize = 4_096
+let count u32 0x12c_u32
+let byte u8 255
+let page usize 4_096
 ```
 
 Primitive numeric types do not implicitly narrow, widen, or change signedness. Use an explicit cast when the conversion is intentional.
 
 ```zero
-let count: u32 = 300
-let byte: u8 = count as u8
-let whole: i32 = 7.9 as i32
-let marker: u8 = 'A' as u8
+let count u32 300
+let byte u8 count as u8
+let whole i32 7.9 as i32
+let marker u8 'A' as u8
 ```
 
 ## Absence And Fallibility
@@ -33,28 +33,25 @@ let marker: u8 = 'A' as u8
 `Maybe<T>` represents an optional value. `null` is accepted only when the expected type is known to be `Maybe<T>`.
 
 ```zero
-let name: Maybe<String> = null
-let fallback = name else "world"
+let name Maybe<String> null
+let fallback name else "world"
 ```
 
-Fallible functions are marked with `raises`, and `check` propagates the current
-error. `raises` is part of a function signature rather than a runtime exception
+Fallible functions are marked with `!` or `![...]`, and `check` propagates the current
+error. Fallibility is part of a function signature rather than a runtime exception
 mechanism.
 
 The native compiler accepts explicit error sets for user-defined fallible
 functions.
 
 ```zero
-fun validate(ok: Bool) -> i32 raises { InvalidInput } {
-    if ok == false {
-        raise InvalidInput
-    }
-    return 42
-}
+fn validate i32 ok Bool ![InvalidInput]
+  if == ok false
+    raise InvalidInput
+  ret 42
 
-fun run() -> Void raises { InvalidInput } {
-    check validate(true)
-}
+fn run Void ![InvalidInput]
+  check validate true
 ```
 
 The native compiler lowers `check` on `Maybe<T>` to a direct branch for the
@@ -66,7 +63,7 @@ function actually raises named errors.
 
 ## Memory And Ownership
 
-Zero makes memory shape visible in types. These forms are primitive type constructors because they affect ownership, borrowing, layout, and cleanup.
+Zero makes memory layout visible in types. These forms are primitive type constructors because they affect ownership, borrowing, layout, and cleanup.
 
 | Primitive | Purpose |
 | --- | --- |
@@ -78,14 +75,12 @@ Zero makes memory shape visible in types. These forms are primitive type constru
 | `const T` | Read-only view of `T`. |
 
 ```zero
-shape BufferView {
-    bytes: Span<u8>,
-    owner: Maybe<mutref<Alloc>>,
-}
+type BufferView
+  bytes Span<u8>
+  owner Maybe<mutref<Alloc>>
 
-pub fun len(view: BufferView) -> usize {
-    return std.mem.len(view.bytes)
-}
+pub fn len usize view BufferView
+  ret std.mem.len view.bytes
 ```
 
 `Alloc` is a capability type used by allocation APIs. Heap allocation should be
@@ -105,33 +100,29 @@ Allocator primitives are explicit handles:
 Borrow expressions create references without allocation or runtime metadata. Use `&value` for `ref<T>` and `&mut value` for `mutref<T>`.
 
 ```zero
-fun read_x(point: ref<Point>) -> i32 {
-    return point.x
-}
+fn read_x i32 point ref<Point>
+  ret point.x
 
-fun write_x(point: mutref<Point>, value: i32) -> Void {
-    point.x = value
-}
+fn write_x Void point mutref<Point> value i32
+  set point.x value
 
-let shared = &point
-write_x(&mut point, 5)
+let shared &point
+write_x (&mut point) 5
 ```
 
 An `owned<T>` local is automatically cleaned up at lexical scope exit when `T`
 defines the canonical non-raising method
-`fun drop(self: mutref<Self>) -> Void`.
+`fn drop Void self mutref<Self>`.
 
 Cleanup is lowered to a direct call and skipped once the owned binding has
 moved.
 
 ```zero
-shape Temp {
-    bytes: MutSpan<u8>,
+type Temp
+  bytes MutSpan<u8>
 
-    fun drop(self: mutref<Self>) -> Void {
-        self.bytes[0] = 0
-    }
-}
+  fn drop Void self mutref<Self>
+    set self.bytes[0] 0
 ```
 
 ## Layout Primitives
@@ -140,23 +131,21 @@ User-defined types are not primitives, but some layout markers are primitive bec
 
 | Form | Purpose |
 | --- | --- |
-| `shape` | Default Zero aggregate layout. Not ABI-stable by default. |
-| `extern shape` | C ABI-compatible aggregate layout for the selected target. |
-| `packed shape` | Bit-exact layout with declared field widths. |
+| `type` | Default Zero aggregate layout. Not ABI-stable by default. |
+| `extern type` | C ABI-compatible aggregate layout for the selected target. |
+| `packed type` | Bit-exact layout with declared field widths. |
 | `enum Name : uN` | Enum with an explicit integer backing type. |
 | `choice` | Tagged choice value. Exhaustive matching is required. |
 
 ```zero
-extern shape CPoint {
-    x: i32,
-    y: i32,
-}
+extern type CPoint
+  x i32
+  y i32
 
-enum Color : u8 {
-    red,
-    green,
-    blue,
-}
+enum Color u8
+  red
+  green
+  blue
 ```
 
 ## Capability Names Are Not Primitives
@@ -168,9 +157,8 @@ They are foundational to Zero's effect model, but they are not primitive values
 in the same sense as `Bool`, `u32`, `Maybe<T>`, or `Span<T>`.
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    check world.out.write("hello\n")
-}
+pub fn main Void world World !
+  check world.out.write "hello\n"
 ```
 
 ## Current Native Status

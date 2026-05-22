@@ -1,32 +1,28 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+const enabled Bool meta && (>= target.pointerWidth 32) (hasField Point "y")
 
-enum Mode : u8 {
-    fast,
-    tiny,
-}
+const selected Mode Mode.tiny
 
-const enabled: Bool = meta (target.pointerWidth >= 32 && hasField(Point, "y"))
-const selected: Mode = Mode.tiny
-const fields: usize = meta fieldCount(Point)
-const field_type: String = meta fieldType(Point, "x")
+const fields usize meta fieldCount Point
 
-shape Gate<static enabledFlag: Bool, static selectedMode: Mode> {
-    value: i32,
-}
+const field_type String meta fieldType Point "x"
 
-fun readGate<static enabledFlag: Bool, static selectedMode: Mode>(gate: ref<Gate<enabledFlag,selectedMode>>) -> i32 {
-    if enabledFlag {
-        return gate.value
-    }
-    return 0
-}
+type Point
+  x i32
+  y i32
 
-pub fun main(world: World) -> Void raises {
-    let gate: Gate<enabled,selected> = Gate { value: 29 }
-    if readGate<enabled, selected>(&gate) == 29 && fields == 2 && std.mem.eql(field_type, "i32") {
-        check world.out.write("compile time v1 ok\n")
-    }
-}
+type Gate<static enabledFlag: Bool, static selectedMode: Mode>
+  value i32
+
+enum Mode u8
+  fast
+  tiny
+
+fn readGate<static enabledFlag: Bool, static selectedMode: Mode> i32 gate ref<Gate<enabledFlag,selectedMode>>
+  if enabledFlag
+    ret gate.value
+  ret 0
+
+pub fn main Void world World !
+  let gate Gate<enabled,selected> Gate . value 29
+  if && (&& (== (readGate<enabled, selected> (&gate)) 29) (== fields 2)) (std.mem.eql field_type "i32")
+    check world.out.write "compile time v1 ok\n"

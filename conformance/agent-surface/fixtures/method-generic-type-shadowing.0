@@ -1,11 +1,8 @@
-shape Item {
-    value: i32,
-}
+type Item
+  value i32
 
-shape Holder {
-    fun keep<Item>(value: Item) -> Item {
-        return value
-    }
-}
+type Holder
+  fn keep<Item: Type> Item value Item
+    ret value
 
-pub fun main() -> Void {}
+pub fn main Void

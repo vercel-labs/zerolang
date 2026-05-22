@@ -1,12 +1,8 @@
-fun fib(n: u32) -> u32 {
-    if n < 2 {
-        return n
-    }
-    return fib(n - 1) + fib(n - 2)
-}
+fn fib u32 n u32
+  if < n 2
+    ret n
+  ret + (fib (- n 1)) (fib (- n 2))
 
-pub fun main(world: World) -> Void raises {
-    if fib(10) == 55 {
-        check world.out.write("fib recursive ok\n")
-    }
-}
+pub fn main Void world World !
+  if == (fib 10) 55
+    check world.out.write "fib recursive ok\n"

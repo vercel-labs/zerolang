@@ -1,13 +1,9 @@
-enum Status {
-    ready,
-    failed,
-}
+enum Status
+  ready
+  failed
 
-pub fun main(world: World) -> Void raises {
-    let status = Status.ready
-    match status {
-        ready {
-            check world.out.write("ready\n")
-        }
-    }
-}
+pub fn main Void world World !
+  let status Status.ready
+  match status
+    ready
+      check world.out.write "ready\n"

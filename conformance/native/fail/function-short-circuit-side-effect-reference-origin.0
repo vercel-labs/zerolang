@@ -1,20 +1,16 @@
-shape Holder {
-    value: ref<i32>,
-}
+type Holder
+  value ref<i32>
 
-fun replaceValue(holder: mutref<Holder>, next: ref<i32>) -> Bool {
-    holder.value = next
-    return true
-}
+fn replaceValue Bool holder mutref<Holder> next ref<i32>
+  set holder.value next
+  ret true
 
-fun maybeReplace(flag: Bool, holder: mutref<Holder>, next: ref<i32>) -> Void {
-    let ok = flag && replaceValue(holder, next)
-}
+fn maybeReplace Void flag Bool holder mutref<Holder> next ref<i32>
+  let ok && flag (replaceValue holder next)
 
-pub fun main(flag: Bool) -> Void {
-    let mut old = 1
-    let next = 2
-    let mut holder = Holder { value: &old }
-    maybeReplace(flag, &mut holder, &next)
-    old = 3
-}
+pub fn main Void flag Bool
+  mut old 1
+  let next 2
+  mut holder Holder . value (&old)
+  maybeReplace flag (&mut holder) (&next)
+  set old 3

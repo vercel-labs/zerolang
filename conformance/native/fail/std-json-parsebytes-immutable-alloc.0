@@ -1,10 +1,8 @@
-export c fun main() -> i32 {
-    let bytes = std.mem.span("{\"ok\":1}")
-    let mut arena_buf: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let arena = std.mem.fixedBufAlloc(arena_buf)
-    let parsed = std.json.parseBytes(arena, bytes)
-    if parsed.has {
-        return 1
-    }
-    return 0
-}
+export c fn main i32
+  let bytes std.mem.span "{\"ok\":1}"
+  mut arena_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let arena std.mem.fixedBufAlloc arena_buf
+  let parsed std.json.parseBytes arena bytes
+  if parsed.has
+    ret 1
+  ret 0

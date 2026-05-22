@@ -1,12 +1,9 @@
-fun accept(r: ref<i32>) -> Void {
-}
+fn accept Void r ref<i32>
 
-pub fun main() -> Void {
-    let x = 1
-    let mut r = &x
-    if true {
-        let y = 2
-        r = &y
-    }
-    accept(r)
-}
+pub fn main Void
+  let x 1
+  mut r &x
+  if true
+    let y 2
+    set r &y
+  accept r

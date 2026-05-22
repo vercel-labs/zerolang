@@ -57,6 +57,7 @@ function symbolKind(kind) {
     choice: 23,
     interface: 11,
     const: 14,
+    alias: 5,
     type: 5,
   }[kind] ?? 13;
 }
@@ -64,12 +65,12 @@ function symbolKind(kind) {
 function analyzeText(uri, text) {
   const found = [];
   const lines = text.split("\n");
-  const declaration = /^\s*(?:pub\s+)?(?:(export\s+c)\s+)?(fun|shape|enum|choice|interface|const|type)\s+([A-Za-z_][A-Za-z0-9_]*)/;
+  const declaration = /^\s*(?:pub\s+)?(?:(export\s+c)\s+)?(?:(extern|packed)\s+)?(fn|type|enum|choice|interface|const|alias)\s+([A-Za-z_][A-Za-z0-9_]*)/;
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const match = lines[lineIndex].match(declaration);
     if (!match) continue;
-    const kind = match[2] === "fun" ? "function" : match[2];
-    const name = match[3];
+    const kind = match[3] === "fn" ? "function" : match[3];
+    const name = match[4];
     const start = lines[lineIndex].indexOf(name);
     found.push({
       name,
@@ -414,7 +415,7 @@ async function selfTest() {
   await mkdir(dir, { recursive: true });
   const path = join(dir, "sample.0");
   const uri = pathToUri(path);
-  const text = "pub fun add(a: i32, b: i32) -> i32 {\n    return a + b\n}\n\npub fun main(world: World) -> Void raises {\n    check world.out.write(\"ok\\n\")\n}\n";
+  const text = "pub fn add i32 a i32 b i32\n  ret + a b\n\npub fn main Void world World !\n  check world.out.write \"ok\\n\"\n";
   await writeFile(path, text);
   const notifications = [];
   await didOpen({ textDocument: { uri, text, version: 1 } }, (method, params) => notifications.push({ method, params }));
@@ -436,7 +437,7 @@ async function selfTest() {
   assert(hoverText.includes("generated binding previews:"));
   assert(hoverText.includes("generatedCBytes: 0"));
   assert(documentSymbols({ textDocument: { uri } }).some((symbol) => symbol.name === "add"));
-  assert(signatureHelp({ textDocument: { uri }, position: { line: 5, character: 30 } }).signatures.length >= 0);
+  assert(signatureHelp({ textDocument: { uri }, position: { line: 4, character: 20 } }).signatures.length >= 0);
   assert(definition({ textDocument: { uri }, position: { line: 0, character: 9 } }).uri === uri);
   assert(references({ textDocument: { uri }, position: { line: 0, character: 9 } }).length >= 1);
   assert(rename({ textDocument: { uri }, position: { line: 0, character: 9 }, newName: "sum" }).changes[uri].length >= 1);

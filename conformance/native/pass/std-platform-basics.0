@@ -1,23 +1,14 @@
-pub fun main(world: World) -> Void raises {
-    let duration = std.time.sub(std.time.seconds(2), std.time.ms(500))
-    let _now = std.time.monotonic()
-    let wall = std.time.wallSeconds()
-    let mut rng = std.rand.seed(7_u32)
-    let first = std.rand.nextU32(&mut rng)
-    let second = std.rand.nextU32(&mut rng)
-    let _entropy = std.rand.entropyU32()
-    let status = std.proc.spawn("zero-noop")
-    let hash = std.crypto.hash32(std.mem.span("message"))
-    let hmac = std.crypto.hmac32(std.mem.span("key"), std.mem.span("message"))
-    let _secure = std.crypto.secureRandomU32()
-
-    if std.time.asMsFloor(duration) == 1500 &&
-        wall > 0 &&
-        first != second &&
-        std.proc.exitCode(status) == 0 &&
-        hash != 0_u32 &&
-        hmac != 0_u32 &&
-        std.crypto.constantTimeEql(std.mem.span("same"), std.mem.span("same")) {
-        check world.out.write("std platform basics ok\n")
-    }
-}
+pub fn main Void world World !
+  let duration std.time.sub (std.time.seconds 2) (std.time.ms 500)
+  let _now std.time.monotonic()
+  let wall std.time.wallSeconds()
+  mut rng std.rand.seed 7_u32
+  let first std.rand.nextU32 (&mut rng)
+  let second std.rand.nextU32 (&mut rng)
+  let _entropy std.rand.entropyU32()
+  let status std.proc.spawn "zero-noop"
+  let hash std.crypto.hash32 (std.mem.span "message")
+  let hmac std.crypto.hmac32 (std.mem.span "key") (std.mem.span "message")
+  let _secure std.crypto.secureRandomU32()
+  if && (&& (&& (&& (&& (&& (== (std.time.asMsFloor duration) 1500) (> wall 0)) (!= first second)) (== (std.proc.exitCode status) 0)) (!= hash 0_u32)) (!= hmac 0_u32)) (std.crypto.constantTimeEql (std.mem.span "same") (std.mem.span "same"))
+    check world.out.write "std platform basics ok\n"

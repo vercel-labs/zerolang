@@ -1,30 +1,14 @@
-pub fun main(world: World) -> Void raises {
-    let mut arena_buf: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut arena = std.mem.fixedBufAlloc(arena_buf)
-    let parsed = std.json.parse(arena, "{\"ok\":true}")
-    let mut json_buf: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let json_text = std.json.writeString(json_buf, "zero")
-    let mut hex_buf: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let hex = std.codec.hexEncode(hex_buf, std.mem.span("Az"))
-    let mut b64_buf: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let b64 = std.codec.base64Encode(b64_buf, std.mem.span("abc"))
-    let mut url_buf: [24]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let url = std.codec.urlEncode(url_buf, "a b")
-
-    if std.json.validate("{\"ok\":true}") &&
-        parsed.has &&
-        std.json.streamTokens("{\"ok\":true}") == 3 &&
-        json_text.has &&
-        std.mem.eql(json_text.value, "\"zero\"") &&
-        std.codec.base64EncodedLen(3) == 4 &&
-        b64.has &&
-        std.mem.eql(b64.value, "YWJj") &&
-        hex.has &&
-        std.mem.eql(hex.value, "417a") &&
-        std.codec.utf8Valid(std.mem.span("ascii")) &&
-        url.has &&
-        std.mem.eql(url.value, "a%20b") &&
-        std.mem.eql(std.json.decodeBoundary(), "typed-decode-explicit-shape") {
-        check world.out.write("std data formats ok\n")
-    }
-}
+pub fn main Void world World !
+  mut arena_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut arena std.mem.fixedBufAlloc arena_buf
+  let parsed std.json.parse arena "{\"ok\":true}"
+  mut json_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let json_text std.json.writeString json_buf "zero"
+  mut hex_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let hex std.codec.hexEncode hex_buf (std.mem.span "Az")
+  mut b64_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let b64 std.codec.base64Encode b64_buf (std.mem.span "abc")
+  mut url_buf [24]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let url std.codec.urlEncode url_buf "a b"
+  if && (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& (std.json.validate "{\"ok\":true}") parsed.has) (== (std.json.streamTokens "{\"ok\":true}") 3)) json_text.has) (std.mem.eql json_text.value "\"zero\"")) (== (std.codec.base64EncodedLen 3) 4)) b64.has) (std.mem.eql b64.value "YWJj")) hex.has) (std.mem.eql hex.value "417a")) (std.codec.utf8Valid (std.mem.span "ascii"))) url.has) (std.mem.eql url.value "a%20b")) (std.mem.eql (std.json.decodeBoundary()) "typed-decode-explicit-shape")
+    check world.out.write "std data formats ok\n"

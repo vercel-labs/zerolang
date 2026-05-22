@@ -1,6 +1,5 @@
-pub fun main(world: World) -> Void raises {
-    let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let alloc = std.mem.fixedBufAlloc(storage)
-    let maybe = std.mem.byteBuf(alloc, 4)
-    check world.out.write("immutable byte buffer allocator")
-}
+pub fn main Void world World !
+  mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  let alloc std.mem.fixedBufAlloc storage
+  let maybe std.mem.byteBuf alloc 4
+  check world.out.write "immutable byte buffer allocator"

@@ -1,38 +1,29 @@
-shape Box<T> {
-    value: T,
-}
+type Box<T: Type>
+  value T
 
-shape StaticBox<static N: usize> {
-    cap: usize = N,
-    bytes: [N]u8,
+type StaticBox<static N: usize>
+  cap usize N
+  bytes [N]u8
 
-    fun init(bytes: [N]u8) -> Self {
-        return StaticBox { bytes: bytes }
-    }
-}
+  fn init Self bytes [N]u8
+    ret StaticBox . bytes bytes
 
-shape Nested<T, static N: usize> {
-    inner: Box<u8> = Box { value: 7 },
-    storage: StaticBox<N> = StaticBox.init([1, 2, 3, 4]),
-}
+type Nested<T: Type, static N: usize>
+  inner Box<u8> Box . value 7
+  storage StaticBox<N> StaticBox.init ([1, 2, 3, 4])
 
-shape Packet {
-    bytes: [4]u8,
-}
+type Chunk
+  bytes [4]u8
 
-fun takes4(bytes: [4]u8) -> u8 {
-    return bytes[0]
-}
+fn takes4 u8 bytes [4]u8
+  ret bytes[0]
 
-fun make_packet() -> Packet {
-    return Packet { bytes: [9, 8, 7, 6] }
-}
+fn make_chunk Chunk
+  ret Chunk . bytes ([9, 8, 7, 6])
 
-pub fun main(world: World) -> Void raises {
-    let nested: Nested<u8,4> = Nested { }
-    let packet = make_packet()
-    let first = takes4([4, 3, 2, 1])
-    if nested.inner.value == 7 && nested.storage.cap == 4 && packet.bytes[2] == 7 && first == 4 {
-        check world.out.write("generic literals arrays ok\n")
-    }
-}
+pub fn main Void world World !
+  let nested Nested<u8,4> Nested .
+  let chunk make_chunk()
+  let first takes4 ([4, 3, 2, 1])
+  if && (&& (&& (== nested.inner.value 7) (== nested.storage.cap 4)) (== chunk.bytes[2] 7)) (== first 4)
+    check world.out.write "generic literals arrays ok\n"

@@ -1,19 +1,13 @@
-enum State {
-  ready,
-  done,
-}
+enum State
+  ready
+  done
 
-pub fun main() -> Void {
-  let state: State = State.ready
-  match state {
-    .ready {
-      expect(true)
-    }
-    ._ {
-      expect(true)
-    }
-    ._ {
-      expect(false)
-    }
-  }
-}
+pub fn main Void
+  let state State State.ready
+  match state
+    ready
+      expect true
+    _
+      expect true
+    _
+      expect false

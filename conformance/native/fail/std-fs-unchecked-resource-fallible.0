@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let _file = std.fs.createOrRaise(fs, ".zero/conformance/unreachable.txt")
-    check world.out.write("unreachable\n")
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  let _file std.fs.createOrRaise fs ".zero/conformance/unreachable.txt"
+  check world.out.write "unreachable\n"

@@ -1,7 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let mut backing: [2]u8 = [0, 0]
-    let mut bytes: MutSpan<u8> = backing
-    let shared = &bytes
-    shared[0] = 1_u8
-    check world.out.write("assigned through ref index")
-}
+pub fn main Void world World !
+  mut backing [2]u8 [0, 0]
+  mut bytes MutSpan<u8> backing
+  let shared &bytes
+  set shared[0] 1_u8
+  check world.out.write "assigned through ref index"

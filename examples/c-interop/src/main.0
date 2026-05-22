@@ -1,5 +1,4 @@
 extern c "examples/c-interop/vendor/include/mathshim.h" as math
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("c interop metadata ok\n")
-}
+pub fn main Void world World !
+  check world.out.write "c interop metadata ok\n"

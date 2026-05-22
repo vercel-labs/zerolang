@@ -1,6 +1,4 @@
-fun mix(value: i32) -> i32 {
-    if value % 2 == 0 {
-        return value + 1
-    }
-    return value - 1
-}
+fn mix i32 value i32
+  if == (% value 2) 0
+    ret + value 1
+  ret - value 1

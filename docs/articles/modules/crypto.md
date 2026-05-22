@@ -21,14 +21,11 @@ Metadata labels:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let hash = std.crypto.hash32(std.mem.span("message"))
-    let hmac = std.crypto.hmac32(std.mem.span("key"), std.mem.span("message"))
-    if hash > 0 && hmac > 0 &&
-        std.crypto.constantTimeEql(std.mem.span("same"), std.mem.span("same")) {
-        check world.out.write("crypto ok\n")
-    }
-}
+pub fn main Void world World !
+  let hash std.crypto.hash32 (std.mem.span "message")
+  let hmac std.crypto.hmac32 (std.mem.span "key") (std.mem.span "message")
+  if && (&& (> hash 0) (> hmac 0)) (std.crypto.constantTimeEql (std.mem.span "same") (std.mem.span "same"))
+    check world.out.write "crypto ok\n"
 ```
 
 ## Design Notes

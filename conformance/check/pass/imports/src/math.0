@@ -1,3 +1,2 @@
-fun add_one(value: i32) -> i32 {
-    return value + 1
-}
+fn add_one i32 value i32
+  ret + value 1

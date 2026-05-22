@@ -1,11 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let mut arenaBytes: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut arena = std.mem.fixedBufAlloc(arenaBytes)
-    let parsed = std.json.parse(arena, "{\"ok\":true}")
-    let mut out: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let encoded = std.json.writeString(out, "zero")
-    if std.json.validate("{\"ok\":true}") && parsed.has && encoded.has &&
-        std.mem.eql(encoded.value, "\"zero\"") {
-        check world.out.write("json roundtrip ok\n")
-    }
-}
+pub fn main Void world World !
+  mut arenaBytes [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut arena std.mem.fixedBufAlloc arenaBytes
+  let parsed std.json.parse arena "{\"ok\":true}"
+  mut out [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let encoded std.json.writeString out "zero"
+  if && (&& (&& (std.json.validate "{\"ok\":true}") parsed.has) encoded.has) (std.mem.eql encoded.value "\"zero\"")
+    check world.out.write "json roundtrip ok\n"

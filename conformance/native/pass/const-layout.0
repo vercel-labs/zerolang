@@ -1,23 +1,17 @@
-extern shape CPoint {
-    x: i32,
-    y: i32,
-}
+extern type CPoint
+  x i32
+  y i32
 
-packed shape Header {
-    tag: u8,
-    len: u16,
-}
+packed type Header
+  tag u8
+  len u16
 
-shape Wrapper {
-    value: const i32,
-}
+type Wrapper
+  value const i32
 
-pub fun main(world: World) -> Void raises {
-    let point = CPoint { x: 1, y: 2 }
-    let header = Header { tag: 7_u8, len: 9_u16 }
-    let wrapper = Wrapper { value: 11 }
-
-    if point.x == 1 && header.len == 9_u16 && wrapper.value == 11 {
-        check world.out.write("const layout ok\n")
-    }
-}
+pub fn main Void world World !
+  let point CPoint . x 1 y 2
+  let header Header . tag 7_u8 len 9_u16
+  let wrapper Wrapper . value 11
+  if && (&& (== point.x 1) (== header.len 9_u16)) (== wrapper.value 11)
+    check world.out.write "const layout ok\n"

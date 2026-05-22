@@ -20,14 +20,12 @@ Metadata labels:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let mut rng = std.rand.seed(7_u32)
-    let first = std.rand.nextU32(&mut rng)
-    let second = std.rand.nextU32(&mut rng)
-    if first != second {
-        check world.out.write("rand ok\n")
-    }
-}
+pub fn main Void world World !
+  mut rng std.rand.seed 7_u32
+  let first std.rand.nextU32 (&mut rng)
+  let second std.rand.nextU32 (&mut rng)
+  if != first second
+    check world.out.write "rand ok\n"
 ```
 
 ## Design Notes

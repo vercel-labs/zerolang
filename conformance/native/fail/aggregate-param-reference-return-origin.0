@@ -1,16 +1,13 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-fun id(box: Box) -> Box {
-    return box
-}
+fn id Box box Box
+  ret box
 
-pub fun main() -> Void {
-    let mut x = 1
-    let y = 2
-    let mut box: Box = Box { value: &x }
-    let copy: Box = id(box)
-    box = Box { value: &y }
-    x = 3
-}
+pub fn main Void
+  mut x 1
+  let y 2
+  mut box Box Box . value (&x)
+  let copy Box id box
+  set box Box . value (&y)
+  set x 3

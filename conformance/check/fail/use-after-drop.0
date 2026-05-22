@@ -1,14 +1,11 @@
-shape File {
-    fd: i32,
-}
+type File
+  fd i32
 
-fun consume(file: owned<File>) -> Void {
-    return
-}
+fn consume Void file owned<File>
+  ret
 
-pub fun main(world: World) -> Void raises {
-    let file: owned<File> = File { fd: 1 }
-    file.drop()
-    consume(file)
-    check world.out.write("use after drop\n")
-}
+pub fn main Void world World !
+  let file owned<File> File . fd 1
+  file.drop()
+  consume file
+  check world.out.write "use after drop\n"

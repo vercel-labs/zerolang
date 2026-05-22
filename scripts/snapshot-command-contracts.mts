@@ -264,7 +264,7 @@ assert.equal(zeroSkill.data[0].files, undefined);
 const languageSkill = json(["skills", "get", "zero-language", "--json"]).body;
 assert.equal(languageSkill.success, true);
 assert.match(languageSkill.data[0].content, /# Zero Language/);
-assert.match(languageSkill.data[0].content, /pub fun main/);
+assert.match(languageSkill.data[0].content, /pub fn main/);
 
 const diagnosticSkill = json(["skills", "get", "zero-diagnostics", "--json"]).body;
 assert.equal(diagnosticSkill.success, true);
@@ -294,28 +294,26 @@ const lexerTokens = json(["tokens", "--json", "conformance/lexer/compiler-smoke.
 assert.equal(lexerTokens.schemaVersion, 1);
 assert.match(lexerTokens.sourceFile, /compiler-smoke\.0$/);
 assert.deepEqual(lexerTokens.tokens.slice(0, 4).map((token) => `${token.kind}:${token.text}`), [
-  "keyword:use",
-  "keyword:pub",
-  "keyword:fun",
-  "ident:main",
+  "word:use",
+  "word:std",
+  "symbol:.",
+  "word:mem",
 ]);
-assert.deepEqual(lexerTokens.tokens.slice(4, 8).map((token) => token.text), ["123", "0xff", "0b101", "42_u8"]);
-assert.deepEqual(lexerTokens.tokens.slice(8, 12).map((token) => `${token.kind}:${token.text}`), [
+assert.deepEqual(lexerTokens.tokens.filter((token) => token.kind === "number").map((token) => token.text), ["123", "0xff", "0b101", "42_u8"]);
+assert.deepEqual(lexerTokens.tokens.filter((token) => token.kind === "string" || token.kind === "char").map((token) => `${token.kind}:${token.text}`), [
   "string:hi",
   "char:120",
-  "symbol:(",
-  "symbol:)",
 ]);
 assert.equal(lexerTokens.tokens[0].line, 1);
 assert.equal(lexerTokens.tokens[0].column, 1);
 assert.equal(lexerTokens.tokens[0].offset, 0);
 assert.equal(lexerTokens.tokens[0].length, 3);
-assert.equal(lexerTokens.tokens[5].offset, 21);
-assert.equal(lexerTokens.tokens[5].length, 4);
-assert.equal(lexerTokens.tokens[12].kind, "ident");
-assert.equal(lexerTokens.tokens[12].text, "main");
-assert.equal(lexerTokens.tokens[12].line, 2);
-assert.equal(lexerTokens.tokens[12].column, 1);
+assert.equal(lexerTokens.tokens[5].offset, 12);
+assert.equal(lexerTokens.tokens[5].length, 3);
+assert.equal(lexerTokens.tokens[7].kind, "word");
+assert.equal(lexerTokens.tokens[7].text, "main");
+assert.equal(lexerTokens.tokens[7].line, 2);
+assert.equal(lexerTokens.tokens[7].column, 8);
 assert.equal(lexerTokens.tokens.at(-1).kind, "eof");
 assert.equal(lexerTokens.tokens.at(-1).length, 0);
 
@@ -498,17 +496,14 @@ writeFileSync(
 );
 writeFileSync(
   currentArtifactHelper,
-  "pub fun plusOne(value: i32) -> i32 {\n" +
-    "    return value + 1\n" +
-    "}\n",
+  "pub fn plusOne i32 value i32\n" +
+    "  ret + value 1\n",
 );
 writeFileSync(
   currentArtifactMain,
   "use helper\n" +
-    "\n" +
-    "export c fun main() -> i32 {\n" +
-    "    return plusOne(41)\n" +
-    "}\n",
+    "export c fn main i32\n" +
+    "  ret plusOne 41\n",
 );
 const rowArtifactGraph = json(["graph", "--json", rowArtifactMain]).body;
 const currentArtifactGraph = json(["graph", "--json", currentArtifactMain]).body;
@@ -1492,7 +1487,7 @@ assert(fixedVecMethodsShape.fields.some((field) => field.name === "len" && field
 
 const aliasGraph = json(["graph", "--json", "examples/type-alias.0"]).body;
 assert(aliasGraph.aliases.some((alias) => alias.name === "BytePair" && alias.target === "Pair<u8,u8>"));
-assert(aliasGraph.symbols.some((symbol) => symbol.name === "BytePair" && symbol.kind === "alias"));
+assert(aliasGraph.symbols.some((symbol) => symbol.name === "BytePair" && symbol.kind === "type-alias"));
 
 const constGraph = json(["graph", "--json", "examples/const-arithmetic.0"]).body;
 assert(constGraph.consts.some((item) => item.name === "answer" && item.type === "i32"));

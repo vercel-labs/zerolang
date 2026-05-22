@@ -1,7 +1,5 @@
-fun fail() -> Void raises { BadInput } {
-    raise MissingInput
-}
+fn fail Void ![BadInput]
+  raise MissingInput
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("unreachable\n")
-}
+pub fn main Void world World !
+  check world.out.write "unreachable\n"

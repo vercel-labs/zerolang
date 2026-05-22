@@ -1,4 +1,3 @@
-export c fun main(a: i32, b: i32) -> i32 {
-    let sum: i32 = a + b
-    return sum
-}
+export c fn main i32 a i32 b i32
+  let sum i32 + a b
+  ret sum

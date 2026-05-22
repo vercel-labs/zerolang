@@ -1,19 +1,11 @@
-pub fun main(world: World) -> Void raises {
-    let net = std.net.host()
-    let addr = std.net.withTimeout(std.net.address("localhost", 8080_u16), std.time.ms(250))
-    let conn = std.net.connect(net, addr)
-    let listener = std.net.listen(net, addr)
-    let _client = std.http.client(net)
-    let _server = std.http.server(net, addr)
-    let getA = std.http.parseMethod("GET")
-    let getB = std.http.parseMethod("GET")
-
-    if conn.has == false &&
-        listener.has == false &&
-        std.mem.eql(std.net.dnsName(addr), "localhost") &&
-        getA == getB &&
-        std.mem.len(std.mem.span("body")) == 4 &&
-        std.mem.eql(std.http.tlsBoundary(), "platform-or-c-library") {
-        check world.out.write("std net http breadth ok\n")
-    }
-}
+pub fn main Void world World !
+  let net std.net.host()
+  let addr std.net.withTimeout (std.net.address "localhost" 8080_u16) (std.time.ms 250)
+  let conn std.net.connect net addr
+  let listener std.net.listen net addr
+  let _client std.http.client net
+  let _server std.http.server net addr
+  let getA std.http.parseMethod "GET"
+  let getB std.http.parseMethod "GET"
+  if && (&& (&& (&& (&& (== conn.has false) (== listener.has false)) (std.mem.eql (std.net.dnsName addr) "localhost")) (== getA getB)) (== (std.mem.len (std.mem.span "body")) 4)) (std.mem.eql (std.http.tlsBoundary()) "platform-or-c-library")
+    check world.out.write "std net http breadth ok\n"

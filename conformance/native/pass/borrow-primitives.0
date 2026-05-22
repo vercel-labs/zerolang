@@ -1,38 +1,27 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-shape Holder {
-    point: Point,
-}
+type Holder
+  point Point
 
-fun read_x(point: ref<Point>) -> i32 {
-    return point.x
-}
+fn read_x i32 point ref<Point>
+  ret point.x
 
-fun write_x(point: mutref<Point>, value: i32) -> Void {
-    point.x = value
-}
+fn write_x Void point mutref<Point> value i32
+  set point.x value
 
-pub fun main(world: World) -> Void raises {
-    let mut point = Point { x: 1, y: 2 }
-    let mut holder = Holder { point: Point { x: 3, y: 4 } }
-
-    if true {
-        let shared = &point
-        if read_x(shared) != 1 {
-            check world.out.write("borrow primitives failed\n")
-            return
-        }
-    }
-
-    write_x(&mut point, 5)
-    write_x(&mut holder.point, 9)
-
-    if point.x == 5 && holder.point.x == 9 {
-        check world.out.write("borrow primitives ok\n")
-    } else {
-        check world.out.write("borrow primitives failed\n")
-    }
-}
+pub fn main Void world World !
+  mut point Point . x 1 y 2
+  mut holder Holder . point (Point . x 3 y 4)
+  if true
+    let shared &point
+    if != (read_x shared) 1
+      check world.out.write "borrow primitives failed\n"
+      ret
+  write_x (&mut point) 5
+  write_x (&mut holder.point) 9
+  if && (== point.x 5) (== holder.point.x 9)
+    check world.out.write "borrow primitives ok\n"
+  else
+    check world.out.write "borrow primitives failed\n"

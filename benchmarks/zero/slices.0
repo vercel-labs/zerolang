@@ -1,14 +1,10 @@
-pub fun main(world: World) -> Void raises {
-    let view = "zero-slices"[5..11]
-    let mut i = 0
-    let mut total: usize = 0
-    while i < 50000 {
-        if view[0] == ('s' as u8) && view[5] == ('s' as u8) {
-            total = total + std.mem.len(view)
-        }
-        i = i + 1
-    }
-    if total == 300000 {
-        check world.out.write("slices\n")
-    }
-}
+pub fn main Void world World !
+  let view "zero-slices"[5..11]
+  mut i 0
+  mut total usize 0
+  while < i 50000
+    if && (== view[0] (115 as u8)) (== view[5] (115 as u8))
+      set total + total (std.mem.len view)
+    set i + i 1
+  if == total 300000
+    check world.out.write "slices\n"

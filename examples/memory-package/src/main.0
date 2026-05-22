@@ -1,9 +1,7 @@
 use buffer
 use checksum
 
-pub fun main(world: World) -> Void raises {
-    let written = prepare()
-    if written == 18 && firstByte() == ('m' as u8) && messageOk() && checksumOk(1120241454) {
-        check world.out.write("memory package ok\n")
-    }
-}
+pub fn main Void world World !
+  let written prepare()
+  if && (&& (&& (== written 18) (== (firstByte()) (109 as u8))) (messageOk())) (checksumOk 1120241454)
+    check world.out.write "memory package ok\n"

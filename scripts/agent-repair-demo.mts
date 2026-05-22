@@ -34,7 +34,7 @@ assert.equal(plan.mode, "plan");
 assert.equal(plan.appliesEdits, false);
 assert.equal(plan.fixes[0].id, "make-binding-mutable");
 
-const fixedSource = brokenSource.replace("    let dst: [4]u8", "    let mut dst: [4]u8");
+const fixedSource = brokenSource.replace("  let dst [4]u8", "  mut dst [4]u8");
 writeFileSync(workFile, fixedSource);
 
 const fixed = zeroJson(["check", "--json", workFile]);

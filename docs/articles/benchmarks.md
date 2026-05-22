@@ -28,7 +28,7 @@ The current cases include:
 
 - `hello`: minimal output
 - `add`: arithmetic and a helper function
-- `structs`: shape construction and direct field access
+- `structs`: type construction and direct field access
 - `params`: multiple typed parameters and nested calls
 - `buffers`: fixed arrays, spans, copy/fill, and byte equality
 - `parser`: parser-like token metadata and direct predicate checks

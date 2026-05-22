@@ -1,23 +1,16 @@
-choice Result {
-    ok: i32,
-    err: String,
-}
+enum Status
+  ready
+  failed
 
-enum Status {
-    ready,
-    failed,
-}
+choice Result
+  ok i32
+  err String
 
-pub fun main(world: World) -> Void raises {
-    let result: Result = Result.ok(42)
-    match result {
-        .ok => value {
-            if value == 42 {
-                check world.out.write("choice ok\n")
-            }
-        }
-        .err => message {
-            check world.out.write("choice err\n")
-        }
-    }
-}
+pub fn main Void world World !
+  let result Result Result.ok 42
+  match result
+    ok value
+      if == value 42
+        check world.out.write "choice ok\n"
+    err message
+      check world.out.write "choice err\n"

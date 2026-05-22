@@ -1,20 +1,11 @@
-pub fun main(world: World) -> Void raises {
-    let _page = std.mem.pageAlloc()
-    let _general = std.mem.generalAlloc()
-    let mut storage: [4]u8 = [0, 0, 0, 0]
-    let mut vec = std.mem.vec(storage)
-    let pushedA = std.mem.vecPush(&mut vec, 65_u8)
-    let pushedB = std.mem.vecPush(&mut vec, 66_u8)
-    let map = std.mem.mapEmpty()
-    let set = std.mem.setEmpty()
-
-    if pushedA && pushedB &&
-        std.mem.vecLen(&vec) == 2 &&
-        std.mem.vecCapacity(&vec) == 4 &&
-        storage[0] == 65_u8 &&
-        storage[1] == 66_u8 &&
-        std.mem.mapLen(&map) == 0 &&
-        std.mem.setLen(&set) == 0 {
-        check world.out.write("std mem collections ok\n")
-    }
-}
+pub fn main Void world World !
+  let _page std.mem.pageAlloc()
+  let _general std.mem.generalAlloc()
+  mut storage [4]u8 [0, 0, 0, 0]
+  mut vec std.mem.vec storage
+  let pushedA std.mem.vecPush (&mut vec) 65_u8
+  let pushedB std.mem.vecPush (&mut vec) 66_u8
+  let map std.mem.mapEmpty()
+  let set std.mem.setEmpty()
+  if && (&& (&& (&& (&& (&& (&& pushedA pushedB) (== (std.mem.vecLen (&vec)) 2)) (== (std.mem.vecCapacity (&vec)) 4)) (== storage[0] 65_u8)) (== storage[1] 66_u8)) (== (std.mem.mapLen (&map)) 0)) (== (std.mem.setLen (&set)) 0)
+    check world.out.write "std mem collections ok\n"

@@ -1,9 +1,7 @@
-shape View {
-    text: String,
-}
+type View
+  text String
 
-pub fun main(world: World) -> Void raises {
-    let mut view = View { text: "hi" }
-    view.text[0] = 72
-    check world.out.write("bad nested lvalue\n")
-}
+pub fn main Void world World !
+  mut view View . text "hi"
+  set view.text[0] 72
+  check world.out.write "bad nested lvalue\n"

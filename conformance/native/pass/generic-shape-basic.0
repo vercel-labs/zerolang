@@ -1,12 +1,9 @@
-shape Box<T> {
-  value: T,
-}
+type Box<T: Type>
+  value T
 
-pub fun main(world: World) -> Void raises {
-  let box: Box<i32> = Box { value: 42 }
-  if box.value == 42 {
-    check world.out.write("generic shape ok\n")
-  } else {
-    check world.out.write("generic shape broke\n")
-  }
-}
+pub fn main Void world World !
+  let box Box<i32> Box . value 42
+  if == box.value 42
+    check world.out.write "generic shape ok\n"
+  else
+    check world.out.write "generic shape broke\n"

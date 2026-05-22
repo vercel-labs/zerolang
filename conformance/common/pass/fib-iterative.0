@@ -1,18 +1,14 @@
-fun fib(n: u32) -> u32 {
-    let mut index: u32 = 0
-    let mut a: u32 = 0
-    let mut b: u32 = 1
-    while index < n {
-        let next = a + b
-        a = b
-        b = next
-        index = index + 1
-    }
-    return a
-}
+fn fib u32 n u32
+  mut index u32 0
+  mut a u32 0
+  mut b u32 1
+  while < index n
+    let next + a b
+    set a b
+    set b next
+    set index + index 1
+  ret a
 
-pub fun main(world: World) -> Void raises {
-    if fib(10) == 55 {
-        check world.out.write("fib iterative ok\n")
-    }
-}
+pub fn main Void world World !
+  if == (fib 10) 55
+    check world.out.write "fib iterative ok\n"

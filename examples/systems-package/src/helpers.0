@@ -1,7 +1,5 @@
-fun cleanup() -> Void {
-    return
-}
+fn cleanup Void
+  ret
 
-fun status() -> Status {
-    return Status.ready
-}
+fn status Status
+  ret Status.ready

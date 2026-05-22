@@ -1,17 +1,12 @@
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let created = std.fs.create(fs, ".zero/fallible-readall-input.txt")
-    if created.has {
-        let mut file: owned<File> = created.value
-        if std.fs.writeAll(&mut file, std.mem.span("fallible read all ok\n")) == false {
-            return
-        }
-    }
-
-    let mut storage: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let mut body: owned<ByteBuf> = check std.fs.readAllOrRaise(alloc, fs, ".zero/fallible-readall-input.txt", 64)
-    if std.mem.eqlBytes(std.mem.bufBytes(&body), std.mem.span("fallible read all ok\n")) {
-        check world.out.write("fs named errors ok\n")
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  let created std.fs.create fs ".zero/fallible-readall-input.txt"
+  if created.has
+    mut file owned<File> created.value
+    if == (std.fs.writeAll (&mut file) (std.mem.span "fallible read all ok\n")) false
+      ret
+  mut storage [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  mut body owned<ByteBuf> check std.fs.readAllOrRaise alloc fs ".zero/fallible-readall-input.txt" 64
+  if std.mem.eqlBytes (std.mem.bufBytes (&body)) (std.mem.span "fallible read all ok\n")
+    check world.out.write "fs named errors ok\n"

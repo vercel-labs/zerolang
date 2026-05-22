@@ -1,8 +1,6 @@
-shape Box<T> {
-  value: T,
-}
+type Box<T: Type>
+  value T
 
-pub fun main() -> Void {
-  let box: Box<i32> = Box { value: 42 }
-  expect(box.value == 42)
-}
+pub fn main Void
+  let box Box<i32> Box . value 42
+  expect (== box.value 42)

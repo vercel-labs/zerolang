@@ -1,13 +1,10 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-fun id(value: ref<i32>) -> ref<i32> {
-    return value
-}
+fn id ref<i32> value ref<i32>
+  ret value
 
-pub fun main() -> ref<i32> {
-    let value = 1
-    let box: Box = Box { value: &value }
-    return id(box.value)
-}
+pub fn main ref<i32>
+  let value 1
+  let box Box Box . value (&value)
+  ret id box.value

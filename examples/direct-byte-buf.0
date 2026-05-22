@@ -1,16 +1,11 @@
-export c fun main() -> u8 {
-  let mut storage: [4]u8 = [0, 0, 0, 0]
-  let mut buf = std.mem.vec(storage)
-  let first = std.mem.vecPush(&mut buf, 65_u8)
-  let second = std.mem.vecPush(&mut buf, 66_u8)
-  if first {
-    if second {
-      if std.mem.vecLen(&buf) == 2 {
-        if std.mem.vecCapacity(&buf) == 4 {
-          return storage[1]
-        }
-      }
-    }
-  }
-  return 0_u8
-}
+export c fn main u8
+  mut storage [4]u8 [0, 0, 0, 0]
+  mut buf std.mem.vec storage
+  let first std.mem.vecPush (&mut buf) 65_u8
+  let second std.mem.vecPush (&mut buf) 66_u8
+  if first
+    if second
+      if == (std.mem.vecLen (&buf)) 2
+        if == (std.mem.vecCapacity (&buf)) 4
+          ret storage[1]
+  ret 0_u8

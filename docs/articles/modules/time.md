@@ -33,14 +33,12 @@ Metadata labels:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let a = std.time.ms(250)
-    let b = std.time.seconds(1)
-    let total = std.time.add(a, b)
-    if std.time.asMsFloor(total) == 1250 {
-        check world.out.write("duration ok\n")
-    }
-}
+pub fn main Void world World !
+  let a std.time.ms 250
+  let b std.time.seconds 1
+  let total std.time.add a b
+  if == (std.time.asMsFloor total) 1250
+    check world.out.write "duration ok\n"
 ```
 
 ## Design Notes

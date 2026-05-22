@@ -29,10 +29,9 @@ Read it from top to bottom:
 In this case, the program tried to write `message` without declaring it. A local binding fixes it:
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let message = "hello from zero\n"
-    check world.out.write(message)
-}
+pub fn main Void world World !
+  let message "hello from zero\n"
+  check world.out.write message
 ```
 
 ## Plain Text By Default
@@ -57,7 +56,7 @@ JSON is explicit. Use `--json` for agents, CI, editors, deep dives, and tools th
 zero check --json examples/hello.0
 ```
 
-The native JSON shape is a versioned diagnostics packet:
+The native JSON shape is versioned:
 
 ```json
 {
@@ -118,11 +117,11 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `BOR001`: lexical borrow conflicts, with JSON `borrowTrace.activeBorrows`
   entries naming each reported borrowed root, path, kind, live binding,
   declaration range when known, and repair shape. `borrowTrace.truncated` is
-  true if the packet hit the reporting cap.
+  true if the report hit the cap.
 - `BOR002`: reference-origin escapes, including references returned from calls or stored through mutable parameter storage
 - `OWN001`: owned value use after move, or generic containers that would own unconstrained generic payloads
 - `TYP010`: conditions must be `Bool`
-- `TYP002`: type mismatch in assignments, literals, returns, or shape defaults
+- `TYP002`: type mismatch in assignments, literals, returns, or type defaults
 - `TYP011`: `null` requires a `Maybe<T>` context
 - `TYP012`: `break` requires an enclosing loop
 - `TYP013`: `continue` requires an enclosing loop
@@ -142,20 +141,20 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `TYP027`: recursive generic call changes type arguments
 - `PUB001`: a public declaration omitted required explicit API type metadata
 - `MET001`: a parsed `meta` expression requested compile-time behavior this compiler slice cannot evaluate yet
-- `IFC001`: an interface constraint is unknown or a concrete type argument is not a shape
-- `IFC002`: a constrained concrete shape is missing a required static interface method
+- `IFC001`: an interface constraint is unknown or a concrete type argument has no static type body
+- `IFC002`: a constrained concrete type is missing a required static interface method
 - `IFC003`: a concrete static method has the wrong parameter count for an interface
 - `IFC004`: a concrete static method has the wrong return type for an interface
 - `IFC005`: a concrete static method has the wrong parameter type for an interface
 - `STC001`: a static value parameter uses an unsupported non-integer type
 - `STC002`: a static value argument is not an integer literal or deterministic top-level const
 - `STC003`: an explicit static value argument conflicts with the value carried by an annotated type
-- `SHM001`: a generic shape method call cannot infer inherited shape type/static parameters
-- `SHM002`: arguments to a generic shape method imply conflicting `Self` instantiations
+- `SHM001`: a generic type method call cannot infer inherited type/static parameters
+- `SHM002`: arguments to a generic type method imply conflicting `Self` instantiations
 - `RCV001`: a receiver-style call names an unknown method or a static method without `self`
 - `RCV002`: a receiver-style call needs an addressable receiver, or a mutable receiver for `mutref<Self>`
-- `FLD001`: a shape literal includes an unknown field
-- `FLD002`: a shape literal omitted a required field that has no default
+- `FLD001`: a type literal includes an unknown field
+- `FLD002`: a type literal omitted a required field that has no default
 - `TAR001`: the requested target name is not in `zero targets`
 - `TAR002`: the selected target does not provide a capability required by the program
 - Bounds check failures: native executables print `zero bounds check failed` and
@@ -165,7 +164,7 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 
 ## Standard Library Diagnostics
 
-Standard library modules use the same repair-packet contract as compiler diagnostics.
+Standard library modules use the same structured diagnostic contract as compiler diagnostics.
 
 - `MEM001` reports malformed memory type forms such as `Maybe` without its required type argument.
 - `std.parse`, `std.json`, and `std.env` diagnostics carry source spans where
@@ -173,7 +172,7 @@ Standard library modules use the same repair-packet contract as compiler diagnos
 - `std.time` diagnostics can use offset-only spans for single-token inputs.
 - Standard library codes stay stable and package-local, while `zero explain <code>` provides human guidance and `--json` exposes structured fix metadata.
 
-## Common Repair Packets
+## Common Fix Plans
 
 Hosted filesystem helpers are host-only in the current compiler. This fails clearly on non-host targets:
 
@@ -190,57 +189,56 @@ move that code behind a target-specific entry point.
 Writable byte helpers require mutable storage:
 
 ```zero
-let dst: [4]u8 = [0, 0, 0, 0]
-let src: [4]u8 = [122, 101, 114, 111]
-let _copied = std.mem.copy(dst, src)
+let dst [4]u8 [0, 0, 0, 0]
+let src [4]u8 [122, 101, 114, 111]
+let _copied std.mem.copy dst src
 ```
 
 This reports `TYP009` with repair id `make-binding-mutable`. The canonical repair is:
 
 ```zero
-let mut dst: [4]u8 = [0, 0, 0, 0]
-let src: [4]u8 = [122, 101, 114, 111]
-let _copied = std.mem.copy(dst, src)
+mut dst [4]u8 [0, 0, 0, 0]
+let src [4]u8 [122, 101, 114, 111]
+let _copied std.mem.copy dst src
 ```
 
 Named-error `std.fs` calls require explicit error flow:
 
 ```zero
-let file = std.fs.createOrRaise(fs, ".zero/out.txt")
+let file std.fs.createOrRaise fs ".zero/out.txt"
 ```
 
 This reports `ERR003` with repair id `check-or-rescue-fallible-call`.
 
 Use `check` and include `NotFound`, `TooLarge`, and `Io` in the caller's
-`raises { ... }` set. Use `rescue` locally when the call should recover in
+`![NotFound TooLarge Io]` set. Use `rescue` locally when the call should recover in
 place.
 
 Generic calls use local inference only. This fails because `T` would need to be both `i32` and `u8`:
 
 ```zero
-fun first<T>(left: T, right: T) -> T {
-    return left
-}
+fn first<T: Type> T left T right T
+  ret left
 
-let value: i32 = first(1, 2_u8)
+let value i32 first 1 2_u8
 ```
 
 The repair is to make the arguments agree or pass explicit type arguments with compatible values:
 
 ```zero
-let value: i32 = first<i32>(1, 2)
+let value i32 first<i32> 1 2
 ```
 
 Public constants need explicit API shape:
 
 ```zero
-pub const answer = 42
+pub const answer 42
 ```
 
 This reports `PUB001`. The behavior-preserving repair is:
 
 ```zero
-pub const answer: i32 = 42
+pub const answer i32 42
 ```
 
 C interop keeps host and target discovery separate. This fails for a foreign target because the manifest asks for host include/library discovery:
@@ -270,62 +268,60 @@ package topology or target support.
 Type aliases are compile-time spellings and cannot cycle:
 
 ```zero
-type A = B
-type B = A
+alias A B
+
+alias B A
 ```
 
 This reports `TYP026`. Point the alias at a concrete type such as `Span<u8>` or
 remove the cycle.
 
 Unsupported compile-time execution reports `MET001`, for example
-`const os: String = meta target.os`, until target facts are implemented in the
+`const os String meta target.os`, until target facts are implemented in the
 native compiler.
 
-Generic shape methods must specialize from a concrete `Self` value or explicit shape arguments:
+Generic type methods must specialize from a concrete `Self` value or explicit type arguments:
 
 ```zero
-shape FixedVec<T, static N: usize> {
-    fun cap() -> usize {
-        return N
-    }
-}
+type FixedVec<T: Type, static N: usize>
+  fn cap usize
+    ret N
 
-let cap = FixedVec.cap()
+let cap FixedVec.cap()
 ```
 
 This reports `SHM001`.
 
 Repair it in one of two ways:
 
-- pass explicit shape arguments, such as `FixedVec.cap<u8, 4>()`
+- pass explicit type arguments, such as `FixedVec.cap<u8, 4>()`
 - call a method that receives a concrete `Self` value, such as
   `FixedVec.push(&mut vec, value)` or `vec.push(value)`
 
-`SHM002` means the explicit method arguments and the receiver's annotated shape
+`SHM002` means the explicit method arguments and the receiver's annotated type
 disagree.
 
 Receiver calls require a declared method whose first parameter is `self: ref<Self>` or `self: mutref<Self>`:
 
 ```zero
-let vec: FixedVec<u8,4> = FixedVec { len: 0, items: [0, 0, 0, 0] }
-check vec.push(1)
+let vec FixedVec<u8,4> FixedVec . len 0 items [0, 0, 0, 0]
+check vec.push 1
 ```
 
 This reports `RCV002` because `push` needs `mutref<Self>` and `vec` is
 immutable.
 
 Unknown receiver methods report `RCV001`. Static methods without `self` should
-be called through the shape namespace.
+be called through the type namespace.
 
-Shape field defaults allow omitted fields, but only when the declaration provides a compatible default:
+Type field defaults allow omitted fields, but only when the declaration provides a compatible default:
 
 ```zero
-shape NeedsItem {
-    count: usize = 0,
-    item: u8,
-}
+type NeedsItem
+  count usize 0
+  item u8
 
-let value: NeedsItem = NeedsItem {}
+let value NeedsItem NeedsItem .
 ```
 
 This reports `FLD002` with repair id `initialize-missing-field` because `item`
@@ -335,41 +331,35 @@ expression.
 Static interfaces are checked at generic specialization time. This fails because `Counter` does not provide the required static method:
 
 ```zero
-interface Readable<T> {
-    fun read(self: ref<T>) -> i32
-}
+interface Readable<T: Type>
+  fn read i32 self ref<T>
 
-shape Counter {
-    value: i32,
-}
+type Counter
+  value i32
 
-fun readValue<T: Readable<T>>(value: ref<T>) -> i32 {
-    return T.read(value)
-}
+fn readValue<T: Readable<T>> i32 value ref<T>
+  ret T.read value
 ```
 
 This reports `IFC002`. Add a concrete static method with the matching signature:
 
 ```zero
-fun read(self: ref<Self>) -> i32 {
-    return self.value
-}
+fn read i32 self ref<Self>
+  ret self.value
 ```
 
 Static value parameters are checked before emission so fixed-size layouts stay concrete:
 
 ```zero
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
-}
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 
-fun first<T, static N: usize>(vec: ref<FixedVec<T,N>>) -> T {
-    return vec.items[0]
-}
+fn first<T: Type, static N: usize> T vec ref<FixedVec<T,N>>
+  ret vec.items[0]
 
-let vec: FixedVec<u8,4> = FixedVec { len: 4, items: [1, 2, 3, 4] }
-let bad = first<u8, 8>(&vec)
+let vec FixedVec<u8,4> FixedVec . len 4 items [1, 2, 3, 4]
+let bad first<u8, 8> (&vec)
 ```
 
 This reports `STC003` because the explicit `8` conflicts with the annotated
@@ -383,7 +373,7 @@ Related static-value diagnostics:
 ## Commands
 
 - `zero check <input>`: human-first plain text by default
-- `zero check --json <input>`: full repair packets
+- `zero check --json <input>`: full diagnostic JSON
 - `zero explain <code>`: human explanation for a diagnostic code
 - `zero explain <code> --json`: machine-readable explanation
 - `zero fix --plan --json <input>`: proposed typed fixes without editing files

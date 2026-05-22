@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let bytes = std.mem.allocBytes("not an allocator", 1)
-    if bytes.has {
-        check world.out.write("allocated")
-    }
-}
+pub fn main Void world World !
+  let bytes std.mem.allocBytes "not an allocator" 1
+  if bytes.has
+    check world.out.write "allocated"

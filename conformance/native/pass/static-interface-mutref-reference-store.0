@@ -1,22 +1,17 @@
-interface Storer<T> {
-    fun store(self: mutref<T>, next: ref<i32>) -> Void
-}
+interface Storer<T: Type>
+  fn store Void self mutref<T> next ref<i32>
 
-shape Holder {
-    value: ref<i32>,
+type Holder
+  value ref<i32>
 
-    fun store(self: mutref<Self>, next: ref<i32>) -> Void {
-        self.value = next
-    }
-}
+  fn store Void self mutref<Self> next ref<i32>
+    set self.value next
 
-fun through<T: Storer<T>>(holder: mutref<T>, next: ref<i32>) -> Void {
-    T.store(holder, next)
-}
+fn through<T: Storer<T>> Void holder mutref<T> next ref<i32>
+  T.store holder next
 
-pub fun main() -> Void {
-    let old = 1
-    let next = 2
-    let mut holder = Holder { value: &old }
-    through<Holder>(&mut holder, &next)
-}
+pub fn main Void
+  let old 1
+  let next 2
+  mut holder Holder . value (&old)
+  through<Holder> (&mut holder) (&next)

@@ -1,8 +1,6 @@
-export c fun main() -> i32 {
-    let bytes = std.mem.span("{\"ok\":1}")
-    let parsed = std.json.parseBytes(123, bytes)
-    if parsed.has {
-        return 1
-    }
-    return 0
-}
+export c fn main i32
+  let bytes std.mem.span "{\"ok\":1}"
+  let parsed std.json.parseBytes 123 bytes
+  if parsed.has
+    ret 1
+  ret 0

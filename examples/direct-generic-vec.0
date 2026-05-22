@@ -1,29 +1,22 @@
-enum TokenKind : u8 {
-  identifier,
-  eof,
-}
+type Vec<T: Type, static N: usize>
+  len usize 0
+  first T
+  items [N]T
 
-enum NodeKind : u8 {
-  root,
-  literal,
-}
+enum TokenKind u8
+  identifier
+  eof
 
-shape Vec<T, static N: usize> {
-  len: usize = 0,
-  first: T,
-  items: [N]T,
-}
+enum NodeKind u8
+  root
+  literal
 
-export c fun main() -> u8 {
-  let bytes: Vec<u8,2> = Vec{first: 3_u8, items: [1_u8, 2_u8]}
-  let tokens: Vec<TokenKind,2> = Vec{first: TokenKind.identifier, items: [TokenKind.identifier, TokenKind.eof]}
-  let nodes: Vec<NodeKind,2> = Vec{first: NodeKind.root, items: [NodeKind.root, NodeKind.literal]}
-  if bytes.first == 3_u8 {
-    if tokens.first == TokenKind.identifier {
-      if nodes.first == NodeKind.root {
-        return 61_u8
-      }
-    }
-  }
-  return 0_u8
-}
+export c fn main u8
+  let bytes Vec<u8,2> Vec . first 3_u8 items ([1_u8, 2_u8])
+  let tokens Vec<TokenKind,2> Vec . first TokenKind.identifier items ([TokenKind.identifier, TokenKind.eof])
+  let nodes Vec<NodeKind,2> Vec . first NodeKind.root items ([NodeKind.root, NodeKind.literal])
+  if == bytes.first 3_u8
+    if == tokens.first TokenKind.identifier
+      if == nodes.first NodeKind.root
+        ret 61_u8
+  ret 0_u8

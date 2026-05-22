@@ -1,16 +1,12 @@
-fun identity<T>(value: T) -> T {
-  return value
-}
+fn identity<T: Type> T value T
+  ret value
 
-fun forward<T>(value: T) -> T {
-  return identity(value)
-}
+fn forward<T: Type> T value T
+  ret identity value
 
-pub fun main(world: World) -> Void raises {
-  let value: i32 = forward<i32>(42)
-  if value == 42 {
-    check world.out.write("generic inferred specialized call ok\n")
-  } else {
-    check world.out.write("generic inferred specialized call broke\n")
-  }
-}
+pub fn main Void world World !
+  let value i32 forward<i32> 42
+  if == value 42
+    check world.out.write "generic inferred specialized call ok\n"
+  else
+    check world.out.write "generic inferred specialized call broke\n"

@@ -1,25 +1,20 @@
-shape Holder {
-    value: ref<i32>,
+type Holder
+  value ref<i32>
 
-    fun replace(self: mutref<Self>, next: ref<i32>) -> Void {
-        self.value = next
-    }
-}
+  fn replace Void self mutref<Self> next ref<i32>
+    set self.value next
 
-fun choose(flag: Bool, left: mutref<Holder>, right: mutref<Holder>) -> mutref<Holder> {
-    if flag {
-        return left
-    }
-    return right
-}
+fn choose mutref<Holder> flag Bool left mutref<Holder> right mutref<Holder>
+  if flag
+    ret left
+  ret right
 
-pub fun main(flag: Bool) -> Void {
-    let mut x = 1
-    let y = 2
-    let z = 3
-    let mut left = Holder { value: &x }
-    let mut right = Holder { value: &y }
-    let selected = choose(flag, &mut left, &mut right)
-    selected.replace(&z)
-    x = 4
-}
+pub fn main Void flag Bool
+  mut x 1
+  let y 2
+  let z 3
+  mut left Holder . value (&x)
+  mut right Holder . value (&y)
+  let selected choose flag (&mut left) (&mut right)
+  selected.replace (&z)
+  set x 4

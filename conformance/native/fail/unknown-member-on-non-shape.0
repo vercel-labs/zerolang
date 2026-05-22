@@ -1,3 +1,2 @@
-pub fun main() -> Void {
-    let x: i32 = true.nope
-}
+pub fn main Void
+  let x i32 true.nope

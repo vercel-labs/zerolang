@@ -1,13 +1,9 @@
-fun add(a: i32, b: i32) -> i32 {
-    return a + b
-}
+fn add i32 a i32 b i32
+  ret + a b
 
-fun mix(a: i32, b: i32, c: i32) -> i32 {
-    return add(a, b) + c
-}
+fn mix i32 a i32 b i32 c i32
+  ret + (add a b) c
 
-pub fun main(world: World) -> Void raises {
-    if mix(10, 20, 12) == 42 {
-        check world.out.write("42\n")
-    }
-}
+pub fn main Void world World !
+  if == (mix 10 20 12) 42
+    check world.out.write "42\n"

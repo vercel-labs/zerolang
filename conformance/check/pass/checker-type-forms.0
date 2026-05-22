@@ -1,71 +1,55 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-enum Mode : u8 {
-    off,
-    on,
-}
+enum Mode u8
+  off
+  on
 
-choice Event {
-    none,
-    point: Point,
-}
+choice Event
+  none
+  point Point
 
-fun noop() -> Void {
-    return
-}
+fn noop Void
+  ret
 
-fun read_x(point: ref<Point>) -> i32 {
-    return point.x
-}
+fn read_x i32 point ref<Point>
+  ret point.x
 
-fun bump_x(point: mutref<Point>) -> Void {
-    point.x = point.x + 1
-}
+fn bump_x Void point mutref<Point>
+  set point.x + point.x 1
 
-fun first_byte(bytes: Span<u8>) -> u8 {
-    return bytes[0]
-}
+fn first_byte u8 bytes Span<u8>
+  ret bytes[0]
 
-fun set_second(bytes: MutSpan<u8>) -> Void {
-    bytes[1] = 9
-}
+fn set_second Void bytes MutSpan<u8>
+  set bytes[1] 9
 
-fun branch(flag: Bool) -> i32 {
-    if flag {
-        return 1
-    } else {
-        return 0
-    }
-}
+fn branch i32 flag Bool
+  if flag
+    ret 1
+  else
+    ret 0
 
-pub fun main(world: World) -> Void raises {
-    noop()
-    let mut point = Point { x: 1, y: 2 }
-    let mode: Mode = Mode.on
-    let event: Event = Event.point(point)
-    let mut bytes: [4]u8 = [1, 2, 3, 4]
-    let readonly: Span<u8> = bytes
-    let writable: MutSpan<u8> = bytes
-    let label: String = "checker"
-    let byte: u8 = first_byte(readonly)
-    let widened: u32 = byte as u32
-    let window = readonly[1..3]
-    set_second(writable)
-    bump_x(&mut point)
-    while false {
-        return
-    }
-    match mode {
-        on {
-            if read_x(&point) == 2 && branch(true) == 1 && widened > 0 && std.mem.len(window) == 2 {
-                check world.out.write("checker type forms ok\n")
-            }
-        }
-        off {
-            check world.out.write(label)
-        }
-    }
-}
+pub fn main Void world World !
+  noop()
+  mut point Point . x 1 y 2
+  let mode Mode Mode.on
+  let event Event Event.point point
+  mut bytes [4]u8 [1, 2, 3, 4]
+  let readonly Span<u8> bytes
+  let writable MutSpan<u8> bytes
+  let label String "checker"
+  let byte u8 first_byte readonly
+  let widened u32 byte as u32
+  let window readonly[1..3]
+  set_second writable
+  bump_x (&mut point)
+  while false
+    ret
+  match mode
+    on
+      if && (&& (&& (== (read_x (&point)) 2) (== (branch true) 1)) (> widened 0)) (== (std.mem.len window) 2)
+        check world.out.write "checker type forms ok\n"
+    off
+      check world.out.write label

@@ -1,16 +1,13 @@
-shape RefBag {
-    refs: [1]ref<i32>,
-}
+type RefBag
+  refs [1]ref<i32>
 
-fun first(bag: RefBag) -> ref<i32> {
-    return bag.refs[0]
-}
+fn first ref<i32> bag RefBag
+  ret bag.refs[0]
 
-pub fun main() -> Void {
-    let mut x = 1
-    let mut y = 2
-    let mut bag: RefBag = RefBag { refs: [&x] }
-    let current = first(bag)
-    bag.refs = [&y]
-    x = 3
-}
+pub fn main Void
+  mut x 1
+  mut y 2
+  mut bag RefBag RefBag . refs ([&x])
+  let current first bag
+  set bag.refs [&y]
+  set x 3

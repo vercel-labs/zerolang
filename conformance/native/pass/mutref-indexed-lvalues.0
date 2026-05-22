@@ -1,20 +1,14 @@
-fun write_first(bytes: mutref<MutSpan<u8>>, value: u8) -> Void {
-    bytes[0] = value
-}
+fn write_first Void bytes mutref<MutSpan<u8>> value u8
+  set bytes[0] value
 
-fun read_first(bytes: ref<MutSpan<u8>>) -> u8 {
-    return bytes[0]
-}
+fn read_first u8 bytes ref<MutSpan<u8>>
+  ret bytes[0]
 
-pub fun main(world: World) -> Void raises {
-    let mut backing: [3]u8 = [0, 0, 0]
-    let mut bytes: MutSpan<u8> = backing
-
-    write_first(&mut bytes, 65_u8)
-
-    if read_first(&bytes) == 65_u8 && backing[0] == 65_u8 {
-        check world.out.write("mutref indexed lvalues ok\n")
-    } else {
-        check world.out.write("mutref indexed lvalues failed\n")
-    }
-}
+pub fn main Void world World !
+  mut backing [3]u8 [0, 0, 0]
+  mut bytes MutSpan<u8> backing
+  write_first (&mut bytes) 65_u8
+  if && (== (read_first (&bytes)) 65_u8) (== backing[0] 65_u8)
+    check world.out.write "mutref indexed lvalues ok\n"
+  else
+    check world.out.write "mutref indexed lvalues failed\n"

@@ -1,15 +1,12 @@
 use std.codec
 
-pub fun main(world: World) -> Void raises {
-    let mut i = 0
-    let mut len: usize = 0
-    let mut checksum: u32 = 0
-    while i < 50000 {
-        len = std.codec.encodedVarintLen(300)
-        checksum = std.codec.crc32("zero benchmark payload")
-        i = i + 1
-    }
-    if len == 2 && checksum > 0 {
-        check world.out.write("codec\n")
-    }
-}
+pub fn main Void world World !
+  mut i 0
+  mut len usize 0
+  mut checksum u32 0
+  while < i 50000
+    set len std.codec.encodedVarintLen 300
+    set checksum std.codec.crc32 "zero benchmark payload"
+    set i + i 1
+  if && (== len 2) (> checksum 0)
+    check world.out.write "codec\n"

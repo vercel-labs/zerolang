@@ -1,15 +1,12 @@
-shape Holder {
-    value: ref<i32>,
-}
+type Holder
+  value ref<i32>
 
-pub fun main(flag: Bool) -> Void {
-    let mut old = 1
-    let next = 2
-    let mut holder = Holder { value: &old }
-    if flag {
-        holder.value = &next
-    } else {
-        holder.value = &next
-    }
-    old = 3
-}
+pub fn main Void flag Bool
+  mut old 1
+  let next 2
+  mut holder Holder . value (&old)
+  if flag
+    set holder.value &next
+  else
+    set holder.value &next
+  set old 3

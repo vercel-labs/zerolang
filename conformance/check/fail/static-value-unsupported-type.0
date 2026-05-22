@@ -1,7 +1,5 @@
-shape Bad<static N: String> {
-    len: usize,
-}
+type Bad<static N: String>
+  len usize
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("bad static type\n")
-}
+pub fn main Void world World !
+  check world.out.write "bad static type\n"

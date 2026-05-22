@@ -1,18 +1,13 @@
-interface Risky<T> {
-    fun risky(self: ref<T>) -> Void raises { Bad }
-}
+interface Risky<T: Type>
+  fn risky Void self ref<T> ![Bad]
 
-shape S {
-    value: i32,
+type S
+  value i32
 
-    fun risky(self: ref<Self>) -> Void raises { Bad } {
-        raise Bad
-    }
-}
+  fn risky Void self ref<Self> ![Bad]
+    raise Bad
 
-fun run<T: Risky<T>>(value: ref<T>) -> Void raises { Bad } {
-    T.risky(value)
-}
+fn run<T: Risky<T>> Void value ref<T> ![Bad]
+  T.risky value
 
-pub fun main() -> Void {
-}
+pub fn main Void

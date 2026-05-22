@@ -1,10 +1,8 @@
-shape Holder {
-    value: mutref<i32>,
-}
+type Holder
+  value mutref<i32>
 
-pub fun main() -> Void {
-    let mut x = 1
-    let mut holder = Holder { value: &mut x }
-    let selected = &mut holder
-    selected.value = &mut x
-}
+pub fn main Void
+  mut x 1
+  mut holder Holder . value (&mut x)
+  let selected &mut holder
+  set selected.value &mut x

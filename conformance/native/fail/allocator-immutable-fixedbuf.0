@@ -1,8 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let mut backing: [4]u8 = [0, 0, 0, 0]
-    let alloc: FixedBufAlloc = std.mem.fixedBufAlloc(backing)
-    let bytes = std.mem.allocBytes(alloc, 1)
-    if bytes.has {
-        check world.out.write("allocated")
-    }
-}
+pub fn main Void world World !
+  mut backing [4]u8 [0, 0, 0, 0]
+  let alloc FixedBufAlloc std.mem.fixedBufAlloc backing
+  let bytes std.mem.allocBytes alloc 1
+  if bytes.has
+    check world.out.write "allocated"

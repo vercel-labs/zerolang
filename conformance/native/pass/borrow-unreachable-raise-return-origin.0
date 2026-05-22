@@ -1,11 +1,9 @@
-fun choose(left: ref<i32>, right: ref<i32>) -> ref<i32> raises { Done } {
-    raise Done
-    return right
-}
+fn choose ref<i32> left ref<i32> right ref<i32> ![Done]
+  raise Done
+  ret right
 
-pub fun main() -> Void raises { Done } {
-    let x = 1
-    let mut y = 2
-    let current = check choose(&x, &y)
-    y = 3
-}
+pub fn main Void ![Done]
+  let x 1
+  mut y 2
+  let current check choose (&x) (&y)
+  set y 3

@@ -1,3 +1,2 @@
-export c fun main() -> usize {
-    return std.mem.len("token")
-}
+export c fn main usize
+  ret std.mem.len "token"

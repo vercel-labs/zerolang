@@ -1,18 +1,14 @@
-fun identity<T>(value: T) -> T {
-  return value
-}
+fn identity<T: Type> T value T
+  ret value
 
-fun first<T>(left: T, right: T) -> T {
-  return left
-}
+fn first<T: Type> T left T right T
+  ret left
 
-pub fun main(world: World) -> Void raises {
-  let a: i32 = identity<i32>(41)
-  let b: u8 = identity(7_u8)
-  let c: i32 = first(9, 12)
-  if a == 41 && b == 7_u8 && c == 9 {
-    check world.out.write("generic function ok\n")
-  } else {
-    check world.out.write("generic function broke\n")
-  }
-}
+pub fn main Void world World !
+  let a i32 identity<i32> 41
+  let b u8 identity 7_u8
+  let c i32 first 9 12
+  if && (&& (== a 41) (== b 7_u8)) (== c 9)
+    check world.out.write "generic function ok\n"
+  else
+    check world.out.write "generic function broke\n"

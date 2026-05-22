@@ -1010,7 +1010,7 @@ static const CompilerRuntimeHelperInfo compiler_runtime_helpers[] = {
   {"runtime.moduleImportDiag", "compiler_module_import_diag_code", "module-graph", 112},
   {"runtime.moduleGraphReject", "compiler_module_graph_reject_code", "module-graph", 128},
   {"runtime.scopeSummary", "compiler_scope_summary", "name-resolution", 192},
-  {"runtime.nameResolutionPacket", "compiler_name_resolution_packet", "name-resolution", 128},
+  {"runtime.nameResolutionReport", "compiler_name_resolution_report", "name-resolution", 128},
   {"runtime.memberNameSummary", "compiler_member_name_summary", "name-resolution", 192},
   {"runtime.typeSurfaceSummary", "compiler_type_surface_summary", "checker-json", 192},
   {"runtime.expressionSurfaceSummary", "compiler_expression_surface_summary", "checker-json", 192},
@@ -1032,7 +1032,7 @@ static const CompilerRuntimeHelperInfo compiler_runtime_helpers[] = {
   {"runtime.parsePublicApiSummary", "compiler_parse_public_api_summary", "graph-json", 192},
   {"runtime.parseAstSummary", "compiler_parse_ast_summary", "parse-json", 192},
   {"runtime.byteBufferPlan", "compiler_byte_buffer_plan", "buffer", 144},
-  {"runtime.diagnosticPacketBuild", "compiler_diagnostic_packet_build", "diagnostics-json", 192},
+  {"runtime.diagnosticReportBuild", "compiler_diagnostic_report_build", "diagnostics-json", 192},
   {"runtime.diagnosticDetailSummary", "compiler_diagnostic_detail_summary", "diagnostics-json", 128},
   {"runtime.relatedSpanSummary", "compiler_related_span_summary", "diagnostics-json", 96},
   {NULL, NULL, NULL, 0},
@@ -2642,18 +2642,18 @@ static const char *diag_repair_id(int code) {
 static const char *diag_repair_summary(int code) {
   switch (code) {
     case 100: return "Repair the syntax at the reported parser span, then rerun zero check.";
-    case 1001: return "Add raises to the function signature or handle the fallible expression with rescue.";
-    case 1002: return "Add the missing error name to raises { ... } or rescue the call locally.";
+    case 1001: return "Add `!` or an explicit error set to the function signature, or handle the fallible expression with rescue.";
+    case 1002: return "Add the missing error name to the `![...]` set or rescue the call locally.";
     case 1003: return "Wrap the fallible call in check or rescue so error flow is explicit.";
     case 7001: return "Change the import to a package-local module path that resolves under src/.";
     case 7002: return "Break the import cycle by moving shared declarations into a third module or removing one import edge.";
     case 3003: return "Declare the referenced symbol, import the module that provides it, or correct the identifier spelling.";
     case 3007: return "Change the returned expression or the function return annotation so both types agree.";
-    case 3010: return "Change the root binding to let mut before passing it to a mutable API.";
+    case 3010: return "Change the root binding to `mut` before passing it to a mutable API.";
     case 3011: return "Use one of the supported std helpers or add compiler support for the new helper.";
     case 3012: return "Pass the expected stdlib argument type, such as MutSpan<u8> for writable byte APIs.";
     case 3013: return "Stop using the moved binding, or keep ownership in the original binding until the final use.";
-    case 3014: return "Use the canonical non-raising drop signature: fun drop(self: mutref<Self>) -> Void.";
+    case 3014: return "Use the canonical non-raising drop signature: `fn drop Void self mutref<Self>`.";
     case 3015: return "Add the missing type argument, for example Maybe<u8> or Span<const u8>.";
     case 3029: return "End the active lexical borrow before taking a conflicting borrow or assigning to the borrowed root.";
     case 3030: return "Return an owned value, or keep references to local bindings inside the current function.";
@@ -2677,7 +2677,7 @@ static const char *diag_repair_summary(int code) {
     case 3046: return "Pass a concrete self value or explicit shape arguments so the method can specialize.";
     case 3047: return "Make every argument agree with the same generic shape instantiation.";
     case 3048: return "Call a declared receiver method, or use namespace syntax for static methods without self.";
-    case 3049: return "Store the receiver in an addressable binding and use let mut for mutating methods.";
+    case 3049: return "Store the receiver in an addressable binding and use `mut` for mutating methods.";
     case 3102: return "Initialize the missing shape field or add a default to the shape declaration.";
     case 4004: return "Use zero targets --json to choose a direct-supported target, or request --emit obj when only object emission exists.";
     case 6002: return "Build for a target that provides the required capability, or move that capability behind a target-specific entry point.";
@@ -2774,19 +2774,19 @@ static const ExplainInfo explain_infos[] = {
     "Mutable storage required",
     "A mutable API was given storage rooted in an immutable binding.",
     "`MutSpan<T>` and `mutref<T>` must come from storage that the source explicitly marks mutable.",
-    "Change the root binding to `let mut`, or pass a writable `MutSpan<T>`/`mutref<T>` from another mutable owner.",
-    "let dst: [4]u8 = [0, 0, 0, 0]\nlet _ = std.mem.copy(dst, src)",
-    "let mut dst: [4]u8 = [0, 0, 0, 0]\nlet _ = std.mem.copy(dst, src)",
+    "Change the root binding to `mut`, or pass a writable `MutSpan<T>`/`mutref<T>` from another mutable owner.",
+    "let dst [4]u8 [0, 0, 0, 0]\nlet _copied std.mem.copy dst src",
+    "mut dst [4]u8 [0, 0, 0, 0]\nlet _copied std.mem.copy dst src",
   },
   {
     "ERR002",
     "fallibility",
     "Error set mismatch",
-    "A caller with an explicit `raises { ... }` set checked a callee that may raise an unlisted error.",
+    "A caller with an explicit `![...]` set checked a callee that may raise an unlisted error.",
     "Public and explicit error sets are part of the function contract, so propagation must keep the set complete.",
-    "Add the missing error name to the caller's `raises { ... }` set or handle the call locally with `rescue`.",
-    "pub fun main(world: World) -> Void raises { NotFound } { check std.fs.createOrRaise(fs, path) }",
-    "pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } { check std.fs.createOrRaise(fs, path) }",
+    "Add the missing error name to the caller's `![...]` set or handle the call locally with `rescue`.",
+    "pub fn main Void world World ![NotFound]\n  check std.fs.createOrRaise fs path",
+    "pub fn main Void world World ![NotFound TooLarge Io]\n  check std.fs.createOrRaise fs path",
   },
   {
     "ERR003",
@@ -2795,8 +2795,8 @@ static const ExplainInfo explain_infos[] = {
     "A fallible function or named-error stdlib helper was called without `check` or `rescue`.",
     "Zero keeps error flow visible in source and in function signatures.",
     "Wrap the call in `check`, or handle it locally with `rescue`.",
-    "let file = std.fs.createOrRaise(fs, path)",
-    "let file = check std.fs.createOrRaise(fs, path)",
+    "let file std.fs.createOrRaise fs path",
+    "let file check std.fs.createOrRaise fs path",
   },
   {
     "STD003",
@@ -2806,7 +2806,7 @@ static const ExplainInfo explain_infos[] = {
     "The bootstrap stdlib surface is intentionally narrow, so helpers reject implicit conversions and unsupported capability shapes.",
     "Pass the exact expected argument type shown in the diagnostic, such as `MutSpan<u8>` for writable byte APIs.",
     "std.mem.fill(bytes, 0_u8) // when bytes is immutable",
-    "let mut bytes: [4]u8 = [0, 0, 0, 0]\nstd.mem.fill(bytes, 0_u8)",
+    "mut bytes [4]u8 [0, 0, 0, 0]\nstd.mem.fill bytes 0_u8",
   },
   {
     "TYP023",
@@ -2875,8 +2875,8 @@ static const ExplainInfo explain_infos[] = {
     "A public declaration omitted a concrete type annotation.",
     "Public surfaces must stay explicit so docs, graph JSON, and agents can repair uses without whole-body inference.",
     "Add the missing public type annotation.",
-    "pub const answer = 42",
-    "pub const answer: i32 = 42",
+    "pub const answer 42",
+    "pub const answer i32 42",
   },
   {
     "IFC001",
@@ -2895,8 +2895,8 @@ static const ExplainInfo explain_infos[] = {
     "A concrete shape used for a constrained generic call is missing a required static method.",
     "Zero does not create runtime interface values or vtables; satisfying an interface means the concrete shape already has the matching static method.",
     "Add the missing static method to the shape.",
-    "shape Person { name: String }",
-    "shape Person { name: String, fun describe(self: ref<Self>) -> String { return self.name } }",
+    "type Person\n  name String",
+    "type Person\n  name String\n\n  fn describe String self ref<Self>\n    ret self.name",
   },
   {
     "IFC003",
@@ -2905,8 +2905,8 @@ static const ExplainInfo explain_infos[] = {
     "A concrete static method has a different parameter count from the interface requirement.",
     "Static method calls are monomorphized directly, so the required signature must match before emission.",
     "Make the shape method use the same parameter count as the interface method.",
-    "fun describe() -> String",
-    "fun describe(self: ref<Self>) -> String",
+    "fn describe String",
+    "fn describe String self ref<Self>",
   },
   {
     "IFC004",
@@ -2915,8 +2915,8 @@ static const ExplainInfo explain_infos[] = {
     "A concrete static method returns a type that does not match the interface requirement.",
     "Constrained generic bodies rely on the interface return type without runtime adaptation.",
     "Change the concrete method return type to match the interface.",
-    "fun describe(self: ref<Self>) -> i32",
-    "fun describe(self: ref<Self>) -> String",
+    "fn describe i32 self ref<Self>",
+    "fn describe String self ref<Self>",
   },
   {
     "IFC005",
@@ -2925,8 +2925,8 @@ static const ExplainInfo explain_infos[] = {
     "A concrete static method parameter does not match the interface requirement.",
     "Interface checks are compile-time signature checks over concrete static methods.",
     "Change the concrete method parameter type to match the interface.",
-    "fun describe(self: i32) -> String",
-    "fun describe(self: ref<Self>) -> String",
+    "fn describe String self i32",
+    "fn describe String self ref<Self>",
   },
 	  {
 	    "STC001",
@@ -2935,8 +2935,8 @@ static const ExplainInfo explain_infos[] = {
 	    "A static value parameter uses a type outside the concrete V1 set.",
 	    "Static values are erased by monomorphization, so only integer, Bool, and enum values are accepted.",
 	    "Change the static parameter type to a concrete integer, Bool, or enum type.",
-	    "shape Buf<static N: String> { len: usize }",
-	    "shape Buf<static N: usize> { len: usize }",
+	    "type Buf<static N: String>\n  len usize",
+	    "type Buf<static N: usize>\n  len usize",
 	  },
 	  {
 	    "STC002",
@@ -3004,9 +3004,9 @@ static const ExplainInfo explain_infos[] = {
     "Receiver is not addressable or mutable enough",
     "A receiver-style method call needs an addressable value, and mutating methods need a mutable receiver.",
     "The compiler lowers receiver calls by passing an explicit ref<Self> or mutref<Self> argument to a direct C function.",
-    "Store the receiver in a binding and use let mut before calling mutating methods.",
+    "Store the receiver in a binding and use `mut` before calling mutating methods.",
     "vec.push(1)",
-    "let mut vec: FixedVec<u8,4> = FixedVec { len: 0, items: [0, 0, 0, 0] }\nvec.push(1)",
+    "mut vec FixedVec<u8,4> FixedVec . len 0 items [0, 0, 0, 0]\nvec.push 1",
   },
   {
     "CGEN004",
@@ -3243,13 +3243,13 @@ static bool find_make_binding_mutable_edit(const char *source, int *line_out, ch
     size_t line_len = (size_t)(line_end - line_start);
     char *line_text = z_strndup(line_start, line_len);
     char *let_pos = strstr(line_text, "let ");
-    if (let_pos && !strstr(line_text, "let mut ") && strchr(line_text, '[')) {
+    if (let_pos && !strstr(line_text, "mut ") && strchr(line_text, '[')) {
       ZBuf replacement;
       zbuf_init(&replacement);
       size_t prefix_len = (size_t)(let_pos - line_text);
       char *prefix = z_strndup(line_text, prefix_len);
       zbuf_append(&replacement, prefix);
-      zbuf_append(&replacement, "let mut ");
+      zbuf_append(&replacement, "mut ");
       zbuf_append(&replacement, let_pos + strlen("let "));
       free(prefix);
       *line_out = line;
@@ -3657,7 +3657,7 @@ static long long now_ms(void);
 static bool has_suffix(const char *path, const char *suffix);
 
 static bool is_row_source_path(const char *path) {
-  return path && has_suffix(path, ".row");
+  return path && (has_suffix(path, ".0") || has_suffix(path, ".row"));
 }
 
 static void direct_input_push_string(char ***items, size_t *len, const char *value) {
@@ -3723,6 +3723,7 @@ static char *direct_row_module_name_from_path(const char *root, const char *path
   }
   size_t len = strlen(relative);
   if (len > 4 && strcmp(relative + len - 4, ".row") == 0) len -= 4;
+  else if (len > 2 && strcmp(relative + len - 2, ".0") == 0) len -= 2;
   if (len >= 4 && strcmp(relative + len - 4, "/mod") == 0) len -= 4;
   ZBuf buf;
   zbuf_init(&buf);
@@ -3833,8 +3834,10 @@ static bool direct_row_token_text(const ZRowTokenVec *tokens, size_t index, cons
 }
 
 static const char *direct_row_symbol_kind(const ZRowTokenVec *tokens, size_t index) {
+  if (direct_row_token_text(tokens, index, "alias")) return "type-alias";
   if (direct_row_token_text(tokens, index, "const")) return "const";
   if (direct_row_token_text(tokens, index, "fn")) return "function";
+  if (direct_row_token_text(tokens, index, "interface")) return "interface";
   if (direct_row_token_text(tokens, index, "type")) return "shape";
   if (direct_row_token_text(tokens, index, "enum")) return "enum";
   if (direct_row_token_text(tokens, index, "choice")) return "choice";
@@ -3855,6 +3858,10 @@ static bool direct_input_add_row_symbols(SourceInput *input, const ZRowTokenVec 
     if (direct_row_token_text(tokens, pos, "export")) {
       pos++;
       if (direct_row_token_text(tokens, pos, "c")) pos++;
+    }
+    if (direct_row_token_text(tokens, pos, "extern") || direct_row_token_text(tokens, pos, "packed")) {
+      pos++;
+      if (direct_row_token_text(tokens, pos, "c")) continue;
     }
     if (direct_row_token_text(tokens, pos, "test")) continue;
     const char *kind = direct_row_symbol_kind(tokens, pos);
@@ -3895,7 +3902,7 @@ static bool direct_row_reserved_word(const char *text) {
   const char *keywords[] = {
     "as", "break", "check", "choice", "const", "continue", "defer", "else", "enum", "export", "extern", "false",
     "fn", "for", "fun", "if", "import", "in", "let", "match", "meta", "mut", "null", "packed", "pub",
-    "raise", "raises", "rescue", "ret", "return", "set", "shape", "static", "test", "true", "type",
+    "raise", "raises", "rescue", "ret", "return", "shape", "static", "test", "true", "type",
     "use", "var", "while", NULL
   };
   for (int i = 0; keywords[i]; i++) {
@@ -3974,8 +3981,27 @@ static char *direct_row_module_path(const char *root, const char *module) {
   for (const char *cursor = module ? module : ""; *cursor; cursor++) {
     zbuf_append_char(&relative, *cursor == '.' ? '/' : *cursor);
   }
-  zbuf_append(&relative, ".row");
+  zbuf_append(&relative, ".0");
   char *file_path = direct_join_path(root, relative.data);
+  if (direct_file_exists(file_path)) {
+    zbuf_free(&relative);
+    return file_path;
+  }
+  free(file_path);
+  if (relative.len >= 2 && strcmp(relative.data + relative.len - 2, ".0") == 0) {
+    relative.data[relative.len - 2] = 0;
+    relative.len -= 2;
+  }
+  char *dir_path = direct_join_path(root, relative.data);
+  char *mod_path = direct_join_path(dir_path, "mod.0");
+  free(dir_path);
+  if (direct_file_exists(mod_path)) {
+    zbuf_free(&relative);
+    return mod_path;
+  }
+  free(mod_path);
+  zbuf_append(&relative, ".row");
+  file_path = direct_join_path(root, relative.data);
   if (direct_file_exists(file_path)) {
     zbuf_free(&relative);
     return file_path;
@@ -3985,8 +4011,8 @@ static char *direct_row_module_path(const char *root, const char *module) {
     relative.data[relative.len - 4] = 0;
     relative.len -= 4;
   }
-  char *dir_path = direct_join_path(root, relative.data);
-  char *mod_path = direct_join_path(dir_path, "mod.row");
+  dir_path = direct_join_path(root, relative.data);
+  mod_path = direct_join_path(dir_path, "mod.row");
   free(dir_path);
   zbuf_free(&relative);
   if (direct_file_exists(mod_path)) return mod_path;
@@ -4106,7 +4132,7 @@ static bool direct_row_resolve_file(const char *path, const char *root, SourceIn
       diag->column = token->column;
       diag->length = module_end > module_start ? (int)(tokens.items[module_end - 1].column + tokens.items[module_end - 1].length - token->column) : 1;
       snprintf(diag->message, sizeof(diag->message), "unknown package-local import '%s'", import_name);
-      snprintf(diag->expected, sizeof(diag->expected), "%s.row or %s/mod.row", import_name, import_name);
+      snprintf(diag->expected, sizeof(diag->expected), "%s.0 or %s/mod.0", import_name, import_name);
       snprintf(diag->actual, sizeof(diag->actual), "missing source file");
       snprintf(diag->help, sizeof(diag->help), "create the module source file or remove the import");
       free(import_name);
@@ -6266,20 +6292,16 @@ static bool create_cli_template(const char *root, const char *name, ZDiag *diag)
   append_manifest(&manifest, name, "src/main.0");
   if (!write_project_buf(root, "zero.json", &manifest, diag)) return false;
   if (!write_project_file(root, "src/lib.0",
-    "pub fun greeting_code() -> i32 {\n"
-    "    return 42\n"
-    "}\n",
+    "pub fn greeting_code i32\n"
+    "  ret 42\n",
     diag)) return false;
   if (!write_project_file(root, "src/main.0",
     "use lib\n\n"
-    "pub fun main(world: World) -> Void raises {\n"
-    "    if greeting_code() == 42 {\n"
-    "        check world.out.write(\"hello from zero\\n\")\n"
-    "    }\n"
-    "}\n\n"
-    "test \"greeting is stable\" {\n"
-    "    expect(greeting_code() == 42)\n"
-    "}\n",
+    "pub fn main Void world World !\n"
+    "  if == greeting_code() 42\n"
+    "    check world.out.write \"hello from zero\\n\"\n\n"
+    "test \"greeting is stable\"\n"
+    "  expect (== greeting_code() 42)\n",
     diag)) return false;
   if (!write_project_file(root, "README.md",
     "# Zero CLI\n\n"
@@ -6304,12 +6326,10 @@ static bool create_lib_template(const char *root, const char *name, ZDiag *diag)
   append_manifest(&manifest, name, "src/lib.0");
   if (!write_project_buf(root, "zero.json", &manifest, diag)) return false;
   if (!write_project_file(root, "src/lib.0",
-    "pub fun add_one(value: i32) -> i32 {\n"
-    "    return value + 1\n"
-    "}\n\n"
-    "test \"public api works\" {\n"
-    "    expect(add_one(41) == 42)\n"
-    "}\n",
+    "pub fn add_one i32 value i32\n"
+    "  ret + value 1\n\n"
+    "test \"public api works\"\n"
+    "  expect (== (add_one 41) 42)\n",
     diag)) return false;
   if (!write_project_file(root, "README.md",
     "# Zero Library\n\n"
@@ -6332,31 +6352,25 @@ static bool create_package_template(const char *root, const char *name, ZDiag *d
   append_manifest(&manifest, name, "src/main.0");
   if (!write_project_buf(root, "zero.json", &manifest, diag)) return false;
   if (!write_project_file(root, "src/model.0",
-    "pub shape Point {\n"
-    "    value: i32,\n"
-    "}\n",
+    "pub type Point\n"
+    "  value i32\n",
     diag)) return false;
   if (!write_project_file(root, "src/math.0",
-    "fun base(value: i32) -> i32 {\n"
-    "    return value\n"
-    "}\n\n"
-    "pub fun add_one(value: i32) -> i32 {\n"
-    "    return base(value) + 1\n"
-    "}\n",
+    "fn base i32 value i32\n"
+    "  ret value\n\n"
+    "pub fn add_one i32 value i32\n"
+    "  ret + (base value) 1\n",
     diag)) return false;
   if (!write_project_file(root, "src/main.0",
     "use math\n"
     "use model\n\n"
-    "pub fun main(world: World) -> Void raises {\n"
-    "    let point = Point { value: add_one(41) }\n"
-    "    if point.value == 42 {\n"
-    "        check world.out.write(\"package ok\\n\")\n"
-    "    }\n"
-    "}\n\n"
-    "test \"package import works\" {\n"
-    "    let point = Point { value: add_one(41) }\n"
-    "    expect(point.value == 42)\n"
-    "}\n",
+    "pub fn main Void world World !\n"
+    "  let point Point . value (add_one 41)\n"
+    "  if == point.value 42\n"
+    "    check world.out.write \"package ok\\n\"\n\n"
+    "test \"package import works\"\n"
+    "  let point Point . value (add_one 41)\n"
+    "  expect (== point.value 42)\n",
     diag)) return false;
   if (!write_project_file(root, "README.md",
     "# Zero Package\n\n"
@@ -7341,7 +7355,7 @@ static const char *helper_module_name(const StdHelperInfo *helper) {
 
 static const char *helper_error_behavior(const StdHelperInfo *helper) {
   if (!helper) return "unknown";
-  if (strstr(helper->name, "OrRaise")) return "raises { NotFound, TooLarge, Io }";
+  if (strstr(helper->name, "OrRaise")) return "raises ![NotFound TooLarge Io]";
   if (helper->return_type && strncmp(helper->return_type, "Maybe<", strlen("Maybe<")) == 0) return "returns null on failure";
   if (strcmp(helper->name, "std.proc.spawn") == 0) return "returns ProcStatus";
   return "infallible";

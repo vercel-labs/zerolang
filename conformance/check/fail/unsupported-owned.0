@@ -1,8 +1,6 @@
-shape File {
-    fd: i32,
-}
+type File
+  fd i32
 
-pub fun main(world: World) -> Void raises {
-    let file: owned<File> = File { fd: 1 }
-    check world.out.write("owned\n")
-}
+pub fn main Void world World !
+  let file owned<File> File . fd 1
+  check world.out.write "owned\n"

@@ -1,10 +1,8 @@
-shape View {
-    values: Span<i32>,
-}
+type View
+  values Span<i32>
 
-pub fun main(world: World) -> Void raises {
-    let values: [2]i32 = [1, 2]
-    let mut view = View { values: values }
-    view.values[0] = 3
-    check world.out.write("bad nested lvalue\n")
-}
+pub fn main Void world World !
+  let values [2]i32 [1, 2]
+  mut view View . values values
+  set view.values[0] 3
+  check world.out.write "bad nested lvalue\n"

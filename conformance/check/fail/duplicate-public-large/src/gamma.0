@@ -1,3 +1,2 @@
-pub fun duplicateName() -> String {
-    return "gamma"
-}
+pub fn duplicateName String
+  ret "gamma"

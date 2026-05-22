@@ -1,8 +1,6 @@
-extern shape BadExtern {
-    bytes: Span<u8>,
-}
+extern type BadExtern
+  bytes Span<u8>
 
-pub fun main(world: World) -> Void raises {
-    let value = BadExtern { bytes: std.mem.span("bad") }
-    check world.out.write("bad extern layout")
-}
+pub fn main Void world World !
+  let value BadExtern . bytes (std.mem.span "bad")
+  check world.out.write "bad extern layout"

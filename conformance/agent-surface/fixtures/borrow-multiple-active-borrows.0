@@ -1,6 +1,5 @@
-pub fun main() -> Void {
-    let mut data = 1
-    let first = &data
-    let second = &data
-    let conflicting = &mut data
-}
+pub fn main Void
+  mut data 1
+  let first &data
+  let second &data
+  let conflicting &mut data

@@ -1,3 +1,2 @@
-pub fun helper() -> i32 {
-    return true
-}
+pub fn helper i32
+  ret true

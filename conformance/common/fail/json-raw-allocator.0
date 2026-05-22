@@ -1,5 +1,4 @@
-test "json raw allocator" {
-    let bytes = std.mem.span("{\"ok\":true}")
-    let parsed = std.json.parseBytes(123, bytes)
-    expect(parsed.has)
-}
+test "json raw allocator"
+  let bytes std.mem.span "{\"ok\":true}"
+  let parsed std.json.parseBytes 123 bytes
+  expect parsed.has

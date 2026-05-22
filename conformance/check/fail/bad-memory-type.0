@@ -1,7 +1,5 @@
-shape Bad {
-    value: Maybe,
-}
+type Bad
+  value Maybe
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("bad memory type\n")
-}
+pub fn main Void world World !
+  check world.out.write "bad memory type\n"

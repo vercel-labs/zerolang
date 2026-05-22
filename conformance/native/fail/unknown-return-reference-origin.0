@@ -1,7 +1,5 @@
-pub fun main() -> Void {
-    let value = bad()
-}
+pub fn main Void
+  let value bad()
 
-fun bad() -> ref<i32> {
-    return missing
-}
+fn bad ref<i32>
+  ret missing

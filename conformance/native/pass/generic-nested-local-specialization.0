@@ -1,12 +1,9 @@
-fun has_none<T>(value: T) -> Bool {
-    let maybe: Maybe<T> = null
-    return maybe.has == false
-}
+fn has_none<T: Type> Bool value T
+  let maybe Maybe<T> null
+  ret == maybe.has false
 
-pub fun main(world: World) -> Void raises {
-    if has_none<i32>(1) {
-        check world.out.write("generic nested local specialization ok\n")
-    } else {
-        check world.out.write("generic nested local specialization broke\n")
-    }
-}
+pub fn main Void world World !
+  if has_none<i32> 1
+    check world.out.write "generic nested local specialization ok\n"
+  else
+    check world.out.write "generic nested local specialization broke\n"

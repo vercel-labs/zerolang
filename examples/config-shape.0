@@ -1,18 +1,14 @@
 extern c "stdint.h" as cstdint
 
-extern shape CConfig {
-    port: i32,
-    workers: i32,
-}
+extern type CConfig
+  port i32
+  workers i32
 
-shape Config {
-    port: i32,
-    workers: i32,
-}
+type Config
+  port i32
+  workers i32
 
-pub fun main(world: World) -> Void raises {
-    let config = Config { port: 3000, workers: 4 }
-    if config.workers > 0 {
-        check world.out.write("config shape parsed\n")
-    }
-}
+pub fn main Void world World !
+  let config Config . port 3000 workers 4
+  if > config.workers 0
+    check world.out.write "config shape parsed\n"

@@ -1,18 +1,12 @@
-pub fun main(world: World) -> Void raises {
-    let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let maybe = std.mem.byteBuf(alloc, 4)
-
-    if maybe.has == false {
-        check world.out.write("owned byte buffer failed\n")
-        return
-    }
-
-    let buf: owned<ByteBuf> = maybe.value
-    let bytes = std.mem.bufBytes(&buf)
-    bytes[0] = 90_u8
-
-    if std.mem.bufLen(&buf) == 4 && storage[0] == 90_u8 {
-        check world.out.write("owned byte buffer ok\n")
-    }
-}
+pub fn main Void world World !
+  mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  let maybe std.mem.byteBuf alloc 4
+  if == maybe.has false
+    check world.out.write "owned byte buffer failed\n"
+    ret
+  let buf owned<ByteBuf> maybe.value
+  let bytes std.mem.bufBytes (&buf)
+  set bytes[0] 90_u8
+  if && (== (std.mem.bufLen (&buf)) 4) (== storage[0] 90_u8)
+    check world.out.write "owned byte buffer ok\n"

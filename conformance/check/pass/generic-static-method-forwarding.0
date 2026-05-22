@@ -1,29 +1,22 @@
-shape Helper {
-    fun head<T, static N: usize>(items: ref<[N]T>) -> T {
-        return items[0]
-    }
-}
+type Helper
+  fn head<T: Type, static N: usize> T items ref<[N]T>
+    ret items[0]
 
-shape FixedVec<T, static N: usize> {
-    items: [N]T,
+type FixedVec<T: Type, static N: usize>
+  items [N]T
 
-    fun first(self: ref<Self>) -> T {
-        return self.items[0]
-    }
-}
+  fn first T self ref<Self>
+    ret self.items[0]
 
-fun forwardHead<T, static N: usize>(items: ref<[N]T>) -> T {
-    return Helper.head(items)
-}
+fn forwardHead<T: Type, static N: usize> T items ref<[N]T>
+  ret Helper.head items
 
-fun forwardFirst<T, static N: usize>(items: ref<FixedVec<T,N>>) -> T {
-    return items.first()
-}
+fn forwardFirst<T: Type, static N: usize> T items ref<FixedVec<T,N>>
+  ret items.first()
 
-pub fun main() -> Void {
-    let values: [3]i32 = [1, 2, 3]
-    let vec: FixedVec<i32,3> = FixedVec { items: [4, 5, 6] }
-    let first: i32 = forwardHead(&values)
-    let second: i32 = forwardFirst(&vec)
-    expect(first == 1 && second == 4)
-}
+pub fn main Void
+  let values [3]i32 [1, 2, 3]
+  let vec FixedVec<i32,3> FixedVec . items ([4, 5, 6])
+  let first i32 forwardHead (&values)
+  let second i32 forwardFirst (&vec)
+  expect (&& (== first 1) (== second 4))

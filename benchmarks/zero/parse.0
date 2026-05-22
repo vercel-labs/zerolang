@@ -1,13 +1,10 @@
 use std.parse
 
-pub fun main(world: World) -> Void raises {
-    let mut i = 0
-    let mut digits: usize = 0
-    while i < 100000 {
-        digits = std.parse.scanDigits("1234567890abcdef")
-        i = i + 1
-    }
-    if digits == 10 && std.parse.isIdentifierStart("_") {
-        check world.out.write("parse\n")
-    }
-}
+pub fn main Void world World !
+  mut i 0
+  mut digits usize 0
+  while < i 100000
+    set digits std.parse.scanDigits "1234567890abcdef"
+    set i + i 1
+  if && (== digits 10) (std.parse.isIdentifierStart "_")
+    check world.out.write "parse\n"

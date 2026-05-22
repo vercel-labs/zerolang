@@ -1,11 +1,8 @@
-shape BadDrop {
-    value: i32,
+type BadDrop
+  value i32
 
-    fun drop(self: ref<Self>) -> Void {
-    }
-}
+  fn drop Void self ref<Self>
 
-pub fun main(world: World) -> Void raises {
-    let value: owned<BadDrop> = BadDrop { value: 1 }
-    check world.out.write("invalid drop signature")
-}
+pub fn main Void world World !
+  let value owned<BadDrop> BadDrop . value 1
+  check world.out.write "invalid drop signature"

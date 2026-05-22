@@ -1,11 +1,8 @@
-shape Item {
-    value: i32,
-}
+type Item
+  value i32
 
-enum Item {
-    value,
-}
+enum Item
+  value
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("duplicate type\n")
-}
+pub fn main Void world World !
+  check world.out.write "duplicate type\n"

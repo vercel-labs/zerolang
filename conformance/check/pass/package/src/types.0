@@ -1,9 +1,7 @@
-enum Mode {
-    fast,
-    safe,
-}
+enum Mode
+  fast
+  safe
 
-choice Outcome {
-    ok,
-    failed: i32,
-}
+choice Outcome
+  ok
+  failed i32

@@ -1,7 +1,5 @@
-shape Box<T> {
-    value: owned<T>,
-}
+type Box<T: Type>
+  value owned<T>
 
-pub fun main() -> Void {
-    return
-}
+pub fn main Void
+  ret

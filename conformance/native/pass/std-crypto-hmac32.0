@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let hmac = std.crypto.hmac32(std.mem.span("key"), std.mem.span("message"))
-    if hmac != 0_u32 {
-        check world.out.write("crypto hmac32 ok\n")
-    }
-}
+pub fn main Void world World !
+  let hmac std.crypto.hmac32 (std.mem.span "key") (std.mem.span "message")
+  if != hmac 0_u32
+    check world.out.write "crypto hmac32 ok\n"

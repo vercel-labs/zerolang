@@ -1,18 +1,15 @@
-shape Holder {
-    value: ref<i32>,
-}
+type Holder
+  value ref<i32>
 
-fun copyStored(dst: mutref<Holder>, src: mutref<Holder>) -> Void {
-    dst.value = src.value
-}
+fn copyStored Void dst mutref<Holder> src mutref<Holder>
+  set dst.value src.value
 
-pub fun main() -> Void {
-    let mut x = 1
-    let y = 2
-    let z = 3
-    let mut src = Holder { value: &x }
-    let mut dst = Holder { value: &y }
-    copyStored(&mut dst, &mut src)
-    dst.value = &z
-    x = 4
-}
+pub fn main Void
+  mut x 1
+  let y 2
+  let z 3
+  mut src Holder . value (&x)
+  mut dst Holder . value (&y)
+  copyStored (&mut dst) (&mut src)
+  set dst.value &z
+  set x 4

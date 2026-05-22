@@ -1,12 +1,9 @@
-pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
-    let opened = std.fs.open(fs, ".zero/conformance/std-fs-resource.txt")
-    if opened.has {
-        let file: owned<File> = opened.value
-        let mut buf: [4]u8 = [0, 0, 0, 0]
-        let read = std.fs.read(file, buf)
-        if read.has {
-            check world.out.write("unexpected read\n")
-        }
-    }
-}
+pub fn main Void world World !
+  let fs std.fs.host()
+  let opened std.fs.open fs ".zero/conformance/std-fs-resource.txt"
+  if opened.has
+    let file owned<File> opened.value
+    mut buf [4]u8 [0, 0, 0, 0]
+    let read std.fs.read file buf
+    if read.has
+      check world.out.write "unexpected read\n"

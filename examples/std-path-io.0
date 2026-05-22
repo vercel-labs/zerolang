@@ -1,27 +1,13 @@
-pub fun main(world: World) -> Void raises {
-    let mut path_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let normalized = std.path.normalize(path_buf, "src//./main.0/")
-    let mut rel_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let relative = std.path.relative(rel_buf, "src", "src/main.0")
-    let mut copy_dst: [4]u8 = [0, 0, 0, 0]
-    let mut reader_buf: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut writer_buf: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let reader = std.io.bufferedReader(reader_buf)
-    let writer = std.io.bufferedWriter(writer_buf)
-    let copied = std.io.copy(copy_dst, std.mem.span("abcd"))
-
-    if normalized.has &&
-        relative.has &&
-        std.mem.eql(normalized.value, "src/main.0") &&
-        std.mem.eql(relative.value, "main.0") &&
-        std.mem.eql(std.path.basename("src/main.0"), "main.0") &&
-        std.mem.eql(std.path.dirname("src/main.0"), "src") &&
-        std.mem.eql(std.path.extension("src/main.0"), "0") &&
-        std.io.readerCapacity(&reader) == 8 &&
-        std.io.writerCapacity(&writer) == 8 &&
-        copied == 4 &&
-        copy_dst[0] == 97_u8 &&
-        copy_dst[3] == 100_u8 {
-        check world.out.write("std path io ok\n")
-    }
-}
+pub fn main Void world World !
+  mut path_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let normalized std.path.normalize path_buf "src//./main.0/"
+  mut rel_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let relative std.path.relative rel_buf "src" "src/main.0"
+  mut copy_dst [4]u8 [0, 0, 0, 0]
+  mut reader_buf [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut writer_buf [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  let reader std.io.bufferedReader reader_buf
+  let writer std.io.bufferedWriter writer_buf
+  let copied std.io.copy copy_dst (std.mem.span "abcd")
+  if && (&& (&& (&& (&& (&& (&& (&& (&& (&& (&& normalized.has relative.has) (std.mem.eql normalized.value "src/main.0")) (std.mem.eql relative.value "main.0")) (std.mem.eql (std.path.basename "src/main.0") "main.0")) (std.mem.eql (std.path.dirname "src/main.0") "src")) (std.mem.eql (std.path.extension "src/main.0") "0")) (== (std.io.readerCapacity (&reader)) 8)) (== (std.io.writerCapacity (&writer)) 8)) (== copied 4)) (== copy_dst[0] 97_u8)) (== copy_dst[3] 100_u8)
+    check world.out.write "std path io ok\n"

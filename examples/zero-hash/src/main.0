@@ -1,24 +1,18 @@
 use input
 
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    check seed(fs)
-
-    let mut storage: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let arg_path = std.args.get(1)
-    let mut path: String = ".zero/zero-hash-input.txt"
-    if arg_path.has {
-        path = arg_path.value
-    }
-    let body = std.fs.readAll(alloc, fs, path, 64)
-    if body.has {
-        let mut buf: owned<ByteBuf> = body.value
-        let bytes = std.mem.bufBytes(&buf)
-        let checksum = std.codec.crc32Bytes(bytes)
-
-        if checksum == 1120241454 {
-            check world.out.write("zero-hash ok\n")
-        }
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  check seed fs
+  mut storage [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  let arg_path std.args.get 1
+  mut path String ".zero/zero-hash-input.txt"
+  if arg_path.has
+    set path arg_path.value
+  let body std.fs.readAll alloc fs path 64
+  if body.has
+    mut buf owned<ByteBuf> body.value
+    let bytes std.mem.bufBytes (&buf)
+    let checksum std.codec.crc32Bytes bytes
+    if == checksum 1120241454
+      check world.out.write "zero-hash ok\n"

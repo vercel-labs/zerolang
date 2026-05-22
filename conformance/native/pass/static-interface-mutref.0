@@ -1,25 +1,19 @@
-interface Incrementable<T> {
-    fun increment(self: mutref<T>) -> i32
-}
+interface Incrementable<T: Type>
+  fn increment i32 self mutref<T>
 
-shape Counter {
-    value: i32,
+type Counter
+  value i32
 
-    fun increment(self: mutref<Self>) -> i32 {
-        self.value = self.value + 1
-        return self.value
-    }
-}
+  fn increment i32 self mutref<Self>
+    set self.value + self.value 1
+    ret self.value
 
-fun bump<T: Incrementable<T>>(value: mutref<T>) -> i32 {
-    return T.increment(value)
-}
+fn bump<T: Incrementable<T>> i32 value mutref<T>
+  ret T.increment value
 
-pub fun main(world: World) -> Void raises {
-    let mut counter: Counter = Counter { value: 41 }
-    if bump<Counter>(&mut counter) == 42 {
-        check world.out.write("static interface mutref ok\n")
-    } else {
-        check world.out.write("static interface mutref broke\n")
-    }
-}
+pub fn main Void world World !
+  mut counter Counter Counter . value 41
+  if == (bump<Counter> (&mut counter)) 42
+    check world.out.write "static interface mutref ok\n"
+  else
+    check world.out.write "static interface mutref broke\n"

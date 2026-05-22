@@ -1,8 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let bytes: [4]u8 = [1, 2, 3, 4]
-    let mut attempts = 0
-    attempts = attempts + 1
-    if attempts == 1 {
-        check world.out.write("arrays and assignment ok\n")
-    }
-}
+pub fn main Void world World !
+  let bytes [4]u8 [1, 2, 3, 4]
+  mut attempts 0
+  set attempts + attempts 1
+  if == attempts 1
+    check world.out.write "arrays and assignment ok\n"

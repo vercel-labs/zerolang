@@ -1,21 +1,15 @@
-pub fun main(world: World) -> Void raises {
-    let fs = std.fs.host()
-    let created = std.fs.create(fs, ".zero/readall-input.txt")
-    if created.has {
-        let mut file: owned<File> = created.value
-        if std.fs.writeAll(&mut file, std.mem.span("read all ok\n")) == false {
-            return
-        }
-    }
-
-    let mut storage: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let body = std.fs.readAll(alloc, fs, ".zero/readall-input.txt", 64)
-    if body.has {
-        let mut buf: owned<ByteBuf> = body.value
-        let bytes = std.mem.bufBytes(&buf)
-        if std.mem.eqlBytes(bytes, std.mem.span("read all ok\n")) {
-            check world.out.write("fs readAll ok\n")
-        }
-    }
-}
+pub fn main Void world World !
+  let fs std.fs.host()
+  let created std.fs.create fs ".zero/readall-input.txt"
+  if created.has
+    mut file owned<File> created.value
+    if == (std.fs.writeAll (&mut file) (std.mem.span "read all ok\n")) false
+      ret
+  mut storage [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  let body std.fs.readAll alloc fs ".zero/readall-input.txt" 64
+  if body.has
+    mut buf owned<ByteBuf> body.value
+    let bytes std.mem.bufBytes (&buf)
+    if std.mem.eqlBytes bytes (std.mem.span "read all ok\n")
+      check world.out.write "fs readAll ok\n"

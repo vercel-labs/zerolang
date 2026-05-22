@@ -1,12 +1,11 @@
-const answer: i32 = 42
-const byte: u8 = 7_u8
+const answer i32 42
 
-pub fun main(world: World) -> Void raises {
-  let value: i32 = answer
-  let small: u8 = byte
-  if value == 42 && small == 7_u8 {
-    check world.out.write("const ok\n")
-  } else {
-    check world.out.write("const broke\n")
-  }
-}
+const byte u8 7_u8
+
+pub fn main Void world World !
+  let value i32 answer
+  let small u8 byte
+  if && (== value 42) (== small 7_u8)
+    check world.out.write "const ok\n"
+  else
+    check world.out.write "const broke\n"

@@ -1,4 +1,3 @@
 extern c "conformance/c/unsupported.h" as c
 
-pub fun main() -> Void {
-}
+pub fn main Void

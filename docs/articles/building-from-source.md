@@ -77,7 +77,7 @@ bin/zero build --emit obj --target darwin-arm64 examples/direct-call-add.0 --out
 ```
 
 Use `bin/zero check --json --emit obj --target <target> <input>` before a build
-when an agent needs a structured readiness packet without writing artifacts.
+when an agent needs structured readiness data without writing artifacts.
 
 ## Current Language Subset
 
@@ -85,15 +85,15 @@ The compiler supports the command-line language subset used by the examples:
 
 - multi-file manifest packages
 - functions and typed parameters
-- typed `let` and `let mut`
+- typed `let` and `mut`
 - fixed array literals, repeat literals, and assignment
 - `defer`
 - `match`
-- `check`, `return`, `if`, `else`, and `while`
+- `check`, `ret`, `if`, `else`, and `while`
 - calls and member calls
 - strings, numbers, booleans, and binary operators
-- `shape` and `extern shape`
-- shape literals and direct field access
+- `type` and `extern type`
+- type literals and direct field access
 - `enum`
 - payload and no-payload `choice` tags
 - `owned<T>`, `Span<T>`, `ref<T>`, and `mutref<T>` checks for the documented subset

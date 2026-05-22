@@ -1,13 +1,10 @@
-pub fun main(world: World) -> Void raises {
-    let mut storage: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let mut total: usize = 0
-    let first = std.mem.allocBytes(alloc, 16)
-    let second = std.mem.allocBytes(alloc, 8)
-    if first.has && second.has {
-        total = std.mem.len(first.value) + std.mem.len(second.value)
-    }
-    if total == 24 {
-        check world.out.write("arena\n")
-    }
-}
+pub fn main Void world World !
+  mut storage [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  mut total usize 0
+  let first std.mem.allocBytes alloc 16
+  let second std.mem.allocBytes alloc 8
+  if && first.has second.has
+    set total + (std.mem.len first.value) (std.mem.len second.value)
+  if == total 24
+    check world.out.write "arena\n"

@@ -1,14 +1,10 @@
-fun first_or_none(bytes: Span<u8>, index: usize) -> Maybe<u8> raises {
-    check std.mem.get(bytes, index)
-    return std.mem.get(bytes, index)
-}
+fn first_or_none Maybe<u8> bytes Span<u8> index usize !
+  check std.mem.get bytes index
+  ret std.mem.get bytes index
 
-pub fun main(world: World) -> Void raises {
-    let bytes: [2]u8 = [8, 9]
-    let hit = first_or_none(bytes, 1)
-    let miss = first_or_none(bytes, 9)
-
-    if hit.has && hit.value == 9_u8 && miss.has == false {
-        check world.out.write("check maybe fallibility ok\n")
-    }
-}
+pub fn main Void world World !
+  let bytes [2]u8 [8, 9]
+  let hit first_or_none bytes 1
+  let miss first_or_none bytes 9
+  if && (&& hit.has (== hit.value 9_u8)) (== miss.has false)
+    check world.out.write "check maybe fallibility ok\n"

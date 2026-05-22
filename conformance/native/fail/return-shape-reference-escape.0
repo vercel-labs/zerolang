@@ -1,11 +1,8 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-pub fun make() -> Box {
-    let value = 1
-    return Box { value: &value }
-}
+pub fn make Box
+  let value 1
+  ret Box . value (&value)
 
-pub fun main() -> Void {
-}
+pub fn main Void

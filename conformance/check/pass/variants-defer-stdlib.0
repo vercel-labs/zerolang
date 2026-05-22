@@ -2,28 +2,23 @@ use std.codec
 use std.parse
 use std.time
 
-enum Status {
-    ready,
-    failed,
-}
+enum Status
+  ready
+  failed
 
-choice Result {
-    ok,
-    failed: i32,
-}
+choice Result
+  ok
+  failed i32
 
-fun cleanup() -> Void {
-    return
-}
+fn cleanup Void
+  ret
 
-pub fun main(world: World) -> Void raises {
-    defer cleanup()
-    let status: Status = Status.ready
-    let result: Result = Result.ok
-    let bytes = std.codec.readU32("abcd")
-    let digits = std.parse.scanDigits("123abc")
-    let duration = std.time.add(std.time.ms(1), std.time.seconds(1))
-    if digits == 3 && bytes > 0 && std.time.asMsFloor(duration) > 0 {
-        check world.out.write("variants std\n")
-    }
-}
+pub fn main Void world World !
+  defer cleanup()
+  let status Status Status.ready
+  let result Result Result.ok
+  let bytes std.codec.readU32 "abcd"
+  let digits std.parse.scanDigits "123abc"
+  let duration std.time.add (std.time.ms 1) (std.time.seconds 1)
+  if && (&& (== digits 3) (> bytes 0)) (> (std.time.asMsFloor duration) 0)
+    check world.out.write "variants std\n"

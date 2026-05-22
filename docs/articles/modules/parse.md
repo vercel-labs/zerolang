@@ -18,22 +18,20 @@ Current limits:
 
 - Source position and span types.
 - Rich cursor objects beyond the current allocation-free scanner primitives.
-- Token and diagnostic packets shared by language and data parsers.
+- Token and diagnostic data shared by language and data parsers.
 
 ## Example
 
 ```zero
 use std.parse
 
-pub fun main(world: World) -> Void raises {
-    let digit = std.parse.isAsciiDigit("7")
-    let ident = std.parse.isIdentifierStart("_")
-    let scanned = std.parse.scanDigits("123abc")
-    let parsed = std.parse.parseU16("8080")
-    if digit && ident && scanned == 3 && parsed.has && parsed.value == 8080 {
-        check world.out.write("parse primitives ok\n")
-    }
-}
+pub fn main Void world World !
+  let digit std.parse.isAsciiDigit "7"
+  let ident std.parse.isIdentifierStart "_"
+  let scanned std.parse.scanDigits "123abc"
+  let parsed std.parse.parseU16 "8080"
+  if && (&& (&& (&& digit ident) (== scanned 3)) parsed.has) (== parsed.value 8080)
+    check world.out.write "parse primitives ok\n"
 ```
 
 ## Design Notes

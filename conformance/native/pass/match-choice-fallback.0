@@ -1,18 +1,12 @@
-choice Event {
-    key: i32,
-    quit,
-}
+choice Event
+  key i32
+  quit
 
-pub fun main(world: World) -> Void raises {
-    let event: Event = Event.quit
-    match event {
-        .key => code {
-            if code == 1 {
-                check world.out.write("unexpected key\n")
-            }
-        }
-        ._ {
-            check world.out.write("choice fallback ok\n")
-        }
-    }
-}
+pub fn main Void world World !
+  let event Event Event.quit
+  match event
+    key code
+      if == code 1
+        check world.out.write "unexpected key\n"
+    _
+      check world.out.write "choice fallback ok\n"

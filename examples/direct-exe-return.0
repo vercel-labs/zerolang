@@ -1,3 +1,2 @@
-export c fun main() -> i32 {
-    return 42
-}
+export c fn main i32
+  ret 42

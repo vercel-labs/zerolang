@@ -1,11 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let token = Token { kind: 1, offset: 7 }
-    if token.kind == 1 && token.offset == 7 {
-        check world.out.write("ident\n")
-    }
-}
+type Token
+  kind i32
+  offset i32
 
-shape Token {
-    kind: i32,
-    offset: i32,
-}
+pub fn main Void world World !
+  let token Token . kind 1 offset 7
+  if && (== token.kind 1) (== token.offset 7)
+    check world.out.write "ident\n"

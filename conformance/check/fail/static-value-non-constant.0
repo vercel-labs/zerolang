@@ -1,9 +1,7 @@
-fun keep<T, static N: usize>(value: T) -> T {
-    return value
-}
+fn keep<T: Type, static N: usize> T value T
+  ret value
 
-pub fun main(world: World) -> Void raises {
-    let runtime_len: usize = 4
-    let _value = keep<u8, runtime_len>(1)
-    check world.out.write("bad static value\n")
-}
+pub fn main Void world World !
+  let runtime_len usize 4
+  let _value keep<u8, runtime_len> 1
+  check world.out.write "bad static value\n"

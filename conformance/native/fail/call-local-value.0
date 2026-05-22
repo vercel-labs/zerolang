@@ -1,4 +1,3 @@
-pub fun main() -> Void {
-    let x = 1
-    let y: i32 = x()
-}
+pub fn main Void
+  let x 1
+  let y i32 x()

@@ -1,14 +1,11 @@
-shape Holder {
-    value: ref<i32>,
+type Holder
+  value ref<i32>
 
-    fun store(self: mutref<Self>, next: ref<i32>) -> Void {
-        self.value = next
-    }
-}
+  fn store Void self mutref<Self> next ref<i32>
+    set self.value next
 
-pub fun main() -> Void {
-    let old = 1
-    let next = 2
-    let mut holder = Holder { value: &old }
-    holder.store(&next)
-}
+pub fn main Void
+  let old 1
+  let next 2
+  mut holder Holder . value (&old)
+  holder.store (&next)

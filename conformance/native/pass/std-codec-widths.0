@@ -1,9 +1,7 @@
-pub fun main(world: World) -> Void raises {
-    let byte: u8 = std.codec.readU8("A")
-    let word: u16 = std.codec.readU16("AB")
-    let number: u32 = std.codec.readU32("ABCD")
-    let length: usize = std.codec.encodedVarintLen(300)
-    if byte == 65 && word == 16961 && number > 0 && length == 2 {
-        check world.out.write("codec widths ok\n")
-    }
-}
+pub fn main Void world World !
+  let byte u8 std.codec.readU8 "A"
+  let word u16 std.codec.readU16 "AB"
+  let number u32 std.codec.readU32 "ABCD"
+  let length usize std.codec.encodedVarintLen 300
+  if && (&& (&& (== byte 65) (== word 16961)) (> number 0)) (== length 2)
+    check world.out.write "codec widths ok\n"

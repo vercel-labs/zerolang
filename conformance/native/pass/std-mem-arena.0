@@ -1,12 +1,9 @@
-pub fun main(world: World) -> Void raises {
-    let mut storage: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut arena = std.mem.arena(storage)
-    let first = std.mem.allocBytes(arena, 8)
-    if first.has && std.mem.capacity(arena) == 16 {
-        std.mem.reset(&mut arena)
-        let second = std.mem.allocBytes(arena, 16)
-        if second.has {
-            check world.out.write("arena ok\n")
-        }
-    }
-}
+pub fn main Void world World !
+  mut storage [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut arena std.mem.arena storage
+  let first std.mem.allocBytes arena 8
+  if && first.has (== (std.mem.capacity arena) 16)
+    std.mem.reset (&mut arena)
+    let second std.mem.allocBytes arena 16
+    if second.has
+      check world.out.write "arena ok\n"

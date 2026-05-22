@@ -1,7 +1,5 @@
-export c fun bad_export_raises(value: i32) -> i32 raises {
-    return value
-}
+export c fn bad_export_raises i32 value i32 !
+  ret value
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("bad c export raises")
-}
+pub fn main Void world World !
+  check world.out.write "bad c export raises"

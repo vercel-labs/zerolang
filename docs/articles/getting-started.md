@@ -19,9 +19,8 @@ writes it to `$HOME/.zero/bin/zero`.
 Create `hello.0`:
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    check world.out.write("hello from zero\n")
-}
+pub fn main Void world World !
+  check world.out.write "hello from zero\n"
 ```
 
 Run the checker:
@@ -32,11 +31,11 @@ zero check hello.0
 
 The important parts are:
 
-- `pub fun main(...)` declares the program entry point.
-- `world: World` is the capability object passed to the program by the runtime.
-- `world.out.write(...)` writes through that explicit capability.
+- `pub fn main` declares the program entry point.
+- `world World` is the capability object passed to the program by the runtime.
+- `world.out.write ...` writes through that explicit capability.
 - `check` handles a fallible operation.
-- `raises` marks that `main` can return an error.
+- `!` marks that `main` can return an error.
 
 Zero makes effects visible. A program that writes output asks for `World`
 instead of reading a hidden global process object.
@@ -46,18 +45,15 @@ instead of reading a hidden global process object.
 Create `add.0`:
 
 ```zero
-fun answer() -> i32 {
-    return 40 + 2
-}
+fn answer i32
+  ret + 40 2
 
-pub fun main(world: World) -> Void raises {
-    let value = answer()
-    if value == 42 {
-        check world.out.write("math works\n")
-    } else {
-        check world.out.write("math broke\n")
-    }
-}
+pub fn main Void world World !
+  let value answer()
+  if == value 42
+    check world.out.write "math works\n"
+  else
+    check world.out.write "math broke\n"
 ```
 
 Run it:
@@ -109,7 +105,7 @@ They cover:
 - `let` bindings
 - functions and return values
 - conditionals
-- `shape` data declarations
+- `type` data declarations
 - `enum`, `choice`, and `match`
 
 ## Inspect A Package

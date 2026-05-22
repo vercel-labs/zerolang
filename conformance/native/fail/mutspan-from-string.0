@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let writable: MutSpan<u8> = std.mem.span("hi")
-    writable[0] = 72
-    check world.out.write("bad mutable span\n")
-}
+pub fn main Void world World !
+  let writable MutSpan<u8> std.mem.span "hi"
+  set writable[0] 72
+  check world.out.write "bad mutable span\n"

@@ -1,10 +1,8 @@
-export c fun main() -> i32 {
-    let values: [4]i32 = [1, 2, 3, 4]
-    let mut i: usize = 0
-    let mut sum: i32 = 0
-    while i < 4 {
-        sum = sum + values[i]
-        i = i + 1
-    }
-    return sum
-}
+export c fn main i32
+  let values [4]i32 [1, 2, 3, 4]
+  mut i usize 0
+  mut sum i32 0
+  while < i 4
+    set sum + sum values[i]
+    set i + i 1
+  ret sum

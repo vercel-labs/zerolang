@@ -16,15 +16,13 @@ Current limits:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let mode = std.env.get("ZERO_MODE")
-    if mode.has {
-        check world.out.write(mode.value)
-        check world.out.write("\n")
-    } else {
-        check world.out.write("default\n")
-    }
-}
+pub fn main Void world World !
+  let mode std.env.get "ZERO_MODE"
+  if mode.has
+    check world.out.write mode.value
+    check world.out.write "\n"
+  else
+    check world.out.write "default\n"
 ```
 
 ## Design Notes

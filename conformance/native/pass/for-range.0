@@ -1,11 +1,7 @@
-pub fun main(world: World) -> Void raises {
-    for index in 0..5 {
-        if index == 1 {
-            continue
-        }
-        if index == 4 {
-            break
-        }
-        check world.out.write("range tick\n")
-    }
-}
+pub fn main Void world World !
+  for index 0 .. 5
+    if == index 1
+      continue
+    if == index 4
+      break
+    check world.out.write "range tick\n"

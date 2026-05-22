@@ -1,13 +1,9 @@
-pub fun main(world: World) -> Void raises {
-    let bytes: [3]u8 = [65, 0, 66]
-    let mut read_buf: [3]u8 = [0, 0, 0]
-
-    let written = std.fs.writeBytes(".zero/conformance/std-fs-bytes.bin", bytes)
-    let read = std.fs.readBytes(".zero/conformance/std-fs-bytes.bin", read_buf)
-    let missing = std.fs.readBytes(".zero/conformance/missing.bin", read_buf)
-
-    if written.has && written.value == 3 && read.has && read.value == 3 && read_buf[1] == 0_u8 && missing.has == false {
-        check world.err.write("fs bytes err ok\n")
-        check world.out.write("fs bytes ok\n")
-    }
-}
+pub fn main Void world World !
+  let bytes [3]u8 [65, 0, 66]
+  mut read_buf [3]u8 [0, 0, 0]
+  let written std.fs.writeBytes ".zero/conformance/std-fs-bytes.bin" bytes
+  let read std.fs.readBytes ".zero/conformance/std-fs-bytes.bin" read_buf
+  let missing std.fs.readBytes ".zero/conformance/missing.bin" read_buf
+  if && (&& (&& (&& (&& written.has (== written.value 3)) read.has) (== read.value 3)) (== read_buf[1] 0_u8)) (== missing.has false)
+    check world.err.write "fs bytes err ok\n"
+    check world.out.write "fs bytes ok\n"

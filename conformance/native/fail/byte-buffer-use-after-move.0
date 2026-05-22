@@ -1,14 +1,11 @@
-fun consume(buf: owned<ByteBuf>) -> Void {
-}
+fn consume Void buf owned<ByteBuf>
 
-pub fun main(world: World) -> Void raises {
-    let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let maybe = std.mem.byteBuf(alloc, 4)
-    if maybe.has {
-        let buf: owned<ByteBuf> = maybe.value
-        consume(buf)
-        let bytes = std.mem.bufBytes(&buf)
-        check world.out.write("used moved byte buffer")
-    }
-}
+pub fn main Void world World !
+  mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  let maybe std.mem.byteBuf alloc 4
+  if maybe.has
+    let buf owned<ByteBuf> maybe.value
+    consume buf
+    let bytes std.mem.bufBytes (&buf)
+    check world.out.write "used moved byte buffer"

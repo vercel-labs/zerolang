@@ -125,9 +125,8 @@ describe("native zero CLI", () => {
       );
       await writeFile(
         join(src, "main.0"),
-        `pub fun main(world: World) -> Void raises {
-    check world.out.write("hello from demo\\n")
-}
+        `pub fn main Void world World !
+  check world.out.write "hello from demo\\n"
 `,
       );
 
@@ -197,7 +196,7 @@ describe("native zero CLI", () => {
     const languageSkill = JSON.parse((await runZero(["skills", "get", "zero-language", "--json"])).stdout);
     assert.equal(languageSkill.success, true);
     assert.match(languageSkill.data[0].content, /# Zero Language/);
-    assert.match(languageSkill.data[0].content, /pub fun main/);
+    assert.match(languageSkill.data[0].content, /pub fn main/);
 
     const diagnosticSkill = JSON.parse((await runZero(["skills", "get", "zero-diagnostics", "--json"])).stdout);
     assert.equal(diagnosticSkill.success, true);

@@ -1,18 +1,14 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-fun sum(point: Point) -> i32 {
-    return point.x + point.y
-}
+fn sum i32 point Point
+  ret + point.x point.y
 
-pub fun main(world: World) -> Void raises {
-    let point = Point { x: 40, y: 2 }
-    let total = sum(point)
-    if total == 42 {
-        check world.out.write("point works\n")
-    } else {
-        check world.out.write("point broke\n")
-    }
-}
+pub fn main Void world World !
+  let point Point . x 40 y 2
+  let total sum point
+  if == total 42
+    check world.out.write "point works\n"
+  else
+    check world.out.write "point broke\n"

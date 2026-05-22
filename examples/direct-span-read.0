@@ -1,6 +1,4 @@
-export c fun main() -> u8 {
-    if std.mem.len("token"[1..4]) == 3 {
-        return "token"[1..4][1]
-    }
-    return 0_u8
-}
+export c fn main u8
+  if == (std.mem.len "token"[1..4]) 3
+    ret "token"[1..4][1]
+  ret 0_u8

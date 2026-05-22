@@ -1,30 +1,22 @@
-pub fun main(world: World) -> Void raises {
-    let maybe_request = std.args.get(1)
-    if maybe_request.has == false {
-        check world.err.write("usage: pass HTTP request envelope\n")
-        return
-    }
-
-    let net = std.net.host()
-    let client = std.http.client(net)
-    let mut response: [512]u8 = [0_u8; 512]
-    let result = std.http.fetch(client, std.mem.span(maybe_request.value), response, std.time.ms(5000))
-    if std.http.resultOk(result) == false {
-        check world.err.write("http json fetch failed\n")
-        return
-    }
-
-    let body_len = std.http.resultBodyLen(result)
-    let body_offset = std.http.responseBodyOffset(response)
-    let bytes = response[body_offset..body_offset + body_len]
-    let mut arena_buf: [16]u8 = [0_u8; 16]
-    let mut arena = std.mem.fixedBufAlloc(arena_buf)
-    let parsed = std.json.parseBytes(arena, bytes)
-    if parsed.has &&
-        std.json.validateBytes(bytes) &&
-        std.json.streamTokensBytes(bytes) == 3 {
-        check world.out.write("http json ok\n")
-        return
-    }
-    check world.err.write("http json parse failed\n")
-}
+pub fn main Void world World !
+  let maybe_request std.args.get 1
+  if == maybe_request.has false
+    check world.err.write "usage: pass HTTP request envelope\n"
+    ret
+  let net std.net.host()
+  let client std.http.client net
+  mut response [512]u8 [0_u8;512]
+  let result std.http.fetch client (std.mem.span maybe_request.value) response (std.time.ms 5000)
+  if == (std.http.resultOk result) false
+    check world.err.write "http json fetch failed\n"
+    ret
+  let body_len std.http.resultBodyLen result
+  let body_offset std.http.responseBodyOffset response
+  let bytes response[body_offset..+ body_offset body_len]
+  mut arena_buf [16]u8 [0_u8;16]
+  mut arena std.mem.fixedBufAlloc arena_buf
+  let parsed std.json.parseBytes arena bytes
+  if && (&& parsed.has (std.json.validateBytes bytes)) (== (std.json.streamTokensBytes bytes) 3)
+    check world.out.write "http json ok\n"
+    ret
+  check world.err.write "http json parse failed\n"

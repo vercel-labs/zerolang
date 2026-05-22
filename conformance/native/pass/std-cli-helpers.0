@@ -1,11 +1,7 @@
-pub fun main(world: World) -> Void raises {
-    let mut path_storage: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let path = check std.path.join(path_storage, ".zero", "cli-dir")
-    if std.fs.makeDir(path) && std.fs.isDir(path) {
-        if std.mem.eql(std.path.basename(path), "cli-dir") {
-            if std.fs.removeDir(path) {
-                check world.out.write("cli helpers ok\n")
-            }
-        }
-    }
-}
+pub fn main Void world World !
+  mut path_storage [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let path check std.path.join path_storage ".zero" "cli-dir"
+  if && (std.fs.makeDir path) (std.fs.isDir path)
+    if std.mem.eql (std.path.basename path) "cli-dir"
+      if std.fs.removeDir path
+        check world.out.write "cli helpers ok\n"

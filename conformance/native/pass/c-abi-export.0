@@ -1,15 +1,11 @@
-extern shape CPoint {
-    x: i32,
-    y: i32,
-}
+extern type CPoint
+  x i32
+  y i32
 
-export c fun zero_add(a: i32, b: i32) -> i32 {
-    return a + b
-}
+export c fn zero_add i32 a i32 b i32
+  ret + a b
 
-pub fun main(world: World) -> Void raises {
-    let point = CPoint { x: 2, y: 3 }
-    if zero_add(point.x, point.y) == 5 {
-        check world.out.write("c abi export ok\n")
-    }
-}
+pub fn main Void world World !
+  let point CPoint . x 2 y 3
+  if == (zero_add point.x point.y) 5
+    check world.out.write "c abi export ok\n"

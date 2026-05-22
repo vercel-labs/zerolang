@@ -1,10 +1,7 @@
-fun none<T>() -> Maybe<T> {
-    return null
-}
+fn none<T: Type> Maybe<T>
+  ret null
 
-pub fun main(world: World) -> Void raises {
-    let value: Maybe<i32> = none()
-    if value.has == false {
-        check world.out.write("generic expected return ok\n")
-    }
-}
+pub fn main Void world World !
+  let value Maybe<i32> none()
+  if == value.has false
+    check world.out.write "generic expected return ok\n"

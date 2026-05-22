@@ -1,7 +1,5 @@
-enum E {
-    a,
-    a,
-}
+enum E
+  a
+  a
 
-pub fun main() -> Void {
-}
+pub fn main Void

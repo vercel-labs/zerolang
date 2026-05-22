@@ -1,5 +1,10 @@
-fun helper(value:i32)->i32{if value==0{return 1}else{return value}}
-pub fun main()->Void{
-let count=helper(1)
-while count!=0{break}
-}
+fn helper i32 value i32
+  if == value 0
+    ret 1
+  else
+    ret value
+
+pub fn main Void
+  let count helper 1
+  while != count 0
+    break

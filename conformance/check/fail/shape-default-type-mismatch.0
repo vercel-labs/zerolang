@@ -1,7 +1,5 @@
-shape BadDefault {
-    count: usize = "nope",
-}
+type BadDefault
+  count usize "nope"
 
-pub fun main() -> Void {
-    let value: BadDefault = BadDefault {}
-}
+pub fn main Void
+  let value BadDefault BadDefault .

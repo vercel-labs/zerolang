@@ -1,16 +1,11 @@
-choice Slot {
-    some: ref<i32>,
-    none,
-}
+choice Slot
+  some ref<i32>
+  none
 
-pub fun main() -> Void {
-    let value = 1
-    let slot: Slot = Slot.some(&value)
-    match slot {
-        .some => borrowed {
-            let _same: ref<i32> = borrowed
-        }
-        .none {
-        }
-    }
-}
+pub fn main Void
+  let value 1
+  let slot Slot Slot.some (&value)
+  match slot
+    some borrowed
+      let _same ref<i32> borrowed
+    none

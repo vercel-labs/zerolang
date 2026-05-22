@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let values: [3]i32 = [10, 20, 30]
-    if values[3] == 0 {
-        check world.out.write("unreachable\n")
-    }
-}
+pub fn main Void world World !
+  let values [3]i32 [10, 20, 30]
+  if == values[3] 0
+    check world.out.write "unreachable\n"

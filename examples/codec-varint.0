@@ -1,9 +1,7 @@
 use std.codec
 
-pub fun main(world: World) -> Void raises {
-    let len = std.codec.encodedVarintLen(300)
-    let checksum = std.codec.crc32("zero")
-    if len == 2 && checksum > 0 {
-        check world.out.write("codec primitives ok\n")
-    }
-}
+pub fn main Void world World !
+  let len std.codec.encodedVarintLen 300
+  let checksum std.codec.crc32 "zero"
+  if && (== len 2) (> checksum 0)
+    check world.out.write "codec primitives ok\n"

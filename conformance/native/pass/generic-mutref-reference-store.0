@@ -1,14 +1,11 @@
-shape Cell<T> {
-    value: ref<T>,
-}
+type Cell<T: Type>
+  value ref<T>
 
-fun store<T>(cell: mutref<Cell<T>>, next: ref<T>) -> Void {
-    cell.value = next
-}
+fn store<T: Type> Void cell mutref<Cell<T>> next ref<T>
+  set cell.value next
 
-pub fun main() -> Void {
-    let old = 1
-    let next = 2
-    let mut cell: Cell<i32> = Cell { value: &old }
-    store<i32>(&mut cell, &next)
-}
+pub fn main Void
+  let old 1
+  let next 2
+  mut cell Cell<i32> Cell . value (&old)
+  store<i32> (&mut cell) (&next)

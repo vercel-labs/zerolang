@@ -1,7 +1,5 @@
-fun identity<T>(value: T) -> T {
-  return value
-}
+fn identity<T: Type> T value T
+  ret value
 
-export c fun main() -> u8 {
-  return identity<u8>(42_u8)
-}
+export c fn main u8
+  ret identity<u8> 42_u8

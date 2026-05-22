@@ -1,3 +1,2 @@
-pub fun main() -> Void {
-    let _status = std.proc.spawn("zero-noop")
-}
+pub fn main Void
+  let _status std.proc.spawn "zero-noop"

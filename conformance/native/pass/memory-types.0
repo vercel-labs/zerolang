@@ -1,12 +1,9 @@
-shape BufferView {
-    bytes: Span<u8>,
-}
+type BufferView
+  bytes Span<u8>
 
-pub fun main(world: World) -> Void raises {
-    let left: Span<u8> = std.mem.span("memory")
-    let right = std.mem.span("memory")
-    let view = BufferView { bytes: left }
-    if std.mem.len(view.bytes) == 6 && std.mem.eqlBytes(view.bytes, right) {
-        check world.out.write("native memory types")
-    }
-}
+pub fn main Void world World !
+  let left Span<u8> std.mem.span "memory"
+  let right std.mem.span "memory"
+  let view BufferView . bytes left
+  if && (== (std.mem.len view.bytes) 6) (std.mem.eqlBytes view.bytes right)
+    check world.out.write "native memory types"

@@ -602,7 +602,7 @@ assert.equal(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.activeBor
 assert.equal(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.activeBorrows[0].path, "");
 assert.equal(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.activeBorrows[0].kind, "shared");
 assert.equal(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.activeBorrows[0].binding, "shared");
-assert.equal(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.activeBorrows[0].bindingDecl.line, 11);
+assert.equal(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.activeBorrows[0].bindingDecl.line, 9);
 assert.match(agentSurfaceBorrowLifetimeBody.diagnostics[0].borrowTrace.repair, /inner block|lexical scope/);
 
 const agentSurfaceBorrowMultiple = await execFileAsync(zero, ["check", "--json", "conformance/agent-surface/fixtures/borrow-multiple-active-borrows.0"]).catch((error) => error);
@@ -624,7 +624,7 @@ const agentSurfaceUnresolvedImport = await execFileAsync(zero, ["check", "--json
 assert.notEqual(agentSurfaceUnresolvedImport.code, 0);
 const agentSurfaceUnresolvedImportBody = JSON.parse(agentSurfaceUnresolvedImport.stdout);
 assert.equal(agentSurfaceUnresolvedImportBody.diagnostics[0].code, "IMP001");
-assert.match(agentSurfaceUnresolvedImportBody.diagnostics[0].expected, /src\/missing\.utility\.0/);
+assert.match(agentSurfaceUnresolvedImportBody.diagnostics[0].expected, /missing\.utility\.0 or missing\.utility\/mod\.0/);
 
 const agentSurfaceMalformedUse = await execFileAsync(zero, ["check", "--json", "conformance/agent-surface/fixtures/malformed-use-current.0"]).catch((error) => error);
 assert.notEqual(agentSurfaceMalformedUse.code, 0);
@@ -635,7 +635,7 @@ assert.equal(agentSurfaceMalformedUseBody.diagnostics[0].line, 1);
 assert.equal(agentSurfaceMalformedUseBody.diagnostics[0].column, 8);
 
 const agentSurfaceMalformedLocalUseFixture = `${outDir}/malformed-local-use.0`;
-await writeFile(agentSurfaceMalformedLocalUseFixture, 'use local.\n\npub fun main(world: World) -> Void raises {\n    check world.out.write("malformed local use parser fixture\\n")\n}\n');
+await writeFile(agentSurfaceMalformedLocalUseFixture, 'use local.\n\npub fn main Void world World !\n  check world.out.write "malformed local use parser fixture\\n"\n');
 const agentSurfaceMalformedLocalUse = await execFileAsync(zero, ["check", "--json", agentSurfaceMalformedLocalUseFixture]).catch((error) => error);
 assert.notEqual(agentSurfaceMalformedLocalUse.code, 0);
 const agentSurfaceMalformedLocalUseBody = JSON.parse(agentSurfaceMalformedLocalUse.stdout);
@@ -645,7 +645,7 @@ assert.equal(agentSurfaceMalformedLocalUseBody.diagnostics[0].line, 1);
 assert.equal(agentSurfaceMalformedLocalUseBody.diagnostics[0].column, 10);
 
 const agentSurfaceSplitUseFixture = `${outDir}/split-use-path.0`;
-await writeFile(agentSurfaceSplitUseFixture, 'use std.\ncodec\n\npub fun main(world: World) -> Void raises {\n    check world.out.write("split use parser fixture\\n")\n}\n');
+await writeFile(agentSurfaceSplitUseFixture, 'use std.\ncodec\n\npub fn main Void world World !\n  check world.out.write "split use parser fixture\\n"\n');
 const agentSurfaceSplitUse = await execFileAsync(zero, ["check", "--json", agentSurfaceSplitUseFixture]).catch((error) => error);
 assert.notEqual(agentSurfaceSplitUse.code, 0);
 const agentSurfaceSplitUseBody = JSON.parse(agentSurfaceSplitUse.stdout);
@@ -655,7 +655,7 @@ assert.equal(agentSurfaceSplitUseBody.diagnostics[0].line, 1);
 assert.equal(agentSurfaceSplitUseBody.diagnostics[0].column, 8);
 
 const agentSurfaceKeywordUseFixture = `${outDir}/keyword-use.0`;
-await writeFile(agentSurfaceKeywordUseFixture, 'use pub\n\npub fun main(world: World) -> Void raises {\n    check world.out.write("keyword use parser fixture\\n")\n}\n');
+await writeFile(agentSurfaceKeywordUseFixture, 'use pub\n\npub fn main Void world World !\n  check world.out.write "keyword use parser fixture\\n"\n');
 const agentSurfaceKeywordUse = await execFileAsync(zero, ["check", "--json", agentSurfaceKeywordUseFixture]).catch((error) => error);
 assert.notEqual(agentSurfaceKeywordUse.code, 0);
 const agentSurfaceKeywordUseBody = JSON.parse(agentSurfaceKeywordUse.stdout);
@@ -911,10 +911,9 @@ assert(directI64ObjBytes.includes(Buffer.from([0x48, 0x01, 0xc8])));
 
 const directMachOU64LiteralSource = `${outDir}/direct-macho-u64-literal.0`;
 const directMachOU64LiteralOut = `${outDir}/direct-macho-u64-literal.o`;
-await writeFile(directMachOU64LiteralSource, `export c fun main() -> u64 {
-    let value: u64 = 4294967296
-    return value
-}
+await writeFile(directMachOU64LiteralSource, `export c fn main u64
+  let value u64 4294967296
+  ret value
 `);
 const directMachOU64LiteralJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "darwin-arm64", directMachOU64LiteralSource, "--out", directMachOU64LiteralOut]);
 const directMachOU64LiteralBody = JSON.parse(directMachOU64LiteralJson.stdout);
@@ -925,9 +924,8 @@ assert(directMachOU64LiteralBytes.includes(Buffer.from([0x28, 0x00, 0xc0, 0xf2])
 
 const directMachOU64DivSource = `${outDir}/direct-macho-u64-div.0`;
 const directMachOU64DivOut = `${outDir}/direct-macho-u64-div.o`;
-await writeFile(directMachOU64DivSource, `export c fun main(a: u64, b: u64) -> u64 {
-    return a / b
-}
+await writeFile(directMachOU64DivSource, `export c fn main u64 a u64 b u64
+  ret / a b
 `);
 const directMachOU64DivJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "darwin-arm64", directMachOU64DivSource, "--out", directMachOU64DivOut]);
 const directMachOU64DivBody = JSON.parse(directMachOU64DivJson.stdout);
@@ -939,9 +937,8 @@ assert(!directMachOU64DivBytes.includes(Buffer.from([0x00, 0x09, 0xc9, 0x1a])));
 
 const directMachOU64ModSource = `${outDir}/direct-macho-u64-mod.0`;
 const directMachOU64ModOut = `${outDir}/direct-macho-u64-mod.o`;
-await writeFile(directMachOU64ModSource, `export c fun main(a: u64, b: u64) -> u64 {
-    return a % b
-}
+await writeFile(directMachOU64ModSource, `export c fn main u64 a u64 b u64
+  ret % a b
 `);
 const directMachOU64ModJson = await execFileAsync(zero, ["build", "--json", "--emit", "obj", "--target", "darwin-arm64", directMachOU64ModSource, "--out", directMachOU64ModOut]);
 const directMachOU64ModBody = JSON.parse(directMachOU64ModJson.stdout);
@@ -972,9 +969,9 @@ assert.equal(checkJsonFailureBody.diagnostics[0].fixSafety, "requires-human-revi
 assert.equal(checkJsonFailureBody.diagnostics[0].repair.id, "manual-review");
 
 for (const [fixture, message] of [
-  ["conformance/check/fail/parse-missing-brace.0", /expected '\}'/],
-  ["conformance/check/fail/parse-missing-comma.0", /expected '\{'/],
-  ["conformance/check/fail/parse-bad-type-args.0", /expected '\}'/],
+  ["conformance/check/fail/parse-missing-brace.0", /expected '\)' after expression group/],
+  ["conformance/check/fail/parse-missing-comma.0", /expected type name/],
+  ["conformance/check/fail/parse-bad-type-args.0", /expected '>' after generic parameters/],
 ]) {
   const parseFailure = await execFileAsync(zero, ["check", "--json", fixture]).catch((error) => error);
   assert.notEqual(parseFailure.code, 0);
@@ -994,16 +991,16 @@ assert.equal(missingImportBody.diagnostics[0].code, "IMP001");
 assert.match(missingImportBody.diagnostics[0].message, /unknown package-local import/);
 assert.equal(missingImportBody.diagnostics[0].path, "conformance/check/fail/missing-import/src/main.0");
 assert.equal(missingImportBody.diagnostics[0].line, 1);
-assert.equal(missingImportBody.diagnostics[0].column, 1);
-assert.equal(missingImportBody.diagnostics[0].length, 11);
+assert.equal(missingImportBody.diagnostics[0].column, 5);
+assert.equal(missingImportBody.diagnostics[0].length, 7);
 assert.equal(missingImportBody.diagnostics[0].fixSafety, "requires-human-review");
 
 const missingImportFixPlan = await execFileAsync(zero, ["fix", "--plan", "--json", "conformance/check/fail/missing-import"]);
 const missingImportFixPlanBody = JSON.parse(missingImportFixPlan.stdout);
 assert.equal(missingImportFixPlanBody.diagnostics[0].path, "conformance/check/fail/missing-import/src/main.0");
 assert.equal(missingImportFixPlanBody.diagnostics[0].line, 1);
-assert.equal(missingImportFixPlanBody.diagnostics[0].column, 1);
-assert.equal(missingImportFixPlanBody.diagnostics[0].length, 11);
+assert.equal(missingImportFixPlanBody.diagnostics[0].column, 5);
+assert.equal(missingImportFixPlanBody.diagnostics[0].length, 7);
 assert.equal(missingImportFixPlanBody.fixes[0].id, "fix-import-path");
 
 const importLineMapJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/import-line-map"]).catch((error) => error);
@@ -1012,7 +1009,7 @@ const importLineMapBody = JSON.parse(importLineMapJson.stdout);
 assert.equal(importLineMapBody.diagnostics[0].code, "PAR100");
 assert.equal(importLineMapBody.diagnostics[0].path, "conformance/check/fail/import-line-map/src/main.0");
 assert.equal(importLineMapBody.diagnostics[0].line, 4);
-assert.equal(importLineMapBody.diagnostics[0].column, 1);
+assert.equal(importLineMapBody.diagnostics[0].column, 26);
 
 const importedLineMapJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/imported-line-map"]).catch((error) => error);
 assert.notEqual(importedLineMapJson.code, 0);
@@ -1020,7 +1017,7 @@ const importedLineMapBody = JSON.parse(importedLineMapJson.stdout);
 assert.equal(importedLineMapBody.diagnostics[0].code, "TYP003");
 assert.equal(importedLineMapBody.diagnostics[0].path, "conformance/check/fail/imported-line-map/src/helper.0");
 assert.equal(importedLineMapBody.diagnostics[0].line, 2);
-assert.equal(importedLineMapBody.diagnostics[0].column, 5);
+assert.equal(importedLineMapBody.diagnostics[0].column, 3);
 
 const importFixLineMapPatch = await execFileAsync(zero, ["fix", "--patch", "--json", "conformance/check/fail/import-fix-line-map"]);
 const importFixLineMapPatchBody = JSON.parse(importFixLineMapPatch.stdout);
@@ -1028,7 +1025,7 @@ assert.equal(importFixLineMapPatchBody.diagnostics[0].code, "TYP009");
 assert.equal(importFixLineMapPatchBody.diagnostics[0].path, "conformance/check/fail/import-fix-line-map/src/helper.0");
 assert.equal(importFixLineMapPatchBody.patches[0].path, "conformance/check/fail/import-fix-line-map/src/helper.0");
 assert.equal(importFixLineMapPatchBody.patches[0].line, 2);
-assert.match(importFixLineMapPatchBody.patches[0].new, /let mut values/);
+assert.match(importFixLineMapPatchBody.patches[0].new, /mut values/);
 
 const importCycleJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/import-cycle"]).catch((error) => error);
 assert.notEqual(importCycleJson.code, 0);
@@ -1060,11 +1057,11 @@ const unresolvedNestedImportJson = await execFileAsync(zero, ["check", "--json",
 assert.notEqual(unresolvedNestedImportJson.code, 0);
 const unresolvedNestedImportBody = JSON.parse(unresolvedNestedImportJson.stdout);
 assert.equal(unresolvedNestedImportBody.diagnostics[0].code, "IMP001");
-assert.match(unresolvedNestedImportBody.diagnostics[0].expected, /src\/missing\.0/);
+assert.match(unresolvedNestedImportBody.diagnostics[0].expected, /missing\.0 or missing\/mod\.0/);
 assert.equal(unresolvedNestedImportBody.diagnostics[0].path, "conformance/check/fail/unresolved-nested-import/src/worker.0");
 assert.equal(unresolvedNestedImportBody.diagnostics[0].line, 1);
-assert.equal(unresolvedNestedImportBody.diagnostics[0].column, 1);
-assert.equal(unresolvedNestedImportBody.diagnostics[0].length, 11);
+assert.equal(unresolvedNestedImportBody.diagnostics[0].column, 5);
+assert.equal(unresolvedNestedImportBody.diagnostics[0].length, 7);
 
 const duplicatePublicLargeJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/duplicate-public-large"]).catch((error) => error);
 assert.notEqual(duplicatePublicLargeJson.code, 0);
@@ -1233,12 +1230,10 @@ assert.match(interfaceParamMismatchBody.diagnostics[0].expected, /ref<Counter>/)
 assert.match(interfaceParamMismatchBody.diagnostics[0].actual, /i32/);
 
 const interfaceStaticUnsupportedTypeFixture = `${outDir}/interface-static-unsupported-type.0`;
-await writeFile(interfaceStaticUnsupportedTypeFixture, `interface Bad<static N: String> {
-    fun value() -> u8
-}
+await writeFile(interfaceStaticUnsupportedTypeFixture, `interface Bad<static N: String>
+  fn value u8
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `);
 const interfaceStaticUnsupportedTypeJson = await execFileAsync(zero, ["check", "--json", interfaceStaticUnsupportedTypeFixture]).catch((error) => error);
 assert.notEqual(interfaceStaticUnsupportedTypeJson.code, 0);
@@ -1246,12 +1241,10 @@ const interfaceStaticUnsupportedTypeBody = JSON.parse(interfaceStaticUnsupported
 assert.equal(interfaceStaticUnsupportedTypeBody.diagnostics[0].code, "STC001");
 
 const interfaceMethodStaticUnsupportedTypeFixture = `${outDir}/interface-method-static-unsupported-type.0`;
-await writeFile(interfaceMethodStaticUnsupportedTypeFixture, `interface Bad {
-    fun value<static N: String>() -> u8
-}
+await writeFile(interfaceMethodStaticUnsupportedTypeFixture, `interface Bad
+  fn value<static N: String> u8
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `);
 const interfaceMethodStaticUnsupportedTypeJson = await execFileAsync(zero, ["check", "--json", interfaceMethodStaticUnsupportedTypeFixture]).catch((error) => error);
 assert.notEqual(interfaceMethodStaticUnsupportedTypeJson.code, 0);
@@ -1259,16 +1252,13 @@ const interfaceMethodStaticUnsupportedTypeBody = JSON.parse(interfaceMethodStati
 assert.equal(interfaceMethodStaticUnsupportedTypeBody.diagnostics[0].code, "STC001");
 
 const shapeMethodStaticUnsupportedTypeFixture = `${outDir}/shape-method-static-unsupported-type.0`;
-await writeFile(shapeMethodStaticUnsupportedTypeFixture, `shape Box {
-    value: u8,
+await writeFile(shapeMethodStaticUnsupportedTypeFixture, `type Box
+  value u8
 
-    fun value<static N: String>(self: ref<Self>) -> u8 {
-        return self.value
-    }
-}
+  fn value<static N: String> u8 self ref<Self>
+    ret self.value
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `);
 const shapeMethodStaticUnsupportedTypeJson = await execFileAsync(zero, ["check", "--json", shapeMethodStaticUnsupportedTypeFixture]).catch((error) => error);
 assert.notEqual(shapeMethodStaticUnsupportedTypeJson.code, 0);
@@ -1276,30 +1266,25 @@ const shapeMethodStaticUnsupportedTypeBody = JSON.parse(shapeMethodStaticUnsuppo
 assert.equal(shapeMethodStaticUnsupportedTypeBody.diagnostics[0].code, "STC001");
 
 const methodUnknownConstraintFixtures = [
-  {
-    name: "interface-method-unknown-constraint",
-    source: `interface Bad {
-    fun value<T: Missing>() -> u8
-}
+	  {
+	    name: "interface-method-unknown-constraint",
+	    source: `interface Bad
+  fn value<T: Missing> u8
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
-  {
-    name: "shape-method-unknown-constraint",
-    source: `shape Box {
-    value: u8,
+	  },
+	  {
+	    name: "shape-method-unknown-constraint",
+	    source: `type Box
+  value u8
 
-    fun value<T: Missing>(self: ref<Self>) -> u8 {
-        return self.value
-    }
-}
+  fn value<T: Missing> u8 self ref<Self>
+    ret self.value
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
+	  },
 ];
 
 for (const fixtureCase of methodUnknownConstraintFixtures) {
@@ -1312,73 +1297,60 @@ for (const fixtureCase of methodUnknownConstraintFixtures) {
 }
 
 const duplicateStaticGenericFixtures = [
-  {
-    name: "function-duplicate-static-param",
-    message: /duplicate generic parameter/,
-    source: `fun id<static N: usize, static N: usize>() -> u8 {
-    return 1
-}
+	  {
+	    name: "function-duplicate-static-param",
+	    message: /duplicate generic parameter/,
+	    source: `fn id<static N: usize, static N: usize> u8
+  ret 1
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
-  {
-    name: "interface-duplicate-static-param",
-    message: /duplicate generic parameter/,
-    source: `interface Bad<static N: usize, static N: usize> {
-    fun value() -> u8
-}
+	  },
+	  {
+	    name: "interface-duplicate-static-param",
+	    message: /duplicate generic parameter/,
+	    source: `interface Bad<static N: usize, static N: usize>
+  fn value u8
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
-  {
-    name: "shape-method-duplicate-static-param",
-    message: /duplicate generic parameter/,
-    source: `shape Box {
-    value: u8,
+	  },
+	  {
+	    name: "shape-method-duplicate-static-param",
+	    message: /duplicate generic parameter/,
+	    source: `type Box
+  value u8
 
-    fun value<static N: usize, static N: usize>(self: ref<Self>) -> u8 {
-        return self.value
-    }
-}
+  fn value<static N: usize, static N: usize> u8 self ref<Self>
+    ret self.value
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
-  {
-    name: "shape-method-static-shadows-shape-static",
-    message: /shadows outer generic parameter/,
-    source: `shape Box<static N: usize> {
-    value: [N]u8,
+	  },
+	  {
+	    name: "shape-method-static-shadows-shape-static",
+	    message: /shadows outer generic parameter/,
+	    source: `type Box<static N: usize>
+  value [N]u8
 
-    fun len<static N: usize>(self: ref<Self>) -> usize {
-        return N
-    }
-}
+  fn len<static N: usize> usize self ref<Self>
+    ret N
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
-  {
-    name: "shape-method-static-self-param",
-    message: /generic type parameter shadows Self type/,
-    source: `shape Box {
-    value: u8,
+	  },
+	  {
+	    name: "shape-method-static-self-param",
+	    message: /generic type parameter shadows Self type/,
+	    source: `type Box
+  value u8
 
-    fun value<static Self: usize>(self: ref<Self>) -> usize {
-        return Self
-    }
-}
+  fn value<static Self: usize> usize self ref<Self>
+    ret Self
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `,
-  },
+	  },
 ];
 
 for (const fixtureCase of duplicateStaticGenericFixtures) {
@@ -1393,16 +1365,13 @@ for (const fixtureCase of duplicateStaticGenericFixtures) {
 
 for (const value of ["4_", "M"]) {
   const fixture = `${outDir}/interface-static-constraint-${value.replace(/[^A-Za-z0-9]/g, "_")}.0`;
-  await writeFile(fixture, `interface First<T, static N: usize> {
-    fun first(self: ref<T>) -> u8
-}
+  await writeFile(fixture, `interface First<T: Type, static N: usize>
+  fn first u8 self ref<T>
 
-fun readFirst<T: First<T,${value}>>(value: ref<T>) -> u8 {
-    return T.first(value)
-}
+fn readFirst<T: First<T,${value}>> u8 value ref<T>
+  ret T.first value
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `);
   const interfaceStaticConstraintJson = await execFileAsync(zero, ["check", "--json", fixture]).catch((error) => error);
   assert.notEqual(interfaceStaticConstraintJson.code, 0);
@@ -1412,23 +1381,19 @@ pub fun main() -> Void {
 }
 
 const shapeMethodStaticParamFixture = `${outDir}/shape-method-static-param.0`;
-await writeFile(shapeMethodStaticParamFixture, `shape Box {
-    value: u8,
+await writeFile(shapeMethodStaticParamFixture, `type Box
+  value u8
 
-    fun tag<static N: usize>(self: ref<Self>) -> usize {
-        return N
-    }
+  fn tag<static N: usize> usize self ref<Self>
+    ret N
 
-    fun value<static N: usize>() -> usize {
-        return N
-    }
-}
+  fn value<static N: usize> usize
+    ret N
 
-pub fun main() -> Void {
-    let box: Box = Box { value: 1 }
-    let receiverTag: usize = box.tag<4>()
-    let namespaceTag: usize = Box.value<8>()
-}
+pub fn main Void
+  let box Box Box . value 1
+  let receiverTag usize box.tag<4>()
+  let namespaceTag usize Box.value<8>()
 `);
 const shapeMethodStaticParamJson = await execFileAsync(zero, ["check", "--json", shapeMethodStaticParamFixture]);
 const shapeMethodStaticParamBody = JSON.parse(shapeMethodStaticParamJson.stdout);
@@ -1442,44 +1407,36 @@ assert(shapeMethodStaticTag);
 assert(shapeMethodStaticTag.staticParams.some((item) => item.name === "N" && item.type === "usize" && item.staticDispatch === true));
 
 const shapeMethodStaticCanonicalFixture = `${outDir}/shape-method-static-canonical.0`;
-await writeFile(shapeMethodStaticCanonicalFixture, `shape Box {
-    fun take<static N: usize>(a: [N]u8, b: [N]u8) -> usize {
-        return N
-    }
-}
+await writeFile(shapeMethodStaticCanonicalFixture, `type Box
+  fn take<static N: usize> usize a [N]u8 b [N]u8
+    ret N
 
-pub fun main() -> Void {
-    let a: [4]u8 = [1, 2, 3, 4]
-    let b: [0x4]u8 = [1, 2, 3, 4]
-    let inferred: usize = Box.take(a, b)
-    let explicit: usize = Box.take<0x4>(a, b)
-}
+pub fn main Void
+  let a [4]u8 [1, 2, 3, 4]
+  let b [0x4]u8 [1, 2, 3, 4]
+  let inferred usize Box.take a b
+  let explicit usize Box.take<0x4> a b
 `);
 const shapeMethodStaticCanonicalJson = await execFileAsync(zero, ["check", "--json", shapeMethodStaticCanonicalFixture]);
 const shapeMethodStaticCanonicalBody = JSON.parse(shapeMethodStaticCanonicalJson.stdout);
 assert.equal(shapeMethodStaticCanonicalBody.ok, true);
 
 const interfaceMethodStaticParamFixture = `${outDir}/interface-method-static-param.0`;
-await writeFile(interfaceMethodStaticParamFixture, `interface Width<T> {
-    fun width<static N: usize>(self: ref<T>) -> usize
-}
+await writeFile(interfaceMethodStaticParamFixture, `interface Width<T: Type>
+  fn width<static N: usize> usize self ref<T>
 
-shape Bytes {
-    value: u8,
+type Bytes
+  value u8
 
-    fun width<static N: usize>(self: ref<Self>) -> usize {
-        return N
-    }
-}
+  fn width<static N: usize> usize self ref<Self>
+    ret N
 
-fun readWidth<T: Width<T>>(value: ref<T>) -> usize {
-    return T.width<4>(value)
-}
+fn readWidth<T: Width<T>> usize value ref<T>
+  ret T.width<4> value
 
-pub fun main() -> Void {
-    let bytes: Bytes = Bytes { value: 1 }
-    let width: usize = readWidth<Bytes>(&bytes)
-}
+pub fn main Void
+  let bytes Bytes Bytes . value 1
+  let width usize readWidth<Bytes> (&bytes)
 `);
 const interfaceMethodStaticParamJson = await execFileAsync(zero, ["check", "--json", interfaceMethodStaticParamFixture]);
 const interfaceMethodStaticParamBody = JSON.parse(interfaceMethodStaticParamJson.stdout);
@@ -1498,26 +1455,21 @@ assert(interfaceMethodStaticBytesWidth);
 assert(interfaceMethodStaticBytesWidth.staticParams.some((item) => item.name === "N" && item.type === "usize" && item.staticDispatch === true));
 
 const interfaceMethodStaticRenamedParamFixture = `${outDir}/interface-method-static-renamed-param.0`;
-await writeFile(interfaceMethodStaticRenamedParamFixture, `interface Width<T> {
-    fun width<static N: usize>(self: ref<T>, bytes: [N]u8) -> [N]u8
-}
+await writeFile(interfaceMethodStaticRenamedParamFixture, `interface Width<T: Type>
+  fn width<static N: usize> [N]u8 self ref<T> bytes [N]u8
 
-shape Bytes {
-    value: u8,
+type Bytes
+  value u8
 
-    fun width<static M: usize>(self: ref<Self>, bytes: [M]u8) -> [M]u8 {
-        return bytes
-    }
-}
+  fn width<static M: usize> [M]u8 self ref<Self> bytes [M]u8
+    ret bytes
 
-fun readWidth<T: Width<T>>(value: ref<T>, bytes: [4]u8) -> [4]u8 {
-    return T.width<4>(value, bytes)
-}
+fn readWidth<T: Width<T>> [4]u8 value ref<T> bytes [4]u8
+  ret T.width<4> value bytes
 
-pub fun main() -> Void {
-    let bytes: Bytes = Bytes { value: 1 }
-    let output: [4]u8 = readWidth<Bytes>(&bytes, [1, 2, 3, 4])
-}
+pub fn main Void
+  let bytes Bytes Bytes . value 1
+  let output [4]u8 readWidth<Bytes> (&bytes) ([1, 2, 3, 4])
 `);
 const interfaceMethodStaticRenamedParamJson = await execFileAsync(zero, ["check", "--json", interfaceMethodStaticRenamedParamFixture]);
 const interfaceMethodStaticRenamedParamBody = JSON.parse(interfaceMethodStaticRenamedParamJson.stdout);
@@ -1536,26 +1488,21 @@ assert(interfaceMethodStaticRenamedBytesWidth);
 assert(interfaceMethodStaticRenamedBytesWidth.staticParams.some((item) => item.name === "M" && item.type === "usize" && item.staticDispatch === true));
 
 const staticInterfaceReturnMismatchFixture = `${outDir}/static-interface-return-mismatch.0`;
-await writeFile(staticInterfaceReturnMismatchFixture, `interface Sized<T, static N: usize> {
-    fun bytes(self: ref<T>) -> [N]u8
-}
+await writeFile(staticInterfaceReturnMismatchFixture, `interface Sized<T: Type, static N: usize>
+  fn bytes [N]u8 self ref<T>
 
-shape Bytes<static N: usize> {
-    items: [N]u8,
+type Bytes<static N: usize>
+  items [N]u8
 
-    fun bytes(self: ref<Self>) -> [N]u8 {
-        return self.items
-    }
-}
+  fn bytes [N]u8 self ref<Self>
+    ret self.items
 
-fun read<T: Sized<T,N>, static N: usize>(value: ref<T>) -> [N]u8 {
-    return T.bytes(value)
-}
+fn read<T: Sized<T,N>, static N: usize> [N]u8 value ref<T>
+  ret T.bytes value
 
-pub fun main() -> Void {
-    let bytes: Bytes<4> = Bytes { items: [1, 2, 3, 4] }
-    let out: [3]u8 = read<Bytes<4>,3>(&bytes)
-}
+pub fn main Void
+  let bytes Bytes<4> Bytes . items ([1, 2, 3, 4])
+  let out [3]u8 read<Bytes<4>,3> (&bytes)
 `);
 const staticInterfaceReturnMismatchJson = await execFileAsync(zero, ["check", "--json", staticInterfaceReturnMismatchFixture]).catch((error) => error);
 assert.notEqual(staticInterfaceReturnMismatchJson.code, 0);
@@ -1565,27 +1512,22 @@ assert.match(staticInterfaceReturnMismatchBody.diagnostics[0].expected, /\[3\]u8
 assert.match(staticInterfaceReturnMismatchBody.diagnostics[0].actual, /\[4\]u8/);
 
 const shapeMethodGenericConstraintFixture = `${outDir}/shape-method-generic-constraint.0`;
-await writeFile(shapeMethodGenericConstraintFixture, `interface NeedsMethod<T> {
-    fun need(self: ref<T>) -> u8
-}
+await writeFile(shapeMethodGenericConstraintFixture, `interface NeedsMethod<T: Type>
+  fn need u8 self ref<T>
 
-shape Box {
-    value: u8,
+type Box
+  value u8
 
-    fun accept<T: NeedsMethod<T>>(self: ref<Self>, item: T) -> u8 {
-        return self.value
-    }
-}
+  fn accept<T: NeedsMethod<T>> u8 self ref<Self> item T
+    ret self.value
 
-shape Plain {
-    value: u8,
-}
+type Plain
+  value u8
 
-pub fun main() -> Void {
-    let box: Box = Box { value: 1 }
-    let plain: Plain = Plain { value: 2 }
-    let out: u8 = box.accept<Plain>(plain)
-}
+pub fn main Void
+  let box Box Box . value 1
+  let plain Plain Plain . value 2
+  let out u8 box.accept<Plain> plain
 `);
 const shapeMethodGenericConstraintJson = await execFileAsync(zero, ["check", "--json", shapeMethodGenericConstraintFixture]).catch((error) => error);
 assert.notEqual(shapeMethodGenericConstraintJson.code, 0);
@@ -1593,35 +1535,28 @@ const shapeMethodGenericConstraintBody = JSON.parse(shapeMethodGenericConstraint
 assert.equal(shapeMethodGenericConstraintBody.diagnostics[0].code, "IFC002");
 
 const interfaceMethodGenericConstraintFixture = `${outDir}/interface-method-generic-constraint.0`;
-await writeFile(interfaceMethodGenericConstraintFixture, `interface NeedsMethod<T> {
-    fun need(self: ref<T>) -> u8
-}
+await writeFile(interfaceMethodGenericConstraintFixture, `interface NeedsMethod<T: Type>
+  fn need u8 self ref<T>
 
-interface Caller<T> {
-    fun accept<U: NeedsMethod<U>>(self: ref<T>, item: U) -> u8
-}
+interface Caller<T: Type>
+  fn accept<U: NeedsMethod<U>> u8 self ref<T> item U
 
-shape Box {
-    value: u8,
+type Box
+  value u8
 
-    fun accept<U: NeedsMethod<U>>(self: ref<Self>, item: U) -> u8 {
-        return self.value
-    }
-}
+  fn accept<U: NeedsMethod<U>> u8 self ref<Self> item U
+    ret self.value
 
-shape Plain {
-    value: u8,
-}
+type Plain
+  value u8
 
-fun read<T: Caller<T>>(value: ref<T>, plain: Plain) -> u8 {
-    return T.accept<Plain>(value, plain)
-}
+fn read<T: Caller<T>> u8 value ref<T> plain Plain
+  ret T.accept<Plain> value plain
 
-pub fun main() -> Void {
-    let box: Box = Box { value: 1 }
-    let plain: Plain = Plain { value: 2 }
-    let out: u8 = read<Box>(&box, plain)
-}
+pub fn main Void
+  let box Box Box . value 1
+  let plain Plain Plain . value 2
+  let out u8 read<Box> (&box) plain
 `);
 const interfaceMethodGenericConstraintJson = await execFileAsync(zero, ["check", "--json", interfaceMethodGenericConstraintFixture]).catch((error) => error);
 assert.notEqual(interfaceMethodGenericConstraintJson.code, 0);
@@ -1629,124 +1564,100 @@ const interfaceMethodGenericConstraintBody = JSON.parse(interfaceMethodGenericCo
 assert.equal(interfaceMethodGenericConstraintBody.diagnostics[0].code, "IFC002");
 
 const interfaceMethodGenericMismatchFixtures = [
-  {
-    name: "interface-method-generic-constraint-mismatch",
-    code: "IFC005",
-    message: /constraint does not match/,
-    source: `interface NeedsA<T> {
-    fun needA(self: ref<T>) -> u8
-}
+	  {
+	    name: "interface-method-generic-constraint-mismatch",
+	    code: "IFC005",
+	    message: /constraint does not match/,
+	    source: `interface NeedsA<T: Type>
+  fn needA u8 self ref<T>
 
-interface NeedsB<T> {
-    fun needB(self: ref<T>) -> u8
-}
+interface NeedsB<T: Type>
+  fn needB u8 self ref<T>
 
-interface Caller<T> {
-    fun accept<U: NeedsA<U>>(self: ref<T>, item: U) -> u8
-}
+interface Caller<T: Type>
+  fn accept<U: NeedsA<U>> u8 self ref<T> item U
 
-shape Box {
-    value: u8,
+type Box
+  value u8
 
-    fun accept<U: NeedsB<U>>(self: ref<Self>, item: U) -> u8 {
-        return self.value
-    }
-}
+  fn accept<U: NeedsB<U>> u8 self ref<Self> item U
+    ret self.value
 
-shape A {
-    value: u8,
+type A
+  value u8
 
-    fun needA(self: ref<Self>) -> u8 {
-        return self.value
-    }
-}
+  fn needA u8 self ref<Self>
+    ret self.value
 
-fun read<T: Caller<T>>(value: ref<T>, item: A) -> u8 {
-    return T.accept<A>(value, item)
-}
+fn read<T: Caller<T>> u8 value ref<T> item A
+  ret T.accept<A> value item
 
-pub fun main() -> Void {
-    let box: Box = Box { value: 1 }
-    let a: A = A { value: 2 }
-    let out: u8 = read<Box>(&box, a)
-}
+pub fn main Void
+  let box Box Box . value 1
+  let a A A . value 2
+  let out u8 read<Box> (&box) a
 `,
-  },
-  {
-    name: "interface-method-missing-static-param",
-    code: "IFC003",
-    source: `interface Width<T> {
-    fun width<static N: usize>(self: ref<T>) -> usize
-}
+	  },
+	  {
+	    name: "interface-method-missing-static-param",
+	    code: "IFC003",
+	    source: `interface Width<T: Type>
+  fn width<static N: usize> usize self ref<T>
 
-shape Bytes {
-    value: u8,
+type Bytes
+  value u8
 
-    fun width(self: ref<Self>) -> usize {
-        return 1
-    }
-}
+  fn width usize self ref<Self>
+    ret 1
 
-fun readWidth<T: Width<T>>(value: ref<T>) -> usize {
-    return T.width<4>(value)
-}
+fn readWidth<T: Width<T>> usize value ref<T>
+  ret T.width<4> value
 
-pub fun main() -> Void {
-    let bytes: Bytes = Bytes { value: 1 }
-    let width: usize = readWidth<Bytes>(&bytes)
-}
+pub fn main Void
+  let bytes Bytes Bytes . value 1
+  let width usize readWidth<Bytes> (&bytes)
 `,
-  },
-  {
-    name: "interface-method-extra-static-param",
-    code: "IFC003",
-    source: `interface Width<T> {
-    fun width(self: ref<T>) -> usize
-}
+	  },
+	  {
+	    name: "interface-method-extra-static-param",
+	    code: "IFC003",
+	    source: `interface Width<T: Type>
+  fn width usize self ref<T>
 
-shape Bytes {
-    value: u8,
+type Bytes
+  value u8
 
-    fun width<static N: usize>(self: ref<Self>) -> usize {
-        return N
-    }
-}
+  fn width<static N: usize> usize self ref<Self>
+    ret N
 
-fun readWidth<T: Width<T>>(value: ref<T>) -> usize {
-    return T.width(value)
-}
+fn readWidth<T: Width<T>> usize value ref<T>
+  ret T.width value
 
-pub fun main() -> Void {
-    let bytes: Bytes = Bytes { value: 1 }
-    let width: usize = readWidth<Bytes>(&bytes)
-}
+pub fn main Void
+  let bytes Bytes Bytes . value 1
+  let width usize readWidth<Bytes> (&bytes)
 `,
-  },
-  {
-    name: "interface-method-static-param-type-mismatch",
-    code: "IFC005",
-    source: `interface Width<T> {
-    fun width<static N: usize>(self: ref<T>) -> usize
-}
+	  },
+	  {
+	    name: "interface-method-static-param-type-mismatch",
+	    code: "IFC005",
+	    source: `interface Width<T: Type>
+  fn width<static N: usize> usize self ref<T>
 
-shape Bytes {
-    value: u8,
+type Bytes
+  value u8
 
-    fun width<static N: Bool>(self: ref<Self>) -> usize {
-        return 1
-    }
-}
+  fn width<static N: Bool> usize self ref<Self>
+    ret 1
 
-fun readWidth<T: Width<T>>(value: ref<T>) -> usize {
-    return T.width<4>(value)
-}
+fn readWidth<T: Width<T>> usize value ref<T>
+  ret T.width<4> value
 
-pub fun main() -> Void {
-    let bytes: Bytes = Bytes { value: 1 }
-    let width: usize = readWidth<Bytes>(&bytes)
-}
+pub fn main Void
+  let bytes Bytes Bytes . value 1
+  let width usize readWidth<Bytes> (&bytes)
 `,
-  },
+	  },
 ];
 
 for (const fixtureCase of interfaceMethodGenericMismatchFixtures) {
@@ -1773,13 +1684,11 @@ assert.equal(staticNonConstantBody.diagnostics[0].repair.id, "pass-constant-stat
 
 for (const value of ["4_", "4__5", "0x_1", "4_nope"]) {
   const fixture = `${outDir}/static-value-malformed-${value.replace(/[^A-Za-z0-9]/g, "_")}.0`;
-  await writeFile(fixture, `shape FixedVec<T, static N: usize> {
-    items: [N]T,
-}
+  await writeFile(fixture, `type FixedVec<T: Type, static N: usize>
+  items [N]T
 
-pub fun main() -> Void {
-    let _vec: FixedVec<u8,${value}> = FixedVec { items: [1, 2, 3, 4] }
-}
+pub fn main Void
+  let _vec FixedVec<u8,${value}> FixedVec . items ([1, 2, 3, 4])
 `);
   const malformedStaticJson = await execFileAsync(zero, ["check", "--json", fixture]).catch((error) => error);
   assert.notEqual(malformedStaticJson.code, 0);
@@ -1790,11 +1699,9 @@ pub fun main() -> Void {
 
 for (const value of ["4_", "4__5", "0x_1", "4_nope"]) {
   const fixture = `${outDir}/array-length-malformed-${value.replace(/[^A-Za-z0-9]/g, "_")}.0`;
-  await writeFile(fixture, `fun take(bytes: [${value}]u8) -> Void {
-}
+  await writeFile(fixture, `fn take Void bytes [${value}]u8
 
-pub fun main() -> Void {
-}
+pub fn main Void
 `);
   const malformedArrayJson = await execFileAsync(zero, ["check", "--json", fixture]).catch((error) => error);
   assert.notEqual(malformedArrayJson.code, 0);
@@ -1956,7 +1863,7 @@ const fixPatchBody = JSON.parse(fixPatchJson.stdout);
 assert.equal(fixPatchBody.mode, "patch");
 assert.equal(fixPatchBody.appliesEdits, false);
 assert.equal(fixPatchBody.fixes[0].appliesEdits, true);
-assert.match(fixPatchBody.patches[0].new, /let mut dst/);
+assert.match(fixPatchBody.patches[0].new, /mut dst/);
 
 const fixApplyFixture = `${outDir}/fix-apply-mutable.0`;
 await writeFile(fixApplyFixture, await readFile("conformance/native/fail/mem-copy-immutable-dst.0", "utf8"));
@@ -1964,7 +1871,7 @@ const fixApplyJson = await execFileAsync(zero, ["fix", "--apply", "--json", fixA
 const fixApplyBody = JSON.parse(fixApplyJson.stdout);
 assert.equal(fixApplyBody.mode, "apply");
 assert.equal(fixApplyBody.applied, true);
-assert.match(await readFile(fixApplyFixture, "utf8"), /let mut dst/);
+assert.match(await readFile(fixApplyFixture, "utf8"), /mut dst/);
 await execFileAsync(zero, ["check", fixApplyFixture]);
 
 const importGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/imports"]);
@@ -2000,10 +1907,10 @@ await writeFile(`${whitespaceUsePackage}/zero.json`, JSON.stringify({
   deps: {},
 }, null, 2));
 await mkdir(`${whitespaceUsePackage}/src/math`, { recursive: true });
-await writeFile(`${whitespaceUsePackage}/src/math.0`, 'fun add_one(value: i32) -> i32 {\n    return value + 1\n}\n');
-await writeFile(`${whitespaceUsePackage}/src/math/util.0`, 'fun add_two(value: i32) -> i32 {\n    return value + 2\n}\n');
-await writeFile(`${whitespaceUsePackage}/src/types.0`, 'shape Point {\n    value: i32,\n}\n');
-await writeFile(`${whitespaceUsePackage}/src/main.0`, 'use\tmath\nuse math . util\nuse   types   as   model\n\npub fun main(world: World) -> Void raises {\n    let point = Point { value: add_two(40) }\n    if point.value == add_one(41) {\n        check world.out.write("whitespace imports pass\\n")\n    }\n}\n');
+await writeFile(`${whitespaceUsePackage}/src/math.0`, 'fn add_one i32 value i32\n  ret + value 1\n');
+await writeFile(`${whitespaceUsePackage}/src/math/util.0`, 'fn add_two i32 value i32\n  ret + value 2\n');
+await writeFile(`${whitespaceUsePackage}/src/types.0`, 'type Point\n  value i32\n');
+await writeFile(`${whitespaceUsePackage}/src/main.0`, 'use math\nuse math . util\nuse   types   as   model\n\npub fn main Void world World !\n  let point Point . value (add_two 40)\n  if == point.value (add_one 41)\n    check world.out.write "whitespace imports pass\\n"\n');
 const whitespaceUseCheck = await execFileAsync(zero, ["check", "--json", whitespaceUsePackage]);
 assert.equal(JSON.parse(whitespaceUseCheck.stdout).ok, true);
 const whitespaceUseGraph = await execFileAsync(zero, ["graph", "--json", whitespaceUsePackage]);
@@ -2057,28 +1964,26 @@ const lexerTokens = await execFileAsync(zero, ["tokens", "--json", "conformance/
 const lexerTokensBody = JSON.parse(lexerTokens.stdout);
 assert.equal(lexerTokensBody.schemaVersion, 1);
 assert.deepEqual(lexerTokensBody.tokens.slice(0, 4).map((token) => `${token.kind}:${token.text}`), [
-  "keyword:use",
-  "keyword:pub",
-  "keyword:fun",
-  "ident:main",
+  "word:use",
+  "word:std",
+  "symbol:.",
+  "word:mem",
 ]);
-assert.deepEqual(lexerTokensBody.tokens.slice(4, 8).map((token) => token.text), ["123", "0xff", "0b101", "42_u8"]);
-assert.deepEqual(lexerTokensBody.tokens.slice(8, 12).map((token) => `${token.kind}:${token.text}`), [
+assert.deepEqual(lexerTokensBody.tokens.filter((token) => token.kind === "number").map((token) => token.text), ["123", "0xff", "0b101", "42_u8"]);
+assert.deepEqual(lexerTokensBody.tokens.filter((token) => token.kind === "string" || token.kind === "char").map((token) => `${token.kind}:${token.text}`), [
   "string:hi",
   "char:120",
-  "symbol:(",
-  "symbol:)",
 ]);
 assert.equal(lexerTokensBody.tokens[0].line, 1);
 assert.equal(lexerTokensBody.tokens[0].column, 1);
 assert.equal(lexerTokensBody.tokens[0].offset, 0);
 assert.equal(lexerTokensBody.tokens[0].length, 3);
-assert.equal(lexerTokensBody.tokens[5].offset, 21);
-assert.equal(lexerTokensBody.tokens[5].length, 4);
-assert.equal(lexerTokensBody.tokens[12].kind, "ident");
-assert.equal(lexerTokensBody.tokens[12].text, "main");
-assert.equal(lexerTokensBody.tokens[12].line, 2);
-assert.equal(lexerTokensBody.tokens[12].column, 1);
+assert.equal(lexerTokensBody.tokens[5].offset, 12);
+assert.equal(lexerTokensBody.tokens[5].length, 3);
+assert.equal(lexerTokensBody.tokens[7].kind, "word");
+assert.equal(lexerTokensBody.tokens[7].text, "main");
+assert.equal(lexerTokensBody.tokens[7].line, 2);
+assert.equal(lexerTokensBody.tokens[7].column, 8);
 assert.equal(lexerTokensBody.tokens.at(-1).kind, "eof");
 assert.equal(lexerTokensBody.tokens.at(-1).length, 0);
 
@@ -2127,7 +2032,7 @@ assert(pushMethod.shapeStaticParams.some((item) => item.name === "N" && item.sta
 const aliasGraph = await execFileAsync(zero, ["graph", "--json", "examples/type-alias.0"]);
 const aliasGraphBody = JSON.parse(aliasGraph.stdout);
 assert(aliasGraphBody.aliases.some((item) => item.name === "BytePair" && item.target === "Pair<u8,u8>"));
-assert(aliasGraphBody.symbols.some((item) => item.name === "BytePair" && item.kind === "alias"));
+assert(aliasGraphBody.symbols.some((item) => item.name === "BytePair" && item.kind === "type-alias"));
 
 const staticMethodGraph = await execFileAsync(zero, ["graph", "--json", "examples/static-method.0"]);
 const staticMethodGraphBody = JSON.parse(staticMethodGraph.stdout);
@@ -2453,47 +2358,38 @@ assert.match(fmtImportsRun.stdout, /use math/);
 assert.match(fmtImportsRun.stdout, /use types/);
 
 const fmtCoreRun = await execFileAsync(zero, ["fmt", "conformance/check/pass/fmt-core-usability.0"]);
-assert.equal(fmtCoreRun.stdout, `type ByteCount = usize
+assert.equal(fmtCoreRun.stdout, `alias ByteCount usize
 
-shape Counter {
-    value: i32,
-    fun add(self: ref<Self>, amount: i32) -> i32 {
-        return self.value + amount
-    }
-}
+type Counter
+  value i32
 
-enum State {
-    ready,
-    done,
-}
+  fn add i32 self ref<Self> amount i32
+    ret + self.value amount
 
-pub fun main() -> Void {
-    let count: ByteCount = 42_usize
-    let counter: Counter = Counter { value: 40 }
-    let state: State = State.ready
-    match state {
-        .ready {
-            expect(Counter.add(&counter, 2) == 42)
-        }
-        ._ {
-            expect(count == 42_usize)
-        }
-    }
-}
+enum State
+  ready
+  done
+
+pub fn main Void
+  let count ByteCount 42_usize
+  let counter Counter Counter . value 40
+  let state State State.ready
+  match state
+    ready
+      expect (== (Counter.add (&counter) 2) 42)
+    _
+      expect (== count 42_usize)
 `);
 
 const fmtMessyRun = await execFileAsync(zero, ["fmt", "conformance/format/messy.0"]);
-assert.equal(fmtMessyRun.stdout, `pub fun main(world: World) -> Void raises {
-    check world.out.write("format me\\n")
-}
+assert.equal(fmtMessyRun.stdout, `pub fn main Void world World !
+  check world.out.write "format me\\n"
 `);
 
 const fmtSyntaxLocalRun = await execFileAsync(zero, ["fmt", "conformance/format/syntax-local.0"]);
-assert.equal(fmtSyntaxLocalRun.stdout, `pub fun main() -> Void {
-    let text = "{not a block}"
-    // comment { also not a block }
-    unknown_name(text)
-}
+assert.equal(fmtSyntaxLocalRun.stdout, `pub fn main Void
+  let text "{not a block}"
+  unknown_name text
 `);
 const fmtIdempotentPath = `${outDir}/fmt-idempotent.0`;
 await writeFile(fmtIdempotentPath, fmtSyntaxLocalRun.stdout);
@@ -2501,64 +2397,55 @@ const fmtIdempotentRun = await execFileAsync(zero, ["fmt", fmtIdempotentPath]);
 assert.equal(fmtIdempotentRun.stdout, fmtSyntaxLocalRun.stdout);
 
 const fmtFunctionsBlocksRun = await execFileAsync(zero, ["fmt", "conformance/format/functions-blocks.0"]);
-assert.equal(fmtFunctionsBlocksRun.stdout, `fun helper(value: i32) -> i32 {
-    if value == 0 {
-        return 1
-    } else {
-        return value
-    }
-}
-pub fun main() -> Void {
-    let count = helper(1)
-    while count != 0 {
-        break
-    }
-}
+assert.equal(fmtFunctionsBlocksRun.stdout, `fn helper i32 value i32
+  if == value 0
+    ret 1
+  else
+    ret value
+
+pub fn main Void
+  let count helper 1
+  while != count 0
+    break
 `);
 
 const fmtDataTypesRun = await execFileAsync(zero, ["fmt", "conformance/format/data-types.0"]);
-assert.equal(fmtDataTypesRun.stdout, `shape Point {
-    x: i32,
-    y: i32,
-}
-enum State {
-    ready,
-    done,
-}
-choice Event {
-    key: i32,
-    quit,
-}
+assert.equal(fmtDataTypesRun.stdout, `type Point
+  x i32
+  y i32
+
+enum State
+  ready
+  done
+
+choice Event
+  key i32
+  quit
 `);
 
 const fmtGenericsStaticRun = await execFileAsync(zero, ["fmt", "conformance/format/generics-static.0"]);
-assert.equal(fmtGenericsStaticRun.stdout, `shape Box<T, static N: usize> {
-    items: [N]T,
-}
-fun first<T, static N: usize>(box: ref<Box<T, N>>) -> T {
-    return box.items[0]
-}
-pub fun main() -> Void {
-    let value: Box<u8, 4> = Box { items: [1, 2, 3, 4] }
-}
+assert.equal(fmtGenericsStaticRun.stdout, `type Box<T: Type, static N: usize>
+  items [N]T
+
+fn first<T: Type, static N: usize> T box ref<Box<T,N>>
+  ret box.items[0]
+
+pub fn main Void
+  let value Box<u8,4> Box . items ([1, 2, 3, 4])
 `);
 
 const fmtMatchRun = await execFileAsync(zero, ["fmt", "conformance/format/match-expressions.0"]);
-assert.equal(fmtMatchRun.stdout, `choice Event {
-    key: i32,
-    quit,
-}
-pub fun main() -> Void {
-    let event: Event = Event.key(7)
-    match event {
-        .key => code {
-            expect(code == 7)
-        }
-        ._ {
-            expect(false == true)
-        }
-    }
-}
+assert.equal(fmtMatchRun.stdout, `choice Event
+  key i32
+  quit
+
+pub fn main Void
+  let event Event Event.key 7
+  match event
+    key code
+      expect (== code 7)
+    _
+      expect (== false true)
 `);
 
 const helloRunArgs = runnableExeArgs("conformance/run/pass/hello.0", `${outDir}/hello`);
@@ -3005,15 +2892,15 @@ assert.match(literalSuffixOverflow.stderr, /TYP016/);
 
 const charEmpty = await execFileAsync(zero, ["check", "conformance/native/fail/char-empty.0"]).catch((error) => error);
 assert.notEqual(charEmpty.code, 0);
-assert.match(charEmpty.stderr, /TYP018/);
+assert.match(charEmpty.stderr, /PAR100/);
 
 const charMultiple = await execFileAsync(zero, ["check", "conformance/native/fail/char-multiple.0"]).catch((error) => error);
 assert.notEqual(charMultiple.code, 0);
-assert.match(charMultiple.stderr, /TYP018/);
+assert.match(charMultiple.stderr, /PAR100/);
 
 const charBadEscape = await execFileAsync(zero, ["check", "conformance/native/fail/char-bad-escape.0"]).catch((error) => error);
 assert.notEqual(charBadEscape.code, 0);
-assert.match(charBadEscape.stderr, /TYP018/);
+assert.match(charBadEscape.stderr, /PAR100/);
 
 const charToString = await execFileAsync(zero, ["check", "conformance/native/fail/char-to-string.0"]).catch((error) => error);
 assert.notEqual(charToString.code, 0);

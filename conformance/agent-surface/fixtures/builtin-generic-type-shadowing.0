@@ -1,7 +1,5 @@
-fun identity<String>(value: String) -> String {
-    return value
-}
+fn identity<String: Type> String value String
+  ret value
 
-pub fun main() -> Void {
-    let value: i32 = identity<i32>(1)
-}
+pub fn main Void
+  let value i32 identity<i32> 1

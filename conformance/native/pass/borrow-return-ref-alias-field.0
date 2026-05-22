@@ -1,14 +1,11 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-fun field(point: ref<Point>) -> ref<i32> {
-    let alias = point
-    return &alias.x
-}
+fn field ref<i32> point ref<Point>
+  let alias point
+  ret &alias.x
 
-pub fun main() -> Void {
-    let point = Point { x: 1, y: 2 }
-    let current = field(&point)
-}
+pub fn main Void
+  let point Point . x 1 y 2
+  let current field (&point)

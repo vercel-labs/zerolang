@@ -1,22 +1,18 @@
 use config
 use payload
 
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let mut path_storage: [96]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let path = check std.path.join(path_storage, outputDir(), outputName())
-
-    let mut payload_storage: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let payload_len = writePayload(payload_storage)
-    let mut created: owned<File> = check std.fs.createOrRaise(fs, path)
-    check std.fs.writeAllOrRaise(&mut created, payload_storage[0..payload_len])
-    let written_len: usize = check std.fs.fileLenOrRaise(&mut created)
-    std.fs.close(&mut created)
-
-    let mut opened: owned<File> = check std.fs.openOrRaise(fs, path)
-    let mut read_storage: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let read_len: usize = check std.fs.readOrRaise(&mut opened, read_storage)
-    if written_len == payload_len && read_len == payload_len && payloadOk(read_storage[0..read_len]) {
-        check world.out.write("resource cli ok\n")
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  mut path_storage [96]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let path check std.path.join path_storage (outputDir()) (outputName())
+  mut payload_storage [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let payload_len writePayload payload_storage
+  mut created owned<File> check std.fs.createOrRaise fs path
+  check std.fs.writeAllOrRaise (&mut created) payload_storage[0..payload_len]
+  let written_len usize check std.fs.fileLenOrRaise (&mut created)
+  std.fs.close (&mut created)
+  mut opened owned<File> check std.fs.openOrRaise fs path
+  mut read_storage [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let read_len usize check std.fs.readOrRaise (&mut opened) read_storage
+  if && (&& (== written_len payload_len) (== read_len payload_len)) (payloadOk read_storage[0..read_len])
+    check world.out.write "resource cli ok\n"

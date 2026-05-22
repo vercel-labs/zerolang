@@ -1,5 +1,4 @@
-export c fun main() -> usize {
-    let mut dst: [5]u8 = [0_u8, 0_u8, 0_u8, 0_u8, 0_u8]
-    let span: MutSpan<u8> = dst
-    return std.mem.len(span)
-}
+export c fn main usize
+  mut dst [5]u8 [0_u8, 0_u8, 0_u8, 0_u8, 0_u8]
+  let span MutSpan<u8> dst
+  ret std.mem.len span

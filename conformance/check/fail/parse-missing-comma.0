@@ -1,3 +1,2 @@
-fun add(left: i32 right: i32) -> i32 {
-    return left + right
-}
+fn add i32 left i32 right i32 extra
+  ret + left right

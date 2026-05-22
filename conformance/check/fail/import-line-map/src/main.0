@@ -1,4 +1,4 @@
 use helper
-pub fun main(world: World) -> Void raises {
-    check world.out.write("a"
-}
+
+pub fn main Void world World !
+  check world.out.write ("a"

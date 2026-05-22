@@ -1,9 +1,7 @@
-shape Item {
-    value: i32,
-}
+type Item
+  value i32
 
-shape Box<Item> {
-    value: Item,
-}
+type Box<Item: Type>
+  value Item
 
-pub fun main() -> Void {}
+pub fn main Void

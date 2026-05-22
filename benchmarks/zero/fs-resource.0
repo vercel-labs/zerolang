@@ -1,14 +1,11 @@
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let mut file: owned<File> = check std.fs.createOrRaise(fs, ".zero/bench/zero-fs-resource.txt")
-    check std.fs.writeAllOrRaise(&mut file, std.mem.span("fs resource payload\n"))
-    let size: usize = check std.fs.fileLenOrRaise(&mut file)
-    std.fs.close(&mut file)
-
-    let mut opened: owned<File> = check std.fs.openOrRaise(fs, ".zero/bench/zero-fs-resource.txt")
-    let mut buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let read: usize = check std.fs.readOrRaise(&mut opened, buf)
-    if size == read && read > 0 {
-        check world.out.write("fs resource\n")
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  mut file owned<File> check std.fs.createOrRaise fs ".zero/bench/zero-fs-resource.txt"
+  check std.fs.writeAllOrRaise (&mut file) (std.mem.span "fs resource payload\n")
+  let size usize check std.fs.fileLenOrRaise (&mut file)
+  std.fs.close (&mut file)
+  mut opened owned<File> check std.fs.openOrRaise fs ".zero/bench/zero-fs-resource.txt"
+  mut buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let read usize check std.fs.readOrRaise (&mut opened) buf
+  if && (== size read) (> read 0)
+    check world.out.write "fs resource\n"

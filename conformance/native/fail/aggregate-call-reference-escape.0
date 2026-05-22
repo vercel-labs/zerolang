@@ -1,15 +1,11 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-fun make(value: ref<i32>) -> Box {
-    return Box { value: value }
-}
+fn make Box value ref<i32>
+  ret Box . value value
 
-pub fun leak() -> Box {
-    let x = 1
-    return make(&x)
-}
+pub fn leak Box
+  let x 1
+  ret make (&x)
 
-pub fun main() -> Void {
-}
+pub fn main Void

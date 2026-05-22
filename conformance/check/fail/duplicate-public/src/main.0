@@ -1,6 +1,5 @@
 use a
 use b
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("duplicate public should fail\n")
-}
+pub fn main Void world World !
+  check world.out.write "duplicate public should fail\n"

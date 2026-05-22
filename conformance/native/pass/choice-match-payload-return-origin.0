@@ -1,21 +1,15 @@
-choice Slot {
-    some: ref<i32>,
-    none,
-}
+choice Slot
+  some ref<i32>
+  none
 
-fun get(slot: Slot, fallback: ref<i32>) -> ref<i32> {
-    match slot {
-        .some => borrowed {
-            return borrowed
-        }
-        .none {
-            return fallback
-        }
-    }
-}
+fn get ref<i32> slot Slot fallback ref<i32>
+  match slot
+    some borrowed
+      ret borrowed
+    none
+      ret fallback
 
-pub fun main() -> Void {
-    let value = 1
-    let slot: Slot = Slot.some(&value)
-    let _borrowed = get(slot, &value)
-}
+pub fn main Void
+  let value 1
+  let slot Slot Slot.some (&value)
+  let _borrowed get slot (&value)

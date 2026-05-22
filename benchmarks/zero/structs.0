@@ -1,11 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let point = Point { x: 20, y: 22 }
-    if point.x + point.y == 42 {
-        check world.out.write("42\n")
-    }
-}
+type Point
+  x i32
+  y i32
 
-shape Point {
-    x: i32,
-    y: i32,
-}
+pub fn main Void world World !
+  let point Point . x 20 y 22
+  if == (+ point.x point.y) 42
+    check world.out.write "42\n"

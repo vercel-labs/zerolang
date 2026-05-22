@@ -1,11 +1,9 @@
-export c fun main() -> i32 {
-    let mut values: [4]i32 = [0, 0, 0, 0]
-    let mut i: usize = 0
-    let mut value: i32 = 2
-    while i < 4 {
-        values[i] = value
-        value = value + 2
-        i = i + 1
-    }
-    return values[0] + values[1] + values[2] + values[3]
-}
+export c fn main i32
+  mut values [4]i32 [0, 0, 0, 0]
+  mut i usize 0
+  mut value i32 2
+  while < i 4
+    set values[i] value
+    set value + value 2
+    set i + i 1
+  ret + (+ (+ values[0] values[1]) values[2]) values[3]

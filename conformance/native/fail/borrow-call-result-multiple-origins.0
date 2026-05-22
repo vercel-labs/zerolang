@@ -1,10 +1,8 @@
-fun pick_second(a: ref<i32>, b: ref<i32>) -> ref<i32> {
-    return b
-}
+fn pick_second ref<i32> a ref<i32> b ref<i32>
+  ret b
 
-pub fun main() -> Void {
-    let x = 1
-    let mut y = 2
-    let r = pick_second(&x, &y)
-    y = 3
-}
+pub fn main Void
+  let x 1
+  mut y 2
+  let r pick_second (&x) (&y)
+  set y 3

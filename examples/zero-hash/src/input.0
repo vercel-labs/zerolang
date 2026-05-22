@@ -1,5 +1,4 @@
-pub fun seed(fs: Fs) -> Void raises { NotFound, TooLarge, Io } {
-    let mut file: owned<File> = check std.fs.createOrRaise(fs, ".zero/zero-hash-input.txt")
-    check std.fs.writeAllOrRaise(&mut file, std.mem.span("zero hash payload\n"))
-    std.fs.close(&mut file)
-}
+pub fn seed Void fs Fs ![NotFound TooLarge Io]
+  mut file owned<File> check std.fs.createOrRaise fs ".zero/zero-hash-input.txt"
+  check std.fs.writeAllOrRaise (&mut file) (std.mem.span "zero hash payload\n")
+  std.fs.close (&mut file)

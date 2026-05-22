@@ -1,23 +1,17 @@
-enum Mode {
-    left,
-    alsoLeft,
-}
+enum Mode
+  left
+  alsoLeft
 
-fun choose(mode: Mode, left: ref<i32>, right: ref<i32>) -> ref<i32> {
-    match mode {
-        .left {
-            return left
-        }
-        .alsoLeft {
-            return left
-        }
-    }
-    return right
-}
+fn choose ref<i32> mode Mode left ref<i32> right ref<i32>
+  match mode
+    left
+      ret left
+    alsoLeft
+      ret left
+  ret right
 
-pub fun main(mode: Mode) -> Void {
-    let x = 1
-    let mut y = 2
-    let current = choose(mode, &x, &y)
-    y = 3
-}
+pub fn main Void mode Mode
+  let x 1
+  mut y 2
+  let current choose mode (&x) (&y)
+  set y 3

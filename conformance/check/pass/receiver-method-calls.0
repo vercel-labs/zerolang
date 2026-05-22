@@ -1,27 +1,21 @@
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 
-    fun push(self: mutref<Self>, value: T) -> Void raises { Full } {
-        if self.len == (N) {
-            raise Full
-        }
-        self.items[self.len] = value
-        self.len = self.len + 1
-    }
+  fn push Void self mutref<Self> value T ![Full]
+    if == self.len N
+      raise Full
+    set self.items[self.len] value
+    set self.len + self.len 1
 
-    fun get(self: ref<Self>, index: usize) -> Maybe<T> {
-        return std.mem.get(self.items, index)
-    }
+  fn get Maybe<T> self ref<Self> index usize
+    ret std.mem.get self.items index
 
-    fun count(self: ref<Self>) -> usize {
-        return self.len
-    }
-}
+  fn count usize self ref<Self>
+    ret self.len
 
-pub fun main() -> Void raises {
-    let mut vec: FixedVec<u8,4> = FixedVec { len: 0, items: [0, 0, 0, 0] }
-    check vec.push(7)
-    let first = vec.get(0)
-    expect(first.has && first.value == 7 && vec.count() == 1)
-}
+pub fn main Void !
+  mut vec FixedVec<u8,4> FixedVec . len 0 items ([0, 0, 0, 0])
+  check vec.push 7
+  let first vec.get 0
+  expect (&& (&& first.has (== first.value 7)) (== (vec.count()) 1))

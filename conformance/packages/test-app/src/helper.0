@@ -1,11 +1,8 @@
-fun double(value: i32) -> i32 {
-    return value + value
-}
+fn double i32 value i32
+  ret + value value
 
-test "package helper double" {
-    expect(double(4) == 8)
-}
+test "package helper double"
+  expect (== (double 4) 8)
 
-test "xfail: package helper pending edge case" {
-    expect(false)
-}
+test "xfail: package helper pending edge case"
+  expect false

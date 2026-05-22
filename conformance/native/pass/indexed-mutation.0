@@ -1,10 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let mut bytes: [4]u8 = [65, 66, 67, 68]
-    let mut values: [3]i32 = [10, 20, 30]
-    let index: usize = 2
-    bytes[1] = 90
-    values[index] = 42
-    if bytes[0] == 65 && bytes[1] == 90 && values[2] == 42 {
-        check world.out.write("indexed mutation ok\n")
-    }
-}
+pub fn main Void world World !
+  mut bytes [4]u8 [65, 66, 67, 68]
+  mut values [3]i32 [10, 20, 30]
+  let index usize 2
+  set bytes[1] 90
+  set values[index] 42
+  if && (&& (== bytes[0] 65) (== bytes[1] 90)) (== values[2] 42)
+    check world.out.write "indexed mutation ok\n"

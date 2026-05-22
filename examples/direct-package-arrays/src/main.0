@@ -1,6 +1,5 @@
 use arrays
 
-export c fun main() -> i32 {
-    record(3)
-    return package_sum()
-}
+export c fn main i32
+  record 3
+  ret package_sum()

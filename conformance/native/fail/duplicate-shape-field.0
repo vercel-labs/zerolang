@@ -1,7 +1,5 @@
-shape S {
-    x: i32,
-    x: Bool,
-}
+type S
+  x i32
+  x Bool
 
-pub fun main() -> Void {
-}
+pub fn main Void

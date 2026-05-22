@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let checksum = std.codec.crc32Bytes(std.mem.span("zero hash payload\n"))
-    if checksum == 1120241454 {
-        check world.out.write("zero-hash ok\n")
-    }
-}
+pub fn main Void world World !
+  let checksum std.codec.crc32Bytes (std.mem.span "zero hash payload\n")
+  if == checksum 1120241454
+    check world.out.write "zero-hash ok\n"

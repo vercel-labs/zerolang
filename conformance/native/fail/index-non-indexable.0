@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let value: u8 = 1
-    let byte = value[0]
-    check world.out.write("bad index\n")
-}
+pub fn main Void world World !
+  let value u8 1
+  let byte value[0]
+  check world.out.write "bad index\n"

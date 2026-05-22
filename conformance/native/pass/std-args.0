@@ -1,9 +1,7 @@
-pub fun main(world: World) -> Void raises {
-    let count = std.args.len()
-    let first = std.args.get(1)
-    let missing = std.args.get(99)
-    if count == 3 && first.has && missing.has == false {
-        check world.out.write(first.value)
-        check world.out.write("\n")
-    }
-}
+pub fn main Void world World !
+  let count std.args.len()
+  let first std.args.get 1
+  let missing std.args.get 99
+  if && (&& (== count 3) first.has) (== missing.has false)
+    check world.out.write first.value
+    check world.out.write "\n"

@@ -1,16 +1,12 @@
-const cap: u8 = 2 + 2
+const cap u8 + 2 2
 
-shape Tiny<static N: u8> {
-    items: [N]u8,
-}
+type Tiny<static N: u8>
+  items [N]u8
 
-fun len<static N: u8>(tiny: ref<Tiny<N>>) -> usize {
-    return std.mem.len(tiny.items)
-}
+fn len<static N: u8> usize tiny ref<Tiny<N>>
+  ret std.mem.len tiny.items
 
-pub fun main(world: World) -> Void raises {
-    let tiny: Tiny<cap> = Tiny { items: [1, 2, 3, 4] }
-    if len<cap>(&tiny) == 4 {
-        check world.out.write("static value types const expr ok\n")
-    }
-}
+pub fn main Void world World !
+  let tiny Tiny<cap> Tiny . items ([1, 2, 3, 4])
+  if == (len<cap> (&tiny)) 4
+    check world.out.write "static value types const expr ok\n"

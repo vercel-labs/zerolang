@@ -1,9 +1,7 @@
-fun id(r: ref<i32>) -> ref<i32> {
-    return r
-}
+fn id ref<i32> r ref<i32>
+  ret r
 
-pub fun main() -> ref<i32> {
-    let x = 1
-    let r = id(&x)
-    return r
-}
+pub fn main ref<i32>
+  let x 1
+  let r id (&x)
+  ret r

@@ -1,7 +1,5 @@
-fun value() -> Void {
-}
+fn value Void
 
-pub fun main() -> Void {
-    let value = 1
-    value()
-}
+pub fn main Void
+  let value 1
+  value()

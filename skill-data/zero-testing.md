@@ -12,13 +12,11 @@ Use this when adding tests, debugging failing tests, or wiring Zero checks into 
 Zero test blocks live beside source:
 
 ```zero
-fun add(left: i32, right: i32) -> i32 {
-    return left + right
-}
+fn add i32 left i32 right i32
+  ret + left right
 
-test "addition works" {
-    expect(add(2, 3) == 5)
-}
+test "addition works"
+  expect (== (add 2 3) 5)
 ```
 
 `expect` requires a `Bool`. A false expectation fails the test.
@@ -60,9 +58,8 @@ Expected-fail tests use one of these name markers:
 Example:
 
 ```zero
-test "xfail: pending parser edge case" {
-    expect(false)
-}
+test "xfail: pending parser edge case"
+  expect false
 ```
 
 An expected-fail test passes the command only when it fails as expected. If it starts passing, the command fails with `unexpectedPasses`.

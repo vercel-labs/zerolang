@@ -1,11 +1,9 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-pub fun main() -> Void {
-    let mut x = 1
-    let mut y = 2
-    let mut box: Box = Box { value: &x }
-    box.value = &y
-    x = 3
-}
+pub fn main Void
+  mut x 1
+  mut y 2
+  mut box Box Box . value (&x)
+  set box.value &y
+  set x 3

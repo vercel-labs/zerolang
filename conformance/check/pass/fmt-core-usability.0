@@ -1,27 +1,21 @@
-type ByteCount = usize
+alias ByteCount usize
 
-shape Counter {
-value: i32,
-fun add(self: ref<Self>, amount: i32) -> i32 {
-return self.value + amount
-}
-}
+type Counter
+  value i32
 
-enum State {
-ready,
-done,
-}
+  fn add i32 self ref<Self> amount i32
+    ret + self.value amount
 
-pub fun main() -> Void {
-let count: ByteCount = 42_usize
-let counter: Counter = Counter { value: 40 }
-let state: State = State.ready
-match state {
-.ready {
-expect(Counter.add(&counter, 2) == 42)
-}
-._ {
-expect(count == 42_usize)
-}
-}
-}
+enum State
+  ready
+  done
+
+pub fn main Void
+  let count ByteCount 42_usize
+  let counter Counter Counter . value 40
+  let state State State.ready
+  match state
+    ready
+      expect (== (Counter.add (&counter) 2) 42)
+    _
+      expect (== count 42_usize)

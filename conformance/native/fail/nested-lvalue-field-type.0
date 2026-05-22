@@ -1,9 +1,7 @@
-shape Point {
-    x: i32,
-}
+type Point
+  x i32
 
-pub fun main(world: World) -> Void raises {
-    let mut point = Point { x: 1 }
-    point.x = "bad"
-    check world.out.write("bad nested lvalue\n")
-}
+pub fn main Void world World !
+  mut point Point . x 1
+  set point.x "bad"
+  check world.out.write "bad nested lvalue\n"

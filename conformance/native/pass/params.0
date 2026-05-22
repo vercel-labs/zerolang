@@ -1,12 +1,9 @@
-fun add(left: i32, right: i32) -> i32 {
-    return left + right
-}
+fn add i32 left i32 right i32
+  ret + left right
 
-pub fun main(world: World) -> Void raises {
-    let value: i32 = add(40, 2)
-    if value == 42 {
-        check world.out.write("params work\n")
-    } else {
-        check world.out.write("params broke\n")
-    }
-}
+pub fn main Void world World !
+  let value i32 add 40 2
+  if == value 42
+    check world.out.write "params work\n"
+  else
+    check world.out.write "params broke\n"

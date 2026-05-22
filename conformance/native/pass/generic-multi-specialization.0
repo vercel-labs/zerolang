@@ -1,17 +1,13 @@
-fun first<A, B>(left: A, right: B) -> A {
-    return left
-}
+fn first<A: Type, B: Type> A left A right B
+  ret left
 
-fun second<A, B>(left: A, right: B) -> B {
-    return right
-}
+fn second<A: Type, B: Type> B left A right B
+  ret right
 
-pub fun main(world: World) -> Void raises {
-    let a: i32 = first<i32, u8>(21, 7)
-    let b: u8 = second<i32, u8>(a, 6)
-    if a == 21 && b == 6 {
-        check world.out.write("generic multi specialization ok\n")
-    } else {
-        check world.out.write("generic multi specialization broke\n")
-    }
-}
+pub fn main Void world World !
+  let a i32 first<i32, u8> 21 7
+  let b u8 second<i32, u8> a 6
+  if && (== a 21) (== b 6)
+    check world.out.write "generic multi specialization ok\n"
+  else
+    check world.out.write "generic multi specialization broke\n"

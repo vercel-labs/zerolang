@@ -1,9 +1,7 @@
-shape Cell {
-    value: i32,
-}
+type Cell
+  value i32
 
-pub fun main(world: World) -> Void raises {
-    let mut cells: [2]Cell = [Cell { value: 1 }, Cell { value: 2 }]
-    cells["bad"].value = 3
-    check world.out.write("bad nested lvalue\n")
-}
+pub fn main Void world World !
+  mut cells [2]Cell [Cell . value 1, Cell . value 2]
+  set cells["bad"].value 3
+  check world.out.write "bad nested lvalue\n"

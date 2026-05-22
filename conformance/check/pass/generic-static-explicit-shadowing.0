@@ -1,19 +1,14 @@
-const N: usize = 4
+const N usize 4
 
-fun needsSame<static M: usize>(left: ref<[M]i32>, right: ref<[M]i32>) -> Void {
-}
+type Helper
+  fn needsSame<static M: usize> Void left ref<[M]i32> right ref<[M]i32>
 
-shape Helper {
-    fun needsSame<static M: usize>(left: ref<[M]i32>, right: ref<[M]i32>) -> Void {
-    }
-}
+fn needsSame<static M: usize> Void left ref<[M]i32> right ref<[M]i32>
 
-fun caller<static N: usize>(left: ref<[N]i32>, right: ref<[N]i32>) -> Void {
-    needsSame<N>(left, right)
-    Helper.needsSame<N>(left, right)
-}
+fn caller<static N: usize> Void left ref<[N]i32> right ref<[N]i32>
+  needsSame<N> left right
+  Helper.needsSame<N> left right
 
-pub fun main() -> Void {
-    let values: [3]i32 = [1, 2, 3]
-    caller(&values, &values)
-}
+pub fn main Void
+  let values [3]i32 [1, 2, 3]
+  caller (&values) (&values)

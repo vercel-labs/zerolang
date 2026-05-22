@@ -12,9 +12,8 @@ A Zero program can be a single `.0` file or a package with a `zero.json` manifes
 Command-line programs export `main`:
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    check world.out.write("hello from zero\n")
-}
+pub fn main Void world World !
+  check world.out.write "hello from zero\n"
 ```
 
 Examples print user output through `World.out` and diagnostics through
@@ -37,24 +36,23 @@ Zero source uses UTF-8 text. Identifiers are case-sensitive. Line comments start
 Common literal forms include:
 
 ```zero
-let name = "zero"
-let marker: char = 'z'
-let count = 42
-let ratio: f64 = 0.5
-let ok = true
+let name "zero"
+let marker char 'z'
+let count 42
+let ratio f64 0.5
+let ok true
 ```
 
 Top-level `const` declarations can name deterministic compile-time values for use in functions:
 
 ```zero
-const base: i32 = 40
-const answer: i32 = base + 2
+const base i32 40
 
-pub fun main(world: World) -> Void raises {
-    if answer == 42 {
-        check world.out.write("const ok\n")
-    }
-}
+const answer i32 + base 2
+
+pub fn main Void world World !
+  if == answer 42
+    check world.out.write "const ok\n"
 ```
 
 Literal arithmetic, references to earlier constants, and supported `meta`
@@ -89,8 +87,9 @@ Unsupported or cyclic compile-time expressions report `MET001`.
 Type aliases provide a compile-time spelling for an existing type:
 
 ```zero
-pub type ByteCount = usize
-type BytePair = Pair<u8, u8>
+pub alias ByteCount usize
+
+alias BytePair Pair<u8,u8>
 ```
 
 Aliases do not create runtime wrapper types, layout identity, or conversion
@@ -107,32 +106,29 @@ The current compiler keeps compile-time execution intentionally small:
 
 ## Functions
 
-Functions are declared with `fun`. Exported functions use `pub fun`.
+Functions are declared with `fn`. Exported functions use `pub fn`.
 
 ```zero
-fun answer() -> i32 {
-    return 40 + 2
-}
+fn answer i32
+  ret + 40 2
 
-pub fun main(world: World) -> Void raises {
-    let value = answer()
-    check world.out.write("done\n")
-}
+pub fn main Void world World !
+  let value answer()
+  check world.out.write "done\n"
 ```
 
-Signatures list parameters as `name: Type`. Return types are explicit. Fallible functions include `raises`.
+Signatures start with the return type, then parameter name/type pairs. Fallible functions include `!` or an explicit `![...]`.
 
 The current compiler supports a narrow, static generic slice. Generic functions
 use explicit type parameters and are emitted as concrete specializations only
 when called:
 
 ```zero
-fun identity<T>(value: T) -> T {
-    return value
-}
+fn identity<T: Type> T value T
+  ret value
 
-let a: i32 = identity<i32>(41)
-let b: u8 = identity(7_u8)
+let a i32 identity<i32> 41
+let b u8 identity 7_u8
 ```
 
 Argument-based inference is local to the call. If the same generic parameter is
@@ -146,14 +142,12 @@ known at specialization time and can appear in fixed array lengths or direct
 type specializations:
 
 ```zero
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
-}
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 
-fun first<T, static N: usize>(vec: ref<FixedVec<T,N>>) -> T {
-    return vec.items[0]
-}
+fn first<T: Type, static N: usize> T vec ref<FixedVec<T,N>>
+  ret vec.items[0]
 ```
 
 Call sites pass explicit literals, enum cases, or top-level deterministic
@@ -178,37 +172,33 @@ Static value diagnostics:
 Static value support does not add runtime registries, reflection tables, vtables,
 or hidden allocation.
 
-Methods declared inside a generic shape inherit the shape's type and static
+Methods declared inside a generic type inherit the type's type and static
 parameters through `Self`.
 
 Calls may use namespace style or receiver style. Both specialize from a
 concrete receiver:
 
 ```zero
-shape FixedVec<T, static N: usize> {
-    len: usize = 0,
-    items: [N]T,
+type FixedVec<T: Type, static N: usize>
+  len usize 0
+  items [N]T
 
-    fun init(items: [N]T) -> Self {
-        return FixedVec { items: items }
-    }
+  fn init Self items [N]T
+    ret FixedVec . items items
 
-    fun push(self: mutref<Self>, value: T) -> Void raises { Full } {
-        if self.len == (N) {
-            raise Full
-        }
-        self.items[self.len] = value
-        self.len = self.len + 1
-    }
-}
+  fn push Void self mutref<Self> value T ![Full]
+    if == self.len N
+      raise Full
+    set self.items[self.len] value
+    set self.len + self.len 1
 
-let mut vec: FixedVec<u8,4> = FixedVec.init<u8,4>([0, 0, 0, 0])
-check FixedVec.push(&mut vec, 10)
-check vec.push(20)
+mut vec FixedVec<u8,4> FixedVec.init ([0, 0, 0, 0])
+check FixedVec.push (&mut vec) 10
+check vec.push 20
 ```
 
-Field defaults let shape literals omit fields such as `len` when an annotated
-generic shape supplies `T` and `N`.
+Field defaults let type literals omit fields such as `len` when an annotated
+generic type supplies `T` and `N`.
 
 Method lowering stays direct:
 
@@ -223,24 +213,22 @@ Method diagnostics:
 
 | Code | Meaning |
 | --- | --- |
-| `SHM001` | Generic shape method call cannot bind `Self`, `T`, or `N`. |
-| `SHM002` | Explicit method arguments and receiver shape disagree. |
+| `SHM001` | Generic type method call cannot bind `Self`, `T`, or `N`. |
+| `SHM002` | Explicit method arguments and receiver type disagree. |
 | `RCV001` | Unknown or non-receiver method. |
 | `RCV002` | Temporary or immutable receiver used where a mutable receiver is required. |
 
 Static interfaces constrain generic functions without runtime dispatch:
 
 ```zero
-interface Readable<T> {
-    fun read(self: ref<T>) -> i32
-}
+interface Readable<T: Type>
+  fn read i32 self ref<T>
 
-fun readValue<T: Readable<T>>(value: ref<T>) -> i32 {
-    return T.read(value)
-}
+fn readValue<T: Readable<T>> i32 value ref<T>
+  ret T.read value
 ```
 
-The concrete type argument must be a shape with matching static methods.
+The concrete type argument must be a type with matching static methods.
 `Readable<T>` is checked at specialization time and erases before direct
 emission.
 
@@ -253,35 +241,34 @@ through `IFC005`.
 Use `let` for immutable bindings:
 
 ```zero
-let message = "hello\n"
+let message "hello\n"
 ```
 
-Use `let mut` for bindings that are intentionally reassigned:
+Use `mut` for bindings that are intentionally reassigned:
 
 ```zero
-let mut index = 0
-index = index + 1
+mut index 0
+set index + index 1
 ```
 
-Mutable bindings also support shape-field assignment and fixed-array element assignment through nested lvalue chains:
+Mutable bindings also support field assignment and fixed-array element assignment through nested lvalue chains:
 
 ```zero
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-let mut point = Point { x: 1, y: 2 }
-point.x = 3
+mut point Point . x 1 y 2
+set point.x 3
 
-let mut bytes: [4]u8 = [65, 66, 67, 68]
-bytes[1] = 90
+mut bytes [4]u8 [65, 66, 67, 68]
+set bytes[1] 90
 ```
 
 The checker rejects assignment to immutable bindings. Indexed assignment is
 currently limited to:
 
-- fixed arrays rooted in `let mut` lvalues
+- fixed arrays rooted in `mut` lvalues
 - explicit `MutSpan<T>` writable views
 
 Read-only `Span<T>` and `String` indexed mutation are not part of the current
@@ -295,15 +282,15 @@ integer widths for `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`,
 
 Integer literals support decimal, `0x` hexadecimal, `0b` binary, `0o` octal,
 `_` separators, and optional suffixes such as `_u8` or `_usize`. Literals are
-context-typed and range-checked: `let byte: u8 = 255` is valid, while
-`let byte: u8 = 256` is rejected.
+context-typed and range-checked: `let byte u8 255` is valid, while
+`let byte u8 256` is rejected.
 
 Non-literal integer values do not implicitly narrow, widen, or change
 signedness. Use `value as Type` for explicit integer-to-integer casts.
 
 ```zero
-let count: u32 = 0x12c_u32
-let byte: u8 = count as u8
+let count u32 0x12c_u32
+let byte u8 count as u8
 ```
 
 The current `as` form is intentionally explicit. It supports primitive integers,
@@ -353,29 +340,29 @@ Index expressions and slice bounds must be integers. Integer literals in those
 positions are checked as `usize`:
 
 ```zero
-let bytes: [4]u8 = [65, 66, 67, 68]
-let scratch: [16]u8 = [0_u8; 16]
-let first: u8 = bytes[0]
-let tail: Span<u8> = bytes[1..4]
-let view: Span<u8> = std.mem.span("ABCD")
-let second: u8 = view[1]
-let pair: Span<u8> = view[1..3]
-let suffix: Span<u8> = view[1..]
-let prefix: Span<u8> = view[..3]
-let all: Span<u8> = view[..]
+let bytes [4]u8 [65, 66, 67, 68]
+let scratch [16]u8 [0_u8; 16]
+let first u8 bytes[0]
+let tail Span<u8> bytes[1..4]
+let view Span<u8> std.mem.span "ABCD"
+let second u8 view[1]
+let pair Span<u8> view[1..3]
+let suffix Span<u8> view[1..]
+let prefix Span<u8> view[..3]
+let all Span<u8> view[..]
 
-let values: [4]i32 = [10, 20, 30, 40]
-let numbers: Span<i32> = values
-let third: i32 = numbers[2]
-let middle: Span<i32> = values[1..3]
+let values [4]i32 [10, 20, 30, 40]
+let numbers Span<i32> values
+let third i32 numbers[2]
+let middle Span<i32> values[1..3]
 
-let mut writableValues: [3]i32 = [1, 2, 3]
-let writable: MutSpan<i32> = writableValues
-writable[1] = 20
+mut writableValues [3]i32 [1, 2, 3]
+let writable MutSpan<i32> writableValues
+set writable[1] 20
 
-let text: String = "zero"
-let byte: u8 = text[1]
-let bytes: Span<u8> = text[1..]
+let text String "zero"
+let byte u8 text[1]
+let bytes Span<u8> text[1..]
 ```
 
 Current indexing behavior:
@@ -393,7 +380,7 @@ half-open: the start is included, the end is excluded. Omitted starts default to
 Assignments may target:
 
 - mutable local bindings
-- shape fields rooted in mutable locals
+- type fields rooted in mutable locals
 - fixed-array indexes in those lvalue chains
 - `MutSpan<T>` elements
 - indexed `mutref<MutSpan<T>>` paths
@@ -419,11 +406,10 @@ The native compiler does not yet support:
 Use `if` / `else` for branches:
 
 ```zero
-if value == 42 {
-    check world.out.write("math works\n")
-} else {
-    check world.out.write("math broke\n")
-}
+if == value 42
+  check world.out.write "math works\n"
+else
+  check world.out.write "math broke\n"
 ```
 
 Conditions must be `Bool`; integers and pointers do not coerce to truthy or falsey values.
@@ -431,61 +417,54 @@ Conditions must be `Bool`; integers and pointers do not coerce to truthy or fals
 Use `while` for loops:
 
 ```zero
-while keepGoing {
-    check world.out.write("loop\n")
-}
+while keepGoing
+  check world.out.write "loop\n"
 ```
 
 Use range `for` loops for integer ranges. The end bound is exclusive:
 
 ```zero
-for index in 0..4 {
-    if index == 2 {
-        continue
-    }
-    check world.out.write("tick\n")
-}
+for index in 0..4
+  if == index 2
+    continue
+  check world.out.write "tick\n"
 ```
 
 Use `break` to exit the nearest loop and `continue` to skip to the next iteration.
 
-Use `return` to exit a function with a value.
+Use `ret` to exit a function with a value.
 
 ## Effects And Errors
 
 Zero keeps effectful operations visible.
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    check world.out.write("hello\n")
-}
+pub fn main Void world World !
+  check world.out.write "hello\n"
 ```
 
-`check` calls a fallible operation and propagates failure. Functions that use `check` declare `raises`.
+`check` calls a fallible operation and propagates failure. Functions that use `check` declare `!` or `![...]`.
 
-User-defined errors are named symbols. A function can declare an open `raises` marker, or an explicit error set:
+User-defined errors are named symbols. A function can declare an open `!` marker, or an explicit error set:
 
 ```zero
-fun validate(ok: Bool) -> i32 raises { InvalidInput } {
-    if ok == false {
-        raise InvalidInput
-    }
-    return 42
-}
+fn validate i32 ok Bool ![InvalidInput]
+  if == ok false
+    raise InvalidInput
+  ret 42
 
-fun run() -> Void raises { InvalidInput } {
-    check validate(true)
-}
+fn run Void ![InvalidInput]
+  check validate true
 ```
 
 The native compiler validates explicit error flow:
 
 - `raise ErrorName` can appear only in a raising function.
-- A function with `raises { ... }` may only raise listed errors.
+- A function with `![...]` may only raise listed errors.
 - Calling a fallible user function requires `check`.
 - Callers with explicit error sets must include every checked callee error.
-- `let value = check fallible_call()` works for user fallible calls, `Maybe<T>`, and named-error `std.fs` helpers.
-- `let value = expr rescue err { fallback }` works for the same simple cases and lowers to direct branches.
+- `let value check fallible_call()` works for user fallible calls, `Maybe<T>`, and named-error `std.fs` helpers.
+- `let value expr rescue err fallback` works for the same simple cases and lowers to direct branches.
 
 Zero does not use language-level exceptions.
 
@@ -496,80 +475,75 @@ No exception object, unwinding, or hidden global error state is created.
 User-defined fallible functions lower to small generated status/result structs
 only when they use explicit error flow.
 
-## Shapes
+## Types
 
-Use `shape` for named records:
+Use `type` for named records:
 
 ```zero
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-let point = Point { x: 40, y: 2 }
-let total = point.x + point.y
+let point Point . x 40 y 2
+let total + point.x point.y
 ```
 
-Shape literals name their fields. Field access uses dot syntax.
+Type literals name their fields. Field access uses dot syntax.
 
-Shape fields can declare defaults:
+Type fields can declare defaults:
 
 ```zero
-shape Pair {
-    left: u8 = 1,
-    right: u8,
-}
+type Pair
+  left u8 1
+  right u8
 
-let pair: Pair = Pair { right: 2 }
+let pair Pair Pair . right 2
 ```
 
 Only fields with defaults may be omitted. Defaults are typechecked against the
-declared field type and lower as ordinary C initializers at each shape literal
+declared field type and lower as ordinary C initializers at each type literal
 site.
 
-Generic shapes are supported when construction has an explicit annotated type:
+Generic types are supported when construction has an explicit annotated type:
 
 ```zero
-shape Pair<T, U> {
-    left: T,
-    right: U,
-}
+type Pair<T: Type, U: Type>
+  left T
+  right U
 
-let pair: Pair<i32, u8> = Pair { left: 42, right: 7_u8 }
-let value: i32 = pair.left
+let pair Pair<i32,u8> Pair . left 42 right 7_u8
+let value i32 pair.left
 ```
 
-Generic shape layouts are monomorphized before emission. The current compiler
+Generic type layouts are monomorphized before emission. The current compiler
 supports:
 
 - multiple type parameters
 - integer static value parameters
 - field defaults
-- generic functions that return instantiated shapes such as `Pair<T, U>`
-- generic shape methods with namespace and receiver-style calls
+- generic functions that return instantiated types such as `Pair<T, U>`
+- generic type methods with namespace and receiver-style calls
 
 Broader static value types and defaulted generic arguments are not part of the
 current public surface.
 
-Shapes may define small static methods that are called through namespace-style lookup:
+Types may define small static methods that are called through namespace-style lookup:
 
 ```zero
-shape Counter {
-    value: i32,
+type Counter
+  value i32
 
-    fun add(self: ref<Self>, amount: i32) -> i32 {
-        return self.value + amount
-    }
-}
+  fn add i32 self ref<Self> amount i32
+    ret + self.value amount
 
-let counter: Counter = Counter { value: 40 }
-let answer = Counter.add(&counter, 2)
+let counter Counter Counter . value 40
+let answer Counter.add (&counter) 2
 ```
 
 This is direct static lowering to a concrete function such as `z_Counter_add`.
 There is no dynamic dispatch, vtable, or method registry.
 
-Receiver-style calls are reserved for shape methods whose first parameter is
+Receiver-style calls are reserved for type methods whose first parameter is
 `self: ref<Self>` or `self: mutref<Self>`.
 
 ## Enums, Choices, And Match
@@ -577,80 +551,68 @@ Receiver-style calls are reserved for shape methods whose first parameter is
 Use `enum` for a fixed set of names:
 
 ```zero
-enum Status {
-    ready,
-    failed,
-}
+enum Status
+  ready
+  failed
 ```
 
 Use `choice` for alternatives, including alternatives with payloads:
 
 ```zero
-choice Result {
-    ok: i32,
-    err: String,
-}
+choice Result
+  ok i32
+  err String
 ```
 
 Construct payload variants with the choice name:
 
 ```zero
-let result: Result = Result.ok(42)
+let result Result Result.ok 42
 ```
 
 Match choices exhaustively:
 
 ```zero
-match result {
-    .ok => value {
-        if value == 42 {
-            check world.out.write("choice ok\n")
-        }
-    }
-    .err => message {
-        check world.out.write("choice err\n")
-    }
-}
+match result
+  ok value
+    if == value 42
+      check world.out.write "choice ok\n"
+  err message
+    check world.out.write "choice err\n"
 ```
 
 Use `._` as a fallback arm when a match intentionally groups remaining cases:
 
 ```zero
-match mode {
-    .fast {
-        check world.out.write("fast\n")
-    }
-    ._ {
-        check world.out.write("other\n")
-    }
-}
+match mode
+  fast
+    check world.out.write "fast\n"
+  _
+    check world.out.write "other\n"
 ```
 
-Fallback arms cannot bind payloads. Use a named choice case with `=> payload` when the payload value is needed.
+Fallback arms cannot bind payloads. Put a payload name after a named choice case when the payload value is needed.
 
 ## Defer
 
 `defer` schedules cleanup for the end of the current scope:
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    defer cleanup()
-    check world.out.write("work\n")
-}
+pub fn main Void world World !
+  defer cleanup()
+  check world.out.write "work\n"
 ```
 
-The current native compiler supports simple `defer` on lexical scope exit, including exits through `return`, `break`, and `continue`.
+The current native compiler supports simple `defer` on lexical scope exit, including exits through `ret`, `break`, and `continue`.
 
-Live `owned<T>` locals are also cleaned up at lexical exits when `T` defines the canonical non-raising shape method:
+Live `owned<T>` locals are also cleaned up at lexical exits when `T` defines the canonical non-raising type method:
 
 ```zero
-shape Handle {
-    marker: MutSpan<u8>,
+type Handle
+  marker MutSpan<u8>
 
-    fun drop(self: mutref<Self>) -> Void {
-        self.marker[0] = 1
-    }
-}
+  fn drop Void self mutref<Self>
+    set self.marker[0] 1
 ```
 
 The compiler emits a direct `Handle_drop(&value)` call in reverse declaration
@@ -658,12 +620,12 @@ order.
 
 If an owned local is moved into another owned binding, owned parameter, or owned
 return, the old binding is not dropped. Direct user calls such as `value.drop()`
-remain rejected; use the shape method for automatic cleanup or a separate
+remain rejected; use the type method for automatic cleanup or a separate
 explicit cleanup function when you need manual control.
 
 `owned<File>` is compiler-known in the current hosted `std.fs` slice. It lowers
 to the underlying file handle and closes deterministically at lexical exits,
-including early `return`.
+including early `ret`.
 
 This does not use a registry, refcount, or process-global cleanup list. Explicit
 `std.fs.close(&mut file)` is allowed and is idempotent with the automatic cleanup
@@ -674,18 +636,15 @@ path.
 Use `&value` to create a shared `ref<T>` and `&mut value` to create a mutable `mutref<T>`:
 
 ```zero
-shape Point {
-    x: i32,
-    y: i32,
-}
+type Point
+  x i32
+  y i32
 
-fun read_x(point: ref<Point>) -> i32 {
-    return point.x
-}
+fn read_x i32 point ref<Point>
+  ret point.x
 
-fun write_x(point: mutref<Point>, value: i32) -> Void {
-    point.x = value
-}
+fn write_x Void point mutref<Point> value i32
+  set point.x value
 ```
 
 `&mut` requires a mutable lvalue root, and assignment through `ref<T>` is
@@ -785,15 +744,14 @@ deterministic dependency fingerprint files under `.zero/package-locks/`.
 
 ## C Interop
 
-Use `extern c` and `extern shape` for C boundaries:
+Use `extern c` and `extern type` for C boundaries:
 
 ```zero
 extern c "config.h" as config
 
-extern shape CConfig {
-    enabled: bool,
-    limit: i32,
-}
+extern type CConfig
+  enabled bool
+  limit i32
 ```
 
 Interop declarations should make layout and ABI expectations explicit.

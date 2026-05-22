@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let count = std.fs.read("conformance/fixtures/std-fs-read.txt", "not a buffer")
-    if count > 0 {
-        check world.out.write("bad fs\n")
-    }
-}
+pub fn main Void world World !
+  let count std.fs.read "conformance/fixtures/std-fs-read.txt" "not a buffer"
+  if > count 0
+    check world.out.write "bad fs\n"

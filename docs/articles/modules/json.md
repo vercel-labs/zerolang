@@ -25,32 +25,28 @@ Metadata labels:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let mut arena_buf: [16]u8 = [0_u8; 16]
-    let mut arena = std.mem.fixedBufAlloc(arena_buf)
-    let parsed = std.json.parse(arena, "{\"ok\":true}")
-    let mut out: [16]u8 = [0_u8; 16]
-    let text = std.json.writeString(out, "zero")
-    if parsed.has && text.has && std.json.streamTokens("{\"ok\":true}") == 3 {
-        check world.out.write("json ok\n")
-    }
-}
+pub fn main Void world World !
+  mut arena_buf [16]u8 [0_u8;16]
+  mut arena std.mem.fixedBufAlloc arena_buf
+  let parsed std.json.parse arena "{\"ok\":true}"
+  mut out [16]u8 [0_u8;16]
+  let text std.json.writeString out "zero"
+  if && (&& parsed.has text.has) (== (std.json.streamTokens "{\"ok\":true}") 3)
+    check world.out.write "json ok\n"
 ```
 
-Byte-span parse shape:
+Byte-span parse form:
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let bytes = std.mem.span("{\"ok\":1}")
-    let mut arena_buf: [16]u8 = [0_u8; 16]
-    let mut arena = std.mem.fixedBufAlloc(arena_buf)
-    let parsed = std.json.parseBytes(arena, bytes)
-    if parsed.has && std.json.validateBytes(bytes) && std.json.streamTokensBytes(bytes) == 3 {
-        check world.out.write("json bytes ok\n")
-        return
-    }
-    check world.err.write("json bytes failed\n")
-}
+pub fn main Void world World !
+  let bytes std.mem.span "{\"ok\":1}"
+  mut arena_buf [16]u8 [0_u8;16]
+  mut arena std.mem.fixedBufAlloc arena_buf
+  let parsed std.json.parseBytes arena bytes
+  if && (&& parsed.has (std.json.validateBytes bytes)) (== (std.json.streamTokensBytes bytes) 3)
+    check world.out.write "json bytes ok\n"
+    ret
+  check world.err.write "json bytes failed\n"
 ```
 
 ## Design Notes

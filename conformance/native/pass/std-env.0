@@ -1,8 +1,5 @@
-pub fun main(world: World) -> Void raises {
-    let value = std.env.get("ZERO_CONFORMANCE_ENV")
-    let missing = std.env.get("ZERO_CONFORMANCE_ENV_MISSING")
-
-    if value.has && std.mem.eql(value.value, "agent-env") && missing.has == false {
-        check world.out.write("env ok\n")
-    }
-}
+pub fn main Void world World !
+  let value std.env.get "ZERO_CONFORMANCE_ENV"
+  let missing std.env.get "ZERO_CONFORMANCE_ENV_MISSING"
+  if && (&& value.has (std.mem.eql value.value "agent-env")) (== missing.has false)
+    check world.out.write "env ok\n"

@@ -1,10 +1,9 @@
-const base: i32 = 40
-const answer: i32 = base + 2
+const base i32 40
 
-pub fun main(world: World) -> Void raises {
-  if answer == 42 {
-    check world.out.write("const arithmetic ok\n")
-  } else {
-    check world.out.write("const arithmetic broke\n")
-  }
-}
+const answer i32 + base 2
+
+pub fn main Void world World !
+  if == answer 42
+    check world.out.write "const arithmetic ok\n"
+  else
+    check world.out.write "const arithmetic broke\n"

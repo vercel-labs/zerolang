@@ -1,3 +1,2 @@
-fun labelOk() -> Bool {
-    return true
-}
+fn labelOk Bool
+  ret true

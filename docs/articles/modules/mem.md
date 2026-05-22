@@ -31,40 +31,33 @@ Runnable today:
 ## Example
 
 ```zero
-shape SliceView {
-    bytes: Span<u8>,
-    values: Span<i32>,
-}
+type SliceView
+  bytes Span<u8>
+  values Span<i32>
 
-pub fun main(world: World) -> Void raises {
-    let bytes: Span<u8> = std.mem.span("zero-memory")
-    let same = std.mem.span("zero-memory")
-    let mut scratch: [11]u8 = [0_u8; 11]
-    let copied = std.mem.copy(scratch, bytes)
-    let mut ints: [3]i32 = [1, 2, 3]
-    let intSpan: MutSpan<i32> = ints
-    intSpan[1] = 20
-    let view = SliceView { bytes: bytes, values: intSpan }
-    if copied == 11 && std.mem.len(view.bytes) == 11 && std.mem.eqlBytes(view.bytes, same) &&
-        std.mem.len(view.values) == 3 && std.mem.eqlBytes(view.values, intSpan) {
-        check world.out.write("memory type forms runnable\n")
-    }
-}
+pub fn main Void world World !
+  let bytes Span<u8> std.mem.span "zero-memory"
+  let same std.mem.span "zero-memory"
+  mut scratch [11]u8 [0_u8;11]
+  let copied std.mem.copy scratch bytes
+  mut ints [3]i32 [1, 2, 3]
+  let intSpan MutSpan<i32> ints
+  set intSpan[1] 20
+  let view SliceView . bytes bytes values intSpan
+  if && (&& (&& (&& (== copied 11) (== (std.mem.len view.bytes) 11)) (std.mem.eqlBytes view.bytes same)) (== (std.mem.len view.values) 3)) (std.mem.eqlBytes view.values intSpan)
+    check world.out.write "memory type forms runnable\n"
 ```
 
 ## Allocator Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc: FixedBufAlloc = std.mem.fixedBufAlloc(storage)
-    let bytes = std.mem.allocBytes(alloc, 4)
-
-    if bytes.has {
-        bytes.value[0] = 90
-        check world.out.write("fixed buffer allocated\n")
-    }
-}
+pub fn main Void world World !
+  mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc FixedBufAlloc std.mem.fixedBufAlloc storage
+  let bytes std.mem.allocBytes alloc 4
+  if bytes.has
+    set bytes.value[0] 90
+    check world.out.write "fixed buffer allocated\n"
 ```
 
 Effects: none beyond writes performed by caller code.

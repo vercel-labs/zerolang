@@ -1,3 +1,2 @@
-test "expect runtime failure exits nonzero" {
-    expect(false)
-}
+test "expect runtime failure exits nonzero"
+  expect false

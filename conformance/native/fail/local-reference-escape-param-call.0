@@ -1,10 +1,7 @@
-fun id(r: ref<i32>) -> ref<i32> {
-    return r
-}
+fn id ref<i32> r ref<i32>
+  ret r
 
-pub fun leak(x: i32) -> ref<i32> {
-    return id(&x)
-}
+pub fn leak ref<i32> x i32
+  ret id (&x)
 
-pub fun main() -> Void {
-}
+pub fn main Void

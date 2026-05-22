@@ -1,23 +1,19 @@
-shape RefBox {
-    item: ref<i32>,
-}
+type RefBox
+  item ref<i32>
 
-shape Source {
-    items: [1]ref<i32>,
-    other: ref<i32>,
+type Source
+  items [1]ref<i32>
+  other ref<i32>
 
-    fun replaceOther(self: mutref<Self>, next: ref<i32>) -> RefBox {
-        self.other = next
-        return RefBox { item: self.items[0] }
-    }
-}
+  fn replaceOther RefBox self mutref<Self> next ref<i32>
+    set self.other next
+    ret RefBox . item self.items[0]
 
-pub fun main() -> Void {
-    let mut x = 1
-    let y = 2
-    let z = 3
-    let mut source = Source { items: [&x], other: &z }
-    let copy = source.replaceOther(&y)
-    source.items = [&y]
-    x = 4
-}
+pub fn main Void
+  mut x 1
+  let y 2
+  let z 3
+  mut source Source . items ([&x]) other (&z)
+  let copy source.replaceOther (&y)
+  set source.items [&y]
+  set x 4

@@ -1,9 +1,7 @@
-pub fun main(flag: Bool) -> Void {
-    let mut x = 1
-    let y = 2
-    let mut refs = [&x]
-    if flag {
-        refs = [&y]
-    }
-    x = 3
-}
+pub fn main Void flag Bool
+  mut x 1
+  let y 2
+  mut refs [&x]
+  if flag
+    set refs [&y]
+  set x 3

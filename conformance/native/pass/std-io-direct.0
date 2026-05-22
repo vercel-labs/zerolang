@@ -1,15 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let mut reader_buf: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut copy_dst: [4]u8 = [0, 0, 0, 0]
-    let reader = std.io.bufferedReader(reader_buf)
-    let writer = std.io.bufferedWriter(reader_buf)
-    let copied = std.io.copy(copy_dst, std.mem.span("abcd"))
-
-    if std.io.readerCapacity(&reader) == 8 &&
-        std.io.writerCapacity(&writer) == 8 &&
-        copied == 4 &&
-        copy_dst[0] == 97_u8 &&
-        copy_dst[3] == 100_u8 {
-        check world.out.write("std io direct ok\n")
-    }
-}
+pub fn main Void world World !
+  mut reader_buf [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut copy_dst [4]u8 [0, 0, 0, 0]
+  let reader std.io.bufferedReader reader_buf
+  let writer std.io.bufferedWriter reader_buf
+  let copied std.io.copy copy_dst (std.mem.span "abcd")
+  if && (&& (&& (&& (== (std.io.readerCapacity (&reader)) 8) (== (std.io.writerCapacity (&writer)) 8)) (== copied 4)) (== copy_dst[0] 97_u8)) (== copy_dst[3] 100_u8)
+    check world.out.write "std io direct ok\n"

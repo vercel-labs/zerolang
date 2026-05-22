@@ -1,21 +1,15 @@
-enum Mode : u8 {
-  lex,
-  parse,
-  done,
-}
+enum Mode u8
+  lex
+  parse
+  done
 
-export c fun main() -> u8 {
-  let mode = Mode.parse
-  match mode {
-    .lex {
-      return 1_u8
-    }
-    .parse {
-      return 2_u8
-    }
-    .done {
-      return 3_u8
-    }
-  }
-  return 0_u8
-}
+export c fn main u8
+  let mode Mode.parse
+  match mode
+    lex
+      ret 1_u8
+    parse
+      ret 2_u8
+    done
+      ret 3_u8
+  ret 0_u8

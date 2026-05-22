@@ -1,18 +1,11 @@
-export c fun main() -> i32 {
-    let net = std.net.host()
-    let client = std.http.client(net)
-    let mut response: [128]u8 = [0_u8; 128]
-    let request = std.mem.span("GET ftp://example.invalid\n\n")
-    let result = std.http.fetch(client, request, response, std.time.ms(250))
-    if std.http.resultOk(result) {
-        return 99
-    }
-    if std.http.resultStatus(result) == 0 &&
-        std.http.resultBodyLen(result) == 0 &&
-        std.http.resultError(result) == std.http.errorUnsupportedProtocol() &&
-        std.http.responseLen(response) == 0 &&
-        std.http.responseHeadersLen(response) == 0 {
-        return 23
-    }
-    return 98
-}
+export c fn main i32
+  let net std.net.host()
+  let client std.http.client net
+  mut response [128]u8 [0_u8;128]
+  let request std.mem.span "GET ftp://example.invalid\n\n"
+  let result std.http.fetch client request response (std.time.ms 250)
+  if std.http.resultOk result
+    ret 99
+  if && (&& (&& (&& (== (std.http.resultStatus result) 0) (== (std.http.resultBodyLen result) 0)) (== (std.http.resultError result) (std.http.errorUnsupportedProtocol()))) (== (std.http.responseLen response) 0)) (== (std.http.responseHeadersLen response) 0)
+    ret 23
+  ret 98

@@ -1,11 +1,9 @@
 use std.parse
 
-pub fun main(world: World) -> Void raises {
-    let digit = std.parse.isAsciiDigit("7")
-    let ident = std.parse.isIdentifierStart("_")
-    let digits = std.parse.scanDigits("123abc")
-    let port = std.parse.parseU16("8080")
-    if digit && ident && digits == 3 && port.has && port.value == 8080 {
-        check world.out.write("parse primitives ok\n")
-    }
-}
+pub fn main Void world World !
+  let digit std.parse.isAsciiDigit "7"
+  let ident std.parse.isIdentifierStart "_"
+  let digits std.parse.scanDigits "123abc"
+  let port std.parse.parseU16 "8080"
+  if && (&& (&& (&& digit ident) (== digits 3)) port.has) (== port.value 8080)
+    check world.out.write "parse primitives ok\n"

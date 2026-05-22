@@ -1,8 +1,6 @@
-packed shape BadPacked {
-    value: f32,
-}
+packed type BadPacked
+  value f32
 
-pub fun main(world: World) -> Void raises {
-    let value = BadPacked { value: 1.0 }
-    check world.out.write("bad packed layout")
-}
+pub fn main Void world World !
+  let value BadPacked . value 1.0
+  check world.out.write "bad packed layout"

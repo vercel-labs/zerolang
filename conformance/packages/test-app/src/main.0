@@ -1,13 +1,10 @@
 use helper
 
-fun add(a: i32, b: i32) -> i32 {
-    return a + b
-}
+fn add i32 a i32 b i32
+  ret + a b
 
-test "package main addition" {
-    expect(add(20, 22) == 42)
-}
+test "package main addition"
+  expect (== (add 20 22) 42)
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write("package tests\n")
-}
+pub fn main Void world World !
+  check world.out.write "package tests\n"

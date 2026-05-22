@@ -1,22 +1,16 @@
-interface First<T, static N: usize> {
-    fun first(self: ref<T>) -> u8
-}
+interface First<T: Type, static N: usize>
+  fn first u8 self ref<T>
 
-shape Bytes<static N: usize> {
-    items: [N]u8,
+type Bytes<static N: usize>
+  items [N]u8
 
-    fun first(self: ref<Self>) -> u8 {
-        return self.items[0]
-    }
-}
+  fn first u8 self ref<Self>
+    ret self.items[0]
 
-fun readFirst<T: First<T,N>, static N: usize>(value: ref<T>) -> u8 {
-    return T.first(value)
-}
+fn readFirst<T: First<T,N>, static N: usize> u8 value ref<T>
+  ret T.first value
 
-pub fun main(world: World) -> Void raises {
-    let bytes: Bytes<4> = Bytes { items: [9, 8, 7, 6] }
-    if readFirst<Bytes<4>,4>(&bytes) == 9 {
-        check world.out.write("static interface static param ok\n")
-    }
-}
+pub fn main Void world World !
+  let bytes Bytes<4> Bytes . items ([9, 8, 7, 6])
+  if == (readFirst<Bytes<4>, 4> (&bytes)) 9
+    check world.out.write "static interface static param ok\n"

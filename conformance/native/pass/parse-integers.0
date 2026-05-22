@@ -1,15 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let byte = std.parse.parseU8("255")
-    let too_big_byte = std.parse.parseU8("256")
-    let port = std.parse.parseU16("8080")
-    let count = std.parse.parseU32("4294967295")
-    let trailing = std.parse.parseU32("12x")
-
-    if byte.has && byte.value == 255 &&
-        too_big_byte.has == false &&
-        port.has && port.value == 8080 &&
-        count.has && count.value == 4294967295_u32 &&
-        trailing.has == false {
-        check world.out.write("parse integers ok\n")
-    }
-}
+pub fn main Void world World !
+  let byte std.parse.parseU8 "255"
+  let too_big_byte std.parse.parseU8 "256"
+  let port std.parse.parseU16 "8080"
+  let count std.parse.parseU32 "4294967295"
+  let trailing std.parse.parseU32 "12x"
+  if && (&& (&& (&& (&& (&& (&& byte.has (== byte.value 255)) (== too_big_byte.has false)) port.has) (== port.value 8080)) count.has) (== count.value 4294967295_u32)) (== trailing.has false)
+    check world.out.write "parse integers ok\n"

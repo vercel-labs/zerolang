@@ -1,19 +1,13 @@
-fun isPrime(n: u32) -> Bool {
-    if n < 2 {
-        return false
-    }
-    let mut divisor: u32 = 2
-    while divisor * divisor <= n {
-        if n % divisor == 0 {
-            return false
-        }
-        divisor = divisor + 1
-    }
-    return true
-}
+fn isPrime Bool n u32
+  if < n 2
+    ret false
+  mut divisor u32 2
+  while <= (* divisor divisor) n
+    if == (% n divisor) 0
+      ret false
+    set divisor + divisor 1
+  ret true
 
-pub fun main(world: World) -> Void raises {
-    if isPrime(2) && isPrime(29) && isPrime(30) == false {
-        check world.out.write("prime ok\n")
-    }
-}
+pub fn main Void world World !
+  if && (&& (isPrime 2) (isPrime 29)) (== (isPrime 30) false)
+    check world.out.write "prime ok\n"

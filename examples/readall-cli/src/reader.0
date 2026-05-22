@@ -1,10 +1,7 @@
-fun seed(fs: Fs) -> Void raises { WriteFailed } {
-    let created = std.fs.create(fs, ".zero/readall-cli.txt")
-    if created.has {
-        let mut file: owned<File> = created.value
-        if std.fs.writeAll(&mut file, std.mem.span("name=zero-agent\n")) {
-            return
-        }
-    }
-    raise WriteFailed
-}
+fn seed Void fs Fs ![WriteFailed]
+  let created std.fs.create fs ".zero/readall-cli.txt"
+  if created.has
+    mut file owned<File> created.value
+    if std.fs.writeAll (&mut file) (std.mem.span "name=zero-agent\n")
+      ret
+  raise WriteFailed

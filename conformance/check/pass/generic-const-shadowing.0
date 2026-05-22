@@ -1,30 +1,25 @@
-const T: usize = 3
-const N: usize = 3
+const T usize 3
 
-shape Holder<U> {
-    value: U,
-}
+const N usize 3
 
-shape Box<static N: usize> {
-    value: i32,
-}
+type Holder<U: Type>
+  value U
 
-fun unwrap<T>(holder: ref<Holder<T>>) -> T {
-    return holder.value
-}
+type Box<static N: usize>
+  value i32
 
-fun forwardUnwrap<T>(holder: ref<Holder<T>>) -> T {
-    return unwrap(holder)
-}
+fn unwrap<T: Type> T holder ref<Holder<T>>
+  ret holder.value
 
-fun read<static N: usize>(box: ref<Box<N>>) -> i32 {
-    return box.value
-}
+fn forwardUnwrap<T: Type> T holder ref<Holder<T>>
+  ret unwrap holder
 
-pub fun main() -> Void {
-    let holder: Holder<i32> = Holder { value: 5 }
-    let value: i32 = forwardUnwrap(&holder)
-    let box: Box<4> = Box { value: 9 }
-    let boxed: i32 = read(&box)
-    expect(value == 5 && boxed == 9)
-}
+fn read<static N: usize> i32 box ref<Box<N>>
+  ret box.value
+
+pub fn main Void
+  let holder Holder<i32> Holder . value 5
+  let value i32 forwardUnwrap (&holder)
+  let box Box<4> Box . value 9
+  let boxed i32 read (&box)
+  expect (&& (== value 5) (== boxed 9))

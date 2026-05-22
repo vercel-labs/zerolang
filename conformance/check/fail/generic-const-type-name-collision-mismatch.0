@@ -1,22 +1,18 @@
-const Foo: usize = 3
-const Bar: usize = 3
+const Foo usize 3
 
-shape Foo {
-    value: i32,
-}
+const Bar usize 3
 
-shape Bar {
-    value: i32,
-}
+type Foo
+  value i32
 
-shape Holder<T> {
-    value: T,
-}
+type Bar
+  value i32
 
-fun needsBar(holder: Holder<Bar>) -> Void {
-}
+type Holder<T: Type>
+  value T
 
-pub fun main() -> Void {
-    let holder: Holder<Foo> = Holder { value: Foo { value: 1 } }
-    needsBar(holder)
-}
+fn needsBar Void holder Holder<Bar>
+
+pub fn main Void
+  let holder Holder<Foo> Holder . value (Foo . value 1)
+  needsBar holder

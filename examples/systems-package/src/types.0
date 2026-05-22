@@ -1,9 +1,7 @@
-enum Status {
-    ready,
-    failed,
-}
+enum Status
+  ready
+  failed
 
-choice Result {
-    ok,
-    failed: i32,
-}
+choice Result
+  ok
+  failed i32

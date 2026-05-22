@@ -1,2 +1,1 @@
-pub fun main() -> i32 {
-}
+pub fn main i32

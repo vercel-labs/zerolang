@@ -1,25 +1,18 @@
-fun setLast(values: MutSpan<i32>) -> Void {
-    values[2] = 30
-}
+fn setLast Void values MutSpan<i32>
+  set values[2] 30
 
-fun second(values: Span<i32>) -> i32 {
-    return values[1]
-}
+fn second i32 values Span<i32>
+  ret values[1]
 
-pub fun main(world: World) -> Void raises {
-    let mut values: [3]i32 = [1, 2, 3]
-    let expected: [3]i32 = [1, 20, 30]
-    let expectedSpan: Span<i32> = expected
-    let span: MutSpan<i32> = values
-    let readonly: Span<i32> = span
-    let mut bytes: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    span[1] = 20
-    setLast(span)
-    let readCount = std.fs.read("conformance/fixtures/std-fs-read.txt", bytes)
-    if values[1] == 20 && values[2] == 30 &&
-        second(span) == 20 && std.mem.len(span) == 3 &&
-        std.mem.eqlBytes(span, expectedSpan) &&
-        readonly[2] == 30 && readCount > 0 {
-        check world.out.write("mutable spans ok\n")
-    }
-}
+pub fn main Void world World !
+  mut values [3]i32 [1, 2, 3]
+  let expected [3]i32 [1, 20, 30]
+  let expectedSpan Span<i32> expected
+  let span MutSpan<i32> values
+  let readonly Span<i32> span
+  mut bytes [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  set span[1] 20
+  setLast span
+  let readCount std.fs.read "conformance/fixtures/std-fs-read.txt" bytes
+  if && (&& (&& (&& (&& (&& (== values[1] 20) (== values[2] 30)) (== (second span) 20)) (== (std.mem.len span) 3)) (std.mem.eqlBytes span expectedSpan)) (== readonly[2] 30)) (> readCount 0)
+    check world.out.write "mutable spans ok\n"

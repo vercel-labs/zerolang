@@ -1,7 +1,5 @@
-export c fun main(a: i32) -> i32 {
-    if a > 10 {
-        return 7
-    } else {
-        return 3
-    }
-}
+export c fn main i32 a i32
+  if > a 10
+    ret 7
+  else
+    ret 3

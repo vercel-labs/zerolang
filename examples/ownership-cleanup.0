@@ -1,26 +1,18 @@
-shape CleanupProbe {
-    marker: MutSpan<u8>,
+type CleanupProbe
+  marker MutSpan<u8>
 
-    fun drop(self: mutref<Self>) -> Void {
-        self.marker[0] = 1
-    }
-}
+  fn drop Void self mutref<Self>
+    set self.marker[0] 1
 
-fun mark_defer(marker: MutSpan<u8>) -> Void {
-    marker[1] = 1
-}
+fn mark_defer Void marker MutSpan<u8>
+  set marker[1] 1
 
-pub fun main(world: World) -> Void raises {
-    let mut marker: [2]u8 = [0, 0]
-
-    if true {
-        defer mark_defer(marker)
-        let probe: owned<CleanupProbe> = CleanupProbe { marker: marker }
-    }
-
-    if marker[0] == 1 && marker[1] == 1 {
-        check world.out.write("ownership cleanup ok\n")
-    } else {
-        check world.out.write("ownership cleanup failed\n")
-    }
-}
+pub fn main Void world World !
+  mut marker [2]u8 [0, 0]
+  if true
+    defer mark_defer marker
+    let probe owned<CleanupProbe> CleanupProbe . marker marker
+  if && (== marker[0] 1) (== marker[1] 1)
+    check world.out.write "ownership cleanup ok\n"
+  else
+    check world.out.write "ownership cleanup failed\n"

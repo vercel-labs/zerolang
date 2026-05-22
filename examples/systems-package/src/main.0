@@ -4,14 +4,12 @@ use std.time
 use helpers
 use types
 
-pub fun main(world: World) -> Void raises {
-    defer cleanup()
-    let current: Status = status()
-    let result: Result = Result.ok
-    let word = std.codec.readU32("abcd")
-    let digits = std.parse.scanDigits("123abc")
-    let duration = std.time.add(std.time.ms(5), std.time.seconds(1))
-    if digits == 3 && word > 0 && std.time.asMsFloor(duration) > 0 {
-        check world.out.write("systems package\n")
-    }
-}
+pub fn main Void world World !
+  defer cleanup()
+  let current Status status()
+  let result Result Result.ok
+  let word std.codec.readU32 "abcd"
+  let digits std.parse.scanDigits "123abc"
+  let duration std.time.add (std.time.ms 5) (std.time.seconds 1)
+  if && (&& (== digits 3) (> word 0)) (> (std.time.asMsFloor duration) 0)
+    check world.out.write "systems package\n"

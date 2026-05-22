@@ -1,11 +1,8 @@
-fun choose(flag: Bool, a: i32, b: i32) -> i32 {
-    if flag {
-        return a
-    } else {
-        return b
-    }
-}
+fn choose i32 flag Bool a i32 b i32
+  if flag
+    ret a
+  else
+    ret b
 
-export c fun main(a: i32, b: i32) -> i32 {
-    return choose(a > b, a, b)
-}
+export c fn main i32 a i32 b i32
+  ret choose (> a b) a b

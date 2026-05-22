@@ -1,12 +1,9 @@
-export c fun main() -> u8 {
-  let mut storage: [8]u8 = [0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8]
-  let mut alloc = std.mem.fixedBufAlloc(storage)
-  let first = std.mem.allocBytes(alloc, 4)
-  if first.has {
-    let copied = std.mem.copy(first.value, "zero"[0..4])
-    if copied == 4 {
-      return first.value[2]
-    }
-  }
-  return 0_u8
-}
+export c fn main u8
+  mut storage [8]u8 [0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8]
+  mut alloc std.mem.fixedBufAlloc storage
+  let first std.mem.allocBytes alloc 4
+  if first.has
+    let copied std.mem.copy first.value "zero"[0..4]
+    if == copied 4
+      ret first.value[2]
+  ret 0_u8

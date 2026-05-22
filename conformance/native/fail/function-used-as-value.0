@@ -1,7 +1,5 @@
-fun f() -> i32 {
-    return 1
-}
+fn f i32
+  ret 1
 
-pub fun main() -> i32 {
-    return f
-}
+pub fn main i32
+  ret f

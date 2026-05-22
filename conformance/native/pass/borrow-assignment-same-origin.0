@@ -1,8 +1,7 @@
-pub fun main() -> Void {
-    let mut x = 1
-    let mut y = 2
-    let mut r = &mut y
-    r = &mut y
-    r = &mut x
-    y = 3
-}
+pub fn main Void
+  mut x 1
+  mut y 2
+  mut r &mut y
+  set r &mut y
+  set r &mut x
+  set y 3

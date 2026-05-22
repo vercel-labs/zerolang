@@ -1,16 +1,12 @@
-shape Counter {
-  value: i32,
+type Counter
+  value i32
 
-  fun add(self: ref<Self>, amount: i32) -> i32 {
-    return self.value + amount
-  }
-}
+  fn add i32 self ref<Self> amount i32
+    ret + self.value amount
 
-pub fun main(world: World) -> Void raises {
-  let counter: Counter = Counter { value: 40 }
-  if Counter.add(&counter, 2) == 42 {
-    check world.out.write("static method ok\n")
-  } else {
-    check world.out.write("static method broke\n")
-  }
-}
+pub fn main Void world World !
+  let counter Counter Counter . value 40
+  if == (Counter.add (&counter) 2) 42
+    check world.out.write "static method ok\n"
+  else
+    check world.out.write "static method broke\n"

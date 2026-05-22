@@ -1,7 +1,6 @@
-pub fun main(world: World) -> Void raises { NotFound } {
-    let fs = std.fs.host()
-    let mut storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(storage)
-    let _body = check std.fs.readAllOrRaise(alloc, fs, ".zero/missing.txt", 8)
-    check world.out.write("unreachable\n")
-}
+pub fn main Void world World ![NotFound]
+  let fs std.fs.host()
+  mut storage [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc storage
+  let _body check std.fs.readAllOrRaise alloc fs ".zero/missing.txt" 8
+  check world.out.write "unreachable\n"

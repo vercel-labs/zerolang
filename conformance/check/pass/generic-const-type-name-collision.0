@@ -1,28 +1,22 @@
-const Foo: usize = 3
+const Foo usize 3
 
-shape Foo {
-    value: i32,
-}
+type Foo
+  value i32
 
-shape Holder<T> {
-    value: T,
-}
+type Holder<T: Type>
+  value T
 
-shape Sized<static N: usize> {
-    value: i32,
-}
+type Sized<static N: usize>
+  value i32
 
-fun take<T>(holder: ref<Holder<T>>) -> T {
-    return holder.value
-}
+fn take<T: Type> T holder ref<Holder<T>>
+  ret holder.value
 
-fun touchSized<static N: usize>(item: ref<Sized<N>>) -> Void {
-}
+fn touchSized<static N: usize> Void item ref<Sized<N>>
 
-pub fun main() -> Void {
-    let holder: Holder<Foo> = Holder { value: Foo { value: 7 } }
-    let value: Foo = take(&holder)
-    let sized: Sized<Foo> = Sized { value: 9 }
-    touchSized(&sized)
-    expect(value.value == 7)
-}
+pub fn main Void
+  let holder Holder<Foo> Holder . value (Foo . value 7)
+  let value Foo take (&holder)
+  let sized Sized<Foo> Sized . value 9
+  touchSized (&sized)
+  expect (== value.value 7)

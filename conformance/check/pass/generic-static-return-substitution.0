@@ -1,20 +1,16 @@
-const Len: usize = 3
+const Len usize 3
 
-shape Len {
-    value: i32,
-}
+type Len
+  value i32
 
-shape Packet<T, static N: usize> {
-    value: T,
-    items: [N]i32,
-}
+type Bundle<T: Type, static N: usize>
+  value T
+  items [N]i32
 
-fun payload<T, static N: usize>(packet: Packet<T,N>) -> [N]i32 {
-    return packet.items
-}
+fn payload<T: Type, static N: usize> [N]i32 bundle Bundle<T,N>
+  ret bundle.items
 
-pub fun main() -> Void {
-    let packet: Packet<Len,Len> = Packet { value: Len { value: 7 }, items: [1, 2, 3] }
-    let values: [Len]i32 = payload(packet)
-    expect(values[2] == 3)
-}
+pub fn main Void
+  let bundle Bundle<Len,Len> Bundle . value (Len . value 7) items ([1, 2, 3])
+  let values [Len]i32 payload bundle
+  expect (== values[2] 3)

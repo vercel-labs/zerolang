@@ -1,21 +1,14 @@
-shape DropProbe {
-    marker: MutSpan<u8>,
+type DropProbe
+  marker MutSpan<u8>
 
-    fun drop(self: mutref<Self>) -> Void {
-        self.marker[0] = 1
-    }
-}
+  fn drop Void self mutref<Self>
+    set self.marker[0] 1
 
-pub fun main(world: World) -> Void raises {
-    let mut marker: [1]u8 = [0]
-
-    if true {
-        let probe: owned<DropProbe> = DropProbe { marker: marker }
-    }
-
-    if marker[0] == 1 {
-        check world.out.write("owned drop cleanup ok\n")
-    } else {
-        check world.out.write("owned drop cleanup failed\n")
-    }
-}
+pub fn main Void world World !
+  mut marker [1]u8 [0]
+  if true
+    let probe owned<DropProbe> DropProbe . marker marker
+  if == marker[0] 1
+    check world.out.write "owned drop cleanup ok\n"
+  else
+    check world.out.write "owned drop cleanup failed\n"

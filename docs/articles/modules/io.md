@@ -22,15 +22,13 @@ Metadata labels:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises {
-    let mut copy_dst: [4]u8 = [0, 0, 0, 0]
-    let mut reader_buf: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let reader = std.io.bufferedReader(reader_buf)
-    let copied = std.io.copy(copy_dst, std.mem.span("abcd"))
-    if std.io.readerCapacity(&reader) == 8 && copied == 4 {
-        check world.out.write("io ok\n")
-    }
-}
+pub fn main Void world World !
+  mut copy_dst [4]u8 [0, 0, 0, 0]
+  mut reader_buf [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  let reader std.io.bufferedReader reader_buf
+  let copied std.io.copy copy_dst (std.mem.span "abcd")
+  if && (== (std.io.readerCapacity (&reader)) 8) (== copied 4)
+    check world.out.write "io ok\n"
 ```
 
 ## Design Notes

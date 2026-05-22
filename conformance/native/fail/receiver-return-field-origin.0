@@ -1,15 +1,12 @@
-shape Box {
-    value: ref<i32>,
-    count: i32,
+type Box
+  value ref<i32>
+  count i32
 
-    fun countRef(self: ref<Self>) -> ref<i32> {
-        return &self.count
-    }
-}
+  fn countRef ref<i32> self ref<Self>
+    ret &self.count
 
-pub fun main() -> Void {
-    let x = 1
-    let mut box = Box { value: &x, count: 0 }
-    let current = box.countRef()
-    box.count = 1
-}
+pub fn main Void
+  let x 1
+  mut box Box . value (&x) count 0
+  let current box.countRef()
+  set box.count 1

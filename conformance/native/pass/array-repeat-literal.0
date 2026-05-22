@@ -1,12 +1,7 @@
-export c fun main() -> i32 {
-    let bytes: [8]u8 = [7_u8; 8]
-    let mut scratch: [16]u8 = [0_u8; 16]
-    scratch[8] = bytes[0]
-    if bytes[7] == 7_u8 &&
-        scratch[0] == 0_u8 &&
-        scratch[8] == 7_u8 &&
-        std.mem.len(scratch) == 16 {
-        return 0
-    }
-    return 1
-}
+export c fn main i32
+  let bytes [8]u8 [7_u8;8]
+  mut scratch [16]u8 [0_u8;16]
+  set scratch[8] bytes[0]
+  if && (&& (&& (== bytes[7] 7_u8) (== scratch[0] 0_u8)) (== scratch[8] 7_u8)) (== (std.mem.len scratch) 16)
+    ret 0
+  ret 1

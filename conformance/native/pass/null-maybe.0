@@ -1,10 +1,7 @@
-shape Holder {
-    value: Maybe<i32>,
-}
+type Holder
+  value Maybe<i32>
 
-pub fun main(world: World) -> Void raises {
-    let holder = Holder { value: null }
-    if holder.value.has == false {
-        check world.out.write("null maybe ok\n")
-    }
-}
+pub fn main Void world World !
+  let holder Holder . value null
+  if == holder.value.has false
+    check world.out.write "null maybe ok\n"

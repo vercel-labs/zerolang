@@ -1,15 +1,12 @@
-type BytePair = Pair<u8, u8>
+alias BytePair Pair<u8,u8>
 
-shape Pair<T, U> {
-    left: T,
-    right: U,
-}
+type Pair<T: Type, U: Type>
+  left T
+  right U
 
-pub fun main(world: World) -> Void raises {
-    let pair: BytePair = Pair { left: 1_u8, right: 2_u8 }
-    if pair.left == 1_u8 && pair.right == 2_u8 {
-        check world.out.write("type alias ok\n")
-    } else {
-        check world.out.write("type alias broke\n")
-    }
-}
+pub fn main Void world World !
+  let pair BytePair Pair . left 1_u8 right 2_u8
+  if && (== pair.left 1_u8) (== pair.right 2_u8)
+    check world.out.write "type alias ok\n"
+  else
+    check world.out.write "type alias broke\n"

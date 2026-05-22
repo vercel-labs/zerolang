@@ -1,11 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let whole: i32 = 7.9 as i32
-    let fraction: f32 = 3 as f32
-    let wide: f64 = fraction as f64
-    let byte: u8 = 'A' as u8
-    let again: char = byte as char
-
-    if whole == 7 && byte == 65_u8 && again == 'A' && wide > 2.9 {
-        check world.out.write("float char casts ok\n")
-    }
-}
+pub fn main Void world World !
+  let whole i32 7.9 as i32
+  let fraction f32 3 as f32
+  let wide f64 fraction as f64
+  let byte u8 'A' as u8
+  let again char byte as char
+  if && (&& (&& (== whole 7) (== byte 65_u8)) (== again 'A')) (> wide 2.9)
+    check world.out.write "float char casts ok\n"

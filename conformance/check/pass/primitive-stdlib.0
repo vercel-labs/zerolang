@@ -1,10 +1,8 @@
 use std.codec
 use std.parse
 
-pub fun main(world: World) -> Void raises {
-    let len = std.codec.encodedVarintLen(300)
-    let digit = std.parse.isAsciiDigit("7")
-    if len == 2 && digit {
-        check world.out.write("primitive std ok\n")
-    }
-}
+pub fn main Void world World !
+  let len std.codec.encodedVarintLen 300
+  let digit std.parse.isAsciiDigit "7"
+  if && (== len 2) digit
+    check world.out.write "primitive std ok\n"

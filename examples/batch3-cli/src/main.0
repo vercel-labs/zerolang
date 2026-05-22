@@ -1,23 +1,17 @@
 use names
 use validate
 
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let mut path_storage: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let path = check std.path.join(path_storage, ".zero", inputName())
-
-    let created = std.fs.create(fs, path)
-    if created.has {
-        let mut file: owned<File> = created.value
-        if std.fs.writeAll(&mut file, std.mem.span("batch3 cli ok\n")) == false {
-            return
-        }
-    }
-
-    let mut read_storage: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let mut alloc = std.mem.fixedBufAlloc(read_storage)
-    let mut body: owned<ByteBuf> = check std.fs.readAllOrRaise(alloc, fs, path, 64)
-    if isExpected(std.mem.bufBytes(&body)) {
-        check world.out.write("batch3 cli ok\n")
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  mut path_storage [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let path check std.path.join path_storage ".zero" (inputName())
+  let created std.fs.create fs path
+  if created.has
+    mut file owned<File> created.value
+    if == (std.fs.writeAll (&mut file) (std.mem.span "batch3 cli ok\n")) false
+      ret
+  mut read_storage [64]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut alloc std.mem.fixedBufAlloc read_storage
+  mut body owned<ByteBuf> check std.fs.readAllOrRaise alloc fs path 64
+  if isExpected (std.mem.bufBytes (&body))
+    check world.out.write "batch3 cli ok\n"

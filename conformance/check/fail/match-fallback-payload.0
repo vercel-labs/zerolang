@@ -1,12 +1,8 @@
-choice Event {
-  quit,
-}
+choice Event
+  quit
 
-pub fun main() -> Void {
-  let event: Event = Event.quit
-  match event {
-    ._ => payload {
-      expect(true)
-    }
-  }
-}
+pub fn main Void
+  let event Event Event.quit
+  match event
+    _ payload
+      expect true

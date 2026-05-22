@@ -1,5 +1,4 @@
-shape Box<Self> {
-    value: i32,
-}
+type Box<Self: Type>
+  value i32
 
-pub fun main() -> Void {}
+pub fn main Void

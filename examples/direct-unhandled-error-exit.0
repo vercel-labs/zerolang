@@ -1,3 +1,2 @@
-pub fun main(world: World) -> Void raises { Invalid } {
-    raise Invalid
-}
+pub fn main Void world World ![Invalid]
+  raise Invalid

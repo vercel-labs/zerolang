@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let mut text: String = "hi"
-    text[0] = 72
-    check world.out.write("bad indexed mutation\n")
-}
+pub fn main Void world World !
+  mut text String "hi"
+  set text[0] 72
+  check world.out.write "bad indexed mutation\n"

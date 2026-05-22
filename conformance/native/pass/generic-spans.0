@@ -1,31 +1,22 @@
-shape IntWindow {
-    values: Span<i32>
-}
+type IntWindow
+  values Span<i32>
 
-fun second(values: Span<i32>) -> i32 {
-    return values[1]
-}
+fn second i32 values Span<i32>
+  ret values[1]
 
-fun middle(values: Span<i32>) -> Span<i32> {
-    return values[1..4]
-}
+fn middle Span<i32> values Span<i32>
+  ret values[1..4]
 
-fun arrayTail(values: [5]i32) -> Span<i32> {
-    return values[2..5]
-}
+fn arrayTail Span<i32> values [5]i32
+  ret values[2..5]
 
-pub fun main(world: World) -> Void raises {
-    let values: [5]i32 = [10, 20, 30, 40, 50]
-    let span: Span<i32> = values
-    let start: usize = 1
-    let end: usize = 4
-    let fromArray: Span<i32> = values[start..end]
-    let fromSpan = span[start..end]
-    let window = IntWindow{ values: middle(span) }
-    if values[2] == 30 && second(span) == 20 &&
-        fromArray[0] == 20 && fromArray[2] == 40 &&
-        fromSpan[1] == 30 && window.values[2] == 40 &&
-        arrayTail(values)[0] == 30 {
-        check world.out.write("generic spans ok\n")
-    }
-}
+pub fn main Void world World !
+  let values [5]i32 [10, 20, 30, 40, 50]
+  let span Span<i32> values
+  let start usize 1
+  let end usize 4
+  let fromArray Span<i32> values[start..end]
+  let fromSpan span[start..end]
+  let window IntWindow . values (middle span)
+  if && (&& (&& (&& (&& (&& (== values[2] 30) (== (second span) 20)) (== fromArray[0] 20)) (== fromArray[2] 40)) (== fromSpan[1] 30)) (== window.values[2] 40)) (== arrayTail(values)[0] 30)
+    check world.out.write "generic spans ok\n"

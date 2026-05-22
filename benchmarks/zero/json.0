@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let text = "{\"ok\":true}"[0..11]
-    if std.mem.len(text) == 11 && std.mem.eqlBytes(text, "{\"ok\":true}"[0..11]) {
-        check world.out.write("json\n")
-    }
-}
+pub fn main Void world World !
+  let text "{\"ok\":true}"[0..11]
+  if && (== (std.mem.len text) 11) (std.mem.eqlBytes text "{\"ok\":true}"[0..11])
+    check world.out.write "json\n"

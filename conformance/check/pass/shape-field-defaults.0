@@ -1,9 +1,7 @@
-shape Pair {
-    left: u8 = 1,
-    right: u8,
-}
+type Pair
+  left u8 1
+  right u8
 
-pub fun main() -> Void {
-    let pair: Pair = Pair { right: 2 }
-    expect(pair.left == 1 && pair.right == 2)
-}
+pub fn main Void
+  let pair Pair Pair . right 2
+  expect (&& (== pair.left 1) (== pair.right 2))

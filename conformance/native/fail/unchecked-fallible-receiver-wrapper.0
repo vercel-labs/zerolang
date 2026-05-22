@@ -1,16 +1,12 @@
-shape Counter {
-    value: u8,
+type Counter
+  value u8
 
-    fun risky(self: ref<Self>) -> Void raises { Bad } {
-        raise Bad
-    }
+  fn risky Void self ref<Self> ![Bad]
+    raise Bad
 
-    fun wrapper(self: ref<Self>) -> Void raises {
-        check self.risky()
-    }
-}
+  fn wrapper Void self ref<Self> !
+    check self.risky()
 
-pub fun main() -> Void {
-    let counter: Counter = Counter { value: 0 }
-    counter.wrapper()
-}
+pub fn main Void
+  let counter Counter Counter . value 0
+  counter.wrapper()

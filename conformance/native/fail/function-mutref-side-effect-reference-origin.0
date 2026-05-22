@@ -1,15 +1,12 @@
-shape Holder {
-    value: ref<i32>,
-}
+type Holder
+  value ref<i32>
 
-fun replace(holder: mutref<Holder>, next: ref<i32>) -> Void {
-    holder.value = next
-}
+fn replace Void holder mutref<Holder> next ref<i32>
+  set holder.value next
 
-pub fun main() -> Void {
-    let mut x = 1
-    let y = 2
-    let mut holder = Holder { value: &y }
-    replace(&mut holder, &x)
-    x = 3
-}
+pub fn main Void
+  mut x 1
+  let y 2
+  mut holder Holder . value (&y)
+  replace (&mut holder) (&x)
+  set x 3

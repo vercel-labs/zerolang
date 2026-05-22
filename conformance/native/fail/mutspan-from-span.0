@@ -1,7 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let mut values: [2]i32 = [1, 2]
-    let readonly: Span<i32> = values
-    let writable: MutSpan<i32> = readonly
-    writable[0] = 3
-    check world.out.write("bad mutable span\n")
-}
+pub fn main Void world World !
+  mut values [2]i32 [1, 2]
+  let readonly Span<i32> values
+  let writable MutSpan<i32> readonly
+  set writable[0] 3
+  check world.out.write "bad mutable span\n"

@@ -1,8 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let bytes: [4]u8 = [122, 101, 114, 111]
-    let mut scratch: [4]u8 = [0, 0, 0, 0]
-    let copied = std.mem.copy(scratch, bytes)
-    if std.mem.eql("zero", "zero") && copied == 4 && scratch[0] == ('z' as u8) {
-        check world.out.write("native std mem arrays\n")
-    }
-}
+pub fn main Void world World !
+  let bytes [4]u8 [122, 101, 114, 111]
+  mut scratch [4]u8 [0, 0, 0, 0]
+  let copied std.mem.copy scratch bytes
+  if && (&& (std.mem.eql "zero" "zero") (== copied 4)) (== scratch[0] (122 as u8))
+    check world.out.write "native std mem arrays\n"

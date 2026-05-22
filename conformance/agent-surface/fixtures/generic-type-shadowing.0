@@ -1,9 +1,7 @@
-shape T {
-    value: i32,
-}
+type T
+  value i32
 
-fun identity<T>(value: T) -> T {
-    return value
-}
+fn identity<T: Type> T value T
+  ret value
 
-pub fun main() -> Void {}
+pub fn main Void

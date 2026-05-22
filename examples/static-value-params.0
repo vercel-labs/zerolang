@@ -1,17 +1,13 @@
-const default_cap: usize = 2 + 2
+const default_cap usize + 2 2
 
-shape FixedVec<T, static N: usize> {
-    len: usize,
-    items: [N]T,
-}
+type FixedVec<T: Type, static N: usize>
+  len usize
+  items [N]T
 
-fun first<T, static N: usize>(vec: ref<FixedVec<T,N>>) -> T {
-    return vec.items[0]
-}
+fn first<T: Type, static N: usize> T vec ref<FixedVec<T,N>>
+  ret vec.items[0]
 
-pub fun main(world: World) -> Void raises {
-    let vec: FixedVec<u8,default_cap> = FixedVec { len: default_cap, items: [1, 2, 3, 4] }
-    if first<u8, default_cap>(&vec) == 1 {
-        check world.out.write("static value params ok\n")
-    }
-}
+pub fn main Void world World !
+  let vec FixedVec<u8,default_cap> FixedVec . len default_cap items ([1, 2, 3, 4])
+  if == (first<u8, default_cap> (&vec)) 1
+    check world.out.write "static value params ok\n"

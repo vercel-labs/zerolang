@@ -1,11 +1,8 @@
-fun idx() -> usize {
-    return 0
-}
+fn idx usize
+  ret 0
 
-pub fun main(world: World) -> Void raises {
-    let values: [1]u32 = [2]
-    let sum = 40_u32 + values[idx() + 0]
-    if sum == 42_u32 {
-        check world.out.write("scratch nested index ok\n")
-    }
-}
+pub fn main Void world World !
+  let values [1]u32 [2]
+  let sum + 40_u32 values[+ (idx()) 0]
+  if == sum 42_u32
+    check world.out.write "scratch nested index ok\n"

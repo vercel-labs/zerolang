@@ -1,20 +1,15 @@
-interface Reader<T> {
-    fun get(self: ref<T>) -> ref<i32>
-}
+interface Reader<T: Type>
+  fn get ref<i32> self ref<T>
 
-shape Holder {
-    value: i32,
+type Holder
+  value i32
 
-    fun get(self: ref<Self>) -> ref<i32> {
-        return &self.value
-    }
-}
+  fn get ref<i32> self ref<Self>
+    ret &self.value
 
-fun read<T: Reader<T>>(value: ref<T>) -> ref<i32> {
-    return T.get(value)
-}
+fn read<T: Reader<T>> ref<i32> value ref<T>
+  ret T.get value
 
-pub fun main() -> Void {
-    let holder = Holder { value: 1 }
-    let value = read<Holder>(&holder)
-}
+pub fn main Void
+  let holder Holder . value 1
+  let value read<Holder> (&holder)

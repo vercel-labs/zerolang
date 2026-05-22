@@ -42,15 +42,12 @@ const FEATURES = [
   { title: "DX as a goal", description: "Checking, inspecting, explaining, and repairing code should feel direct even when the language is intentionally explicit." },
 ];
 
-const CODE_EXAMPLE = `<span class="hl-keyword">fun</span> <span class="hl-variable">answer</span>() -> <span class="hl-type">i32</span> {
-  <span class="hl-keyword">return</span> <span class="hl-number">40</span> + <span class="hl-number">2</span>
-}
+const CODE_EXAMPLE = `<span class="hl-keyword">fn</span> <span class="hl-variable">answer</span> <span class="hl-type">i32</span>
+  <span class="hl-keyword">ret</span> + <span class="hl-number">40</span> <span class="hl-number">2</span>
 
-<span class="hl-keyword">pub</span> <span class="hl-keyword">fun</span> <span class="hl-variable">main</span>(world: <span class="hl-type">World</span>) -> <span class="hl-type">Void</span> <span class="hl-keyword">raises</span> {
-  <span class="hl-keyword">if</span> <span class="hl-variable">answer</span>() == <span class="hl-number">42</span> {
-    <span class="hl-keyword">check</span> world.out.<span class="hl-variable">write</span>(<span class="hl-string">"math works\\n"</span>)
-  }
-}`;
+<span class="hl-keyword">pub</span> <span class="hl-keyword">fn</span> <span class="hl-variable">main</span> <span class="hl-type">Void</span> world <span class="hl-type">World</span> <span class="hl-keyword">!</span>
+  <span class="hl-keyword">if</span> == <span class="hl-variable">answer</span>() <span class="hl-number">42</span>
+    <span class="hl-keyword">check</span> world.out.<span class="hl-variable">write</span> <span class="hl-string">"math works\\n"</span>`;
 
 function CodeWindow({ title, html, children }: { title: string; html?: string; children?: ReactNode }) {
   return (

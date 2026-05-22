@@ -1,15 +1,11 @@
-fun validate(ok: Bool) -> i32 raises { InvalidInput } {
-    if ok == false {
-        raise InvalidInput
-    }
-    return 42
-}
+fn validate i32 ok Bool ![InvalidInput]
+  if == ok false
+    raise InvalidInput
+  ret 42
 
-fun run() -> Void raises { InvalidInput } {
-    check validate(true)
-}
+fn run Void ![InvalidInput]
+  check validate true
 
-pub fun main(world: World) -> Void raises {
-    check run()
-    check world.out.write("fallibility ok\n")
-}
+pub fn main Void world World !
+  check run()
+  check world.out.write "fallibility ok\n"

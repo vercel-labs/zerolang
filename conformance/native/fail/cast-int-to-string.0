@@ -1,4 +1,3 @@
-pub fun main(world: World) -> Void raises {
-    let text: String = 1 as String
-    check world.out.write("bad cast\n")
-}
+pub fn main Void world World !
+  let text String 1 as String
+  check world.out.write "bad cast\n"

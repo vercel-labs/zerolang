@@ -1,3 +1,2 @@
-pub fun main() -> Void raises {
-    check 1
-}
+pub fn main Void !
+  check 1

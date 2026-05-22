@@ -8,9 +8,9 @@ Runnable today:
 | `std.fs.write(path, bytes)` | `usize` | Writes bytes to a hosted path and returns the byte count. |
 | `std.fs.host()` | `Fs` | Creates the hosted filesystem capability. |
 | `std.fs.open(fs, path)` | `Maybe<owned<File>>` | Opens a file and returns `null` when unavailable. |
-| `std.fs.openOrRaise(fs, path)` | `owned<File>` | Opens a file or raises `{ NotFound, TooLarge, Io }`. |
+| `std.fs.openOrRaise(fs, path)` | `owned<File>` | Opens a file or raises `![NotFound TooLarge Io]`. |
 | `std.fs.create(fs, path)` | `Maybe<owned<File>>` | Creates a file and returns `null` when unavailable. |
-| `std.fs.createOrRaise(fs, path)` | `owned<File>` | Creates a file or raises `{ NotFound, TooLarge, Io }`. |
+| `std.fs.createOrRaise(fs, path)` | `owned<File>` | Creates a file or raises `![NotFound TooLarge Io]`. |
 | `std.fs.readOrRaise(&mut file, buf)` | `usize` | Reads into caller storage or raises. |
 | `std.fs.writeAll(&mut file, bytes)` | `Bool` | Writes bytes to an owned file handle. |
 | `std.fs.writeAllOrRaise(&mut file, bytes)` | `Void` | Writes all bytes or raises. |
@@ -40,20 +40,16 @@ Current limits:
 ## Example
 
 ```zero
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let mut file: owned<File> = check std.fs.createOrRaise(fs, ".zero/out/example.txt")
-    check std.fs.writeAllOrRaise(&mut file, std.mem.span("hello\n"))
-    let len = check std.fs.fileLenOrRaise(&mut file)
-    std.fs.close(&mut file)
-    if len == 6 && std.fs.exists(".zero/out/example.txt") {
-        if std.fs.rename(".zero/out/example.txt", ".zero/out/example-renamed.txt") {
-            if std.fs.remove(".zero/out/example-renamed.txt") {
-                check world.out.write("fs ok\n")
-            }
-        }
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  mut file owned<File> check std.fs.createOrRaise fs ".zero/out/example.txt"
+  check std.fs.writeAllOrRaise (&mut file) (std.mem.span "hello\n")
+  let len check std.fs.fileLenOrRaise (&mut file)
+  std.fs.close (&mut file)
+  if && (== len 6) (std.fs.exists ".zero/out/example.txt")
+    if std.fs.rename ".zero/out/example.txt" ".zero/out/example-renamed.txt"
+      if std.fs.remove ".zero/out/example-renamed.txt"
+        check world.out.write "fs ok\n"
 ```
 
 ## Design Notes

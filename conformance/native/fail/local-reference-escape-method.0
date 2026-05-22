@@ -1,12 +1,9 @@
-shape RefBox {
-    value: i32,
+type RefBox
+  value i32
 
-    fun id(r: ref<i32>) -> ref<i32> {
-        return r
-    }
-}
+  fn id ref<i32> r ref<i32>
+    ret r
 
-pub fun main() -> ref<i32> {
-    let x = 1
-    return RefBox.id(&x)
-}
+pub fn main ref<i32>
+  let x 1
+  ret RefBox.id (&x)

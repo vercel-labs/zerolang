@@ -1,32 +1,22 @@
-shape LiteralBag {
-    byte: u8
-    word: u16
-    size: usize
-    offset: isize
-}
+type LiteralBag
+  byte u8
+  word u16
+  size usize
+  offset isize
 
-fun useWord(value: u16) -> u16 {
-    return value
-}
+fn useWord u16 value u16
+  ret value
 
-fun returnSize() -> usize {
-    return 0x20_usize
-}
+fn returnSize usize
+  ret 0x20_usize
 
-pub fun main(world: World) -> Void raises {
-    let hex: u8 = 0xff_u8
-    let binary: u16 = 0b1010_u16
-    let octal: i32 = 0o77_i32
-    let separated: usize = 1_024_usize
-    let defaulted = 0b1010
-    let bytes: [3]u8 = [0x1_u8, 0b10_u8, 0o3_u8]
-    let bag = LiteralBag{
-        byte: 0x2a_u8,
-        word: 0b101010_u16,
-        size: 0o52_usize,
-        offset: 42_isize
-    }
-    if hex == 255 && binary == 10 && octal == 63 && separated == 1024 && defaulted == 10 && bag.byte == 42 && useWord(0xff_u16) == 255 && returnSize() == 32 {
-        check world.out.write("radix suffix literals ok\n")
-    }
-}
+pub fn main Void world World !
+  let hex u8 0xff_u8
+  let binary u16 0b1010_u16
+  let octal i32 0o77_i32
+  let separated usize 1_024_usize
+  let defaulted 0b1010
+  let bytes [3]u8 [0x1_u8, 0b10_u8, 0o3_u8]
+  let bag LiteralBag . byte 0x2a_u8 word 0b101010_u16 size 0o52_usize offset 42_isize
+  if && (&& (&& (&& (&& (&& (&& (== hex 255) (== binary 10)) (== octal 63)) (== separated 1024)) (== defaulted 10)) (== bag.byte 42)) (== (useWord 0xff_u16) 255)) (== (returnSize()) 32)
+    check world.out.write "radix suffix literals ok\n"

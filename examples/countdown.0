@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    while false {
-        check world.out.write("unreachable\n")
-    }
-    check world.out.write("countdown done\n")
-}
+pub fn main Void world World !
+  while false
+    check world.out.write "unreachable\n"
+  check world.out.write "countdown done\n"

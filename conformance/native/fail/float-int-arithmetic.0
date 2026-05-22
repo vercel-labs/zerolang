@@ -1,6 +1,5 @@
-pub fun main(world: World) -> Void raises {
-    let wide: f64 = 2.0
-    let count: i32 = 1
-    let sum = wide + count
-    check world.out.write("bad float\n")
-}
+pub fn main Void world World !
+  let wide f64 2.0
+  let count i32 1
+  let sum + wide count
+  check world.out.write "bad float\n"

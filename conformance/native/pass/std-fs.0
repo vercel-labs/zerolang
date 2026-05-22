@@ -1,8 +1,6 @@
-pub fun main(world: World) -> Void raises {
-    let mut buf: [16]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let read_count = std.fs.read("conformance/fixtures/std-fs-read.txt", buf)
-    let written = std.fs.write(".zero/conformance/std-fs-write.txt", "zero write\n")
-    if read_count > 0 && written == 11 && std.fs.exists(".zero/conformance/std-fs-write.txt") {
-        check world.out.write("fs ok\n")
-    }
-}
+pub fn main Void world World !
+  mut buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let read_count std.fs.read "conformance/fixtures/std-fs-read.txt" buf
+  let written std.fs.write ".zero/conformance/std-fs-write.txt" "zero write\n"
+  if && (&& (> read_count 0) (== written 11)) (std.fs.exists ".zero/conformance/std-fs-write.txt")
+    check world.out.write "fs ok\n"

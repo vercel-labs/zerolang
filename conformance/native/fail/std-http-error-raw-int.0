@@ -1,7 +1,5 @@
-export c fun main() -> i32 {
-    let error = std.http.errorTimeout()
-    if error == 6 {
-        return 1
-    }
-    return 0
-}
+export c fn main i32
+  let error std.http.errorTimeout()
+  if == error 6
+    ret 1
+  ret 0

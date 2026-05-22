@@ -1,14 +1,11 @@
-shape Token {
-  kind: u8,
-  start: usize,
-  len: usize = 1,
-}
+type Token
+  kind u8
+  start usize
+  len usize 1
 
-export c fun main() -> u8 {
-  let mut token = Token{kind: 65_u8, start: 2}
-  token.len = token.start + token.len
-  if token.len == 3 {
-    return token.kind
-  }
-  return 0_u8
-}
+export c fn main u8
+  mut token Token . kind 65_u8 start 2
+  set token.len + token.start token.len
+  if == token.len 3
+    ret token.kind
+  ret 0_u8

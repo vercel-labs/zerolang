@@ -1,9 +1,6 @@
-shape Foo {
-    value: i32,
-}
+type Foo
+  value i32
 
-fun caller<static Foo: usize>() -> Void {
-}
+fn caller<static Foo: usize> Void
 
-pub fun main() -> Void {
-}
+pub fn main Void

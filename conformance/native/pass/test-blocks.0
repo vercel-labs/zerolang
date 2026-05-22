@@ -1,7 +1,5 @@
-fun add(a: i32, b: i32) -> i32 {
-    return a + b
-}
+fn add i32 a i32 b i32
+  ret + a b
 
-test "addition works" {
-    expect(add(2, 3) == 5)
-}
+test "addition works"
+  expect (== (add 2 3) 5)

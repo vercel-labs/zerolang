@@ -1,3 +1,8 @@
-shape Box<T,static N:usize>{items:[N]T,}
-fun first<T,static N:usize>(box:ref<Box<T,N>>)->T{return box.items[0]}
-pub fun main()->Void{let value:Box<u8,4> = Box{items:[1,2,3,4]}}
+type Box<T: Type, static N: usize>
+  items [N]T
+
+fn first<T: Type, static N: usize> T box ref<Box<T,N>>
+  ret box.items[0]
+
+pub fn main Void
+  let value Box<u8,4> Box . items ([1, 2, 3, 4])

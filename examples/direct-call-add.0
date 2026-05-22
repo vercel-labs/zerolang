@@ -1,7 +1,5 @@
-fun add(a: i32, b: i32) -> i32 {
-    return a + b
-}
+fn add i32 a i32 b i32
+  ret + a b
 
-export c fun main(a: i32, b: i32) -> i32 {
-    return add(a, b)
-}
+export c fn main i32 a i32 b i32
+  ret add a b

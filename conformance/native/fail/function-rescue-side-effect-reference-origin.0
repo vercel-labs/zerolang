@@ -1,21 +1,17 @@
-shape Holder {
-    value: ref<i32>,
-}
+type Holder
+  value ref<i32>
 
-fun replaceValue(holder: mutref<Holder>, next: ref<i32>) -> i32 {
-    holder.value = next
-    return 0
-}
+fn replaceValue i32 holder mutref<Holder> next ref<i32>
+  set holder.value next
+  ret 0
 
-fun maybeReplace(holder: mutref<Holder>, next: ref<i32>) -> Void {
-    let values = [1]
-    let ok = std.mem.get(values, 0) rescue err { replaceValue(holder, next) }
-}
+fn maybeReplace Void holder mutref<Holder> next ref<i32>
+  let values [1]
+  let ok rescue (std.mem.get values 0) err (replaceValue holder next)
 
-pub fun main() -> Void {
-    let mut old = 1
-    let next = 2
-    let mut holder = Holder { value: &old }
-    maybeReplace(&mut holder, &next)
-    old = 3
-}
+pub fn main Void
+  mut old 1
+  let next 2
+  mut holder Holder . value (&old)
+  maybeReplace (&mut holder) (&next)
+  set old 3

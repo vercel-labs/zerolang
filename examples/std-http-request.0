@@ -1,17 +1,13 @@
-pub fun main(world: World) -> Void raises {
-    let maybe_request = std.args.get(1)
-    if maybe_request.has == false {
-        check world.err.write("usage: pass HTTP request envelope\n")
-        return
-    }
-
-    let net = std.net.host()
-    let client = std.http.client(net)
-    let mut response: [512]u8 = [0_u8; 512]
-    let result = std.http.fetch(client, std.mem.span(maybe_request.value), response, std.time.ms(5000))
-    if std.http.resultOk(result) {
-        check world.out.write("http request ok\n")
-        return
-    }
-    check world.err.write("http request failed\n")
-}
+pub fn main Void world World !
+  let maybe_request std.args.get 1
+  if == maybe_request.has false
+    check world.err.write "usage: pass HTTP request envelope\n"
+    ret
+  let net std.net.host()
+  let client std.http.client net
+  mut response [512]u8 [0_u8;512]
+  let result std.http.fetch client (std.mem.span maybe_request.value) response (std.time.ms 5000)
+  if std.http.resultOk result
+    check world.out.write "http request ok\n"
+    ret
+  check world.err.write "http request failed\n"

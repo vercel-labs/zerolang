@@ -1,3 +1,2 @@
-shape Point {
-    value: i32,
-}
+type Point
+  value i32

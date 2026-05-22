@@ -1,6 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let part = "abcd"[0..5]
-    if std.mem.len(part) == 0 {
-        check world.out.write("unreachable\n")
-    }
-}
+pub fn main Void world World !
+  let part "abcd"[0..5]
+  if == (std.mem.len part) 0
+    check world.out.write "unreachable\n"

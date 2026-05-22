@@ -1,25 +1,17 @@
-shape DropProbe {
-    marker: MutSpan<u8>,
+type DropProbe
+  marker MutSpan<u8>
 
-    fun drop(self: mutref<Self>) -> Void {
-        self.marker[0] = 1
-    }
-}
+  fn drop Void self mutref<Self>
+    set self.marker[0] 1
 
-fun consume(probe: owned<DropProbe>) -> Void {
-}
+fn consume Void probe owned<DropProbe>
 
-pub fun main(world: World) -> Void raises {
-    let mut marker: [1]u8 = [0]
-
-    if true {
-        let probe: owned<DropProbe> = DropProbe { marker: marker }
-        consume(probe)
-    }
-
-    if marker[0] == 0 {
-        check world.out.write("owned drop move suppressed ok\n")
-    } else {
-        check world.out.write("owned drop move suppressed failed\n")
-    }
-}
+pub fn main Void world World !
+  mut marker [1]u8 [0]
+  if true
+    let probe owned<DropProbe> DropProbe . marker marker
+    consume probe
+  if == marker[0] 0
+    check world.out.write "owned drop move suppressed ok\n"
+  else
+    check world.out.write "owned drop move suppressed failed\n"

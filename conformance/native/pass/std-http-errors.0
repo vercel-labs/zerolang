@@ -1,10 +1,5 @@
-export c fun main() -> i32 {
-    let timeout: HttpError = std.http.errorTimeout()
-    if std.http.errorNone() == std.http.errorNone() &&
-        std.http.errorTls() != std.http.errorTimeout() &&
-        std.http.errorInvalidRequest() != std.http.errorUnsupportedProtocol() &&
-        timeout == std.http.errorTimeout() {
-        return 0
-    }
-    return 1
-}
+export c fn main i32
+  let timeout HttpError std.http.errorTimeout()
+  if && (&& (&& (== (std.http.errorNone()) (std.http.errorNone())) (!= (std.http.errorTls()) (std.http.errorTimeout()))) (!= (std.http.errorInvalidRequest()) (std.http.errorUnsupportedProtocol()))) (== timeout (std.http.errorTimeout()))
+    ret 0
+  ret 1

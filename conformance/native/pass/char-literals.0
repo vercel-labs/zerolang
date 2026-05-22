@@ -1,29 +1,19 @@
-shape CharBag {
-    letter: char
-    newline: char
-    quote: char
-    slash: char
-    hex: char
-}
+type CharBag
+  letter char
+  newline char
+  quote char
+  slash char
+  hex char
 
-fun echoChar(value: char) -> char {
-    return value
-}
+fn echoChar char value char
+  ret value
 
-pub fun main(world: World) -> Void raises {
-    let letter: char = 'A'
-    let newline: char = '\n'
-    let quote: char = '\''
-    let slash: char = '\\'
-    let hex: char = '\x41'
-    let bag = CharBag{
-        letter: letter,
-        newline: newline,
-        quote: quote,
-        slash: slash,
-        hex: hex
-    }
-    if letter == hex && echoChar(bag.letter) == 'A' && bag.newline == newline && bag.quote == quote && bag.slash == slash {
-        check world.out.write("char literals ok\n")
-    }
-}
+pub fn main Void world World !
+  let letter char 'A'
+  let newline char '\n'
+  let quote char '\''
+  let slash char '\\'
+  let hex char '\x41'
+  let bag CharBag . letter letter newline newline quote quote slash slash hex hex
+  if && (&& (&& (&& (== letter hex) (== (echoChar bag.letter) 'A')) (== bag.newline newline)) (== bag.quote quote)) (== bag.slash slash)
+    check world.out.write "char literals ok\n"

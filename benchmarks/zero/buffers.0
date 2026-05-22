@@ -1,17 +1,13 @@
-pub fun main(world: World) -> Void raises {
-    let bytes: [11]u8 = [122, 101, 114, 111, 45, 98, 117, 102, 102, 101, 114]
-    let mut scratch: [11]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let span = std.mem.span("zero-buffer")
-    let copied = std.mem.copy(scratch, span)
-    let mut i = 0
-    let mut hits = 0
-    while i < 10000 {
-        if std.mem.eqlBytes(span, std.mem.span("zero-buffer")) {
-            hits = hits + 1
-        }
-        i = i + 1
-    }
-    if hits == 10000 && copied == 11 && scratch[0] == ('z' as u8) && std.mem.len(span) == 11 {
-        check world.out.write("buffer\n")
-    }
-}
+pub fn main Void world World !
+  let bytes [11]u8 [122, 101, 114, 111, 45, 98, 117, 102, 102, 101, 114]
+  mut scratch [11]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let span std.mem.span "zero-buffer"
+  let copied std.mem.copy scratch span
+  mut i 0
+  mut hits 0
+  while < i 10000
+    if std.mem.eqlBytes span (std.mem.span "zero-buffer")
+      set hits + hits 1
+    set i + i 1
+  if && (&& (&& (== hits 10000) (== copied 11)) (== scratch[0] (122 as u8))) (== (std.mem.len span) 11)
+    check world.out.write "buffer\n"

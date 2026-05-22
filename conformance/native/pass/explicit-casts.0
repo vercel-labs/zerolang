@@ -1,37 +1,26 @@
-shape CastBag {
-    byte: u8
-    count: u32
-    size: usize
-    signed: isize
-}
+type CastBag
+  byte u8
+  count u32
+  size usize
+  signed isize
 
-fun narrow(value: u32) -> u8 {
-    return value as u8
-}
+fn narrow u8 value u32
+  ret value as u8
 
-fun widen(value: u8) -> u32 {
-    return value as u32
-}
+fn widen u32 value u8
+  ret value as u32
 
-fun toSize(value: i32) -> usize {
-    return value as usize
-}
+fn toSize usize value i32
+  ret value as usize
 
-pub fun main(world: World) -> Void raises {
-    let big: u32 = 300
-    let small: u8 = 42
-    let byte: u8 = big as u8
-    let count: u32 = small as u32
-    let size: usize = count as usize
-    let offset: isize = small as isize
-    let sum: u16 = (small as u16) + (1 as u16)
-    let bag = CastBag{
-        byte: big as u8,
-        count: small as u32,
-        size: count as usize,
-        signed: small as isize
-    }
-    if byte == 44 && count == 42 && size == 42 && offset == 42 && sum == 43 && narrow(big) == 44 && widen(small) == 42 && toSize(7) == 7 && bag.byte == 44 {
-        check world.out.write("explicit casts ok\n")
-    }
-}
+pub fn main Void world World !
+  let big u32 300
+  let small u8 42
+  let byte u8 big as u8
+  let count u32 small as u32
+  let size usize count as usize
+  let offset isize small as isize
+  let sum u16 + (small as u16) (1 as u16)
+  let bag CastBag . byte (big as u8) count (small as u32) size (count as usize) signed (small as isize)
+  if && (&& (&& (&& (&& (&& (&& (&& (== byte 44) (== count 42)) (== size 42)) (== offset 42)) (== sum 43)) (== (narrow big) 44)) (== (widen small) 42)) (== (toSize 7) 7)) (== bag.byte 44)
+    check world.out.write "explicit casts ok\n"

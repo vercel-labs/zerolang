@@ -19,9 +19,9 @@ Build JSON reports `profileSemantics` and `profileBudget`. Size JSON adds `sizeB
 
 | Example | What it teaches | Try it |
 | --- | --- | --- |
-| `hello.0` | `pub fun main`, `World`, `check`, stdout | `bin/zero check examples/hello.0` |
+| `hello.0` | `pub fn main`, `World`, `check`, stdout | `bin/zero check examples/hello.0` |
 | `hello-let.0` | immutable `let` bindings | `bin/zero check examples/hello-let.0` |
-| `add.0` | helper functions, `return`, `if` / `else` | `bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add` |
+| `add.0` | helper functions, `ret`, `if` / `else` | `bin/zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add` |
 | `direct-u8-helper-call.0` | direct backend signed LEB literals, byte arrays, and helper calls | `bin/zero check examples/direct-u8-helper-call.0` |
 | `direct-array-bounds-trap.0` | direct backend stack-memory bounds traps | `bin/zero check examples/direct-array-bounds-trap.0` |
 | `direct-string-len.0` | direct backend string literal length for compiler token scans | `bin/zero check examples/direct-string-len.0` |
@@ -33,13 +33,13 @@ Build JSON reports `profileSemantics` and `profileBudget`. Size JSON adds `sizeB
 | `direct-byte-copy-fill.0` | direct backend mutable byte copy/fill over fixed buffers | `bin/zero check examples/direct-byte-copy-fill.0` |
 | `direct-alloc-bump.0` | direct backend explicit `FixedBufAlloc` bump allocation over caller storage | `bin/zero check examples/direct-alloc-bump.0` |
 | `direct-alloc-overflow.0` | direct backend fixed-buffer allocation overflow returns `Maybe.none` without hidden heap growth | `bin/zero check examples/direct-alloc-overflow.0` |
-| `direct-token-shape.0` | direct backend stack layout for shape literals, field loads, defaults, and field stores | `bin/zero check examples/direct-token-shape.0` |
+| `direct-token-shape.0` | direct backend stack layout for type literals, field loads, defaults, and field stores | `bin/zero check examples/direct-token-shape.0` |
 | `direct-enum-match.0` | direct backend compact enum cases and exhaustive match branches without matcher tables | `bin/zero check examples/direct-enum-match.0` |
 | `direct-raises-basic.0` | direct backend packed error-result propagation for `raise` and `check` | `bin/zero check examples/direct-raises-basic.0` |
 | `direct-rescue-basic.0` | direct backend local `rescue` fallback over a raised error | `bin/zero check examples/direct-rescue-basic.0` |
 | `direct-byte-buf.0` | direct backend monomorphic byte buffer push, length, capacity, and overflow checks | `bin/zero check examples/direct-byte-buf.0` |
 | `direct-generic-identity.0` | direct backend explicit generic function specialization without runtime metadata | `bin/zero check examples/direct-generic-identity.0` |
-| `direct-generic-fixedbuf.0` | direct backend generic storage shape with concrete type and static value arguments | `bin/zero check examples/direct-generic-fixedbuf.0` |
+| `direct-generic-fixedbuf.0` | direct backend generic storage type with concrete type and static value arguments | `bin/zero check examples/direct-generic-fixedbuf.0` |
 | `direct-generic-vec.0` | direct backend generic fixed-capacity vector layout for byte, token, and AST-node element kinds | `bin/zero check examples/direct-generic-vec.0` |
 | `direct-i64-return.0` | direct ELF64 object backend support for i64/u64 values | `bin/zero build --emit obj --target linux-musl-x64 examples/direct-i64-return.0 --out .zero/out/direct-i64-return.o` |
 | `direct-byte-view-reloc.0` | direct ELF64 readonly byte-view relocations for string-backed span locals | `bin/zero build --emit obj --target linux-musl-x64 examples/direct-byte-view-reloc.0 --out .zero/out/direct-byte-view-reloc.o` |
@@ -51,20 +51,20 @@ Build JSON reports `profileSemantics` and `profileBudget`. Size JSON adds `sizeB
 
 | Example | What it teaches | Try it |
 | --- | --- | --- |
-| `point.0` | `shape`, shape literals, field access | `bin/zero check examples/point.0` |
+| `point.0` | `type`, type literals, field access | `bin/zero check examples/point.0` |
 | `result-choice.0` | `enum`, payload `choice`, exhaustive `match`, payload binding | `bin/zero check examples/result-choice.0` |
-| `primitive-language-gaps.0` | fixed arrays, `let mut`, assignment | `bin/zero check examples/primitive-language-gaps.0` |
+| `primitive-language-gaps.0` | fixed arrays, `mut`, assignment | `bin/zero check examples/primitive-language-gaps.0` |
 | `memory-primitives.0` | `Span`, `Maybe`, references, allocator vocabulary, `std.mem` spans | `bin/zero check examples/memory-primitives.0` |
 | `allocator-collections.0` | `NullAlloc`, explicit allocator handles, fixed-buffer allocation, `Vec`, and empty map/set metadata without a global heap | `bin/zero check examples/allocator-collections.0 && bin/zero mem --json examples/allocator-collections.0` |
 | `const-arithmetic.0` | top-level deterministic `const` values and arithmetic | `bin/zero check examples/const-arithmetic.0` |
 | `compile-time-v1.0` | bounded `meta`, target/type reflection facts, Bool and enum static values, and compile-time JSON metadata | `bin/zero check --json examples/compile-time-v1.0` |
-| `generic-pair.0` | multi-parameter generic shapes and generic function returns | `bin/zero check examples/generic-pair.0` |
+| `generic-pair.0` | multi-parameter generic types and generic function returns | `bin/zero check examples/generic-pair.0` |
 | `static-value-params.0` | integer static value parameters and fixed-capacity generic storage | `bin/zero check examples/static-value-params.0` |
-| `fixed-vec.0` | field defaults, constructor-style shape methods, receiver calls, `Self`, and static capacity | `bin/zero check examples/fixed-vec.0` |
-| `type-alias.0` | `type Alias = ExistingType` as compile-time spelling | `bin/zero check examples/type-alias.0` |
-| `static-method.0` | static shape method namespace calls without dispatch | `bin/zero check examples/static-method.0` |
+| `fixed-vec.0` | field defaults, constructor-style type methods, receiver calls, `Self`, and static capacity | `bin/zero check examples/fixed-vec.0` |
+| `type-alias.0` | `alias Name ExistingType` as compile-time spelling | `bin/zero check examples/type-alias.0` |
+| `static-method.0` | static type method namespace calls without dispatch | `bin/zero check examples/static-method.0` |
 | `static-interface.0` | static interface constraints over generic functions with direct calls | `bin/zero check examples/static-interface.0` |
-| `fallibility.0` | `raise`, `check`, and explicit `raises { ... }` error sets | `bin/zero build --emit exe --target linux-musl-x64 examples/fallibility.0 --out .zero/out/fallibility && ./.zero/out/fallibility` |
+| `fallibility.0` | `raise`, `check`, and explicit `![...]` error sets | `bin/zero build --emit exe --target linux-musl-x64 examples/fallibility.0 --out .zero/out/fallibility && ./.zero/out/fallibility` |
 | `ownership-cleanup.0` | `owned<T>` cleanup, canonical `drop`, and `defer` at lexical scope exit | `bin/zero build --emit exe --target linux-musl-x64 examples/ownership-cleanup.0 --out .zero/out/ownership-cleanup && ./.zero/out/ownership-cleanup` |
 
 ## Standard Library
@@ -99,7 +99,7 @@ These examples are the small native workflow set used by docs and tests:
 
 | Example | What it teaches | Try it |
 | --- | --- | --- |
-| `config-shape.0` | `extern c`, `extern shape`, C-shaped data | `bin/zero check examples/config-shape.0` |
+| `config-shape.0` | `extern c`, `extern type`, C-shaped data | `bin/zero check examples/config-shape.0` |
 | `systems-package/` | `zero.json`, multiple source files, `defer`, std helpers | `bin/zero check examples/systems-package` |
 | `readall-cli/` | package-local imports, named errors, `std.fs.readAll`, explicit fixed-buffer allocation | `bin/zero check examples/readall-cli` |
 | `batch3-cli/` | module graph metadata, local `rescue`, path helpers, named fs errors, explicit allocation | `bin/zero check examples/batch3-cli` |

@@ -1,14 +1,11 @@
-pub fun main(world: World) -> Void raises { NotFound, TooLarge, Io } {
-    let fs = std.fs.host()
-    let mut created: owned<File> = check std.fs.createOrRaise(fs, ".zero/conformance/std-fs-fallible-resources.txt")
-    check std.fs.writeAllOrRaise(&mut created, std.mem.span("named resource ok\n"))
-    let written_len: usize = check std.fs.fileLenOrRaise(&mut created)
-    std.fs.close(&mut created)
-
-    let mut opened: owned<File> = check std.fs.openOrRaise(fs, ".zero/conformance/std-fs-fallible-resources.txt")
-    let mut buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    let read_len: usize = check std.fs.readOrRaise(&mut opened, buf)
-    if written_len == 18 && read_len == 18 && buf[0] == ('n' as u8) {
-        check world.out.write("fs fallible resources ok\n")
-    }
-}
+pub fn main Void world World ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  mut created owned<File> check std.fs.createOrRaise fs ".zero/conformance/std-fs-fallible-resources.txt"
+  check std.fs.writeAllOrRaise (&mut created) (std.mem.span "named resource ok\n")
+  let written_len usize check std.fs.fileLenOrRaise (&mut created)
+  std.fs.close (&mut created)
+  mut opened owned<File> check std.fs.openOrRaise fs ".zero/conformance/std-fs-fallible-resources.txt"
+  mut buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let read_len usize check std.fs.readOrRaise (&mut opened) buf
+  if && (&& (== written_len 18) (== read_len 18)) (== buf[0] (110 as u8))
+    check world.out.write "fs fallible resources ok\n"

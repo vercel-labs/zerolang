@@ -1,13 +1,10 @@
-shape Box {
-    value: ref<i32>,
-}
+type Box
+  value ref<i32>
 
-pub fun main(flag: Bool) -> Void {
-    let mut x = 1
-    let y = 2
-    let mut box: Box = Box { value: &x }
-    if flag {
-        box = Box { value: &y }
-    }
-    x = 3
-}
+pub fn main Void flag Bool
+  mut x 1
+  let y 2
+  mut box Box Box . value (&x)
+  if flag
+    set box Box . value (&y)
+  set x 3

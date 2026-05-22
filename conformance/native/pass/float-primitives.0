@@ -1,26 +1,18 @@
-shape FloatPair {
-    left: f32
-    right: f64
-}
+type FloatPair
+  left f32
+  right f64
 
-fun addF32(left: f32, right: f32) -> f32 {
-    return left + right
-}
+fn addF32 f32 left f32 right f32
+  ret + left right
 
-fun addF64(left: f64, right: f64) -> f64 {
-    return left + right
-}
+fn addF64 f64 left f64 right f64
+  ret + left right
 
-pub fun main(world: World) -> Void raises {
-    let small: f32 = 1.5
-    let smaller: f32 = 0.5
-    let precise: f64 = 1.0e-3
-    let defaultFloat = 2.25
-    let pair = FloatPair{
-        left: small,
-        right: defaultFloat
-    }
-    if addF32(small, smaller) == 2.0 && addF64(defaultFloat, 0.75) == 3.0 && precise < 0.01 && pair.left > smaller && pair.right == defaultFloat {
-        check world.out.write("float primitives ok\n")
-    }
-}
+pub fn main Void world World !
+  let small f32 1.5
+  let smaller f32 0.5
+  let precise f64 1.0e-3
+  let defaultFloat 2.25
+  let pair FloatPair . left small right defaultFloat
+  if && (&& (&& (&& (== (addF32 small smaller) 2.0) (== (addF64 defaultFloat 0.75) 3.0)) (< precise 0.01)) (> pair.left smaller)) (== pair.right defaultFloat)
+    check world.out.write "float primitives ok\n"

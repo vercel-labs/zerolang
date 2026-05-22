@@ -576,12 +576,22 @@ static void rejects_short_hex_character_escape(void) {
 static void parses_core_function_program(void) {
   const char *source =
     "use std.mem as mem\n"
+    "extern c \"stdint.h\" as cstdint\n"
+    "alias Bytes Span<u8>\n"
     "const answer i32 42\n"
+    "const enabled meta target.hasCapability(\"memory\")\n"
+    "interface Id\n"
+    "  fn id<T> T value T\n"
     "export c fn boot Void\n"
     "fn id<T> T value T\n"
     "  ret value\n"
     "fn validate Bool input String ![InvalidInput ParseError]\n"
     "  ret true\n"
+    "extern type CPoint\n"
+    "  x i32\n"
+    "  y i32\n"
+    "packed type PackedByte\n"
+    "  value u8\n"
     "type Point\n"
     "  x i32\n"
     "  y i32\n"
@@ -600,10 +610,20 @@ static void parses_core_function_program(void) {
   expect(program.use_imports.len == 1, "expected one use import");
   expect(strcmp(program.use_imports.items[0].module, "std.mem") == 0, "expected dotted use import");
   expect(strcmp(program.use_imports.items[0].alias, "mem") == 0, "expected use import alias");
-  expect(program.consts.len == 1, "expected one const");
+  expect(program.c_imports.len == 1, "expected one C import");
+  expect(strcmp(program.c_imports.items[0].alias, "cstdint") == 0, "expected C import alias");
+  expect(program.aliases.len == 1, "expected one alias");
+  expect(strcmp(program.aliases.items[0].target, "Span<u8>") == 0, "expected alias target type");
+  expect(program.consts.len == 2, "expected two consts");
   expect(strcmp(program.consts.items[0].name, "answer") == 0, "expected const name");
   expect(strcmp(program.consts.items[0].type, "i32") == 0, "expected const type");
-  expect(program.shapes.len == 1, "expected one shape");
+  expect(program.consts.items[1].type == NULL, "expected inferred const type");
+  expect(program.consts.items[1].expr->kind == EXPR_META, "expected meta const expression");
+  expect(program.interfaces.len == 1, "expected one interface");
+  expect(program.interfaces.items[0].methods.len == 1, "expected one interface method");
+  expect(program.shapes.len == 3, "expected three shapes");
+  expect(strcmp(program.shapes.items[0].layout, "extern") == 0, "expected extern shape layout");
+  expect(strcmp(program.shapes.items[1].layout, "packed") == 0, "expected packed shape layout");
   expect(program.functions.len == 4, "expected four functions");
   expect(program.functions.items[0].export_c, "expected exported function");
   expect(program.functions.items[1].type_params.len == 1, "expected generic function parameter");

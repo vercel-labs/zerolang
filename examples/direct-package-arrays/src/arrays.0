@@ -1,9 +1,7 @@
-fun record(value: i32) -> Void {
-    return
-}
+fn record Void value i32
+  ret
 
-fun package_sum() -> i32 {
-    let mut values: [3]i32 = [2, 4, 6]
-    values[1] = values[1] + 1
-    return values[0] + values[1] + values[2]
-}
+fn package_sum i32
+  mut values [3]i32 [2, 4, 6]
+  set values[1] + values[1] 1
+  ret + (+ values[0] values[1]) values[2]

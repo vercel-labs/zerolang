@@ -1,16 +1,12 @@
-fun gcd(a: u32, b: u32) -> u32 {
-    let mut left = a
-    let mut right = b
-    while right != 0 {
-        let next = left % right
-        left = right
-        right = next
-    }
-    return left
-}
+fn gcd u32 a u32 b u32
+  mut left a
+  mut right b
+  while != right 0
+    let next % left right
+    set left right
+    set right next
+  ret left
 
-pub fun main(world: World) -> Void raises {
-    if gcd(84, 30) == 6 {
-        check world.out.write("gcd ok\n")
-    }
-}
+pub fn main Void world World !
+  if == (gcd 84 30) 6
+    check world.out.write "gcd ok\n"

@@ -1,10 +1,8 @@
-pub fun main(world: World) -> Void raises {
-    let src: [5]u8 = [97, 103, 101, 110, 116]
-    let mut dst: [5]u8 = [0, 0, 0, 0, 0]
-    let copied = std.mem.copy(dst, src)
-    let copied_first = dst[0]
-    let filled = std.mem.fill(dst, 33_u8)
-    if copied == 5 && copied_first == ('a' as u8) && filled == 5 && dst[3] == 33_u8 {
-        check world.out.write("mem copy fill ok\n")
-    }
-}
+pub fn main Void world World !
+  let src [5]u8 [97, 103, 101, 110, 116]
+  mut dst [5]u8 [0, 0, 0, 0, 0]
+  let copied std.mem.copy dst src
+  let copied_first dst[0]
+  let filled std.mem.fill dst 33_u8
+  if && (&& (&& (== copied 5) (== copied_first (97 as u8))) (== filled 5)) (== dst[3] 33_u8)
+    check world.out.write "mem copy fill ok\n"

@@ -1,8 +1,6 @@
-export c fun main() -> u8 {
-    let text: String = "token"
-    let part: Span<u8> = text[1..4]
-    if std.mem.len(part) == 3 {
-        return part[1]
-    }
-    return 0_u8
-}
+export c fn main u8
+  let text String "token"
+  let part Span<u8> text[1..4]
+  if == (std.mem.len part) 3
+    ret part[1]
+  ret 0_u8

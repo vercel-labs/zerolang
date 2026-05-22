@@ -1,28 +1,20 @@
-export c fun main() -> i32 {
-    let response = std.mem.span("HTTP/1.1 200 OK\nContent-Type: application/json\nX-Zero: yes\n\nbody")
-    let content_type = std.http.headerValue(response, std.mem.span("content-type"))
-    let missing = std.http.headerValue(response, std.mem.span("missing"))
-    let body_offset = std.http.responseBodyOffset(response)
-    if std.http.responseHeadersLen(response) != body_offset {
-        return 91
-    }
-    if std.http.responseLen(response) != std.mem.len(response) {
-        return 92
-    }
-    if std.http.headerFound(content_type) == false {
-        return 93
-    }
-    if std.http.headerLen(content_type) != 16 {
-        return 94
-    }
-    if response[std.http.headerOffset(content_type)] != 97_u8 {
-        return 95
-    }
-    if response[body_offset] != 98_u8 {
-        return 96
-    }
-    if std.http.headerFound(missing) {
-        return 97
-    }
-    return 29
-}
+export c fn main i32
+  let response std.mem.span "HTTP/1.1 200 OK\nContent-Type: application/json\nX-Zero: yes\n\nbody"
+  let content_type std.http.headerValue response (std.mem.span "content-type")
+  let missing std.http.headerValue response (std.mem.span "missing")
+  let body_offset std.http.responseBodyOffset response
+  if != (std.http.responseHeadersLen response) body_offset
+    ret 91
+  if != (std.http.responseLen response) (std.mem.len response)
+    ret 92
+  if == (std.http.headerFound content_type) false
+    ret 93
+  if != (std.http.headerLen content_type) 16
+    ret 94
+  if != response[std.http.headerOffset content_type] 97_u8
+    ret 95
+  if != response[body_offset] 98_u8
+    ret 96
+  if std.http.headerFound missing
+    ret 97
+  ret 29

@@ -2,6 +2,5 @@ use alpha
 use beta
 use gamma
 
-pub fun main(world: World) -> Void raises {
-    check world.out.write(alphaName())
-}
+pub fn main Void world World !
+  check world.out.write (alphaName())

@@ -1,6 +1,5 @@
-pub fun main(world: World) -> Void raises {
-    let mut values: [2]i32 = [1, 2]
-    let mut span: Span<i32> = values
-    span[0] = 3
-    check world.out.write("bad indexed mutation\n")
-}
+pub fn main Void world World !
+  mut values [2]i32 [1, 2]
+  mut span Span<i32> values
+  set span[0] 3
+  check world.out.write "bad indexed mutation\n"

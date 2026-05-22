@@ -1,23 +1,17 @@
-pub fun main(world: World) -> Void raises {
-    let mut values: [5]i32 = [5, 1, 4, 2, 3]
-    let mut i: usize = 0
-    while i < 5 {
-        let mut min = i
-        let mut j = i + 1
-        while j < 5 {
-            if values[j] < values[min] {
-                min = j
-            }
-            j = j + 1
-        }
-        if min != i {
-            let saved = values[i]
-            values[i] = values[min]
-            values[min] = saved
-        }
-        i = i + 1
-    }
-    if values[0] == 1 && values[1] == 2 && values[2] == 3 && values[3] == 4 && values[4] == 5 {
-        check world.out.write("sort small ok\n")
-    }
-}
+pub fn main Void world World !
+  mut values [5]i32 [5, 1, 4, 2, 3]
+  mut i usize 0
+  while < i 5
+    mut min i
+    mut j + i 1
+    while < j 5
+      if < values[j] values[min]
+        set min j
+      set j + j 1
+    if != min i
+      let saved values[i]
+      set values[i] values[min]
+      set values[min] saved
+    set i + i 1
+  if && (&& (&& (&& (== values[0] 1) (== values[1] 2)) (== values[2] 3)) (== values[3] 4)) (== values[4] 5)
+    check world.out.write "sort small ok\n"

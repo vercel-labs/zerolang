@@ -1,3 +1,2 @@
-pub fun main() -> Void {
-    let xs = [1, true]
-}
+pub fn main Void
+  let xs [1, true]

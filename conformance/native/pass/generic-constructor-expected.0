@@ -1,26 +1,20 @@
-shape FixedVec<T, static N: usize> {
-    len: usize = 0,
-    items: [N]T,
+type FixedVec<T: Type, static N: usize>
+  len usize 0
+  items [N]T
 
-    fun init(items: [N]T) -> Self {
-        return FixedVec { items: items }
-    }
+  fn init Self items [N]T
+    ret FixedVec . items items
 
-    fun get(self: ref<Self>, index: usize) -> Maybe<T> {
-        return std.mem.get(self.items, index)
-    }
-}
+  fn get Maybe<T> self ref<Self> index usize
+    ret std.mem.get self.items index
 
-fun make_vec() -> FixedVec<u8,4> {
-    return FixedVec.init([1, 2, 3, 4])
-}
+fn make_vec FixedVec<u8,4>
+  ret FixedVec.init ([1, 2, 3, 4])
 
-pub fun main(world: World) -> Void raises {
-    let vec: FixedVec<u8,4> = FixedVec.init([5, 6, 7, 8])
-    let from_return = make_vec()
-    let first = vec.get(0)
-    let returned = from_return.get(3)
-    if first.has && first.value == 5 && returned.has && returned.value == 4 {
-        check world.out.write("generic constructor expected ok\n")
-    }
-}
+pub fn main Void world World !
+  let vec FixedVec<u8,4> FixedVec.init ([5, 6, 7, 8])
+  let from_return make_vec()
+  let first vec.get 0
+  let returned from_return.get 3
+  if && (&& (&& first.has (== first.value 5)) returned.has) (== returned.value 4)
+    check world.out.write "generic constructor expected ok\n"

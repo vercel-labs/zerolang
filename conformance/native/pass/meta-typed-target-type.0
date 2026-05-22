@@ -1,19 +1,22 @@
-shape Point {
-    x: i32,
-    y: i32,
-}
+const computed usize + (meta 2) 2
 
-const computed: usize = meta 2 + 2
-const host_os: String = meta target.os
-const pointer_width: usize = meta target.pointerWidth
-const pointer_width_again: usize = meta target.pointerWidth
-const has_fs: Bool = meta target.hasCapability("fs")
-const point_fields: usize = meta fieldCount(Point)
-const has_y: Bool = meta hasField(Point, "y")
+const host_os String meta target.os
 
-pub fun main(world: World) -> Void raises {
-    if computed == 4 && pointer_width == 64 && pointer_width_again == pointer_width && has_fs && point_fields == 2 && has_y {
-        check world.out.write(host_os)
-        check world.out.write(" meta ok\n")
-    }
-}
+const pointer_width usize meta target.pointerWidth
+
+const pointer_width_again usize meta target.pointerWidth
+
+const has_fs Bool meta target.hasCapability "fs"
+
+const point_fields usize meta fieldCount Point
+
+const has_y Bool meta hasField Point "y"
+
+type Point
+  x i32
+  y i32
+
+pub fn main Void world World !
+  if && (&& (&& (&& (&& (== computed 4) (== pointer_width 64)) (== pointer_width_again pointer_width)) has_fs) (== point_fields 2)) has_y
+    check world.out.write host_os
+    check world.out.write " meta ok\n"

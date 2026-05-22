@@ -1,13 +1,10 @@
-choice Slot {
-    some: ref<i32>,
-    none,
-}
+choice Slot
+  some ref<i32>
+  none
 
-fun make() -> Slot {
-    let local = 1
-    return Slot.some(&local)
-}
+fn make Slot
+  let local 1
+  ret Slot.some (&local)
 
-pub fun main() -> Void {
-    let _slot = make()
-}
+pub fn main Void
+  let _slot make()

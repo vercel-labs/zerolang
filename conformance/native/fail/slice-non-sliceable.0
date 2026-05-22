@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let value: u8 = 1
-    let part = value[0..1]
-    check world.out.write("bad slice\n")
-}
+pub fn main Void world World !
+  let value u8 1
+  let part value[0..1]
+  check world.out.write "bad slice\n"

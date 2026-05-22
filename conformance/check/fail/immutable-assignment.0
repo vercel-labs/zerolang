@@ -1,5 +1,4 @@
-pub fun main(world: World) -> Void raises {
-    let count = 0
-    count = count + 1
-    check world.out.write("bad assignment\n")
-}
+pub fn main Void world World !
+  let count 0
+  set count + count 1
+  check world.out.write "bad assignment\n"

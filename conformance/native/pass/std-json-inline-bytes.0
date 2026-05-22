@@ -1,7 +1,4 @@
-export c fun main() -> i32 {
-    if std.json.validateBytes([123_u8, 125_u8]) &&
-        std.json.streamTokensBytes([91_u8, 93_u8]) == 1 {
-        return 0
-    }
-    return 1
-}
+export c fn main i32
+  if && (std.json.validateBytes ([123_u8, 125_u8])) (== (std.json.streamTokensBytes ([91_u8, 93_u8])) 1)
+    ret 0
+  ret 1

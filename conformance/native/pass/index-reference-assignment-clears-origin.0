@@ -1,11 +1,9 @@
-shape Holder {
-    refs: [2]ref<i32>,
-}
+type Holder
+  refs [2]ref<i32>
 
-pub fun main() -> Void {
-    let mut old = 1
-    let next = 2
-    let mut holder = Holder { refs: [&old, &next] }
-    holder.refs[0] = &next
-    old = 3
-}
+pub fn main Void
+  mut old 1
+  let next 2
+  mut holder Holder . refs ([&old, &next])
+  set holder.refs[0] &next
+  set old 3

@@ -1,12 +1,7 @@
-pub fun main(world: World) -> Void raises {
-    let text: String = "zero"
-    let all: Span<u8> = std.mem.span(text)
-    let middle: Span<u8> = text[1..3]
-    let expected: Span<u8> = std.mem.span("er")
-    if std.mem.len(text) == 4 &&
-        std.mem.len(all) == 4 &&
-        text[0] == 122 &&
-        std.mem.eqlBytes(middle, expected) {
-        check world.out.write("string byte ergonomics ok\n")
-    }
-}
+pub fn main Void world World !
+  let text String "zero"
+  let all Span<u8> std.mem.span text
+  let middle Span<u8> text[1..3]
+  let expected Span<u8> std.mem.span "er"
+  if && (&& (&& (== (std.mem.len text) 4) (== (std.mem.len all) 4)) (== text[0] 122)) (std.mem.eqlBytes middle expected)
+    check world.out.write "string byte ergonomics ok\n"
