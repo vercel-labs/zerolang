@@ -57,11 +57,26 @@ static bool a64_diag(ZDiag *diag, const char *message, int line, int column, con
   return false;
 }
 
-static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag) {
+/* Reject any function whose return type the AArch64-ELF MVP literal-only
+ * emitter cannot represent.  Today the MVP only knows how to emit a single
+ * 16-bit literal return; richer return types (notably f32/f64, lowered as
+ * part of the same PR that adds this gate) must surface an explicit CGEN004
+ * instead of falling through to the silent-drop path.  Parameter and richer
+ * body shapes remain accepted today for backwards compatibility with the
+ * existing snapshot/contract tests; tightening those is a separate concern. */
+static bool a64_reject_unsupported_function(const IrFunction *fun, ZDiag *diag) {
   if (!fun) return a64_diag(diag, "direct AArch64 ELF object backend requires a function", 1, 1, "missing function");
-  if (fun->return_type != IR_TYPE_VOID && fun->return_type != IR_TYPE_U8 && fun->return_type != IR_TYPE_I32 && fun->return_type != IR_TYPE_U32 && fun->return_type != IR_TYPE_USIZE) {
-    return a64_diag(diag, "direct AArch64 ELF object backend currently supports primitive 32-bit-or-smaller integer returns", fun->line, fun->column, fun->name);
+  if (fun->return_type == IR_TYPE_F32 || fun->return_type == IR_TYPE_F64) {
+    return a64_diag(diag, "direct AArch64 ELF object backend does not yet lower f32/f64 returns; this PR ships SysV AMD64 float lowering only and leaves AAPCS64 to a follow-up", fun->line, fun->column, fun->name ? fun->name : "<unnamed>");
   }
+  if (fun->return_type != IR_TYPE_VOID && fun->return_type != IR_TYPE_U8 && fun->return_type != IR_TYPE_I32 && fun->return_type != IR_TYPE_U32 && fun->return_type != IR_TYPE_USIZE) {
+    return a64_diag(diag, "direct AArch64 ELF object backend currently supports primitive 32-bit-or-smaller integer returns", fun->line, fun->column, fun->name ? fun->name : "<unnamed>");
+  }
+  return true;
+}
+
+static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag) {
+  if (!a64_reject_unsupported_function(fun, diag)) return false;
   *out = 0;
   for (size_t i = 0; i < fun->instr_len; i++) {
     const IrInstr *instr = &fun->instrs[i];
@@ -164,6 +179,24 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
     zbuf_free(&symtab);
     zbuf_free(&shstrtab);
     return a64_diag(diag, "direct AArch64 ELF object backend ran out of memory", 1, 1, "allocation failed");
+  }
+
+  /* Reject every non-exported helper that this MVP backend cannot represent
+   * before we start emitting bytes — otherwise an unsupported helper called
+   * from main would silently fall through the literal-only emitter and ship a
+   * broken object. */
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (ir->functions[i].is_exported) continue;
+    if (!a64_reject_unsupported_function(&ir->functions[i], diag)) {
+      free(function_offsets);
+      free(function_sizes);
+      free(symbol_names);
+      zbuf_free(&text);
+      zbuf_free(&strtab);
+      zbuf_free(&symtab);
+      zbuf_free(&shstrtab);
+      return false;
+    }
   }
 
   bool has_export = false;
@@ -290,6 +323,17 @@ bool z_emit_elf_aarch64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag)
   if (!function_offsets) {
     zbuf_free(&text);
     return a64_diag(diag, "direct AArch64 ELF executable backend ran out of memory", 1, 1, "allocation failed");
+  }
+  /* Same defensive rejection as the object backend: walk every function so
+   * that an unsupported non-exported helper can't slip past the literal-only
+   * emitter and produce a silently-broken executable. */
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (ir->functions[i].is_exported) continue;
+    if (!a64_reject_unsupported_function(&ir->functions[i], diag)) {
+      free(function_offsets);
+      zbuf_free(&text);
+      return false;
+    }
   }
   for (size_t i = 0; i < ir->function_len; i++) {
     if (!ir->functions[i].is_exported) continue;
