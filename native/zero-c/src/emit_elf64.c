@@ -115,26 +115,11 @@ static unsigned elf_type_byte_size(IrTypeKind type) {
 }
 
 static void elf_emit_lea_array_base_rax(ZBuf *code, const IrLocal *local) {
-  z_x64_append_u8(code, 0x48);
-  z_x64_append_u8(code, 0x8d);
-  z_x64_append_u8(code, 0x85);
-  z_x64_append_u32(code, (uint32_t)(-(int32_t)local->frame_offset));
+  z_x64_emit_rbp_disp_reg(code, 0x8d, 0, local->frame_offset, true);
 }
 
 static void elf_emit_scale_index_into_rax(ZBuf *code, IrTypeKind element_type) {
-  unsigned size = elf_type_byte_size(element_type);
-  z_x64_append_u8(code, 0x48);
-  z_x64_append_u8(code, 0x8d);
-  if (size == 1) {
-    z_x64_append_u8(code, 0x04);
-    z_x64_append_u8(code, 0x08);
-  } else if (size == 4) {
-    z_x64_append_u8(code, 0x04);
-    z_x64_append_u8(code, 0x88);
-  } else {
-    z_x64_append_u8(code, 0x04);
-    z_x64_append_u8(code, 0xc8);
-  }
+  z_x64_emit_lea_base_index_scale_disp_reg(code, 0, 0, 1, elf_type_byte_size(element_type), 0);
 }
 
 static unsigned elf_setcc_opcode(IrCompareOp op, bool uns) {
@@ -213,10 +198,7 @@ static void elf_emit_strlen_rax_to_ecx(ZBuf *code) {
   z_x64_emit_mov_rdx_from_rax(code);
   z_x64_emit_xor_ecx_ecx(code);
   size_t loop = code->len;
-  z_x64_append_u8(code, 0x80);
-  z_x64_append_u8(code, 0x3c);
-  z_x64_append_u8(code, 0x0a);
-  z_x64_append_u8(code, 0x00);
+  z_x64_emit_cmp_base_index_u8(code, 2, 1, 0);
   size_t done = z_x64_emit_jcc32_placeholder(code, 0x84);
   z_x64_emit_inc_ecx(code);
   size_t back = z_x64_emit_jmp32_placeholder(code, 0xe9);
@@ -630,9 +612,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         z_x64_emit_pop_reg64(code, 0);
         return true;
       }
-      z_x64_append_u8(code, 0x49);
-      z_x64_append_u8(code, 0x8b);
-      z_x64_append_u8(code, 0x07);
+      z_x64_emit_load_reg_ptr_reg(code, 0, 15, true);
       return true;
     case IR_VALUE_TIME_WALL_SECONDS:
       z_x64_emit_xor_rdi_rdi(code);
@@ -755,19 +735,12 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       size_t read_fail = elf_emit_js_placeholder(code);
       size_t done = z_x64_emit_jcc32_placeholder(code, 0x84);
       z_x64_emit_mov_reg_from_reg(code, 9, 4, true);
-      z_x64_append_u8(code, 0x4c);
-      z_x64_append_u8(code, 0x8d);
-      z_x64_append_u8(code, 0x04);
-      z_x64_append_u8(code, 0x04);
+      z_x64_emit_lea_base_index_scale_disp_reg(code, 8, 4, 0, 1, 0);
       size_t scan_loop = code->len;
       z_x64_emit_cmp_reg_reg(code, 9, 8, true);
       size_t scan_done = z_x64_emit_jcc32_placeholder(code, 0x83);
       z_x64_emit_inc_rsp_offset64(code, 1032);
-      z_x64_append_u8(code, 0x41);
-      z_x64_append_u8(code, 0x0f);
-      z_x64_append_u8(code, 0xb7);
-      z_x64_append_u8(code, 0x41);
-      z_x64_append_u8(code, 0x10);
+      z_x64_emit_movzx_reg32_ptr_reg_disp_u16(code, 0, 9, 16);
       z_x64_emit_add_reg_reg(code, 9, 0, true);
       size_t scan_back = z_x64_emit_jmp32_placeholder(code, 0xe9);
       z_x64_patch_rel32(code, scan_back, scan_loop);
@@ -980,7 +953,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       z_x64_emit_pop_reg64(code, 1);
       elf_emit_load_local_slot_reg(code, local, 0, 2, true);
       z_x64_emit_add_rdx_rcx(code, true);
-      z_x64_emit_store_ptr_rdx_al(code);
+      z_x64_emit_store_ptr_reg8_from_reg(code, 2, 0);
       z_x64_emit_mov_eax_from_ecx(code);
       z_x64_emit_add_reg_i8(code, 0, 1, false);
       elf_emit_store_local_slot_reg(code, local, 8, 0, false);
@@ -1026,11 +999,11 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       const IrLocal *local = &fun->locals[value->array_index];
       if (!elf_emit_bounds_checked_address(code, fun, local, value->index, ctx, diag)) return false;
       if (local->element_type == IR_TYPE_U8) {
-        z_x64_emit_load_eax_ptr_rax_u8(code);
+        z_x64_emit_movzx_reg32_ptr_reg_u8(code, 0, 0);
       } else if (elf_type_is_i64(local->element_type)) {
-        z_x64_emit_load_rax_ptr_rax(code);
+        z_x64_emit_load_reg_ptr_reg(code, 0, 0, true);
       } else {
-        z_x64_emit_load_eax_ptr_rax(code);
+        z_x64_emit_load_reg_ptr_reg(code, 0, 0, false);
       }
       return true;
     }
@@ -1163,7 +1136,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       if (!elf_emit_byte_view_ptr(code, fun, value->left, ctx, diag)) return false;
       z_x64_emit_pop_reg64(code, 1);
       z_x64_emit_add_rax_rcx(code, true);
-      z_x64_emit_load_eax_ptr_rax_u8(code);
+      z_x64_emit_movzx_reg32_ptr_reg_u8(code, 0, 0);
       return true;
     }
     default:
@@ -1227,9 +1200,7 @@ static bool elf_emit_args_get_to_local(ZBuf *text, const IrFunction *fun, const 
     z_x64_emit_pop_reg64(text, 1);
     z_x64_emit_cmp_rax_rcx(text, true);
   } else {
-    z_x64_append_u8(text, 0x49);
-    z_x64_append_u8(text, 0x3b);
-    z_x64_append_u8(text, 0x07);
+    z_x64_emit_cmp_reg_ptr_reg(text, 0, 15, true);
   }
   size_t in_range = z_x64_emit_jcc32_placeholder(text, 0x82);
   elf_emit_maybe_clear(text, local);
@@ -1237,16 +1208,9 @@ static bool elf_emit_args_get_to_local(ZBuf *text, const IrFunction *fun, const 
   z_x64_patch_rel32(text, in_range, text->len);
 
   if (ctx && ctx->seed_main_process_args) {
-    z_x64_append_u8(text, 0x49);
-    z_x64_append_u8(text, 0x8b);
-    z_x64_append_u8(text, 0x04);
-    z_x64_append_u8(text, 0xc7);
+    z_x64_emit_load_base_index_scale_disp_reg(text, 0, 15, 0, 8, 0, true);
   } else {
-    z_x64_append_u8(text, 0x49);
-    z_x64_append_u8(text, 0x8b);
-    z_x64_append_u8(text, 0x44);
-    z_x64_append_u8(text, 0xc7);
-    z_x64_append_u8(text, 0x08);
+    z_x64_emit_load_base_index_scale_disp_reg(text, 0, 15, 0, 8, 8, true);
   }
   z_x64_emit_push_rax(text);
   elf_emit_strlen_rax_to_ecx(text);
@@ -1270,18 +1234,14 @@ static bool elf_emit_env_get_to_local(ZBuf *text, const IrFunction *fun, const I
     z_x64_emit_push_reg64(text, 13);
     z_x64_emit_pop_reg64(text, 8);
   } else {
-    z_x64_append_u8(text, 0x4d);
-    z_x64_append_u8(text, 0x8b);
-    z_x64_append_u8(text, 0x07);
+    z_x64_emit_load_reg_ptr_reg(text, 8, 15, true);
     z_x64_emit_add_reg_i8(text, 8, 2, true);
     z_x64_emit_shl_reg_imm8(text, 8, 3, true);
     z_x64_emit_add_reg_reg(text, 8, 15, true);
   }
 
   size_t env_loop = text->len;
-  z_x64_append_u8(text, 0x49);
-  z_x64_append_u8(text, 0x8b);
-  z_x64_append_u8(text, 0x18);
+  z_x64_emit_load_reg_ptr_reg(text, 3, 8, true);
   z_x64_emit_test_reg_reg(text, 3, true);
   size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
   z_x64_emit_xor_ecx_ecx(text);
@@ -1299,7 +1259,7 @@ static bool elf_emit_env_get_to_local(ZBuf *text, const IrFunction *fun, const I
   z_x64_patch_rel32(text, key_done, text->len);
   z_x64_emit_cmp_base_index_u8(text, 3, 10, 0x3d);
   size_t next_after_key = z_x64_emit_jcc32_placeholder(text, 0x85);
-  z_x64_emit_lea_base_index_disp_reg(text, 0, 3, 10, 1);
+  z_x64_emit_lea_base_index_scale_disp_reg(text, 0, 3, 10, 1, 1);
   z_x64_emit_push_rax(text);
   elf_emit_strlen_rax_to_ecx(text);
   z_x64_emit_mov_eax_u32(text, 1);
@@ -1498,17 +1458,11 @@ static bool elf_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
           if (!elf_byte_view_const_byte(ctx ? ctx->ir : NULL, fun, prefix, i, &byte)) {
             return elf_diag(diag, "direct ELF64 std.fs.tempName prefix byte is unavailable", instr->line, instr->column, "unavailable prefix");
           }
-          z_x64_append_u8(text, 0xc6);
-          z_x64_append_u8(text, 0x80);
-          z_x64_append_u32(text, i);
-          z_x64_append_u8(text, byte);
+          z_x64_emit_mov_ptr_reg_disp_u8(text, 0, i, byte);
         }
         const unsigned char suffix[] = {'-', 't', 'm', 'p', 0};
         for (unsigned i = 0; i < sizeof(suffix); i++) {
-          z_x64_append_u8(text, 0xc6);
-          z_x64_append_u8(text, 0x80);
-          z_x64_append_u32(text, prefix_len + i);
-          z_x64_append_u8(text, suffix[i]);
+          z_x64_emit_mov_ptr_reg_disp_u8(text, 0, prefix_len + i, suffix[i]);
         }
         z_x64_emit_push_rax(text);
         z_x64_emit_mov_eax_u32(text, 1);
@@ -1633,15 +1587,11 @@ static bool elf_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     z_x64_emit_pop_reg64(text, 1);
     if (local->element_type == IR_TYPE_U8) {
-      z_x64_append_u8(text, 0x88);
-      z_x64_append_u8(text, 0x01);
+      z_x64_emit_store_ptr_reg8_from_reg(text, 1, 0);
     } else if (elf_type_is_i64(local->element_type)) {
-      z_x64_append_u8(text, 0x48);
-      z_x64_append_u8(text, 0x89);
-      z_x64_append_u8(text, 0x01);
+      z_x64_emit_store_ptr_reg_from_reg(text, 1, 0, true);
     } else {
-      z_x64_append_u8(text, 0x89);
-      z_x64_append_u8(text, 0x01);
+      z_x64_emit_store_ptr_reg_from_reg(text, 1, 0, false);
     }
     return true;
   }

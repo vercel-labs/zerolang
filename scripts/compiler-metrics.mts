@@ -710,6 +710,18 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
       paths: backendFormats.x64.formatFilesWithRawCompareTestBytes,
     });
   }
+  if (backendFormats.x64.formatFilesWithRawIndexedMemoryBytes.length > 0) {
+    violations.push({
+      kind: "x64-indexed-memory-byte-in-format-file",
+      paths: backendFormats.x64.formatFilesWithRawIndexedMemoryBytes,
+    });
+  }
+  if (backendFormats.x64.formatFilesWithRawPointerMemoryBytes.length > 0) {
+    violations.push({
+      kind: "x64-pointer-memory-byte-in-format-file",
+      paths: backendFormats.x64.formatFilesWithRawPointerMemoryBytes,
+    });
+  }
   if (!backendFormats.aarch64.sharedEncodingPrimitives ||
       !backendFormats.aarch64.elfUsesSharedEncodingPrimitives ||
       !backendFormats.aarch64.machoUsesSharedEncodingPrimitives) {
@@ -842,6 +854,19 @@ const hasRawX64CompareTestBytes = (text: string) =>
   rawX64CompareImm8.test(text) ||
   rawX64TestRegReg.test(text) ||
   rawX64SetccToBool.test(text);
+const rawX64SibMemoryModRm = "0x[0-9a-b][4c]";
+const rawX64SibCmpImm8ModRm = "0x(?:3c|7c|bc)";
+const rawX64IndexedLeaOrLoad = new RegExp(String.raw`(?:\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x4[0-9a-f]\s*\)\s*;\s*)?\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x(?:8b|8d)\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*${rawX64SibMemoryModRm}\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x[0-9a-f]{2}\s*\)`, "is");
+const rawX64IndexedCmpImm8 = new RegExp(String.raw`(?:\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x4[0-9a-f]\s*\)\s*;\s*)?\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x80\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*${rawX64SibCmpImm8ModRm}\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x[0-9a-f]{2}\s*\)`, "is");
+const hasRawX64IndexedMemoryBytes = (text: string) =>
+  rawX64IndexedLeaOrLoad.test(text) ||
+  rawX64IndexedCmpImm8.test(text);
+const rawX64MemoryModRm = "0x[0-9a-b][0-9a-f]";
+const rawX64PointerMemoryReg = new RegExp(String.raw`(?:\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x4[0-9a-f]\s*\)\s*;\s*)?\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x(?:88|89|8a|8b|3a|3b|c6)\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*${rawX64MemoryModRm}\s*\)`, "is");
+const rawX64PointerMemoryMovzx = new RegExp(String.raw`(?:\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x4[0-9a-f]\s*\)\s*;\s*)?\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x0f\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0xb[67]\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*${rawX64MemoryModRm}\s*\)`, "is");
+const hasRawX64PointerMemoryBytes = (text: string) =>
+  rawX64PointerMemoryReg.test(text) ||
+  rawX64PointerMemoryMovzx.test(text);
 const backendFormats = {
   elf: {
     sharedWriter: /\bz_elf_write_object64\s*\(/.test(elfFormatSource) && /\bz_elf_write_executable64\s*\(/.test(elfFormatSource),
@@ -946,7 +971,8 @@ const backendFormats = {
       /\bz_x64_emit_store_base_index_reg8\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_cmp_base_index_reg8\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_cmp_base_index_u8\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_lea_base_index_disp_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_load_base_index_scale_disp_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_lea_base_index_scale_disp_reg\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_xor_r8d_r8d\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_jcc32_placeholder\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_prologue\s*\(/.test(x64EmitSource) &&
@@ -984,13 +1010,11 @@ const backendFormats = {
       /\bz_x64_emit_add_rdx_rcx\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_shl_rcx_imm8\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_shr_rcx_imm8\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_load_eax_ptr_rax_u8\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_load_eax_ptr_rax\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_load_rax_ptr_rax\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_load_eax_ptr_rdx_u8\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_load_eax_ptr_rdx\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_store_ptr_rdx_al\s*\(/.test(x64EmitSource) &&
-      /\bz_x64_emit_store_ptr_rdx_eax\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_movzx_reg32_ptr_reg_u8\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_load_reg_ptr_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_store_ptr_reg8_from_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_store_ptr_reg_from_reg\s*\(/.test(x64EmitSource) &&
+      /\bz_x64_emit_cmp_reg_ptr_reg\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_div_rax_rcx\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_test_rax_rax\s*\(/.test(x64EmitSource) &&
       /\bz_x64_emit_test_ecx_ecx\s*\(/.test(x64EmitSource) &&
@@ -1037,7 +1061,8 @@ const backendFormats = {
       /\bz_x64_emit_store_base_index_reg8\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_cmp_base_index_reg8\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_cmp_base_index_u8\s*\(/.test(elfX64Source) &&
-      /\bz_x64_emit_lea_base_index_disp_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_load_base_index_scale_disp_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_lea_base_index_scale_disp_reg\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_xor_r8d_r8d\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_jcc32_placeholder\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_prologue\s*\(/.test(elfX64Source) &&
@@ -1073,10 +1098,11 @@ const backendFormats = {
       /\bz_x64_emit_or_rax_rcx\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_add_rdx_rcx\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_shr_rcx_imm8\s*\(/.test(elfX64Source) &&
-      /\bz_x64_emit_load_eax_ptr_rax_u8\s*\(/.test(elfX64Source) &&
-      /\bz_x64_emit_load_eax_ptr_rax\s*\(/.test(elfX64Source) &&
-      /\bz_x64_emit_load_rax_ptr_rax\s*\(/.test(elfX64Source) &&
-      /\bz_x64_emit_store_ptr_rdx_al\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_movzx_reg32_ptr_reg_u8\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_load_reg_ptr_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_store_ptr_reg8_from_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_store_ptr_reg_from_reg\s*\(/.test(elfX64Source) &&
+      /\bz_x64_emit_cmp_reg_ptr_reg\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_div_rax_rcx\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_test_rax_rax\s*\(/.test(elfX64Source) &&
       /\bz_x64_emit_test_ecx_ecx\s*\(/.test(elfX64Source) &&
@@ -1112,11 +1138,10 @@ const backendFormats = {
       /\bz_x64_emit_add_rax_u32\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_mov_eax_from_ecx\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_shl_rcx_imm8\s*\(/.test(coffX64Source) &&
-      /\bz_x64_emit_load_eax_ptr_rax_u8\s*\(/.test(coffX64Source) &&
-      /\bz_x64_emit_load_eax_ptr_rdx_u8\s*\(/.test(coffX64Source) &&
-      /\bz_x64_emit_load_eax_ptr_rdx\s*\(/.test(coffX64Source) &&
-      /\bz_x64_emit_store_ptr_rdx_al\s*\(/.test(coffX64Source) &&
-      /\bz_x64_emit_store_ptr_rdx_eax\s*\(/.test(coffX64Source) &&
+      /\bz_x64_emit_movzx_reg32_ptr_reg_u8\s*\(/.test(coffX64Source) &&
+      /\bz_x64_emit_load_reg_ptr_reg\s*\(/.test(coffX64Source) &&
+      /\bz_x64_emit_store_ptr_reg8_from_reg\s*\(/.test(coffX64Source) &&
+      /\bz_x64_emit_store_ptr_reg_from_reg\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_mov_rax_u64_patchable\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_xor_eax_eax\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_add_rax_rcx\s*\(/.test(coffX64Source) &&
@@ -1158,6 +1183,18 @@ const backendFormats = {
       ["native/zero-c/src/emit_coff.c", coffX64Source],
     ]
       .filter(([, text]) => hasRawX64CompareTestBytes(text))
+      .map(([path]) => path),
+    formatFilesWithRawIndexedMemoryBytes: [
+      ["native/zero-c/src/emit_elf64.c", elfX64Source],
+      ["native/zero-c/src/emit_coff.c", coffX64Source],
+    ]
+      .filter(([, text]) => hasRawX64IndexedMemoryBytes(text))
+      .map(([path]) => path),
+    formatFilesWithRawPointerMemoryBytes: [
+      ["native/zero-c/src/emit_elf64.c", elfX64Source],
+      ["native/zero-c/src/emit_coff.c", coffX64Source],
+    ]
+      .filter(([, text]) => hasRawX64PointerMemoryBytes(text))
       .map(([path]) => path),
   },
   aarch64: {
