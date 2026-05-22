@@ -9475,8 +9475,20 @@ static const char *c_type_to_zero(const char *c_type) {
 
   /* void return */
   if (strcmp(trimmed, "void") == 0) { snprintf(buf, sizeof(buf), "Void"); return buf; }
-  /* any pointer type → usize (opaque handle) */
-  if (strchr(trimmed, '*')) { snprintf(buf, sizeof(buf), "usize"); return buf; }
+  /* char* → String (C string boundary); any other pointer → usize (opaque handle) */
+  if (strchr(trimmed, '*')) {
+    /* detect char* and const char* → String */
+    const char *p = trimmed;
+    while (*p == ' ' || *p == '\t') p++;
+    if (strncmp(p, "const ", 6) == 0) p += 6;
+    while (*p == ' ' || *p == '\t') p++;
+    if (strncmp(p, "char", 4) == 0) {
+      const char *q = p + 4;
+      while (*q == ' ' || *q == '\t') q++;
+      if (*q == '*') { snprintf(buf, sizeof(buf), "String"); return buf; }
+    }
+    snprintf(buf, sizeof(buf), "usize"); return buf;
+  }
   /* const char (no pointer, rare) */
   if (strcmp(trimmed, "char") == 0) { snprintf(buf, sizeof(buf), "u8"); return buf; }
   if (strcmp(trimmed, "int") == 0 || strcmp(trimmed, "signed int") == 0) { snprintf(buf, sizeof(buf), "i32"); return buf; }
