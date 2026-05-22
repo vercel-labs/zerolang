@@ -3042,7 +3042,7 @@ static const ExplainInfo explain_infos[] = {
     "CGEN004",
     "codegen",
     "Direct backend unsupported",
-    "The selected direct backend cannot emit this target, object format, architecture, executable kind, or source feature yet. Parameter and return rejections name the System V ABI class (scalar, fatptr, ptr, maybe, agg_regs, agg_mem) the backend would need to lower, e.g. \"(abi class: fatptr)\"; the direct backends currently lower only the scalar and void classes.",
+    "The selected direct backend cannot emit this target, object format, architecture, executable kind, or source feature yet. Parameter and return rejections name the System V ABI class (scalar, fatptr, ptr, maybe, agg_regs, agg_mem) the backend would need to lower, e.g. \"(abi class: fatptr)\"; the direct backends currently lower only the scalar and void classes. Within the scalar class, f32/f64 return values are now lowered on the linux-musl-x64 (zero-elf64) target (xmm0); the other three direct backends (darwin-arm64, win32-x64.exe, linux-arm64) still reject f32/f64 returns explicitly while their AAPCS64/xmm0 lowering ships in a follow-up.",
     "Direct backends are target-specific and must report unsupported targets instead of routing through a removed compatibility backend. Run zero abi dump --json to see the abiClass of every parameter and return value.",
     "Choose a target whose `zero targets --json` directBackend facts advertise the requested artifact, or use `--emit obj` where executable emission is not implemented.",
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",

@@ -1,0 +1,9 @@
+fun returnF64() -> f64 {
+    return 2.25
+}
+
+pub fun main(world: World) -> Void raises {
+    if returnF64() == 2.25 {
+        check world.out.write("return f64 ok\n")
+    }
+}

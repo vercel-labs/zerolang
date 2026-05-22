@@ -1,0 +1,9 @@
+fun returnF32() -> f32 {
+    return 1.5
+}
+
+pub fun main(world: World) -> Void raises {
+    if returnF32() == 1.5 {
+        check world.out.write("return f32 ok\n")
+    }
+}
