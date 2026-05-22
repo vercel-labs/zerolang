@@ -2386,6 +2386,8 @@ static const char *diag_repair_id(int code) {
     case 7001: return "fix-import-path";
     case 7002: return "break-import-cycle";
     case 3003: return "declare-missing-symbol";
+    case 3005: return "provide-runtime-value";
+    case 3006: return "match-expected-type";
     case 3007: return "match-return-type";
     case 3010: return "make-binding-mutable";
     case 3011: return "use-known-stdlib-helper";
@@ -2437,6 +2439,8 @@ static const char *diag_repair_summary(int code) {
     case 7001: return "Change the import to a package-local module path that resolves under src/.";
     case 7002: return "Break the import cycle by moving shared declarations into a third module or removing one import edge.";
     case 3003: return "Declare the referenced symbol, import the module that provides it, or correct the identifier spelling.";
+    case 3005: return "Replace the type, function, or namespace name with a runtime expression such as a call, a constructor, or a member access.";
+    case 3006: return "Change the value or the annotation so both sides use the same type, or insert an explicit as cast for supported primitive conversions.";
     case 3007: return "Change the returned expression or the function return annotation so both types agree.";
     case 3010: return "Change the root binding to `mut` before passing it to a mutable API.";
     case 3011: return "Use one of the supported std helpers or add compiler support for the new helper.";
@@ -2807,6 +2811,46 @@ static const ExplainInfo explain_infos[] = {
     "zero build --emit obj --target linux-arm64 examples/direct-call-add.0",
     "zero build --emit obj --target linux-x64 examples/direct-call-add.0",
   },
+  {
+    "TYP001",
+    "type",
+    "Type or namespace used as value",
+    "A type name, function name without a call, or builtin namespace appeared where a runtime value was required.",
+    "Zero keeps the value and type planes separate so calls, members, and constructors lower to direct code without runtime reflection.",
+    "Replace the type, function, or namespace name with a runtime expression such as a call, a constructor, or a member access.",
+    "let host = std.fs",
+    "let host = std.fs.host()",
+  },
+  {
+    "TYP002",
+    "type",
+    "Type mismatch",
+    "An assignment, return, comparison, arithmetic, literal, shape field, or shape default used values whose types do not match the expected shape.",
+    "Zero does not implicitly widen, narrow, or coerce between types, so each position carries the exact type the checker recorded.",
+    "Change the value or the annotation so both sides use the same type, or insert an explicit `as` cast for supported primitive conversions.",
+    "let count: u32 = 1_i32",
+    "let count: u32 = 1_u32",
+  },
+  {
+    "STD002",
+    "stdlib",
+    "Unknown or misused std helper",
+    "A `std.*` call referenced a helper the bootstrap stdlib does not provide, or invoked a known helper with the wrong argument count.",
+    "The native stdlib surface is intentionally narrow so direct emission can keep std helpers small, predictable, and target-aware.",
+    "Use one of the documented std helpers listed by `zero skills get zero-stdlib`, or adjust the call to match the helper's argument list.",
+    "let _ = std.mem.copyAll(dst, src)",
+    "let _ = std.mem.copy(dst, src)",
+  },
+  {
+    "IMP001",
+    "import",
+    "Unknown package-local import",
+    "A `use` declaration referenced a module path that does not resolve under the current package's `src/`.",
+    "Zero imports are package-local paths rather than ambient names, so each `use` must point at a file the package actually owns.",
+    "Change the import to a package-local module path that resolves under `src/`, or add the missing module file to the package.",
+    "use missing",
+    "use helpers",
+  },
   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -2835,6 +2879,8 @@ static void print_explain_json(const ExplainInfo *info) {
   append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
                                          strcmp(info->code, "TAR002") == 0 ? 6002 :
                                          strcmp(info->code, "BLD003") == 0 ? 2003 :
+                                         strcmp(info->code, "TYP001") == 0 ? 3005 :
+                                         strcmp(info->code, "TYP002") == 0 ? 3006 :
                                          strcmp(info->code, "TYP009") == 0 ? 3010 :
                                          strcmp(info->code, "TYP023") == 0 ? 3032 :
                                          strcmp(info->code, "TYP024") == 0 ? 3033 :
@@ -2858,7 +2904,9 @@ static void print_explain_json(const ExplainInfo *info) {
                                          strcmp(info->code, "BOR001") == 0 ? 3029 :
                                          strcmp(info->code, "ERR002") == 0 ? 1002 :
                                          strcmp(info->code, "ERR003") == 0 ? 1003 :
+                                         strcmp(info->code, "STD002") == 0 ? 3011 :
                                          strcmp(info->code, "STD003") == 0 ? 3012 :
+                                         strcmp(info->code, "IMP001") == 0 ? 7001 :
                                          strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
   zbuf_append(&buf, ", \"summary\": ");
   append_json_string(&buf, info->canonical_repair);
