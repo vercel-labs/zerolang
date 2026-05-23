@@ -9180,6 +9180,11 @@ static bool validate_c_imports(const Program *program, ZDiag *diag) {
   return true;
 }
 
+// contract:
+// - program: inout, non-null, no-retain; checker currently annotates selected
+//   nested Expr fields while validating
+// - diag: out, non-null
+// - returns: false after writing diagnostic details, true on success
 bool z_check_program(const Program *program, ZDiag *diag) {
   meta_cache_free(&default_meta_cache);
   DiagSink diag_sink = {.diag = diag};

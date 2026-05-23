@@ -31,6 +31,10 @@ typedef struct {
   char unsupported_feature[128];
 } ZBackendBlocker;
 
+// contract:
+// - diagnostic output record used by parser, checker, lowering, and emitters
+// - path and *_decl_path fields are borrowed string pointers unless a producer
+//   documents a different ownership rule
 typedef struct {
   int code;
   char code_text[16];
@@ -540,6 +544,9 @@ typedef enum {
 typedef struct IrValue IrValue;
 typedef struct IrInstr IrInstr;
 
+// contract:
+// - tree-shaped MIR value node owned by its containing IrInstr or IrValue
+// - child pointers are released by z_free_ir_program through ir.c helpers
 struct IrValue {
   IrValueKind kind;
   IrTypeKind type;
@@ -576,6 +583,10 @@ typedef enum {
   IR_INSTR_WHILE
 } IrInstrKind;
 
+// contract:
+// - MIR instruction node owned by its containing IrFunction instruction array
+// - value/index child pointers and nested instruction arrays are released by
+//   z_free_ir_program through ir.c helpers
 struct IrInstr {
   IrInstrKind kind;
   unsigned local_index;
@@ -594,6 +605,9 @@ struct IrInstr {
   int column;
 };
 
+// contract:
+// - local metadata owned by its containing IrFunction
+// - release with z_free_ir_program
 typedef struct {
   char *name;
   IrTypeKind type;
@@ -613,12 +627,18 @@ typedef struct {
   int column;
 } IrLocal;
 
+// contract:
+// - bytes points to data copied for the IrProgram result
+// - release with z_free_ir_program
 typedef struct {
   unsigned offset;
   unsigned len;
   unsigned char *bytes;
 } IrDataSegment;
 
+// contract:
+// - function metadata, locals, and instruction arrays are owned by IrProgram
+// - release with z_free_ir_program
 typedef struct {
   char *name;
   char *stable_id;
@@ -639,6 +659,9 @@ typedef struct {
   int column;
 } IrFunction;
 
+// contract:
+// - return owned from z_lower_program*; release with z_free_ir_program
+// - embeds a cloned Program plus direct MIR arrays and metadata
 typedef struct {
   Program program;
   IrFunction *functions;
@@ -835,9 +858,27 @@ bool z_toolchain_compile_c_object(const ZToolchainPlan *plan, const char *profil
 bool z_toolchain_link_objects(const ZToolchainPlan *plan, const ZTargetInfo *target, const char *const *object_files, size_t object_count, const char *exe_file, const char *pre_link_flags, const char *post_object_flags);
 bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const char *profile, const ZTargetInfo *target);
 
+// contract:
+// - source: in, non-null, read-only, no-retain
+// - diag: out, non-null
+// - returns: return owned; release with z_free_row_tokens
 ZRowTokenVec z_row_tokenize(const char *source, ZDiag *diag);
+// contract:
+// - tokens: in, non-null, read-only, no-retain
+// - facts: out, non-null
+// - diag: out, non-null
+// - returns: false on layout failure, true on success
 bool z_row_analyze_layout(const ZRowTokenVec *tokens, ZRowSyntaxFacts *facts, ZDiag *diag);
+// contract:
+// - tokens: in, non-null, read-only, no-retain
+// - tree: out, non-null; release with z_free_row_tree after success
+// - diag: out, non-null
+// - returns: false on layout parse failure, true on success
 bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag);
+// contract:
+// - tokens/tree: in, non-null, read-only, no-retain
+// - diag: out, non-null
+// - returns: return owned; release with z_free_program
 Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *diag);
 char *z_format_row_layout(const ZRowTokenVec *tokens, const ZRowTree *tree);
 void z_free_row_tree(ZRowTree *tree);
@@ -845,14 +886,32 @@ void z_free_row_tokens(ZRowTokenVec *tokens);
 
 void z_free_program(Program *program);
 
+// contract:
+// - program: inout, non-null, no-retain; current checker annotates selected
+//   nested Expr fields despite the const-qualified public type
+// - diag: out, non-null
+// - returns: false on validation failure, true on success
 bool z_check_program(const Program *program, ZDiag *diag);
 void z_set_check_target(const ZTargetInfo *target);
 ZMetaCacheStats z_meta_cache_stats(void);
 void z_backend_blocker_set(ZBackendBlocker *blocker, const char *target, const char *object_format, const char *backend, const char *stage, const char *unsupported_feature);
 void z_diag_set_backend_blocker(ZDiag *diag, const ZBackendBlocker *blocker);
+// contract:
+// - program: in, non-null, read-only during lowering, no-retain
+// - returns: return owned; release with z_free_ir_program
 IrProgram z_lower_program(const Program *program);
+// contract:
+// - program: in, non-null, read-only during lowering, no-retain
+// - input: in, nullable, read-only during lowering, no-retain
+// - returns: return owned; release with z_free_ir_program
 IrProgram z_lower_program_with_source(const Program *program, const SourceInput *input);
 void z_free_ir_program(IrProgram *program);
+// contract:
+// - applies to the z_emit_*_from_ir declarations below
+// - program: in, non-null, read-only, no-retain
+// - out: inout, non-null; emitter appends object or executable bytes
+// - diag: out, non-null
+// - returns: false on emission failure, true on success
 bool z_emit_elf64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag);
 bool z_emit_elf64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag);
 bool z_emit_elf_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag);
