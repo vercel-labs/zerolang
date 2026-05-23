@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "code": "ERR001",
+  "title": "`check` requires function to be marked fallible",
+  "fixSafety": "api-changing",
+  "defaultOutput": "plain-text-no-ansi"
+}

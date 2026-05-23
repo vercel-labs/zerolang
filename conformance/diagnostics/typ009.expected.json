@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "code": "TYP009",
+  "title": "cannot create MutSpan from immutable array binding",
+  "fixSafety": "behavior-preserving",
+  "defaultOutput": "plain-text-no-ansi"
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "code": "TYP002",
+  "title": "let binding type does not match initializer",
+  "fixSafety": "behavior-preserving",
+  "defaultOutput": "plain-text-no-ansi"
+}

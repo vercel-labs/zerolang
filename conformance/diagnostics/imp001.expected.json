@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "code": "NAM003",
-  "title": "unknown identifier 'message'",
+  "code": "IMP001",
+  "title": "unknown package-local import 'missing'",
   "fixSafety": "requires-human-review",
   "defaultOutput": "plain-text-no-ansi"
 }

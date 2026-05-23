@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "code": "TYP001",
+  "title": "function 'helper' cannot be used as a runtime value",
+  "fixSafety": "behavior-preserving",
+  "defaultOutput": "plain-text-no-ansi"
+}
