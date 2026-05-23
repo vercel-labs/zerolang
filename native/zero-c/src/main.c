@@ -6246,12 +6246,14 @@ typedef struct {
 } TestFieldValue;
 
 struct TestValue {
-  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE } kind;
+  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE, TEST_VALUE_ARRAY } kind;
   bool bool_value;
   long long int_value;
   char *string_value;
   TestFieldValue *fields;
   size_t field_len;
+  TestValue *items;
+  size_t item_len;
 };
 
 typedef struct {
@@ -6281,6 +6283,10 @@ static void test_value_free(TestValue *value) {
     free(value->fields[i].value);
   }
   free(value->fields);
+  for (size_t i = 0; i < value->item_len; i++) {
+    test_value_free(&value->items[i]);
+  }
+  free(value->items);
   memset(value, 0, sizeof(*value));
 }
 
@@ -6298,6 +6304,13 @@ static TestValue test_value_copy(const TestValue *value) {
       copy.fields[i].name = z_strdup(value->fields[i].name);
       copy.fields[i].value = z_checked_calloc(1, sizeof(TestValue));
       *copy.fields[i].value = test_value_copy(value->fields[i].value);
+    }
+  }
+  copy.item_len = value->item_len;
+  if (copy.item_len > 0) {
+    copy.items = z_checked_calloc(copy.item_len, sizeof(TestValue));
+    for (size_t i = 0; i < copy.item_len; i++) {
+      copy.items[i] = test_value_copy(&value->items[i]);
     }
   }
   return copy;
@@ -6395,12 +6408,40 @@ static bool test_value_equals(const TestValue *left, const TestValue *right) {
     long long b = right->kind == TEST_VALUE_BOOL ? (right->bool_value ? 1 : 0) : right->int_value;
     return a == b;
   }
+  if (left->kind == TEST_VALUE_ARRAY && right->kind == TEST_VALUE_ARRAY) {
+    if (left->item_len != right->item_len) return false;
+    for (size_t i = 0; i < left->item_len; i++) {
+      if (!test_value_equals(&left->items[i], &right->items[i])) return false;
+    }
+    return true;
+  }
+  if (left->kind == TEST_VALUE_SHAPE && right->kind == TEST_VALUE_SHAPE) {
+    if (left->field_len != right->field_len) return false;
+    for (size_t i = 0; i < left->field_len; i++) {
+      if (strcmp(left->fields[i].name, right->fields[i].name) != 0) return false;
+      if (!test_value_equals(left->fields[i].value, right->fields[i].value)) return false;
+    }
+    return true;
+  }
   return false;
 }
 
 static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *expr, TestValue *out, TestRunFailure *failure);
 
-static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, TestRunFailure *failure) {
+static bool test_env_set_indexed(TestEnv *env, const char *name, size_t index, const TestValue *value) {
+  for (size_t i = 0; i < env->len; i++) {
+    if (strcmp(env->items[i].name, name) == 0) {
+      if (env->items[i].value.kind != TEST_VALUE_ARRAY) return false;
+      if (index >= env->items[i].value.item_len) return false;
+      test_value_free(&env->items[i].value.items[index]);
+      env->items[i].value.items[index] = test_value_copy(value);
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, bool *broke, bool *continued, TestRunFailure *failure) {
   for (size_t i = 0; body && i < body->len; i++) {
     Stmt *stmt = body->items[i];
     if (!stmt) continue;
@@ -6449,8 +6490,68 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
       if (!test_eval_expr(program, env, stmt->expr, &condition, failure)) return false;
       bool branch = test_value_truthy(&condition);
       test_value_free(&condition);
-      if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, failure)) return false;
-      if (*returned) return true;
+      if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, broke, continued, failure)) return false;
+      if (*returned || *broke || *continued) return true;
+    } else if (stmt->kind == STMT_WHILE) {
+      for (int guard = 0; guard < 100000; guard++) {
+        TestValue condition = {0};
+        if (!test_eval_expr(program, env, stmt->expr, &condition, failure)) return false;
+        bool loop = test_value_truthy(&condition);
+        test_value_free(&condition);
+        if (!loop) break;
+        bool inner_broke = false;
+        bool inner_continued = false;
+        if (!test_eval_stmt_vec(program, env, &stmt->then_body, return_value, returned, &inner_broke, &inner_continued, failure)) return false;
+        if (*returned) return true;
+        if (inner_broke) break;
+        // inner_continued: skip rest of body, re-evaluate condition
+      }
+    } else if (stmt->kind == STMT_BREAK) {
+      *broke = true;
+      return true;
+    } else if (stmt->kind == STMT_CONTINUE) {
+      *continued = true;
+      return true;
+    } else if (stmt->kind == STMT_ASSIGN) {
+      TestValue value = {0};
+      if (!test_eval_expr(program, env, stmt->expr, &value, failure)) return false;
+      if (stmt->target && stmt->target->kind == EXPR_INDEX) {
+        // array[idx] = value
+        TestValue idx_val = {0};
+        if (!test_eval_expr(program, env, stmt->target->right, &idx_val, failure)) { test_value_free(&value); return false; }
+        ZBuf name;
+        zbuf_init(&name);
+        bool named = test_expr_name(stmt->target->left, &name);
+        if (named) {
+          test_env_set_indexed(env, name.data ? name.data : "", (size_t)idx_val.int_value, &value);
+        }
+        zbuf_free(&name);
+        test_value_free(&idx_val);
+      } else if (stmt->target && stmt->target->kind == EXPR_MEMBER) {
+        // shape.field = value — update field in env
+        ZBuf name;
+        zbuf_init(&name);
+        bool named = test_expr_name(stmt->target->left, &name);
+        if (named) {
+          const char *field = stmt->target->text ? stmt->target->text : "";
+          for (size_t ei = 0; ei < env->len; ei++) {
+            if (strcmp(env->items[ei].name, name.data ? name.data : "") == 0 && env->items[ei].value.kind == TEST_VALUE_SHAPE) {
+              for (size_t fi = 0; fi < env->items[ei].value.field_len; fi++) {
+                if (strcmp(env->items[ei].value.fields[fi].name, field) == 0) {
+                  test_value_free(env->items[ei].value.fields[fi].value);
+                  *env->items[ei].value.fields[fi].value = test_value_copy(&value);
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        zbuf_free(&name);
+      } else if (stmt->target && stmt->target->kind == EXPR_IDENT) {
+        test_env_set(env, stmt->target->text, &value);
+      }
+      test_value_free(&value);
     } else {
       test_fail(failure, NULL, "zero test direct runner does not support this statement yet");
       return false;
@@ -6459,7 +6560,8 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
   return true;
 }
 
-static bool test_eval_function(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure) {
+static bool test_eval_function(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure,
+                               TestEnv *caller_env, const char **mutref_sources) {
   if (!fun) {
     test_fail(failure, NULL, "zero test unknown function");
     return false;
@@ -6471,7 +6573,22 @@ static bool test_eval_function(const Program *program, const Function *fun, cons
   TestEnv local = {0};
   for (size_t i = 0; i < arg_len; i++) test_env_set(&local, fun->params.items[i].name, &args[i]);
   bool returned = false;
-  bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, failure);
+  bool broke = false;
+  bool continued = false;
+  bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, &broke, &continued, failure);
+  if (ok && caller_env && mutref_sources) {
+    for (size_t i = 0; i < arg_len; i++) {
+      if (!mutref_sources[i]) continue;
+      const char *param_type = fun->params.items[i].type ? fun->params.items[i].type : "";
+      if (strncmp(param_type, "mutref<", 7) != 0) continue;
+      for (size_t li = 0; li < local.len; li++) {
+        if (strcmp(local.items[li].name, fun->params.items[i].name) == 0) {
+          test_env_set(caller_env, mutref_sources[i], &local.items[li].value);
+          break;
+        }
+      }
+    }
+  }
   test_env_free(&local);
   if (!ok) return false;
   if (!returned) out->kind = TEST_VALUE_VOID;
@@ -6508,6 +6625,20 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
       }
       return true;
     case EXPR_MEMBER: {
+      if (expr->left && expr->left->kind == EXPR_IDENT && expr->left->text && expr->text) {
+        for (size_t ci = 0; program && ci < program->choices.len; ci++) {
+          if (strcmp(program->choices.items[ci].name, expr->left->text) == 0) {
+            for (size_t vi = 0; vi < program->choices.items[ci].cases.len; vi++) {
+              if (strcmp(program->choices.items[ci].cases.items[vi].name, expr->text) == 0) {
+                out->kind = TEST_VALUE_INT;
+                out->int_value = (long long)vi;
+                return true;
+              }
+            }
+            break;
+          }
+        }
+      }
       TestValue base = {0};
       if (!test_eval_expr(program, env, expr->left, &base, failure)) return false;
       if (base.kind == TEST_VALUE_SHAPE) {
@@ -6575,28 +6706,70 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
         return false;
       }
       const char *callee_name = name.data ? name.data : "";
-      TestValue *args = z_checked_calloc(expr->args.len ? expr->args.len : 1, sizeof(TestValue));
-      for (size_t i = 0; i < expr->args.len; i++) {
-        if (!test_eval_expr(program, env, expr->args.items[i], &args[i], failure)) {
+      size_t nargs = expr->args.len;
+      TestValue *args = z_checked_calloc(nargs ? nargs : 1, sizeof(TestValue));
+      const char **mutref_sources = z_checked_calloc(nargs ? nargs : 1, sizeof(char *));
+      for (size_t i = 0; i < nargs; i++) {
+        Expr *arg = expr->args.items[i];
+        if (arg && arg->kind == EXPR_BORROW && arg->mutable_borrow && arg->left && arg->left->kind == EXPR_IDENT) {
+          mutref_sources[i] = arg->left->text;
+        }
+        if (!test_eval_expr(program, env, arg, &args[i], failure)) {
           for (size_t j = 0; j <= i; j++) test_value_free(&args[j]);
           free(args);
+          free(mutref_sources);
           zbuf_free(&name);
           return false;
         }
       }
       bool ok = true;
-      if (strcmp(callee_name, "std.mem.eql") == 0 && expr->args.len == 2) {
+      if (strcmp(callee_name, "std.mem.eql") == 0 && nargs == 2) {
         out->kind = TEST_VALUE_BOOL;
         out->bool_value = test_value_equals(&args[0], &args[1]);
       } else {
         const Function *fun = find_program_function(program, callee_name);
-        ok = test_eval_function(program, fun, args, expr->args.len, out, failure);
+        ok = test_eval_function(program, fun, args, nargs, out, failure, env, mutref_sources);
       }
-      for (size_t i = 0; i < expr->args.len; i++) test_value_free(&args[i]);
+      for (size_t i = 0; i < nargs; i++) test_value_free(&args[i]);
       free(args);
+      free(mutref_sources);
       zbuf_free(&name);
       return ok;
     }
+    case EXPR_ARRAY_LITERAL: {
+      out->kind = TEST_VALUE_ARRAY;
+      out->item_len = expr->args.len;
+      out->items = z_checked_calloc(out->item_len ? out->item_len : 1, sizeof(TestValue));
+      for (size_t i = 0; i < expr->args.len; i++) {
+        if (!test_eval_expr(program, env, expr->args.items[i], &out->items[i], failure)) return false;
+      }
+      return true;
+    }
+    case EXPR_INDEX: {
+      TestValue base = {0};
+      TestValue idx = {0};
+      if (!test_eval_expr(program, env, expr->left, &base, failure)) return false;
+      if (!test_eval_expr(program, env, expr->right, &idx, failure)) { test_value_free(&base); return false; }
+      long long index = idx.int_value;
+      test_value_free(&idx);
+      if (base.kind == TEST_VALUE_ARRAY) {
+        if (index < 0 || (size_t)index >= base.item_len) {
+          test_value_free(&base);
+          test_fail(failure, expr, "zero test array index out of bounds");
+          return false;
+        }
+        *out = test_value_copy(&base.items[index]);
+        test_value_free(&base);
+        return true;
+      }
+      test_value_free(&base);
+      test_fail(failure, expr, "zero test index on non-array value");
+      return false;
+    }
+    case EXPR_BORROW:
+      return test_eval_expr(program, env, expr->left, out, failure);
+    case EXPR_CAST:
+      return test_eval_expr(program, env, expr->left, out, failure);
     default:
       test_fail(failure, expr, "zero test direct runner does not support this expression yet");
       return false;
@@ -6628,7 +6801,7 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     bool expected_failure = test_expected_failure(fun);
     long long test_started_ms = now_ms();
     TestValue ignored = {0};
-    bool ok = test_eval_function(program, fun, NULL, 0, &ignored, &failure);
+    bool ok = test_eval_function(program, fun, NULL, 0, &ignored, &failure, NULL, NULL);
     long long test_duration_ms = now_ms() - test_started_ms;
     test_value_free(&ignored);
 
