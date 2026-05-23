@@ -1,9 +1,3 @@
-extern c "stdint.h" as cstdint
-
-extern type CConfig
-  port i32
-  workers i32
-
 type Config
   port i32
   workers i32
