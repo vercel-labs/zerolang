@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+// contract:
+// - buffer builder with owned data after zbuf_init/zbuf_append*
+// - data is released by zbuf_free or transferred when a function returns it
+// - append inputs are borrowed and not retained
 typedef struct {
   char *data;
   size_t len;
@@ -35,6 +39,7 @@ typedef struct {
 // - diagnostic output record used by parser, checker, lowering, and emitters
 // - path and *_decl_path fields are borrowed string pointers unless a producer
 //   documents a different ownership rule
+// - do not infer that path fields are heap-owned from the type alone
 typedef struct {
   int code;
   char code_text[16];
@@ -408,6 +413,9 @@ typedef struct {
   size_t cap;
 } UseImportVec;
 
+// contract:
+// - parser-owned AST root returned by z_parse_row and released by z_free_program
+// - checker currently annotates selected nested Expr and Stmt fields
 typedef struct {
   UseImportVec use_imports;
   CImportVec c_imports;
@@ -705,6 +713,10 @@ typedef struct {
   bool direct;
 } SourceDependency;
 
+// contract:
+// - source metadata object; producer ownership is source-backed per field
+// - z_free_source releases owned fields populated by current metadata resolver
+// - diagnostic mapping may return borrowed pointers into source_line_paths
 typedef struct {
   char *source_file;
   char *source;
@@ -832,26 +844,78 @@ typedef struct {
   size_t entries;
 } ZMetaCacheStats;
 
+// contract:
+// - buf: inout, non-null; initialized to empty
 void zbuf_init(ZBuf *buf);
+// contract:
+// - buf: inout, non-null
+// - text: in, non-null, read-only, no-retain
 void zbuf_append(ZBuf *buf, const char *text);
+// contract:
+// - buf: inout, non-null
 void zbuf_append_char(ZBuf *buf, char ch);
+// contract:
+// - buf: inout, non-null
+// - fmt and varargs: in, non-null, read during call, no-retain
 void zbuf_appendf(ZBuf *buf, const char *fmt, ...);
+// contract:
+// - buf: inout, non-null; releases owned data and resets fields
 void zbuf_free(ZBuf *buf);
 
 void *z_checked_malloc(size_t size);
 void *z_checked_calloc(size_t count, size_t item_size);
 void *z_checked_reallocarray(void *ptr, size_t count, size_t item_size);
 size_t z_grow_capacity(size_t current, size_t required, size_t initial);
+// contract:
+// - text: in, non-null, read-only, no-retain
+// - returns: return owned duplicate; caller frees
 char *z_strdup(const char *text);
+// contract:
+// - text: in, non-null, read-only for len bytes, no-retain
+// - returns: return owned NUL-terminated duplicate; caller frees
 char *z_strndup(const char *text, size_t len);
+// contract:
+// - path: in, non-null, read-only, no-retain
+// - diag: out, non-null on failure paths
+// - returns: return owned file contents or NULL on failure
 char *z_read_file(const char *path, ZDiag *diag);
+// contract:
+// - path/text: in, non-null, read-only, no-retain
+// - diag: out, non-null on failure paths
+// - returns: false on write failure, true on success
 bool z_write_file(const char *path, const char *text, ZDiag *diag);
+// contract:
+// - path: in, non-null, read-only, no-retain
+// - data: in, non-null when len > 0, read-only, no-retain
+// - diag: out, non-null on failure paths
+// - returns: false on write failure, true on success
 bool z_write_binary_file(const char *path, const unsigned char *data, size_t len, ZDiag *diag);
+// contract:
+// - input: in, nullable, read-only, no-retain
+// - diag: inout, non-null; path fields may become borrowed from input
+// - returns: false when mapping is not possible, true when remapped
 bool z_map_source_diag(const SourceInput *input, ZDiag *diag);
+// contract:
+// - input: inout, non-null; releases owned source metadata fields
 void z_free_source(SourceInput *input);
+// contract:
+// - manifest: in, non-null, read-only, no-retain
+// - out: out, non-null; zeroed then filled with owned strings on success
+// - diag: opt out by source guard on some parse failures
+// - returns: false on malformed manifest, true on success
 bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag);
+// contract:
+// - manifest_path/manifest/parsed_manifest: in, non-null, read-only, no-retain
+// - out: out, non-null; receives owned SourceInput released by z_free_source
+// - diag: out, non-null on failure paths
+// - returns: false on metadata resolution failure, true on success
 bool z_resolve_package_metadata(const char *manifest_path, const char *manifest, const ZManifest *parsed_manifest, SourceInput *out, ZDiag *diag);
+// contract:
+// - manifest: inout, non-null; releases owned strings and arrays, then resets
 void z_free_manifest(ZManifest *manifest);
+// contract:
+// - source_file: in, non-null, read-only, no-retain
+// - returns: return owned default path; caller frees
 char *z_default_out_path(const char *source_file);
 ZToolchainPlan z_plan_toolchain(const char *cc, const char *profile, const ZTargetInfo *target);
 bool z_toolchain_compile_c_object(const ZToolchainPlan *plan, const char *profile, const ZTargetInfo *target, const char *c_file, const char *object_file, const char *include_dir, const char *extra_c_flags);
@@ -880,10 +944,19 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
 // - diag: out, non-null
 // - returns: return owned; release with z_free_program
 Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *diag);
+// contract:
+// - tokens/tree: in, non-null, read-only, no-retain
+// - returns: return owned layout text; caller frees
 char *z_format_row_layout(const ZRowTokenVec *tokens, const ZRowTree *tree);
+// contract:
+// - tree: inout, nullable; releases owned row tree arrays and resets fields
 void z_free_row_tree(ZRowTree *tree);
+// contract:
+// - tokens: inout, nullable; releases token text and vector storage
 void z_free_row_tokens(ZRowTokenVec *tokens);
 
+// contract:
+// - program: inout, non-null; releases parser-owned AST strings and nodes
 void z_free_program(Program *program);
 
 // contract:
@@ -892,9 +965,18 @@ void z_free_program(Program *program);
 // - diag: out, non-null
 // - returns: false on validation failure, true on success
 bool z_check_program(const Program *program, ZDiag *diag);
+// contract:
+// - target: in, nullable, read-only
+// - retains: stores borrowed pointer in checker process state until replaced
 void z_set_check_target(const ZTargetInfo *target);
 ZMetaCacheStats z_meta_cache_stats(void);
+// contract:
+// - blocker: inout, nullable; copied text into fixed arrays when non-null
+// - input strings: in, nullable, read-only, no-retain
 void z_backend_blocker_set(ZBackendBlocker *blocker, const char *target, const char *object_format, const char *backend, const char *stage, const char *unsupported_feature);
+// contract:
+// - diag: inout, nullable
+// - blocker: in, nullable, read-only, no-retain
 void z_diag_set_backend_blocker(ZDiag *diag, const ZBackendBlocker *blocker);
 // contract:
 // - program: in, non-null, read-only during lowering, no-retain
@@ -905,6 +987,8 @@ IrProgram z_lower_program(const Program *program);
 // - input: in, nullable, read-only during lowering, no-retain
 // - returns: return owned; release with z_free_ir_program
 IrProgram z_lower_program_with_source(const Program *program, const SourceInput *input);
+// contract:
+// - program: inout, nullable; releases IR-owned data and cloned Program
 void z_free_ir_program(IrProgram *program);
 // contract:
 // - applies to the z_emit_*_from_ir declarations below

@@ -11,6 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+// contract:
+// - checker validates Program and annotates selected AST nodes in place
+// - public boundary is const Program *, but source casts nested Expr/Stmt
+//   pointers to write resolved semantic fields
+// - no broad ownership transfer of Program occurs at checker boundary
+
 typedef struct Scope Scope;
 
 typedef struct {
@@ -475,6 +481,9 @@ static void function_provenance_summary_free(FunctionProvenanceSummary *summary)
   *summary = (FunctionProvenanceSummary){0};
 }
 
+// contract:
+// - target: in, nullable, read-only
+// - retains: stores borrowed pointer in checker process state until replaced
 void z_set_check_target(const ZTargetInfo *target) {
   configured_check_target = target;
 }
@@ -4549,6 +4558,10 @@ static bool resolve_choice_constructor_call(const Program *program, const Expr *
   return true;
 }
 
+// contract:
+// - expr: inout at semantic level despite const-qualified helper signature
+// - type: in, nullable, read-only, no-retain
+// - retains: duplicates type into Expr.resolved_type
 static void set_expr_resolved_type(const Expr *expr, const char *type) {
   if (!expr) return;
   Expr *mutable_expr = (Expr *)expr;
@@ -4573,6 +4586,10 @@ static void type_arg_vec_push_copy(TypeArgVec *args, const char *type, int line,
   };
 }
 
+// contract:
+// - expr: inout at semantic level despite const-qualified helper signature
+// - bindings: in, nullable, read-only, no-retain
+// - retains: duplicates binding types into Expr.checked_type_args
 static void set_expr_checked_type_args(const Expr *expr, GenericBinding *bindings, size_t binding_len) {
   if (!expr) return;
   Expr *mutable_expr = (Expr *)expr;
@@ -4582,6 +4599,10 @@ static void set_expr_checked_type_args(const Expr *expr, GenericBinding *binding
   }
 }
 
+// contract:
+// - stmt: inout at semantic level despite const-qualified helper signature
+// - type: in, nullable, read-only, no-retain
+// - retains: duplicates type into Stmt.resolved_type
 static void set_stmt_resolved_type(const Stmt *stmt, const char *type) {
   if (!stmt) return;
   Stmt *mutable_stmt = (Stmt *)stmt;
@@ -6709,6 +6730,7 @@ static void mark_owned_move_if_needed(const Expr *expr, Scope *scope, const char
   const char *source_type = scope_type(scope, expr->text);
   if (source_type && type_is_owned(source_type)) {
     scope_set_moved(scope, expr->text, true);
+    // contract: records checker-proven ownership transfer on source Expr.
     ((Expr *)expr)->moves_ownership = true;
   }
 }
@@ -9182,8 +9204,10 @@ static bool validate_c_imports(const Program *program, ZDiag *diag) {
 
 // contract:
 // - program: inout, non-null, no-retain; checker currently annotates selected
-//   nested Expr fields while validating
+//   nested Expr and Stmt fields while validating
 // - diag: out, non-null
+// - ownership: does not take ownership of Program; checker temporaries are
+//   released before return
 // - returns: false after writing diagnostic details, true on success
 bool z_check_program(const Program *program, ZDiag *diag) {
   meta_cache_free(&default_meta_cache);
