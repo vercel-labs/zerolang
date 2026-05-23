@@ -9,6 +9,7 @@ typedef struct {
   const char *linker_flavor;
   const char *object_artifact_path;
   const char *exe_artifact_path;
+  const char *runtime_object_cache_key;
   bool runtime_object_supported;
 } ZDirectBackendDescriptor;
 
@@ -23,10 +24,10 @@ typedef struct {
 } ZDirectBackendRule;
 
 static const ZDirectBackendDescriptor direct_backend_descriptors[] = {
-  {Z_DIRECT_BACKEND_ELF64, "zero-elf64", "zero-elf64-exe", "elf64", "direct-elf64-object", "direct-elf64-exe", true},
-  {Z_DIRECT_BACKEND_ELF_AARCH64, "zero-elf-aarch64", "zero-elf-aarch64-exe", "elf64", "direct-elf-aarch64-object", "direct-elf-aarch64-exe", false},
-  {Z_DIRECT_BACKEND_MACHO64, "zero-macho64", "zero-macho64-exe", "macho64", "direct-macho64-object", "direct-macho64-exe", true},
-  {Z_DIRECT_BACKEND_COFF_X64, "zero-coff-x64", "zero-coff-x64-exe", "coff", "direct-coff-x64-object", "direct-coff-x64-exe", false},
+  {Z_DIRECT_BACKEND_ELF64, "zero-elf64", "zero-elf64-exe", "elf64", "direct-elf64-object", "direct-elf64-exe", "direct-elf64-object-runtime-link", true},
+  {Z_DIRECT_BACKEND_ELF_AARCH64, "zero-elf-aarch64", "zero-elf-aarch64-exe", "elf64", "direct-elf-aarch64-object", "direct-elf-aarch64-exe", "unsupported", false},
+  {Z_DIRECT_BACKEND_MACHO64, "zero-macho64", "zero-macho64-exe", "macho64", "direct-macho64-object", "direct-macho64-exe", "direct-macho64-object-runtime-link", true},
+  {Z_DIRECT_BACKEND_COFF_X64, "zero-coff-x64", "zero-coff-x64-exe", "coff", "direct-coff-x64-object", "direct-coff-x64-exe", "unsupported", false},
 };
 
 static const ZDirectBackendRule direct_backend_rules[] = {
@@ -102,6 +103,22 @@ const char *z_direct_backend_artifact_path(ZDirectBackend backend, bool executab
   return executable ? descriptor->exe_artifact_path : descriptor->object_artifact_path;
 }
 
+const char *z_direct_backend_runtime_object_cache_key(ZDirectBackend backend) {
+  const ZDirectBackendDescriptor *descriptor = direct_backend_descriptor(backend);
+  return descriptor ? descriptor->runtime_object_cache_key : "unsupported";
+}
+
+size_t z_direct_backend_symbol_overhead(ZDirectBackend backend, bool has_readonly_data) {
+  switch (backend) {
+    case Z_DIRECT_BACKEND_COFF_X64: return has_readonly_data ? 2 : 1;
+    case Z_DIRECT_BACKEND_ELF64:
+    case Z_DIRECT_BACKEND_ELF_AARCH64:
+    case Z_DIRECT_BACKEND_MACHO64: return has_readonly_data ? 1 : 0;
+    case Z_DIRECT_BACKEND_NONE: return 0;
+  }
+  return 0;
+}
+
 bool z_direct_backend_supports_runtime_object(ZDirectBackend backend) {
   const ZDirectBackendDescriptor *descriptor = direct_backend_descriptor(backend);
   return descriptor ? descriptor->runtime_object_supported : false;
@@ -155,4 +172,27 @@ const char *z_direct_backend_reason(const ZTargetInfo *target) {
   if (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0) return "AArch64 ELF machine-code backend is not implemented yet";
   if (strcmp(format, "coff") == 0 && strcmp(arch, "aarch64") == 0) return "AArch64 COFF machine-code backend is not implemented yet";
   return "direct backend is not implemented for this target format/architecture pair";
+}
+
+const char *z_direct_backend_expected(const ZTargetInfo *target) {
+  ZDirectBackend backend = z_direct_object_backend(target);
+  const char *format = target && target->object_format ? target->object_format : "";
+  const char *arch = target && target->arch ? target->arch : "";
+  if (backend == Z_DIRECT_BACKEND_MACHO64 || strcmp(format, "macho") == 0) return "direct AArch64 Mach-O object MVP subset";
+  if (backend == Z_DIRECT_BACKEND_COFF_X64 || strcmp(format, "coff") == 0) return "direct COFF x64 object MVP subset";
+  if (backend == Z_DIRECT_BACKEND_ELF_AARCH64 || (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0)) return "direct AArch64 ELF object MVP subset";
+  if (backend == Z_DIRECT_BACKEND_ELF64 || strcmp(format, "elf") == 0) return "direct ELF64 object MVP subset";
+  return "direct target with matching object format and architecture";
+}
+
+const char *z_direct_backend_help(const ZTargetInfo *target) {
+  ZDirectBackend backend = z_direct_object_backend(target);
+  const char *format = target && target->object_format ? target->object_format : "";
+  const char *arch = target && target->arch ? target->arch : "";
+  if (backend == Z_DIRECT_BACKEND_MACHO64 || backend == Z_DIRECT_BACKEND_ELF_AARCH64 ||
+      strcmp(format, "macho") == 0 || (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0)) {
+    return "choose a supported direct target or restrict this program to exported no-parameter functions returning small integer literals";
+  }
+  if (backend == Z_DIRECT_BACKEND_COFF_X64 || strcmp(format, "coff") == 0) return "reduce the program to primitive direct-backend constructs or choose a supported direct target";
+  return "choose a supported direct target or restrict this program to exported primitive integer arithmetic functions";
 }

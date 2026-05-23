@@ -15,10 +15,10 @@ type CScanState = {
 };
 
 const fileBudgets = {
-  "native/zero-c/include/zero.h": { maxLines: 905, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 909, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 9395, maxStrcmpCalls: 403 },
-  "native/zero-c/src/main.c": { maxLines: 10000, maxStrcmpCalls: 467 },
+  "native/zero-c/src/main.c": { maxLines: 9979, maxStrcmpCalls: 456 },
   "native/zero-c/src/ir.c": { maxLines: 3700, maxStrcmpCalls: 224 },
   "native/zero-c/src/row_syntax.c": { maxLines: 2150, maxStrcmpCalls: 11 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
@@ -54,7 +54,7 @@ const fileBudgets = {
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/std_sig.c": { maxLines: 180, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_sig.h": { maxLines: 40, maxStrcmpCalls: 0 },
-  "native/zero-c/src/target_backend.c": { maxLines: 160, maxStrcmpCalls: 10 },
+  "native/zero-c/src/target_backend.c": { maxLines: 200, maxStrcmpCalls: 19 },
   "native/zero-c/src/target.c": { maxLines: 465, maxStrcmpCalls: 15 },
   "native/zero-c/src/type_core.c": { maxLines: 900, maxStrcmpCalls: 8 },
   "native/zero-c/src/type_core.h": { maxLines: 150, maxStrcmpCalls: 0 },
@@ -600,7 +600,12 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
       !backendFormats.directTarget.descriptorTable ||
       backendFormats.directTarget.executableTargetNameChecks > 0 ||
       backendFormats.directTarget.mainExecutableEmitterStringChecks > 0 ||
-      backendFormats.directTarget.mainObjectEmitterStringChecks > 0) {
+      backendFormats.directTarget.mainObjectEmitterStringChecks > 0 ||
+      backendFormats.directTarget.mainRuntimeCacheKeyStringChecks > 0 ||
+      backendFormats.directTarget.mainDirectBackendDiagStringHelpers > 0 ||
+      backendFormats.directTarget.mainBackendFromEmitterCalls > 0 ||
+      backendFormats.directTarget.mainDirectPathFromEmitterHelpers > 0 ||
+      backendFormats.directTarget.mainObjectFormatSymbolChecks > 0) {
     violations.push({
       kind: "direct-target-backend-matrix",
       directTarget: backendFormats.directTarget,
@@ -895,6 +900,11 @@ const backendFormats = {
     executableTargetNameChecks: countMatches(directExeBackendBody, /target\s*->\s*name/g),
     mainExecutableEmitterStringChecks: countMatches(cCodeText(main), /zero-(?:elf64|elf-aarch64|macho64|coff-x64)-exe/g),
     mainObjectEmitterStringChecks: countMatches(cCodeText(main), /"zero-(?:elf64|elf-aarch64|macho64|coff-x64)"/g),
+    mainRuntimeCacheKeyStringChecks: countMatches(cCodeText(main), /direct-(?:elf64|macho64)-object-runtime-link/g),
+    mainDirectBackendDiagStringHelpers: countMatches(cCodeText(main), /static const char \*target_backend_(?:expected|help)\s*\(/g),
+    mainBackendFromEmitterCalls: countMatches(cCodeText(main), /z_direct_backend_from_emitter\s*\(/g),
+    mainDirectPathFromEmitterHelpers: countMatches(cCodeText(main), /direct_(?:object_path|linker_flavor)_for_emitter\s*\(/g),
+    mainObjectFormatSymbolChecks: countMatches(cCodeText(main), /strcmp\s*\(\s*object_format\s*,\s*"coff"\s*\)/g),
   },
   elf: {
     sharedWriter: /\bz_elf_write_object64\s*\(/.test(elfFormatSource) && /\bz_elf_write_executable64\s*\(/.test(elfFormatSource),

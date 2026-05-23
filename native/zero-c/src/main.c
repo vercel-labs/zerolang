@@ -4863,21 +4863,17 @@ static void append_portable_runtime_json(ZBuf *buf, const IrProgram *ir, const S
   zbuf_append(buf, "}");
 }
 
+static ZDirectBackend direct_emit_backend(const ZTargetInfo *target, const Command *command, const char *emit_kind) {
+  if (emit_kind && strcmp(emit_kind, "obj") == 0) return z_direct_object_backend(target);
+  if (emit_kind && strcmp(emit_kind, "exe") == 0 && command && command->backend) return z_direct_exe_backend(target);
+  return Z_DIRECT_BACKEND_NONE;
+}
+
 static const char *direct_emit_emitter(const ZTargetInfo *target, const Command *command, const char *emit_kind) {
-  if (emit_kind && strcmp(emit_kind, "obj") == 0) return z_direct_object_emitter(target);
-  if (emit_kind && strcmp(emit_kind, "exe") == 0 && command && command->backend) return z_direct_exe_emitter(target);
-  return "none";
-}
-
-static const char *direct_linker_flavor_for_emitter(const char *emitter) {
-  return z_direct_backend_linker_flavor(z_direct_backend_from_emitter(emitter));
-}
-
-static const char *direct_object_path_for_emitter(const char *emitter) {
-  ZDirectBackend backend = z_direct_backend_from_emitter(emitter);
-  if (backend == Z_DIRECT_BACKEND_NONE) return "unsupported";
-  bool executable = z_direct_backend_emitter_is_executable(emitter);
-  return z_direct_backend_artifact_path(backend, executable);
+  ZDirectBackend backend = direct_emit_backend(target, command, emit_kind);
+  if (backend == Z_DIRECT_BACKEND_NONE) return "none";
+  if (emit_kind && strcmp(emit_kind, "exe") == 0) return z_direct_backend_exe_emitter(backend);
+  return z_direct_backend_object_emitter(backend);
 }
 
 static const char *release_artifact_kind_for_emit(const ZTargetInfo *target, const char *emit_kind) {
@@ -4916,18 +4912,18 @@ static void append_target_capability_names_json(ZBuf *buf, const ZTargetInfo *ta
 }
 
 static void append_release_target_contract_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const Command *command, const char *emit_kind) {
-  const char *selected_emitter = direct_emit_emitter(target, command, emit_kind);
+  ZDirectBackend selected_backend = direct_emit_backend(target, command, emit_kind);
   const char *object_format = target && target->object_format ? target->object_format : "unknown";
-  if ((!selected_emitter || strcmp(selected_emitter, "none") == 0) && emit_kind && strcmp(emit_kind, "exe") == 0 &&
-      z_direct_exe_backend(target) != Z_DIRECT_BACKEND_NONE) {
-    selected_emitter = z_direct_exe_emitter(target);
-  }
-  if (!selected_emitter) selected_emitter = "none";
-  bool direct_selected = strcmp(selected_emitter, "none") != 0;
+  bool selected_executable = emit_kind && strcmp(emit_kind, "exe") == 0;
+  if (selected_backend == Z_DIRECT_BACKEND_NONE && selected_executable) selected_backend = z_direct_exe_backend(target);
+  const char *selected_emitter = selected_backend == Z_DIRECT_BACKEND_NONE
+                                   ? "none"
+                                   : (selected_executable ? z_direct_backend_exe_emitter(selected_backend) : z_direct_backend_object_emitter(selected_backend));
+  bool direct_selected = selected_backend != Z_DIRECT_BACKEND_NONE;
   ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
   bool target_requires_sysroot = z_target_requires_sysroot(target);
   bool artifact_requires_sysroot = !direct_selected && plan.requires_sysroot;
-  const char *linker_flavor = direct_selected ? direct_linker_flavor_for_emitter(selected_emitter) : plan.linker_flavor;
+  const char *linker_flavor = direct_selected ? z_direct_backend_linker_flavor(selected_backend) : plan.linker_flavor;
   const char *artifact_libc_mode = direct_selected ? "none" : plan.libc_mode;
   const char *sysroot_status = artifact_requires_sysroot ? plan.sysroot_status : (target_requires_sysroot ? "not-used-by-direct-artifact" : "not-required");
 
@@ -4990,15 +4986,20 @@ static void append_release_target_contract_json(ZBuf *buf, const SourceInput *in
 }
 
 static void append_object_backend_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const Command *command, const char *emit_kind) {
+  ZDirectBackend direct_backend = direct_emit_backend(target, command, emit_kind);
   const char *direct_emitter = direct_emit_emitter(target, command, emit_kind);
   bool metadata_only_direct = emit_kind && (strcmp(emit_kind, "mem") == 0 || strcmp(emit_kind, "size") == 0);
   bool runtime_linked_exe = emit_kind && strcmp(emit_kind, "exe") == 0 && input && input->direct_host_runtime_import_count > 0;
-  if (runtime_linked_exe) direct_emitter = z_direct_object_emitter(target);
-  if (metadata_only_direct || runtime_linked_exe || (direct_emitter && strcmp(direct_emitter, "none") != 0 &&
+  if (runtime_linked_exe) {
+    direct_backend = z_direct_object_backend(target);
+    direct_emitter = z_direct_backend_object_emitter(direct_backend);
+  }
+  if (metadata_only_direct || runtime_linked_exe || (direct_backend != Z_DIRECT_BACKEND_NONE &&
       ((emit_kind && strcmp(emit_kind, "obj") == 0) ||
        (emit_kind && strcmp(emit_kind, "exe") == 0 && command && command->backend)))) {
     if (metadata_only_direct) {
-      direct_emitter = z_direct_object_emitter(target);
+      direct_backend = z_direct_object_backend(target);
+      direct_emitter = z_direct_backend_object_emitter(direct_backend);
       if (!direct_emitter || strcmp(direct_emitter, "none") == 0) direct_emitter = "metadata-only";
     }
     const char *object_format = target && target->object_format ? target->object_format : "unknown";
@@ -5013,17 +5014,19 @@ static void append_object_backend_json(ZBuf *buf, const SourceInput *input, cons
     zbuf_append(buf, "{\"internalIr\":{\"typeRepresentation\":\"MIR primitive value types\",\"controlFlowRepresentation\":\"MIR instruction stream lowered to target machine/module code\",\"callRepresentation\":\"same-object direct calls for supported direct subsets\",\"functionIdentity\":\"module-qualified-stable-sorted\",\"debugRepresentation\":\"source spans retained on MIR nodes\"}");
     bool direct_has_data = input && input->direct_readonly_data_bytes > 0;
     direct_symbol_count += input ? input->direct_runtime_helper_count : 0;
-    if (strcmp(object_format, "coff") == 0) direct_symbol_count += direct_has_data ? 2 : 1;
-    else if (direct_has_data) direct_symbol_count += 1;
+    direct_symbol_count += z_direct_backend_symbol_overhead(direct_backend, direct_has_data);
+    bool direct_executable_artifact = emit_kind && strcmp(emit_kind, "exe") == 0 && !runtime_linked_exe && command && command->backend;
+    const char *direct_artifact_path = direct_backend != Z_DIRECT_BACKEND_NONE ? z_direct_backend_artifact_path(direct_backend, direct_executable_artifact) : "unsupported";
+    const char *direct_linker_flavor = direct_backend != Z_DIRECT_BACKEND_NONE ? z_direct_backend_linker_flavor(direct_backend) : "none";
     zbuf_appendf(buf, ",\"objectEmission\":{\"path\":\"%s\",\"functions\":true,\"dataSections\":%s,\"symbols\":%s,\"relocations\":\"%s\",\"symbolCount\":%zu,\"internalHelperCount\":%zu}",
-                 direct_object_path_for_emitter(direct_emitter),
+                 direct_artifact_path,
                  direct_has_data ? "true" : "false",
                  "true",
                  uses_zero_runtime ? "patched-runtime-import-relocations" : (direct_has_data ? "patched-internal-calls-and-data-relocations" : "patched-internal-calls-or-none-in-mvp"),
                  direct_symbol_count,
                  input && input->direct_function_count > input->direct_export_count ? input->direct_function_count - input->direct_export_count : 0);
     zbuf_append(buf, ",\"linking\":{\"linkerFlavor\":");
-    append_json_string(buf, direct_linker_flavor_for_emitter(direct_emitter));
+    append_json_string(buf, direct_linker_flavor);
     zbuf_append(buf, ",\"objectFormat\":");
     append_json_string(buf, object_format);
     zbuf_append(buf, ",\"targetLibraries\":");
@@ -5042,7 +5045,7 @@ static void append_object_backend_json(ZBuf *buf, const SourceInput *input, cons
     zbuf_append(buf, ",\"linkerPlan\":{\"format\":");
     append_json_string(buf, object_format);
     zbuf_append(buf, ",\"flavor\":");
-    append_json_string(buf, direct_linker_flavor_for_emitter(direct_emitter));
+    append_json_string(buf, direct_linker_flavor);
     zbuf_append(buf, ",\"archives\":[],\"staticLibraries\":");
     zbuf_append(buf, links_http_runtime ? "[\"zero_runtime.o\",\"zero_http_curl.o\"]" : (links_zero_runtime ? "[\"zero_runtime.o\"]" : "[]"));
     zbuf_append(buf, ",\"importLibraries\":[],\"systemLibraries\":");
@@ -5346,8 +5349,7 @@ static void print_build_json(const Command *command, const SourceInput *input, c
   printf(",\n  \"legacyBackend\": null");
   printf(",\n  \"warnings\": []");
   printf(",\n  \"compiler\": ");
-  const char *direct_emitter = direct_emit_emitter(target, command, emit_kind);
-  ZDirectBackend direct_backend = z_direct_backend_from_emitter(direct_emitter);
+  ZDirectBackend direct_backend = direct_emit_backend(target, command, emit_kind);
   const char *driver_kind = z_direct_backend_object_emitter(direct_backend);
   if (direct_backend != Z_DIRECT_BACKEND_NONE) print_json_string(driver_kind);
   else print_json_string(build_compiler_label(command, target));
@@ -5362,7 +5364,7 @@ static void print_build_json(const Command *command, const SourceInput *input, c
     zbuf_append(&direct_toolchain, ",\"targetTriple\":");
     append_json_string(&direct_toolchain, target && target->zig_target ? target->zig_target : "");
     zbuf_append(&direct_toolchain, ",\"linkerFlavor\":");
-    append_json_string(&direct_toolchain, direct_linker_flavor_for_emitter(direct_emitter));
+    append_json_string(&direct_toolchain, z_direct_backend_linker_flavor(direct_backend));
     zbuf_append(&direct_toolchain, ",\"libcMode\":\"none\",\"requiresSysroot\":false,\"sysrootEnv\":\"\",\"sysrootStatus\":\"not-required\",\"usesTargetFlag\":false,\"usesToolchainCache\":false,\"stripArtifact\":false}");
     fputs(direct_toolchain.data, stdout);
     zbuf_free(&direct_toolchain);
@@ -8411,27 +8413,6 @@ static void apply_ir_metrics_to_input(SourceInput *input, const IrProgram *ir, c
   input->direct_http_runtime_import_count = ir->direct_http_runtime_import_count;
 }
 
-static const char *target_backend_expected(const ZTargetInfo *target) {
-  const char *format = target && target->object_format ? target->object_format : "";
-  const char *arch = target && target->arch ? target->arch : "";
-  if (strcmp(format, "macho") == 0) return "direct AArch64 Mach-O object MVP subset";
-  if (strcmp(format, "coff") == 0) return "direct COFF x64 object MVP subset";
-  if (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0) return "direct AArch64 ELF object MVP subset";
-  if (strcmp(format, "elf") == 0) return "direct ELF64 object MVP subset";
-  return "direct target with matching object format and architecture";
-}
-
-static const char *target_backend_help(const ZTargetInfo *target, const IrProgram *ir) {
-  (void)ir;
-  const char *format = target && target->object_format ? target->object_format : "";
-  const char *arch = target && target->arch ? target->arch : "";
-  if (strcmp(format, "macho") == 0 || (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0)) {
-    return "choose a supported direct target or restrict this program to exported no-parameter functions returning small integer literals";
-  }
-  if (strcmp(format, "coff") == 0) return "reduce the program to primitive direct-backend constructs or choose a supported direct target";
-  return "choose a supported direct target or restrict this program to exported primitive integer arithmetic functions";
-}
-
 static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, const ZTargetInfo *target, const Command *command, const IrProgram *ir) {
   memset(diag, 0, sizeof(*diag));
   diag->code = (ir && strcmp(ir->mir_expected, "direct backend MIR contract") == 0) ? 4004 : 2004;
@@ -8440,9 +8421,9 @@ static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, co
   diag->column = ir && ir->mir_column > 0 ? ir->mir_column : 1;
   diag->length = 1;
   snprintf(diag->message, sizeof(diag->message), "%s", ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed");
-  snprintf(diag->expected, sizeof(diag->expected), "%s", target_backend_expected(target));
+  snprintf(diag->expected, sizeof(diag->expected), "%s", z_direct_backend_expected(target));
   snprintf(diag->actual, sizeof(diag->actual), "%s", ir && ir->mir_actual[0] ? ir->mir_actual : "unsupported construct");
-  snprintf(diag->help, sizeof(diag->help), "%s", target_backend_help(target, ir));
+  snprintf(diag->help, sizeof(diag->help), "%s", z_direct_backend_help(target));
   if (ir) z_diag_set_backend_blocker(diag, &ir->backend_blocker);
   complete_backend_blocker_diag(diag, target, command, emit_kind_name(command ? command->emit : EMIT_EXE), "lower");
 }
@@ -9522,7 +9503,6 @@ int main(int argc, char **argv) {
       return 1;
     }
     ZDirectBackend object_backend = z_direct_object_backend(target);
-    const char *emitter = z_direct_backend_object_emitter(object_backend);
     if (object_backend == Z_DIRECT_BACKEND_NONE) {
       int rc = return_direct_backend_error(&command, &input, target, "obj", z_direct_backend_reason(target), &ir, &program);
       z_free_source(&input);
@@ -9554,7 +9534,7 @@ int main(int argc, char **argv) {
     char *base_object_file = command.out ? z_strdup(command.out) : z_default_out_path(input.source_file);
     char *object_file = base_object_file;
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, direct_object_path_for_emitter(emitter)));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, z_direct_backend_artifact_path(object_backend, false)));
     bool wrote_object = z_write_binary_file(object_file, (const unsigned char *)object.data, object.len, &diag);
     input.object_ms = now_ms() - phase_started;
     input.link_ms = 0;
@@ -9634,7 +9614,7 @@ int main(int argc, char **argv) {
     ZToolchainPlan runtime_toolchain = z_plan_toolchain(command.cc, command.profile, target);
 
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, object_backend == Z_DIRECT_BACKEND_MACHO64 ? "direct-macho64-object-runtime-link" : "direct-elf64-object-runtime-link"));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, z_direct_backend_runtime_object_cache_key(object_backend)));
     bool wrote_object = z_write_binary_file(object_file, (const unsigned char *)object.data, object.len, &diag);
     if (wrote_object) wrote_object = compile_zero_runtime_object(runtime_object_file, &runtime_toolchain, &command, target, &diag);
     if (wrote_object && needs_http_runtime) wrote_object = compile_zero_http_curl_object(http_object_file, &runtime_toolchain, &command, target, &diag);
@@ -9707,7 +9687,6 @@ int main(int argc, char **argv) {
                               z_direct_backend_is_request_name(command.backend);
   if (default_direct_exe || requested_direct_exe) {
     ZDirectBackend exe_backend = direct_exe_backend;
-    const char *emitter = z_direct_backend_exe_emitter(exe_backend);
     bool supported_exe = direct_exe_available && z_direct_requested_backend_matches(command.backend, exe_backend);
     if (!supported_exe) {
       int rc = return_direct_backend_error(&command, &input, target, "exe", "direct executable backend is not implemented for this target/backend pair; use --emit obj for direct target objects or choose a supported direct executable target", &ir, &program);
@@ -9743,7 +9722,7 @@ int main(int argc, char **argv) {
     char *exe_file = apply_target_suffix(base_exe_file, target);
     free(base_exe_file);
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, direct_object_path_for_emitter(emitter)));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, z_direct_backend_artifact_path(exe_backend, true)));
     bool wrote_exe = z_write_binary_file(exe_file, (const unsigned char *)exe.data, exe.len, &diag);
     if (wrote_exe) chmod(exe_file, 0755);
     input.object_ms = now_ms() - phase_started;
