@@ -749,6 +749,7 @@ assert.equal(testJson.schemaVersion, 1);
 assert.equal(testJson.ok, true);
 assert.match(testJson.stdout, /1 test\(s\) ok/);
 assert.equal(testJson.testBackend, "direct-frontend");
+assert.equal(testJson.engine, "interpreter");
 assert.equal(testJson.testDiscovery.filter, "addition");
 assert.equal(testJson.fixtures.snapshotKey, "zero-test-direct-frontend-v1");
 assert.equal(testJson.targetFacts.capabilitySupport.status, "supported");

@@ -6246,9 +6246,10 @@ typedef struct {
 } TestFieldValue;
 
 struct TestValue {
-  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE } kind;
+  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_FLOAT, TEST_VALUE_STRING, TEST_VALUE_SHAPE } kind;
   bool bool_value;
   long long int_value;
+  double float_value;
   char *string_value;
   TestFieldValue *fields;
   size_t field_len;
@@ -6290,6 +6291,7 @@ static TestValue test_value_copy(const TestValue *value) {
   copy.kind = value->kind;
   copy.bool_value = value->bool_value;
   copy.int_value = value->int_value;
+  copy.float_value = value->float_value;
   copy.string_value = value->string_value ? z_strdup(value->string_value) : NULL;
   copy.field_len = value->field_len;
   if (copy.field_len > 0) {
@@ -6380,7 +6382,21 @@ static bool test_value_truthy(const TestValue *value) {
   if (!value) return false;
   if (value->kind == TEST_VALUE_BOOL) return value->bool_value;
   if (value->kind == TEST_VALUE_INT) return value->int_value != 0;
+  if (value->kind == TEST_VALUE_FLOAT) return value->float_value != 0.0;
   return false;
+}
+
+static bool test_value_is_numeric(const TestValue *v) {
+  if (!v) return false;
+  return v->kind == TEST_VALUE_INT || v->kind == TEST_VALUE_BOOL || v->kind == TEST_VALUE_FLOAT;
+}
+
+static double test_value_as_double(const TestValue *v) {
+  if (!v) return 0.0;
+  if (v->kind == TEST_VALUE_FLOAT) return v->float_value;
+  if (v->kind == TEST_VALUE_BOOL) return v->bool_value ? 1.0 : 0.0;
+  if (v->kind == TEST_VALUE_INT) return (double)v->int_value;
+  return 0.0;
 }
 
 static bool test_value_equals(const TestValue *left, const TestValue *right) {
@@ -6389,8 +6405,12 @@ static bool test_value_equals(const TestValue *left, const TestValue *right) {
     return strcmp(left->string_value ? left->string_value : "", right->string_value ? right->string_value : "") == 0;
   }
   if (left->kind == TEST_VALUE_BOOL && right->kind == TEST_VALUE_BOOL) return left->bool_value == right->bool_value;
-  if ((left->kind == TEST_VALUE_INT || left->kind == TEST_VALUE_BOOL) &&
-      (right->kind == TEST_VALUE_INT || right->kind == TEST_VALUE_BOOL)) {
+  bool left_numeric = test_value_is_numeric(left);
+  bool right_numeric = test_value_is_numeric(right);
+  if (left_numeric && right_numeric) {
+    if (left->kind == TEST_VALUE_FLOAT || right->kind == TEST_VALUE_FLOAT) {
+      return test_value_as_double(left) == test_value_as_double(right);
+    }
     long long a = left->kind == TEST_VALUE_BOOL ? (left->bool_value ? 1 : 0) : left->int_value;
     long long b = right->kind == TEST_VALUE_BOOL ? (right->bool_value ? 1 : 0) : right->int_value;
     return a == b;
@@ -6485,10 +6505,21 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
       out->kind = TEST_VALUE_BOOL;
       out->bool_value = expr->bool_value;
       return true;
-    case EXPR_NUMBER:
-      out->kind = TEST_VALUE_INT;
-      out->int_value = strtoll(expr->text ? expr->text : "0", NULL, 0);
+    case EXPR_NUMBER: {
+      const char *text = expr->text ? expr->text : "0";
+      bool is_float = false;
+      for (const char *p = text; *p; p++) {
+        if (*p == '.' || *p == 'e' || *p == 'E') { is_float = true; break; }
+      }
+      if (is_float) {
+        out->kind = TEST_VALUE_FLOAT;
+        out->float_value = strtod(text, NULL);
+      } else {
+        out->kind = TEST_VALUE_INT;
+        out->int_value = strtoll(text, NULL, 0);
+      }
       return true;
+    }
     case EXPR_STRING:
       out->kind = TEST_VALUE_STRING;
       out->string_value = z_strdup(expr->text ? expr->text : "");
@@ -6540,6 +6571,25 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
       } else if (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0) {
         out->kind = TEST_VALUE_BOOL;
         out->bool_value = strcmp(op, "&&") == 0 ? (test_value_truthy(&left) && test_value_truthy(&right)) : (test_value_truthy(&left) || test_value_truthy(&right));
+      } else if (left.kind == TEST_VALUE_FLOAT || right.kind == TEST_VALUE_FLOAT) {
+        double a = test_value_as_double(&left);
+        double b = test_value_as_double(&right);
+        if (strcmp(op, "+") == 0) { out->kind = TEST_VALUE_FLOAT; out->float_value = a + b; }
+        else if (strcmp(op, "-") == 0) { out->kind = TEST_VALUE_FLOAT; out->float_value = a - b; }
+        else if (strcmp(op, "*") == 0) { out->kind = TEST_VALUE_FLOAT; out->float_value = a * b; }
+        else if (strcmp(op, "/") == 0) { out->kind = TEST_VALUE_FLOAT; out->float_value = b == 0.0 ? 0.0 : a / b; }
+        else if (strcmp(op, "<") == 0 || strcmp(op, "<=") == 0 || strcmp(op, ">") == 0 || strcmp(op, ">=") == 0) {
+          out->kind = TEST_VALUE_BOOL;
+          if (strcmp(op, "<") == 0) out->bool_value = a < b;
+          else if (strcmp(op, "<=") == 0) out->bool_value = a <= b;
+          else if (strcmp(op, ">") == 0) out->bool_value = a > b;
+          else out->bool_value = a >= b;
+        } else {
+          test_fail(failure, expr, "zero test unsupported operator");
+          test_value_free(&left);
+          test_value_free(&right);
+          return false;
+        }
       } else {
         long long a = left.kind == TEST_VALUE_BOOL ? (left.bool_value ? 1 : 0) : left.int_value;
         long long b = right.kind == TEST_VALUE_BOOL ? (right.bool_value ? 1 : 0) : right.int_value;
@@ -6588,6 +6638,24 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
       if (strcmp(callee_name, "std.mem.eql") == 0 && expr->args.len == 2) {
         out->kind = TEST_VALUE_BOOL;
         out->bool_value = test_value_equals(&args[0], &args[1]);
+      } else if ((strcmp(callee_name, "std.mem.eqlBytes") == 0 || strcmp(callee_name, "std.mem.eql_bytes") == 0) && expr->args.len == 2) {
+        out->kind = TEST_VALUE_BOOL;
+        if (args[0].kind == TEST_VALUE_STRING && args[1].kind == TEST_VALUE_STRING) {
+          out->bool_value = strcmp(args[0].string_value ? args[0].string_value : "",
+                                   args[1].string_value ? args[1].string_value : "") == 0;
+        } else {
+          out->bool_value = test_value_equals(&args[0], &args[1]);
+        }
+      } else if (strcmp(callee_name, "std.mem.len") == 0 && expr->args.len == 1) {
+        out->kind = TEST_VALUE_INT;
+        if (args[0].kind == TEST_VALUE_STRING) {
+          out->int_value = (long long)(args[0].string_value ? strlen(args[0].string_value) : 0);
+        } else {
+          out->int_value = 0;
+        }
+      } else if (strcmp(callee_name, "std.mem.span") == 0 && expr->args.len == 1) {
+        out->kind = TEST_VALUE_STRING;
+        out->string_value = z_strdup(args[0].string_value ? args[0].string_value : "");
       } else {
         const Function *fun = find_program_function(program, callee_name);
         ok = test_eval_function(program, fun, args, expr->args.len, out, failure);
@@ -6693,7 +6761,7 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     append_json_string(&buf, input ? input->source_file : "");
     zbuf_append(&buf, ",\n  \"target\": ");
     append_json_string(&buf, target ? target->name : z_host_target());
-    zbuf_append(&buf, ",\n  \"testBackend\": \"direct-frontend\",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"selectedTests\": ");
+    zbuf_append(&buf, ",\n  \"testBackend\": \"direct-frontend\",\n  \"engine\": \"interpreter\",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"selectedTests\": ");
     zbuf_appendf(&buf, "%zu", selected);
     zbuf_append(&buf, ",\n  \"discoveredTests\": ");
     zbuf_appendf(&buf, "%zu", discovered);

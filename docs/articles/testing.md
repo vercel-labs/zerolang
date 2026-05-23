@@ -34,6 +34,7 @@ ok
 sourceFile
 target
 testBackend
+engine
 selectedTests
 discoveredTests
 passedTests
@@ -48,6 +49,19 @@ fixtures
 targetFacts
 results
 ```
+
+`engine` records which test driver evaluated the program. The current direct
+runner is a tree-walking interpreter (`"interpreter"`); CI and editors that need
+to anticipate richer language coverage should treat `engine` as forward-compatible
+with a future `"native"` value once the test-host compile path lands.
+
+The interpreter recognises the float literal forms `1.0`, `1.5e3`, etc. for `f64`
+and `f32` typed bindings, and resolves the following stdlib accessors when they
+appear in test bodies:
+
+- `std.mem.span(literal)` returns the literal bytes as a span.
+- `std.mem.len(span_or_string)` returns the byte length.
+- `std.mem.eqlBytes(a, b)` compares two spans byte-for-byte.
 
 `testDiscovery` records how the test set was found:
 

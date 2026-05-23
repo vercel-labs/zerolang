@@ -1,0 +1,16 @@
+test "span len matches source bytes" {
+    let bytes = std.mem.span("zero-memory")
+    expect(std.mem.len(bytes) == 11)
+}
+
+test "span eqlBytes matches identical source" {
+    let left = std.mem.span("abc")
+    let right = std.mem.span("abc")
+    expect(std.mem.eqlBytes(left, right))
+}
+
+test "span eqlBytes rejects different sources" {
+    let left = std.mem.span("abc")
+    let right = std.mem.span("abd")
+    expect(std.mem.eqlBytes(left, right) == false)
+}

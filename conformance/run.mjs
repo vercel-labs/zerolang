@@ -2370,6 +2370,19 @@ assert.equal(zeroTestJsonBody.passedTests, 1);
 assert.equal(zeroTestJsonBody.testDiscovery.filter, "addition");
 assert.equal(zeroTestJsonBody.fixtures.snapshotKey, "zero-test-direct-frontend-v1");
 assert.equal(zeroTestJsonBody.results[0].status, "passed");
+assert.equal(zeroTestJsonBody.engine, "interpreter");
+
+const zeroTestSpanRun = await execFileAsync(zero, ["test", "--json", "conformance/native/pass/test-span-roundtrip.0"]);
+const zeroTestSpanBody = JSON.parse(zeroTestSpanRun.stdout);
+assert.equal(zeroTestSpanBody.ok, true);
+assert.equal(zeroTestSpanBody.passedTests, 3);
+assert.equal(zeroTestSpanBody.engine, "interpreter");
+
+const zeroTestFloatRun = await execFileAsync(zero, ["test", "--json", "conformance/native/pass/test-float-div.0"]);
+const zeroTestFloatBody = JSON.parse(zeroTestFloatRun.stdout);
+assert.equal(zeroTestFloatBody.ok, true);
+assert.equal(zeroTestFloatBody.passedTests, 3);
+assert.equal(zeroTestFloatBody.engine, "interpreter");
 
 const zeroPackageTestJsonRun = await execFileAsync(zero, ["test", "--json", "conformance/packages/test-app"]);
 const zeroPackageTestBody = JSON.parse(zeroPackageTestJsonRun.stdout);
