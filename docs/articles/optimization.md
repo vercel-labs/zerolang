@@ -1,17 +1,33 @@
-## Optimization And Size Profiles
+## Build profiles
 
-Zero profiles are product contracts, not hidden compiler moods. Build and size
-JSON expose the selected profile so CI and agents can explain why bytes were
-retained.
+Zero exposes six catalog profiles:
 
-Common profile choices:
-
-| Profile | Use when | Contract |
+| Profile | Profile key | Purpose |
 | --- | --- | --- |
-| `debug` | You need diagnostics and local symbols. | Checked traps, diagnostic panic path, debug metadata retained. |
-| `fast` | Throughput matters more than minimum size. | Direct codegen optimizes for speed while keeping checked safety boundaries. |
-| `small` | This is the default release profile. | Pay-as-used helpers, stripped unrequested metadata, deterministic artifacts. |
-| `tiny` | Artifact size is the main constraint. | Abort-on-trap, minimum runtime metadata, strict helper budget. |
+| `debug` | `debug` | Development profile with diagnostics and local debugging support. |
+| `dev` | `dev` | Development-oriented profile accepted by the CLI catalog. |
+| `release-fast` | `fast` | Release profile biased toward throughput. |
+| `release-small` | `small` | Release profile biased toward smaller output. |
+| `tiny` | `tiny` | Minimal-output profile for strict size budgets. |
+| `audit` | `audit` | Audit-oriented profile exposed by the CLI catalog. |
+
+The CLI also accepts these source-backed aliases:
+
+| Alias | Canonical profile |
+| --- | --- |
+| `fast` | `release-fast` |
+| `small` | `release-small` |
+| `release` | `release-small` |
+
+Prefer `--profile <profile>` in documentation. `--release <profile>` is accepted for `build`, `run`, and `size` where command help documents it.
+
+For shipping, use the documented `ship` profile form:
+
+```sh
+zero ship --profile release-small
+zero ship --profile tiny
+zero ship --profile audit
+```
 
 Copyable commands:
 
@@ -41,7 +57,7 @@ bin/zero mem --json examples/allocator-collections.0
 
 ## Size Breakdown
 
-`sizeBreakdown` is shaped for optimization agents:
+`sizeBreakdown` is shaped for optimization workflows:
 
 - `functions`: retained functions, tests, exports, estimated bytes, and retention reasons.
 - `sections`: code, readonly literals, stack, debug metadata, and optional output artifact sections.
