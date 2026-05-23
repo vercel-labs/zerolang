@@ -909,7 +909,7 @@ const backendFormats = {
     mainBackendFromEmitterCalls: countMatches(cCodeText(main), /z_direct_backend_from_emitter\s*\(/g),
     mainDirectPathFromEmitterHelpers: countMatches(cCodeText(main), /direct_(?:object_path|linker_flavor)_for_emitter\s*\(/g),
     mainObjectFormatSymbolChecks: countMatches(cCodeText(main), /strcmp\s*\(\s*object_format\s*,\s*"coff"\s*\)/g),
-    mainManualDirectToolchainJson: countMatches(cCodeText(main), /selectionSource\\":\\"direct-backend/g),
+    mainManualDirectToolchainJson: countMatches(cTextWithoutComments(main), /selectionSource\\":\\"direct-backend/g),
     mainDirectMetricMachoChecks: countMatches(cCodeText(main), /z_(?:direct_object_backend|direct_exe_backend)\s*\([^)]*\)\s*==\s*Z_DIRECT_BACKEND_MACHO64/g),
     mainDirectBackendNameHelpers: countMatches(cCodeText(main), /static const char \*(?:backend_blocker_backend_name|target_readiness_backend)\s*\(/g),
     mainDirectEmitSelectionHelpers: countMatches(cCodeText(main), /static (?:ZDirectBackend|const char \*)direct_emit_(?:backend|emitter)\s*\(/g),
