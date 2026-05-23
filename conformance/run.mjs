@@ -2361,6 +2361,9 @@ assert.match(readAllInvalidAllocBody.diagnostics[0].message, /readAll expects an
 const zeroTestRun = await execFileAsync(zero, ["test", "conformance/native/pass/test-blocks.0"]);
 assert.equal(zeroTestRun.stdout, "1 test(s) ok\n");
 
+const zeroTestExtendedRun = await execFileAsync(zero, ["test", "conformance/native/pass/test-direct-runner-extended.0"]);
+assert.equal(zeroTestExtendedRun.stdout, "5 test(s) ok\n");
+
 const zeroTestJsonRun = await execFileAsync(zero, ["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.0"]);
 const zeroTestJsonBody = JSON.parse(zeroTestJsonRun.stdout);
 assert.equal(zeroTestJsonBody.ok, true);

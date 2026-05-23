@@ -6246,12 +6246,14 @@ typedef struct {
 } TestFieldValue;
 
 struct TestValue {
-  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE } kind;
+  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE, TEST_VALUE_ARRAY } kind;
   bool bool_value;
   long long int_value;
   char *string_value;
   TestFieldValue *fields;
   size_t field_len;
+  TestValue *array_items;
+  size_t array_len;
 };
 
 typedef struct {
@@ -6281,6 +6283,8 @@ static void test_value_free(TestValue *value) {
     free(value->fields[i].value);
   }
   free(value->fields);
+  for (size_t i = 0; i < value->array_len; i++) test_value_free(&value->array_items[i]);
+  free(value->array_items);
   memset(value, 0, sizeof(*value));
 }
 
@@ -6299,6 +6303,11 @@ static TestValue test_value_copy(const TestValue *value) {
       copy.fields[i].value = z_checked_calloc(1, sizeof(TestValue));
       *copy.fields[i].value = test_value_copy(value->fields[i].value);
     }
+  }
+  copy.array_len = value->array_len;
+  if (copy.array_len > 0) {
+    copy.array_items = calloc(copy.array_len, sizeof(TestValue));
+    for (size_t i = 0; i < copy.array_len; i++) copy.array_items[i] = test_value_copy(&value->array_items[i]);
   }
   return copy;
 }
@@ -6400,7 +6409,7 @@ static bool test_value_equals(const TestValue *left, const TestValue *right) {
 
 static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *expr, TestValue *out, TestRunFailure *failure);
 
-static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, TestRunFailure *failure) {
+static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, bool *broke, bool *continued, TestRunFailure *failure) {
   for (size_t i = 0; body && i < body->len; i++) {
     Stmt *stmt = body->items[i];
     if (!stmt) continue;
@@ -6444,13 +6453,55 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
       bool ok = test_eval_expr(program, env, stmt->expr, &ignored, failure);
       test_value_free(&ignored);
       if (!ok) return false;
+    } else if (stmt->kind == STMT_ASSIGN) {
+      if (!stmt->target || stmt->target->kind != EXPR_IDENT) {
+        test_fail(failure, stmt->target, "zero test direct runner only supports simple variable assignment");
+        return false;
+      }
+      TestValue value = {0};
+      if (!test_eval_expr(program, env, stmt->expr, &value, failure)) return false;
+      test_env_set(env, stmt->target->text, &value);
+      test_value_free(&value);
     } else if (stmt->kind == STMT_IF) {
       TestValue condition = {0};
       if (!test_eval_expr(program, env, stmt->expr, &condition, failure)) return false;
       bool branch = test_value_truthy(&condition);
       test_value_free(&condition);
-      if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, failure)) return false;
-      if (*returned) return true;
+      if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, broke, continued, failure)) return false;
+      if (*returned || (broke && *broke) || (continued && *continued)) return true;
+    } else if (stmt->kind == STMT_WHILE) {
+      while (true) {
+        TestValue condition = {0};
+        if (!test_eval_expr(program, env, stmt->expr, &condition, failure)) return false;
+        bool go = test_value_truthy(&condition);
+        test_value_free(&condition);
+        if (!go) break;
+        bool loop_broke = false, loop_continued = false;
+        if (!test_eval_stmt_vec(program, env, &stmt->then_body, return_value, returned, &loop_broke, &loop_continued, failure)) return false;
+        if (*returned) return true;
+        if (loop_broke) break;
+      }
+    } else if (stmt->kind == STMT_FOR) {
+      TestValue start_val = {0}, end_val = {0};
+      if (!test_eval_expr(program, env, stmt->expr, &start_val, failure)) return false;
+      if (!test_eval_expr(program, env, stmt->range_end, &end_val, failure)) { test_value_free(&start_val); return false; }
+      long long start = start_val.int_value, end = end_val.int_value;
+      test_value_free(&start_val);
+      test_value_free(&end_val);
+      for (long long iter = start; iter < end; iter++) {
+        TestValue iter_val = {.kind = TEST_VALUE_INT, .int_value = iter};
+        test_env_set(env, stmt->name, &iter_val);
+        bool loop_broke = false, loop_continued = false;
+        if (!test_eval_stmt_vec(program, env, &stmt->then_body, return_value, returned, &loop_broke, &loop_continued, failure)) return false;
+        if (*returned) return true;
+        if (loop_broke) break;
+      }
+    } else if (stmt->kind == STMT_BREAK) {
+      if (broke) *broke = true;
+      return true;
+    } else if (stmt->kind == STMT_CONTINUE) {
+      if (continued) *continued = true;
+      return true;
     } else {
       test_fail(failure, NULL, "zero test direct runner does not support this statement yet");
       return false;
@@ -6471,7 +6522,7 @@ static bool test_eval_function(const Program *program, const Function *fun, cons
   TestEnv local = {0};
   for (size_t i = 0; i < arg_len; i++) test_env_set(&local, fun->params.items[i].name, &args[i]);
   bool returned = false;
-  bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, failure);
+  bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, NULL, NULL, failure);
   test_env_free(&local);
   if (!ok) return false;
   if (!returned) out->kind = TEST_VALUE_VOID;
@@ -6564,6 +6615,42 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
       }
       test_value_free(&left);
       test_value_free(&right);
+      return true;
+    }
+    case EXPR_INDEX: {
+      TestValue base = {0};
+      TestValue index = {0};
+      if (!test_eval_expr(program, env, expr->left, &base, failure)) return false;
+      if (!test_eval_expr(program, env, expr->right, &index, failure)) { test_value_free(&base); return false; }
+      long long idx = index.int_value;
+      test_value_free(&index);
+      if (base.kind == TEST_VALUE_ARRAY) {
+        if (idx < 0 || (size_t)idx >= base.array_len) {
+          test_value_free(&base);
+          test_fail(failure, expr, "zero test array index out of bounds");
+          return false;
+        }
+        *out = test_value_copy(&base.array_items[idx]);
+        test_value_free(&base);
+        return true;
+      }
+      test_value_free(&base);
+      test_fail(failure, expr, "zero test index on non-array value");
+      return false;
+    }
+    case EXPR_ARRAY_LITERAL: {
+      out->kind = TEST_VALUE_ARRAY;
+      out->array_len = expr->args.len;
+      out->array_items = calloc(out->array_len ? out->array_len : 1, sizeof(TestValue));
+      for (size_t i = 0; i < expr->args.len; i++) {
+        if (!test_eval_expr(program, env, expr->args.items[i], &out->array_items[i], failure)) {
+          for (size_t j = 0; j < i; j++) test_value_free(&out->array_items[j]);
+          free(out->array_items);
+          out->array_items = NULL;
+          out->array_len = 0;
+          return false;
+        }
+      }
       return true;
     }
     case EXPR_CALL: {
