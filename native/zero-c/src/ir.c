@@ -9,6 +9,14 @@
 #include <stdio.h>
 #include <string.h>
 
+// contract:
+// - see docs/internal-c-contracts.md for tag vocabulary
+// - current observed string matching in this file uses strcmp/strncmp value
+//   comparisons at the documented call sites
+// - this file does not document strings as interned or canonicalized
+// - lowering reads parser/checker AST text and writes an owned IrProgram result
+// - standard helper dispatch currently uses callee string value matching
+
 #define IR_READONLY_DATA_BASE 1024u
 #define IR_READONLY_DATA_LIMIT 65536u
 #define IR_SPECIALIZATION_PLAN_LIMIT 1024u
@@ -17,6 +25,9 @@ static Expr *clone_expr(const Expr *expr);
 static Stmt *clone_stmt(const Stmt *stmt);
 static void push_function_clone(FunctionVec *vec, const Function *source);
 
+// contract:
+// - local grow helpers mutate caller-owned arrays and do not retain input
+//   pointers beyond the resized array returned to the caller
 static void *ir_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
   if (len + 1 > *cap) {
     *cap = z_grow_capacity(*cap, len + 1, initial);
@@ -36,6 +47,10 @@ static void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_
   return items;
 }
 
+// contract:
+// - clone helpers duplicate retained parser/checker strings with z_strdup
+// - cloned trees are owned by the containing Program or IrProgram
+// - no interning or canonical pointer identity is claimed
 static void push_param_clone(ParamVec *vec, const Param *param) {
   vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Param));
   vec->items[vec->len++] = (Param){
@@ -142,6 +157,10 @@ static Stmt *clone_stmt(const Stmt *stmt) {
   return copy;
 }
 
+// contract:
+// - type: in, nullable, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: IR_TYPE_UNSUPPORTED when type is NULL or not in this direct map
 static IrTypeKind ir_type_kind(const char *type) {
   if (!type) return IR_TYPE_UNSUPPORTED;
   if (strcmp(type, "Void") == 0) return IR_TYPE_VOID;
@@ -183,6 +202,10 @@ static IrTypeKind ir_type_kind(const char *type) {
   return IR_TYPE_UNSUPPORTED;
 }
 
+// contract:
+// - name: in, nullable, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: runtime HTTP error code or -1 when not matched
 static int ir_std_http_error_code(const char *name) {
   if (!name) return -1;
   if (strcmp(name, "std.http.errorNone") == 0) return 0;
@@ -218,6 +241,10 @@ static bool ir_type_is_direct_fallible_value(IrTypeKind type) {
          type == IR_TYPE_U32;
 }
 
+// contract:
+// - type: in, nullable, read-only, no-retain
+// - string matching: observed prefix value matching for Maybe<T>
+// - returns: element type for supported Maybe scalar strings
 static IrTypeKind ir_maybe_scalar_element_type(const char *type) {
   const char *prefix = "Maybe<";
   size_t prefix_len = strlen(prefix);
@@ -229,6 +256,10 @@ static IrTypeKind ir_maybe_scalar_element_type(const char *type) {
   return ir_type_is_value(element) ? element : IR_TYPE_UNSUPPORTED;
 }
 
+// contract:
+// - name: in, nullable, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: direct backend error code fallback for raise lowering
 static unsigned ir_error_code_for_name(const char *name) {
   if (!name) return IR_ERROR_UNKNOWN;
   if (strcmp(name, "NotFound") == 0) return IR_ERROR_NOT_FOUND;
@@ -241,6 +272,10 @@ static const EnumDecl *ir_find_enum(const Program *program, const char *name);
 static IrTypeKind ir_type_kind_for_program(const Program *program, const char *type);
 static bool ir_parse_fixed_array_type_for_program(const Program *program, const char *type, unsigned *out_len, IrTypeKind *out_element);
 
+// contract:
+// - program/name: in, non-null, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: return borrowed Shape from program or NULL
 static const Shape *ir_find_shape(const Program *program, const char *name) {
   if (!program || !name) return NULL;
   for (size_t i = 0; i < program->shapes.len; i++) {
@@ -283,6 +318,11 @@ static bool ir_split_generic_args(const char *start, const char *end, TypeArgVec
   return angle_depth == 0 && array_depth == 0;
 }
 
+// contract:
+// - program/type: in, non-null, read-only, no-retain
+// - out_shape: out, non-null; receives borrowed Shape on success
+// - out_args: out, non-null; receives owned type arg strings on generic success
+// - returns: false when type does not name a supported shape instance
 static bool ir_shape_instance(const Program *program, const char *type, const Shape **out_shape, TypeArgVec *out_args) {
   const Shape *exact = ir_find_shape(program, type);
   if (exact && exact->type_params.len == 0) {
@@ -307,6 +347,10 @@ static bool ir_shape_instance(const Program *program, const char *type, const Sh
   return true;
 }
 
+// contract:
+// - shape/args/name: in, non-null, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: return borrowed type argument string or NULL
 static const char *ir_shape_arg_for_param(const Shape *shape, const TypeArgVec *args, const char *name) {
   if (!shape || !args || !name) return NULL;
   for (size_t i = 0; i < shape->type_params.len && i < args->len; i++) {
@@ -317,6 +361,10 @@ static const char *ir_shape_arg_for_param(const Shape *shape, const TypeArgVec *
   return NULL;
 }
 
+// contract:
+// - shape/args: in, non-null, read-only, no-retain
+// - type: in, nullable, read-only, no-retain
+// - returns: return owned substituted type string; caller frees
 static char *ir_shape_substitute_type(const Shape *shape, const TypeArgVec *args, const char *type) {
   if (!type) return z_strdup("Unknown");
   const char *direct = ir_shape_arg_for_param(shape, args, type);
@@ -341,6 +389,10 @@ static char *ir_shape_substitute_type(const Shape *shape, const TypeArgVec *args
   return z_strdup(type);
 }
 
+// contract:
+// - program/name: in, non-null, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: return borrowed EnumDecl from program or NULL
 static const EnumDecl *ir_find_enum(const Program *program, const char *name) {
   if (!program || !name) return NULL;
   for (size_t i = 0; i < program->enums.len; i++) {
@@ -368,6 +420,10 @@ static IrTypeKind ir_enum_backing_type(const EnumDecl *item_enum) {
   return IR_TYPE_UNSUPPORTED;
 }
 
+// contract:
+// - item_enum/case_name: in, nullable, read-only, no-retain
+// - out: opt out, written on success when non-null
+// - string matching: observed enum case value equality via strcmp
 static bool ir_enum_case_value(const EnumDecl *item_enum, const char *case_name, unsigned long long *out) {
   if (!item_enum || !case_name) return false;
   for (size_t i = 0; i < item_enum->cases.len; i++) {
@@ -406,6 +462,10 @@ static size_t ir_align_to(size_t value, size_t alignment) {
   return remainder == 0 ? value : value + (alignment - remainder);
 }
 
+// contract:
+// - program/shape_name: in, non-null, read-only, no-retain
+// - out_size/out_align: opt out, written on success when non-null
+// - string matching: delegated shape/type value matching
 static bool ir_shape_layout(const Program *program, const char *shape_name, unsigned *out_size, unsigned *out_align) {
   const Shape *shape = NULL;
   TypeArgVec args = {0};
@@ -437,6 +497,10 @@ static bool ir_shape_layout(const Program *program, const char *shape_name, unsi
   return offset <= UINT_MAX;
 }
 
+// contract:
+// - program/shape_name/field_name: in, non-null, read-only, no-retain
+// - out_offset/out_type: opt out, written on success when non-null
+// - string matching: observed field name value equality via strcmp
 static bool ir_shape_field_info(const Program *program, const char *shape_name, const char *field_name, unsigned *out_offset, IrTypeKind *out_type) {
   const Shape *shape = NULL;
   TypeArgVec args = {0};
@@ -475,6 +539,10 @@ static bool ir_shape_field_info(const Program *program, const char *shape_name, 
   return false;
 }
 
+// contract:
+// - program/shape_name/field_name: in, non-null, read-only, no-retain
+// - out_* slots: opt out, written on success when non-null
+// - string matching: observed field name value equality via strcmp
 static bool ir_shape_field_storage_info(const Program *program, const char *shape_name, const char *field_name, unsigned *out_offset, IrTypeKind *out_type, bool *out_is_array, unsigned *out_array_len, IrTypeKind *out_element_type) {
   const Shape *shape = NULL;
   TypeArgVec args = {0};
@@ -512,6 +580,11 @@ static bool ir_shape_field_storage_info(const Program *program, const char *shap
   return false;
 }
 
+// contract:
+// - program: in, nullable, read-only, no-retain
+// - type: in, non-null, read-only, no-retain
+// - out_len/out_element: out, non-null, written on success
+// - string matching: observed prefix value matching via strncmp
 static bool ir_parse_fixed_array_type_for_program(const Program *program, const char *type, unsigned *out_len, IrTypeKind *out_element) {
   if (!type || type[0] != '[') return false;
   const char *close = strchr(type, ']');
@@ -642,6 +715,9 @@ static size_t ir_scan_identifier_bytes(const unsigned char *bytes, size_t len) {
 
 static IrValue *ir_new_value(IrProgram *ir, IrValueKind kind, IrTypeKind type, int line, int column);
 
+// contract:
+// - value constructors return owned IrValue nodes released by ir_free_value
+// - ir: inout, nullable; receives allocation accounting when non-null
 static IrValue *ir_new_bool_literal(IrProgram *ir, bool enabled, int line, int column) {
   IrValue *value = ir_new_value(ir, IR_VALUE_BOOL, IR_TYPE_BOOL, line, column);
   value->int_value = enabled ? 1 : 0;
@@ -725,6 +801,10 @@ static void ir_function_push_local(IrProgram *ir, IrFunction *fun, const char *n
   if (is_param) fun->param_count++;
 }
 
+// contract:
+// - fun/name: in, non-null, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: return borrowed local from fun or NULL
 static const IrLocal *ir_function_find_local(const IrFunction *fun, const char *name) {
   for (size_t i = fun ? fun->local_len : 0; i > 0; i--) {
     if (strcmp(fun->locals[i - 1].name, name) == 0) return &fun->locals[i - 1];
@@ -732,6 +812,11 @@ static const IrLocal *ir_function_find_local(const IrFunction *fun, const char *
   return NULL;
 }
 
+// contract:
+// - program/name: in, non-null, read-only, no-retain
+// - out_index: opt out, written on success when non-null
+// - string matching: observed value equality via strcmp
+// - returns: return borrowed Function from program or NULL
 static const Function *ir_find_source_function(const Program *program, const char *name, unsigned *out_index) {
   if (!program || !name) return NULL;
   for (size_t i = 0; i < program->functions.len; i++) {
@@ -743,6 +828,10 @@ static const Function *ir_find_source_function(const Program *program, const cha
   return NULL;
 }
 
+// contract:
+// - ir/name: in, non-null, read-only, no-retain
+// - out_index: out, non-null, written on success
+// - string matching: observed value equality via strcmp
 static bool ir_find_function_index(const IrProgram *ir, const char *name, unsigned *out_index) {
   if (!ir || !name) return false;
   for (size_t i = 0; i < ir->function_len; i++) {
@@ -770,6 +859,11 @@ static int ir_function_order_compare(const void *left, const void *right) {
   return 0;
 }
 
+// contract:
+// - input: in, nullable, read-only, no-retain
+// - source: in, non-null, read-only, no-retain
+// - string matching: observed value equality via strcmp
+// - returns: return owned stable id string; caller frees
 static char *ir_stable_id_for_source_function(const SourceInput *input, const Function *source) {
   if (input && source && source->name) {
     for (size_t i = 0; i < input->symbol_count; i++) {
@@ -803,6 +897,11 @@ static IrValue *ir_new_index_literal(IrProgram *ir, unsigned index, int line, in
   return value;
 }
 
+// contract:
+// - bytes: in, non-null when len > 0, read-only, no-retain
+// - out_offset: opt out, written on success when non-null
+// - byte matching: observed data value equality via memcmp for deduplication
+// - retains: copies bytes into IrProgram-owned data segment on insert
 static bool ir_add_readonly_data(IrProgram *ir, const unsigned char *bytes, unsigned len, int line, int column, unsigned *out_offset) {
   for (size_t i = 0; i < ir->data_segment_len; i++) {
     IrDataSegment *segment = &ir->data_segments[i];
@@ -831,6 +930,10 @@ static bool ir_add_readonly_data(IrProgram *ir, const unsigned char *bytes, unsi
 
 static char *ir_expr_callee_name(const Expr *expr);
 
+// contract:
+// - expr: in, nullable, read-only, no-retain
+// - string matching: observed callee and resolved type value equality
+// - returns: true when expression can lower as a byte-view source
 static bool ir_expr_is_byte_view_source(const Expr *expr) {
   if (expr && expr->kind == EXPR_CALL && expr->args.len == 1) {
     char *callee = ir_expr_callee_name(expr->left);
@@ -849,6 +952,10 @@ static bool ir_expr_is_byte_view_source(const Expr *expr) {
                   (expr->kind == EXPR_MEMBER && expr->resolved_type && ir_type_kind(expr->resolved_type) == IR_TYPE_BYTE_VIEW));
 }
 
+// contract:
+// - fun/expr: in, nullable, read-only, no-retain
+// - string matching: observed member/local name value equality
+// - returns: true when expression can be a mutable byte-view destination
 static bool ir_expr_is_mutable_byte_view_dest(const IrFunction *fun, const Expr *expr) {
   if (!fun || !expr) return false;
   if (expr->kind == EXPR_MEMBER && expr->left && expr->left->kind == EXPR_IDENT && strcmp(expr->text ? expr->text : "", "value") == 0) {
@@ -862,6 +969,9 @@ static bool ir_expr_is_mutable_byte_view_dest(const IrFunction *fun, const Expr 
   return local->type == IR_TYPE_BYTE_VIEW && local->is_mutable;
 }
 
+// contract:
+// - source: in, nullable, read-only, no-retain
+// - string matching: observed hosted main signature value equality
 static bool ir_is_hosted_world_main(const Function *source) {
   return source &&
          source->is_public &&
@@ -871,6 +981,9 @@ static bool ir_is_hosted_world_main(const Function *source) {
          source->return_type && strcmp(source->return_type, "Void") == 0;
 }
 
+// contract:
+// - fun/expr/stream: in, nullable, read-only, no-retain
+// - string matching: observed member and world parameter value equality
 static bool ir_is_world_stream_write(const IrFunction *fun, const Expr *expr, const char *stream) {
   if (!expr || expr->kind != EXPR_CALL || expr->args.len != 1) return false;
   const Expr *write = expr->left;
@@ -942,6 +1055,11 @@ static bool ir_lower_array_literal_byte_view(IrProgram *ir, const Expr *expr, Ir
   return true;
 }
 
+// contract:
+// - program/fun/expr: in, read-only, no-retain
+// - ir: inout, non-null lowering context
+// - out: out, non-null; receives owned IrValue on success
+// - string matching: observed callee/member/type value equality
 static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {
   if (!expr) {
     ir_mark_unsupported(ir, "direct backend byte view is missing", 1, 1, "missing expression");
@@ -1072,6 +1190,10 @@ static void ir_instr_vec_push(IrProgram *ir, IrInstr **items, size_t *len, size_
   (*items)[(*len)++] = instr;
 }
 
+// contract:
+// - text: in, nullable, read-only, no-retain
+// - out: out, non-null, written on success
+// - string matching: observed operator value equality via strcmp
 static bool ir_binary_op(const char *text, IrBinaryOp *out) {
   if (!text) return false;
   if (strcmp(text, "+") == 0) *out = IR_BIN_ADD;
@@ -1085,6 +1207,10 @@ static bool ir_binary_op(const char *text, IrBinaryOp *out) {
   return true;
 }
 
+// contract:
+// - text: in, nullable, read-only, no-retain
+// - out: out, non-null, written on success
+// - string matching: observed comparison operator value equality via strcmp
 static bool ir_compare_op(const char *text, IrCompareOp *out) {
   if (!text) return false;
   if (strcmp(text, "==") == 0) *out = IR_CMP_EQ;
@@ -1112,6 +1238,10 @@ static char *ir_specialized_function_name(const Function *fun, const TypeArgVec 
 
 static char *ir_specialize_type_text(const char *type, const Function *fun, const TypeArgVec *type_args);
 
+// contract:
+// - fun/type_args/type: in, nullable, read-only, no-retain
+// - string matching: observed type parameter name value equality
+// - returns: borrowed input or borrowed type argument string
 static const char *ir_substitute_type_param(const Function *fun, const TypeArgVec *type_args, const char *type) {
   if (!fun || !type_args || !type) return type;
   for (size_t i = 0; i < fun->type_params.len && i < type_args->len; i++) {
@@ -1122,6 +1252,10 @@ static const char *ir_substitute_type_param(const Function *fun, const TypeArgVe
   return type;
 }
 
+// contract:
+// - expr: in, nullable, read-only, no-retain
+// - returns: return owned dotted callee name; caller frees
+// - observed origin: parser expression identifier/member text
 static char *ir_expr_callee_name(const Expr *expr) {
   if (!expr) return z_strdup("");
   if (expr->kind == EXPR_IDENT) return z_strdup(expr->text ? expr->text : "");
@@ -1137,6 +1271,12 @@ static char *ir_expr_callee_name(const Expr *expr) {
   return z_strdup("");
 }
 
+// contract:
+// - program/fun/expr: in, non-null on supported paths, read-only, no-retain
+// - ir: inout, non-null; accumulates MIR and unsupported diagnostics
+// - out: out, non-null; receives owned IrValue on success
+// - string matching: observed value equality for std helper dispatch,
+//   member dispatch, type mapping, local/function lookup, and operators
 static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {
   if (!expr) {
     ir_mark_unsupported(ir, "direct backend expression is missing", 1, 1, "missing expression");
@@ -2705,6 +2845,10 @@ static bool ir_lower_array_initializer(const Program *program, IrProgram *ir, Ir
   return true;
 }
 
+// contract:
+// - expr/name: in, nullable, read-only, no-retain
+// - string matching: observed shape literal field value equality via strcmp
+// - returns: return borrowed field initializer or NULL
 static const FieldInit *ir_shape_literal_find_field(const Expr *expr, const char *name) {
   if (!expr || !name) return NULL;
   for (size_t i = 0; i < expr->fields.len; i++) {
@@ -3066,6 +3210,10 @@ static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction 
   return true;
 }
 
+// contract:
+// - ir: inout, non-null; receives owned function metadata
+// - source/stable_id_text: in, read-only, no-retain
+// - retains: duplicates function names and world parameter name when stored
 static IrFunction *ir_program_push_function(IrProgram *ir, const Function *source, const char *stable_id_text) {
   ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
@@ -3089,6 +3237,10 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
 
 static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const StmtVec *body);
 
+// contract:
+// - source/program: in, non-null, read-only, no-retain
+// - ir/mir_fun: inout, non-null
+// - string matching: observed parameter/type value equality
 static bool ir_collect_function_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Function *source) {
   bool hosted_world_main = ir_is_hosted_world_main(source);
   for (size_t i = 0; i < source->params.len; i++) {
@@ -3116,6 +3268,10 @@ static bool ir_collect_function_locals(const Program *program, IrProgram *ir, Ir
   return true;
 }
 
+// contract:
+// - body/program: in, non-null, read-only, no-retain
+// - ir/mir_fun: inout, non-null
+// - string matching: observed local type value equality
 static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const StmtVec *body) {
   for (size_t i = 0; i < body->len; i++) {
     const Stmt *stmt = body->items[i];
@@ -3390,6 +3546,9 @@ static void ir_push_specialized_function(FunctionVec *functions, const Function 
   fun->is_public = false;
 }
 
+// contract:
+// - functions/name: in, nullable, read-only, no-retain
+// - string matching: observed function name value equality via strcmp
 static bool ir_function_vec_has_name(const FunctionVec *functions, const char *name) {
   for (size_t i = 0; functions && i < functions->len; i++) {
     if (functions->items[i].name && name && strcmp(functions->items[i].name, name) == 0) return true;
@@ -3455,6 +3614,11 @@ static bool ir_collect_generic_specializations_from_expr(FunctionVec *functions,
   return true;
 }
 
+// contract:
+// - ir: inout, non-null; receives direct MIR subset metadata
+// - program: in, non-null, read-only, no-retain
+// - input: in, nullable, read-only, no-retain
+// - string matching: delegated lookup and stable ID value matching
 static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program, const SourceInput *input) {
   ir->mir_valid = true;
   ir->mir_line = 1;
@@ -3553,6 +3717,12 @@ static void push_function_clone(FunctionVec *vec, const Function *source) {
   };
 }
 
+// contract:
+// - program: in, non-null, read-only during lowering, no-retain
+// - input: in, nullable, read-only during lowering, no-retain
+// - returns: return owned IrProgram; release with z_free_ir_program
+// - observed ownership: current body clones retained Program strings with
+//   z_strdup before storing them in ir.program
 IrProgram z_lower_program_with_source(const Program *program, const SourceInput *input) {
   IrProgram ir = {0};
   for (size_t i = 0; i < program->c_imports.len; i++) {
@@ -3649,10 +3819,18 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   return ir;
 }
 
+// contract:
+// - program: in, non-null, read-only during lowering, no-retain
+// - returns: return owned IrProgram; release with z_free_ir_program
 IrProgram z_lower_program(const Program *program) {
   return z_lower_program_with_source(program, NULL);
 }
 
+// contract:
+// - program: inout, nullable
+// - releases IR-owned function metadata, locals, instructions, data segments,
+//   and cloned Program storage
+// - does not release the IrProgram pointer itself
 void z_free_ir_program(IrProgram *program) {
   if (!program) return;
   for (size_t i = 0; i < program->function_len; i++) {
