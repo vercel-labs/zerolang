@@ -6246,12 +6246,14 @@ typedef struct {
 } TestFieldValue;
 
 struct TestValue {
-  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE } kind;
+  enum { TEST_VALUE_VOID, TEST_VALUE_BOOL, TEST_VALUE_INT, TEST_VALUE_STRING, TEST_VALUE_SHAPE, TEST_VALUE_ARRAY } kind;
   bool bool_value;
   long long int_value;
   char *string_value;
   TestFieldValue *fields;
   size_t field_len;
+  TestValue **elements;
+  size_t element_len;
 };
 
 typedef struct {
@@ -6281,6 +6283,11 @@ static void test_value_free(TestValue *value) {
     free(value->fields[i].value);
   }
   free(value->fields);
+  for (size_t i = 0; i < value->element_len; i++) {
+    test_value_free(value->elements[i]);
+    free(value->elements[i]);
+  }
+  free(value->elements);
   memset(value, 0, sizeof(*value));
 }
 
@@ -6298,6 +6305,14 @@ static TestValue test_value_copy(const TestValue *value) {
       copy.fields[i].name = z_strdup(value->fields[i].name);
       copy.fields[i].value = z_checked_calloc(1, sizeof(TestValue));
       *copy.fields[i].value = test_value_copy(value->fields[i].value);
+    }
+  }
+  copy.element_len = value->element_len;
+  if (copy.element_len > 0) {
+    copy.elements = calloc(copy.element_len, sizeof(TestValue *));
+    for (size_t i = 0; i < copy.element_len; i++) {
+      copy.elements[i] = calloc(1, sizeof(TestValue));
+      *copy.elements[i] = test_value_copy(value->elements[i]);
     }
   }
   return copy;
@@ -6398,7 +6413,35 @@ static bool test_value_equals(const TestValue *left, const TestValue *right) {
   return false;
 }
 
+static const EnumDecl *test_find_enum(const Program *program, const char *name) {
+  if (!program || !name) return NULL;
+  for (size_t i = 0; i < program->enums.len; i++) {
+    if (strcmp(program->enums.items[i].name, name) == 0) return &program->enums.items[i];
+  }
+  return NULL;
+}
+
+static bool test_enum_case_value(const EnumDecl *item_enum, const char *case_name, long long *out) {
+  if (!item_enum || !case_name) return false;
+  for (size_t i = 0; i < item_enum->cases.len; i++) {
+    if (strcmp(item_enum->cases.items[i].name, case_name) == 0) {
+      if (out) *out = (long long)i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static const Choice *test_find_choice(const Program *program, const char *name) {
+  if (!program || !name) return NULL;
+  for (size_t i = 0; i < program->choices.len; i++) {
+    if (strcmp(program->choices.items[i].name, name) == 0) return &program->choices.items[i];
+  }
+  return NULL;
+}
+
 static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *expr, TestValue *out, TestRunFailure *failure);
+static bool test_eval_function_with_caller(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure, TestEnv *caller_env, const Expr **arg_exprs, size_t arg_expr_len);
 
 static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtVec *body, TestValue *return_value, bool *returned, TestRunFailure *failure) {
   for (size_t i = 0; body && i < body->len; i++) {
@@ -6451,6 +6494,84 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
       test_value_free(&condition);
       if (!test_eval_stmt_vec(program, env, branch ? &stmt->then_body : &stmt->else_body, return_value, returned, failure)) return false;
       if (*returned) return true;
+    } else if (stmt->kind == STMT_MATCH) {
+      TestValue discriminant = {0};
+      if (!test_eval_expr(program, env, stmt->expr, &discriminant, failure)) return false;
+      /* Enum match: discriminant is an int representing the case index.
+         The checker stores the enum type name in stmt->resolved_type. */
+      const EnumDecl *item_enum = test_find_enum(program, stmt->resolved_type);
+      bool arm_matched = false;
+      const MatchArm *fallback_arm = NULL;
+      for (size_t arm_index = 0; arm_index < stmt->match_arms.len; arm_index++) {
+        const MatchArm *arm = &stmt->match_arms.items[arm_index];
+        if (strcmp(arm->case_name, "_") == 0) {
+          fallback_arm = arm;
+          continue;
+        }
+        long long case_value = 0;
+        if (item_enum && test_enum_case_value(item_enum, arm->case_name, &case_value)) {
+          if (discriminant.int_value == case_value) {
+            test_value_free(&discriminant);
+            if (!test_eval_stmt_vec(program, env, &arm->body, return_value, returned, failure)) return false;
+            arm_matched = true;
+            break;
+          }
+        }
+      }
+      if (!arm_matched) {
+        test_value_free(&discriminant);
+        if (fallback_arm) {
+          if (!test_eval_stmt_vec(program, env, &fallback_arm->body, return_value, returned, failure)) return false;
+        }
+      }
+      if (*returned) return true;
+    } else if (stmt->kind == STMT_ASSIGN) {
+      /* Variable reassignment: evaluate the RHS and update the binding */
+      if (stmt->target && stmt->target->kind == EXPR_IDENT) {
+        TestValue value = {0};
+        if (!test_eval_expr(program, env, stmt->expr, &value, failure)) return false;
+        test_env_set(env, stmt->target->text, &value);
+        test_value_free(&value);
+      } else if (stmt->target && stmt->target->kind == EXPR_MEMBER && stmt->target->left && stmt->target->left->kind == EXPR_IDENT) {
+        /* Field assignment on a shape: shape.field = value */
+        const char *var_name = stmt->target->left->text;
+        const char *field_name = stmt->target->text ? stmt->target->text : "";
+        TestValue rhs = {0};
+        if (!test_eval_expr(program, env, stmt->expr, &rhs, failure)) return false;
+        /* Find the binding in the environment and update the field in-place */
+        bool field_found = false;
+        for (size_t ei = 0; ei < env->len; ei++) {
+          if (strcmp(env->items[ei].name, var_name) == 0 && env->items[ei].value.kind == TEST_VALUE_SHAPE) {
+            for (size_t fi = 0; fi < env->items[ei].value.field_len; fi++) {
+              if (strcmp(env->items[ei].value.fields[fi].name, field_name) == 0) {
+                test_value_free(env->items[ei].value.fields[fi].value);
+                *env->items[ei].value.fields[fi].value = test_value_copy(&rhs);
+                field_found = true;
+                break;
+              }
+            }
+            break;
+          }
+        }
+        test_value_free(&rhs);
+        if (!field_found) {
+          test_fail(failure, stmt->target, "zero test field assignment: field not found on shape");
+          return false;
+        }
+      } else {
+        test_fail(failure, NULL, "zero test direct runner does not support this assignment target yet");
+        return false;
+      }
+    } else if (stmt->kind == STMT_WHILE) {
+      for (;;) {
+        TestValue condition = {0};
+        if (!test_eval_expr(program, env, stmt->expr, &condition, failure)) return false;
+        bool loop = test_value_truthy(&condition);
+        test_value_free(&condition);
+        if (!loop) break;
+        if (!test_eval_stmt_vec(program, env, &stmt->then_body, return_value, returned, failure)) return false;
+        if (*returned) return true;
+      }
     } else {
       test_fail(failure, NULL, "zero test direct runner does not support this statement yet");
       return false;
@@ -6460,6 +6581,10 @@ static bool test_eval_stmt_vec(const Program *program, TestEnv *env, const StmtV
 }
 
 static bool test_eval_function(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure) {
+  return test_eval_function_with_caller(program, fun, args, arg_len, out, failure, NULL, NULL, 0);
+}
+
+static bool test_eval_function_with_caller(const Program *program, const Function *fun, const TestValue *args, size_t arg_len, TestValue *out, TestRunFailure *failure, TestEnv *caller_env, const Expr **arg_exprs, size_t arg_expr_len) {
   if (!fun) {
     test_fail(failure, NULL, "zero test unknown function");
     return false;
@@ -6472,6 +6597,33 @@ static bool test_eval_function(const Program *program, const Function *fun, cons
   for (size_t i = 0; i < arg_len; i++) test_env_set(&local, fun->params.items[i].name, &args[i]);
   bool returned = false;
   bool ok = test_eval_stmt_vec(program, &local, &fun->body, out, &returned, failure);
+  /* mutref writeback: for params typed mutref<...>, copy modified local back to caller */
+  if (ok && caller_env) {
+    for (size_t i = 0; i < fun->params.len; i++) {
+      const char *ptype = fun->params.items[i].type;
+      if (ptype && strncmp(ptype, "mutref<", 7) == 0) {
+        /* Find the modified value in the local env */
+        TestValue modified = {0};
+        if (test_env_get(&local, fun->params.items[i].name, &modified)) {
+          /* Find the caller's variable name from the arg expression.
+             The arg is typically EXPR_BORROW whose left is EXPR_IDENT. */
+          const char *caller_var = NULL;
+          if (i < arg_expr_len && arg_exprs && arg_exprs[i]) {
+            const Expr *aexpr = arg_exprs[i];
+            if (aexpr->kind == EXPR_BORROW && aexpr->left && aexpr->left->kind == EXPR_IDENT) {
+              caller_var = aexpr->left->text;
+            } else if (aexpr->kind == EXPR_IDENT) {
+              caller_var = aexpr->text;
+            }
+          }
+          if (caller_var) {
+            test_env_set(caller_env, caller_var, &modified);
+          }
+          test_value_free(&modified);
+        }
+      }
+    }
+  }
   test_env_free(&local);
   if (!ok) return false;
   if (!returned) out->kind = TEST_VALUE_VOID;
@@ -6508,6 +6660,35 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
       }
       return true;
     case EXPR_MEMBER: {
+      /* Qualified enum access: Stage.testing -> integer case index */
+      if (expr->left && expr->left->kind == EXPR_IDENT) {
+        const EnumDecl *item_enum = test_find_enum(program, expr->left->text);
+        if (item_enum) {
+          long long case_value = 0;
+          if (test_enum_case_value(item_enum, expr->text, &case_value)) {
+            out->kind = TEST_VALUE_INT;
+            out->int_value = case_value;
+            return true;
+          }
+          test_fail(failure, expr, "zero test unknown enum case");
+          return false;
+        }
+        /* Qualified choice constructor: Choice.variant(payload) is handled
+           as a call expression by the parser, so we only see the nullary
+           case here (e.g., GateOutcome.passed). Represent as an int. */
+        const Choice *item_choice = test_find_choice(program, expr->left->text);
+        if (item_choice) {
+          for (size_t i = 0; i < item_choice->cases.len; i++) {
+            if (strcmp(item_choice->cases.items[i].name, expr->text ? expr->text : "") == 0) {
+              out->kind = TEST_VALUE_INT;
+              out->int_value = (long long)i;
+              return true;
+            }
+          }
+          test_fail(failure, expr, "zero test unknown choice variant");
+          return false;
+        }
+      }
       TestValue base = {0};
       if (!test_eval_expr(program, env, expr->left, &base, failure)) return false;
       if (base.kind == TEST_VALUE_SHAPE) {
@@ -6590,13 +6771,108 @@ static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *exp
         out->bool_value = test_value_equals(&args[0], &args[1]);
       } else {
         const Function *fun = find_program_function(program, callee_name);
-        ok = test_eval_function(program, fun, args, expr->args.len, out, failure);
+        if (!fun) {
+          /* Try choice constructor: ChoiceName.variant(payload) */
+          const char *dot = strchr(callee_name, '.');
+          if (dot) {
+            size_t prefix_len = (size_t)(dot - callee_name);
+            char type_name[128];
+            if (prefix_len < sizeof(type_name)) {
+              memcpy(type_name, callee_name, prefix_len);
+              type_name[prefix_len] = '\0';
+              const Choice *choice = test_find_choice(program, type_name);
+              if (choice) {
+                const char *variant = dot + 1;
+                for (size_t ci = 0; ci < choice->cases.len; ci++) {
+                  if (strcmp(choice->cases.items[ci].name, variant) == 0) {
+                    /* Represent choice as a shape with a discriminant tag and optional payload */
+                    out->kind = TEST_VALUE_SHAPE;
+                    out->field_len = expr->args.len > 0 ? 2 : 1;
+                    out->fields = calloc(out->field_len, sizeof(TestFieldValue));
+                    out->fields[0].name = z_strdup("__tag");
+                    out->fields[0].value = calloc(1, sizeof(TestValue));
+                    out->fields[0].value->kind = TEST_VALUE_INT;
+                    out->fields[0].value->int_value = (long long)ci;
+                    if (expr->args.len > 0) {
+                      out->fields[1].name = z_strdup("__payload");
+                      out->fields[1].value = calloc(1, sizeof(TestValue));
+                      *out->fields[1].value = test_value_copy(&args[0]);
+                    }
+                    fun = NULL; /* signal handled */
+                    break;
+                  }
+                }
+                if (out->kind != TEST_VALUE_VOID) {
+                  /* Already handled above */
+                  for (size_t ai = 0; ai < expr->args.len; ai++) test_value_free(&args[ai]);
+                  free(args);
+                  zbuf_free(&name);
+                  return true;
+                }
+              }
+            }
+          }
+        }
+        if (fun) {
+          /* Collect arg expression pointers for mutref writeback */
+          const Expr **arg_exprs = calloc(expr->args.len ? expr->args.len : 1, sizeof(const Expr *));
+          for (size_t ai = 0; ai < expr->args.len; ai++) arg_exprs[ai] = expr->args.items[ai];
+          ok = test_eval_function_with_caller(program, fun, args, expr->args.len, out, failure, env, arg_exprs, expr->args.len);
+          free(arg_exprs);
+        } else if (out->kind == TEST_VALUE_VOID) {
+          test_fail(failure, expr, "zero test unknown function");
+          ok = false;
+        }
       }
       for (size_t i = 0; i < expr->args.len; i++) test_value_free(&args[i]);
       free(args);
       zbuf_free(&name);
       return ok;
     }
+    case EXPR_ARRAY_LITERAL:
+      out->kind = TEST_VALUE_ARRAY;
+      out->element_len = expr->args.len;
+      out->elements = calloc(out->element_len ? out->element_len : 1, sizeof(TestValue *));
+      for (size_t i = 0; i < expr->args.len; i++) {
+        out->elements[i] = calloc(1, sizeof(TestValue));
+        if (!test_eval_expr(program, env, expr->args.items[i], out->elements[i], failure)) return false;
+      }
+      return true;
+    case EXPR_INDEX: {
+      TestValue base = {0};
+      TestValue index = {0};
+      if (!test_eval_expr(program, env, expr->left, &base, failure)) return false;
+      if (!test_eval_expr(program, env, expr->right, &index, failure)) {
+        test_value_free(&base);
+        return false;
+      }
+      long long idx = index.int_value;
+      test_value_free(&index);
+      if (base.kind == TEST_VALUE_ARRAY && idx >= 0 && (size_t)idx < base.element_len) {
+        *out = test_value_copy(base.elements[idx]);
+        test_value_free(&base);
+        return true;
+      }
+      test_value_free(&base);
+      test_fail(failure, expr, "zero test array index out of bounds");
+      return false;
+    }
+    case EXPR_NULL:
+      out->kind = TEST_VALUE_VOID;
+      return true;
+    case EXPR_BORROW:
+      /* Borrow expressions: &x (ref) and &mut x (mutref).
+         In the test evaluator, both resolve to the underlying value.
+         mutref writeback is handled at function call boundaries. */
+      if (expr->left) return test_eval_expr(program, env, expr->left, out, failure);
+      test_fail(failure, expr, "zero test borrow without operand");
+      return false;
+    case EXPR_CAST:
+      /* Type casts: evaluate the inner expression, pass through the value.
+         The checker has already validated the cast is legal. */
+      if (expr->left) return test_eval_expr(program, env, expr->left, out, failure);
+      test_fail(failure, expr, "zero test cast without operand");
+      return false;
     default:
       test_fail(failure, expr, "zero test direct runner does not support this expression yet");
       return false;
