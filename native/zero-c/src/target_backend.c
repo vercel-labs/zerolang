@@ -149,4 +149,3 @@ const char *z_direct_backend_reason(const ZTargetInfo *target) {
   if (strcmp(format, "coff") == 0 && strcmp(arch, "aarch64") == 0) return "AArch64 COFF machine-code backend is not implemented yet";
   return "direct backend is not implemented for this target format/architecture pair";
 }
-
