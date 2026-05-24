@@ -36,6 +36,7 @@ static bool build_value_supported(const ZBuildability *ctx, const IrValue *value
     case IR_VALUE_MAYBE_VALUE:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64 || (ctx->backend == Z_DIRECT_BACKEND_MACHO64 && value->type == IR_TYPE_BYTE_VIEW);
     case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_CODEC_HEX_ENCODE: case IR_VALUE_CODEC_UTF8_VALID:
     case IR_VALUE_HTTP_FETCH: case IR_VALUE_HTTP_RESULT_OK: case IR_VALUE_HTTP_RESULT_STATUS: case IR_VALUE_HTTP_RESULT_BODY_LEN:
     case IR_VALUE_HTTP_RESULT_ERROR: case IR_VALUE_HTTP_RESPONSE_LEN: case IR_VALUE_HTTP_RESPONSE_HEADERS_LEN:
     case IR_VALUE_HTTP_RESPONSE_BODY_OFFSET: case IR_VALUE_HTTP_HEADER_VALUE: case IR_VALUE_HTTP_HEADER_FOUND:
@@ -63,8 +64,12 @@ static bool build_check_value(const ZBuildability *ctx, const IrFunction *fun, c
     if (value->kind == IR_VALUE_BYTE_VIEW_LEN && !z_build_check_macho_byte_view_len(ctx, fun, value->left, diag)) return false;
     if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
     if ((value->kind == IR_VALUE_FIXED_BUF_ALLOC || value->kind == IR_VALUE_VEC_INIT) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
-    if ((value->kind == IR_VALUE_JSON_PARSE_BYTES || value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES) &&
+    if ((value->kind == IR_VALUE_JSON_PARSE_BYTES || value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES || value->kind == IR_VALUE_CODEC_UTF8_VALID) &&
         !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+    if (value->kind == IR_VALUE_CODEC_HEX_ENCODE) {
+      if (!z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+      if (!z_build_check_macho_byte_view(ctx, fun, value->right, diag)) return false;
+    }
     if (value->kind == IR_VALUE_HTTP_FETCH) {
       if (!z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
       if (!z_build_check_macho_byte_view(ctx, fun, value->right, diag)) return false;

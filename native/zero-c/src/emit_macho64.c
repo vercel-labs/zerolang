@@ -304,6 +304,15 @@ static bool macho_emit_json_parse_bytes_call_at(ZBuf *text, const IrFunction *fu
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_JSON_PARSE_BYTES, patch, value, diag);
 }
 
+static bool macho_emit_utf8_valid_call_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value ? value->left : NULL, diag)) return false;
+  if (!macho_emit_byte_view_len_at(text, fun, value->left, 1, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value ? value->left : NULL, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_UTF8_VALID, patch, value, diag);
+}
+
 static bool macho_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!view) return macho_diag_at(diag, "direct AArch64 Mach-O byte view is missing", 1, 1, "missing byte view");
   if (view->kind == IR_VALUE_STRING_LITERAL || view->kind == IR_VALUE_ARRAY_BYTE_VIEW) {
@@ -656,6 +665,10 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
         z_aarch64_patch_branch26(text, done, text->len);
       }
       return true;
+    case IR_VALUE_CODEC_UTF8_VALID:
+      if (!macho_emit_utf8_valid_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
+      if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+      return true;
     case IR_VALUE_HTTP_FETCH:
       return macho_emit_http_fetch_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_HTTP_RESULT_OK:
@@ -819,8 +832,56 @@ static bool macho_emit_local_set_vec(ZBuf *text, const IrFunction *fun, const Ir
   macho_emit_store_local_w(text, fun, 8, instr->local_index, 12, frame_size);
   return true;
 }
+static bool macho_emit_hex_encode_to_local(ZBuf *text, const IrFunction *fun, const IrInstr *instr, const IrLocal *local, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  const IrValue *value = instr->value;
+  if (!value || value->kind != IR_VALUE_CODEC_HEX_ENCODE) return macho_diag_at(diag, "direct AArch64 Mach-O hexEncode source is invalid", instr->line, instr->column, "invalid hexEncode");
+  if (scratch_slot + 4 >= MACHO_SCRATCH_SLOT_COUNT) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O hexEncode nesting exceeds scratch spill capacity", instr->line, instr->column, "too many nested scratch registers");
+  }
+  
+  if (!macho_emit_byte_view_ptr_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_byte_view_len_at(text, fun, value->left, 1, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  
+  if (!macho_emit_byte_view_ptr_at(text, fun, value->right, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!macho_emit_byte_view_len_at(text, fun, value->right, 3, frame_size, scratch_slot + 3, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  
+  if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!macho_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_HEX_ENCODE, patch, value, diag)) return false;
+  
+  z_aarch64_emit_cmp_x(text, 0, 31);
+  size_t fail = z_aarch64_emit_b_cond_placeholder(text, 11); // signed less than (b.lt)
+  
+  z_aarch64_emit_movz_w(text, 9, 1);
+  macho_emit_store_local_w(text, fun, 9, local->index, 0, frame_size);
+  if (!macho_emit_load_scratch(text, 8, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  macho_emit_store_local_x(text, fun, 8, local->index, 8, frame_size);
+  macho_emit_store_local_w(text, fun, 0, local->index, 16, frame_size);
+  
+  size_t end = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, fail, text->len);
+  
+  z_aarch64_emit_movz_w(text, 9, 0);
+  macho_emit_store_local_w(text, fun, 9, local->index, 0, frame_size);
+  macho_emit_store_local_x(text, fun, 9, local->index, 8, frame_size);
+  macho_emit_store_local_w(text, fun, 9, local->index, 16, frame_size);
+  
+  z_aarch64_patch_branch26(text, end, text->len);
+  return true;
+}
 
 static bool macho_emit_local_set_maybe_byte_view(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
+  if (instr->value && instr->value->kind == IR_VALUE_CODEC_HEX_ENCODE) {
+    return macho_emit_hex_encode_to_local(text, fun, instr, &fun->locals[instr->local_index], frame_size, 0, ctx, diag);
+  }
   if (instr->value && instr->value->kind == IR_VALUE_ARGS_GET) {
     return macho_emit_args_get_to_local(text, fun, instr->value, &fun->locals[instr->local_index], frame_size, ctx, diag);
   }

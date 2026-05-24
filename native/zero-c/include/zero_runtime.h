@@ -53,4 +53,13 @@ uint32_t zero_http_header_found(uint64_t value);
 uint32_t zero_http_header_offset(uint64_t value);
 uint32_t zero_http_header_len(uint64_t value);
 
+int64_t zero_hex_encode(
+  ZeroMutByteView destination,
+  ZeroByteView source
+);
+
+uint32_t zero_utf8_valid(
+  ZeroByteView bytes
+);
+
 #endif
