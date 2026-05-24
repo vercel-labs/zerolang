@@ -20,19 +20,53 @@ static bool a64_diag(ZDiag *diag, const char *message, int line, int column, con
   return false;
 }
 
+static const char *a64_instr_kind_name(IrInstrKind kind) {
+  switch (kind) {
+    case IR_INSTR_LOCAL_SET: return "IR_INSTR_LOCAL_SET";
+    case IR_INSTR_INDEX_STORE: return "IR_INSTR_INDEX_STORE";
+    case IR_INSTR_FIELD_STORE: return "IR_INSTR_FIELD_STORE";
+    case IR_INSTR_WORLD_WRITE: return "IR_INSTR_WORLD_WRITE";
+    case IR_INSTR_RAISE: return "IR_INSTR_RAISE";
+    case IR_INSTR_EXPR: return "IR_INSTR_EXPR";
+    case IR_INSTR_RETURN: return "IR_INSTR_RETURN";
+    case IR_INSTR_IF: return "IR_INSTR_IF";
+    case IR_INSTR_WHILE: return "IR_INSTR_WHILE";
+  }
+  return "unknown IR instruction";
+}
+
 static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag) {
   if (!fun) return a64_diag(diag, "direct AArch64 ELF object backend requires a function", 1, 1, "missing function");
   if (fun->return_type != IR_TYPE_VOID && fun->return_type != IR_TYPE_U8 && fun->return_type != IR_TYPE_I32 && fun->return_type != IR_TYPE_U32 && fun->return_type != IR_TYPE_USIZE) {
     return a64_diag(diag, "direct AArch64 ELF object backend currently supports primitive 32-bit-or-smaller integer returns", fun->line, fun->column, fun->name);
   }
   *out = 0;
+  bool saw_return = false;
   for (size_t i = 0; i < fun->instr_len; i++) {
     const IrInstr *instr = &fun->instrs[i];
-    if (instr->kind != IR_INSTR_RETURN || !instr->value || instr->value->kind != IR_VALUE_INT || instr->value->int_value > 65535) continue;
+    if (instr->kind != IR_INSTR_RETURN) {
+      return a64_diag(diag, "direct AArch64 ELF object backend does not yet support lowering this IR instruction", instr->line, instr->column, a64_instr_kind_name(instr->kind));
+    }
+    if (!instr->value) {
+      if (fun->return_type == IR_TYPE_VOID) {
+        saw_return = true;
+        continue;
+      }
+      return a64_diag(diag, "direct AArch64 ELF object backend does not yet support lowering this IR instruction", instr->line, instr->column, a64_instr_kind_name(instr->kind));
+    }
+    if (instr->value->kind != IR_VALUE_INT || instr->value->int_value > 65535) {
+      return a64_diag(diag, "direct AArch64 ELF object backend does not yet support lowering this IR instruction", instr->line, instr->column, a64_instr_kind_name(instr->kind));
+    }
     *out = (uint32_t)instr->value->int_value;
-    return true;
+    saw_return = true;
   }
-  return true;
+  if (saw_return || fun->return_type == IR_TYPE_VOID) return true;
+  return a64_diag(diag, "direct AArch64 ELF object backend currently requires a small integer literal return", fun->line, fun->column, fun->name);
+}
+
+static bool a64_validate_function(const IrFunction *fun, ZDiag *diag) {
+  uint32_t scratch = 0;
+  return a64_return_literal(fun, &scratch, diag);
 }
 
 static const IrFunction *a64_find_main(const IrProgram *ir, unsigned *out_index, ZDiag *diag) {
@@ -62,6 +96,10 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
     bool ok = a64_diag(diag, ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed", ir->mir_line, ir->mir_column, ir->mir_actual);
     z_diag_set_backend_blocker(diag, &ir->backend_blocker);
     return ok;
+  }
+
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (!a64_validate_function(&ir->functions[i], diag)) return false;
   }
 
   ZBuf text;
@@ -150,6 +188,10 @@ bool z_emit_elf_aarch64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag)
   }
   unsigned main_index = 0;
   if (!a64_find_main(ir, &main_index, diag)) return false;
+
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (!a64_validate_function(&ir->functions[i], diag)) return false;
+  }
 
   ZBuf text;
   zbuf_init(&text);
