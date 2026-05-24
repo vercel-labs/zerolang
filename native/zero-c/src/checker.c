@@ -5250,20 +5250,48 @@ static bool build_named_call_bindings_expected(CheckContext *ctx, const Program 
   return true;
 }
 
-static bool check_named_call_args_expected(CheckContext *ctx, const Program *program, const Function *fun, const Expr *expr, Scope *scope, ZDiag *diag, bool generic, ZCallResolution *resolution) {
+typedef enum {
+  CHECKED_CALL_ARG_NAMED_FUNCTION,
+  CHECKED_CALL_ARG_SHAPE_METHOD,
+  CHECKED_CALL_ARG_RECEIVER_METHOD,
+  CHECKED_CALL_ARG_CONSTRAINED_INTERFACE
+} CheckedCallArgSurface;
+
+static bool report_call_resolution_arg_mismatch(const Program *program, ZDiag *diag, const Expr *arg, size_t arg_number, CheckedCallArgSurface surface, const char *owner_name, const char *callee_name, bool generic, const char *expected_type, const char *actual_type) {
+  char message[256];
+  switch (surface) {
+    case CHECKED_CALL_ARG_NAMED_FUNCTION:
+      snprintf(message, sizeof(message), generic ? "argument %zu to generic '%s' has incompatible type" : "argument %zu to '%s' has incompatible type", arg_number, callee_name);
+      return generic && type_static_value_mismatch(program, expected_type, actual_type)
+        ? set_diag_detail(diag, 3045, "static value argument does not match the annotated value", arg->line, arg->column, expected_type, actual_type, "pass the same static value or remove the conflicting explicit argument")
+        : set_diag_detail(diag, 3005, message, arg->line, arg->column, expected_type, actual_type, generic ? "pass a value matching the resolved generic parameter" : "pass a compatible value");
+    case CHECKED_CALL_ARG_SHAPE_METHOD:
+      snprintf(message, sizeof(message), "argument %zu to method '%s.%s' has incompatible type", arg_number, owner_name, callee_name);
+      return type_static_value_mismatch(program, expected_type, actual_type)
+        ? set_diag_detail(diag, 3047, "shape method static value does not match Self instantiation", arg->line, arg->column, expected_type, actual_type, "call the method with one matching generic shape instantiation")
+        : set_diag_detail(diag, 3005, message, arg->line, arg->column, expected_type, actual_type, "pass a value matching the static method parameter");
+    case CHECKED_CALL_ARG_RECEIVER_METHOD:
+      snprintf(message, sizeof(message), "argument %zu to receiver method '%s.%s' has incompatible type", arg_number, owner_name, callee_name);
+      return type_static_value_mismatch(program, expected_type, actual_type)
+        ? set_diag_detail(diag, 3047, "receiver method static value does not match Self instantiation", arg->line, arg->column, expected_type, actual_type, "call the method with one matching generic shape instantiation")
+        : set_diag_detail(diag, 3005, message, arg->line, arg->column, expected_type, actual_type, "pass a value matching the receiver method parameter");
+    case CHECKED_CALL_ARG_CONSTRAINED_INTERFACE:
+      snprintf(message, sizeof(message), "argument %zu to constrained method '%s.%s' has incompatible type", arg_number, owner_name, callee_name);
+      return set_diag_detail(diag, 3042, message, arg->line, arg->column, expected_type, actual_type, "pass a value matching the interface method parameter");
+  }
+  return set_diag_detail(diag, 3005, "call argument has incompatible type", arg->line, arg->column, expected_type, actual_type, "pass a compatible value");
+}
+
+static bool check_call_resolution_args_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, size_t param_offset, CheckedCallArgSurface surface, const char *owner_name, const char *callee_name, bool generic) {
   for (size_t i = 0; i < expr->args.len; i++) {
-    char *expected_type = call_resolution_param_type_text(resolution, i);
+    char *expected_type = call_resolution_param_type_text(resolution, i + param_offset);
     if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, expected_type)) {
       free(expected_type);
       return false;
     }
     const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
     if (!types_compatible_in_scope(program, scope, expected_type, actual)) {
-      char message[256];
-      snprintf(message, sizeof(message), generic ? "argument %zu to generic '%s' has incompatible type" : "argument %zu to '%s' has incompatible type", i + 1, fun->name);
-      bool ok = generic && type_static_value_mismatch(program, expected_type, actual)
-        ? set_diag_detail(diag, 3045, "static value argument does not match the annotated value", expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, "pass the same static value or remove the conflicting explicit argument")
-        : set_diag_detail(diag, 3005, message, expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, generic ? "pass a value matching the resolved generic parameter" : "pass a compatible value");
+      bool ok = report_call_resolution_arg_mismatch(program, diag, expr->args.items[i], i + 1, surface, owner_name, callee_name, generic, expected_type, actual);
       free(expected_type);
       return ok;
     }
@@ -5271,6 +5299,45 @@ static bool check_named_call_args_expected(CheckContext *ctx, const Program *pro
     free(expected_type);
   }
   return true;
+}
+
+static bool check_named_call_args_expected(CheckContext *ctx, const Program *program, const Function *fun, const Expr *expr, Scope *scope, ZDiag *diag, bool generic, ZCallResolution *resolution) {
+  return check_call_resolution_args_expected(ctx, program, expr, scope, diag, resolution, 0, CHECKED_CALL_ARG_NAMED_FUNCTION, NULL, fun->name, generic);
+}
+
+static bool check_named_call_fallibility_expected(CheckContext *ctx, const Program *program, const Function *fun, const Expr *expr, ZDiag *diag, bool generic) {
+  if (!function_has_error_flow(ctx, program, fun)) return true;
+  char actual[160];
+  snprintf(actual, sizeof(actual), "call to '%s'", fun->name);
+  return check_fallible_call_is_checked(
+    ctx,
+    program,
+    fun,
+    expr,
+    diag,
+    generic ? "fallible generic function call must be checked" : "fallible function call must be checked",
+    "check fallible_call ...",
+    actual,
+    "prefix the call with check in a function marked with `!`"
+  );
+}
+
+static bool prepare_named_call_return_and_storage_expected(CheckContext *ctx, const Program *program, const Function *fun, const Expr *expr, Scope *scope, ZDiag *diag, bool generic, GenericBinding *bindings, size_t binding_len, char **return_type_out) {
+  char *return_type = generic
+    ? type_substitute_generic_signature(program, fun->return_type, bindings, binding_len)
+    : z_strdup(fun->return_type ? fun->return_type : "Void");
+  if (generic) set_expr_resolved_type(expr, return_type);
+  if (!apply_checked_call_storage_effects(ctx, program, expr, scope, diag)) {
+    free(return_type);
+    return false;
+  }
+  *return_type_out = return_type;
+  return true;
+}
+
+static void finish_named_call_return_expected(const Expr *expr, char *return_type) {
+  if (!expr->resolved_type) set_expr_resolved_type(expr, return_type);
+  free(return_type);
 }
 
 static bool check_named_function_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected, bool *handled) {
@@ -5311,41 +5378,28 @@ static bool check_named_function_call_expected(CheckContext *ctx, const Program 
   }
   if (generic) set_expr_checked_type_args(expr, bindings, binding_len);
 
-  if (generic && function_has_error_flow(ctx, program, fun)) {
-    char actual[160];
-    snprintf(actual, sizeof(actual), "call to '%s'", fun->name);
-    if (!check_fallible_call_is_checked(ctx, program, fun, expr, diag, "fallible generic function call must be checked", "check fallible_call ...", actual, "prefix the call with check in a function marked with `!`")) {
-      generic_bindings_free(bindings, binding_len);
-      free(bindings);
-      z_call_resolution_free(&resolution);
-      return false;
-    }
+  if (generic && !check_named_call_fallibility_expected(ctx, program, fun, expr, diag, true)) {
+    generic_bindings_free(bindings, binding_len);
+    free(bindings);
+    z_call_resolution_free(&resolution);
+    return false;
   }
 
-  char *return_type = generic
-    ? type_substitute_generic_signature(program, fun->return_type, bindings, binding_len)
-    : z_strdup(fun->return_type ? fun->return_type : "Void");
-  if (generic) set_expr_resolved_type(expr, return_type);
-  if (!apply_checked_call_storage_effects(ctx, program, expr, scope, diag)) {
+  char *return_type = NULL;
+  if (!prepare_named_call_return_and_storage_expected(ctx, program, fun, expr, scope, diag, generic, bindings, binding_len, &return_type)) {
+    generic_bindings_free(bindings, binding_len);
+    free(bindings);
+    z_call_resolution_free(&resolution);
+    return false;
+  }
+  if (!generic && !check_named_call_fallibility_expected(ctx, program, fun, expr, diag, false)) {
     free(return_type);
     generic_bindings_free(bindings, binding_len);
     free(bindings);
     z_call_resolution_free(&resolution);
     return false;
   }
-  if (!generic && function_has_error_flow(ctx, program, fun)) {
-    char actual[160];
-    snprintf(actual, sizeof(actual), "call to '%s'", fun->name);
-    if (!check_fallible_call_is_checked(ctx, program, fun, expr, diag, "fallible function call must be checked", "check fallible_call ...", actual, "prefix the call with check in a function marked with `!`")) {
-      free(return_type);
-      generic_bindings_free(bindings, binding_len);
-      free(bindings);
-      z_call_resolution_free(&resolution);
-      return false;
-    }
-  }
-  if (!expr->resolved_type) set_expr_resolved_type(expr, return_type);
-  free(return_type);
+  finish_named_call_return_expected(expr, return_type);
   generic_bindings_free(bindings, binding_len);
   free(bindings);
   z_call_resolution_free(&resolution);
@@ -5394,9 +5448,14 @@ static bool check_stdlib_table_arg_range_expected(CheckContext *ctx, const Progr
   return true;
 }
 
-static bool check_stdlib_allocator_arg(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, size_t index, const char *display_name, const char *alloc_help, const char *mut_help) {
+static void record_stdlib_arg_fact(ZCallResolution *resolution, size_t index, const Expr *arg, const char *expected_type, const char *actual_type) {
+  if (resolution) z_call_resolution_add_arg(resolution, index, arg, expected_type, actual_type);
+}
+
+static bool check_stdlib_allocator_arg(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, size_t index, const char *display_name, const char *alloc_help, const char *mut_help) {
   if (!check_expr(ctx, program, expr->args.items[index], scope, diag)) return false;
   const char *alloc_type = expr_type(ctx, program, expr->args.items[index], scope);
+  record_stdlib_arg_fact(resolution, index, expr->args.items[index], NULL, alloc_type);
   if (!is_allocator_type(alloc_type)) {
     char message[256];
     snprintf(message, sizeof(message), "%s expects an allocator primitive", display_name);
@@ -5411,9 +5470,10 @@ static bool check_stdlib_allocator_arg(CheckContext *ctx, const Program *program
   return true;
 }
 
-static bool check_stdlib_mem_len_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag) {
+static bool check_stdlib_mem_len_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
   if (!check_expr(ctx, program, expr->args.items[0], scope, diag)) return false;
   const char *actual = expr_type(ctx, program, expr->args.items[0], scope);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], NULL, actual);
   char element_type[128];
   if (strcmp(actual, "String") != 0 &&
       !span_element_text(actual, element_type, sizeof(element_type)) &&
@@ -5424,9 +5484,10 @@ static bool check_stdlib_mem_len_call_expected(CheckContext *ctx, const Program 
   return true;
 }
 
-static bool check_stdlib_mem_get_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag) {
+static bool check_stdlib_mem_get_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
   if (!check_expr(ctx, program, expr->args.items[0], scope, diag)) return false;
   const char *actual = expr_type(ctx, program, expr->args.items[0], scope);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], NULL, actual);
   char element_type[128];
   if (!index_element_type(actual, element_type, sizeof(element_type))) {
     return set_diag_detail(diag, 3012, "std.mem.get expects an indexable value", expr->args.items[0]->line, expr->args.items[0]->column, "[N]T, Span<T>, MutSpan<T>, or String", actual, "pass an indexable value and handle the Maybe<T> result");
@@ -5436,16 +5497,20 @@ static bool check_stdlib_mem_get_call_expected(CheckContext *ctx, const Program 
   if (!is_int_type(index_type)) {
     return set_diag_detail(diag, 3028, "std.mem.get index must be an integer", expr->args.items[1]->line, expr->args.items[1]->column, "integer index", index_type, "use an integer expression such as usize or a checked integer literal");
   }
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "usize", index_type);
   char result_type[160];
   snprintf(result_type, sizeof(result_type), "Maybe<%s>", element_type);
   set_expr_resolved_type(expr, result_type);
+  z_call_resolution_set_return_type(resolution, result_type);
   return true;
 }
 
-static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag) {
+static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
   if (!check_expr(ctx, program, expr->args.items[0], scope, diag) || !check_expr(ctx, program, expr->args.items[1], scope, diag)) return false;
   const char *left_type = expr_type(ctx, program, expr->args.items[0], scope);
   const char *right_type = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], NULL, left_type);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], NULL, right_type);
   char left_element[128];
   char right_element[128];
   if (!span_element_text(left_type, left_element, sizeof(left_element)) || !span_element_text(right_type, right_element, sizeof(right_element))) {
@@ -5458,10 +5523,11 @@ static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Pr
   return true;
 }
 
-static bool check_stdlib_allocator_len_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *name, const char *result_type, const char *len_message, const char *len_help, const char *mut_help) {
-  if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, 0, name, "use std.mem.nullAlloc() or a mut FixedBufAlloc from std.mem.fixedBufAlloc(buffer)", mut_help)) return false;
+static bool check_stdlib_allocator_len_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name, const char *result_type, const char *len_message, const char *len_help, const char *mut_help) {
+  if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, resolution, 0, name, "use std.mem.nullAlloc() or a mut FixedBufAlloc from std.mem.fixedBufAlloc(buffer)", mut_help)) return false;
   if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, "usize")) return false;
   const char *len_type = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "usize", len_type);
   if (!is_int_type(len_type)) {
     return set_diag_detail(diag, 3028, len_message, expr->args.items[1]->line, expr->args.items[1]->column, "usize length", len_type, len_help);
   }
@@ -5469,50 +5535,45 @@ static bool check_stdlib_allocator_len_call_expected(CheckContext *ctx, const Pr
   return true;
 }
 
-static bool check_stdlib_fs_read_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag) {
+static bool check_stdlib_fs_read_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
   if (!check_expr(ctx, program, expr->args.items[0], scope, diag)) return false;
   const char *file_or_path_type = expr_type(ctx, program, expr->args.items[0], scope);
   const char *first_expected = "String";
   const char *return_type = "usize";
   if (type_is_named_generic(file_or_path_type, "ref") || type_is_named_generic(file_or_path_type, "mutref")) {
     first_expected = "mutref<File>";
-    return_type = "Maybe<usize>";
+      return_type = "Maybe<usize>";
   }
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], first_expected, file_or_path_type);
   if (!types_compatible(program, first_expected, file_or_path_type)) {
     return set_diag_detail(diag, 3012, "std.fs.read expects a path or mutable File reference", expr->args.items[0]->line, expr->args.items[0]->column, "String path or mutref<File>", file_or_path_type, "use std.fs.readBytes(path, buffer) for paths or std.fs.read(&mut file, buffer) for file resources");
   }
   if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, "MutSpan<u8>")) return false;
   const char *buf_type = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "MutSpan<u8>", buf_type);
   if (!types_compatible(program, "MutSpan<u8>", buf_type)) {
     return set_diag_detail(diag, 3012, "std.fs.read expects a mutable byte buffer", expr->args.items[1]->line, expr->args.items[1]->column, "MutSpan<u8>", buf_type, "pass a mutable byte array or MutSpan<u8>");
   }
   set_expr_resolved_type(expr, return_type);
+  z_call_resolution_set_return_type(resolution, return_type);
   return true;
 }
 
-static bool check_stdlib_fs_read_all_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *name) {
-  ZCallResolution read_all_resolution = {0};
-  bool read_all_resolved = resolve_stdlib_call(expr, &read_all_resolution);
-  if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, 0, "std.fs.readAll", "pass an explicit allocator; no global filesystem allocator is available", "store the fixed buffer allocator in a mut binding before reading")) {
-    z_call_resolution_free(&read_all_resolution);
-    return false;
-  }
-  const char *alloc_type = expr_type(ctx, program, expr->args.items[0], scope);
-  if (read_all_resolved) z_call_resolution_add_arg(&read_all_resolution, 0, expr->args.items[0], NULL, alloc_type);
-  if (!check_stdlib_table_arg_range_expected(ctx, program, expr, scope, diag, name, 1, false, read_all_resolved ? &read_all_resolution : NULL)) {
-    z_call_resolution_free(&read_all_resolution);
-    return false;
-  }
-  set_expr_resolved_type(expr, strcmp(name, "std.fs.readAllOrRaise") == 0 ? "owned<ByteBuf>" : "Maybe<owned<ByteBuf>>");
-  z_call_resolution_free(&read_all_resolution);
+static bool check_stdlib_fs_read_all_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name) {
+  if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, resolution, 0, "std.fs.readAll", "pass an explicit allocator; no global filesystem allocator is available", "store the fixed buffer allocator in a mut binding before reading")) return false;
+  if (!check_stdlib_table_arg_range_expected(ctx, program, expr, scope, diag, name, 1, false, resolution)) return false;
+  const char *return_type = strcmp(name, "std.fs.readAllOrRaise") == 0 ? "owned<ByteBuf>" : "Maybe<owned<ByteBuf>>";
+  set_expr_resolved_type(expr, return_type);
+  z_call_resolution_set_return_type(resolution, return_type);
   return true;
 }
 
-static bool check_stdlib_json_parse_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *name) {
-  if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, 0, name, "pass an explicit allocator; JSON parsing does not use a global allocator", "store the fixed buffer allocator in a mut binding before parsing JSON")) return false;
+static bool check_stdlib_json_parse_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name) {
+  if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, resolution, 0, name, "pass an explicit allocator; JSON parsing does not use a global allocator", "store the fixed buffer allocator in a mut binding before parsing JSON")) return false;
   const char *expected = strcmp(name, "std.json.parseBytes") == 0 ? "Span<u8>" : "String";
   if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, expected)) return false;
   const char *actual = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], expected, actual);
   if (!types_compatible_in_scope(program, scope, expected, actual)) {
     char message[256];
     snprintf(message, sizeof(message), "argument 2 to '%s' has incompatible type", name);
@@ -5522,28 +5583,22 @@ static bool check_stdlib_json_parse_call_expected(CheckContext *ctx, const Progr
   return true;
 }
 
-static bool check_stdlib_table_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *name) {
-  ZCallResolution std_resolution = {0};
-  bool std_resolved = resolve_stdlib_call(expr, &std_resolution);
-  if (!check_stdlib_table_arg_range_expected(ctx, program, expr, scope, diag, name, 0, true, std_resolved ? &std_resolution : NULL)) {
-    z_call_resolution_free(&std_resolution);
-    return false;
-  }
-  set_expr_resolved_type(expr, std_resolved && std_resolution.return_type ? std_resolution.return_type : std_call_return_type(expr->left));
-  z_call_resolution_free(&std_resolution);
+static bool check_stdlib_table_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name) {
+  if (!check_stdlib_table_arg_range_expected(ctx, program, expr, scope, diag, name, 0, true, resolution)) return false;
+  set_expr_resolved_type(expr, resolution && resolution->return_type ? resolution->return_type : std_call_return_type(expr->left));
   return true;
 }
 
-static bool check_stdlib_known_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *name) {
-  if (strcmp(name, "std.mem.len") == 0) return check_stdlib_mem_len_call_expected(ctx, program, expr, scope, diag);
-  if (strcmp(name, "std.mem.get") == 0) return check_stdlib_mem_get_call_expected(ctx, program, expr, scope, diag);
-  if (strcmp(name, "std.mem.eqlBytes") == 0) return check_stdlib_mem_eql_bytes_call_expected(ctx, program, expr, scope, diag);
-  if (strcmp(name, "std.mem.allocBytes") == 0) return check_stdlib_allocator_len_call_expected(ctx, program, expr, scope, diag, name, "Maybe<MutSpan<u8>>", "allocation length must be an integer", "pass an integer byte count", "store the fixed buffer allocator in a mut binding before allocating");
-  if (strcmp(name, "std.mem.byteBuf") == 0) return check_stdlib_allocator_len_call_expected(ctx, program, expr, scope, diag, name, "Maybe<owned<ByteBuf>>", "ByteBuf length must be an integer", "pass an integer byte count", "store the fixed buffer allocator in a mut binding before allocating a ByteBuf");
-  if (strcmp(name, "std.fs.read") == 0) return check_stdlib_fs_read_call_expected(ctx, program, expr, scope, diag);
-  if (strcmp(name, "std.fs.readAll") == 0 || strcmp(name, "std.fs.readAllOrRaise") == 0) return check_stdlib_fs_read_all_call_expected(ctx, program, expr, scope, diag, name);
-  if (strcmp(name, "std.json.parse") == 0 || strcmp(name, "std.json.parseBytes") == 0) return check_stdlib_json_parse_call_expected(ctx, program, expr, scope, diag, name);
-  return check_stdlib_table_call_expected(ctx, program, expr, scope, diag, name);
+static bool check_stdlib_known_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name) {
+  if (strcmp(name, "std.mem.len") == 0) return check_stdlib_mem_len_call_expected(ctx, program, expr, scope, diag, resolution);
+  if (strcmp(name, "std.mem.get") == 0) return check_stdlib_mem_get_call_expected(ctx, program, expr, scope, diag, resolution);
+  if (strcmp(name, "std.mem.eqlBytes") == 0) return check_stdlib_mem_eql_bytes_call_expected(ctx, program, expr, scope, diag, resolution);
+  if (strcmp(name, "std.mem.allocBytes") == 0) return check_stdlib_allocator_len_call_expected(ctx, program, expr, scope, diag, resolution, name, "Maybe<MutSpan<u8>>", "allocation length must be an integer", "pass an integer byte count", "store the fixed buffer allocator in a mut binding before allocating");
+  if (strcmp(name, "std.mem.byteBuf") == 0) return check_stdlib_allocator_len_call_expected(ctx, program, expr, scope, diag, resolution, name, "Maybe<owned<ByteBuf>>", "ByteBuf length must be an integer", "pass an integer byte count", "store the fixed buffer allocator in a mut binding before allocating a ByteBuf");
+  if (strcmp(name, "std.fs.read") == 0) return check_stdlib_fs_read_call_expected(ctx, program, expr, scope, diag, resolution);
+  if (strcmp(name, "std.fs.readAll") == 0 || strcmp(name, "std.fs.readAllOrRaise") == 0) return check_stdlib_fs_read_all_call_expected(ctx, program, expr, scope, diag, resolution, name);
+  if (strcmp(name, "std.json.parse") == 0 || strcmp(name, "std.json.parseBytes") == 0) return check_stdlib_json_parse_call_expected(ctx, program, expr, scope, diag, resolution, name);
+  return check_stdlib_table_call_expected(ctx, program, expr, scope, diag, resolution, name);
 }
 
 static bool check_stdlib_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, bool *handled) {
@@ -5570,7 +5625,10 @@ static bool check_stdlib_call_expected(CheckContext *ctx, const Program *program
     zbuf_free(&std_name);
     return set_diag_detail(diag, 3011, message, expr->line, expr->column, "matching std helper signature", "wrong argument count", "update the std helper call");
   }
-  bool ok = check_stdlib_known_call_expected(ctx, program, expr, scope, diag, std_name.data);
+  ZCallResolution std_resolution = {0};
+  bool std_resolved = resolve_stdlib_call(expr, &std_resolution);
+  bool ok = check_stdlib_known_call_expected(ctx, program, expr, scope, diag, std_resolved ? &std_resolution : NULL, std_name.data);
+  z_call_resolution_free(&std_resolution);
   zbuf_free(&std_name);
   return ok;
 }
@@ -5640,30 +5698,11 @@ static bool check_shape_namespace_call_expected(CheckContext *ctx, const Program
   }
   call_resolution_record_bindings(&resolution, method_bindings, method_binding_len);
   call_resolution_record_param_facts(ctx, program, method, expr, NULL, 0, scope, method_bindings, method_binding_len, &resolution);
-  for (size_t i = 0; i < expr->args.len; i++) {
-    char *expected_type = call_resolution_param_type_text(&resolution, i);
-    if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, expected_type)) {
-      free(expected_type);
-      generic_bindings_free(method_bindings, method_binding_len);
-      free(method_bindings);
-      z_call_resolution_free(&resolution);
-      return false;
-    }
-    const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
-    if (!types_compatible_in_scope(program, scope, expected_type, actual)) {
-      char message[256];
-      snprintf(message, sizeof(message), "argument %zu to method '%s.%s' has incompatible type", i + 1, shape->name, method->name);
-      bool ok = type_static_value_mismatch(program, expected_type, actual)
-        ? set_diag_detail(diag, 3047, "shape method static value does not match Self instantiation", expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, "call the method with one matching generic shape instantiation")
-        : set_diag_detail(diag, 3005, message, expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, "pass a value matching the static method parameter");
-      free(expected_type);
-      generic_bindings_free(method_bindings, method_binding_len);
-      free(method_bindings);
-      z_call_resolution_free(&resolution);
-      return ok;
-    }
-    mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
-    free(expected_type);
+  if (!check_call_resolution_args_expected(ctx, program, expr, scope, diag, &resolution, 0, CHECKED_CALL_ARG_SHAPE_METHOD, shape->name, method->name, false)) {
+    generic_bindings_free(method_bindings, method_binding_len);
+    free(method_bindings);
+    z_call_resolution_free(&resolution);
+    return false;
   }
   if (function_has_error_flow(ctx, program, method)) {
     char actual[160];
@@ -5741,29 +5780,6 @@ static bool check_receiver_method_receiver_access(CheckContext *ctx, const Progr
     check_borrow_conflict_at(scope, root, path, receiver_requires_mut, diag, receiver);
 }
 
-static bool check_receiver_method_args_expected(CheckContext *ctx, const Program *program, const Shape *receiver_shape, const Function *receiver_method, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
-  for (size_t i = 0; i < expr->args.len; i++) {
-    char *expected_type = call_resolution_param_type_text(resolution, i + resolution->param_offset);
-    if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, expected_type)) {
-      free(expected_type);
-      return false;
-    }
-    const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
-    if (!types_compatible_in_scope(program, scope, expected_type, actual)) {
-      char message[256];
-      snprintf(message, sizeof(message), "argument %zu to receiver method '%s.%s' has incompatible type", i + 1, receiver_shape->name, receiver_method->name);
-      bool ok = type_static_value_mismatch(program, expected_type, actual)
-        ? set_diag_detail(diag, 3047, "receiver method static value does not match Self instantiation", expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, "call the method with one matching generic shape instantiation")
-        : set_diag_detail(diag, 3005, message, expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, "pass a value matching the receiver method parameter");
-      free(expected_type);
-      return ok;
-    }
-    mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
-    free(expected_type);
-  }
-  return true;
-}
-
 static bool check_receiver_shape_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, bool *handled) {
   diag = check_context_diag(ctx, diag);
   if (handled) *handled = false;
@@ -5817,7 +5833,7 @@ static bool check_receiver_shape_call_expected(CheckContext *ctx, const Program 
     ok = set_diag_detail(diag, 3047, "receiver Self type does not match method receiver", receiver->line, receiver->column, expected_self, self_arg_type, "call the method on a receiver with the expected shape instantiation");
     goto cleanup;
   }
-  if (!check_receiver_method_args_expected(ctx, program, receiver_shape, receiver_method, expr, scope, diag, &resolution)) { ok = false; goto cleanup; }
+  if (!check_call_resolution_args_expected(ctx, program, expr, scope, diag, &resolution, resolution.param_offset, CHECKED_CALL_ARG_RECEIVER_METHOD, receiver_shape->name, receiver_method->name, false)) { ok = false; goto cleanup; }
   if (function_has_error_flow(ctx, program, receiver_method)) {
     if ((!ctx || ctx->allow_fallible_call == 0)) {
       ok = set_diag_detail(diag, 1003, "fallible receiver method call must be checked", expr->line, expr->column, "check receiver.method ...", "unchecked fallible receiver method", "prefix the call with check in a function marked with `!`");
@@ -5862,28 +5878,11 @@ static bool check_constrained_interface_call_expected(CheckContext *ctx, const P
   }
   call_resolution_record_bindings(&resolution, interface_bindings, interface_binding_len);
   call_resolution_record_param_facts(ctx, program, required, expr, NULL, 0, scope, interface_bindings, interface_binding_len, &resolution);
-  for (size_t i = 0; i < expr->args.len; i++) {
-    char *expected_type = call_resolution_param_type_text(&resolution, i);
-    if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, expected_type)) {
-      free(expected_type);
-      generic_bindings_free(interface_bindings, interface_binding_len);
-      free(interface_bindings);
-      z_call_resolution_free(&resolution);
-      return false;
-    }
-    const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
-    if (!types_compatible_in_scope(program, scope, expected_type, actual)) {
-      char message[256];
-      snprintf(message, sizeof(message), "argument %zu to constrained method '%s.%s' has incompatible type", i + 1, interface->name, required->name);
-      bool ok = set_diag_detail(diag, 3042, message, expr->args.items[i]->line, expr->args.items[i]->column, expected_type, actual, "pass a value matching the interface method parameter");
-      free(expected_type);
-      generic_bindings_free(interface_bindings, interface_binding_len);
-      free(interface_bindings);
-      z_call_resolution_free(&resolution);
-      return ok;
-    }
-    mark_owned_move_if_needed(expr->args.items[i], scope, expected_type);
-    free(expected_type);
+  if (!check_call_resolution_args_expected(ctx, program, expr, scope, diag, &resolution, 0, CHECKED_CALL_ARG_CONSTRAINED_INTERFACE, interface->name, required->name, false)) {
+    generic_bindings_free(interface_bindings, interface_binding_len);
+    free(interface_bindings);
+    z_call_resolution_free(&resolution);
+    return false;
   }
   if (function_has_error_flow(ctx, program, required)) {
     char actual[160];

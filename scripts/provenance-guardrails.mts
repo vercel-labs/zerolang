@@ -368,6 +368,10 @@ const namedCallBody = sliceBetween(checker, "static bool build_named_call_bindin
 assertIncludes("named call checking argument facts", namedCallBody, "resolve_named_function_call");
 assertIncludes("named call checking argument facts", namedCallBody, "build_named_call_bindings_expected");
 assertIncludes("named call checking argument facts", namedCallBody, "check_named_call_args_expected");
+assertIncludes("named call checking argument facts", namedCallBody, "check_call_resolution_args_expected");
+assertIncludes("named call checking argument facts", namedCallBody, "check_named_call_fallibility_expected");
+assertIncludes("named call checking argument facts", namedCallBody, "prepare_named_call_return_and_storage_expected");
+assertIncludes("named call checking argument facts", namedCallBody, "finish_named_call_return_expected");
 assertIncludes("named call checking argument facts", namedCallBody, "call_resolution_record_param_facts");
 assertIncludes("named call checking argument facts", namedCallBody, "call_resolution_param_type_text");
 assertIncludes("named call checking storage effects", namedCallBody, "apply_checked_call_storage_effects");
@@ -378,8 +382,12 @@ assertIncludes("stdlib table call checking argument facts", stdlibTableCallBody,
 assertIncludes("stdlib table call checking argument facts", stdlibTableCallBody, "std_call_arg_type");
 
 const stdlibTableDispatchBody = sliceBetween(checker, "static bool check_stdlib_table_call_expected", "static bool check_stdlib_known_call_expected");
-assertIncludes("stdlib table call checking argument facts", stdlibTableDispatchBody, "resolve_stdlib_call");
 assertIncludes("stdlib table call checking argument facts", stdlibTableDispatchBody, "check_stdlib_table_arg_range_expected");
+
+const stdlibKnownCallBody = sliceBetween(checker, "static bool check_stdlib_known_call_expected", "static bool check_stdlib_call_expected");
+assertIncludes("stdlib known call checking argument facts", stdlibKnownCallBody, "ZCallResolution *resolution");
+assertIncludes("stdlib known call checking argument facts", stdlibKnownCallBody, "check_stdlib_mem_get_call_expected");
+assertIncludes("stdlib known call checking argument facts", stdlibKnownCallBody, "check_stdlib_table_call_expected");
 
 const choiceCallBody = sliceBetween(checker, "static bool check_choice_constructor_call_expected", "static bool check_shape_namespace_call_expected");
 assertIncludes("choice call checking argument facts", choiceCallBody, "resolve_choice_constructor_call");
@@ -388,18 +396,18 @@ assertIncludes("choice call checking argument facts", choiceCallBody, "call_reso
 
 const shapeNamespaceCallBody = sliceBetween(checker, "static bool check_shape_namespace_call_expected", "static bool receiver_member_call_should_resolve");
 assertIncludes("shape namespace call checking argument facts", shapeNamespaceCallBody, "call_resolution_record_param_facts");
-assertIncludes("shape namespace call checking argument facts", shapeNamespaceCallBody, "call_resolution_param_type_text");
+assertIncludes("shape namespace call checking argument facts", shapeNamespaceCallBody, "check_call_resolution_args_expected");
 assertIncludes("shape namespace call checking storage effects", shapeNamespaceCallBody, "apply_checked_call_storage_effects");
 
 const receiverCallBody = sliceBetween(checker, "static bool check_receiver_method_receiver_access", "static bool check_constrained_interface_call_expected");
 assertIncludes("receiver call checking argument facts", receiverCallBody, "resolve_receiver_shape_call");
 assertIncludes("receiver call checking argument facts", receiverCallBody, "call_resolution_record_param_facts");
-assertIncludes("receiver call checking argument facts", receiverCallBody, "call_resolution_param_type_text");
+assertIncludes("receiver call checking argument facts", receiverCallBody, "check_call_resolution_args_expected");
 assertIncludes("receiver call checking storage effects", receiverCallBody, "apply_checked_call_storage_effects");
 
 const constrainedInterfaceCallBody = sliceBetween(checker, "static bool check_constrained_interface_call_expected", "static bool check_world_stream_write_call_expected");
 assertIncludes("constrained interface call checking argument facts", constrainedInterfaceCallBody, "call_resolution_record_param_facts");
-assertIncludes("constrained interface call checking argument facts", constrainedInterfaceCallBody, "call_resolution_param_type_text");
+assertIncludes("constrained interface call checking argument facts", constrainedInterfaceCallBody, "check_call_resolution_args_expected");
 assertIncludes("constrained interface call checking storage effects", constrainedInterfaceCallBody, "apply_checked_call_storage_effects");
 
 const callExprBody = sliceBetween(checker, "static bool check_call_expr_expected", "static bool check_expr_expected");
@@ -409,6 +417,11 @@ assertIncludes("call expression checking dispatch", callExprBody, "check_receive
 assertIncludes("call expression checking dispatch", callExprBody, "check_constrained_interface_call_expected");
 assertIncludes("call expression checking dispatch", callExprBody, "check_named_function_call_expected");
 assertIncludes("call expression checking dispatch", callExprBody, "check_stdlib_call_expected");
+
+const stdlibCallBody = sliceBetween(checker, "static bool check_stdlib_call_expected", "static bool check_choice_constructor_call_expected");
+assertIncludes("stdlib call checking dispatch", stdlibCallBody, "resolve_stdlib_call");
+assertIncludes("stdlib call checking dispatch", stdlibCallBody, "check_stdlib_known_call_expected");
+assertIncludes("stdlib call checking dispatch", stdlibCallBody, "z_call_resolution_free");
 
 const callCalleeBody = sliceBetween(checker, "static bool check_call_callee", "static bool build_named_call_bindings_expected");
 assertIncludes("call callee precheck", callCalleeBody, "member_call_skips_callee_expr_check");

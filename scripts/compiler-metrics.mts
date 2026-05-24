@@ -17,7 +17,7 @@ type CScanState = {
 const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 966, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
-  "native/zero-c/src/checker.c": { maxLines: 9262, maxStrcmpCalls: 279 },
+  "native/zero-c/src/checker.c": { maxLines: 9261, maxStrcmpCalls: 279 },
   "native/zero-c/src/main.c": { maxLines: 9872, maxStrcmpCalls: 441 },
   "native/zero-c/src/ir.c": { maxLines: 3700, maxStrcmpCalls: 224 },
   "native/zero-c/src/row_syntax.c": { maxLines: 2150, maxStrcmpCalls: 11 },
