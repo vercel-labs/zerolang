@@ -19,6 +19,8 @@ static const char *const runtime_helper_symbols[ELF_RUNTIME_HELPER_COUNT] = {
   "zero_http_header_found",
   "zero_http_header_offset",
   "zero_http_header_len",
+  "zero_hex_encode",
+  "zero_utf8_valid",
 };
 
 static bool elf_emit_state_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {

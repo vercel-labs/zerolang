@@ -356,3 +356,49 @@ uint32_t zero_http_result_body_len(uint64_t result) {
 uint32_t zero_http_result_error(uint64_t result) {
   return (uint32_t)((result >> 48) & 0xffffu);
 }
+
+int64_t zero_hex_encode(ZeroMutByteView destination, ZeroByteView source) {
+  if (destination.len < source.len * 2) return -1;
+  static const char hex_chars[] = "0123456789abcdef";
+  for (size_t i = 0; i < source.len; i++) {
+    unsigned char val = source.ptr[i];
+    destination.ptr[i * 2] = hex_chars[val >> 4];
+    destination.ptr[i * 2 + 1] = hex_chars[val & 0x0f];
+  }
+  return (int64_t)(source.len * 2);
+}
+
+uint32_t zero_utf8_valid(ZeroByteView bytes) {
+  if (!bytes.ptr) return 0;
+  size_t i = 0;
+  while (i < bytes.len) {
+    unsigned char c = bytes.ptr[i];
+    if (c <= 0x7f) {
+      i++;
+    } else if ((c & 0xe0) == 0xc0) {
+      if (i + 1 >= bytes.len) return 0;
+      if ((bytes.ptr[i + 1] & 0xc0) != 0x80) return 0;
+      if (c < 0xc2) return 0;
+      i += 2;
+    } else if ((c & 0xf0) == 0xe0) {
+      if (i + 2 >= bytes.len) return 0;
+      if ((bytes.ptr[i + 1] & 0xc0) != 0x80) return 0;
+      if ((bytes.ptr[i + 2] & 0xc0) != 0x80) return 0;
+      if (c == 0xe0 && bytes.ptr[i + 1] < 0xa0) return 0;
+      if (c == 0xed && bytes.ptr[i + 1] >= 0xa0) return 0;
+      i += 3;
+    } else if ((c & 0xf8) == 0xf0) {
+      if (i + 3 >= bytes.len) return 0;
+      if ((bytes.ptr[i + 1] & 0xc0) != 0x80) return 0;
+      if ((bytes.ptr[i + 2] & 0xc0) != 0x80) return 0;
+      if ((bytes.ptr[i + 3] & 0xc0) != 0x80) return 0;
+      if (c == 0xf0 && bytes.ptr[i + 1] < 0x90) return 0;
+      if (c == 0xf4 && bytes.ptr[i + 1] >= 0x90) return 0;
+      if (c > 0xf4) return 0;
+      i += 4;
+    } else {
+      return 0;
+    }
+  }
+  return 1;
+}

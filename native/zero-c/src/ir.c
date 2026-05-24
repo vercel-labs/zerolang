@@ -1614,6 +1614,39 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if (strcmp(callee_name, "std.codec.hexEncode") == 0 && expr->args.len == 2) {
+        IrValue *dest = NULL;
+        IrValue *src = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &dest) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &src)) {
+          ir_free_value(dest);
+          ir_free_value(src);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_CODEC_HEX_ENCODE, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = dest;
+        value->right = src;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.codec.utf8Valid") == 0 && expr->args.len == 1) {
+        IrValue *view = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &view)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_CODEC_UTF8_VALID, IR_TYPE_BOOL, expr->line, expr->column);
+        value->left = view;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (strcmp(callee_name, "std.crypto.hmac32") == 0 && expr->args.len == 2) {
         IrValue *left = NULL;
         IrValue *right = NULL;

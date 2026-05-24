@@ -459,6 +459,17 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->buffer_helpers, 3, value->line, value->column, value->kind == IR_VALUE_VEC_LEN ? "std.mem.vecLen" : "std.mem.vecCapacity");
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, value->kind == IR_VALUE_VEC_LEN ? "Vec length result" : "Vec capacity result")) return false;
       return mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec");
+    case IR_VALUE_CODEC_HEX_ENCODE:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.codec.hexEncode");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.codec.hexEncode");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "hexEncode result")) return false;
+      if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid hexEncode destination", "hexEncode destination")) return false;
+      return mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid hexEncode source", "hexEncode source");
+    case IR_VALUE_CODEC_UTF8_VALID:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.codec.utf8Valid");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.codec.utf8Valid");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "utf8Valid result")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid utf8Valid source", "utf8Valid source");
     case IR_VALUE_JSON_PARSE_BYTES:
       mir_require_count(&requirements->allocator_helpers, 2, value->line, value->column, "std.json.parseBytes");
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json.parseBytes");
@@ -912,6 +923,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_VEC_LEN:
     case IR_VALUE_VEC_CAPACITY:
     case IR_VALUE_ALLOC_BYTES:
+    case IR_VALUE_CODEC_HEX_ENCODE:
+    case IR_VALUE_CODEC_UTF8_VALID:
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:

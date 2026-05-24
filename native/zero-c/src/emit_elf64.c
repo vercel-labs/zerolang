@@ -403,6 +403,17 @@ static bool elf_emit_json_parse_bytes_call(ZBuf *code, const IrFunction *fun, co
   return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_JSON_PARSE_BYTES, patch, diag, value);
 }
 
+static bool elf_emit_utf8_valid_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_ptr(code, fun, value->left, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  if (!elf_emit_byte_view_len(code, fun, value->left, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_UTF8_VALID, patch, diag, value);
+}
+
 static bool elf_emit_byte_view_len(ZBuf *code, const IrFunction *fun, const IrValue *view, ElfEmitContext *ctx, ZDiag *diag) {
   unsigned len = 0;
   if (elf_byte_view_const_len(fun, view, &len)) {
@@ -805,6 +816,14 @@ static bool elf_emit_json_value(ZBuf *code, const IrFunction *fun, const IrValue
       return true;
     }
     default: return elf_diag(diag, "direct ELF64 runtime value kind is invalid for this helper", value->line, value->column, "invalid runtime value");
+  }
+}
+
+static bool elf_emit_codec_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  switch (value->kind) {
+    case IR_VALUE_CODEC_UTF8_VALID:
+      return elf_emit_utf8_valid_call(code, fun, value, ctx, diag);
+    default: return elf_diag(diag, "direct ELF64 codec value kind is invalid for this helper", value->line, value->column, "invalid codec value");
   }
 }
 
@@ -1237,6 +1256,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_core_value(code, fun, value, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
       return elf_emit_json_value(code, fun, value, ctx, diag);
+    case IR_VALUE_CODEC_UTF8_VALID:
+      return elf_emit_codec_value(code, fun, value, ctx, diag);
     case IR_VALUE_HTTP_FETCH: case IR_VALUE_HTTP_RESULT_OK: case IR_VALUE_HTTP_RESULT_STATUS: case IR_VALUE_HTTP_RESULT_BODY_LEN: case IR_VALUE_HTTP_RESULT_ERROR:
     case IR_VALUE_HTTP_HEADER_FOUND: case IR_VALUE_HTTP_HEADER_OFFSET: case IR_VALUE_HTTP_HEADER_LEN: case IR_VALUE_HTTP_RESPONSE_LEN:
     case IR_VALUE_HTTP_RESPONSE_HEADERS_LEN: case IR_VALUE_HTTP_RESPONSE_BODY_OFFSET: case IR_VALUE_HTTP_HEADER_VALUE:
@@ -1624,8 +1645,51 @@ static bool elf_emit_alloc_bytes_to_local(ZBuf *text, const IrFunction *fun, con
   elf_emit_store_local_slot_reg(text, alloc, 12, 1, false);
   return true;
 }
+static bool elf_emit_hex_encode_to_local(ZBuf *text, const IrFunction *fun, const IrInstr *instr, const IrLocal *local, ElfEmitContext *ctx, ZDiag *diag) {
+  const IrValue *value = instr->value;
+  if (!value || value->kind != IR_VALUE_CODEC_HEX_ENCODE) return elf_diag(diag, "direct ELF64 hexEncode source is invalid", instr->line, instr->column, "invalid hexEncode");
+  
+  if (!elf_emit_byte_view_ptr(text, fun, value->left, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  if (!elf_emit_byte_view_len(text, fun, value->left, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  
+  if (!elf_emit_byte_view_ptr(text, fun, value->right, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  if (!elf_emit_byte_view_len(text, fun, value->right, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  
+  z_x64_emit_pop_reg64(text, 1); // rcx (source length)
+  z_x64_emit_pop_reg64(text, 2); // rdx (source pointer)
+  z_x64_emit_pop_reg64(text, 6); // rsi (destination length)
+  z_x64_emit_pop_reg64(text, 7); // rdi (destination pointer)
+  
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_HEX_ENCODE, patch, diag, value)) return false;
+  
+  z_x64_emit_test_rax_rax(text, true);
+  size_t fail = elf_emit_js_placeholder(text);
+  
+  z_x64_emit_push_rax(text);
+  if (!elf_emit_byte_view_ptr(text, fun, value->left, ctx, diag)) return false;
+  z_x64_emit_mov_rdx_from_rax(text);
+  z_x64_emit_pop_rax(text); // pop length back to rax
+  
+  elf_emit_store_local_slot_reg(text, local, 16, 0, false);
+  elf_emit_store_local_slot_reg(text, local, 8, 2, true);
+  z_x64_emit_mov_eax_u32(text, 1);
+  elf_emit_store_local_slot_reg(text, local, 0, 0, false);
+  
+  size_t end = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, fail, text->len);
+  elf_emit_maybe_clear(text, local);
+  z_x64_patch_rel32(text, end, text->len);
+  
+  return true;
+}
 
 static bool elf_emit_maybe_byte_view_local_set(ZBuf *text, const IrFunction *fun, const IrInstr *instr, const IrLocal *local, ElfEmitContext *ctx, ZDiag *diag) {
+  if (instr->value && instr->value->kind == IR_VALUE_CODEC_HEX_ENCODE) return elf_emit_hex_encode_to_local(text, fun, instr, local, ctx, diag);
   if (instr->value && instr->value->kind == IR_VALUE_FS_TEMP_NAME) return elf_emit_temp_name_to_local(text, fun, instr, local, ctx, diag);
   if (instr->value && instr->value->kind == IR_VALUE_ARGS_GET) return elf_emit_args_get_to_local(text, fun, instr->value, local, ctx, diag);
   if (instr->value && instr->value->kind == IR_VALUE_ENV_GET) return elf_emit_env_get_to_local(text, fun, instr->value, local, ctx, diag);

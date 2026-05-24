@@ -15,11 +15,11 @@ type CScanState = {
 };
 
 const fileBudgets = {
-  "native/zero-c/include/zero.h": { maxLines: 966, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 970, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 9261, maxStrcmpCalls: 279 },
-  "native/zero-c/src/main.c": { maxLines: 9872, maxStrcmpCalls: 441 },
-  "native/zero-c/src/ir.c": { maxLines: 3700, maxStrcmpCalls: 224 },
+  "native/zero-c/src/main.c": { maxLines: 9900, maxStrcmpCalls: 441 },
+  "native/zero-c/src/ir.c": { maxLines: 3720, maxStrcmpCalls: 228 },
   "native/zero-c/src/row_syntax.c": { maxLines: 2150, maxStrcmpCalls: 11 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability.c": { maxLines: 260, maxStrcmpCalls: 2 },
@@ -43,10 +43,10 @@ const fileBudgets = {
   "native/zero-c/src/macho_format.h": { maxLines: 90, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_emit.c": { maxLines: 320, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_emit.h": { maxLines: 80, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_macho64.c": { maxLines: 1400, maxStrcmpCalls: 2 },
+  "native/zero-c/src/emit_macho64.c": { maxLines: 1470, maxStrcmpCalls: 2 },
   "native/zero-c/src/macho_emit_state.c": { maxLines: 210, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_emit_state.h": { maxLines: 90, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_elf64.c": { maxLines: 2075, maxStrcmpCalls: 3 },
+  "native/zero-c/src/emit_elf64.c": { maxLines: 2140, maxStrcmpCalls: 3 },
   "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 205, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff.c": { maxLines: 905, maxStrcmpCalls: 1 },
   "native/zero-c/src/fs.c": { maxLines: 1250, maxStrcmpCalls: 32 },
@@ -67,7 +67,7 @@ const fileBudgets = {
 };
 
 const knownLargeFunctionLimits = new Map([
-  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1484],
+  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1530],
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 554],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 924],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 374],

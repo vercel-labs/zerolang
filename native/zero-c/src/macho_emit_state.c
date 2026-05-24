@@ -19,6 +19,8 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_http_header_found",
   "_zero_http_header_offset",
   "_zero_http_header_len",
+  "_zero_hex_encode",
+  "_zero_utf8_valid",
 };
 
 static bool macho_emit_state_diag_at(ZDiag *diag, const char *message, int line, int column, const char *actual) {

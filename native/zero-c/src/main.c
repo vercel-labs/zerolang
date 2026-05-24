@@ -4549,6 +4549,8 @@ typedef struct {
   bool path_unlink_file;
   bool path_rename;
   bool zero_json_parse_bytes;
+  bool zero_hex_encode;
+  bool zero_utf8_valid;
   bool zero_http_fetch_result;
   bool zero_http_result_ok;
   bool zero_http_result_status;
@@ -4616,6 +4618,12 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
       audit->zero_json_parse_bytes = true;
+      break;
+    case IR_VALUE_CODEC_HEX_ENCODE:
+      audit->zero_hex_encode = true;
+      break;
+    case IR_VALUE_CODEC_UTF8_VALID:
+      audit->zero_utf8_valid = true;
       break;
     case IR_VALUE_HTTP_FETCH:
       audit->zero_http_fetch_result = true;
@@ -4698,6 +4706,8 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
   if (value->kind == IR_VALUE_JSON_PARSE_BYTES ||
       value->kind == IR_VALUE_JSON_VALIDATE_BYTES ||
       value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
+      value->kind == IR_VALUE_CODEC_HEX_ENCODE ||
+      value->kind == IR_VALUE_CODEC_UTF8_VALID ||
       value->kind == IR_VALUE_HTTP_FETCH ||
       value->kind == IR_VALUE_HTTP_RESULT_OK ||
       value->kind == IR_VALUE_HTTP_RESULT_STATUS ||
@@ -4745,6 +4755,8 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (!audit) return 0;
   size_t count = 0;
   if (audit->zero_json_parse_bytes) count++;
+  if (audit->zero_hex_encode) count++;
+  if (audit->zero_utf8_valid) count++;
   if (audit->zero_http_fetch_result) count++;
   if (audit->zero_http_result_ok) count++;
   if (audit->zero_http_result_status) count++;
@@ -4781,6 +4793,8 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   bool first = true;
   zbuf_append(buf, "[");
   if (audit && audit->zero_json_parse_bytes) append_json_string_array_item(buf, &first, "zero_json_parse_bytes");
+  if (audit && audit->zero_hex_encode) append_json_string_array_item(buf, &first, "zero_hex_encode");
+  if (audit && audit->zero_utf8_valid) append_json_string_array_item(buf, &first, "zero_utf8_valid");
   if (audit && audit->zero_http_fetch_result) append_json_string_array_item(buf, &first, "zero_http_fetch_result");
   if (audit && audit->zero_http_result_ok) append_json_string_array_item(buf, &first, "zero_http_result_ok");
   if (audit && audit->zero_http_result_status) append_json_string_array_item(buf, &first, "zero_http_result_status");
