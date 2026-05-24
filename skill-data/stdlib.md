@@ -1,5 +1,5 @@
 ---
-name: zero-stdlib
+name: stdlib
 description: Use Zero standard library modules and target-gated capabilities.
 ---
 

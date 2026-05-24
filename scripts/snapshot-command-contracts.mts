@@ -244,13 +244,13 @@ assert(skillsList.data.some((skill) => skill.name === "zero" && /Zero/.test(skil
 const skillNames = new Set(skillsList.data.map((skill) => skill.name));
 for (const name of [
   "zero",
-  "zero-agent",
-  "zero-builds",
-  "zero-diagnostics",
-  "zero-language",
-  "zero-packages",
-  "zero-stdlib",
-  "zero-testing",
+  "agent",
+  "builds",
+  "diagnostics",
+  "language",
+  "packages",
+  "stdlib",
+  "testing",
 ]) {
   assert(skillNames.has(name), `missing bundled skill ${name}`);
 }
@@ -261,12 +261,12 @@ assert.match(zeroSkill.data[0].content, /# Zero/);
 assert.match(zeroSkill.data[0].content, /zero skills get zero --full/);
 assert.equal(zeroSkill.data[0].files, undefined);
 
-const languageSkill = json(["skills", "get", "zero-language", "--json"]).body;
+const languageSkill = json(["skills", "get", "language", "--json"]).body;
 assert.equal(languageSkill.success, true);
-assert.match(languageSkill.data[0].content, /# Zero Language/);
+assert.match(languageSkill.data[0].content, /# zerolang Language/);
 assert.match(languageSkill.data[0].content, /pub fn main/);
 
-const diagnosticSkill = json(["skills", "get", "zero-diagnostics", "--json"]).body;
+const diagnosticSkill = json(["skills", "get", "diagnostics", "--json"]).body;
 assert.equal(diagnosticSkill.success, true);
 assert.match(diagnosticSkill.data[0].content, /fixSafety/);
 
@@ -286,7 +286,7 @@ const badSkillsListFlag = zero(["skills", "list", "--unknown", "--json"], { allo
 assert.notEqual(badSkillsListFlag.code, 0);
 assert.match(JSON.parse(badSkillsListFlag.stdout).error, /Unknown skills flag: --unknown/);
 
-const badSkillsGetFlag = zero(["skills", "get", "zero-language", "--unknown", "--json"], { allowFailure: true });
+const badSkillsGetFlag = zero(["skills", "get", "language", "--unknown", "--json"], { allowFailure: true });
 assert.notEqual(badSkillsGetFlag.code, 0);
 assert.match(JSON.parse(badSkillsGetFlag.stdout).error, /Unknown skills flag: --unknown/);
 

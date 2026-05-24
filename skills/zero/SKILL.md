@@ -36,7 +36,7 @@ If the user has multiple Zero binaries, use the same binary that will run the pr
 /path/to/zero skills get zero --full
 ```
 
-Use `zero skills list` to discover additional skills bundled with that Zero version. Use `zero skills get <name>` to load the one relevant to the task. Common inner skills include `zero-agent`, `zero-language`, `zero-diagnostics`, `zero-packages`, `zero-builds`, `zero-testing`, and `zero-stdlib`.
+Use `zero skills list` to discover additional skills bundled with that Zero version. Use `zero skills get <name>` to load the one relevant to the task. Common inner skills include `agent`, `language`, `diagnostics`, `packages`, `builds`, `testing`, and `stdlib`.
 
 ## Common Entry Points
 

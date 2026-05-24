@@ -176,13 +176,13 @@ describe("native zero CLI", () => {
     const skillNames = new Set(list.data.map((skill: { name: string }) => skill.name));
     for (const name of [
       "zero",
-      "zero-agent",
-      "zero-builds",
-      "zero-diagnostics",
-      "zero-language",
-      "zero-packages",
-      "zero-stdlib",
-      "zero-testing",
+      "agent",
+      "builds",
+      "diagnostics",
+      "language",
+      "packages",
+      "stdlib",
+      "testing",
     ]) {
       assert.equal(skillNames.has(name), true);
     }
@@ -193,12 +193,12 @@ describe("native zero CLI", () => {
     assert.match(zeroSkill.data[0].content, /zero skills get zero --full/);
     assert.equal(zeroSkill.data[0].files, undefined);
 
-    const languageSkill = JSON.parse((await runZero(["skills", "get", "zero-language", "--json"])).stdout);
+    const languageSkill = JSON.parse((await runZero(["skills", "get", "language", "--json"])).stdout);
     assert.equal(languageSkill.success, true);
-    assert.match(languageSkill.data[0].content, /# Zero Language/);
+    assert.match(languageSkill.data[0].content, /# zerolang Language/);
     assert.match(languageSkill.data[0].content, /pub fn main/);
 
-    const diagnosticSkill = JSON.parse((await runZero(["skills", "get", "zero-diagnostics", "--json"])).stdout);
+    const diagnosticSkill = JSON.parse((await runZero(["skills", "get", "diagnostics", "--json"])).stdout);
     assert.equal(diagnosticSkill.success, true);
     assert.match(diagnosticSkill.data[0].content, /fixSafety/);
 
@@ -218,17 +218,17 @@ describe("native zero CLI", () => {
     assert.notEqual(badListFlag.code, 0);
     assert.match(JSON.parse(badListFlag.stdout).error, /Unknown skills flag: --unknown/);
 
-    const badGetFlag = await runZero(["skills", "get", "zero-language", "--unknown", "--json"]).catch((error) => error);
+    const badGetFlag = await runZero(["skills", "get", "language", "--unknown", "--json"]).catch((error) => error);
     assert.notEqual(badGetFlag.code, 0);
     assert.match(JSON.parse(badGetFlag.stdout).error, /Unknown skills flag: --unknown/);
 
     const nativeList = JSON.parse((await runNativeZero(["skills", "list", "--json"])).stdout);
     assert.equal(nativeList.success, true);
-    assert.equal(nativeList.data.some((skill: { name: string }) => skill.name === "zero-language"), true);
+    assert.equal(nativeList.data.some((skill: { name: string }) => skill.name === "language"), true);
 
-    const nativeLanguageSkill = JSON.parse((await runNativeZero(["skills", "get", "zero-language", "--json"])).stdout);
+    const nativeLanguageSkill = JSON.parse((await runNativeZero(["skills", "get", "language", "--json"])).stdout);
     assert.equal(nativeLanguageSkill.success, true);
-    assert.match(nativeLanguageSkill.data[0].content, /# Zero Language/);
+    assert.match(nativeLanguageSkill.data[0].content, /# zerolang Language/);
   });
 
   it("handles target-specific executable names", async () => {

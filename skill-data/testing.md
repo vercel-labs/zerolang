@@ -1,5 +1,5 @@
 ---
-name: zero-testing
+name: testing
 description: Write and run Zero test blocks with JSON output.
 ---
 

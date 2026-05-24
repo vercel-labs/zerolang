@@ -1,5 +1,5 @@
 ---
-name: zero-agent
+name: agent
 description: Agent workflow for making focused Zero changes with CLI feedback.
 ---
 
@@ -14,8 +14,8 @@ Use the same compiler binary that will run the project:
 ```sh
 zero --version
 zero skills list
-zero skills get zero-language
-zero skills get zero-diagnostics
+zero skills get language
+zero skills get diagnostics
 ```
 
 Inside the Zero repository checkout, prefer `bin/zero` over a global `zero`. For installed user projects, use the `zero` on `PATH` unless the user points at another binary.
@@ -46,7 +46,7 @@ zero fix --plan --json <file-or-package>
 - Keep examples copyable and runnable from the repository or package root.
 - Prefer explicit types at public boundaries and when inference is unclear.
 - Use `Maybe<T>`, explicit `!` / `![...]`, and `check` instead of hidden failure.
-- Do not invent syntax. Load `zero-language` when unsure.
+- Do not invent syntax. Load `language` when unsure.
 - Do not invent CLI fields. Run the command with `--json` and read the data.
 
 ## Useful Focused Commands

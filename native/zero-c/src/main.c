@@ -6747,7 +6747,11 @@ static const char *helper_module_name(const ZStdHelperInfo *helper) {
 
 static const char *helper_error_behavior(const ZStdHelperInfo *helper) {
   if (!helper) return "unknown";
-  if (strstr(helper->name, "OrRaise")) return "![NotFound TooLarge Io]";
+  if (z_std_helper_is_fallible(helper)) {
+    static char behavior[160];
+    z_std_helper_error_set_text(helper, behavior, sizeof(behavior));
+    return behavior;
+  }
   if (helper->return_type && strncmp(helper->return_type, "Maybe<", strlen("Maybe<")) == 0) return "returns null on failure";
   if (strcmp(helper->name, "std.proc.spawn") == 0) return "returns ProcStatus";
   return "infallible";

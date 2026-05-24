@@ -1,5 +1,5 @@
 ---
-name: zero-builds
+name: builds
 description: Build, run, ship, target, and profile Zero programs.
 ---
 

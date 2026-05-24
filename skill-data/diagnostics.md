@@ -1,5 +1,5 @@
 ---
-name: zero-diagnostics
+name: diagnostics
 description: Read Zero diagnostics, explanations, and typed fix plans.
 ---
 

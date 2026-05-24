@@ -1,5 +1,5 @@
 ---
-name: zero-packages
+name: packages
 description: Create, inspect, and repair Zero packages and manifests.
 ---
 

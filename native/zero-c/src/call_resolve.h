@@ -29,6 +29,10 @@ typedef struct {
 } ZCallBinding;
 
 typedef struct {
+  char *name;
+} ZCallError;
+
+typedef struct {
   ZCallKind kind;
   const Expr *call_expr;
   const Expr *callee_expr;
@@ -40,6 +44,7 @@ typedef struct {
   const Choice *choice;
   const Param *choice_case;
   size_t param_offset;
+  size_t param_len;
   char *callee_name;
   char *return_type;
   char *effect_summary_key;
@@ -49,6 +54,9 @@ typedef struct {
   ZCallBinding *bindings;
   size_t binding_len;
   size_t binding_cap;
+  ZCallError *errors;
+  size_t error_len;
+  size_t error_cap;
   bool fallible;
 } ZCallResolution;
 
@@ -57,10 +65,13 @@ void z_call_resolution_free(ZCallResolution *resolution);
 void z_call_resolution_set_callee_name(ZCallResolution *resolution, const char *name);
 void z_call_resolution_set_return_type(ZCallResolution *resolution, const char *return_type);
 void z_call_resolution_set_effect_summary_key(ZCallResolution *resolution, const char *key);
+size_t z_call_resolution_expected_arg_count(const ZCallResolution *resolution);
 void z_call_resolution_add_arg(ZCallResolution *resolution, size_t param_index, const Expr *arg_expr, const char *expected_type, const char *actual_type);
 const char *z_call_resolution_param_type(const ZCallResolution *resolution, size_t param_index);
 void z_call_resolution_add_binding(ZCallResolution *resolution, const char *name, const char *type, bool is_static, const char *static_type);
 const char *z_call_resolution_binding_type(const ZCallResolution *resolution, const char *name);
+void z_call_resolution_add_error(ZCallResolution *resolution, const char *name);
+void z_call_resolution_error_set_text(const ZCallResolution *resolution, char *buf, size_t cap);
 const char *z_call_kind_name(ZCallKind kind);
 
 #endif

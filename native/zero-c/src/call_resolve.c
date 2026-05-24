@@ -1,5 +1,6 @@
 #include "call_resolve.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +22,10 @@ void z_call_resolution_free(ZCallResolution *resolution) {
     free(resolution->args[i].actual_type);
   }
   free(resolution->args);
+  for (size_t i = 0; i < resolution->error_len; i++) {
+    free(resolution->errors[i].name);
+  }
+  free(resolution->errors);
   free(resolution->callee_name);
   free(resolution->return_type);
   free(resolution->effect_summary_key);
@@ -49,6 +54,11 @@ void z_call_resolution_set_effect_summary_key(ZCallResolution *resolution, const
   char *copy = key ? z_strdup(key) : NULL;
   free(resolution->effect_summary_key);
   resolution->effect_summary_key = copy;
+}
+
+size_t z_call_resolution_expected_arg_count(const ZCallResolution *resolution) {
+  if (!resolution || resolution->param_len < resolution->param_offset) return 0;
+  return resolution->param_len - resolution->param_offset;
 }
 
 void z_call_resolution_add_arg(ZCallResolution *resolution, size_t param_index, const Expr *arg_expr, const char *expected_type, const char *actual_type) {
@@ -123,6 +133,35 @@ const char *z_call_resolution_binding_type(const ZCallResolution *resolution, co
     if (resolution->bindings[i].name && strcmp(resolution->bindings[i].name, name) == 0) return resolution->bindings[i].type;
   }
   return NULL;
+}
+
+void z_call_resolution_add_error(ZCallResolution *resolution, const char *name) {
+  if (!resolution || !name) return;
+  if (resolution->error_len == resolution->error_cap) {
+    size_t next_cap = resolution->error_cap ? resolution->error_cap * 2 : 4;
+    resolution->errors = z_checked_reallocarray(resolution->errors, next_cap, sizeof(ZCallError));
+    for (size_t i = resolution->error_cap; i < next_cap; i++) {
+      resolution->errors[i] = (ZCallError){0};
+    }
+    resolution->error_cap = next_cap;
+  }
+  resolution->errors[resolution->error_len++].name = z_strdup(name);
+  resolution->fallible = true;
+}
+
+void z_call_resolution_error_set_text(const ZCallResolution *resolution, char *buf, size_t cap) {
+  if (!buf || cap == 0) return;
+  snprintf(buf, cap, "![");
+  size_t used = strlen(buf);
+  for (size_t i = 0; resolution && i < resolution->error_len; i++) {
+    const char *name = resolution->errors[i].name;
+    if (!name) continue;
+    if (used >= cap - 1) break;
+    snprintf(buf + used, cap - used, "%s%s", used > 2 ? " " : "", name);
+    used = strlen(buf);
+  }
+  if (used < cap - 1) snprintf(buf + used, cap - used, "]");
+  else buf[cap - 1] = '\0';
 }
 
 const char *z_call_kind_name(ZCallKind kind) {

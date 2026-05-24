@@ -113,6 +113,7 @@ name. A test marked this way must fail; an unexpected pass fails the command.
 ```sh
 zero skills list
 zero skills get zero
+zero skills get language
 zero skills get zero --full
 ```
 

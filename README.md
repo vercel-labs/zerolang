@@ -38,15 +38,15 @@ The compiler ships skill text that matches the binary being used:
 
 ```bash
 zero skills list
-zero skills get zero-language
-zero skills get zero-diagnostics
-zero skills get zero-stdlib
+zero skills get language
+zero skills get diagnostics
+zero skills get stdlib
 ```
 
 Print the language guide bundled with the compiler:
 
 ```bash
-zero skills get zero-language
+zero skills get language
 ```
 
 ### Inspect Compiler Facts
@@ -71,7 +71,7 @@ The inspection and repair surfaces are compiler commands, not editor-only featur
 
 | Command | Contract |
 | --- | --- |
-| `zero skills get zero-language` | Version-matched language rules bundled with the compiler binary. |
+| `zero skills get language` | Version-matched language rules bundled with the compiler binary. |
 | `zero check --json` | Diagnostics with code, span, expected/actual fields, fix safety, repair metadata, compile-time sandbox facts, and target readiness. |
 | `zero parse --json` | A stable parse summary with declarations, function signatures, and body node kinds. |
 | `zero graph --json` | Modules, imports, public symbols, capabilities, effects, ownership facts, helper use, and interface fingerprints. |

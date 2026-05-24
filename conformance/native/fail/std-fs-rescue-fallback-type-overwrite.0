@@ -1,0 +1,4 @@
+pub fn main Void ![NotFound TooLarge Io]
+  let fs std.fs.host()
+  mut file owned<File> check std.fs.createOrRaise fs ".zero/conformance/rescue-fallback-created.txt"
+  let bad rescue (std.fs.openOrRaise fs ".zero/conformance/rescue-fallback-missing.txt") err (check std.fs.fileLenOrRaise (&mut file))

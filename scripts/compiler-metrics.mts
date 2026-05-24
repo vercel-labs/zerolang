@@ -20,6 +20,9 @@ const fileBudgets = {
   "native/zero-c/src/checker.c": { maxLines: 9261, maxStrcmpCalls: 279 },
   "native/zero-c/src/main.c": { maxLines: 9900, maxStrcmpCalls: 441 },
   "native/zero-c/src/ir.c": { maxLines: 3720, maxStrcmpCalls: 228 },
+  "native/zero-c/src/checker.c": { maxLines: 9402, maxStrcmpCalls: 279 },
+  "native/zero-c/src/main.c": { maxLines: 9876, maxStrcmpCalls: 441 },
+  "native/zero-c/src/ir.c": { maxLines: 3700, maxStrcmpCalls: 224 },
   "native/zero-c/src/row_syntax.c": { maxLines: 2150, maxStrcmpCalls: 11 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability.c": { maxLines: 260, maxStrcmpCalls: 2 },
@@ -54,8 +57,8 @@ const fileBudgets = {
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_sig.c": { maxLines: 180, maxStrcmpCalls: 2 },
-  "native/zero-c/src/std_sig.h": { maxLines: 26, maxStrcmpCalls: 0 },
+  "native/zero-c/src/std_sig.c": { maxLines: 202, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.h": { maxLines: 31, maxStrcmpCalls: 0 },
   "native/zero-c/src/target_backend.c": { maxLines: 348, maxStrcmpCalls: 32 },
   "native/zero-c/src/target.c": { maxLines: 465, maxStrcmpCalls: 15 },
   "native/zero-c/src/type_core.c": { maxLines: 900, maxStrcmpCalls: 8 },
@@ -69,6 +72,8 @@ const fileBudgets = {
 const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1530],
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 554],
+  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1484],
+  ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 556],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 924],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 374],
   ["native/zero-c/src/checker.c|static bool check_stmt(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {", 259],
@@ -399,7 +404,9 @@ function parseCheckerArgCounts(text) {
 
 function checkerUsesSharedArgCounts(text) {
   const block = cTextWithoutComments(cBlock(text, "static int std_call_arg_count"));
-  return /\bz_std_helper_find\s*\(/.test(block) && /->arg_count\b/.test(block);
+  const code = cTextWithoutComments(text);
+  return (/\bz_std_helper_find\s*\(/.test(block) && /->arg_count\b/.test(block)) ||
+    (/param_len\s*=\s*helper->arg_count/.test(code) && /\bz_call_resolution_expected_arg_count\s*\(/.test(code));
 }
 
 function parseCheckerArgTypeNames(text) {
@@ -437,9 +444,50 @@ function parseStdHelperArgTypes(text) {
   };
 }
 
+function parseStdHelperErrors(text) {
+  const block = cTextWithoutComments(cBlock(text, "const ZStdHelperInfo z_std_helpers[] ="));
+  const names = [];
+  const map = new Map();
+  for (const match of block.matchAll(/\{\s*"([^"]+)"\s*,\s*"[^"]+"\s*,\s*-?\d+\s*,\s*\{[^}]*\}\s*,\s*\{([^}]*)\}/g)) {
+    const errors = match[2]
+      .split(",")
+      .map((error) => error.trim())
+      .filter((error) => error.length > 0)
+      .map((error) => error === "NULL" ? null : error.replace(/^"|"$/g, ""))
+      .filter((error) => error !== null);
+    if (errors.length === 0) continue;
+    names.push(match[1]);
+    if (!map.has(match[1])) map.set(match[1], errors);
+  }
+  return {
+    names: names.sort((a, b) => a.localeCompare(b)),
+    map,
+    duplicates: duplicates(names),
+  };
+}
+
 function checkerUsesSharedArgTypes(text) {
   const block = cTextWithoutComments(cBlock(text, "static const char *std_call_arg_type"));
   return /\bz_std_helper_arg_type\s*\(/.test(block);
+}
+
+function checkerUsesSharedStdlibFallibility(text) {
+  const code = cTextWithoutComments(text);
+  const resolver = cTextWithoutComments(cBlock(text, "static bool resolve_stdlib_callee"));
+  return /\bresolve_stdlib_fallible_call\s*\(/.test(code) &&
+    /\bfunction_error_sets_include_stdlib_resolution\s*\(/.test(code) &&
+    /\bz_call_resolution_error_set_text\s*\(/.test(code) &&
+    /\bz_call_resolution_add_error\s*\(/.test(resolver) &&
+    /\bz_std_helper_error_name\s*\(/.test(resolver) &&
+    !/\bis_builtin_fallible_call\b/.test(code) &&
+    !/\bbuiltin_fallible_return_type\b/.test(code);
+}
+
+function mainUsesSharedStdlibFallibility(text) {
+  const block = cTextWithoutComments(cBlock(text, "static const char *helper_error_behavior"));
+  return /\bz_std_helper_is_fallible\s*\(/.test(block) &&
+    /\bz_std_helper_error_set_text\s*\(/.test(block) &&
+    !/\bOrRaise\b/.test(block);
 }
 
 function helperReturnTypeMismatches(helpers, checkerReturnTypes) {
@@ -611,6 +659,12 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
       helpers: stdlib.duplicateCheckerArgTypes,
     });
   }
+  if (stdlib.duplicateStdHelperErrors.length > 0) {
+    violations.push({
+      kind: "duplicate-stdlib-helper-error",
+      helpers: stdlib.duplicateStdHelperErrors,
+    });
+  }
   if (stdlib.argTypeArityMismatches.length > 0) {
     violations.push({
       kind: "stdlib-helper-arg-type-arity-mismatch",
@@ -635,6 +689,18 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
     violations.push({
       kind: "stale-stdlib-helper-arg-type-allowlist",
       names: staleArgTypeAllowlist,
+    });
+  }
+  if (stdlib.orRaiseHelpersMissingFallibleErrors.length > 0) {
+    violations.push({
+      kind: "stdlib-or-raise-helper-error-missing",
+      names: stdlib.orRaiseHelpersMissingFallibleErrors,
+    });
+  }
+  if (!stdlib.sharedFallibilityLookup.checker || !stdlib.sharedFallibilityLookup.graph) {
+    violations.push({
+      kind: "stdlib-shared-fallibility-lookup",
+      sharedFallibilityLookup: stdlib.sharedFallibilityLookup,
     });
   }
   if (!backendFormats.directTarget.ruleMatrix ||
@@ -854,6 +920,7 @@ if (checkerArgCountsUseSharedTable) {
   }
 }
 const stdHelperArgTypeInfo = parseStdHelperArgTypes(stdSig);
+const stdHelperErrorInfo = parseStdHelperErrors(stdSig);
 const checkerArgTypesUseSharedTable = checkerUsesSharedArgTypes(checker);
 const checkerArgTypeInfo = checkerArgTypesUseSharedTable ? stdHelperArgTypeInfo : parseCheckerArgTypeInfo(checker);
 const checkerArgTypeNames = checkerArgTypeInfo.names;
@@ -861,6 +928,8 @@ const checkerKnownStdNames = namesFromRegex(cTextWithoutComments(checker), /"(st
 const checkerReturnNames = sortedMapKeys(checkerReturnTypes);
 const checkerArgCountNames = sortedMapKeys(checkerArgCounts);
 const mainHelperNames = stdHelpers.map((helper) => helper.name);
+const fallibleHelperNames = stdHelperErrorInfo.names;
+const orRaiseHelperNames = mainHelperNames.filter((name) => name.endsWith("OrRaise"));
 const irStdNames = namesFromRegex(ir, /strcmp\(callee_name,\s+"(std\.[^"]+)"/g);
 const nonzeroArgHelperNames = stdHelpers
   .filter((helper) => helper.argCount > 0)
@@ -881,6 +950,7 @@ const stdlib = {
   duplicateCheckerReturnTypes: checkerReturnTypeInfo.duplicates,
   duplicateCheckerArgCounts: checkerArgCountInfo.duplicates,
   duplicateCheckerArgTypes: checkerArgTypeInfo.duplicates,
+  duplicateStdHelperErrors: stdHelperErrorInfo.duplicates,
   returnNamesMissingFromMainHelpers: missingFrom(checkerReturnNames, mainHelperNames),
   checkerReturnsMissingFromMainHelpers: missingFrom(checkerReturnNames, mainHelperNames),
   mainHelpersMissingFromCheckerReturns: missingFrom(mainHelperNames, checkerReturnNames),
@@ -891,11 +961,17 @@ const stdlib = {
   checkerArgTypesMissingFromMainHelpers: missingFrom(checkerArgTypeNames, mainHelperNames),
   argTypeArityMismatches: helperArgTypeArityMismatches(stdHelpers, checkerArgTypeInfo.map),
   nonzeroArgHelpersMissingFromCheckerArgTypes: missingFrom(nonzeroArgHelperNames, checkerArgTypeNames),
+  fallibleHelperCount: new Set(fallibleHelperNames).size,
+  orRaiseHelpersMissingFallibleErrors: missingFrom(orRaiseHelperNames, fallibleHelperNames),
   mainHelpersMissingFromCheckerKnownNames: checkerReturnTypesUseSharedTable && checkerArgCountsUseSharedTable ? [] : missingFrom(mainHelperNames, checkerKnownStdNames),
   sharedSignatureLookup: {
     checkerReturnTypes: checkerReturnTypesUseSharedTable,
     checkerArgCounts: checkerArgCountsUseSharedTable,
     checkerArgTypes: checkerArgTypesUseSharedTable,
+  },
+  sharedFallibilityLookup: {
+    checker: checkerUsesSharedStdlibFallibility(checker),
+    graph: mainUsesSharedStdlibFallibility(main),
   },
 };
 const elfFormatSource = texts.get("native/zero-c/src/elf_format.c") ?? "";

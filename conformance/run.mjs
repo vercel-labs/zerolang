@@ -2550,7 +2550,7 @@ const stdFsErrorMismatchJson = await execFileAsync(zero, ["check", "--json", "co
 assert.notEqual(stdFsErrorMismatchJson.code, 0);
 const stdFsErrorMismatchBody = JSON.parse(stdFsErrorMismatchJson.stdout);
 assert.equal(stdFsErrorMismatchBody.diagnostics[0].code, "ERR002");
-assert.match(stdFsErrorMismatchBody.diagnostics[0].actual, /std fs call may raise/);
+assert.match(stdFsErrorMismatchBody.diagnostics[0].actual, /std call may raise/);
 
 const stdFsCreateErrorMismatchJson = await execFileAsync(zero, ["check", "--json", "conformance/native/fail/std-fs-create-error-set-mismatch.0"]).catch((error) => error);
 assert.notEqual(stdFsCreateErrorMismatchJson.code, 0);
@@ -3247,6 +3247,10 @@ assert.match(errorSetMismatch.stderr, /ERR002/);
 const rescueFallbackTypeMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/rescue-fallback-type-mismatch.0"]).catch((error) => error);
 assert.notEqual(rescueFallbackTypeMismatch.code, 0);
 assert.match(rescueFallbackTypeMismatch.stderr, /TYP003|TYP002/);
+
+const stdFsRescueFallbackTypeOverwrite = await execFileAsync(zero, ["check", "conformance/native/fail/std-fs-rescue-fallback-type-overwrite.0"]).catch((error) => error);
+assert.notEqual(stdFsRescueFallbackTypeOverwrite.code, 0);
+assert.match(stdFsRescueFallbackTypeOverwrite.stderr, /TYP002/);
 
 const constFieldAssignment = await execFileAsync(zero, ["check", "conformance/native/fail/const-field-assignment.0"]).catch((error) => error);
 assert.notEqual(constFieldAssignment.code, 0);
