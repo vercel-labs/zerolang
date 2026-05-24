@@ -81,10 +81,7 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/main.c|static int run_tests_direct(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target) {", 151],
   ["native/zero-c/src/ast.c|void z_free_program(Program *program) {", 143],
   ["native/zero-c/src/checker.c|static const char *std_call_arg_type(const char *name, size_t index) {", 139],
-  ["native/zero-c/src/row_syntax.c|static Stmt *row_parse_statement(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, ZDiag *diag) {", 132],
-  ["native/zero-c/src/row_syntax.c|Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *diag) {", 130],
   ["native/zero-c/src/main.c|static bool test_eval_expr(const Program *program, TestEnv *env, const Expr *expr, TestValue *out, TestRunFailure *failure) {", 124],
-  ["native/zero-c/src/row_syntax.c|bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag) {", 123],
 ]);
 
 const knownReturnTypeDivergences = new Map([

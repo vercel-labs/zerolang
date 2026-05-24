@@ -1238,6 +1238,44 @@ static bool row_statement_owns_child_rows(const Stmt *stmt) {
 static StmtVec row_parse_child_statements(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t parent, ZDiag *diag);
 static MatchArmVec row_parse_match_arms(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t parent, ZDiag *diag);
 
+static Stmt *row_parse_binding_statement(const ZRowTokenVec *tokens, size_t pos, size_t end, const ZRowToken *start, bool is_mut, ZDiag *diag) {
+  pos++;
+  const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected binding name");
+  Stmt *stmt = row_new_stmt(STMT_LET, start);
+  stmt->mutable_binding = is_mut;
+  if (name) stmt->name = z_strdup(name->text);
+  if (row_explicit_type_annotation(tokens, pos, end, diag)) stmt->type = row_parse_type_text(tokens, &pos, end, diag);
+  else if (!row_has_diag(diag) && row_is_type_start(tokens, pos, end)) {
+    size_t copy = pos;
+    ZDiag scratch = {0};
+    char *type = row_parse_type_text(tokens, &copy, end, &scratch);
+    free(type);
+    if (scratch.code == 0 && copy >= end) {
+      const ZRowToken *type_token = &tokens->items[pos];
+      row_diag(diag, type_token->line, type_token->column, type_token->length > 0 ? (int)type_token->length : 1,
+               "expected initializer after let type annotation", "expression after type annotation", "add an initializer or remove the type annotation");
+    }
+  }
+  stmt->expr = row_parse_expr_range(tokens, pos, end, diag);
+  return stmt;
+}
+
+static Stmt *row_parse_for_statement(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, size_t pos, size_t end, const ZRowToken *start, ZDiag *diag) {
+  Stmt *stmt = row_new_stmt(STMT_FOR, start);
+  pos++;
+  const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected loop binding name");
+  if (name) stmt->name = z_strdup(name->text);
+  size_t range = row_find_top_level_token(tokens, pos, end, "..");
+  if (range == Z_ROW_NO_PARENT) {
+    row_diag(diag, start->line, start->column, 1, "expected '..' in range loop", "range expression", NULL);
+    return stmt;
+  }
+  stmt->expr = row_parse_expr_range(tokens, pos, range, diag);
+  stmt->range_end = row_parse_expr_range(tokens, range + 1, end, diag);
+  stmt->then_body = row_parse_child_statements(tokens, tree, row_index, diag);
+  return stmt;
+}
+
 static Stmt *row_parse_statement(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, ZDiag *diag) {
   const ZRowNode *node = &tree->items[row_index];
   size_t pos = node->first_token;
@@ -1245,26 +1283,7 @@ static Stmt *row_parse_statement(const ZRowTokenVec *tokens, const ZRowTree *tre
   const ZRowToken *start = &tokens->items[pos];
 
   if (row_token_text_at(tokens, pos, end, "let") || row_token_text_at(tokens, pos, end, "mut")) {
-    bool is_mut = row_token_text_at(tokens, pos, end, "mut");
-    pos++;
-    const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected binding name");
-    Stmt *stmt = row_new_stmt(STMT_LET, start);
-    stmt->mutable_binding = is_mut;
-    if (name) stmt->name = z_strdup(name->text);
-    if (row_explicit_type_annotation(tokens, pos, end, diag)) stmt->type = row_parse_type_text(tokens, &pos, end, diag);
-    else if (!row_has_diag(diag) && row_is_type_start(tokens, pos, end)) {
-      size_t copy = pos;
-      ZDiag scratch = {0};
-      char *type = row_parse_type_text(tokens, &copy, end, &scratch);
-      free(type);
-      if (scratch.code == 0 && copy >= end) {
-        const ZRowToken *type_token = &tokens->items[pos];
-        row_diag(diag, type_token->line, type_token->column, type_token->length > 0 ? (int)type_token->length : 1,
-                 "expected initializer after let type annotation", "expression after type annotation", "add an initializer or remove the type annotation");
-      }
-    }
-    stmt->expr = row_parse_expr_range(tokens, pos, end, diag);
-    return stmt;
+    return row_parse_binding_statement(tokens, pos, end, start, row_token_text_at(tokens, pos, end, "mut"), diag);
   }
 
   if (row_token_text_at(tokens, pos, end, "set")) {
@@ -1324,19 +1343,7 @@ static Stmt *row_parse_statement(const ZRowTokenVec *tokens, const ZRowTree *tre
   }
 
   if (row_token_text_at(tokens, pos, end, "for")) {
-    Stmt *stmt = row_new_stmt(STMT_FOR, start);
-    pos++;
-    const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected loop binding name");
-    if (name) stmt->name = z_strdup(name->text);
-    size_t range = row_find_top_level_token(tokens, pos, end, "..");
-    if (range == Z_ROW_NO_PARENT) {
-      row_diag(diag, start->line, start->column, 1, "expected '..' in range loop", "range expression", NULL);
-      return stmt;
-    }
-    stmt->expr = row_parse_expr_range(tokens, pos, range, diag);
-    stmt->range_end = row_parse_expr_range(tokens, range + 1, end, diag);
-    stmt->then_body = row_parse_child_statements(tokens, tree, row_index, diag);
-    return stmt;
+    return row_parse_for_statement(tokens, tree, row_index, pos, end, start, diag);
   }
 
   if (row_token_text_at(tokens, pos, end, "break")) {
@@ -1698,6 +1705,76 @@ static void row_parse_choice_decl(const ZRowTokenVec *tokens, const ZRowTree *tr
   row_push_choice(&program->choices, item);
 }
 
+static bool row_parse_use_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, size_t pos, bool is_public, Program *program, ZDiag *diag) {
+  const ZRowNode *node = &tree->items[row_index];
+  size_t end = node->first_token + node->token_count;
+  if (is_public) {
+    row_diag(diag, node->line, node->column, 1, "pub use is not supported in row syntax", "use declaration without pub", "remove pub from the import row");
+    return false;
+  }
+
+  pos++;
+  size_t module_start = pos;
+  size_t module_end = pos;
+  while (module_end < end && !row_token_text(tokens, module_end, "as")) module_end++;
+  if (module_end == module_start) {
+    const ZRowToken *token = module_start < end ? &tokens->items[module_start] : &tokens->items[pos - 1];
+    row_diag(diag, token->line, token->column, 1, "expected import module name", "import module name", NULL);
+    return false;
+  }
+  if (!row_validate_use_module(tokens, module_start, module_end, diag)) return false;
+
+  char *alias = NULL;
+  int end_column = node->column;
+  if (module_end > module_start) {
+    const ZRowToken *last_module = &tokens->items[module_end - 1];
+    end_column = last_module->column + (int)last_module->length;
+  }
+  if (row_token_text_at(tokens, module_end, end, "as")) {
+    size_t alias_pos = module_end + 1;
+    const ZRowToken *alias_token = row_expect_word(tokens, &alias_pos, end, diag, "expected import alias");
+    if (alias_token) {
+      alias = z_strdup(alias_token->text);
+      end_column = alias_token->column + (int)alias_token->length;
+    }
+    if (alias_pos < end) {
+      row_diag(diag, tokens->items[alias_pos].line, tokens->items[alias_pos].column, 1, "expected end of row after import alias", "end of row", NULL);
+    }
+  }
+  row_push_use(&program->use_imports, (UseImport){
+    .module = row_join_tokens(tokens, module_start, module_end),
+    .alias = alias,
+    .line = node->line,
+    .column = node->column,
+    .end_column = end_column
+  });
+  row_reject_child_rows(tree, row_index, diag, "use declaration");
+  return !row_has_diag(diag);
+}
+
+static bool row_parse_test_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, size_t pos, Program *program, size_t *test_counter, ZDiag *diag) {
+  const ZRowNode *node = &tree->items[row_index];
+  size_t end = node->first_token + node->token_count;
+  pos++;
+  const ZRowToken *name = pos < end && tokens->items[pos].kind == Z_ROW_TOKEN_STRING ? &tokens->items[pos++] : NULL;
+  if (!row_expect_end(tokens, pos, end, diag, "test declaration")) return false;
+
+  ZBuf generated;
+  zbuf_init(&generated);
+  zbuf_appendf(&generated, "__zero_test_%zu", (*test_counter)++);
+  Function fun = {
+    .name = generated.data,
+    .test_name = name ? z_strdup(name->text) : z_strdup(""),
+    .return_type = z_strdup("Void"),
+    .is_test = true,
+    .body = row_parse_child_statements(tokens, tree, row_index, diag),
+    .line = node->line,
+    .column = node->column
+  };
+  row_push_function(&program->functions, fun);
+  return !row_has_diag(diag);
+}
+
 Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *diag) {
   Program program = {0};
   if (!tokens || !tree) {
@@ -1742,45 +1819,7 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
     }
 
     if (row_token_text_at(tokens, pos, end, "use")) {
-      if (is_public) {
-        row_diag(diag, node->line, node->column, 1, "pub use is not supported in row syntax", "use declaration without pub", "remove pub from the import row");
-        return program;
-      }
-      pos++;
-      size_t module_start = pos;
-      size_t module_end = pos;
-      while (module_end < end && !row_token_text(tokens, module_end, "as")) module_end++;
-      if (module_end == module_start) {
-        const ZRowToken *token = module_start < end ? &tokens->items[module_start] : &tokens->items[pos - 1];
-        row_diag(diag, token->line, token->column, 1, "expected import module name", "import module name", NULL);
-        return program;
-      }
-      if (!row_validate_use_module(tokens, module_start, module_end, diag)) return program;
-      char *alias = NULL;
-      int end_column = node->column;
-      if (module_end > module_start) {
-        const ZRowToken *last_module = &tokens->items[module_end - 1];
-        end_column = last_module->column + (int)last_module->length;
-      }
-      if (row_token_text_at(tokens, module_end, end, "as")) {
-        size_t alias_pos = module_end + 1;
-        const ZRowToken *alias_token = row_expect_word(tokens, &alias_pos, end, diag, "expected import alias");
-        if (alias_token) {
-          alias = z_strdup(alias_token->text);
-          end_column = alias_token->column + (int)alias_token->length;
-        }
-        if (alias_pos < end) {
-          row_diag(diag, tokens->items[alias_pos].line, tokens->items[alias_pos].column, 1, "expected end of row after import alias", "end of row", NULL);
-        }
-      }
-      row_push_use(&program.use_imports, (UseImport){
-        .module = row_join_tokens(tokens, module_start, module_end),
-        .alias = alias,
-        .line = node->line,
-        .column = node->column,
-        .end_column = end_column
-      });
-      row_reject_child_rows(tree, i, diag, "use declaration");
+      if (!row_parse_use_decl(tokens, tree, i, pos, is_public, &program, diag)) return program;
     } else if (row_token_text_at(tokens, pos, end, "const")) {
       pos++;
       const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected const name");
@@ -1803,22 +1842,7 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
     } else if (row_token_text_at(tokens, pos, end, "choice")) {
       row_parse_choice_decl(tokens, tree, i, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "test")) {
-      pos++;
-      const ZRowToken *name = pos < end && tokens->items[pos].kind == Z_ROW_TOKEN_STRING ? &tokens->items[pos++] : NULL;
-      if (!row_expect_end(tokens, pos, end, diag, "test declaration")) return program;
-      ZBuf generated;
-      zbuf_init(&generated);
-      zbuf_appendf(&generated, "__zero_test_%zu", test_counter++);
-      Function fun = {
-        .name = generated.data,
-        .test_name = name ? z_strdup(name->text) : z_strdup(""),
-        .return_type = z_strdup("Void"),
-        .is_test = true,
-        .body = row_parse_child_statements(tokens, tree, i, diag),
-        .line = node->line,
-        .column = node->column
-      };
-      row_push_function(&program.functions, fun);
+      if (!row_parse_test_decl(tokens, tree, i, pos, &program, &test_counter, diag)) return program;
     } else {
       row_diag(diag, node->line, node->column, 1, "expected row declaration", "use, extern c, const, alias, interface, fn, type, enum, choice, or test", NULL);
       return program;
@@ -1827,6 +1851,13 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
   }
 
   return program;
+}
+
+static void row_layout_finish_current(const ZRowTokenVec *tokens, ZRowTree *tree, RowPendingTrivia *pending, size_t parent, size_t depth, size_t *last_row, size_t *first_token, size_t *token_count, size_t *trailing_comment) {
+  *last_row = row_finalize_node_with_trivia(tree, pending, parent, *first_token, *token_count, depth, *trailing_comment, tokens);
+  *first_token = Z_ROW_NO_PARENT;
+  *token_count = 0;
+  *trailing_comment = Z_ROW_NO_PARENT;
 }
 
 bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag) {
@@ -1876,10 +1907,7 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
             free(pending.items);
             return false;
           }
-          last_row = row_finalize_node_with_trivia(tree, &pending, parents[depth], first_token, token_count, depth, trailing_comment, tokens);
-          first_token = Z_ROW_NO_PARENT;
-          token_count = 0;
-          trailing_comment = Z_ROW_NO_PARENT;
+          row_layout_finish_current(tokens, tree, &pending, parents[depth], depth, &last_row, &first_token, &token_count, &trailing_comment);
         }
         if (depth == 0) {
           row_diag(diag, token->line, token->column, 1, "row layout contains an unmatched dedent", "matching indentation", NULL);
@@ -1892,10 +1920,7 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
         break;
       case Z_ROW_TOKEN_NEWLINE:
         if (first_token != Z_ROW_NO_PARENT) {
-          last_row = row_finalize_node_with_trivia(tree, &pending, parents[depth], first_token, token_count, depth, trailing_comment, tokens);
-          first_token = Z_ROW_NO_PARENT;
-          token_count = 0;
-          trailing_comment = Z_ROW_NO_PARENT;
+          row_layout_finish_current(tokens, tree, &pending, parents[depth], depth, &last_row, &first_token, &token_count, &trailing_comment);
         } else if (row_newline_is_blank(tokens, i, first_token)) {
           row_pending_trivia_push(&pending, (ZRowTrivia){
             .kind = Z_ROW_TRIVIA_BLANK_LINE,
@@ -1928,10 +1953,7 @@ bool z_row_parse_layout(const ZRowTokenVec *tokens, ZRowTree *tree, ZDiag *diag)
         break;
       case Z_ROW_TOKEN_EOF:
         if (first_token != Z_ROW_NO_PARENT) {
-          last_row = row_finalize_node_with_trivia(tree, &pending, parents[depth], first_token, token_count, depth, trailing_comment, tokens);
-          first_token = Z_ROW_NO_PARENT;
-          token_count = 0;
-          trailing_comment = Z_ROW_NO_PARENT;
+          row_layout_finish_current(tokens, tree, &pending, parents[depth], depth, &last_row, &first_token, &token_count, &trailing_comment);
         }
         (void)last_row;
         row_flush_block_trivia(&pending, tree, 0);
