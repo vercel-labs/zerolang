@@ -7258,9 +7258,18 @@ static bool call_facts_resolve_call(CheckContext *ctx, const Program *program, c
 static void call_facts_collect_expr(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by);
 static void call_facts_collect_stmt_vec(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const StmtVec *body, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by);
 
+static bool call_facts_resolution_has_instantiable_body(const ZCallResolution *resolution) {
+  if (!resolution || !resolution->callee || resolution->binding_len == 0) return false;
+  return resolution->kind == Z_CALL_FUNCTION ||
+         resolution->kind == Z_CALL_RECEIVER ||
+         resolution->kind == Z_CALL_SHAPE_NAMESPACE ||
+         resolution->kind == Z_CALL_CONCRETE_CONSTRAINED_SHAPE;
+}
+
 static void call_facts_collect_instantiated_callee(ZBuf *buf, const SourceInput *input, bool *wrote, const Program *program, const ZCallResolution *resolution, size_t instantiation_depth, const char *owner) {
-  if (!resolution || resolution->kind != Z_CALL_FUNCTION || !resolution->callee || resolution->binding_len == 0 || instantiation_depth >= 1) return;
+  if (!call_facts_resolution_has_instantiable_body(resolution) || instantiation_depth >= 1) return;
   const Function *callee = resolution->callee;
+  const Shape *callee_shape = resolution->kind == Z_CALL_FUNCTION ? NULL : resolution->shape;
   GenericBinding *bindings = z_checked_calloc(resolution->binding_len, sizeof(GenericBinding));
   for (size_t i = 0; i < resolution->binding_len; i++) {
     bindings[i].name = resolution->bindings[i].name;
@@ -7269,14 +7278,18 @@ static void call_facts_collect_instantiated_callee(ZBuf *buf, const SourceInput 
     bindings[i].static_type = resolution->bindings[i].static_type;
   }
   Scope callee_scope = {0};
-  call_facts_seed_scope(program, &callee_scope, NULL, callee, bindings, resolution->binding_len);
+  call_facts_seed_scope(program, &callee_scope, callee_shape, callee, bindings, resolution->binding_len);
   CheckContext callee_ctx = {
     .program = program,
     .function = callee,
+    .shape = callee_shape,
     .return_provenance_expr_bindings = bindings,
     .return_provenance_expr_binding_len = resolution->binding_len,
   };
-  call_facts_collect_stmt_vec(buf, input, wrote, &callee_ctx, program, &callee->body, &callee_scope, callee->name, instantiation_depth + 1, owner);
+  char callee_owner[192];
+  if (callee_shape) snprintf(callee_owner, sizeof(callee_owner), "%s.%s", callee_shape->name, callee->name);
+  else snprintf(callee_owner, sizeof(callee_owner), "%s", callee->name ? callee->name : "");
+  call_facts_collect_stmt_vec(buf, input, wrote, &callee_ctx, program, &callee->body, &callee_scope, callee_owner, instantiation_depth + 1, owner);
   scope_free(&callee_scope);
   generic_bindings_free(bindings, resolution->binding_len);
   free(bindings);
@@ -7344,6 +7357,21 @@ static void call_facts_collect_function(ZBuf *buf, const SourceInput *input, boo
   scope_free(&scope);
 }
 
+static void call_facts_collect_shape_defaults(ZBuf *buf, const SourceInput *input, bool *wrote, const Program *program, const Shape *shape) {
+  if (!shape) return;
+  Scope scope = {0};
+  call_facts_seed_scope(program, &scope, shape, NULL, NULL, 0);
+  CheckContext ctx = {.program = program, .shape = shape};
+  for (size_t field_index = 0; field_index < shape->fields.len; field_index++) {
+    const Param *field = &shape->fields.items[field_index];
+    if (!field->default_value) continue;
+    char owner[192];
+    snprintf(owner, sizeof(owner), "%s.%s", shape->name ? shape->name : "", field->name ? field->name : "");
+    call_facts_collect_expr(buf, input, wrote, &ctx, program, field->default_value, &scope, owner, 0, NULL);
+  }
+  scope_free(&scope);
+}
+
 void z_append_call_resolution_facts_json(ZBuf *buf, const SourceInput *input, const Program *program) {
   zbuf_append(buf, "{\"schemaVersion\":1,\"supportedKinds\":[");
   for (int kind = Z_CALL_FUNCTION; kind <= Z_CALL_CHOICE_CONSTRUCTOR; kind++) {
@@ -7357,6 +7385,7 @@ void z_append_call_resolution_facts_json(ZBuf *buf, const SourceInput *input, co
   }
   for (size_t shape_index = 0; program && shape_index < program->shapes.len; shape_index++) {
     Shape *shape = &program->shapes.items[shape_index];
+    call_facts_collect_shape_defaults(buf, input, &wrote, program, shape);
     for (size_t method_index = 0; method_index < shape->methods.len; method_index++) {
       call_facts_collect_function(buf, input, &wrote, program, shape, &shape->methods.items[method_index]);
     }

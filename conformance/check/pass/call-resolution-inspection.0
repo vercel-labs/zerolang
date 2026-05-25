@@ -1,8 +1,11 @@
 interface Readable<T: Type>
   fn read i32 self ref<T>
 
+fn defaultCount i32
+  ret 41
+
 type Counter
-  value i32
+  value i32 defaultCount()
 
   fn init Self value i32
     ret Counter . value value
@@ -31,12 +34,14 @@ fn readValue<T: Readable<T>> i32 value ref<T>
 
 pub fn main Void world World !
   mut counter Counter Counter.init 41
+  let defaulted Counter Counter .
   counter.bump 1
   let total i32 add (id<i32> 40) 2
   let wrapped i32 wrap<i32> total
   let size usize std.mem.len "zero"
   let event Event Event.key total
   let direct i32 Counter.read (&counter)
+  let defaultedValue i32 Counter.read (&defaulted)
   let viaInterface i32 readValue<Counter> (&counter)
-  if && (&& (&& (== total 42) (== wrapped 42)) (== size 4)) (&& (== direct 42) (== viaInterface 42))
+  if && (&& (&& (&& (== total 42) (== wrapped 42)) (== size 4)) (== defaultedValue 41)) (&& (== direct 42) (== viaInterface 42))
     check world.out.write "call resolution inspection ok\n"

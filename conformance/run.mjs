@@ -2554,10 +2554,23 @@ assert(callFacts.calls.some((item) => item.kind === "receiver" && item.calleeNam
 assert(callFacts.calls.some((item) => item.kind === "constrained_interface" && item.calleeName === "read" && item.interface === "Readable" && item.owner === "readValue"));
 assert(callFacts.calls.some((item) => item.kind === "concrete_constrained_shape" && item.calleeName === "read" && item.shape === "Counter" && item.instantiatedBy === "main"));
 assert(callFacts.calls.some((item) => item.calleeName === "add" && item.path === "conformance/check/pass/call-resolution-inspection.0"));
+assert(callFacts.calls.some((item) => item.kind === "function" && item.calleeName === "defaultCount" && item.owner === "Counter.value" && item.returnType === "i32"));
 
 const callResolutionMemGetGraph = await execFileAsync(zero, ["graph", "--json", "conformance/native/pass/checked-bounds-get.0"]);
 const callResolutionMemGetFacts = JSON.parse(callResolutionMemGetGraph.stdout).callResolution;
 assert(callResolutionMemGetFacts.calls.some((item) => item.kind === "stdlib" && item.calleeName === "std.mem.get" && item.returnType === "Maybe<u8>" && item.args.some((arg) => arg.paramIndex === 0 && arg.actualType === "[3]u8")));
+
+const callResolutionGenericShapeGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/generic-shape-methods.0"]);
+const callResolutionGenericShapeFacts = JSON.parse(callResolutionGenericShapeGraph.stdout).callResolution;
+assert(callResolutionGenericShapeFacts.calls.some((item) =>
+  item.kind === "stdlib" &&
+  item.calleeName === "std.mem.get" &&
+  item.owner === "FixedVec.get" &&
+  item.instantiationDepth === 1 &&
+  item.instantiatedBy === "main" &&
+  item.returnType === "Maybe<u8>" &&
+  item.args.some((arg) => arg.paramIndex === 0 && arg.actualType === "[4]u8")
+));
 
 const callResolutionFsReadGraph = await execFileAsync(zero, ["graph", "--json", "conformance/native/pass/std-fs-resource.0"]);
 const callResolutionFsReadFacts = JSON.parse(callResolutionFsReadGraph.stdout).callResolution;
