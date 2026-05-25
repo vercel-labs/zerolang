@@ -1,3 +1,5 @@
+use types
+
 fn cleanup Void
   ret
 
