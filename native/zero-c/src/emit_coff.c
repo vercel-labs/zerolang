@@ -335,6 +335,7 @@ static bool coff_emit_byte_view_index_load_value(ZBuf *text, const IrFunction *f
 
 static bool coff_emit_byte_copy_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value->left || !value->right) return coff_diag_at(diag, "direct COFF byte copy requires source and destination byte views", value->line, value->column, "missing byte view");
+  z_x64_emit_push_reg64(text, 7); z_x64_emit_push_reg64(text, 6);
   if (!coff_emit_byte_view_ptr(text, fun, value->left, ctx, diag)) return false;
   z_x64_emit_push_rax(text);
   if (!coff_emit_byte_view_len(text, fun, value->left, ctx, diag)) return false;
@@ -346,20 +347,21 @@ static bool coff_emit_byte_copy_value(ZBuf *text, const IrFunction *fun, const I
   z_x64_emit_pop_reg64(text, 1);
   z_x64_emit_pop_reg64(text, 6);
   z_x64_emit_byte_copy_min_loop(text);
+  z_x64_emit_pop_reg64(text, 6); z_x64_emit_pop_reg64(text, 7);
   return true;
 }
 
 static bool coff_emit_byte_fill_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value->left || !value->right) return coff_diag_at(diag, "direct COFF byte fill requires a fill byte and destination byte view", value->line, value->column, "missing byte fill input");
   if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
-  z_x64_emit_push_rax(text);
+  z_x64_emit_push_rax(text); z_x64_emit_push_reg64(text, 7);
   if (!coff_emit_byte_view_ptr(text, fun, value->right, ctx, diag)) return false;
   z_x64_emit_push_rax(text);
   if (!coff_emit_byte_view_len(text, fun, value->right, ctx, diag)) return false;
   z_x64_emit_mov_rdx_from_rax(text);
-  z_x64_emit_pop_reg64(text, 7);
-  z_x64_emit_pop_reg64(text, 9);
-  z_x64_emit_byte_fill_loop(text);
+  z_x64_emit_pop_reg64(text, 7); z_x64_emit_pop_reg64(text, 11);
+  z_x64_emit_pop_reg64(text, 9); z_x64_emit_push_reg64(text, 11);
+  z_x64_emit_byte_fill_loop(text); z_x64_emit_pop_reg64(text, 7);
   return true;
 }
 

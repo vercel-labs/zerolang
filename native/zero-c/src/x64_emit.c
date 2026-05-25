@@ -436,8 +436,8 @@ void z_x64_emit_byte_copy_min_loop(ZBuf *buf) {
   size_t loop = buf->len;
   z_x64_emit_cmp_reg_reg(buf, 2, 8, true);
   size_t done = z_x64_emit_jcc32_placeholder(buf, 0x86);
-  z_x64_emit_load_reg8_base_index(buf, 3, 6, 8);
-  z_x64_emit_store_base_index_reg8(buf, 7, 8, 3);
+  z_x64_emit_load_reg8_base_index(buf, 10, 6, 8);
+  z_x64_emit_store_base_index_reg8(buf, 7, 8, 10);
   z_x64_emit_inc_r8(buf);
   size_t back = z_x64_emit_jmp32_placeholder(buf, 0xe9);
   z_x64_patch_rel32(buf, back, loop);
