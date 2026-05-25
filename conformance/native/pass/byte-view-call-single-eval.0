@@ -1,0 +1,24 @@
+fn bump String bytes MutSpan<u8>
+  set bytes[0] + bytes[0] 1_u8
+  ret bytes[..1]
+
+fn firstByte u8 text String
+  ret text[0]
+
+pub fn main Void world World !
+  mut storage [1]u8 [96]
+  mut ok Bool true
+  if == (std.mem.eql (bump storage) "a") false
+    set ok false
+  if != storage[0] 97_u8
+    set ok false
+  if != (firstByte (bump storage)) 98_u8
+    set ok false
+  if != storage[0] 98_u8
+    set ok false
+  if == (std.mem.eql (bump storage) "c") false
+    set ok false
+  if != storage[0] 99_u8
+    set ok false
+  if ok
+    check world.out.write "byte view call single eval ok\n"

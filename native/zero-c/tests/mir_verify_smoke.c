@@ -227,7 +227,7 @@ static void array_write_contract_fails(void) {
   IrInstr store = {.kind = IR_INSTR_INDEX_STORE, .array_index = 0, .index = &index, .value = &item, .line = 1, .column = 1};
   IrFunction fun = function("main", IR_TYPE_VOID, IR_TYPE_VOID, locals, 1, 0, &store, 1, 16, false);
   IrProgram ir = program(&fun, 1);
-  expect_fail("array write to scalar", &ir, "array write to a non-array local");
+  expect_fail("array write to scalar", &ir, "indexed write to an unsupported local");
 }
 
 static void array_write_type_mismatch_fails(void) {
@@ -237,7 +237,17 @@ static void array_write_type_mismatch_fails(void) {
   IrInstr store = {.kind = IR_INSTR_INDEX_STORE, .array_index = 0, .index = &index, .value = &item, .line = 1, .column = 1};
   IrFunction fun = function("main", IR_TYPE_VOID, IR_TYPE_VOID, locals, 1, 0, &store, 1, 16, false);
   IrProgram ir = program(&fun, 1);
-  expect_fail("array write type mismatch", &ir, "array write type mismatch");
+  expect_fail("array write type mismatch", &ir, "indexed write type mismatch");
+}
+
+static void byte_view_write_contract_passes(void) {
+  IrLocal locals[] = {scalar_local("bytes", IR_TYPE_BYTE_VIEW, 0, false)};
+  IrValue index = value(IR_VALUE_INT, IR_TYPE_USIZE);
+  IrValue item = value(IR_VALUE_INT, IR_TYPE_U8);
+  IrInstr store = {.kind = IR_INSTR_INDEX_STORE, .array_index = 0, .index = &index, .value = &item, .line = 1, .column = 1};
+  IrFunction fun = function("main", IR_TYPE_VOID, IR_TYPE_VOID, locals, 1, 0, &store, 1, 16, false);
+  IrProgram ir = program(&fun, 1);
+  expect_ok("byte view write contract", &ir);
 }
 
 static void array_load_contract_fails(void) {
@@ -950,6 +960,7 @@ int main(void) {
   unsupported_instruction_kind_fails();
   array_write_contract_fails();
   array_write_type_mismatch_fails();
+  byte_view_write_contract_passes();
   array_load_contract_fails();
   array_load_type_mismatch_fails();
   array_byte_view_contract_fails();

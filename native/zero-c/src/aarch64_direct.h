@@ -6,6 +6,7 @@
 typedef struct ZAArch64DirectContext ZAArch64DirectContext;
 
 typedef bool (*ZAArch64DirectDataPatchFn)(void *user, size_t patch_offset, unsigned data_offset, const IrValue *value, ZDiag *diag);
+typedef bool (*ZAArch64DirectCallPatchFn)(void *user, size_t patch_offset, unsigned callee_index, const IrValue *value, ZDiag *diag);
 typedef bool (*ZAArch64DirectWorldWriteFn)(ZBuf *text, const IrInstr *instr, ZAArch64DirectContext *ctx, ZDiag *diag);
 
 struct ZAArch64DirectContext {
@@ -15,6 +16,7 @@ struct ZAArch64DirectContext {
   unsigned rodata_base_offset;
   void *patch_user;
   ZAArch64DirectDataPatchFn record_data_patch;
+  ZAArch64DirectCallPatchFn record_call_patch;
   ZAArch64DirectWorldWriteFn emit_world_write;
 };
 

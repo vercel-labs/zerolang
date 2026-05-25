@@ -39,6 +39,10 @@ static bool mir_type_is_direct_param_abi(IrTypeKind type) {
   return mir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW;
 }
 
+static bool mir_type_is_direct_return_abi(IrTypeKind type) {
+  return mir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR;
+}
+
 static bool mir_type_is_direct_fallible_value(IrTypeKind type) {
   return type == IR_TYPE_VOID || type == IR_TYPE_BOOL || type == IR_TYPE_U8 ||
          type == IR_TYPE_U16 || type == IR_TYPE_USIZE || type == IR_TYPE_I32 ||
@@ -131,6 +135,8 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
       break;
     case IR_TYPE_MAYBE_BYTE_VIEW:
       if (value->kind == IR_VALUE_ALLOC_BYTES ||
+          value->kind == IR_VALUE_CALL ||
+          value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL ||
           value->kind == IR_VALUE_ARGS_GET ||
           value->kind == IR_VALUE_ENV_GET ||
           value->kind == IR_VALUE_FS_READ_ALL ||
@@ -281,7 +287,7 @@ static bool mir_verify_direct_function_contract(IrProgram *ir, const IrFunction 
       mir_verify_mark_unsupported(ir, "MIR verifier found invalid fallible return representation", fun->line, fun->column, actual);
       return false;
     }
-  } else if (fun->return_type != IR_TYPE_VOID && !mir_type_is_direct_abi(fun->return_type)) {
+  } else if (fun->return_type != IR_TYPE_VOID && !mir_type_is_direct_return_abi(fun->return_type)) {
     char actual[128];
     snprintf(actual, sizeof(actual), "return %s", mir_type_kind_name(fun->return_type));
     mir_verify_mark_unsupported(ir, "MIR verifier found non-ABI return type", fun->line, fun->column, actual);
@@ -870,6 +876,18 @@ static bool mir_verify_field_load_value_contract(IrProgram *ir, const IrFunction
   return mir_verify_record_field_span(ir, local, value->field_offset, value->type, value->line, value->column, "MIR verifier found field load outside the local storage");
 }
 
+static bool mir_verify_maybe_byte_view_literal_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "Maybe byte-view literal")) return false;
+  if (value->data_len > 1) {
+    char actual[160];
+    snprintf(actual, sizeof(actual), "Maybe byte-view literal has flag %u", value->data_len);
+    mir_verify_mark_unsupported(ir, "MIR verifier found invalid Maybe byte-view literal", value->line, value->column, actual);
+    return false;
+  }
+  if (!value->data_len) return true;
+  return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid Maybe byte-view payload", "Maybe byte-view payload");
+}
+
 static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {
   if (!ir || !ir->mir_valid) return false;
   if (!value) return true;
@@ -935,6 +953,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_MAYBE_HAS:
     case IR_VALUE_MAYBE_VALUE:
       return mir_verify_maybe_value_contract(ir, fun, value);
+    case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL:
+      return mir_verify_maybe_byte_view_literal_contract(ir, value);
     case IR_VALUE_MAYBE_SCALAR_LITERAL:
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_SCALAR, "Maybe scalar literal")) return false;
       if (!mir_type_is_integer_value(value->element_type) || value->data_len > 1) {
@@ -1051,24 +1071,25 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
       break;
     }
     case IR_INSTR_INDEX_STORE: {
-      if (!mir_verify_local_index(ir, fun, instr->array_index, instr->line, instr->column, "MIR verifier found array write outside the local table")) return false;
+      if (!mir_verify_local_index(ir, fun, instr->array_index, instr->line, instr->column, "MIR verifier found indexed write outside the local table")) return false;
       const IrLocal *local = &fun->locals[instr->array_index];
-      if (!local->is_array) {
+      if (!local->is_array && local->type != IR_TYPE_BYTE_VIEW) {
         char actual[160];
         snprintf(actual, sizeof(actual), "local %s is %s", local->name ? local->name : "<unnamed>", mir_type_kind_name(local->type));
-        mir_verify_mark_unsupported(ir, "MIR verifier found array write to a non-array local", instr->line, instr->column, actual);
+        mir_verify_mark_unsupported(ir, "MIR verifier found indexed write to an unsupported local", instr->line, instr->column, actual);
         return false;
       }
       if (!instr->index || !mir_type_is_integer_value(instr->index->type)) {
         char actual[128];
-        snprintf(actual, sizeof(actual), "array index is %s", instr->index ? mir_type_kind_name(instr->index->type) : "missing");
-        mir_verify_mark_unsupported(ir, "MIR verifier found invalid array write index", instr->line, instr->column, actual);
+        snprintf(actual, sizeof(actual), "index is %s", instr->index ? mir_type_kind_name(instr->index->type) : "missing");
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid indexed write index", instr->line, instr->column, actual);
         return false;
       }
-      if (!instr->value || instr->value->type != local->element_type) {
+      IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? IR_TYPE_U8 : local->element_type;
+      if (!instr->value || instr->value->type != element_type) {
         char actual[160];
-        snprintf(actual, sizeof(actual), "array write has %s but element is %s", instr->value ? mir_type_kind_name(instr->value->type) : "missing", mir_type_kind_name(local->element_type));
-        mir_verify_mark_unsupported(ir, "MIR verifier found array write type mismatch", instr->line, instr->column, actual);
+        snprintf(actual, sizeof(actual), "indexed write has %s but element is %s", instr->value ? mir_type_kind_name(instr->value->type) : "missing", mir_type_kind_name(element_type));
+        mir_verify_mark_unsupported(ir, "MIR verifier found indexed write type mismatch", instr->line, instr->column, actual);
         return false;
       }
       break;

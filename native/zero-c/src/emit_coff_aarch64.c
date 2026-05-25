@@ -19,7 +19,19 @@ typedef struct {
 } CoffA64BranchPatches;
 
 typedef struct {
+  size_t patch_offset;
+  unsigned callee_index;
+} CoffA64CallPatch;
+
+typedef struct {
+  CoffA64CallPatch *items;
+  size_t len;
+  size_t cap;
+} CoffA64CallPatches;
+
+typedef struct {
   CoffA64DataPatches data;
+  CoffA64CallPatches calls;
   CoffA64BranchPatches world_write;
 } CoffA64EmitState;
 
@@ -66,10 +78,30 @@ static bool coff_a64_record_branch_patch(CoffA64BranchPatches *patches, size_t p
   return true;
 }
 
+static bool coff_a64_record_call_patch(void *user, size_t patch_offset, unsigned callee_index, const IrValue *value, ZDiag *diag) {
+  CoffA64EmitState *state = user;
+  if (!state) return coff_a64_diag(diag, "direct COFF AArch64 call patch requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
+  if (state->calls.len == state->calls.cap) {
+    state->calls.cap = z_grow_capacity(state->calls.cap, state->calls.len + 1, 8);
+    state->calls.items = z_checked_reallocarray(state->calls.items, state->calls.cap, sizeof(CoffA64CallPatch));
+  }
+  if (!state->calls.items) return coff_a64_diag(diag, "direct COFF AArch64 backend ran out of memory", value ? value->line : 1, value ? value->column : 1, "allocation failed");
+  state->calls.items[state->calls.len++] = (CoffA64CallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  return true;
+}
+
 static void coff_a64_emit_state_free(CoffA64EmitState *state) {
   if (!state) return;
   coff_a64_data_patches_free(&state->data);
+  free(state->calls.items);
   free(state->world_write.items);
+}
+
+static void coff_a64_patch_call_branches(ZBuf *text, const CoffA64CallPatches *patches, const size_t *offsets, size_t function_count) {
+  for (size_t i = 0; patches && i < patches->len; i++) {
+    const CoffA64CallPatch *patch = &patches->items[i];
+    if (patch->callee_index < function_count) z_aarch64_patch_branch26(text, patch->patch_offset, offsets[patch->callee_index]);
+  }
 }
 
 static void coff_a64_append_object_rodata_relocations(ZBuf *text, ZBuf *relocs, const CoffA64DataPatches *patches, unsigned rodata_base_offset) {
@@ -181,14 +213,14 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
     .function_count = program->function_len,
     .rodata_base_offset = rodata_base_offset,
     .patch_user = &state,
-    .record_data_patch = coff_a64_record_data_patch
+    .record_data_patch = coff_a64_record_data_patch,
+    .record_call_patch = coff_a64_record_call_patch
   };
 
   bool has_export = false;
   size_t symbol_len = 0;
   for (size_t i = 0; i < program->function_len; i++) {
-    if (!program->functions[i].is_exported) continue;
-    has_export = true;
+    if (program->functions[i].is_exported) has_export = true;
     z_aarch64_pad_to(&text, z_aarch64_align(text.len, 16));
     offsets[i] = text.len;
     if (!z_aarch64_direct_emit_function_text(&text, &program->functions[i], &ctx, diag)) {
@@ -200,13 +232,15 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
       zbuf_free(&text);
       return false;
     }
-    symbols[symbol_len++] = (ZCoffSymbol){
-      .name = program->functions[i].name ? program->functions[i].name : "zero_fn",
-      .value = (uint32_t)offsets[i],
-      .section_number = 1,
-      .type = 0x20,
-      .storage_class = Z_COFF_SYMBOL_EXTERNAL
-    };
+    if (program->functions[i].is_exported) {
+      symbols[symbol_len++] = (ZCoffSymbol){
+        .name = program->functions[i].name ? program->functions[i].name : "zero_fn",
+        .value = (uint32_t)offsets[i],
+        .section_number = 1,
+        .type = 0x20,
+        .storage_class = Z_COFF_SYMBOL_EXTERNAL
+      };
+    }
   }
   if (!has_export) {
     coff_a64_emit_state_free(&state);
@@ -217,6 +251,7 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
     zbuf_free(&text);
     return coff_a64_diag(diag, "direct COFF AArch64 object backend requires at least one exported function", 1, 1, "no exported function");
   }
+  coff_a64_patch_call_branches(&text, &state.calls, offsets, program->function_len);
   if (has_rodata) coff_a64_append_object_rodata_relocations(&text, &relocs, &state.data, rodata_base_offset);
 
   ZCoffObjectImage image = {
@@ -274,6 +309,7 @@ bool z_emit_coff_aarch64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag 
     .rodata_base_offset = rodata_base_offset,
     .patch_user = &state,
     .record_data_patch = coff_a64_record_data_patch,
+    .record_call_patch = coff_a64_record_call_patch,
     .emit_world_write = coff_a64_emit_world_write_call
   };
 
@@ -282,7 +318,6 @@ bool z_emit_coff_aarch64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag 
   size_t start_main_patch = coff_a64_emit_exe_start_stub(&text, import_patches, &import_patch_len);
   z_aarch64_pad_to(&text, z_aarch64_align(text.len, 16));
   for (size_t i = 0; i < program->function_len; i++) {
-    if (!program->functions[i].is_exported) continue;
     z_aarch64_pad_to(&text, z_aarch64_align(text.len, 16));
     offsets[i] = text.len;
     if (!z_aarch64_direct_emit_function_text(&text, &program->functions[i], &ctx, diag)) {
@@ -294,6 +329,7 @@ bool z_emit_coff_aarch64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag 
     }
   }
   z_aarch64_patch_branch26(&text, start_main_patch, offsets[main_index]);
+  coff_a64_patch_call_branches(&text, &state.calls, offsets, program->function_len);
   size_t world_write_offset = 0;
   if (state.world_write.len > 0) {
     z_aarch64_pad_to(&text, z_aarch64_align(text.len, 16));

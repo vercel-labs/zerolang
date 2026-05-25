@@ -51,6 +51,7 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_ALLOC_BYTES: return "IR_VALUE_ALLOC_BYTES";
     case IR_VALUE_MAYBE_HAS: return "IR_VALUE_MAYBE_HAS";
     case IR_VALUE_MAYBE_VALUE: return "IR_VALUE_MAYBE_VALUE";
+    case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL: return "IR_VALUE_MAYBE_BYTE_VIEW_LITERAL";
     case IR_VALUE_MAYBE_SCALAR_LITERAL: return "IR_VALUE_MAYBE_SCALAR_LITERAL";
     case IR_VALUE_ARGS_LEN: return "IR_VALUE_ARGS_LEN";
     case IR_VALUE_ARGS_GET: return "IR_VALUE_ARGS_GET";

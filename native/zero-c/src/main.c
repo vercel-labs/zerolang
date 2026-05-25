@@ -5,6 +5,7 @@
 #include "zero.h"
 #include "buildability.h"
 #include "std_sig.h"
+#include "std_source.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -3630,7 +3631,37 @@ static const char *direct_row_symbol_kind(const ZRowTokenVec *tokens, size_t ind
   return NULL;
 }
 
-static bool direct_input_add_row_symbols(SourceInput *input, const ZRowTokenVec *tokens, const ZRowTree *tree, const char *module, ZDiag *diag) {
+static bool direct_row_reserved_internal_symbol(const char *name) {
+  return name && strncmp(name, "__zero_", strlen("__zero_")) == 0;
+}
+
+static bool direct_row_path_has_module_suffix(const char *path, const char *module_path) {
+  if (!path || !module_path) return false;
+  size_t path_len = strlen(path);
+  size_t module_len = strlen(module_path);
+  if (path_len < module_len) return false;
+  const char *suffix = path + path_len - module_len;
+  for (size_t i = 0; i < module_len; i++) {
+    char have = suffix[i];
+    char want = module_path[i];
+    if ((have == '/' || have == '\\') && (want == '/' || want == '\\')) continue;
+    if (have != want) return false;
+  }
+  if (path_len == module_len) return true;
+  char before = path[path_len - module_len - 1];
+  return before == '/' || before == '\\';
+}
+
+static bool direct_row_is_embedded_std_source_file(const char *path, const char *source) {
+  const ZStdSourceModule *module = z_std_source_module_for_name("std.path");
+  if (!module || !direct_row_path_has_module_suffix(path, module->path)) return false;
+  char *embedded = z_std_source_module_copy_source(module);
+  bool ok = embedded && strcmp(source ? source : "", embedded) == 0;
+  free(embedded);
+  return ok;
+}
+
+static bool direct_input_add_row_symbols(SourceInput *input, const ZRowTokenVec *tokens, const ZRowTree *tree, const char *module, bool allow_internal_names, ZDiag *diag) {
   for (size_t i = 0; input && tokens && tree && i < tree->len; i++) {
     const ZRowNode *node = &tree->items[i];
     if (node->parent != Z_ROW_NO_PARENT) continue;
@@ -3654,6 +3685,17 @@ static bool direct_input_add_row_symbols(SourceInput *input, const ZRowTokenVec 
     if (!kind) continue;
     size_t name_index = pos + 1;
     if (name_index >= end || tokens->items[name_index].kind != Z_ROW_TOKEN_WORD) continue;
+    if (!allow_internal_names && direct_row_reserved_internal_symbol(tokens->items[name_index].text)) {
+      diag->code = 3008;
+      diag->line = tokens->items[name_index].line;
+      diag->column = tokens->items[name_index].column;
+      diag->length = tokens->items[name_index].length > 0 ? (int)tokens->items[name_index].length : 1;
+      snprintf(diag->message, sizeof(diag->message), "reserved compiler-internal symbol name");
+      snprintf(diag->expected, sizeof(diag->expected), "top-level %s name without the __zero_ prefix", kind);
+      snprintf(diag->actual, sizeof(diag->actual), "%s", tokens->items[name_index].text);
+      snprintf(diag->help, sizeof(diag->help), "rename the symbol; __zero_ names are reserved for compiler-provided helpers");
+      return false;
+    }
     if (!direct_input_push_symbol(input, module, kind, tokens->items[name_index].text, is_public, diag)) return false;
   }
   return !diag || diag->code == 0;
@@ -3864,6 +3906,39 @@ static void direct_row_append_source(SourceInput *input, ZBuf *combined, const c
   direct_input_push_source_line(input, path, original_line);
 }
 
+static bool direct_row_append_std_source(SourceInput *input, ZBuf *combined, const ZStdSourceModule *module, ZDiag *diag) {
+  if (!module) return true;
+  if (direct_input_has_file(input, module->path)) return true;
+  char *source = z_std_source_module_copy_source(module);
+  ZRowTokenVec tokens = z_row_tokenize(source, diag);
+  ZRowTree tree = {0};
+  if (diag->code == 0) z_row_parse_layout(&tokens, &tree, diag);
+  if (diag->code != 0) {
+    if (!diag->path) diag->path = z_strdup(module->path);
+    z_free_row_tree(&tree);
+    z_free_row_tokens(&tokens);
+    free(source);
+    return false;
+  }
+  direct_input_push_string(&input->source_files, &input->source_file_count, module->path);
+  direct_input_push_module(input, module->module, module->path);
+  bool ok = direct_input_add_row_symbols(input, &tokens, &tree, module->module, true, diag);
+  if (ok) direct_row_append_source(input, combined, module->path, source);
+  z_free_row_tree(&tree);
+  z_free_row_tokens(&tokens);
+  free(source);
+  return ok && (!diag || diag->code == 0);
+}
+
+static bool direct_row_references_std_module(const ZRowTokenVec *tokens, const char *name) {
+  for (size_t i = 0; tokens && name && i + 2 < tokens->len; i++) {
+    if (!direct_row_token_text(tokens, i, "std")) continue;
+    if (!direct_row_token_text(tokens, i + 1, ".")) continue;
+    if (direct_row_token_text(tokens, i + 2, name)) return true;
+  }
+  return false;
+}
+
 static bool direct_row_resolve_file(const char *path, const char *root, SourceInput *input, ZBuf *combined, ZDiag *diag, char ***stack, size_t *stack_len) {
   if (direct_input_has_file(input, path)) return true;
   if (direct_row_stack_contains(*stack, *stack_len, path)) {
@@ -3888,6 +3963,12 @@ static bool direct_row_resolve_file(const char *path, const char *root, SourceIn
     free(module);
     free(source);
     return false;
+  }
+
+  if (direct_row_references_std_module(&tokens, "path")) {
+    if (!direct_row_append_std_source(input, combined, z_std_source_module_for_name("std.path"), diag)) {
+      if (!diag->path) diag->path = z_strdup(path);
+    }
   }
 
   for (size_t i = 0; i < tree.len && diag->code == 0; i++) {
@@ -3943,8 +4024,12 @@ static bool direct_row_resolve_file(const char *path, const char *root, SourceIn
   if (diag->code == 0) {
     direct_input_push_string(&input->source_files, &input->source_file_count, path);
     direct_input_push_module(input, module, path);
-    if (direct_input_add_row_symbols(input, &tokens, &tree, module, diag)) {
+    bool allow_internal_names = direct_row_is_embedded_std_source_file(path, source);
+    if (allow_internal_names && input->source_file && strcmp(input->source_file, path) == 0) input->allow_missing_main = true;
+    if (direct_input_add_row_symbols(input, &tokens, &tree, module, allow_internal_names, diag)) {
       direct_row_append_source(input, combined, path, source);
+    } else if (!diag->path) {
+      diag->path = z_strdup(path);
     }
   }
 
@@ -4087,7 +4172,8 @@ static bool check_row_input(const ZTargetInfo *target, SourceInput *input, Progr
   input->specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(input, target, "release", "specialization"));
   z_set_check_target(target);
   phase_started = now_ms();
-  if (!z_check_program(program, diag)) {
+  bool checked = input->allow_missing_main ? z_check_program_library(program, diag) : z_check_program(program, diag);
+  if (!checked) {
     z_map_source_diag(input, diag);
     return false;
   }

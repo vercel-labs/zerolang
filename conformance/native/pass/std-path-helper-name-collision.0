@@ -1,0 +1,9 @@
+fn zeroStdPathNormalize String path String
+  ret "user helper"
+
+pub fn main Void world World !
+  mut path_buf [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  let normalized std.path.normalize path_buf "a"
+  if normalized.has
+    if && (std.mem.eql normalized.value "a") (std.mem.eql (zeroStdPathNormalize "x") "user helper")
+      check world.out.write "std path helper collision ok\n"

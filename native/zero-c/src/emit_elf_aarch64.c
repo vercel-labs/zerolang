@@ -17,9 +17,17 @@ typedef struct {
 } A64ElfDataPatch;
 
 typedef struct {
+  size_t patch_offset;
+  unsigned callee_index;
+} A64ElfCallPatch;
+
+typedef struct {
   A64ElfDataPatch *data_patches;
   size_t data_patch_len;
   size_t data_patch_cap;
+  A64ElfCallPatch *call_patches;
+  size_t call_patch_len;
+  size_t call_patch_cap;
 } A64ElfPatchContext;
 
 static bool a64_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {
@@ -48,9 +56,22 @@ static bool a64_elf_record_data_patch(void *user, size_t patch_offset, unsigned 
   return true;
 }
 
+static bool a64_elf_record_call_patch(void *user, size_t patch_offset, unsigned callee_index, const IrValue *value, ZDiag *diag) {
+  A64ElfPatchContext *ctx = user;
+  if (!ctx) return a64_diag(diag, "direct AArch64 ELF call patch requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
+  if (ctx->call_patch_len + 1 > ctx->call_patch_cap) {
+    ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
+    ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(A64ElfCallPatch));
+  }
+  if (!ctx->call_patches) return a64_diag(diag, "direct AArch64 ELF backend ran out of memory", value ? value->line : 1, value ? value->column : 1, "allocation failed");
+  ctx->call_patches[ctx->call_patch_len++] = (A64ElfCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  return true;
+}
+
 static void a64_elf_patch_context_free(A64ElfPatchContext *ctx) {
   if (!ctx) return;
   free(ctx->data_patches);
+  free(ctx->call_patches);
 }
 
 static bool a64_elf_emit_world_write(ZBuf *text, const IrInstr *instr, ZAArch64DirectContext *ctx, ZDiag *diag) {
@@ -79,6 +100,13 @@ static void a64_patch_data_patches(ZBuf *text, const A64ElfPatchContext *patches
     const A64ElfDataPatch *patch = &patches->data_patches[i];
     uint64_t addr = rodata_addr + (patch->data_offset - rodata_base_offset);
     z_aarch64_patch_u64(text, patch->patch_offset, addr);
+  }
+}
+
+static void a64_patch_call_patches(ZBuf *text, const A64ElfPatchContext *patches, const size_t *function_offsets, size_t function_count) {
+  for (size_t i = 0; patches && i < patches->call_patch_len; i++) {
+    const A64ElfCallPatch *patch = &patches->call_patches[i];
+    if (patch->callee_index < function_count) z_aarch64_patch_branch26(text, patch->patch_offset, function_offsets[patch->callee_index]);
   }
 }
 
@@ -138,13 +166,13 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
     .function_count = ir->function_len,
     .rodata_base_offset = rodata_base_offset,
     .patch_user = &patch_ctx,
-    .record_data_patch = a64_elf_record_data_patch
+    .record_data_patch = a64_elf_record_data_patch,
+    .record_call_patch = a64_elf_record_call_patch
   };
 
   bool has_export = false;
   for (size_t i = 0; i < ir->function_len; i++) {
-    if (!ir->functions[i].is_exported) continue;
-    has_export = true;
+    if (ir->functions[i].is_exported) has_export = true;
     z_aarch64_pad_to(&text, z_aarch64_align(text.len, 16));
     function_offsets[i] = text.len;
     if (!z_aarch64_direct_emit_function_text(&text, &ir->functions[i], &ctx, diag)) {
@@ -160,9 +188,11 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
       return false;
     }
     function_sizes[i] = text.len - function_offsets[i];
-    symbol_names[i] = (uint32_t)strtab.len;
-    zbuf_append(&strtab, ir->functions[i].name ? ir->functions[i].name : "zero_fn");
-    z_elf_append_u8(&strtab, 0);
+    if (ir->functions[i].is_exported) {
+      symbol_names[i] = (uint32_t)strtab.len;
+      zbuf_append(&strtab, ir->functions[i].name ? ir->functions[i].name : "zero_fn");
+      z_elf_append_u8(&strtab, 0);
+    }
   }
   if (!has_export) {
     a64_elf_patch_context_free(&patch_ctx);
@@ -177,9 +207,10 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
     return a64_diag(diag, "direct AArch64 ELF object backend requires at least one exported function", 1, 1, "no exported function");
   }
 
+  a64_patch_call_patches(&text, &patch_ctx, function_offsets, ir->function_len);
   if (has_rodata) a64_append_data_relocations(&rela_text, &patch_ctx, rodata_base_offset, 1);
   for (size_t i = 0; i < ir->function_len; i++) {
-    if (function_sizes[i] > 0) z_elf_append_symbol(&symtab, symbol_names[i], ir->functions[i].is_exported ? 0x12 : 0x02, 1, function_offsets[i], function_sizes[i]);
+    if (function_sizes[i] > 0 && ir->functions[i].is_exported) z_elf_append_symbol(&symtab, symbol_names[i], 0x12, 1, function_offsets[i], function_sizes[i]);
   }
 
   ZElfObjectImage image = {
@@ -244,10 +275,10 @@ bool z_emit_elf_aarch64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag)
     .rodata_base_offset = rodata_base_offset,
     .patch_user = &patch_ctx,
     .record_data_patch = a64_elf_record_data_patch,
+    .record_call_patch = a64_elf_record_call_patch,
     .emit_world_write = a64_elf_emit_world_write
   };
   for (size_t i = 0; i < ir->function_len; i++) {
-    if (!ir->functions[i].is_exported) continue;
     z_aarch64_pad_to(&text, z_aarch64_align(text.len, 16));
     function_offsets[i] = text.len;
     if (!z_aarch64_direct_emit_function_text(&text, &ir->functions[i], &ctx, diag)) {
@@ -259,6 +290,7 @@ bool z_emit_elf_aarch64_exe_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag)
     }
   }
   z_aarch64_patch_branch26(&text, start_call_patch, function_offsets[main_index]);
+  a64_patch_call_patches(&text, &patch_ctx, function_offsets, ir->function_len);
 
   const uint64_t base_addr = 0x400000;
   const size_t ehdr_size = 64;

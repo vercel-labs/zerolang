@@ -16,6 +16,8 @@ fi
 
 make -C native/zero-c
 
+bin/zero check --json std/path.0 >/dev/null
+
 mkdir -p .zero/native-test .zero/conformance
 
 host_runtime_target=""
@@ -89,6 +91,7 @@ expected_output() {
     examples/file-copy.0) printf "file copy ok" ;;
     conformance/native/pass/std-crypto-hmac32.0) printf "crypto hmac32 ok" ;;
     conformance/native/pass/string-byte-ergonomics.0) printf "string byte ergonomics ok" ;;
+    conformance/native/pass/std-path-io-breadth.0) printf "std path io breadth ok" ;;
     *)
       echo "missing expected output for $1" >&2
       exit 1
@@ -123,6 +126,7 @@ examples=(
   examples/file-copy.0
   conformance/native/pass/std-crypto-hmac32.0
   conformance/native/pass/string-byte-ergonomics.0
+  conformance/native/pass/std-path-io-breadth.0
 )
 
 run_native_or_gap() {

@@ -1,0 +1,5 @@
+fn scalar Maybe<u8>
+  ret 1_u8
+
+pub fn main Void
+  ret

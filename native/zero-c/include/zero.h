@@ -469,6 +469,7 @@ typedef enum {
   IR_VALUE_ALLOC_BYTES,
   IR_VALUE_MAYBE_HAS,
   IR_VALUE_MAYBE_VALUE,
+  IR_VALUE_MAYBE_BYTE_VIEW_LITERAL,
   IR_VALUE_MAYBE_SCALAR_LITERAL,
   IR_VALUE_ARGS_LEN,
   IR_VALUE_ARGS_GET,
@@ -743,6 +744,7 @@ typedef struct {
   bool check_cache_hit;
   bool specialization_cache_hit;
   bool emitted_object_cache_hit;
+  bool allow_missing_main;
 } SourceInput;
 
 typedef struct {
@@ -903,6 +905,7 @@ void z_free_row_tokens(ZRowTokenVec *tokens);
 void z_free_program(Program *program);
 
 bool z_check_program(const Program *program, ZDiag *diag);
+bool z_check_program_library(const Program *program, ZDiag *diag);
 void z_set_check_target(const ZTargetInfo *target);
 ZMetaCacheStats z_meta_cache_stats(void);
 void z_backend_blocker_set(ZBackendBlocker *blocker, const char *target, const char *object_format, const char *backend, const char *stage, const char *unsupported_feature);

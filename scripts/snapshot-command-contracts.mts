@@ -1342,6 +1342,116 @@ for (const { target, outName, compiler, emissionPath, magic } of directByteCopyF
   assert(directByteCopyFillBytes.subarray(0, magic.length).equals(magic));
   assert(directByteCopyFillBytes.includes(Buffer.from("token")));
 }
+const directStdPathSource = join(outDir, "direct-std-path-matrix.0");
+writeFileSync(directStdPathSource, `export c fn main u8
+  mut norm [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let normalized std.path.normalize norm "src//./main.0/"
+  mut parent [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let parent_normalized std.path.normalize parent "src/a/../main.0"
+  mut joined_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let joined std.path.join joined_buf "src/" "/main.0"
+  let root_expected Span<u8> "/x"[..1]
+  mut empty_abs_join_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let empty_abs_joined std.path.join empty_abs_join_buf "" "/main.0"
+  mut rel [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let relative std.path.relative rel "src" "src/main.0"
+  mut fallback_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let fallback std.path.relative fallback_buf "other" "src/main.0"
+  mut small [3]u8 [0, 0, 0]
+  let overflow std.path.normalize small "abcd"
+  mut root [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let root_normalized std.path.normalize root "/src//./main.0/"
+  mut root_parent_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let root_parent std.path.normalize root_parent_buf "/../src"
+  mut leading_parent_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let leading_parent std.path.normalize leading_parent_buf "../src"
+  mut nested_parent_buf [32]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let nested_parent std.path.normalize nested_parent_buf "a/../../b"
+  mut trim_fit_buf [1]u8 [0]
+  let trim_fit std.path.normalize trim_fit_buf "a/"
+  mut ok Bool true
+  if == normalized.has false
+    set ok false
+  if normalized.has
+    if == (std.mem.eql normalized.value "src/main.0") false
+      set ok false
+  if == parent_normalized.has false
+    set ok false
+  if parent_normalized.has
+    if == (std.mem.eql parent_normalized.value "src/main.0") false
+      set ok false
+  if == joined.has false
+    set ok false
+  if joined.has
+    if == (std.mem.eql joined.value "src/main.0") false
+      set ok false
+  if == empty_abs_joined.has false
+    set ok false
+  if empty_abs_joined.has
+    if == (std.mem.eql empty_abs_joined.value "/main.0") false
+      set ok false
+  if == relative.has false
+    set ok false
+  if relative.has
+    if == (std.mem.eql relative.value "main.0") false
+      set ok false
+  if == fallback.has false
+    set ok false
+  if fallback.has
+    if == (std.mem.eql fallback.value "src/main.0") false
+      set ok false
+  if overflow.has
+    set ok false
+  if == root_normalized.has false
+    set ok false
+  if root_normalized.has
+    if == (std.mem.eql root_normalized.value "/src/main.0") false
+      set ok false
+  if == root_parent.has false
+    set ok false
+  if root_parent.has
+    if == (std.mem.eql root_parent.value "/src") false
+      set ok false
+  if == leading_parent.has false
+    set ok false
+  if leading_parent.has
+    if == (std.mem.eql leading_parent.value "../src") false
+      set ok false
+  if == nested_parent.has false
+    set ok false
+  if nested_parent.has
+    if == (std.mem.eql nested_parent.value "../b") false
+      set ok false
+  if == trim_fit.has false
+    set ok false
+  if trim_fit.has
+    if == (std.mem.eql trim_fit.value "a") false
+      set ok false
+  if == (std.mem.eql (std.path.basename normalized.value) "main.0") false
+    set ok false
+  if == (std.mem.eql (std.path.dirname normalized.value) "src") false
+    set ok false
+  if == (std.mem.eql (std.path.dirname "/main.0") root_expected) false
+    set ok false
+  if == (std.mem.eql (std.path.dirname root_expected) root_expected) false
+    set ok false
+  if == (std.mem.eql (std.path.extension normalized.value) "0") false
+    set ok false
+  if ok
+    ret 1_u8
+  ret 0_u8
+`);
+for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
+  const directStdPathPath = join(outDir, `direct-std-path-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
+  rmSync(directStdPathPath, { force: true });
+  const directStdPathReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdPathSource, "--out", directStdPathPath]).body;
+  const directStdPathBytes = readFileSync(directStdPathPath);
+  assert.equal(directStdPathReport.compiler, compiler);
+  assert.equal(directStdPathReport.generatedCBytes, 0);
+  assert.equal(directStdPathReport.objectBackend.objectEmission.path, emissionPath);
+  assert(directStdPathBytes.subarray(0, magic.length).equals(magic));
+  assert(directStdPathBytes.includes(Buffer.from("src/main.0")));
+}
 const directMachOPath = join(outDir, "direct-darwin-arm64.o");
 rmSync(directMachOPath, { force: true });
 const directMachOReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/direct-call-add.0", "--out", directMachOPath]).body;
@@ -1541,12 +1651,14 @@ assert(directElfFsFallibleBytes.includes(elfPackedErrorBytes(3)));
 assert(directElfFsFallibleBytes.includes(elfPackedErrorBytes(4)));
 const directArm64ElfPath = join(outDir, "direct-arm64.o");
 rmSync(directArm64ElfPath, { force: true });
-const directArm64ElfBlocked = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", "examples/direct-call-add.0", "--out", directArm64ElfPath], { allowFailure: true });
-assert.notEqual(directArm64ElfBlocked.code, 0);
-assert.equal(directArm64ElfBlocked.body.diagnostics[0].code, "BLD004");
-assert.equal(directArm64ElfBlocked.body.diagnostics[0].backendBlocker.backend, "zero-elf-aarch64");
-assert.equal(directArm64ElfBlocked.body.diagnostics[0].backendBlocker.stage, "buildability");
-assert.match(directArm64ElfBlocked.body.diagnostics[0].message, /without parameters|small integer literal/);
+const directArm64ElfReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", "examples/direct-call-add.0", "--out", directArm64ElfPath]).body;
+const directArm64ElfBytes = readFileSync(directArm64ElfPath);
+assert.equal(directArm64ElfReport.compiler, "zero-elf-aarch64");
+assert.equal(directArm64ElfReport.generatedCBytes, 0);
+assert.equal(directArm64ElfReport.objectBackend.objectEmission.path, "direct-elf-aarch64-object");
+assert(directArm64ElfReport.objectBackend.directFacts.functionCount >= 2);
+assert(directArm64ElfBytes.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])));
+assert(directArm64ElfBytes.includes(Buffer.from("main")));
 const hostLeakGraph = json(["graph", "--json", "--target", "linux-musl-x64", "conformance/c/host-leak-package"]).body;
 assert.equal(hostLeakGraph.cLibraries[0].targetValidation.status, "blocked");
 assert.equal(hostLeakGraph.cLibraries[0].linkPlan.hostDiscovery, "blocked");
@@ -1661,26 +1773,22 @@ assert.equal(coffMaybeByteViewReadiness.targetReadiness.backend, "zero-coff-x64"
 const coffMaybeByteViewBuild = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffMaybeByteViewFixture, "--out", join(outDir, "coff-maybe-byte-view.obj")]).body;
 assert.equal(coffMaybeByteViewBuild.objectBackend.objectEmission.path, "direct-coff-x64-object");
 assert.equal(coffMaybeByteViewBuild.generatedCBytes, 0);
-const coffDynamicSliceFixture = "conformance/native/pass/coff-dynamic-byte-slice-blocked.0";
+const coffDynamicSliceFixture = "conformance/native/pass/coff-dynamic-byte-slice.0";
 const coffDynamicSliceReadiness = json(["check", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffDynamicSliceFixture]).body;
 assert.equal(coffDynamicSliceReadiness.ok, true);
 assert.equal(coffDynamicSliceReadiness.diagnostics.length, 0);
-assert.equal(coffDynamicSliceReadiness.targetReadiness.ok, false);
-assert.equal(coffDynamicSliceReadiness.targetReadiness.buildable, false);
+assert.equal(coffDynamicSliceReadiness.targetReadiness.ok, true);
+assert.equal(coffDynamicSliceReadiness.targetReadiness.buildable, true);
 assert.equal(coffDynamicSliceReadiness.targetReadiness.languageOk, true);
 assert.equal(coffDynamicSliceReadiness.targetReadiness.emit, "obj");
 assert.equal(coffDynamicSliceReadiness.targetReadiness.target, "win32-x64.exe");
-assert.equal(coffDynamicSliceReadiness.targetReadiness.diagnostics[0].code, "BLD004");
-assert.equal(coffDynamicSliceReadiness.targetReadiness.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
-assert.equal(coffDynamicSliceReadiness.targetReadiness.diagnostics[0].backendBlocker.stage, "buildability");
-assert.match(coffDynamicSliceReadiness.targetReadiness.diagnostics[0].message, /constant start/);
-const coffDynamicSliceBuild = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffDynamicSliceFixture, "--out", join(outDir, "coff-dynamic-byte-slice.obj")], { allowFailure: true });
-assert.notEqual(coffDynamicSliceBuild.code, 0);
-for (const key of ["code", "path", "line", "column", "length", "expected", "actual", "help"]) {
-  assert.equal(coffDynamicSliceBuild.body.diagnostics[0][key], coffDynamicSliceReadiness.targetReadiness.diagnostics[0][key]);
-}
-assert.equal(coffDynamicSliceBuild.body.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
-assert.equal(coffDynamicSliceBuild.body.diagnostics[0].backendBlocker.stage, "buildability");
+assert.equal(coffDynamicSliceReadiness.targetReadiness.backend, "zero-coff-x64");
+const coffDynamicSlicePath = join(outDir, "coff-dynamic-byte-slice.obj");
+const coffDynamicSliceBuild = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffDynamicSliceFixture, "--out", coffDynamicSlicePath]).body;
+assert.equal(coffDynamicSliceBuild.objectBackend.objectEmission.path, "direct-coff-x64-object");
+assert.equal(coffDynamicSliceBuild.generatedCBytes, 0);
+const coffDynamicSliceBytes = readFileSync(coffDynamicSlicePath);
+assert.equal(coffDynamicSliceBytes.readUInt16LE(0), 0x8664);
 function assertMachOObjectBuildabilityBlocked(fixture: string, outName: string, expectedMessage: RegExp) {
   const readiness = json(["check", "--json", "--emit", "obj", "--target", "darwin-arm64", fixture]).body;
   assert.equal(readiness.ok, true);

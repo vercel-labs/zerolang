@@ -1,6 +1,7 @@
 #include "zero.h"
 #include "mir_verify.h"
 #include "specialize.h"
+#include "std_source.h"
 #include "type_core.h"
 
 #include <limits.h>
@@ -142,6 +143,10 @@ static Stmt *clone_stmt(const Stmt *stmt) {
   return copy;
 }
 
+static bool ir_type_name_is_mutable_byte_view(const char *type) {
+  return type && strcmp(type, "MutSpan<u8>") == 0;
+}
+
 static IrTypeKind ir_type_kind(const char *type) {
   if (!type) return IR_TYPE_UNSUPPORTED;
   if (strcmp(type, "Void") == 0) return IR_TYPE_VOID;
@@ -172,7 +177,8 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (strcmp(type, "FixedBufAlloc") == 0) return IR_TYPE_ALLOC;
   if (strcmp(type, "Vec") == 0) return IR_TYPE_VEC;
   if (strcmp(type, "BufferedReader") == 0 || strcmp(type, "BufferedWriter") == 0) return IR_TYPE_BYTE_VIEW;
-  if (strcmp(type, "Maybe<MutSpan<u8>>") == 0 || strcmp(type, "Maybe<String>") == 0 || strcmp(type, "Maybe<owned<ByteBuf>>") == 0) return IR_TYPE_MAYBE_BYTE_VIEW;
+  if (strcmp(type, "Maybe<MutSpan<u8>>") == 0 || strcmp(type, "Maybe<Span<u8>>") == 0 ||
+      strcmp(type, "Maybe<String>") == 0 || strcmp(type, "Maybe<owned<ByteBuf>>") == 0) return IR_TYPE_MAYBE_BYTE_VIEW;
   if (strcmp(type, "Maybe<JsonDoc>") == 0 ||
       strcmp(type, "Maybe<u8>") == 0 ||
       strcmp(type, "Maybe<u16>") == 0 ||
@@ -214,6 +220,10 @@ static bool ir_type_is_direct_abi(IrTypeKind type) {
 
 static bool ir_type_is_direct_param_abi(IrTypeKind type) {
   return ir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW;
+}
+
+static bool ir_type_is_direct_return_abi(IrTypeKind type) {
+  return ir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR;
 }
 
 static bool ir_type_is_direct_fallible_value(IrTypeKind type) {
@@ -667,6 +677,14 @@ static IrValue *ir_new_maybe_scalar_literal(IrProgram *ir, bool has, IrTypeKind 
   return value;
 }
 
+static IrValue *ir_new_maybe_byte_view_literal(IrProgram *ir, bool has, IrValue *view, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_MAYBE_BYTE_VIEW_LITERAL, IR_TYPE_MAYBE_BYTE_VIEW, line, column);
+  value->data_len = has ? 1u : 0u;
+  value->element_type = IR_TYPE_BYTE_VIEW;
+  value->left = view;
+  return value;
+}
+
 static IrValue *ir_new_value(IrProgram *ir, IrValueKind kind, IrTypeKind type, int line, int column) {
   IrValue *value = z_checked_calloc(1, sizeof(IrValue));
   value->kind = kind;
@@ -847,6 +865,7 @@ static bool ir_expr_is_byte_view_source(const Expr *expr) {
     unsigned array_len = 0;
     IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
     if (ir_parse_fixed_array_type(expr->resolved_type, &array_len, &element_type) && element_type == IR_TYPE_U8) return true;
+    if (ir_type_kind(expr->resolved_type) == IR_TYPE_BYTE_VIEW) return true;
   }
   return expr && (expr->kind == EXPR_STRING || expr->kind == EXPR_SLICE ||
                   expr->kind == EXPR_BORROW ||
@@ -996,6 +1015,9 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
       }
     }
   }
+  if (expr->kind == EXPR_CALL && expr->resolved_type && ir_type_kind(expr->resolved_type) == IR_TYPE_BYTE_VIEW) {
+    return ir_lower_expr(program, ir, fun, expr, out);
+  }
   if (expr->kind == EXPR_BORROW) {
     return ir_lower_byte_view(program, ir, fun, expr->left, out);
   }
@@ -1123,6 +1145,101 @@ static char *ir_specialized_function_name(const Function *fun, const TypeArgVec 
 
 static char *ir_specialize_type_text(const char *type, const Function *fun, const TypeArgVec *type_args);
 
+static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, const char *source_name, const char *display_name, IrValue **out) {
+  unsigned callee_index = 0;
+  const Function *callee = ir_find_source_function(program, source_name, NULL);
+  if (!callee) {
+    ir_mark_unsupported(ir, "direct backend call target is not a same-file function", expr->line, expr->column, display_name ? display_name : source_name);
+    return false;
+  }
+  const TypeArgVec *type_args = ir_call_type_args(expr);
+  bool generic_call = callee->type_params.len > 0;
+  char *specialized_name = NULL;
+  const char *lookup_name = source_name;
+  if (generic_call) {
+    if (!type_args || type_args->len != callee->type_params.len) {
+      ir_mark_unsupported(ir, "direct backend generic calls require explicit type arguments", expr->line, expr->column, callee->name);
+      return false;
+    }
+    specialized_name = ir_specialized_function_name(callee, type_args);
+    lookup_name = specialized_name;
+  } else if (type_args && type_args->len > 0) {
+    ir_mark_unsupported(ir, "direct backend non-generic call cannot use type arguments", expr->line, expr->column, display_name ? display_name : source_name);
+    return false;
+  }
+  if (!ir_find_function_index(ir, lookup_name, &callee_index)) {
+    free(specialized_name);
+    ir_mark_unsupported(ir, "direct backend call target is missing from MIR function table", expr->line, expr->column, display_name ? display_name : source_name);
+    return false;
+  }
+  if (callee->type_params.len > 0 || callee->is_test) {
+    if (!generic_call || callee->is_test) {
+      free(specialized_name);
+      ir_mark_unsupported(ir, "direct backend calls do not support tests", expr->line, expr->column, callee->name);
+      return false;
+    }
+  }
+  if (callee->params.len != expr->args.len) {
+    free(specialized_name);
+    ir_mark_unsupported(ir, "direct backend call argument count does not match callee", expr->line, expr->column, callee->name);
+    return false;
+  }
+  char *specialized_return_type = generic_call ? ir_specialize_type_text(callee->return_type, callee, type_args) : NULL;
+  const char *return_type_text = generic_call ? specialized_return_type : callee->return_type;
+  IrTypeKind type = ir_type_kind(return_type_text);
+  if (callee->raises && !ir_type_is_direct_fallible_value(type)) {
+    free(specialized_return_type);
+    free(specialized_name);
+    ir_mark_unsupported(ir, "direct backend fallible call return type is unsupported", expr->line, expr->column, callee->return_type);
+    return false;
+  }
+  if (!callee->raises && type != IR_TYPE_VOID && !ir_type_is_direct_return_abi(type)) {
+    free(specialized_return_type);
+    free(specialized_name);
+    ir_mark_unsupported(ir, "direct backend call return type is unsupported", expr->line, expr->column, callee->return_type);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_CALL, callee->raises ? IR_TYPE_I64 : type, expr->line, expr->column);
+  value->callee_index = callee_index;
+  value->element_type = type;
+  for (size_t i = 0; i < expr->args.len; i++) {
+    char *specialized_param_type = generic_call ? ir_specialize_type_text(callee->params.items[i].type, callee, type_args) : NULL;
+    const char *param_type_text = generic_call ? specialized_param_type : callee->params.items[i].type;
+    IrTypeKind expected = ir_type_kind(param_type_text);
+    if (!ir_type_is_direct_param_abi(expected)) {
+      free(specialized_param_type);
+      free(specialized_return_type);
+      free(specialized_name);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend call parameter type is unsupported", callee->params.items[i].line, callee->params.items[i].column, callee->params.items[i].type);
+      return false;
+    }
+    IrValue *arg = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, expr->args.items[i], expected, &arg)) {
+      free(specialized_param_type);
+      free(specialized_return_type);
+      free(specialized_name);
+      ir_free_value(value);
+      return false;
+    }
+    if (arg->type != expected) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      free(specialized_param_type);
+      free(specialized_return_type);
+      free(specialized_name);
+      ir_mark_unsupported(ir, "direct backend call argument type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, callee->params.items[i].type);
+      return false;
+    }
+    ir_value_push_arg(ir, value, arg);
+    free(specialized_param_type);
+  }
+  free(specialized_return_type);
+  free(specialized_name);
+  *out = value;
+  return true;
+}
+
 static const char *ir_substitute_type_param(const Function *fun, const TypeArgVec *type_args, const char *type) {
   if (!fun || !type_args || !type) return type;
   for (size_t i = 0; i < fun->type_params.len && i < type_args->len; i++) {
@@ -1205,6 +1322,10 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         IrTypeKind element = ir_maybe_scalar_element_type(expr->resolved_type);
         if (element == IR_TYPE_UNSUPPORTED) element = IR_TYPE_I32;
         *out = ir_new_maybe_scalar_literal(ir, false, element, 0, expr->line, expr->column);
+        return true;
+      }
+      if (ir_type_kind(expr->resolved_type) == IR_TYPE_MAYBE_BYTE_VIEW) {
+        *out = ir_new_maybe_byte_view_literal(ir, false, NULL, expr->line, expr->column);
         return true;
       }
       ir_mark_unsupported(ir, "direct backend null expression type is unsupported", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "unknown null type");
@@ -2442,103 +2563,20 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           return true;
         }
       }
-      free(callee_name);
+      const char *source_backed_std = z_std_source_target_for_public_call(callee_name);
+      if (source_backed_std) {
+        bool ok = ir_lower_named_direct_call(program, ir, fun, expr, source_backed_std, callee_name, out);
+        free(callee_name);
+        return ok;
+      }
       if (!expr->left || expr->left->kind != EXPR_IDENT) {
-        ir_mark_unsupported(ir, "direct backend calls currently support only same-file function identifiers", expr->line, expr->column, "non-identifier callee");
+        ir_mark_unsupported(ir, "direct backend calls currently support only same-file function identifiers", expr->line, expr->column, callee_name && callee_name[0] ? callee_name : "non-identifier callee");
+        free(callee_name);
         return false;
       }
-      unsigned callee_index = 0;
-      const Function *callee = ir_find_source_function(program, expr->left->text, NULL);
-      if (!callee) {
-        ir_mark_unsupported(ir, "direct backend call target is not a same-file function", expr->line, expr->column, expr->left->text);
-        return false;
-      }
-      const TypeArgVec *type_args = ir_call_type_args(expr);
-      bool generic_call = callee->type_params.len > 0;
-      char *specialized_name = NULL;
-      const char *lookup_name = expr->left->text;
-      if (generic_call) {
-        if (!type_args || type_args->len != callee->type_params.len) {
-          ir_mark_unsupported(ir, "direct backend generic calls require explicit type arguments", expr->line, expr->column, callee->name);
-          return false;
-        }
-        specialized_name = ir_specialized_function_name(callee, type_args);
-        lookup_name = specialized_name;
-      } else if (type_args && type_args->len > 0) {
-        ir_mark_unsupported(ir, "direct backend non-generic call cannot use type arguments", expr->line, expr->column, expr->left->text);
-        return false;
-      }
-      if (!ir_find_function_index(ir, lookup_name, &callee_index)) {
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend call target is missing from MIR function table", expr->line, expr->column, expr->left->text);
-        return false;
-      }
-      if (callee->type_params.len > 0 || callee->is_test) {
-        if (!generic_call || callee->is_test) {
-          free(specialized_name);
-          ir_mark_unsupported(ir, "direct backend calls do not support tests", expr->line, expr->column, callee->name);
-          return false;
-        }
-      }
-      if (callee->params.len != expr->args.len) {
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend call argument count does not match callee", expr->line, expr->column, callee->name);
-        return false;
-      }
-      char *specialized_return_type = generic_call ? ir_specialize_type_text(callee->return_type, callee, type_args) : NULL;
-      const char *return_type_text = generic_call ? specialized_return_type : callee->return_type;
-      IrTypeKind type = ir_type_kind(return_type_text);
-      if (callee->raises && !ir_type_is_direct_fallible_value(type)) {
-        free(specialized_return_type);
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend fallible call return type is unsupported", expr->line, expr->column, callee->return_type);
-        return false;
-      }
-      if (!callee->raises && type != IR_TYPE_VOID && !ir_type_is_direct_abi(type)) {
-        free(specialized_return_type);
-        free(specialized_name);
-        ir_mark_unsupported(ir, "direct backend call return type is unsupported", expr->line, expr->column, callee->return_type);
-        return false;
-      }
-      IrValue *value = ir_new_value(ir, IR_VALUE_CALL, callee->raises ? IR_TYPE_I64 : type, expr->line, expr->column);
-      value->callee_index = callee_index;
-      value->element_type = type;
-      for (size_t i = 0; i < expr->args.len; i++) {
-        char *specialized_param_type = generic_call ? ir_specialize_type_text(callee->params.items[i].type, callee, type_args) : NULL;
-        const char *param_type_text = generic_call ? specialized_param_type : callee->params.items[i].type;
-        IrTypeKind expected = ir_type_kind(param_type_text);
-        if (!ir_type_is_direct_param_abi(expected)) {
-          free(specialized_param_type);
-          free(specialized_return_type);
-          free(specialized_name);
-          ir_free_value(value);
-          ir_mark_unsupported(ir, "direct backend call parameter type is unsupported", callee->params.items[i].line, callee->params.items[i].column, callee->params.items[i].type);
-          return false;
-        }
-        IrValue *arg = NULL;
-        if (!ir_lower_call_arg(program, ir, fun, expr->args.items[i], expected, &arg)) {
-          free(specialized_param_type);
-          free(specialized_return_type);
-          free(specialized_name);
-          ir_free_value(value);
-          return false;
-        }
-        if (arg->type != expected) {
-          ir_free_value(arg);
-          ir_free_value(value);
-          free(specialized_param_type);
-          free(specialized_return_type);
-          free(specialized_name);
-          ir_mark_unsupported(ir, "direct backend call argument type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, callee->params.items[i].type);
-          return false;
-        }
-        ir_value_push_arg(ir, value, arg);
-        free(specialized_param_type);
-      }
-      free(specialized_return_type);
-      free(specialized_name);
-      *out = value;
-      return true;
+      bool ok = ir_lower_named_direct_call(program, ir, fun, expr, expr->left->text, expr->left->text, out);
+      free(callee_name);
+      return ok;
     }
     case EXPR_CHECK: {
       IrValue *checked = NULL;
@@ -2636,12 +2674,12 @@ static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction 
 
 static bool ir_lower_index_store(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Expr *target, const Expr *source, IrInstr **out_items, size_t *out_len, size_t *out_cap, int line, int column) {
   if (!target || target->kind != EXPR_INDEX || !target->left || target->left->kind != EXPR_IDENT) {
-    ir_mark_unsupported(ir, "direct backend indexed assignment supports only local fixed arrays", line, column, "non-local indexed assignment");
+    ir_mark_unsupported(ir, "direct backend indexed assignment supports only local fixed arrays and mutable byte views", line, column, "non-local indexed assignment");
     return false;
   }
   const IrLocal *local = ir_function_find_local(mir_fun, target->left->text);
-  if (!local || !local->is_array) {
-    ir_mark_unsupported(ir, "direct backend indexed assignment target is not a fixed array local", line, column, target->left->text);
+  if (!local || (!local->is_array && local->type != IR_TYPE_BYTE_VIEW)) {
+    ir_mark_unsupported(ir, "direct backend indexed assignment target is not a fixed array or byte view local", line, column, target->left->text);
     return false;
   }
   if (!local->is_mutable) {
@@ -2653,13 +2691,14 @@ static bool ir_lower_index_store(const Program *program, IrProgram *ir, IrFuncti
   if (!ir_lower_expr(program, ir, mir_fun, target->right, &index) ||
       !ir_lower_expr(program, ir, mir_fun, source, &value)) {
     ir_free_value(index);
-    ir_free_value(value);
-    return false;
+      ir_free_value(value);
+      return false;
   }
-  if (!ir_type_is_value(index->type) || value->type != local->element_type) {
+  IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? IR_TYPE_U8 : local->element_type;
+  if (!ir_type_is_value(index->type) || value->type != element_type) {
     ir_free_value(index);
     ir_free_value(value);
-    ir_mark_unsupported(ir, "direct backend indexed assignment type does not match array element", line, column, local->name);
+    ir_mark_unsupported(ir, "direct backend indexed assignment type does not match target element", line, column, local->name);
     return false;
   }
   ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_INDEX_STORE, .array_index = local->index, .index = index, .value = value, .line = line, .column = column});
@@ -2897,6 +2936,29 @@ static bool ir_lower_enum_match(const Program *program, IrProgram *ir, IrFunctio
   return true;
 }
 
+static bool ir_lower_expr_for_type(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrTypeKind target_type, bool allow_i32_default, unsigned line, unsigned column, IrValue **out) {
+  *out = NULL;
+  if (!expr && allow_i32_default && target_type == IR_TYPE_I32) {
+    *out = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, line, column);
+    (*out)->int_value = 0;
+    return true;
+  }
+  if (target_type == IR_TYPE_BYTE_VIEW && expr && expr->kind == EXPR_CHECK) {
+    return ir_lower_expr(program, ir, fun, expr, out);
+  }
+  if (target_type == IR_TYPE_BYTE_VIEW) {
+    return ir_lower_byte_view(program, ir, fun, expr, out);
+  }
+  if (target_type == IR_TYPE_MAYBE_BYTE_VIEW && expr && expr->resolved_type &&
+      ir_type_kind(expr->resolved_type) == IR_TYPE_BYTE_VIEW) {
+    IrValue *view = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, expr, &view)) return false;
+    *out = ir_new_maybe_byte_view_literal(ir, true, view, line, column);
+    return true;
+  }
+  return ir_lower_expr(program, ir, fun, expr, out);
+}
+
 static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Stmt *stmt, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {
   if (stmt->kind == STMT_LET) {
     const IrLocal *local = ir_function_find_local(mir_fun, stmt->name);
@@ -2908,13 +2970,7 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
     }
     IrValue *value = NULL;
     if (!local) return false;
-    if (local->type == IR_TYPE_BYTE_VIEW && stmt->expr && stmt->expr->kind == EXPR_CHECK) {
-      if (!ir_lower_expr(program, ir, mir_fun, stmt->expr, &value)) return false;
-    } else if (local->type == IR_TYPE_BYTE_VIEW) {
-      if (!ir_lower_byte_view(program, ir, mir_fun, stmt->expr, &value)) return false;
-    } else if (!ir_lower_expr(program, ir, mir_fun, stmt->expr, &value)) {
-      return false;
-    }
+    if (!ir_lower_expr_for_type(program, ir, mir_fun, stmt->expr, local->type, false, stmt->line, stmt->column, &value)) return false;
     ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_LOCAL_SET, .local_index = local->index, .value = value, .line = stmt->line, .column = stmt->column});
     return true;
   }
@@ -2949,16 +3005,7 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
     const IrLocal *local = ir_function_find_local(mir_fun, stmt->target->text);
     IrValue *value = NULL;
     if (!local) return false;
-    if (local->type == IR_TYPE_BYTE_VIEW && stmt->expr && stmt->expr->kind == EXPR_CHECK) {
-      if (!ir_lower_expr(program, ir, mir_fun, stmt->expr, &value)) return false;
-    } else if (local->type == IR_TYPE_BYTE_VIEW) {
-      if (!ir_lower_byte_view(program, ir, mir_fun, stmt->expr, &value)) return false;
-    } else if (!stmt->expr && mir_fun->return_type == IR_TYPE_I32) {
-      value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, stmt->line, stmt->column);
-      value->int_value = 0;
-    } else if (!ir_lower_expr(program, ir, mir_fun, stmt->expr, &value)) {
-      return false;
-    }
+    if (!ir_lower_expr_for_type(program, ir, mir_fun, stmt->expr, local->type, mir_fun->return_type == IR_TYPE_I32, stmt->line, stmt->column, &value)) return false;
     ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_LOCAL_SET, .local_index = local->index, .value = value, .line = stmt->line, .column = stmt->column});
     return true;
   }
@@ -2970,11 +3017,8 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
         ir_mark_unsupported(ir, "direct backend void function cannot return a value", stmt->line, stmt->column, mir_fun->name);
         return false;
       }
-    } else if (!stmt->expr && mir_fun->return_type == IR_TYPE_I32) {
-      value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, stmt->line, stmt->column);
-      value->int_value = 0;
-    } else if (!ir_lower_expr(program, ir, mir_fun, stmt->expr, &value)) {
-      return false;
+    } else {
+      if (!ir_lower_expr_for_type(program, ir, mir_fun, stmt->expr, mir_fun->return_type, true, stmt->line, stmt->column, &value)) return false;
     }
     ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_RETURN, .value = value, .line = stmt->line, .column = stmt->column});
     return true;
@@ -3110,7 +3154,7 @@ static bool ir_collect_function_locals(const Program *program, IrProgram *ir, Ir
       ir_mark_unsupported(ir, "direct backend parameter type is unsupported", param->line, param->column, param->type);
       return false;
     }
-    ir_function_push_local(ir, mir_fun, param->name, type, true, false, false, NULL, IR_TYPE_UNSUPPORTED, 0, 0, 0, false, param->line, param->column);
+    ir_function_push_local(ir, mir_fun, param->name, type, true, false, false, NULL, IR_TYPE_UNSUPPORTED, 0, 0, 0, ir_type_name_is_mutable_byte_view(param->type), param->line, param->column);
   }
   if (!ir_collect_stmt_locals(program, ir, mir_fun, &source->body)) return false;
 
@@ -3181,7 +3225,7 @@ static bool ir_lower_function_body(const Program *program, IrProgram *ir, IrFunc
     ir_mark_unsupported(ir, "direct backend fallible return type is unsupported", source->line, source->column, source->return_type);
     return false;
   }
-  if (!hosted_world_main && !source->raises && return_type != IR_TYPE_VOID && !ir_type_is_direct_abi(return_type)) {
+  if (!hosted_world_main && !source->raises && return_type != IR_TYPE_VOID && !ir_type_is_direct_return_abi(return_type)) {
     ir_mark_unsupported(ir, "direct backend return type is unsupported", source->line, source->column, source->return_type);
     return false;
   }

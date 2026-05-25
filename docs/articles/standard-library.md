@@ -12,7 +12,7 @@ Runnable modules:
 - `std.args`: hosted process argument count and indexed lookup.
 - `std.env`: hosted environment variable lookup.
 - `std.fs`: hosted file lifecycle helpers, owned file handles, byte reads/writes, remove, rename, and close.
-- `std.path`: fixed-buffer path joining.
+- `std.path`: fixed-buffer lexical path helpers.
 - `std.parse`: allocation-free ASCII scanners and unsigned integer parsers.
 - `std.codec`: byte-oriented integer encoding, varint length, and CRC-32 helpers.
 - `std.json`: string and byte-span validation, streaming token counts, explicit-allocator parsing, and caller-buffer string writing.

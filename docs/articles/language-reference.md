@@ -31,7 +31,9 @@ Targets can reject unavailable capabilities. In the current compiler:
 
 ## Lexical Basics
 
-Zero source uses UTF-8 text. Identifiers are case-sensitive. Line comments start with `//`.
+Zero source uses UTF-8 text. Identifiers are case-sensitive. Top-level names
+starting with `__zero_` are reserved for compiler-provided helpers. Line
+comments start with `//`.
 
 Common literal forms include:
 
@@ -678,7 +680,11 @@ Current native helpers include:
 - `std.parse`: scanner helpers such as digit and identifier predicates
 - `std.time`: duration helpers such as `ms`, `seconds`, `add`, and `asMsFloor`
 - `std.args`: CLI helpers `len()` and `get(index) -> Maybe<String>`
-- `std.path`: fixed-buffer path helpers `basename(path) -> String` and `join(buffer, left, right) -> Maybe<String>`
+- `std.path`: fixed-buffer path helpers `basename(path) -> String`,
+  `dirname(path) -> String`, `extension(path) -> String`,
+  `join(buffer, left, right) -> Maybe<String>`,
+  `normalize(buffer, path) -> Maybe<String>`, and
+  `relative(buffer, base, target) -> Maybe<String>`
 - `std.fs`: hosted path helpers, explicit `Fs` handles, owned file handles,
   fallible reads/writes, and `readAll` helpers backed by an explicit allocator
   and size limit

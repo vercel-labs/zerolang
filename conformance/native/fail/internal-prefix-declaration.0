@@ -1,0 +1,5 @@
+fn __zero_user_helper String value String
+  ret value
+
+pub fn main Void
+  ret

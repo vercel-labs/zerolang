@@ -9,7 +9,9 @@ BUILD_ID := $(HOST_ID)|$(CC)|$(CFLAGS)
 SRC := $(wildcard src/*.c)
 INCLUDES := $(wildcard include/*.h) $(wildcard src/*.h) $(wildcard src/*.inc)
 EMBEDDED_SKILLS := src/embedded_skills.inc
+EMBEDDED_STDLIB := src/embedded_stdlib.inc
 SKILL_INPUTS := $(ROOT)/skills/zero/SKILL.md $(wildcard $(ROOT)/skill-data/*.md)
+STDLIB_INPUTS := $(wildcard $(ROOT)/std/*.0)
 
 .PHONY: all clean install-local FORCE
 
@@ -25,7 +27,10 @@ $(BUILD_STAMP): FORCE
 $(EMBEDDED_SKILLS): $(ROOT)/scripts/embed-skill-data.mts $(SKILL_INPUTS)
 	cd $(ROOT) && $(NODE_TS) scripts/embed-skill-data.mts
 
-$(OUT): $(BUILD_STAMP) $(SRC) $(INCLUDES) $(EMBEDDED_SKILLS)
+$(EMBEDDED_STDLIB): $(ROOT)/scripts/embed-stdlib-sources.mts $(STDLIB_INPUTS)
+	cd $(ROOT) && $(NODE_TS) scripts/embed-stdlib-sources.mts
+
+$(OUT): $(BUILD_STAMP) $(SRC) $(INCLUDES) $(EMBEDDED_SKILLS) $(EMBEDDED_STDLIB)
 	@mkdir -p $(dir $(OUT))
 	$(CC) $(CFLAGS) -Iinclude $(SRC) -o $(OUT)
 
