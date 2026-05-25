@@ -1513,6 +1513,13 @@ static const TypeArgVec *call_type_args(const Expr *call) {
   return &call->type_args;
 }
 
+static void call_resolution_record_function_errors(ZCallResolution *out, const Function *callee) {
+  if (!out || !callee || !callee->has_error_set) return;
+  for (size_t i = 0; i < callee->errors.len; i++) {
+    if (callee->errors.items[i].name) z_call_resolution_add_error(out, callee->errors.items[i].name);
+  }
+}
+
 static bool resolve_named_function_call(const Program *program, const Expr *call, ZCallResolution *out) {
   if (!program || !call || call->kind != EXPR_CALL || !call->left || call->left->kind != EXPR_IDENT || !out) return false;
   const Function *callee = find_function(program, call->left->text);
@@ -1527,6 +1534,7 @@ static bool resolve_named_function_call(const Program *program, const Expr *call
   out->fallible = callee->raises || callee->has_error_set;
   z_call_resolution_set_callee_name(out, callee->name);
   z_call_resolution_set_return_type(out, callee->return_type ? callee->return_type : "Void");
+  call_resolution_record_function_errors(out, callee);
   return true;
 }
 
@@ -4302,6 +4310,7 @@ static void call_resolution_init_callee(ZCallResolution *out, ZCallKind kind, co
   out->fallible = callee && (callee->raises || callee->has_error_set);
   z_call_resolution_set_callee_name(out, callee ? callee->name : NULL);
   z_call_resolution_set_return_type(out, callee && callee->return_type ? callee->return_type : "Void");
+  call_resolution_record_function_errors(out, callee);
 }
 
 static bool resolve_shape_namespace_call(const Program *program, const Expr *call, ZCallResolution *out) {
@@ -7073,6 +7082,365 @@ static bool resolve_provenance_call(CheckContext *ctx, const Program *program, c
   if (handled) return true;
 
   return resolve_receiver_shape_provenance_call(ctx, program, call, scope, return_type, context_bindings, context_binding_len, out);
+}
+
+static void call_facts_append_json_string(ZBuf *buf, const char *text) {
+  zbuf_append_char(buf, '"');
+  for (const char *p = text ? text : ""; *p; p++) {
+    switch (*p) {
+      case '\\': zbuf_append(buf, "\\\\"); break;
+      case '"': zbuf_append(buf, "\\\""); break;
+      case '\n': zbuf_append(buf, "\\n"); break;
+      case '\r': zbuf_append(buf, "\\r"); break;
+      case '\t': zbuf_append(buf, "\\t"); break;
+      default: zbuf_append_char(buf, *p); break;
+    }
+  }
+  zbuf_append_char(buf, '"');
+}
+
+static const char *call_facts_source_path(const SourceInput *input, int parser_line) {
+  if (!input || parser_line <= 0) return "";
+  size_t index = (size_t)parser_line - 1;
+  if (index < input->source_line_count && input->source_line_paths[index]) return input->source_line_paths[index];
+  return input->source_file ? input->source_file : "";
+}
+
+static int call_facts_source_line(const SourceInput *input, int parser_line) {
+  if (parser_line <= 0) return 0;
+  if (input) {
+    size_t index = (size_t)parser_line - 1;
+    if (index < input->source_line_count && input->source_line_numbers[index] > 0) return input->source_line_numbers[index];
+  }
+  return parser_line;
+}
+
+static void call_facts_append_type_args_json(ZBuf *buf, const TypeArgVec *type_args) {
+  zbuf_append(buf, "[");
+  for (size_t i = 0; type_args && i < type_args->len; i++) {
+    if (i > 0) zbuf_append(buf, ",");
+    call_facts_append_json_string(buf, type_args->items[i].type);
+  }
+  zbuf_append(buf, "]");
+}
+
+static void call_facts_append_bindings_json(ZBuf *buf, const ZCallResolution *resolution) {
+  zbuf_append(buf, "[");
+  for (size_t i = 0; resolution && i < resolution->binding_len; i++) {
+    if (i > 0) zbuf_append(buf, ",");
+    const ZCallBinding *binding = &resolution->bindings[i];
+    zbuf_append(buf, "{\"name\":");
+    call_facts_append_json_string(buf, binding->name);
+    zbuf_append(buf, ",\"type\":");
+    call_facts_append_json_string(buf, binding->type);
+    zbuf_appendf(buf, ",\"static\":%s", binding->is_static ? "true" : "false");
+    zbuf_append(buf, ",\"staticType\":");
+    call_facts_append_json_string(buf, binding->static_type ? binding->static_type : "");
+    zbuf_append(buf, "}");
+  }
+  zbuf_append(buf, "]");
+}
+
+static void call_facts_append_args_json(ZBuf *buf, const SourceInput *input, const ZCallResolution *resolution) {
+  zbuf_append(buf, "[");
+  for (size_t i = 0; resolution && i < resolution->arg_len; i++) {
+    if (i > 0) zbuf_append(buf, ",");
+    const ZCallArgument *arg = &resolution->args[i];
+    int parser_line = arg->arg_expr ? arg->arg_expr->line : 0;
+    zbuf_appendf(buf, "{\"paramIndex\":%zu,\"path\":", arg->param_index);
+    call_facts_append_json_string(buf, call_facts_source_path(input, parser_line));
+    zbuf_appendf(buf, ",\"line\":%d,\"column\":%d,\"expectedType\":",
+                 call_facts_source_line(input, parser_line),
+                 arg->arg_expr ? arg->arg_expr->column : 0);
+    call_facts_append_json_string(buf, arg->expected_type);
+    zbuf_append(buf, ",\"actualType\":");
+    call_facts_append_json_string(buf, arg->actual_type);
+    zbuf_append(buf, "}");
+  }
+  zbuf_append(buf, "]");
+}
+
+static void call_facts_append_errors_json(ZBuf *buf, const ZCallResolution *resolution) {
+  zbuf_append(buf, "[");
+  for (size_t i = 0; resolution && i < resolution->error_len; i++) {
+    if (i > 0) zbuf_append(buf, ",");
+    call_facts_append_json_string(buf, resolution->errors[i].name);
+  }
+  zbuf_append(buf, "]");
+}
+
+static void call_facts_append_resolution_json(ZBuf *buf, const SourceInput *input, const ZCallResolution *resolution, const char *owner, size_t instantiation_depth, const char *instantiated_by) {
+  zbuf_append(buf, "{\"kind\":");
+  call_facts_append_json_string(buf, z_call_kind_name(resolution ? resolution->kind : Z_CALL_UNKNOWN));
+  zbuf_append(buf, ",\"calleeName\":");
+  call_facts_append_json_string(buf, resolution ? resolution->callee_name : NULL);
+  zbuf_append(buf, ",\"owner\":");
+  call_facts_append_json_string(buf, owner);
+  int parser_line = resolution && resolution->call_expr ? resolution->call_expr->line : 0;
+  zbuf_append(buf, ",\"path\":");
+  call_facts_append_json_string(buf, call_facts_source_path(input, parser_line));
+  zbuf_appendf(buf, ",\"line\":%d,\"column\":%d",
+               call_facts_source_line(input, parser_line),
+               resolution && resolution->call_expr ? resolution->call_expr->column : 0);
+  zbuf_append(buf, ",\"returnType\":");
+  call_facts_append_json_string(buf, resolution ? resolution->return_type : NULL);
+  zbuf_appendf(buf, ",\"fallible\":%s,\"expectedArgCount\":%zu,\"argCount\":%zu,\"paramOffset\":%zu",
+               resolution && resolution->fallible ? "true" : "false",
+               z_call_resolution_expected_arg_count(resolution),
+               resolution && resolution->call_expr ? resolution->call_expr->args.len : 0,
+               resolution ? resolution->param_offset : 0);
+  zbuf_append(buf, ",\"typeArgs\":");
+  call_facts_append_type_args_json(buf, resolution ? resolution->type_args : NULL);
+  zbuf_append(buf, ",\"bindings\":");
+  call_facts_append_bindings_json(buf, resolution);
+  zbuf_append(buf, ",\"args\":");
+  call_facts_append_args_json(buf, input, resolution);
+  zbuf_append(buf, ",\"errors\":");
+  call_facts_append_errors_json(buf, resolution);
+  zbuf_append(buf, ",\"shape\":");
+  call_facts_append_json_string(buf, resolution && resolution->shape ? resolution->shape->name : "");
+  zbuf_append(buf, ",\"interface\":");
+  call_facts_append_json_string(buf, resolution && resolution->interface ? resolution->interface->name : "");
+  zbuf_append(buf, ",\"choice\":");
+  call_facts_append_json_string(buf, resolution && resolution->choice ? resolution->choice->name : "");
+  zbuf_append(buf, ",\"choiceCase\":");
+  call_facts_append_json_string(buf, resolution && resolution->choice_case ? resolution->choice_case->name : "");
+  zbuf_appendf(buf, ",\"instantiationDepth\":%zu", instantiation_depth);
+  if (instantiated_by) {
+    zbuf_append(buf, ",\"instantiatedBy\":");
+    call_facts_append_json_string(buf, instantiated_by);
+  }
+  zbuf_append(buf, "}");
+}
+
+static char *call_facts_type_text(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
+  if (bindings && binding_len > 0) return type_substitute_generic_signature(program, type ? type : "Unknown", bindings, binding_len);
+  return z_strdup(type ? type : "Unknown");
+}
+
+static void call_facts_seed_consts(CheckContext *ctx, const Program *program, Scope *scope) {
+  if (!program || !scope) return;
+  CheckContext const_ctx = {.program = program};
+  CheckContext *type_ctx = ctx ? ctx : &const_ctx;
+  for (size_t i = 0; i < program->consts.len; i++) {
+    const ConstDecl *item = &program->consts.items[i];
+    const char *type = item->type ? item->type : expr_type(type_ctx, program, item->expr, scope);
+    scope_add(scope, item->name, type ? type : "Unknown", false);
+  }
+}
+
+static void call_facts_seed_scope(const Program *program, Scope *scope, const Shape *shape, const Function *fun, GenericBinding *bindings, size_t binding_len) {
+  call_facts_seed_consts(NULL, program, scope);
+  for (size_t i = 0; shape && i < shape->type_params.len; i++) {
+    Param *param = &shape->type_params.items[i];
+    if (param->is_static) scope_add_static_param(scope, param->name, param->type);
+    else scope_add_type_param(scope, param->name);
+  }
+  for (size_t i = 0; fun && i < fun->type_params.len; i++) {
+    Param *param = &fun->type_params.items[i];
+    if (param->is_static) scope_add_static_param(scope, param->name, param->type);
+    else scope_add_type_param(scope, param->name);
+  }
+  for (size_t i = 0; fun && i < fun->params.len; i++) {
+    Param *param = &fun->params.items[i];
+    char *type = call_facts_type_text(program, param->type, bindings, binding_len);
+    scope_add_param_decl(scope, param->name, type, param->line, param->column);
+    free(type);
+  }
+}
+
+static bool call_facts_resolve_stdlib_call(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZCallResolution *out) {
+  if (!resolve_stdlib_call(expr, out)) return false;
+  if (z_call_resolution_expected_arg_count(out) != expr->args.len) {
+    z_call_resolution_free(out);
+    return false;
+  }
+  ZDiag ignored = {0};
+  if (!check_stdlib_known_call_expected(ctx, program, expr, scope, &ignored, out)) {
+    z_call_resolution_free(out);
+    return false;
+  }
+  return true;
+}
+
+static bool call_facts_resolve_call(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ResolvedProvenanceCall *resolved) {
+  if (!expr || expr->kind != EXPR_CALL || !resolved) return false;
+  *resolved = (ResolvedProvenanceCall){0};
+  if (call_facts_resolve_stdlib_call(ctx, program, expr, scope, &resolved->resolution)) return true;
+  if (resolve_choice_constructor_call(program, expr, &resolved->resolution)) {
+    if (resolved->resolution.choice_case && resolved->resolution.choice_case->type && expr->args.len > 0) {
+      z_call_resolution_add_arg(&resolved->resolution, 0, expr->args.items[0], resolved->resolution.choice_case->type, expr_type(ctx, program, expr->args.items[0], scope));
+    }
+    return true;
+  }
+  return resolve_provenance_call(ctx, program, expr, scope, expr_resolved_type_for_current_context(ctx, expr), ctx ? ctx->function : NULL, ctx ? ctx->return_provenance_expr_bindings : NULL, ctx ? ctx->return_provenance_expr_binding_len : 0, resolved);
+}
+
+static void call_facts_collect_expr(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by);
+static void call_facts_collect_stmt_vec(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const StmtVec *body, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by);
+
+static bool call_facts_resolution_has_instantiable_body(const ZCallResolution *resolution) {
+  if (!resolution || !resolution->callee || resolution->binding_len == 0) return false;
+  return resolution->kind == Z_CALL_FUNCTION ||
+         resolution->kind == Z_CALL_RECEIVER ||
+         resolution->kind == Z_CALL_SHAPE_NAMESPACE ||
+         resolution->kind == Z_CALL_CONCRETE_CONSTRAINED_SHAPE;
+}
+
+static void call_facts_collect_instantiated_callee(ZBuf *buf, const SourceInput *input, bool *wrote, const Program *program, const ZCallResolution *resolution, size_t instantiation_depth, const char *owner) {
+  if (!call_facts_resolution_has_instantiable_body(resolution) || instantiation_depth >= 1) return;
+  const Function *callee = resolution->callee;
+  const Shape *callee_shape = resolution->kind == Z_CALL_FUNCTION ? NULL : resolution->shape;
+  GenericBinding *bindings = z_checked_calloc(resolution->binding_len, sizeof(GenericBinding));
+  for (size_t i = 0; i < resolution->binding_len; i++) {
+    bindings[i].name = resolution->bindings[i].name;
+    bindings[i].type = z_strdup(resolution->bindings[i].type);
+    bindings[i].is_static = resolution->bindings[i].is_static;
+    bindings[i].static_type = resolution->bindings[i].static_type;
+  }
+  Scope callee_scope = {0};
+  call_facts_seed_scope(program, &callee_scope, callee_shape, callee, bindings, resolution->binding_len);
+  CheckContext callee_ctx = {
+    .program = program,
+    .function = callee,
+    .shape = callee_shape,
+    .return_provenance_expr_bindings = bindings,
+    .return_provenance_expr_binding_len = resolution->binding_len,
+  };
+  char callee_owner[192];
+  if (callee_shape) snprintf(callee_owner, sizeof(callee_owner), "%s.%s", callee_shape->name, callee->name);
+  else snprintf(callee_owner, sizeof(callee_owner), "%s", callee->name ? callee->name : "");
+  call_facts_collect_stmt_vec(buf, input, wrote, &callee_ctx, program, &callee->body, &callee_scope, callee_owner, instantiation_depth + 1, owner);
+  scope_free(&callee_scope);
+  generic_bindings_free(bindings, resolution->binding_len);
+  free(bindings);
+}
+
+static void call_facts_write_resolution(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by) {
+  ResolvedProvenanceCall resolved = {0};
+  if (!call_facts_resolve_call(ctx, program, expr, scope, &resolved)) return;
+  if (*wrote) zbuf_append(buf, ",");
+  call_facts_append_resolution_json(buf, input, &resolved.resolution, owner, instantiation_depth, instantiated_by);
+  *wrote = true;
+  call_facts_collect_instantiated_callee(buf, input, wrote, program, &resolved.resolution, instantiation_depth, owner);
+  resolved_provenance_call_free(&resolved);
+}
+
+static void call_facts_collect_expr(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by) {
+  if (!expr) return;
+  call_facts_collect_expr(buf, input, wrote, ctx, program, expr->left, scope, owner, instantiation_depth, instantiated_by);
+  call_facts_collect_expr(buf, input, wrote, ctx, program, expr->right, scope, owner, instantiation_depth, instantiated_by);
+  for (size_t i = 0; i < expr->args.len; i++) call_facts_collect_expr(buf, input, wrote, ctx, program, expr->args.items[i], scope, owner, instantiation_depth, instantiated_by);
+  for (size_t i = 0; i < expr->fields.len; i++) call_facts_collect_expr(buf, input, wrote, ctx, program, expr->fields.items[i].value, scope, owner, instantiation_depth, instantiated_by);
+  if (expr->kind == EXPR_CALL) call_facts_write_resolution(buf, input, wrote, ctx, program, expr, scope, owner, instantiation_depth, instantiated_by);
+}
+
+static void call_facts_seed_match_payload_scope(CheckContext *ctx, const Program *program, const Stmt *stmt, const MatchArm *arm, Scope *match_scope, Scope *arm_scope) {
+  if (!ctx || !program || !stmt || stmt->kind != STMT_MATCH || !stmt->expr || !arm || !arm_scope || !arm->payload_name) return;
+  if (!arm->case_name || strcmp(arm->case_name, "_") == 0) return;
+  const char *match_type = stmt->resolved_type ? stmt->resolved_type : expr_type(ctx, program, stmt->expr, match_scope);
+  char *resolved_match_type = call_facts_type_text(program, match_type, ctx->return_provenance_expr_bindings, ctx->return_provenance_expr_binding_len);
+  const Choice *choice = find_choice(program, resolved_match_type);
+  free(resolved_match_type);
+  if (!choice) return;
+  const Param *item_case = find_case(&choice->cases, arm->case_name);
+  if (!item_case || !item_case->type) return;
+  char *payload_type = call_facts_type_text(program, item_case->type, ctx->return_provenance_expr_bindings, ctx->return_provenance_expr_binding_len);
+  scope_add(arm_scope, arm->payload_name, payload_type, false);
+  free(payload_type);
+}
+
+static void call_facts_collect_stmt(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const Stmt *stmt, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by) {
+  if (!stmt) return;
+  call_facts_collect_expr(buf, input, wrote, ctx, program, stmt->target, scope, owner, instantiation_depth, instantiated_by);
+  call_facts_collect_expr(buf, input, wrote, ctx, program, stmt->expr, scope, owner, instantiation_depth, instantiated_by);
+  call_facts_collect_expr(buf, input, wrote, ctx, program, stmt->range_end, scope, owner, instantiation_depth, instantiated_by);
+  if ((stmt->kind == STMT_LET || stmt->kind == STMT_FOR) && stmt->name) {
+    const char *decl_type = stmt->type ? stmt->type : (stmt->resolved_type ? stmt->resolved_type : "Unknown");
+    char *type = call_facts_type_text(program, decl_type, ctx ? ctx->return_provenance_expr_bindings : NULL, ctx ? ctx->return_provenance_expr_binding_len : 0);
+    scope_add_decl(scope, stmt->name, type, stmt->mutable_binding, stmt->line, stmt->column);
+    free(type);
+  }
+  Scope then_scope = {.parent = scope};
+  call_facts_collect_stmt_vec(buf, input, wrote, ctx, program, &stmt->then_body, &then_scope, owner, instantiation_depth, instantiated_by);
+  scope_free(&then_scope);
+  Scope else_scope = {.parent = scope};
+  call_facts_collect_stmt_vec(buf, input, wrote, ctx, program, &stmt->else_body, &else_scope, owner, instantiation_depth, instantiated_by);
+  scope_free(&else_scope);
+  for (size_t i = 0; i < stmt->match_arms.len; i++) {
+    MatchArm *arm = &stmt->match_arms.items[i];
+    Scope arm_scope = {.parent = scope};
+    call_facts_collect_expr(buf, input, wrote, ctx, program, arm->guard, &arm_scope, owner, instantiation_depth, instantiated_by);
+    call_facts_seed_match_payload_scope(ctx, program, stmt, arm, scope, &arm_scope);
+    call_facts_collect_stmt_vec(buf, input, wrote, ctx, program, &arm->body, &arm_scope, owner, instantiation_depth, instantiated_by);
+    scope_free(&arm_scope);
+  }
+}
+
+static void call_facts_collect_stmt_vec(ZBuf *buf, const SourceInput *input, bool *wrote, CheckContext *ctx, const Program *program, const StmtVec *body, Scope *scope, const char *owner, size_t instantiation_depth, const char *instantiated_by) {
+  for (size_t i = 0; body && i < body->len; i++) {
+    call_facts_collect_stmt(buf, input, wrote, ctx, program, body->items[i], scope, owner, instantiation_depth, instantiated_by);
+  }
+}
+
+static void call_facts_collect_function(ZBuf *buf, const SourceInput *input, bool *wrote, const Program *program, const Shape *shape, const Function *fun) {
+  Scope scope = {0};
+  call_facts_seed_scope(program, &scope, shape, fun, NULL, 0);
+  CheckContext ctx = {.program = program, .function = fun, .shape = shape};
+  char owner[192];
+  if (shape) snprintf(owner, sizeof(owner), "%s.%s", shape->name, fun->name);
+  else snprintf(owner, sizeof(owner), "%s", fun ? fun->name : "");
+  call_facts_collect_stmt_vec(buf, input, wrote, &ctx, program, fun ? &fun->body : NULL, &scope, owner, 0, NULL);
+  scope_free(&scope);
+}
+
+static void call_facts_collect_shape_defaults(ZBuf *buf, const SourceInput *input, bool *wrote, const Program *program, const Shape *shape) {
+  if (!shape) return;
+  Scope scope = {0};
+  call_facts_seed_scope(program, &scope, shape, NULL, NULL, 0);
+  CheckContext ctx = {.program = program, .shape = shape};
+  for (size_t field_index = 0; field_index < shape->fields.len; field_index++) {
+    const Param *field = &shape->fields.items[field_index];
+    if (!field->default_value) continue;
+    char owner[192];
+    snprintf(owner, sizeof(owner), "%s.%s", shape->name ? shape->name : "", field->name ? field->name : "");
+    call_facts_collect_expr(buf, input, wrote, &ctx, program, field->default_value, &scope, owner, 0, NULL);
+  }
+  scope_free(&scope);
+}
+
+static void call_facts_collect_consts(ZBuf *buf, const SourceInput *input, bool *wrote, const Program *program) {
+  Scope scope = {0};
+  CheckContext ctx = {.program = program};
+  for (size_t i = 0; program && i < program->consts.len; i++) {
+    ConstDecl *item = &program->consts.items[i];
+    call_facts_collect_expr(buf, input, wrote, &ctx, program, item->expr, &scope, item->name ? item->name : "", 0, NULL);
+    const char *type = item->type ? item->type : expr_type(&ctx, program, item->expr, &scope);
+    scope_add(&scope, item->name, type ? type : "Unknown", false);
+  }
+  scope_free(&scope);
+}
+
+void z_append_call_resolution_facts_json(ZBuf *buf, const SourceInput *input, const Program *program) {
+  zbuf_append(buf, "{\"schemaVersion\":1,\"supportedKinds\":[");
+  for (int kind = Z_CALL_FUNCTION; kind <= Z_CALL_CHOICE_CONSTRUCTOR; kind++) {
+    if (kind > Z_CALL_FUNCTION) zbuf_append(buf, ",");
+    call_facts_append_json_string(buf, z_call_kind_name((ZCallKind)kind));
+  }
+  zbuf_append(buf, "],\"calls\":[");
+  bool wrote = false;
+  call_facts_collect_consts(buf, input, &wrote, program);
+  for (size_t i = 0; program && i < program->functions.len; i++) {
+    call_facts_collect_function(buf, input, &wrote, program, NULL, &program->functions.items[i]);
+  }
+  for (size_t shape_index = 0; program && shape_index < program->shapes.len; shape_index++) {
+    Shape *shape = &program->shapes.items[shape_index];
+    call_facts_collect_shape_defaults(buf, input, &wrote, program, shape);
+    for (size_t method_index = 0; method_index < shape->methods.len; method_index++) {
+      call_facts_collect_function(buf, input, &wrote, program, shape, &shape->methods.items[method_index]);
+    }
+  }
+  zbuf_append(buf, "]}");
 }
 
 static bool function_return_value_provenance(CheckContext *ctx, const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, ValueProvenance *origins, bool *may_return);

@@ -1,0 +1,59 @@
+interface Readable<T: Type>
+  fn read i32 self ref<T>
+
+fn defaultCount i32
+  ret 41
+
+type Counter
+  value i32 defaultCount()
+
+  fn init Self value i32
+    ret Counter . value value
+
+  fn read i32 self ref<Self>
+    ret self.value
+
+  fn bump Void self mutref<Self> amount i32
+    set self.value + self.value amount
+
+  fn checkedRead i32 self ref<Self> ![EmptyCounter]
+    if == self.value 0
+      raise EmptyCounter
+    ret self.value
+
+choice Event
+  key i32
+  quit
+
+fn add i32 left i32 right i32
+  ret + left right
+
+fn id<T: Type> T value T
+  ret value
+
+fn wrap<T: Type> T value T
+  ret id value
+
+fn readValue<T: Readable<T>> i32 value ref<T>
+  ret T.read value
+
+fn risky i32 flag Bool ![BadInput]
+  if flag
+    raise BadInput
+  ret 7
+
+pub fn main Void world World !
+  mut counter Counter Counter.init 41
+  let defaulted Counter Counter .
+  counter.bump 1
+  let total i32 add (id<i32> 40) 2
+  let wrapped i32 wrap<i32> total
+  let size usize std.mem.len "zero"
+  let event Event Event.key total
+  let direct i32 Counter.read (&counter)
+  let defaultedValue i32 Counter.read (&defaulted)
+  let viaInterface i32 readValue<Counter> (&counter)
+  let checked i32 check counter.checkedRead()
+  let safe i32 check risky false
+  if && (&& (&& (&& (&& (== total 42) (== wrapped 42)) (== size 4)) (== defaultedValue 41)) (&& (== direct 42) (== viaInterface 42))) (&& (== checked 42) (== safe 7))
+    check world.out.write "call resolution inspection ok\n"

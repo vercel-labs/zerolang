@@ -464,6 +464,8 @@ for (const fixture of [
   "conformance/check/pass/shape-field-defaults.0",
   "conformance/check/pass/static-value-params.0",
   "conformance/check/pass/static-interface-basic.0",
+  "conformance/check/pass/call-resolution-inspection.0",
+  "conformance/check/pass/call-resolution-edge-cases.0",
   "conformance/native/pass/static-interface-mutref.0",
   "conformance/native/pass/static-interface-static-param.0",
   "conformance/check/pass/top-level-const.0",
@@ -2534,6 +2536,57 @@ const staticInterfaceGraphBody = JSON.parse(staticInterfaceGraph.stdout);
 assert(staticInterfaceGraphBody.interfaces.some((item) => item.name === "Readable" && item.staticOnly === true));
 assert(staticInterfaceGraphBody.functions.some((item) => item.name === "readValue" && item.constraints.some((constraint) => constraint.interface === "Readable<T>" && constraint.staticDispatch === true)));
 assert(staticInterfaceGraphBody.symbols.some((item) => item.name === "Readable" && item.kind === "interface"));
+
+const callResolutionGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/call-resolution-inspection.0"]);
+const callResolutionGraphBody = JSON.parse(callResolutionGraph.stdout);
+const callFacts = callResolutionGraphBody.callResolution;
+assert.equal(callFacts.schemaVersion, 1);
+for (const kind of ["function", "stdlib", "receiver", "shape_namespace", "constrained_interface", "concrete_constrained_shape", "choice_constructor"]) {
+  assert(callFacts.supportedKinds.includes(kind));
+  assert(callFacts.calls.some((item) => item.kind === kind), `missing call-resolution fact for ${kind}`);
+}
+assert(callFacts.calls.some((item) => item.kind === "function" && item.calleeName === "add" && item.returnType === "i32" && item.expectedArgCount === 2));
+assert(callFacts.calls.some((item) => item.kind === "function" && item.calleeName === "id" && item.bindings.some((binding) => binding.name === "T" && binding.type === "i32")));
+assert(callFacts.calls.some((item) => item.kind === "function" && item.calleeName === "id" && item.owner === "wrap" && item.instantiationDepth === 1 && item.instantiatedBy === "main" && item.returnType === "i32"));
+assert(callFacts.calls.some((item) => item.kind === "stdlib" && item.calleeName === "std.mem.len" && item.returnType === "usize" && item.args.some((arg) => arg.actualType === "String")));
+assert(callFacts.calls.some((item) => item.kind === "choice_constructor" && item.calleeName === "Event.key" && item.choice === "Event" && item.choiceCase === "key"));
+assert(callFacts.calls.some((item) => item.kind === "shape_namespace" && item.calleeName === "read" && item.shape === "Counter"));
+assert(callFacts.calls.some((item) => item.kind === "receiver" && item.calleeName === "bump" && item.shape === "Counter" && item.paramOffset === 1));
+assert(callFacts.calls.some((item) => item.kind === "constrained_interface" && item.calleeName === "read" && item.interface === "Readable" && item.owner === "readValue"));
+assert(callFacts.calls.some((item) => item.kind === "concrete_constrained_shape" && item.calleeName === "read" && item.shape === "Counter" && item.instantiatedBy === "main"));
+assert(callFacts.calls.some((item) => item.calleeName === "add" && item.path === "conformance/check/pass/call-resolution-inspection.0"));
+assert(callFacts.calls.some((item) => item.kind === "function" && item.calleeName === "defaultCount" && item.owner === "Counter.value" && item.returnType === "i32"));
+assert(callFacts.calls.some((item) => item.kind === "function" && item.calleeName === "risky" && item.fallible === true && item.errors.includes("BadInput")));
+assert(callFacts.calls.some((item) => item.kind === "receiver" && item.calleeName === "checkedRead" && item.fallible === true && item.errors.includes("EmptyCounter")));
+
+const callResolutionMemGetGraph = await execFileAsync(zero, ["graph", "--json", "conformance/native/pass/checked-bounds-get.0"]);
+const callResolutionMemGetFacts = JSON.parse(callResolutionMemGetGraph.stdout).callResolution;
+assert(callResolutionMemGetFacts.calls.some((item) => item.kind === "stdlib" && item.calleeName === "std.mem.get" && item.returnType === "Maybe<u8>" && item.args.some((arg) => arg.paramIndex === 0 && arg.actualType === "[3]u8")));
+
+const callResolutionGenericShapeGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/generic-shape-methods.0"]);
+const callResolutionGenericShapeFacts = JSON.parse(callResolutionGenericShapeGraph.stdout).callResolution;
+assert(callResolutionGenericShapeFacts.calls.some((item) =>
+  item.kind === "stdlib" &&
+  item.calleeName === "std.mem.get" &&
+  item.owner === "FixedVec.get" &&
+  item.instantiationDepth === 1 &&
+  item.instantiatedBy === "main" &&
+  item.returnType === "Maybe<u8>" &&
+  item.args.some((arg) => arg.paramIndex === 0 && arg.actualType === "[4]u8")
+));
+
+const callResolutionFsReadGraph = await execFileAsync(zero, ["graph", "--json", "conformance/native/pass/std-fs-resource.0"]);
+const callResolutionFsReadFacts = JSON.parse(callResolutionFsReadGraph.stdout).callResolution;
+assert(callResolutionFsReadFacts.calls.some((item) => item.kind === "stdlib" && item.calleeName === "std.fs.read" && item.returnType === "Maybe<usize>" && item.args.some((arg) => arg.paramIndex === 0 && arg.expectedType === "mutref<File>" && arg.actualType === "mutref<File>")));
+
+const callResolutionPackageGraph = await execFileAsync(zero, ["graph", "--json", "examples/systems-package"]);
+const callResolutionPackageFacts = JSON.parse(callResolutionPackageGraph.stdout).callResolution;
+assert(callResolutionPackageFacts.calls.some((item) => item.calleeName === "cleanup" && item.path === "examples/systems-package/src/main.0" && item.line === 8));
+
+const callResolutionEdgeGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/call-resolution-edge-cases.0"]);
+const callResolutionEdgeFacts = JSON.parse(callResolutionEdgeGraph.stdout).callResolution;
+assert(callResolutionEdgeFacts.calls.some((item) => item.kind === "function" && item.calleeName === "add" && item.owner === "constTotal" && item.returnType === "i32"));
+assert(callResolutionEdgeFacts.calls.some((item) => item.kind === "stdlib" && item.calleeName === "std.mem.len" && item.owner === "main" && item.args.some((arg) => arg.paramIndex === 0 && arg.actualType === "String")));
 
 const memorySize = await execFileAsync(zero, ["size", "--json", "--target", "linux-musl-x64", "examples/memory-package"]);
 const memorySizeBody = JSON.parse(memorySize.stdout);

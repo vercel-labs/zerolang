@@ -1,0 +1,17 @@
+fn add i32 left i32 right i32
+  ret + left right
+
+const constTotal i32 add 20 22
+
+choice PayloadResult
+  text String
+  count i32
+
+pub fn main Void
+  let result PayloadResult PayloadResult.text "zero"
+  match result
+    text message
+      let size usize std.mem.len message
+      expect (== size 4)
+    count value
+      expect (== value constTotal)

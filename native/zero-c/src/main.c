@@ -8766,6 +8766,9 @@ static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, c
   zbuf_append(buf, "  \"stdlibHelpers\": ");
   append_stdlib_helpers_json(buf);
   zbuf_append(buf, ",\n");
+  zbuf_append(buf, "  \"callResolution\": ");
+  z_append_call_resolution_facts_json(buf, input, program);
+  zbuf_append(buf, ",\n");
   zbuf_append(buf, "  \"cImports\": ");
   append_c_imports_json(buf, program, target);
   zbuf_append(buf, ",\n");

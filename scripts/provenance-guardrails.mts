@@ -417,6 +417,19 @@ assertIncludes("provenance call dispatcher", provenanceCallBody, "resolve_constr
 assertIncludes("provenance call dispatcher", provenanceCallBody, "resolve_receiver_shape_provenance_call");
 assertBefore("provenance call resolver order", provenanceCallBody, "resolve_concrete_constrained_shape_provenance_call", "resolve_constrained_interface_provenance_call");
 
+const callResolutionFactsResolverBody = sliceBetween(checker, "static bool call_facts_resolve_call", "static void call_facts_collect_expr");
+assertIncludes("call-resolution graph facts", callResolutionFactsResolverBody, "resolve_stdlib_call");
+assertIncludes("call-resolution graph facts", callResolutionFactsResolverBody, "resolve_choice_constructor_call");
+assertIncludes("call-resolution graph facts", callResolutionFactsResolverBody, "resolve_provenance_call");
+assertIncludes("call-resolution graph facts", callResolutionFactsResolverBody, "ResolvedProvenanceCall");
+
+const callResolutionFactsJsonBody = sliceBetween(checker, "void z_append_call_resolution_facts_json", "static bool function_return_value_provenance");
+assertIncludes("call-resolution graph facts", callResolutionFactsJsonBody, "Z_CALL_FUNCTION");
+assertIncludes("call-resolution graph facts", callResolutionFactsJsonBody, "Z_CALL_CHOICE_CONSTRUCTOR");
+assertIncludes("call-resolution graph facts", callResolutionFactsJsonBody, "call_facts_collect_function");
+assertIncludes("call-resolution graph fixture", conformance, "conformance/check/pass/call-resolution-inspection.0");
+assertIncludes("call-resolution graph fixture", conformance, "callResolution");
+
 const exprCallResolverBody = sliceBetween(checker, "static bool resolve_expr_call_for_type", "static const char *expr_call_return_type");
 assertIncludes("expr call return resolver", exprCallResolverBody, "resolve_named_function_call");
 assertIncludes("expr call return resolver", exprCallResolverBody, "resolve_shape_namespace_call");

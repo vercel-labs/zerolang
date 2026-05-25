@@ -906,6 +906,7 @@ void z_free_program(Program *program);
 
 bool z_check_program(const Program *program, ZDiag *diag);
 bool z_check_program_library(const Program *program, ZDiag *diag);
+void z_append_call_resolution_facts_json(ZBuf *buf, const SourceInput *input, const Program *program);
 void z_set_check_target(const ZTargetInfo *target);
 ZMetaCacheStats z_meta_cache_stats(void);
 void z_backend_blocker_set(ZBackendBlocker *blocker, const char *target, const char *object_format, const char *backend, const char *stage, const char *unsupported_feature);
