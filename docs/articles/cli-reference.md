@@ -36,6 +36,8 @@ zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
 zero graph --json examples/systems-package
 zero graph dump examples/hello.0
 zero graph dump --out .zero/out/hello.graph examples/hello.0
+zero graph import --out .zero/out/hello.graph examples/hello.0
+zero graph inspect --json examples/hello.0
 zero graph validate .zero/out/hello.graph
 zero graph view .zero/out/hello.graph
 zero graph check --json .zero/out/hello.graph
@@ -72,6 +74,7 @@ Use `--json` when another tool will read the result. Text output is for people.
 | `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, and `targetReadiness` for the selected target/emit kind. |
 | `zero graph --json` | Modules, public symbols, capabilities, static facts, helper use, and nested `programGraph`. |
 | `zero graph dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <file>` to write the dump artifact. |
+| `zero graph import --json` | Source-to-ProgramGraph import with graph identity and validation. With `--out <file>`, writes a loadable ProgramGraph artifact and reports `saved.path`. |
 | `zero graph validate --json` | A ProgramGraph artifact readback check with `moduleIdentity`, `graphHash`, counts, validation state, and optional canonical output path. |
 | `zero graph view --json` | A generated Zero-shaped view for a ProgramGraph artifact with `moduleIdentity`, `graphHash`, `canonicalSource: false`, and optional output path. |
 | `zero graph check --json` | Typecheck a ProgramGraph artifact through direct graph lowering with artifact identity, target, `check.lowering: "direct-program-graph"`, target readiness, diagnostics, optional generated-view output path, and an inline failed view when no output path was saved. |
@@ -201,7 +204,7 @@ zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] [--out <file>] <input> [patch-file]
+zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] [--out <file>] <input> [patch-file]
 zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact>
 zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact> [-- args...]
 zero graph test [--json] [--filter <name>] [--target <target>] <graph-artifact>

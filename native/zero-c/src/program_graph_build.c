@@ -7,7 +7,7 @@
 #include <string.h>
 
 bool z_program_graph_command_kind_is_known(const char *kind) {
-  static const char *kinds[] = {"dump", "validate", "view", "check", "size", "build", "run", "test", "patch", "roundtrip"};
+  static const char *kinds[] = {"dump", "import", "inspect", "validate", "view", "check", "size", "build", "run", "test", "patch", "roundtrip"};
   for (size_t i = 0; kind && i < sizeof(kinds) / sizeof(kinds[0]); i++) {
     if (strcmp(kind, kinds[i]) == 0) return true;
   }
