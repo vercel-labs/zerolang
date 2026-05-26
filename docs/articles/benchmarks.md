@@ -39,8 +39,17 @@ The current cases include:
 - `fs-resource`, `mem-copy-fill`, `zero-hash`: focused Zero cases for file-resource metadata, memory helpers, and deterministic byte payload processing
 
 The Zero sources for these cases live under `benchmarks/zero`.
+Agent-oriented math and transform benchmarks live under `benchmarks/agent`.
 Host targets that do not support a direct executable runner for a case report it
 as `skipped` with a reason instead of failing the whole benchmark run.
+
+## Agent-Oriented Cases
+
+The `benchmarks/agent` cases exercise patterns common in code agents generate or repair:
+
+- `gcd`: Euclidean GCD with integer loop and branch behavior.
+- `stats`: Min, max, and sum over a fixed-size array.
+- `token-count`: Delimiter token scan over a byte span.
 
 ## Metrics
 

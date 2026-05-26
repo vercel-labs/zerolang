@@ -1,0 +1,16 @@
+fn tokenCount u32 text Span<u8> delim u8
+  mut count u32 1
+  mut i usize 0
+  while < i (std.mem.len text)
+    if == text[i] delim
+      set count + count 1
+    set i + i 1
+  ret count
+
+pub fn main Void world World !
+  let text Span<u8> std.mem.span "zero lang agent test"
+  let count tokenCount text 32_u8
+  if == count 4
+    check world.out.write "token count ok\n"
+  else
+    check world.out.write "token count fail\n"
