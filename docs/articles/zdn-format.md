@@ -184,7 +184,7 @@ If an agent needs deeper compiler internals, ZDN output can be combined with `ze
 
 | Command | Record | Key Fields |
 |---------|--------|------------|
-| `zero check --zdn` | `CheckResult` | `ok`, `sourceFile`, `target`, `diagnostics` |
+| `zero check --zdn` | `CheckResult` | `ok`, `sourceFile`, `target`, `diagnostics`, `targetReadiness` |
 | `zero build --zdn` | `BuildResult` | `ok`, `sourceFile`, `target`, `artifact`, `bytes` |
 | `zero run --zdn` | Error only (diagnostic) | — |
 | `zero ship --zdn` | `ShipResult` | `ok`, `artifact`, `checksum`, `bytes` |
@@ -298,6 +298,10 @@ CheckResult
   hostTarget "linux-x64"
   target "linux-x64"
   diagnostics
+  targetReadiness
+    buildable true
+    backend "zero-elf64-exe"
+    objectFormat "elf"
 ```
 
 #### `zero check --zdn` (failure with diagnostics)

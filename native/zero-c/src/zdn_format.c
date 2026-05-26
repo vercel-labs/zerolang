@@ -330,6 +330,12 @@ void zdn_print_check_success(const char *path, const SourceInput *input,
   zdn_field_string(&buf, "target", target && target->name ? target->name : "host", 1);
   zdn_array_start(&buf, "diagnostics", 1);
   // empty diagnostics array — no items
+  zdn_array_end(&buf, 1);
+  zdn_object_start(&buf, "targetReadiness", 1);
+  zdn_field_bool(&buf, "buildable", true, 2);
+  zdn_field_string(&buf, "backend", target && target->name ? z_direct_backend_name_for_emit_kind(target, "exe", NULL) : "unknown", 2);
+  zdn_field_string(&buf, "objectFormat", target && target->object_format ? target->object_format : "unknown", 2);
+  zdn_object_end(&buf, 1);
 
   fputs(buf.data, stdout);
   zbuf_free(&buf);
