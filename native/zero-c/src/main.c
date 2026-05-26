@@ -9440,6 +9440,26 @@ static void append_graph_saved_json(ZBuf *buf, const char *path) {
   }
 }
 
+static void append_graph_import_json(ZBuf *buf, const Command *command, const SourceInput *input, const ZProgramGraph *graph, const ZProgramGraphValidation *validation) {
+  zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
+  zbuf_append(buf, validation && validation->ok ? "true" : "false");
+  zbuf_append(buf, ",\n  \"sourceFile\": ");
+  append_json_string(buf, input && input->source_file ? input->source_file : command->input);
+  zbuf_append(buf, ",\n  \"canonicalSource\": false,\n  \"moduleIdentity\": ");
+  append_json_string(buf, graph ? graph->module_identity : "");
+  zbuf_append(buf, ",\n  \"graphHash\": ");
+  append_json_string(buf, graph ? graph->graph_hash : "");
+  zbuf_appendf(buf, ",\n  \"counts\": {\"nodes\": %zu, \"edges\": %zu}", graph ? graph->node_len : 0, graph ? graph->edge_len : 0);
+  zbuf_append(buf, ",\n  \"validation\": {\"state\": ");
+  append_json_string(buf, z_program_graph_validation_state_name(validation ? validation->state : Z_PROGRAM_GRAPH_VALIDATION_SHAPE_VALID));
+  zbuf_append(buf, ", \"ok\": ");
+  zbuf_append(buf, validation && validation->ok ? "true" : "false");
+  zbuf_append(buf, "}");
+  zbuf_append(buf, ",\n  \"saved\": ");
+  append_graph_saved_json(buf, command->out);
+  zbuf_append(buf, "\n}\n");
+}
+
 static const char *graph_check_generated_view_path(void) {
   return "<generated-graph-view>";
 }
@@ -10300,7 +10320,8 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
 }
 
 static int run_graph_command(const Command *command, SourceInput *input, Program *program, const ZTargetInfo *target, ZDiag *diag) {
-  bool graph_dump = command->kind && (strcmp(command->kind, "dump") == 0 || strcmp(command->kind, "import") == 0);
+  bool graph_import = command->kind && strcmp(command->kind, "import") == 0;
+  bool graph_dump = command->kind && (strcmp(command->kind, "dump") == 0 || graph_import);
   bool graph_inspect = command->kind && strcmp(command->kind, "inspect") == 0;
   bool graph_roundtrip = command->kind && strcmp(command->kind, "roundtrip") == 0;
   if (command->kind && !graph_dump && !graph_inspect && !graph_roundtrip) {
@@ -10308,26 +10329,38 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
     return 1;
   }
   if (command->out && !graph_dump && !graph_roundtrip) {
-    fprintf(stderr, "graph --out is only supported with dump or roundtrip\n");
+    fprintf(stderr, "graph --out is only supported with dump, import, or roundtrip\n");
     return 1;
   }
   if (graph_roundtrip) return run_graph_roundtrip_command(command, input, program, target, diag);
   ZBuf graph;
   zbuf_init(&graph);
-  if (graph_dump) z_append_program_graph_dump(&graph, input, program, command->json);
+  bool import_json_out = graph_import && command->json && command->out;
+  if (graph_dump) z_append_program_graph_dump(&graph, input, program, command->json && !import_json_out);
   else append_graph_json(&graph, input, program, target, command);
-  if (graph_dump && command->out && !command->json) {
+  if (graph_dump && command->out && (!command->json || graph_import)) {
     ZProgramGraph stored;
     if (!z_program_graph_parse_dump(graph.data ? graph.data : "", &stored, diag)) {
-      print_diag(diag->path ? diag->path : command->out, diag);
+      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
+      else print_diag(diag->path ? diag->path : command->out, diag);
       zbuf_free(&graph);
       return 1;
     }
     if (!z_program_graph_save(command->out, &stored, diag)) {
       z_program_graph_free(&stored);
-      print_diag(diag->path ? diag->path : command->out, diag);
+      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
+      else print_diag(diag->path ? diag->path : command->out, diag);
       zbuf_free(&graph);
       return 1;
+    }
+    if (import_json_out) {
+      ZProgramGraphValidation validation = {0};
+      z_program_graph_validate(&stored, &validation);
+      ZBuf json;
+      zbuf_init(&json);
+      append_graph_import_json(&json, command, input, &stored, &validation);
+      fputs(json.data, stdout);
+      zbuf_free(&json);
     }
     z_program_graph_free(&stored);
     zbuf_free(&graph);

@@ -74,6 +74,7 @@ Use `--json` when another tool will read the result. Text output is for people.
 | `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, and `targetReadiness` for the selected target/emit kind. |
 | `zero graph --json` | Modules, public symbols, capabilities, static facts, helper use, and nested `programGraph`. |
 | `zero graph dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <file>` to write the dump artifact. |
+| `zero graph import --json` | Source-to-ProgramGraph import with graph identity and validation. With `--out <file>`, writes a loadable ProgramGraph artifact and reports `saved.path`. |
 | `zero graph validate --json` | A ProgramGraph artifact readback check with `moduleIdentity`, `graphHash`, counts, validation state, and optional canonical output path. |
 | `zero graph view --json` | A generated Zero-shaped view for a ProgramGraph artifact with `moduleIdentity`, `graphHash`, `canonicalSource: false`, and optional output path. |
 | `zero graph check --json` | Typecheck a ProgramGraph artifact through direct graph lowering with artifact identity, target, `check.lowering: "direct-program-graph"`, target readiness, diagnostics, optional generated-view output path, and an inline failed view when no output path was saved. |
