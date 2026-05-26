@@ -335,6 +335,7 @@ const graphPatchEmptyPath = join(outDir, "hello.empty.program-graph.patch");
 const graphPatchControlPath = join(outDir, "hello.control.program-graph.patch");
 const graphPatchBadEscapePath = join(outDir, "hello.bad-escape.program-graph.patch");
 const graphPatchNullEscapePath = join(outDir, "hello.null-escape.program-graph.patch");
+const graphPatchRawNullPath = join(outDir, "hello.raw-null.program-graph.patch");
 const graphPatchMismatchPath = join(outDir, "hello.mismatch.program-graph.patch");
 const graphPatchBadHashPath = join(outDir, "hello.bad-hash.program-graph.patch");
 const graphSparseOrderPath = join(outDir, "hello.sparse-order.program-graph");
@@ -349,6 +350,7 @@ rmSync(graphPatchEmptyPath, { force: true });
 rmSync(graphPatchControlPath, { force: true });
 rmSync(graphPatchBadEscapePath, { force: true });
 rmSync(graphPatchNullEscapePath, { force: true });
+rmSync(graphPatchRawNullPath, { force: true });
 rmSync(graphPatchMismatchPath, { force: true });
 rmSync(graphPatchBadHashPath, { force: true });
 rmSync(graphSparseOrderPath, { force: true });
@@ -391,6 +393,10 @@ writeFileSync(graphPatchPath, [
   "",
 ].join("\n"));
 assert.equal(zero(["graph", "patch", "--out", graphPatchedPath, graphDumpPath, graphPatchPath]).stdout, "program graph patch ok\n");
+const graphPatchedStdout = zero(["graph", "patch", graphDumpPath, graphPatchPath]).stdout;
+assert.match(graphPatchedStdout, /^zero-program-graph v1\n/);
+assert.match(graphPatchedStdout, /value="hello patched\\n"/);
+assert.equal(readFileSync(graphPatchedPath, "utf8"), graphPatchedStdout);
 const graphPatchJson = json(["graph", "patch", "--json", "--out", graphPatchedPath, graphDumpPath, graphPatchPath]).body;
 assert.equal(graphPatchJson.ok, true);
 assert.equal(graphPatchJson.canonicalSource, false);
@@ -446,6 +452,21 @@ const graphPatchNullEscape = json(["graph", "patch", "--json", graphDumpPath, gr
 assert.notEqual(graphPatchNullEscape.code, 0);
 assert.equal(graphPatchNullEscape.body.ok, false);
 assert.equal(graphPatchNullEscape.body.diagnostic.code, "GPH001");
+writeFileSync(graphPatchRawNullPath, Buffer.concat([
+  Buffer.from([
+    "zero-program-graph-patch v1",
+    `expect graphHash "${graphDumpJson.graphHash}"`,
+    `set node="node:000013" field="value" expect="hello from zero\\n" value="raw nul prefix"`,
+    "",
+  ].join("\n")),
+  Buffer.from([0]),
+  Buffer.from(`set node="node:000013" field="value" value="ignored"\n`),
+]));
+const graphPatchRawNull = json(["graph", "patch", "--json", graphDumpPath, graphPatchRawNullPath], { allowFailure: true });
+assert.notEqual(graphPatchRawNull.code, 0);
+assert.equal(graphPatchRawNull.body.ok, false);
+assert.equal(graphPatchRawNull.body.diagnostic.code, "GPH001");
+assert.equal(graphPatchRawNull.body.diagnostic.message, "program graph patch contains NUL byte");
 writeFileSync(graphPatchBadHashPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "graph:0000000000000000"`,

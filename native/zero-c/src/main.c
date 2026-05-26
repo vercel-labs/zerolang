@@ -9410,8 +9410,16 @@ static int run_graph_patch_command(const Command *command, ZDiag *diag) {
     append_graph_patch_json(&json, command, &graph, &result, original_hash);
     fputs(json.data, stdout);
     zbuf_free(&json);
-  } else if (ok) {
+  } else if (ok && command->out) {
     printf("program graph patch ok\n");
+  } else if (ok) {
+    ZProgramGraphValidation validation = {0};
+    z_program_graph_validate(&graph, &validation);
+    ZBuf dump;
+    zbuf_init(&dump);
+    z_program_graph_append_dump(&dump, &graph, &validation);
+    fputs(dump.data ? dump.data : "", stdout);
+    zbuf_free(&dump);
   } else if (result.message[0]) {
     fprintf(stderr, "program graph patch failed: %s\n", result.message);
     if (result.expected && result.expected[0]) fprintf(stderr, "  expected: %s\n", result.expected);

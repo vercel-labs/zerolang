@@ -1,6 +1,7 @@
 #include "program_graph_patch.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +44,51 @@ static void patch_op_fail(ZProgramGraphPatchResult *result, ZProgramGraphPatchOp
 
 static bool patch_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
+}
+
+static bool patch_io_fail(ZDiag *diag, const char *path, const char *action) {
+  if (diag) {
+    diag->code = 1;
+    diag->path = path;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "failed to %s '%s': %s", action, path ? path : "<patch>", strerror(errno));
+  }
+  return false;
+}
+
+static char *patch_read_file(const char *path, size_t *out_len, ZDiag *diag) {
+  FILE *file = fopen(path, "rb");
+  if (!file) {
+    patch_io_fail(diag, path, "read");
+    return NULL;
+  }
+  if (fseek(file, 0, SEEK_END) != 0) {
+    patch_io_fail(diag, path, "read");
+    fclose(file);
+    return NULL;
+  }
+  long size = ftell(file);
+  if (size < 0) {
+    patch_io_fail(diag, path, "read");
+    fclose(file);
+    return NULL;
+  }
+  rewind(file);
+  char *data = z_checked_malloc((size_t)size + 1);
+  size_t read = fread(data, 1, (size_t)size, file);
+  if (read != (size_t)size) {
+    if (!ferror(file)) errno = EIO;
+    patch_io_fail(diag, path, "read");
+    fclose(file);
+    free(data);
+    return NULL;
+  }
+  fclose(file);
+  data[read] = '\0';
+  if (out_len) *out_len = read;
+  return data;
 }
 
 static char *patch_trim(char *line) {
@@ -333,8 +379,14 @@ bool z_program_graph_apply_patch_file(const char *path, ZProgramGraph *graph, ZP
   if (!result) return false;
   *result = (ZProgramGraphPatchResult){0};
   result->actual_graph_hash = z_strdup(graph && graph->graph_hash ? graph->graph_hash : "");
-  char *text = z_read_file(path, diag);
+  size_t text_len = 0;
+  char *text = patch_read_file(path, &text_len, diag);
   if (!text) return false;
+  if (memchr(text, '\0', text_len)) {
+    patch_result_fail(result, "GPH001", "program graph patch contains NUL byte", "text without NUL bytes", "NUL byte");
+    free(text);
+    return false;
+  }
   bool parsed = patch_parse_text(text, result);
   free(text);
   if (!parsed) return false;
