@@ -39,6 +39,7 @@ zero graph dump --out .zero/out/hello.graph examples/hello.0
 zero graph validate .zero/out/hello.graph
 zero graph view .zero/out/hello.graph
 zero graph check --json .zero/out/hello.graph
+zero graph size --json .zero/out/hello.graph
 zero graph patch --out .zero/out/hello.patched.graph .zero/out/hello.graph .zero/out/hello.patch
 zero graph roundtrip examples/hello.0
 zero graph roundtrip .zero/out/hello.graph
@@ -70,6 +71,7 @@ Use `--json` when another tool will read the result. Text output is for people.
 | `zero graph validate --json` | A ProgramGraph artifact readback check with `moduleIdentity`, `graphHash`, counts, validation state, and optional canonical output path. |
 | `zero graph view --json` | A generated Zero-shaped view for a ProgramGraph artifact with `moduleIdentity`, `graphHash`, `canonicalSource: false`, and optional output path. |
 | `zero graph check --json` | Typecheck a ProgramGraph artifact through direct graph lowering with artifact identity, target, `check.lowering: "direct-program-graph"`, target readiness, diagnostics, optional generated-view output path, and an inline failed view when no output path was saved. |
+| `zero graph size --json` | Size, helper, runtime, profile, and backend facts for a ProgramGraph artifact lowered through `direct-program-graph`, with graph identity and `canonicalSource: false`. |
 | `zero graph patch --json` | Checked ProgramGraph artifact edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and optional canonical output path. |
 | `zero graph roundtrip --json` | Source-to-graph-to-view or artifact-to-direct-lower stability with `semanticStable`, lowering mode, original and reparsed graph hashes, raw counts, normalized semantic counts, and optional output. |
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
@@ -194,7 +196,7 @@ zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|validate|view|check|patch|roundtrip] [--json] [--target <target>] [--out <file>] <input> [patch-file]
+zero graph [dump|validate|view|check|size|patch|roundtrip] [--json] [--target <target>] [--out <file>] <input> [patch-file]
 zero doc [--json] [--target <target>] <input>
 zero size [--json] [--target <target>] [--out <artifact>] <input>
 zero explain [--json] <diagnostic-code>

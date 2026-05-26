@@ -329,6 +329,9 @@ const graphDumpPath = join(outDir, "hello.program-graph");
 const graphCanonicalPath = join(outDir, "hello.canonical.program-graph");
 const graphViewPath = join(outDir, "hello.program-graph.0");
 const graphCheckViewPath = join(outDir, "hello.checked.program-graph.0");
+const graphSizePath = join(outDir, "hello.program-graph.size.json");
+const graphSizeNoisePatchPath = join(outDir, "hello.program-graph.size-noise.patch");
+const graphSizeNoisePath = join(outDir, "hello.program-graph.size-noise.program-graph");
 const graphRoundtripViewPath = join(outDir, "hello.roundtrip.0");
 const graphArtifactRoundtripPath = join(outDir, "hello.roundtrip.program-graph");
 const graphPatchPath = join(outDir, "hello.program-graph.patch");
@@ -374,6 +377,8 @@ const graphPayloadDumpPath = join(outDir, "payload-match.program-graph");
 const graphPatchInvalidMatchReplacePath = join(outDir, "payload-match.invalid-replace.program-graph.patch");
 const graphPatchInvalidMatchInsertPath = join(outDir, "payload-match.invalid-insert.program-graph.patch");
 const graphPackageDumpPath = join(outDir, "systems-package.program-graph");
+const graphPackagePathMismatchPatchPath = join(outDir, "systems-package.path-mismatch.program-graph.patch");
+const graphPackagePathMismatchPath = join(outDir, "systems-package.path-mismatch.program-graph");
 const graphPatchInvalidImportAliasPath = join(outDir, "systems-package.invalid-import-alias.program-graph.patch");
 const graphPatchInvalidImportNamePath = join(outDir, "systems-package.invalid-import-name.program-graph.patch");
 const graphInvalidImportNamePath = join(outDir, "systems-package.invalid-import-name.program-graph");
@@ -387,6 +392,9 @@ rmSync(graphDumpPath, { force: true });
 rmSync(graphCanonicalPath, { force: true });
 rmSync(graphViewPath, { force: true });
 rmSync(graphCheckViewPath, { force: true });
+rmSync(graphSizePath, { force: true });
+rmSync(graphSizeNoisePatchPath, { force: true });
+rmSync(graphSizeNoisePath, { force: true });
 rmSync(graphRoundtripViewPath, { force: true });
 rmSync(graphArtifactRoundtripPath, { force: true });
 rmSync(graphPatchPath, { force: true });
@@ -432,6 +440,8 @@ rmSync(graphPayloadDumpPath, { force: true });
 rmSync(graphPatchInvalidMatchReplacePath, { force: true });
 rmSync(graphPatchInvalidMatchInsertPath, { force: true });
 rmSync(graphPackageDumpPath, { force: true });
+rmSync(graphPackagePathMismatchPatchPath, { force: true });
+rmSync(graphPackagePathMismatchPath, { force: true });
 rmSync(graphPatchInvalidImportAliasPath, { force: true });
 rmSync(graphPatchInvalidImportNamePath, { force: true });
 rmSync(graphInvalidImportNamePath, { force: true });
@@ -496,6 +506,50 @@ assert.equal(graphCheckOutJson.check.lowering, "direct-program-graph");
 assert.equal(graphCheckOutJson.check.sourcePath, graphCheckViewPath);
 assert.equal(graphCheckOutJson.view, null);
 assert.equal(readFileSync(graphCheckViewPath, "utf8"), graphView);
+const graphSizeJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphDumpPath]).body;
+assert.equal(graphSizeJson.schemaVersion, 1);
+assert.equal(graphSizeJson.sourceFile, graphDumpPath);
+assert.equal(graphSizeJson.graph.artifact, graphDumpPath);
+assert.equal(graphSizeJson.graph.canonicalSource, false);
+assert.equal(graphSizeJson.graph.moduleIdentity, "module:hello");
+assert.equal(graphSizeJson.graph.graphHash, graphDumpJson.graphHash);
+assert.equal(graphSizeJson.graph.lowering, "direct-program-graph");
+assert.equal(graphSizeJson.target, "linux-musl-x64");
+assert.equal(graphSizeJson.generatedCBytes, 0);
+assert.equal(graphSizeJson.cBridgeFallback, false);
+assert.equal(graphSizeJson.sizeBreakdown.target, "linux-musl-x64");
+assert.equal(graphSizeJson.objectBackend.objectEmission.path, "direct-elf64-object");
+assert.equal(graphSizeJson.artifactPath, null);
+assert(graphSizeJson.compilerCaches.every((cache) => cache.sourceKind === "program-graph" && cache.graphHash === graphDumpJson.graphHash));
+assert.equal(graphSizeJson.compilerCaches.find((cache) => cache.name === "parseTree").invalidatesOn, "graph artifact");
+assert.equal(graphSizeJson.incrementalInvalidation.sourceKind, "program-graph");
+assert.equal(graphSizeJson.incrementalInvalidation.graphInput.artifact, graphDumpPath);
+assert.equal(graphSizeJson.incrementalInvalidation.graphInput.graphHash, graphDumpJson.graphHash);
+assert.equal(graphSizeJson.incrementalInvalidation.changedInputs.graphArtifact, graphDumpPath);
+assert.equal(graphSizeJson.incrementalInvalidation.interfaceFingerprints.sourceKind, "program-graph");
+assert.equal(graphSizeJson.incrementalInvalidation.interfaceFingerprints.graphHash, graphDumpJson.graphHash);
+const graphSizeHelloInterface = graphSizeJson.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "hello");
+assert(graphSizeHelloInterface);
+assert.equal(graphSizeHelloInterface.publicSymbolCount, 1);
+assert.deepEqual(graphSizeHelloInterface.publicSymbols, [{ name: "main", kind: "function" }]);
+const graphSizeOutJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", "--out", graphSizePath, graphDumpPath]).body;
+assert.equal(graphSizeOutJson.graph.graphHash, graphDumpJson.graphHash);
+assert.equal(graphSizeOutJson.artifactPath, graphSizePath);
+assert.equal(graphSizeOutJson.artifactBytes, statSync(graphSizePath).size);
+assert.match(readFileSync(graphSizePath, "utf8"), /"kind": "zero-size-metadata"/);
+writeFileSync(graphSizeNoisePatchPath, [
+  "zero-program-graph-patch v1",
+  `expect graphHash "${graphDumpJson.graphHash}"`,
+  `insert node="node:patch_size_noise" kind="Function" parent="node:000001" edge="backlink" order="0" name="ghost" type="Void" public="true" path="examples/hello.0" line="1" column="1"`,
+  "",
+].join("\n"));
+const graphSizeNoisePatchJson = json(["graph", "patch", "--json", "--out", graphSizeNoisePath, graphDumpPath, graphSizeNoisePatchPath]).body;
+assert.equal(graphSizeNoisePatchJson.ok, true);
+assert.equal(zero(["graph", "check", graphSizeNoisePath]).stdout, "program graph check ok\n");
+const graphSizeNoiseJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphSizeNoisePath]).body;
+const graphSizeNoiseInterface = graphSizeNoiseJson.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "hello");
+assert(graphSizeNoiseInterface);
+assert.deepEqual(graphSizeNoiseInterface.publicSymbols, [{ name: "main", kind: "function" }]);
 writeFileSync(graphPatchPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
@@ -930,6 +984,23 @@ assert.equal(graphInternalFunction.body.check.lowering, "direct-program-graph");
 assert.equal(graphInternalFunction.body.diagnostics[0].message, "program graph declaration uses a reserved compiler-internal symbol name");
 assert.equal(zero(["graph", "dump", "--out", graphPackageDumpPath, "examples/systems-package"]).stdout, "");
 const graphPackageDumpJson = json(["graph", "dump", "--json", "examples/systems-package"]).body;
+const graphStatusFunctionNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Function" && node.name === "status");
+assert(graphStatusFunctionNode);
+writeFileSync(graphPackagePathMismatchPatchPath, [
+  "zero-program-graph-patch v1",
+  `expect graphHash "${graphPackageDumpJson.graphHash}"`,
+  `replace node="${graphStatusFunctionNode.id}" expect="${graphStatusFunctionNode.nodeHash}" path="examples/systems-package/src/main.0" public="true"`,
+  "",
+].join("\n"));
+assert.equal(zero(["graph", "patch", "--out", graphPackagePathMismatchPath, graphPackageDumpPath, graphPackagePathMismatchPatchPath]).stdout, "program graph patch ok\n");
+assert.equal(zero(["graph", "check", graphPackagePathMismatchPath]).stdout, "program graph check ok\n");
+const graphPackagePathMismatchSize = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphPackagePathMismatchPath]).body;
+const graphHelpersInterface = graphPackagePathMismatchSize.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "helpers");
+assert(graphHelpersInterface);
+assert(graphHelpersInterface.publicSymbols.some((item) => item.name === "status" && item.kind === "function"));
+const graphMainInterface = graphPackagePathMismatchSize.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "main");
+assert(graphMainInterface);
+assert(!graphMainInterface.publicSymbols.some((item) => item.name === "status"));
 const graphImportNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Import");
 assert(graphImportNode);
 writeFileSync(graphPatchInvalidImportAliasPath, [
@@ -2924,6 +2995,13 @@ const sizeWithArtifact = json(["size", "--json", "--out", sizedArtifact, "exampl
 assert.equal(sizeWithArtifact.artifactPath, sizedArtifact);
 assert(sizeWithArtifact.artifactBytes > 0);
 assert(existsSync(sizedArtifact));
+const sizeBlockedParent = join(outDir, "size-output-not-dir");
+const sizeBlockedOut = join(sizeBlockedParent, "report.json");
+rmSync(sizeBlockedParent, { force: true, recursive: true });
+writeFileSync(sizeBlockedParent, "not a directory\n");
+const sizeBlocked = json(["size", "--json", "--out", sizeBlockedOut, "examples/hello.0"], { allowFailure: true });
+assert.notEqual(sizeBlocked.code, 0);
+assert.equal(sizeBlocked.body.diagnostics[0].path, sizeBlockedOut);
 assert.equal(diagnostics.find((item) => item.code === "ERR001").repair.id, "add-fallible-marker-or-rescue");
 assert.equal(diagnostics.find((item) => item.code === "ERR003").repair.id, "check-or-rescue-fallible-call");
 assert.equal(diagnostics.find((item) => item.code === "TYP025").repair.id, "add-explicit-generic-type-arguments");
