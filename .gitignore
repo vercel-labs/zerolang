@@ -5,6 +5,7 @@ dist/
 .turbo/
 node_modules/
 npm-debug.log*
+extensions/zed/target/
 
 # environment variables
 .env*

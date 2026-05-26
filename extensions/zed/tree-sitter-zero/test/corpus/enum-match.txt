@@ -1,0 +1,35 @@
+==================
+Enum backing and match arms
+==================
+
+enum Mode : u8 { lex, }
+fun main() { match mode { .lex { return 1 } } }
+
+---
+
+(source_file
+  (declaration
+    (enum_declaration
+      name: (identifier)
+      backing: (type_expression
+        (primitive_type))
+      body: (variant_block
+        (variant_declaration
+          name: (identifier)))))
+  (declaration
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      body: (block
+        (statement
+          (match_statement
+            subject: (identifier)
+            (match_block
+              (match_arm
+                pattern: (match_pattern
+                  name: (identifier))
+                body: (block
+                  (statement
+                    (return_statement
+                      (literal
+                        (number_literal)))))))))))))

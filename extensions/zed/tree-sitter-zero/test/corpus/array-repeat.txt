@@ -1,0 +1,33 @@
+==================
+Array repeat literal
+==================
+
+fun main() {
+    let bytes = [7_u8; 8]
+    let scratch = [0_u8; 16]
+}
+
+---
+
+(source_file
+  (declaration
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      body: (block
+        (statement
+          (let_statement
+            name: (identifier)
+            (array_literal
+              value: (literal
+                (number_literal))
+              count: (literal
+                (number_literal)))))
+        (statement
+          (let_statement
+            name: (identifier)
+            (array_literal
+              value: (literal
+                (number_literal))
+              count: (literal
+                (number_literal)))))))))

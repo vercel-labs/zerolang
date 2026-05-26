@@ -5,9 +5,11 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { resolveZeroRoot, zeroBinaryPath } from "./resolve-zero-root.mjs";
 
 const execFileAsync = promisify(execFile);
-const zero = "bin/zero";
+const zeroRoot = await resolveZeroRoot(process.cwd());
+const zero = zeroBinaryPath(zeroRoot);
 const documents = new Map();
 const symbols = new Map();
 const documentFacts = new Map();

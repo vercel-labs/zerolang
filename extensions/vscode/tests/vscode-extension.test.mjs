@@ -21,12 +21,23 @@ describe("VS Code extension manifest", () => {
     assert.equal(snippets.path, "./snippets/zero.json");
   });
 
-  it("ships snippets for main, shape, fun, and test", async () => {
+  it("ships snippets for main, shape, fun, test, if, while, and GET route", async () => {
     const snippets = JSON.parse(await readFile("snippets/zero.json", "utf8"));
     assert.ok(snippets.main);
     assert.ok(snippets.shape);
     assert.ok(snippets.function);
     assert.ok(snippets.test);
+    assert.ok(snippets.if);
+    assert.ok(snippets.while);
+    assert.ok(snippets["GET route"]);
+  });
+
+  it("activates the Zero language server from the extension host", async () => {
+    const manifest = JSON.parse(await readFile("package.json", "utf8"));
+    assert.equal(manifest.main, "./extension.mjs");
+    assert.deepEqual(manifest.activationEvents, ["onLanguage:zero"]);
+    assert.ok(manifest.dependencies["vscode-languageclient"]);
+    assert.ok(manifest.contributes.configuration.properties["zero.zeroRoot"]);
   });
 
   it("highlights core Zero keywords and types", async () => {

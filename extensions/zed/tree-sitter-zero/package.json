@@ -1,0 +1,16 @@
+{
+  "name": "tree-sitter-zero",
+  "version": "0.1.1",
+  "description": "Zero grammar for tree-sitter",
+  "license": "MIT",
+  "main": "grammar.js",
+  "tree-sitter": [
+    {
+      "scope": "source.zero",
+      "file-types": ["0"]
+    }
+  ],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.10"
+  }
+}

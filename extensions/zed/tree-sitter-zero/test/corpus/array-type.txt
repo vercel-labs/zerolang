@@ -1,0 +1,27 @@
+==================
+Array type annotation
+==================
+
+fun main() { let bytes: [8]u8 = [0_u8; 8] }
+
+---
+
+(source_file
+  (declaration
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      body: (block
+        (statement
+          (let_statement
+            name: (identifier)
+            (type_expression
+              (array_type
+                length: (number_literal)
+                (type_expression
+                  (primitive_type))))
+            (array_literal
+              value: (literal
+                (number_literal))
+              count: (literal
+                (number_literal)))))))))

@@ -1,0 +1,20 @@
+==================
+Interface declaration
+==================
+
+interface Readable {
+    fun read() -> i32
+}
+
+---
+
+(source_file
+  (declaration
+    (interface_declaration
+      name: (identifier)
+      body: (interface_block
+        (interface_method
+          name: (identifier)
+          (parameter_list)
+          (type_expression
+            (primitive_type)))))))

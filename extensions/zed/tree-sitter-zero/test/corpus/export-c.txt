@@ -1,0 +1,21 @@
+==================
+Export C linkage
+==================
+
+export c fun main() -> i32 { return 0 }
+
+---
+
+(source_file
+  (declaration
+    (function_declaration
+      (visibility)
+      name: (identifier)
+      (parameter_list)
+      (type_expression
+        (primitive_type))
+      body: (block
+        (statement
+          (return_statement
+            (literal
+              (number_literal))))))))

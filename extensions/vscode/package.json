@@ -6,6 +6,10 @@
   "version": "0.1.4",
   "private": true,
   "type": "module",
+  "main": "./extension.mjs",
+  "activationEvents": [
+    "onLanguage:zero"
+  ],
   "categories": [
     "Programming Languages"
   ],
@@ -17,7 +21,23 @@
     "node": ">=24",
     "vscode": "^1.100.0"
   },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.100.0"
+  },
   "contributes": {
+    "configuration": {
+      "title": "Zero",
+      "properties": {
+        "zero.zeroRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a Zero repository root containing bin/zero and scripts/zls.mts. Set this when the extension is installed outside the monorepo."
+        }
+      }
+    },
     "languages": [
       {
         "id": "zero",
