@@ -35,6 +35,7 @@ The current cases include:
 - `codec`: `std.codec` loops, varint length, and CRC-32
 - `parse`: scanner-style digit parsing
 - `slices`, `arena`, `fallibility`, `branches`: memory views, fixed-buffer allocation style, explicit fallible branching, and branch-heavy loops
+- `gcd`: integer Euclid loop exercising `%`, mutation, and a hot inner branch
 - `module-package`, `rescue`: package graph overhead and local rescue lowering
 - `fs-resource`, `mem-copy-fill`, `zero-hash`: focused Zero cases for file-resource metadata, memory helpers, and deterministic byte payload processing
 
