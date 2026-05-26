@@ -330,6 +330,14 @@ describe("native zero CLI", () => {
     const targets = await runZero(["targets", "--zdn"]);
     assert.ok(targets.stdout.includes("TargetsResult"), `expected TargetsResult in:\n${targets.stdout}`);
 
+    // abi dump --zdn
+    const abiDump = await runZero(["abi", "dump", "--zdn", "examples/point.0"]);
+    assert.ok(abiDump.stdout.includes("AbiDump"), `expected AbiDump in:\n${abiDump.stdout}`);
+
+    // abi check --zdn
+    const abiCheck = await runZero(["abi", "check", "--zdn", "examples/point.0"]);
+    assert.ok(abiCheck.stdout.includes("AbiCheck"), `expected AbiCheck in:\n${abiCheck.stdout}`);
+
     // explain --zdn
     const explain = await runZero(["explain", "--zdn", "TAR001"]);
     assert.ok(explain.stdout.includes("ExplainResult"), `expected ExplainResult in:\n${explain.stdout}`);

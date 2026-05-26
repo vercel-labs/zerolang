@@ -3445,7 +3445,7 @@ static void print_help(void) {
   printf("  zero mem [--json] [--zdn] [--target <target>] <file.0|file.row|project|zero.json>\n");
   printf("  zero dev [--json] [--zdn] [--trace] <file.0|file.row|project|zero.json>\n");
   printf("  zero time --json|--zdn <file.0|file.row|project|zero.json>\n");
-  printf("  zero abi check|dump [--json] [--target <target>] <file.0|file.row|project|zero.json>\n");
+  printf("  zero abi check|dump [--json] [--zdn] [--target <target>] <file.0|file.row|project|zero.json>\n");
   printf("  zero explain [--json] [--zdn] <code>\n");
   printf("  zero fix --plan [--json|--zdn] <file.0|file.row|project|zero.json>\n");
   printf("  zero doctor [--json] [--zdn]\n");
@@ -3515,7 +3515,7 @@ static void print_command_help(const char *command) {
     printf("Usage: zero parse --json <file.0|file.row|project|zero.json>\n\n");
     printf("Emit normalized source parse JSON for oracle comparisons.\n");
   } else if (strcmp(command, "abi") == 0) {
-    printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|file.row|project|zero.json>\n\n");
+    printf("Usage: zero abi check|dump [--json] [--zdn] [--target <target>] <file.0|file.row|project|zero.json>\n\n");
     printf("Check ABI-safe declarations or dump target-aware source layout facts.\n");
   } else if (strcmp(command, "graph") == 0) {
     printf("Usage: zero graph [dump|validate|view|check|patch|roundtrip] [--json] [--target <target>] [--out <file>] <file.0|file.row|project|zero.json|graph-artifact> [patch-file]\n\n");
@@ -10982,7 +10982,18 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "abi") == 0) {
     const char *mode = command.kind ? command.kind : "check";
     if (strcmp(mode, "dump") == 0) {
-      if (command.format == FORMAT_JSON) {
+      if (command.format == FORMAT_ZDN) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "AbiDump\n");
+        zdn_field_int(&buf, "schemaVersion", 1, 1);
+        zdn_field_string(&buf, "sourceFile", input.source_file ? input.source_file : "", 1);
+        zdn_field_string(&buf, "target", target ? target->name : "", 1);
+        zdn_field_int(&buf, "shapeCount", (long long)program.shapes.len, 1);
+        zdn_field_int(&buf, "enumCount", (long long)program.enums.len, 1);
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
+      } else if (command.format == FORMAT_JSON) {
         ZBuf abi;
         zbuf_init(&abi);
         append_abi_dump_json(&abi, &input, &program, target);
@@ -10992,7 +11003,17 @@ int main(int argc, char **argv) {
         printf("abi dump ok\n");
       }
     } else if (strcmp(mode, "check") == 0) {
-      if (command.format == FORMAT_JSON) {
+      if (command.format == FORMAT_ZDN) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "AbiCheck\n");
+        zdn_field_int(&buf, "schemaVersion", 1, 1);
+        zdn_field_bool(&buf, "ok", true, 1);
+        zdn_field_string(&buf, "sourceFile", input.source_file ? input.source_file : "", 1);
+        zdn_field_string(&buf, "target", target ? target->name : "", 1);
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
+      } else if (command.format == FORMAT_JSON) {
         printf("{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"sourceFile\": ");
         print_json_string(input.source_file);
         printf(",\n  \"target\": ");

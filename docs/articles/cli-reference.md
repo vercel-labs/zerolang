@@ -129,6 +129,8 @@ the same output. Supported across all commands that accept
 | `zero graph check --zdn`     | `GraphCheck`       |
 | `zero graph patch --zdn`     | `GraphPatch`       |
 | `zero graph roundtrip --zdn` | `GraphRoundtrip`   |
+| `zero abi dump --zdn`   | `AbiDump`          |
+| `zero abi check --zdn`  | `AbiCheck`         |
 | `zero explain --zdn` | `ExplainResult`  |
 | `zero fix --plan --zdn` | `FixPlanResult`  |
 | `zero doctor --zdn`     | `DoctorResult`   |
@@ -246,7 +248,7 @@ zero targets
 zero clean [--all]
 zero mem [--json] [--zdn] [--target <target>] <input>
 zero time --json|--zdn [--target <target>] <input>
-zero abi check|dump [--json] [--target <target>] <input>
+zero abi check|dump [--json] [--zdn] [--target <target>] <input>
 zero tokens --json|--zdn <input>
 zero parse --json|--zdn <input>
 ```
