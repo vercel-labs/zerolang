@@ -314,6 +314,22 @@ describe("native zero CLI", () => {
     assert.ok(fixDiag.stdout.includes("FixPlanResult"), `expected FixPlanResult in:\n${fixDiag.stdout}`);
     assert.ok(fixDiag.stdout.includes("ok false"), `expected ok false in:\n${fixDiag.stdout}`);
 
+    // version --zdn
+    const ver = await runZero(["--version", "--zdn"]);
+    assert.ok(ver.stdout.includes("VersionResult"), `expected VersionResult in:\n${ver.stdout}`);
+
+    // doctor --zdn
+    const doctorResult = await runZero(["doctor", "--zdn"]);
+    assert.ok(doctorResult.stdout.includes("DoctorResult"), `expected DoctorResult in:\n${doctorResult.stdout}`);
+
+    // skills list --zdn
+    const skills = await runZero(["skills", "list", "--zdn"]);
+    assert.ok(skills.stdout.includes("SkillsList"), `expected SkillsList in:\n${skills.stdout}`);
+
+    // targets --zdn
+    const targets = await runZero(["targets", "--zdn"]);
+    assert.ok(targets.stdout.includes("TargetsResult"), `expected TargetsResult in:\n${targets.stdout}`);
+
     // explain --zdn
     const explain = await runZero(["explain", "--zdn", "TAR001"]);
     assert.ok(explain.stdout.includes("ExplainResult"), `expected ExplainResult in:\n${explain.stdout}`);

@@ -117,6 +117,10 @@ the same output. Supported across all commands that accept
 | `zero graph --zdn`   | `GraphResult`    |
 | `zero explain --zdn` | `ExplainResult`  |
 | `zero fix --plan --zdn` | `FixPlanResult`  |
+| `zero doctor --zdn`     | `DoctorResult`   |
+| `zero --version --zdn`  | `VersionResult`  |
+| `zero skills list --zdn` | `SkillsList`    |
+| `zero targets --zdn`    | `TargetsResult`  |
 
 Example output:
 
@@ -185,9 +189,9 @@ document symbols, and quick-fix code actions surfaced from `zero fix` for
 ## Utility Commands
 
 ```sh
-zero --version [--json]
+zero --version [--json] [--zdn]
 zero new cli|lib|package <path>
-zero doctor [--json]
+zero doctor [--json] [--zdn]
 zero check [--json] [--zdn] [--target <target>] [--emit exe|obj] <input>
 zero dev [--json] [--zdn] [--trace] [--target <target>] <input>
 zero run [--target <target>] [--profile dev|release] [--out <file>] <input> [-- args...]
