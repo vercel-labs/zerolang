@@ -60,8 +60,8 @@ All other characters — including CJK characters, emoji, and arbitrary UTF-8 �
 ```
 message "shape 'Point' has no field 'y'"
 summary "The requested target name is not in the target table."
-example "你好，世界！"             ← CJK 原样透传
-emoji "🎉 test passed 👍"          ← Emoji 原样透传
+example "你好，世界！"             ← CJK passes through verbatim
+emoji "🎉 test passed 👍"          ← Emoji passes through verbatim
 ```
 
 #### Nested Objects
@@ -113,7 +113,7 @@ fixes
 Each array item is introduced by a type tag (`Fix`, `Operation`, `Target`, etc.), which acts as both an item delimiter and a semantic label. Empty arrays are represented by the field name with no following content:
 
 ```
-fixes                ← empty array
+fixes                ← empty array (no items following)
 ```
 
 Array items with a single field can omit the item type tag and place the field inline:
