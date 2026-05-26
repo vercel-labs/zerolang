@@ -81,7 +81,7 @@ Use `--json` when another tool will read the result. Text output is for people.
 | `zero graph size --json` | Size, helper, runtime, profile, and backend facts for a ProgramGraph artifact lowered through `direct-program-graph`, with graph identity and `canonicalSource: false`. |
 | `zero graph build --json` | Build a ProgramGraph artifact through direct graph lowering, including graph identity, selected `emit` kind, target, artifact path and size, compiler cache facts, and graph-aware incremental invalidation. |
 | `zero graph patch --json` | Checked ProgramGraph artifact edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and optional canonical output path. |
-| `zero graph roundtrip --json` | Source-to-graph-to-view or artifact-to-direct-lower stability with `semanticStable`, lowering mode, original and reparsed graph hashes, raw counts, normalized semantic counts, and optional output. |
+| `zero graph roundtrip --json` | Source or artifact ProgramGraph stability through direct graph lowering with `semanticStable`, lowering mode, original and roundtripped graph hashes, raw counts, normalized semantic counts, and optional output. |
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
 | `zero dev --json --trace` | Adds phase timing, cache hit/miss facts, diagnostics passthrough, and `interfaceFingerprints`. |
 | `zero time --json` | Compiler phase timing plus `interfaceFingerprints` and incremental invalidation facts. |

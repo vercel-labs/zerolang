@@ -3417,7 +3417,7 @@ static void print_command_help(const char *command) {
     printf("  size      report size, helper, runtime, and backend facts for a ProgramGraph artifact\n");
     printf("  build     build a ProgramGraph artifact through direct graph lowering\n  run       build and run a ProgramGraph artifact through direct graph lowering\n  test      run test blocks from a ProgramGraph artifact through direct graph lowering\n");
     printf("  patch     apply checked edits to a ProgramGraph artifact\n");
-    printf("  roundtrip compare graph semantics after generated-view reparse or direct artifact lowering\n");
+    printf("  roundtrip compare graph semantics after direct ProgramGraph lowering\n");
   } else if (strcmp(command, "doc") == 0) {
     printf("Usage: zero doc [--json] [--target <target>] <file.0|file.row|project|zero.json>\n\n");
     printf("Emit package API documentation facts without emitting artifacts.\n");
@@ -9676,7 +9676,7 @@ static void append_graph_roundtrip_json(
   zbuf_append(buf, ",\n  \"canonicalSource\": false,\n  \"semanticStable\": ");
   zbuf_append(buf, ok ? "true" : "false");
   zbuf_append(buf, ",\n  \"lowering\": ");
-  append_json_string(buf, lowering && lowering[0] ? lowering : "generated-view");
+  append_json_string(buf, lowering && lowering[0] ? lowering : "direct-program-graph");
   zbuf_append(buf, ",\n  \"moduleIdentity\": ");
   append_json_string(buf, original ? original->module_identity : "");
   zbuf_append(buf, ",\n  \"roundtripModuleIdentity\": ");
@@ -9845,51 +9845,6 @@ static int run_graph_patch_command(const Command *command, ZDiag *diag) {
   free(original_hash);
   z_program_graph_free(&graph);
   return ok ? 0 : 1;
-}
-
-static long graph_process_id(void) {
-#if defined(_WIN32)
-  return (long)_getpid();
-#else
-  return (long)getpid();
-#endif
-}
-
-static bool graph_temp_path(const char *purpose, const char *basename, ZBuf *dir, ZBuf *path, ZDiag *diag) {
-  zbuf_init(dir);
-  zbuf_init(path);
-  zbuf_appendf(dir, "/tmp/zero-graph-%s-%ld", purpose && purpose[0] ? purpose : "work", graph_process_id());
-  if (zero_mkdir(dir->data) != 0 && errno != EEXIST) {
-    diag->code = 2002;
-    diag->path = dir->data;
-    diag->line = 1;
-    diag->column = 1;
-    diag->length = 1;
-    snprintf(diag->message, sizeof(diag->message), "failed to create graph working directory '%s': %s", dir->data, strerror(errno));
-    snprintf(diag->help, sizeof(diag->help), "choose a writable /tmp directory");
-    return false;
-  }
-  zbuf_append(path, dir->data);
-  zbuf_append_char(path, '/');
-  zbuf_append(path, basename && basename[0] ? basename : "graph-view.0");
-  return true;
-}
-
-static const char *graph_roundtrip_basename(const char *path) {
-  const char *slash = path ? strrchr(path, '/') : NULL;
-  const char *backslash = path ? strrchr(path, '\\') : NULL;
-  const char *base = slash && backslash ? (slash > backslash ? slash : backslash) : (slash ? slash : backslash);
-  base = base ? base + 1 : path;
-  return base && base[0] ? base : "graph-view.0";
-}
-
-static bool graph_roundtrip_temp_path(const SourceInput *input, ZBuf *dir, ZBuf *path, ZDiag *diag) {
-  return graph_temp_path("roundtrip", graph_roundtrip_basename(input ? input->source_file : NULL), dir, path, diag);
-}
-
-static void graph_roundtrip_cleanup(const char *path, const char *dir) {
-  if (path && path[0]) remove(path);
-  if (dir && dir[0]) rmdir(dir);
 }
 
 static void graph_check_map_diag_path(const Command *command, const SourceInput *input, ZDiag *diag) {
@@ -10160,133 +10115,12 @@ static bool attach_manifest_metadata_to_graph_input(SourceInput *input, const ch
   return ok;
 }
 
-static void graph_roundtrip_replace_path(char **slot, const char *old_path, const char *new_path) {
-  if (!slot || !*slot || !old_path || strcmp(*slot, old_path) != 0) return;
-  free(*slot);
-  *slot = z_strdup(new_path ? new_path : "");
-}
-
-static void graph_roundtrip_replace_text(char **slot, const char *value) {
-  if (!slot) return;
-  free(*slot);
-  *slot = value ? z_strdup(value) : NULL;
-}
-
-static void graph_roundtrip_clear_string_array(char ***items, size_t *count) {
-  if (!items || !count) return;
-  for (size_t i = 0; *items && i < *count; i++) free((*items)[i]);
-  free(*items);
-  *items = NULL;
-  *count = 0;
-}
-
-static void graph_roundtrip_clear_modules(SourceInput *input) {
-  if (!input) return;
-  for (size_t i = 0; i < input->module_count; i++) {
-    free(input->module_names[i]);
-    free(input->module_paths[i]);
-  }
-  free(input->module_names);
-  free(input->module_paths);
-  input->module_names = NULL;
-  input->module_paths = NULL;
-  input->module_count = 0;
-}
-
-static void graph_roundtrip_copy_source_files(SourceInput *roundtrip, const SourceInput *original) {
-  if (!roundtrip || !original || original->source_file_count == 0) return;
-  graph_roundtrip_clear_string_array(&roundtrip->source_files, &roundtrip->source_file_count);
-  for (size_t i = 0; i < original->source_file_count; i++) {
-    direct_input_push_string(&roundtrip->source_files, &roundtrip->source_file_count, original->source_files[i]);
-  }
-}
-
-static void graph_roundtrip_copy_modules(SourceInput *roundtrip, const SourceInput *original) {
-  if (!roundtrip || !original || original->module_count == 0) return;
-  graph_roundtrip_clear_modules(roundtrip);
-  for (size_t i = 0; i < original->module_count; i++) {
-    direct_input_push_module(roundtrip, original->module_names[i], original->module_paths[i]);
-  }
-}
-
-static void graph_roundtrip_copy_package_metadata(SourceInput *roundtrip, const SourceInput *original) {
-  if (!roundtrip || !original) return;
-  graph_roundtrip_replace_text(&roundtrip->package_root, original->package_root);
-  graph_roundtrip_replace_text(&roundtrip->manifest_path, original->manifest_path);
-  graph_roundtrip_replace_text(&roundtrip->package_name, original->package_name);
-  graph_roundtrip_replace_text(&roundtrip->package_version, original->package_version);
-  graph_roundtrip_replace_text(&roundtrip->lockfile_path, original->lockfile_path);
-  roundtrip->manifest_hash = original->manifest_hash;
-  roundtrip->dependency_graph_hash = original->dependency_graph_hash;
-  roundtrip->lockfile_hash = original->lockfile_hash;
-  roundtrip->allow_missing_main = original->allow_missing_main;
-}
-
-static const char *graph_roundtrip_module_path_for_name(const SourceInput *original, const char *name, size_t name_len) {
-  for (size_t i = 0; original && name && i < original->module_count; i++) {
-    const char *module = original->module_names[i];
-    if (module && strlen(module) == name_len && strncmp(module, name, name_len) == 0) {
-      return original->module_paths[i];
-    }
-  }
-  return NULL;
-}
-
-static const char *graph_roundtrip_module_path_for_view_line(const SourceInput *original, const char *line, size_t line_len) {
-  const char *prefix = "# Module:";
-  size_t prefix_len = strlen(prefix);
-  if (!line || line_len < prefix_len || strncmp(line, prefix, prefix_len) != 0) return NULL;
-  const char *name = line + prefix_len;
-  const char *end = line + line_len;
-  while (name < end && isspace((unsigned char)*name)) name++;
-  while (end > name && isspace((unsigned char)*(end - 1))) end--;
-  return graph_roundtrip_module_path_for_name(original, name, (size_t)(end - name));
-}
-
-static void graph_roundtrip_relabel_source_lines(SourceInput *roundtrip, const SourceInput *original, const char *temp_path, const char *view) {
-  if (!roundtrip || !original) return;
-  const char *current_path = original->source_file ? original->source_file : temp_path;
-  const char *cursor = view ? view : "";
-  for (size_t i = 0; i < roundtrip->source_line_count; i++) {
-    if (!roundtrip->source_line_paths[i] || !temp_path || strcmp(roundtrip->source_line_paths[i], temp_path) != 0) continue;
-    const char *line = cursor;
-    const char *end = cursor;
-    while (*end && *end != '\n') end++;
-    size_t line_len = (size_t)(end - line);
-    const char *module_path = graph_roundtrip_module_path_for_view_line(original, line, line_len);
-    if (module_path && module_path[0]) current_path = module_path;
-    graph_roundtrip_replace_text(&roundtrip->source_line_paths[i], current_path);
-    cursor = *end == '\n' ? end + 1 : end;
-  }
-}
-
-static void graph_roundtrip_relabel_source(SourceInput *roundtrip, const SourceInput *original, const char *temp_path, const char *view) {
-  const char *source_file = original && original->source_file ? original->source_file : NULL;
-  if (!roundtrip || !source_file || !temp_path) return;
-  graph_roundtrip_replace_path(&roundtrip->source_file, temp_path, source_file);
-  for (size_t i = 0; i < roundtrip->source_file_count; i++) {
-    graph_roundtrip_replace_path(&roundtrip->source_files[i], temp_path, source_file);
-  }
-  for (size_t i = 0; i < roundtrip->module_count; i++) {
-    graph_roundtrip_replace_path(&roundtrip->module_paths[i], temp_path, source_file);
-  }
-  graph_roundtrip_copy_package_metadata(roundtrip, original);
-  graph_roundtrip_copy_source_files(roundtrip, original);
-  graph_roundtrip_copy_modules(roundtrip, original);
-  graph_roundtrip_relabel_source_lines(roundtrip, original, temp_path, view);
-}
-
-static int run_graph_roundtrip_command(const Command *command, SourceInput *input, Program *program, const ZTargetInfo *target, ZDiag *diag) {
+static int run_graph_roundtrip_command(const Command *command, SourceInput *input, Program *program, ZDiag *diag) {
   ZProgramGraph original = {0};
   ZProgramGraph roundtrip = {0};
-  SourceInput roundtrip_input = {0};
-  Program roundtrip_program = {0};
+  ZProgramGraphCompare comparison = {0};
   ZBuf view;
-  ZBuf temp_dir;
-  ZBuf temp_path;
   zbuf_init(&view);
-  zbuf_init(&temp_dir);
-  zbuf_init(&temp_path);
 
   if (!z_program_graph_from_program(input, program, &original)) {
     diag->code = 2002;
@@ -10298,8 +10132,6 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     if (command->json) print_diag_json(diag->path, diag);
     else print_diag(diag->path, diag);
     zbuf_free(&view);
-    zbuf_free(&temp_dir);
-    zbuf_free(&temp_path);
     return 1;
   }
 
@@ -10309,40 +10141,18 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     else print_diag(diag->path ? diag->path : command->out, diag);
     z_program_graph_free(&original);
     zbuf_free(&view);
-    zbuf_free(&temp_dir);
-    zbuf_free(&temp_path);
     return 1;
   }
 
-  if (!graph_roundtrip_temp_path(input, &temp_dir, &temp_path, diag) ||
-      !z_write_file(temp_path.data, view.data ? view.data : "", diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : (temp_path.data ? temp_path.data : command->input), diag);
-    else print_diag(diag->path ? diag->path : (temp_path.data ? temp_path.data : command->input), diag);
-    graph_roundtrip_cleanup(temp_path.data, temp_dir.data);
+  if (!z_program_graph_direct_roundtrip_graph(&original, input && input->source_file ? input->source_file : command->input, &roundtrip, &comparison, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    z_program_graph_free(&roundtrip);
     z_program_graph_free(&original);
     zbuf_free(&view);
-    zbuf_free(&temp_dir);
-    zbuf_free(&temp_path);
     return 1;
   }
 
-  if (!compile_input(temp_path.data, target, &roundtrip_input, &roundtrip_program, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : temp_path.data, diag);
-    else print_diag(diag->path ? diag->path : temp_path.data, diag);
-    graph_roundtrip_cleanup(temp_path.data, temp_dir.data);
-    z_free_program(&roundtrip_program);
-    z_free_source(&roundtrip_input);
-    z_program_graph_free(&original);
-    zbuf_free(&view);
-    zbuf_free(&temp_dir);
-    zbuf_free(&temp_path);
-    return 1;
-  }
-
-  graph_roundtrip_relabel_source(&roundtrip_input, input, temp_path.data, view.data ? view.data : "");
-  z_program_graph_from_program(&roundtrip_input, &roundtrip_program, &roundtrip);
-  ZProgramGraphCompare comparison = {0};
-  z_program_graph_semantic_compare(&original, &roundtrip, &comparison);
   if (command->json) {
     ZBuf json;
     zbuf_init(&json);
@@ -10353,7 +10163,7 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
                                 &original,
                                 &roundtrip,
                                 &comparison,
-                                "generated-view",
+                                "direct-program-graph",
                                 view.data ? view.data : "",
                                 "source-view");
     fputs(json.data, stdout);
@@ -10364,14 +10174,9 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     fprintf(stderr, "program graph roundtrip mismatch: %s (%s)\n", comparison.message, comparison.field);
   }
 
-  graph_roundtrip_cleanup(temp_path.data, temp_dir.data);
   z_program_graph_free(&roundtrip);
-  z_free_program(&roundtrip_program);
-  z_free_source(&roundtrip_input);
   z_program_graph_free(&original);
   zbuf_free(&view);
-  zbuf_free(&temp_dir);
-  zbuf_free(&temp_path);
   return comparison.ok ? 0 : 1;
 }
 
@@ -10388,7 +10193,7 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
     fprintf(stderr, "graph --out is only supported with dump, import, or roundtrip\n");
     return 1;
   }
-  if (graph_roundtrip) return run_graph_roundtrip_command(command, input, program, target, diag);
+  if (graph_roundtrip) return run_graph_roundtrip_command(command, input, program, diag);
   ZBuf graph;
   zbuf_init(&graph);
   bool import_json_out = graph_import && command->json && command->out;

@@ -1322,11 +1322,11 @@ const graphRoundtripJson = json(["graph", "roundtrip", "--json", "examples/hello
 assert.equal(graphRoundtripJson.ok, true);
 assert.equal(graphRoundtripJson.canonicalSource, false);
 assert.equal(graphRoundtripJson.semanticStable, true);
-assert.equal(graphRoundtripJson.lowering, "generated-view");
+assert.equal(graphRoundtripJson.lowering, "direct-program-graph");
 assert.equal(graphRoundtripJson.moduleIdentity, "module:hello");
 assert.equal(graphRoundtripJson.roundtripModuleIdentity, "module:hello");
 assert.equal(graphRoundtripJson.originalGraphHash, graphDumpJson.graphHash);
-assert.match(graphRoundtripJson.roundtripGraphHash, /^graph:[0-9a-f]{16}$/);
+assert.equal(graphRoundtripJson.roundtripGraphHash, graphDumpJson.graphHash);
 assert.deepEqual(graphRoundtripJson.counts.original, { nodes: 13, edges: 12 });
 assert.deepEqual(graphRoundtripJson.counts.roundtrip, { nodes: 13, edges: 12 });
 assert.deepEqual(graphRoundtripJson.semanticCounts.original, { nodes: 13, edges: 12 });
