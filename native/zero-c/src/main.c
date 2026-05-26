@@ -2276,6 +2276,41 @@ static void append_test_source_json(ZBuf *buf, const SourceInput *input, const C
   if (command) append_program_graph_artifact_source_json(buf, &command->graph_source);
 }
 
+static const char *test_json_source_path_for_line(const SourceInput *input, int parser_line) {
+  if (!input) return "";
+  if (parser_line > 0) {
+    size_t index = (size_t)parser_line - 1;
+    if (index < input->source_line_count && input->source_line_paths[index] && input->source_line_paths[index][0]) {
+      return input->source_line_paths[index];
+    }
+  }
+  return input->source_file ? input->source_file : "";
+}
+
+static int test_json_source_line_for_line(const SourceInput *input, int parser_line) {
+  if (parser_line <= 0) return 1;
+  if (input) {
+    size_t index = (size_t)parser_line - 1;
+    if (index < input->source_line_count && input->source_line_numbers[index] > 0) {
+      return input->source_line_numbers[index];
+    }
+  }
+  return parser_line;
+}
+
+static void append_test_json_location(ZBuf *buf, const SourceInput *input, int parser_line, int column) {
+  zbuf_append(buf, "{\"sourceFile\":");
+  append_json_string(buf, test_json_source_path_for_line(input, parser_line));
+  zbuf_appendf(buf, ",\"line\":%d,\"column\":%d}", test_json_source_line_for_line(input, parser_line), column > 0 ? column : 1);
+}
+
+static const char *test_discovery_mode(const SourceInput *input, const Command *command) {
+  if (command && z_program_graph_artifact_source_present(&command->graph_source)) {
+    return input && input->package_name && input->package_name[0] ? "package-graph" : "graph-artifact";
+  }
+  return input && input->package_root ? "package" : "single-file";
+}
+
 static void append_c_header_inputs_json(ZBuf *buf, const Program *program) {
   zbuf_append(buf, "[");
   for (size_t i = 0; program && i < program->c_imports.len; i++) {
@@ -6854,14 +6889,15 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     append_json_string(&results, failure.current_test ? failure.current_test : fun->name);
     zbuf_append(&results, ",\"status\":");
     append_json_string(&results, status);
-    zbuf_appendf(&results, ",\"expectedFailure\":%s,\"durationMs\":%lld,\"location\":{\"sourceFile\":", expected_failure ? "true" : "false", test_duration_ms);
-    append_json_string(&results, input ? input->source_file : "");
-    zbuf_appendf(&results, ",\"line\":%d,\"column\":%d}", fun->line, fun->column);
+    zbuf_appendf(&results, ",\"expectedFailure\":%s,\"durationMs\":%lld,\"location\":", expected_failure ? "true" : "false", test_duration_ms);
+    append_test_json_location(&results, input, fun->line, fun->column);
     zbuf_append(&results, ",\"failure\":");
     if (failure_message) {
       zbuf_append(&results, "{\"message\":");
       append_json_string(&results, failure_message);
-      zbuf_appendf(&results, ",\"line\":%d,\"column\":%d}", failure.line ? failure.line : fun->line, failure.column ? failure.column : fun->column);
+      zbuf_append(&results, ",\"sourceFile\":");
+      append_json_string(&results, test_json_source_path_for_line(input, failure.line ? failure.line : fun->line));
+      zbuf_appendf(&results, ",\"line\":%d,\"column\":%d}", test_json_source_line_for_line(input, failure.line ? failure.line : fun->line), failure.column ? failure.column : fun->column);
     } else {
       zbuf_append(&results, "null");
     }
@@ -6903,7 +6939,7 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
     zbuf_append(&buf, ",\n  \"stderr\": ");
     append_json_string(&buf, stderr_text);
     zbuf_append(&buf, ",\n  \"testDiscovery\": {\"mode\":");
-    append_json_string(&buf, input && input->package_root ? "package" : "single-file");
+    append_json_string(&buf, test_discovery_mode(input, command));
     zbuf_append(&buf, ",\"filter\":");
     if (command && command->filter) append_json_string(&buf, command->filter);
     else zbuf_append(&buf, "null");
