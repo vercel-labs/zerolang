@@ -3325,7 +3325,10 @@ static void print_help(void) {
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|file.row|project|zero.json>\n");
   printf("  zero tokens --json <file.0|file.row|project|zero.json>\n");
   printf("  zero parse --json <file.0|file.row|project|zero.json>\n");
-  printf("  zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] [--out <file>] <file.0|file.row|project|zero.json|graph-artifact> [patch-file]\n");
+  printf("  zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <file.0|file.row|project|zero.json|graph-artifact> [patch-file]\n");
+  printf("  zero graph [dump|import|validate|view|roundtrip] [--json] --out <file> <file.0|file.row|project|zero.json|graph-artifact>\n");
+  printf("  zero graph size [--json] [--target <target>] --out <artifact> <graph-artifact-or-package>\n");
+  printf("  zero graph patch [--json] --out <file> <graph-artifact-or-package> <patch-file>\n");
   printf("  zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <graph-artifact>\n");
   printf("  zero doc [--json] <file.0|file.row|project|zero.json>\n");
   printf("  zero size [--json] [--out <artifact>] <file.0|file.row|project|zero.json>\n");
@@ -3404,7 +3407,10 @@ static void print_command_help(const char *command) {
     printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|file.row|project|zero.json>\n\n");
     printf("Check ABI-safe declarations or dump target-aware source layout facts.\n");
   } else if (strcmp(command, "graph") == 0) {
-    printf("Usage: zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] [--out <file>] <file.0|file.row|project|zero.json|graph-artifact> [patch-file]\n\n");
+    printf("Usage: zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <file.0|file.row|project|zero.json|graph-artifact> [patch-file]\n\n");
+    printf("Output usage: zero graph [dump|import|validate|view|roundtrip] [--json] --out <file> <input>\n");
+    printf("Size output usage: zero graph size [--json] [--target <target>] --out <artifact> <input>\n");
+    printf("Patch output usage: zero graph patch [--json] --out <file> <input> <patch-file>\n\n");
     printf("Build usage: zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact>\n\nRun usage: zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact> [-- args...]\n\nTest usage: zero graph test [--json] [--filter <name>] [--target <target>] <graph-artifact>\n\n");
     printf("Inspect modules, symbols, capabilities, static metadata, stdlib helpers, or deterministic ProgramGraph artifacts.\n\n");
     printf("Subcommands:\n");
@@ -9487,8 +9493,7 @@ static void append_graph_check_json(
   const Program *program,
   bool ok,
   const ZDiag *diag,
-  const char *phase,
-  const char *view
+  const char *phase
 ) {
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
   zbuf_append(buf, ok ? "true" : "false");
@@ -9505,8 +9510,7 @@ static void append_graph_check_json(
   zbuf_append(buf, ", \"target\": ");
   append_json_string(buf, target && target->name ? target->name : "unknown");
   zbuf_append(buf, ", \"lowering\": \"direct-program-graph\"");
-  zbuf_append(buf, ", \"sourcePath\": ");
-  append_json_nullable_string(buf, command->out);
+  zbuf_append(buf, ", \"sourcePath\": null");
   zbuf_append(buf, "},\n  \"targetReadiness\": ");
   bool include_readiness = source && program && ok;
   if (include_readiness) append_target_readiness_json(buf, source, program, target, command);
@@ -9514,10 +9518,9 @@ static void append_graph_check_json(
   zbuf_append(buf, ",\n  \"diagnostics\": [");
   if (!ok && diag) append_fix_plan_diagnostic(buf, diag->path ? diag->path : graph_check_diagnostic_path(command), diag);
   zbuf_append(buf, "],\n  \"saved\": ");
-  append_graph_saved_json(buf, command->out);
+  append_graph_saved_json(buf, NULL);
   zbuf_append(buf, ",\n  \"view\": ");
-  if (!ok && !command->out) append_json_string(buf, view ? view : "");
-  else zbuf_append(buf, "null");
+  zbuf_append(buf, "null");
   zbuf_append(buf, "\n}\n");
 }
 
@@ -9869,22 +9872,25 @@ static const char *graph_check_phase_name(GraphCheckPhase phase) {
 }
 
 static int run_graph_check_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  if (command->out) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph check does not write generated source views");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph view --out <file.0> <graph-artifact>");
+    snprintf(diag->actual, sizeof(diag->actual), "zero graph check --out");
+    snprintf(diag->help, sizeof(diag->help), "run zero graph view to render a generated source view, or run zero graph check without --out to typecheck the artifact");
+    if (command->json) print_diag_json(command->input, diag);
+    else print_diag(command->input, diag);
+    return 1;
+  }
+
   ZProgramGraph graph;
   if (!z_program_graph_load(command->input, &graph, diag)) {
     if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
-    return 1;
-  }
-
-  ZBuf view;
-  zbuf_init(&view);
-  z_program_graph_append_view(&view, &graph);
-
-  if (command->out && !z_write_file(command->out, view.data ? view.data : "", diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-    else print_diag(diag->path ? diag->path : command->out, diag);
-    zbuf_free(&view);
-    z_program_graph_free(&graph);
     return 1;
   }
 
@@ -9913,7 +9919,7 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
   if (command->json) {
     ZBuf json;
     zbuf_init(&json);
-    append_graph_check_json(&json, command, target, &graph, &checked_input, &checked_program, ok, ok ? NULL : diag, graph_check_phase_name(phase), view.data ? view.data : "");
+    append_graph_check_json(&json, command, target, &graph, &checked_input, &checked_program, ok, ok ? NULL : diag, graph_check_phase_name(phase));
     fputs(json.data, stdout);
     zbuf_free(&json);
   } else if (ok) {
@@ -9924,7 +9930,6 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
 
   z_free_program(&checked_program);
   z_free_source(&checked_input);
-  zbuf_free(&view);
   z_program_graph_free(&graph);
   return ok ? 0 : 1;
 }

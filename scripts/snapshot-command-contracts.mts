@@ -310,6 +310,13 @@ for (const [command, expected] of [
 ] as Array<[string[], RegExp]>) {
   assert.match(zero(command).stdout, expected);
 }
+const graphHelp = zero(["graph", "--help"]).stdout;
+assert.match(graphHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <input>/);
+assert.match(graphHelp, /zero graph patch \[--json\] --out <file> <input> <patch-file>/);
+assert.doesNotMatch(graphHelp, /zero graph check[^\n]*--out/);
+const rootHelp = zero(["--help"]).stdout;
+assert.match(rootHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <graph-artifact-or-package>/);
+assert.match(rootHelp, /zero graph patch \[--json\] --out <file> <graph-artifact-or-package> <patch-file>/);
 
 const graphDump = zero(["graph", "dump", "examples/hello.0"]).stdout;
 const graphDumpAgain = zero(["graph", "dump", "examples/hello.0"]).stdout;
@@ -383,7 +390,6 @@ const graphUncheckedPath = join(outDir, "hello.unchecked.program-graph");
 const graphBorrowDumpPath = join(outDir, "borrow.program-graph");
 const graphBorrowConflictPatchPath = join(outDir, "borrow-conflict.program-graph.patch");
 const graphBorrowConflictPath = join(outDir, "borrow-conflict.program-graph");
-const graphBorrowConflictViewPath = join(outDir, "borrow-conflict.program-graph.0");
 const graphPatchEmptyPath = join(outDir, "hello.empty.program-graph.patch");
 const graphPatchControlPath = join(outDir, "hello.control.program-graph.patch");
 const graphPatchHighBytePath = join(outDir, "hello.high-byte.program-graph.patch");
@@ -464,7 +470,6 @@ rmSync(graphUncheckedPath, { force: true });
 rmSync(graphBorrowDumpPath, { force: true });
 rmSync(graphBorrowConflictPatchPath, { force: true });
 rmSync(graphBorrowConflictPath, { force: true });
-rmSync(graphBorrowConflictViewPath, { force: true });
 rmSync(graphPatchEmptyPath, { force: true });
 rmSync(graphPatchControlPath, { force: true });
 rmSync(graphPatchHighBytePath, { force: true });
@@ -561,13 +566,10 @@ assert.equal(graphCheckJson.targetReadiness.buildable, true);
 assert.deepEqual(graphCheckJson.diagnostics, []);
 assert.equal(graphCheckJson.saved, null);
 assert.equal(graphCheckJson.view, null);
-const graphCheckOutJson = json(["graph", "check", "--json", "--out", graphCheckViewPath, graphDumpPath]).body;
-assert.equal(graphCheckOutJson.ok, true);
-assert.equal(graphCheckOutJson.saved.path, graphCheckViewPath);
-assert.equal(graphCheckOutJson.check.lowering, "direct-program-graph");
-assert.equal(graphCheckOutJson.check.sourcePath, graphCheckViewPath);
-assert.equal(graphCheckOutJson.view, null);
-assert.equal(readFileSync(graphCheckViewPath, "utf8"), graphView);
+const graphCheckOutJson = json(["graph", "check", "--json", "--out", graphCheckViewPath, graphDumpPath], { allowFailure: true });
+assert.notEqual(graphCheckOutJson.code, 0);
+assert.equal(graphCheckOutJson.body.diagnostics[0].message, "graph check does not write generated source views");
+assert.equal(graphCheckOutJson.body.diagnostics[0].expected, "zero graph view --out <file.0> <graph-artifact>");
 const graphSizeJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphDumpPath]).body;
 assert.equal(graphSizeJson.schemaVersion, 1);
 assert.equal(graphSizeJson.sourceFile, graphDumpPath);
@@ -1028,28 +1030,19 @@ writeFileSync(graphUncheckedPatchPath, [
   "",
 ].join("\n"));
 assert.equal(zero(["graph", "patch", "--out", graphUncheckedPath, graphDumpPath, graphUncheckedPatchPath]).stdout, "program graph patch ok\n");
-const graphUnchecked = json(["graph", "check", "--json", "--out", graphCheckViewPath, graphUncheckedPath], { allowFailure: true });
-assert.notEqual(graphUnchecked.code, 0);
-assert.equal(graphUnchecked.body.ok, false);
-assert.equal(graphUnchecked.body.canonicalSource, false);
-assert.equal(graphUnchecked.body.check.ok, false);
-assert.equal(graphUnchecked.body.check.phase, "typecheck");
-assert.equal(graphUnchecked.body.check.lowering, "direct-program-graph");
-assert.equal(graphUnchecked.body.check.sourcePath, graphCheckViewPath);
-assert.equal(graphUnchecked.body.targetReadiness, null);
-assert.equal(graphUnchecked.body.saved.path, graphCheckViewPath);
-assert.equal(graphUnchecked.body.view, null);
-assert(graphUnchecked.body.diagnostics.length > 0);
-assert.equal(graphUnchecked.body.diagnostics[0].path, "examples/hello.0");
-assert.notEqual(graphUnchecked.body.diagnostics[0].path, graphCheckViewPath);
 const graphUncheckedInline = json(["graph", "check", "--json", graphUncheckedPath], { allowFailure: true });
 assert.notEqual(graphUncheckedInline.code, 0);
 assert.equal(graphUncheckedInline.body.ok, false);
+assert.equal(graphUncheckedInline.body.canonicalSource, false);
+assert.equal(graphUncheckedInline.body.check.ok, false);
+assert.equal(graphUncheckedInline.body.check.phase, "typecheck");
+assert.equal(graphUncheckedInline.body.check.lowering, "direct-program-graph");
 assert.equal(graphUncheckedInline.body.check.sourcePath, null);
+assert.equal(graphUncheckedInline.body.targetReadiness, null);
 assert.equal(graphUncheckedInline.body.saved, null);
 assert.equal(graphUncheckedInline.body.diagnostics[0].path, "examples/hello.0");
 assert.notEqual(graphUncheckedInline.body.diagnostics[0].path, graphUncheckedPath);
-assert.match(graphUncheckedInline.body.view, /^# Generated by zero graph view\. Do not edit\.\n/);
+assert.equal(graphUncheckedInline.body.view, null);
 assert.doesNotMatch(JSON.stringify(graphUncheckedInline.body), /<generated-graph-view>|zero-graph-check/);
 assert.equal(zero(["graph", "dump", "--out", graphBorrowDumpPath, "conformance/native/pass/borrow-field-independent-assignment.0"]).stdout, "");
 const graphBorrowDumpJson = json(["graph", "dump", "--json", "conformance/native/pass/borrow-field-independent-assignment.0"]).body;
@@ -1061,21 +1054,12 @@ writeFileSync(graphBorrowConflictPatchPath, [
   "",
 ].join("\n"));
 assert.equal(zero(["graph", "patch", "--out", graphBorrowConflictPath, graphBorrowDumpPath, graphBorrowConflictPatchPath]).stdout, "program graph patch ok\n");
-const graphBorrowConflict = json(["graph", "check", "--json", "--out", graphBorrowConflictViewPath, graphBorrowConflictPath], { allowFailure: true });
-assert.notEqual(graphBorrowConflict.code, 0);
-assert.equal(graphBorrowConflict.body.ok, false);
-assert.equal(graphBorrowConflict.body.check.sourcePath, graphBorrowConflictViewPath);
-assert.equal(graphBorrowConflict.body.diagnostics[0].code, "BOR001");
-assert.equal(graphBorrowConflict.body.diagnostics[0].path, "conformance/native/pass/borrow-field-independent-assignment.0");
-assert.notEqual(graphBorrowConflict.body.diagnostics[0].path, graphBorrowConflictViewPath);
-assert.equal(graphBorrowConflict.body.diagnostics[0].borrowTrace.activeBorrows[0].bindingDecl.path, "conformance/native/pass/borrow-field-independent-assignment.0");
-assert.doesNotMatch(JSON.stringify(graphBorrowConflict.body), /<generated-graph-view>|zero-graph-check/);
 const graphBorrowConflictInline = json(["graph", "check", "--json", graphBorrowConflictPath], { allowFailure: true });
 assert.notEqual(graphBorrowConflictInline.code, 0);
 assert.equal(graphBorrowConflictInline.body.diagnostics[0].code, "BOR001");
 assert.equal(graphBorrowConflictInline.body.diagnostics[0].path, "conformance/native/pass/borrow-field-independent-assignment.0");
 assert.equal(graphBorrowConflictInline.body.diagnostics[0].borrowTrace.activeBorrows[0].bindingDecl.path, "conformance/native/pass/borrow-field-independent-assignment.0");
-assert.match(graphBorrowConflictInline.body.view, /^# Generated by zero graph view\. Do not edit\.\n/);
+assert.equal(graphBorrowConflictInline.body.view, null);
 assert.doesNotMatch(JSON.stringify(graphBorrowConflictInline.body), /<generated-graph-view>|zero-graph-check/);
 writeFileSync(graphPatchEmptyPath, [
   "zero-program-graph-patch v1",
