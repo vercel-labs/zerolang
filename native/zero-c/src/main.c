@@ -10,6 +10,7 @@
 #include "program_graph_lower.h"
 #include "program_graph_patch.h"
 #include "program_graph_roundtrip.h"
+#include "program_graph_size.h"
 #include "program_graph_view.h"
 #include "std_sig.h"
 #include "std_source.h"
@@ -1645,13 +1646,7 @@ static uint64_t source_interface_hash(const SourceInput *input) {
   return hash;
 }
 
-static uint64_t graph_interface_cache_key(const SourceInput *input, const char *graph_hash) {
-  uint64_t hash = fnv1a_text("program-graph-interface");
-  hash ^= source_interface_hash(input);
-  hash *= 1099511628211ull;
-  hash = mix_hash_text(hash, graph_hash);
-  return hash;
-}
+static uint64_t graph_interface_cache_key(const SourceInput *input, const char *graph_hash) { uint64_t hash = fnv1a_text("program-graph-interface"); hash ^= source_interface_hash(input); hash *= 1099511628211ull; return mix_hash_text(hash, graph_hash); }
 
 static uint64_t source_dependency_hash(const SourceInput *input) {
   uint64_t hash = fnv1a_text("dependencies");
@@ -1750,13 +1745,7 @@ static uint64_t module_public_interface_hash(const SourceInput *input, const cha
   return hash;
 }
 
-static uint64_t graph_interface_module_source_hash(const char *graph_hash, const char *module_name, const char *module_path) {
-  uint64_t hash = fnv1a_text("program-graph-module-source");
-  hash = mix_hash_text(hash, graph_hash);
-  hash = mix_hash_text(hash, module_name);
-  hash = mix_hash_text(hash, module_path);
-  return hash;
-}
+static uint64_t graph_interface_module_source_hash(const char *graph_hash, const char *module_name, const char *module_path) { uint64_t hash = fnv1a_text("program-graph-module-source"); hash = mix_hash_text(hash, graph_hash); hash = mix_hash_text(hash, module_name); return mix_hash_text(hash, module_path); }
 
 static void append_interface_fingerprints_json_ex(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *graph_hash) {
   zbuf_append(buf, "{\"schemaVersion\":1,\"algorithm\":\"fnv1a64-zero-interface-v1\",\"targetFactsHash\":\"");
@@ -1816,9 +1805,7 @@ static void append_interface_fingerprints_json_ex(ZBuf *buf, const SourceInput *
   zbuf_append(buf, "]}");
 }
 
-static void append_interface_fingerprints_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target) {
-  append_interface_fingerprints_json_ex(buf, input, target, NULL);
-}
+static void append_interface_fingerprints_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target) { append_interface_fingerprints_json_ex(buf, input, target, NULL); }
 
 static uint64_t compile_cache_key(const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *kind) {
   uint64_t hash = fnv1a_text(kind);
@@ -1924,9 +1911,7 @@ static void append_compiler_caches_json_ex(ZBuf *buf, const SourceInput *input, 
   zbuf_append(buf, "]");
 }
 
-static void append_compiler_caches_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile) {
-  append_compiler_caches_json_ex(buf, input, target, profile, NULL, NULL);
-}
+static void append_compiler_caches_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile) { append_compiler_caches_json_ex(buf, input, target, profile, NULL, NULL); }
 
 static void source_cache_hit_miss_counts(const SourceInput *input, size_t *hits, size_t *misses) {
   *hits = 0;
@@ -1992,9 +1977,7 @@ static void append_incremental_invalidations_json_ex(ZBuf *buf, const SourceInpu
   zbuf_append(buf, "}");
 }
 
-static void append_incremental_invalidations_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile) {
-  append_incremental_invalidations_json_ex(buf, input, target, profile, NULL, NULL, NULL);
-}
+static void append_incremental_invalidations_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile) { append_incremental_invalidations_json_ex(buf, input, target, profile, NULL, NULL, NULL); }
 
 static bool package_dependency_target_compatible(const SourceDependency *dep, const ZTargetInfo *target) {
   if (!dep || !json_array_nonempty_literal(dep->targets_json)) return true;
@@ -3720,18 +3703,6 @@ static char *format_row_source_text(const char *source, ZDiag *diag) {
   return formatted;
 }
 
-static void direct_input_record_symbol(SourceInput *input, const char *module, const char *kind, const char *name, bool is_public) {
-  if (!input) return;
-  input->symbol_names = z_checked_reallocarray(input->symbol_names, input->symbol_count + 1, sizeof(char *));
-  input->symbol_modules = z_checked_reallocarray(input->symbol_modules, input->symbol_count + 1, sizeof(char *));
-  input->symbol_kinds = z_checked_reallocarray(input->symbol_kinds, input->symbol_count + 1, sizeof(char *));
-  input->symbol_public = z_checked_reallocarray(input->symbol_public, input->symbol_count + 1, sizeof(bool));
-  input->symbol_names[input->symbol_count] = z_strdup(name ? name : "");
-  input->symbol_modules[input->symbol_count] = z_strdup(module ? module : "");
-  input->symbol_kinds[input->symbol_count] = z_strdup(kind ? kind : "");
-  input->symbol_public[input->symbol_count++] = is_public;
-}
-
 static bool direct_input_push_symbol(SourceInput *input, const char *module, const char *kind, const char *name, bool is_public, ZDiag *diag) {
   if (is_public) {
     for (size_t i = 0; input && i < input->symbol_count; i++) {
@@ -3749,7 +3720,14 @@ static bool direct_input_push_symbol(SourceInput *input, const char *module, con
       }
     }
   }
-  direct_input_record_symbol(input, module, kind, name, is_public);
+  input->symbol_names = z_checked_reallocarray(input->symbol_names, input->symbol_count + 1, sizeof(char *));
+  input->symbol_modules = z_checked_reallocarray(input->symbol_modules, input->symbol_count + 1, sizeof(char *));
+  input->symbol_kinds = z_checked_reallocarray(input->symbol_kinds, input->symbol_count + 1, sizeof(char *));
+  input->symbol_public = z_checked_reallocarray(input->symbol_public, input->symbol_count + 1, sizeof(bool));
+  input->symbol_names[input->symbol_count] = z_strdup(name ? name : "");
+  input->symbol_modules[input->symbol_count] = z_strdup(module ? module : "");
+  input->symbol_kinds[input->symbol_count] = z_strdup(kind ? kind : "");
+  input->symbol_public[input->symbol_count++] = is_public;
   return true;
 }
 
@@ -8008,119 +7986,30 @@ static void append_runtime_shims_json_ex(ZBuf *buf, const char *emitted_symbol_t
   zbuf_append(buf, "]");
 }
 
-static void append_runtime_shims_json(ZBuf *buf, const char *emitted_symbol_text, const CapabilitySummary *caps) {
-  append_runtime_shims_json_ex(buf, emitted_symbol_text, caps, false);
-}
+static void append_runtime_shims_json(ZBuf *buf, const char *emitted_symbol_text, const CapabilitySummary *caps) { append_runtime_shims_json_ex(buf, emitted_symbol_text, caps, false); }
 
-typedef struct {
-  const ZProgramGraph *graph;
-  const char *artifact;
-  const char *lowering;
-} GraphSizeSource;
-
-static const ZProgramGraphNode *graph_size_find_node(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (graph->nodes[i].id && strcmp(graph->nodes[i].id, id) == 0) return &graph->nodes[i];
-  }
-  return NULL;
-}
-
-static const ZProgramGraphNode *graph_size_find_module_named(const ZProgramGraph *graph, const char *name) {
-  for (size_t i = 0; graph && name && i < graph->node_len; i++) {
-    const ZProgramGraphNode *node = &graph->nodes[i];
-    if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE && node->name && strcmp(node->name, name) == 0) return node;
-  }
-  return NULL;
-}
-
-static bool graph_size_is_stdlib_import(const char *module) {
-  return module && strncmp(module, "std.", 4) == 0;
-}
-
-static const char *graph_size_symbol_kind(ZProgramGraphNodeKind kind) {
-  switch (kind) {
-    case Z_PROGRAM_GRAPH_NODE_CONST: return "const";
-    case Z_PROGRAM_GRAPH_NODE_TYPE_ALIAS: return "type-alias";
-    case Z_PROGRAM_GRAPH_NODE_SHAPE: return "shape";
-    case Z_PROGRAM_GRAPH_NODE_INTERFACE: return "interface";
-    case Z_PROGRAM_GRAPH_NODE_ENUM: return "enum";
-    case Z_PROGRAM_GRAPH_NODE_CHOICE: return "choice";
-    case Z_PROGRAM_GRAPH_NODE_FUNCTION: return "function";
-    default: return NULL;
-  }
-}
-
-static void graph_size_seed_input_metadata(SourceInput *input, const ZProgramGraph *graph, const ZTargetInfo *target, const char *profile) {
-  if (!input || !graph) return;
-
-  free(input->source);
-  input->source = z_strdup(graph->graph_hash ? graph->graph_hash : "");
-
-  for (size_t i = 0; i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    const ZProgramGraphNode *module = graph_size_find_node(graph, edge->from);
-    const ZProgramGraphNode *node = graph_size_find_node(graph, edge->to);
-    if (!module || module->kind != Z_PROGRAM_GRAPH_NODE_MODULE || !node) continue;
-
-    if (node->kind == Z_PROGRAM_GRAPH_NODE_IMPORT && strcmp(edge->kind, "import") == 0) {
-      const char *import_name = node->name ? node->name : "";
-      if (graph_size_is_stdlib_import(import_name)) continue;
-      const ZProgramGraphNode *import_module = graph_size_find_module_named(graph, import_name);
-      const char *import_path = import_module && import_module->path ? import_module->path : "";
-      direct_input_push_import(input, import_name);
-      direct_input_push_import_edge(input,
-                                    module->name ? module->name : "",
-                                    import_name,
-                                    import_path,
-                                    node->path ? node->path : "",
-                                    node->line,
-                                    node->column,
-                                    (int)strlen(import_name));
-      continue;
-    }
-
-    const char *symbol_kind = graph_size_symbol_kind(node->kind);
-    if (!symbol_kind || !node->name || !node->name[0]) continue;
-    direct_input_record_symbol(input, module->name ? module->name : "", symbol_kind, node->name, node->is_public);
-  }
-
-  input->parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(input, NULL, NULL, "parse-tree"));
-  input->interface_cache_hit = compiler_cache_touch("interface", graph_interface_cache_key(input, graph->graph_hash));
-  input->check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(input, target, NULL, "checked-body"));
-  input->specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(input, target, profile, "specialization"));
-}
+typedef struct { const ZProgramGraph *graph; const char *artifact; const char *lowering; } GraphSizeSource;
 
 static bool write_size_metadata_artifact(const Command *command, SourceInput *input, const ZTargetInfo *target, char **artifact_path, long long *artifact_bytes, ZDiag *diag) {
-  if (artifact_path) *artifact_path = NULL;
-  if (artifact_bytes) *artifact_bytes = -1;
+  if (artifact_path) *artifact_path = NULL; if (artifact_bytes) *artifact_bytes = -1;
   if (!command || !command->out) return true;
 
-  char *base_artifact_path = z_strdup(command->out);
-  char *path = apply_target_suffix(base_artifact_path, target);
+  char *base_artifact_path = z_strdup(command->out); char *path = apply_target_suffix(base_artifact_path, target);
   free(base_artifact_path);
 
-  ZBuf artifact;
-  zbuf_init(&artifact);
-  zbuf_append(&artifact, "{\n  \"schemaVersion\": 1,\n  \"kind\": \"zero-size-metadata\",\n  \"sourceFile\": ");
-  append_json_string(&artifact, input && input->source_file ? input->source_file : "");
-  zbuf_append(&artifact, ",\n  \"target\": ");
-  append_json_string(&artifact, target ? target->name : z_host_target());
+  ZBuf artifact; zbuf_init(&artifact);
+  zbuf_append(&artifact, "{\n  \"schemaVersion\": 1,\n  \"kind\": \"zero-size-metadata\",\n  \"sourceFile\": "); append_json_string(&artifact, input && input->source_file ? input->source_file : "");
+  zbuf_append(&artifact, ",\n  \"target\": "); append_json_string(&artifact, target ? target->name : z_host_target());
   zbuf_appendf(&artifact, ",\n  \"generatedCBytes\": 0,\n  \"loweredIrBytes\": %zu\n}\n", input ? input->lowered_ir_bytes : 0);
 
   long long phase_started = now_ms();
   if (input) input->emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(input, target, command->profile, "direct-size-metadata"));
   bool wrote = z_write_file(path, artifact.data, diag);
-  if (input) {
-    input->object_ms = now_ms() - phase_started;
-    input->link_ms = 0;
-  }
+  if (input) { input->object_ms = now_ms() - phase_started; input->link_ms = 0; }
   if (wrote && artifact_bytes) *artifact_bytes = file_size_or_negative(path);
   zbuf_free(&artifact);
 
-  if (!wrote) {
-    free(path);
-    return false;
-  }
+  if (!wrote) { free(path); return false; }
   if (artifact_path) *artifact_path = path;
   else free(path);
   return true;
@@ -8128,52 +8017,33 @@ static bool write_size_metadata_artifact(const Command *command, SourceInput *in
 
 static void append_size_graph_source_json(ZBuf *buf, const GraphSizeSource *graph_source) {
   if (!graph_source || !graph_source->graph) return;
-  zbuf_append(buf, ",\n  \"graph\": {\"artifact\": ");
-  append_json_string(buf, graph_source->artifact ? graph_source->artifact : "");
-  zbuf_append(buf, ", \"canonicalSource\": false, \"moduleIdentity\": ");
-  append_json_string(buf, graph_source->graph->module_identity ? graph_source->graph->module_identity : "");
-  zbuf_append(buf, ", \"graphHash\": ");
-  append_json_string(buf, graph_source->graph->graph_hash ? graph_source->graph->graph_hash : "");
-  zbuf_append(buf, ", \"lowering\": ");
-  append_json_string(buf, graph_source->lowering ? graph_source->lowering : "direct-program-graph");
+  zbuf_append(buf, ",\n  \"graph\": {\"artifact\": "); append_json_string(buf, graph_source->artifact ? graph_source->artifact : "");
+  zbuf_append(buf, ", \"canonicalSource\": false, \"moduleIdentity\": "); append_json_string(buf, graph_source->graph->module_identity ? graph_source->graph->module_identity : "");
+  zbuf_append(buf, ", \"graphHash\": "); append_json_string(buf, graph_source->graph->graph_hash ? graph_source->graph->graph_hash : "");
+  zbuf_append(buf, ", \"lowering\": "); append_json_string(buf, graph_source->lowering ? graph_source->lowering : "direct-program-graph");
   zbuf_append(buf, "}");
 }
 
 static void append_size_report_front_json(ZBuf *buf, const Command *command, SourceInput *input, const Program *program, const ZTargetInfo *target, const IrProgram *ir, const CapabilitySummary *caps, const HelperUseSummary *used_helpers, const GraphSizeSource *graph_source) {
   const char *profile = command && command->profile ? command->profile : "release";
-  zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
-  append_json_string(buf, input && input->source_file ? input->source_file : "");
+  zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": "); append_json_string(buf, input && input->source_file ? input->source_file : "");
   append_size_graph_source_json(buf, graph_source);
-  zbuf_append(buf, ",\n  \"package\": ");
-  append_package_metadata_json(buf, input, target);
-  zbuf_append(buf, ",\n  \"packageCache\": ");
-  append_package_cache_audit_json(buf, input, target, profile);
-  zbuf_append(buf, ",\n  \"target\": ");
-  append_json_string(buf, target ? target->name : z_host_target());
-  zbuf_append(buf, ",\n  \"hostTarget\": ");
-  append_json_string(buf, z_host_target());
-  zbuf_append(buf, ",\n  \"profile\": ");
-  append_json_string(buf, profile);
+  zbuf_append(buf, ",\n  \"package\": "); append_package_metadata_json(buf, input, target);
+  zbuf_append(buf, ",\n  \"packageCache\": "); append_package_cache_audit_json(buf, input, target, profile);
+  zbuf_append(buf, ",\n  \"target\": "); append_json_string(buf, target ? target->name : z_host_target());
+  zbuf_append(buf, ",\n  \"hostTarget\": "); append_json_string(buf, z_host_target());
+  zbuf_append(buf, ",\n  \"profile\": "); append_json_string(buf, profile);
   zbuf_appendf(buf, ",\n  \"targetSupport\": {\"fsAvailable\": %s},\n  \"requiresCapabilities\": ", z_target_has_capability(target, "fs") ? "true" : "false");
   append_capability_json_array(buf, caps);
-  zbuf_append(buf, ",\n  \"runtimeImportAudit\": ");
-  append_runtime_import_audit_json(buf, ir, input, target);
-  zbuf_append(buf, ",\n  \"portableRuntime\": ");
-  append_portable_runtime_json(buf, ir, input, target, caps);
-  zbuf_append(buf, ",\n  \"stdlibHelpers\": ");
-  append_stdlib_helpers_json(buf);
-  zbuf_append(buf, ",\n  \"usedStdlibHelpers\": ");
-  append_used_stdlib_helpers_json(buf, used_helpers);
-  zbuf_append(buf, ",\n  \"stdlibHelperAttribution\": ");
-  append_used_stdlib_helpers_json(buf, used_helpers);
-  zbuf_append(buf, ",\n  \"selfHostRouting\": ");
-  append_self_host_routing_json(buf, "size", NULL, program, caps, target);
-  zbuf_append(buf, ",\n  \"compilerRuntimeHelpers\": ");
-  append_compiler_runtime_helpers_json_ex(buf, NULL, false);
-  zbuf_append(buf, ",\n  \"genericSpecializations\": ");
-  append_direct_generic_specializations_json(buf, program);
-  zbuf_append(buf, ",\n  \"runtimeShims\": ");
-  append_runtime_shims_json_ex(buf, NULL, caps, program_uses_bounds_checked_access(program));
+  zbuf_append(buf, ",\n  \"runtimeImportAudit\": "); append_runtime_import_audit_json(buf, ir, input, target);
+  zbuf_append(buf, ",\n  \"portableRuntime\": "); append_portable_runtime_json(buf, ir, input, target, caps);
+  zbuf_append(buf, ",\n  \"stdlibHelpers\": "); append_stdlib_helpers_json(buf);
+  zbuf_append(buf, ",\n  \"usedStdlibHelpers\": "); append_used_stdlib_helpers_json(buf, used_helpers);
+  zbuf_append(buf, ",\n  \"stdlibHelperAttribution\": "); append_used_stdlib_helpers_json(buf, used_helpers);
+  zbuf_append(buf, ",\n  \"selfHostRouting\": "); append_self_host_routing_json(buf, "size", NULL, program, caps, target);
+  zbuf_append(buf, ",\n  \"compilerRuntimeHelpers\": "); append_compiler_runtime_helpers_json_ex(buf, NULL, false);
+  zbuf_append(buf, ",\n  \"genericSpecializations\": "); append_direct_generic_specializations_json(buf, program);
+  zbuf_append(buf, ",\n  \"runtimeShims\": "); append_runtime_shims_json_ex(buf, NULL, caps, program_uses_bounds_checked_access(program));
 }
 
 static void append_size_report_back_json(ZBuf *buf, const Command *command, SourceInput *input, const Program *program, const ZTargetInfo *target, const HelperUseSummary *used_helpers, const CapabilitySummary *caps, const GraphSizeSource *graph_source, const char *artifact_path, long long artifact_bytes) {
@@ -8181,39 +8051,22 @@ static void append_size_report_back_json(ZBuf *buf, const Command *command, Sour
   const char *graph_hash = graph_source && graph_source->graph ? graph_source->graph->graph_hash : NULL;
   zbuf_appendf(buf, ",\n  \"sections\": [{\"name\":\"lowered-ir\",\"kind\":\"ir\",\"bytes\":%zu}, {\"name\":\"direct-size-metadata\",\"kind\":\"metadata\",\"bytes\":0}", input ? input->lowered_ir_bytes : 0);
   if (artifact_bytes >= 0) zbuf_appendf(buf, ", {\"name\":\"artifact\",\"kind\":\"metadata\",\"bytes\":%lld}", artifact_bytes);
-  zbuf_append(buf, "],\n  \"topLargestEmittedHelpers\": ");
-  append_top_emitted_helpers_json(buf, used_helpers);
-  zbuf_append(buf, ",\n  \"sizeBreakdown\": ");
-  append_size_breakdown_json(buf, input, program, target, command, used_helpers, caps, artifact_bytes);
-  zbuf_append(buf, ",\n  \"retentionReasons\": ");
-  append_retention_reasons_json(buf, input, program, used_helpers, profile);
-  zbuf_append(buf, ",\n  \"optimizationHints\": ");
-  append_optimization_hints_json(buf, input, used_helpers, caps, profile);
-  zbuf_append(buf, ",\n  \"profileBudget\": ");
-  append_profile_budget_json(buf, profile);
+  zbuf_append(buf, "],\n  \"topLargestEmittedHelpers\": "); append_top_emitted_helpers_json(buf, used_helpers);
+  zbuf_append(buf, ",\n  \"sizeBreakdown\": "); append_size_breakdown_json(buf, input, program, target, command, used_helpers, caps, artifact_bytes);
+  zbuf_append(buf, ",\n  \"retentionReasons\": "); append_retention_reasons_json(buf, input, program, used_helpers, profile);
+  zbuf_append(buf, ",\n  \"optimizationHints\": "); append_optimization_hints_json(buf, input, used_helpers, caps, profile);
+  zbuf_append(buf, ",\n  \"profileBudget\": "); append_profile_budget_json(buf, profile);
   zbuf_appendf(buf, ",\n  \"generatedCBytes\": 0,\n  \"cBridgeFallback\": false,\n  \"loweredIrBytes\": %zu,\n  \"artifactPath\": ", input ? input->lowered_ir_bytes : 0);
   append_json_nullable_string(buf, artifact_path);
   zbuf_append(buf, ",\n  \"artifactBytes\": ");
   if (artifact_bytes >= 0) zbuf_appendf(buf, "%lld", artifact_bytes);
   else zbuf_append(buf, "null");
-  zbuf_append(buf, ",\n  \"compilerPhases\": ");
-  append_compiler_phases_json(buf, input);
-  zbuf_append(buf, ",\n  \"compilerCaches\": ");
-  append_compiler_caches_json_ex(buf, input, target, profile, graph_hash && graph_hash[0] ? "program-graph" : NULL, graph_hash);
-  zbuf_append(buf, ",\n  \"incrementalInvalidation\": ");
-  append_incremental_invalidations_json_ex(buf,
-                                           input,
-                                           target,
-                                           profile,
-                                           graph_source ? graph_source->artifact : NULL,
-                                           graph_hash,
-                                           graph_source ? graph_source->lowering : NULL);
-  zbuf_append(buf, ",\n  \"profileSemantics\": ");
-  append_profile_semantics_json(buf, profile);
-  zbuf_append(buf, ",\n  \"profileCatalog\": ");
-  append_profile_catalog_json(buf);
-  zbuf_append(buf, ",\n  \"objectBackend\": ");
-  append_object_backend_json(buf, input, target, command, "size");
+  zbuf_append(buf, ",\n  \"compilerPhases\": "); append_compiler_phases_json(buf, input);
+  zbuf_append(buf, ",\n  \"compilerCaches\": "); append_compiler_caches_json_ex(buf, input, target, profile, graph_hash && graph_hash[0] ? "program-graph" : NULL, graph_hash);
+  zbuf_append(buf, ",\n  \"incrementalInvalidation\": "); append_incremental_invalidations_json_ex(buf, input, target, profile, graph_source ? graph_source->artifact : NULL, graph_hash, graph_source ? graph_source->lowering : NULL);
+  zbuf_append(buf, ",\n  \"profileSemantics\": "); append_profile_semantics_json(buf, profile);
+  zbuf_append(buf, ",\n  \"profileCatalog\": "); append_profile_catalog_json(buf);
+  zbuf_append(buf, ",\n  \"objectBackend\": "); append_object_backend_json(buf, input, target, command, "size");
   zbuf_append(buf, "\n}\n");
 }
 
@@ -10095,7 +9948,11 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   input.lower_ms = now_ms() - phase_started;
   apply_ir_metrics_to_input(&input, &ir, target);
   GraphSizeSource graph_source = {.graph = &graph, .artifact = command->input, .lowering = "direct-program-graph"};
-  graph_size_seed_input_metadata(&input, &graph, target, command && command->profile ? command->profile : "release");
+  z_program_graph_seed_size_source_metadata(&input, &graph);
+  input.parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(&input, NULL, NULL, "parse-tree"));
+  input.interface_cache_hit = compiler_cache_touch("interface", graph_interface_cache_key(&input, graph.graph_hash));
+  input.check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(&input, target, NULL, "checked-body"));
+  input.specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(&input, target, command && command->profile ? command->profile : "release", "specialization"));
   int rc = run_size_report_command(command, &input, &program, target, &ir, &graph_source, diag);
   z_free_ir_program(&ir);
   z_free_program(&program);
