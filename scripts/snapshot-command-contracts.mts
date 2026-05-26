@@ -339,6 +339,8 @@ const graphPatchNullEscapePath = join(outDir, "hello.null-escape.program-graph.p
 const graphPatchRawNullPath = join(outDir, "hello.raw-null.program-graph.patch");
 const graphPatchInvalidNamePath = join(outDir, "hello.invalid-name.program-graph.patch");
 const graphPatchInvalidTypePath = join(outDir, "hello.invalid-type.program-graph.patch");
+const graphPackageDumpPath = join(outDir, "systems-package.program-graph");
+const graphPatchInvalidImportAliasPath = join(outDir, "systems-package.invalid-import-alias.program-graph.patch");
 const graphPatchMismatchPath = join(outDir, "hello.mismatch.program-graph.patch");
 const graphPatchBadHashPath = join(outDir, "hello.bad-hash.program-graph.patch");
 const graphSparseOrderPath = join(outDir, "hello.sparse-order.program-graph");
@@ -357,6 +359,8 @@ rmSync(graphPatchNullEscapePath, { force: true });
 rmSync(graphPatchRawNullPath, { force: true });
 rmSync(graphPatchInvalidNamePath, { force: true });
 rmSync(graphPatchInvalidTypePath, { force: true });
+rmSync(graphPackageDumpPath, { force: true });
+rmSync(graphPatchInvalidImportAliasPath, { force: true });
 rmSync(graphPatchMismatchPath, { force: true });
 rmSync(graphPatchBadHashPath, { force: true });
 rmSync(graphSparseOrderPath, { force: true });
@@ -510,6 +514,24 @@ assert.equal(graphPatchInvalidType.body.ok, false);
 assert.equal(graphPatchInvalidType.body.diagnostic.code, "GPH003");
 assert.equal(graphPatchInvalidType.body.operations[0].field, "type");
 assert.equal(graphPatchInvalidType.body.operations[0].value, "Void\npub fn injected Void");
+assert.equal(zero(["graph", "dump", "--out", graphPackageDumpPath, "examples/systems-package"]).stdout, "");
+const graphPackageDumpJson = json(["graph", "dump", "--json", "examples/systems-package"]).body;
+const graphImportNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Import");
+assert(graphImportNode);
+writeFileSync(graphPatchInvalidImportAliasPath, [
+  "zero-program-graph-patch v1",
+  `expect graphHash "${graphPackageDumpJson.graphHash}"`,
+  `set node="${graphImportNode.id}" field="value" value="alias\\npub fn injected Void\\n"`,
+  "",
+].join("\n"));
+const graphPatchInvalidImportAlias = json(["graph", "patch", "--json", graphPackageDumpPath, graphPatchInvalidImportAliasPath], { allowFailure: true });
+assert.notEqual(graphPatchInvalidImportAlias.code, 0);
+assert.equal(graphPatchInvalidImportAlias.body.ok, false);
+assert.equal(graphPatchInvalidImportAlias.body.diagnostic.code, "GPH003");
+assert.equal(graphPatchInvalidImportAlias.body.diagnostic.message, "patch import alias value must be a Zero identifier");
+assert.equal(graphPatchInvalidImportAlias.body.operations[0].field, "value");
+assert.equal(graphPatchInvalidImportAlias.body.operations[0].value, "alias\npub fn injected Void\n");
+assert.equal(graphPatchInvalidImportAlias.body.saved, null);
 writeFileSync(graphPatchBadHashPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "graph:0000000000000000"`,

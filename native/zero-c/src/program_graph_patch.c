@@ -367,6 +367,15 @@ static bool patch_name_value_valid(const char *text) {
   return true;
 }
 
+static bool patch_identifier_value_valid(const char *text) {
+  if (!text || !text[0]) return true;
+  const char *cursor = text;
+  if (!(isalpha((unsigned char)*cursor) || *cursor == '_')) return false;
+  cursor++;
+  while (patch_name_segment_char(*cursor)) cursor++;
+  return *cursor == '\0';
+}
+
 static bool patch_text_has_control(const char *text) {
   for (const unsigned char *cursor = (const unsigned char *)(text ? text : ""); *cursor; cursor++) {
     if (*cursor < 0x20 || *cursor == 0x7f) return true;
@@ -397,6 +406,10 @@ static bool patch_validate_text_value(const ZProgramGraphNode *node, ZProgramGra
   }
   if (node && node->kind == Z_PROGRAM_GRAPH_NODE_MATCH_ARM && patch_text_eq(op->field, "value") && !patch_name_value_valid(op->value)) {
     patch_op_fail(result, op, "GPH003", "patch match payload value must be a Zero identifier path or operator", "identifier path or operator", op->value);
+    return false;
+  }
+  if (node && node->kind == Z_PROGRAM_GRAPH_NODE_IMPORT && patch_text_eq(op->field, "value") && !patch_identifier_value_valid(op->value)) {
+    patch_op_fail(result, op, "GPH003", "patch import alias value must be a Zero identifier", "identifier", op->value);
     return false;
   }
   return true;
