@@ -337,6 +337,8 @@ const graphPatchInsertPath = join(outDir, "hello.insert.program-graph.patch");
 const graphInsertedPath = join(outDir, "hello.insert.program-graph");
 const graphPatchDeletePath = join(outDir, "hello.delete.program-graph.patch");
 const graphDeletedPath = join(outDir, "hello.delete.program-graph");
+const graphPatchDeleteNodeFactPath = join(outDir, "hello.delete-node-fact.program-graph.patch");
+const graphDeletedNodeFactPath = join(outDir, "hello.delete-node-fact.program-graph");
 const graphPatchReplacePath = join(outDir, "hello.replace.program-graph.patch");
 const graphReplacedPath = join(outDir, "hello.replace.program-graph");
 const graphPatchStaleReplacePath = join(outDir, "hello.stale-replace.program-graph.patch");
@@ -385,6 +387,8 @@ rmSync(graphPatchInsertPath, { force: true });
 rmSync(graphInsertedPath, { force: true });
 rmSync(graphPatchDeletePath, { force: true });
 rmSync(graphDeletedPath, { force: true });
+rmSync(graphPatchDeleteNodeFactPath, { force: true });
+rmSync(graphDeletedNodeFactPath, { force: true });
 rmSync(graphPatchReplacePath, { force: true });
 rmSync(graphReplacedPath, { force: true });
 rmSync(graphPatchStaleReplacePath, { force: true });
@@ -546,6 +550,21 @@ assert.equal(graphDeletePatchJson.ok, true);
 assert.equal(graphDeletePatchJson.operations[0].op, "delete");
 assert.equal(graphDeletePatchJson.operations[0].actual, graphInsertedCheckHash);
 assert.equal(readFileSync(graphDeletedPath, "utf8"), graphDump);
+writeFileSync(graphPatchDeleteNodeFactPath, [
+  "zero-program-graph-patch v1",
+  `expect graphHash "${graphDumpJson.graphHash}"`,
+  `insert node="node:patch_node_fact" kind="Check" parent="node:000007" edge="statement" order="1"`,
+  `insertEdge from="node:patch_node_fact" to="node:000001" edge="backlink" target="node" order="0"`,
+  `delete node="node:patch_node_fact"`,
+  "",
+].join("\n"));
+const graphDeleteNodeFactPatchJson = json(["graph", "patch", "--json", "--out", graphDeletedNodeFactPath, graphDumpPath, graphPatchDeleteNodeFactPath]).body;
+assert.equal(graphDeleteNodeFactPatchJson.ok, true);
+assert.equal(graphDeleteNodeFactPatchJson.operationCount, 3);
+assert.equal(graphDeleteNodeFactPatchJson.operations[1].op, "insertEdge");
+assert.equal(graphDeleteNodeFactPatchJson.operations[1].target, "node");
+assert.equal(graphDeleteNodeFactPatchJson.operations[2].op, "delete");
+assert.equal(readFileSync(graphDeletedNodeFactPath, "utf8"), graphDump);
 const graphLiteralNode = graphDumpJson.nodes.find((node) => node.kind === "Literal" && node.type === "String");
 assert(graphLiteralNode);
 writeFileSync(graphPatchReplacePath, [

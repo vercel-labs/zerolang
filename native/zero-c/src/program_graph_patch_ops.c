@@ -451,13 +451,63 @@ static size_t patch_node_index(const ZProgramGraph *graph, const char *node_id) 
   return (size_t)-1;
 }
 
+static bool patch_node_edge_kind_owns_child(const char *kind) {
+  static const char *owned_kinds[] = {
+    "alias",
+    "arg",
+    "arm",
+    "body",
+    "cImport",
+    "case",
+    "choice",
+    "const",
+    "declaredType",
+    "default",
+    "effect",
+    "else",
+    "enum",
+    "error",
+    "expr",
+    "field",
+    "function",
+    "guard",
+    "import",
+    "interface",
+    "left",
+    "method",
+    "param",
+    "rangeEnd",
+    "returnType",
+    "right",
+    "shape",
+    "statement",
+    "target",
+    "then",
+    "type",
+    "typeArg",
+    "typeParam",
+    "value",
+    NULL,
+  };
+  for (size_t i = 0; owned_kinds[i]; i++) {
+    if (patch_text_eq(kind, owned_kinds[i])) return true;
+  }
+  return false;
+}
+
+static bool patch_edge_owns_child_node(const ZProgramGraphEdge *edge) {
+  return edge &&
+         edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE &&
+         patch_node_edge_kind_owns_child(edge->kind);
+}
+
 static bool patch_mark_delete_subtree(const ZProgramGraph *graph, size_t index, bool *marked) {
   if (!graph || index >= graph->node_len || marked[index]) return true;
   marked[index] = true;
   const char *node_id = graph->nodes[index].id;
   for (size_t i = 0; i < graph->edge_len; i++) {
     const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE || !patch_text_eq(edge->from, node_id)) continue;
+    if (!patch_edge_owns_child_node(edge) || !patch_text_eq(edge->from, node_id)) continue;
     size_t child = patch_node_index(graph, edge->to);
     if (child == (size_t)-1) return false;
     if (!patch_mark_delete_subtree(graph, child, marked)) return false;
@@ -539,6 +589,12 @@ static bool patch_apply_delete(ZProgramGraph *graph, ZProgramGraphPatchResult *r
   if (!patch_mark_delete_subtree(graph, root, marked)) {
     free(marked);
     patch_op_fail(result, op, "GPH006", "delete subtree references a missing node", "valid child edge target", op->node);
+    return false;
+  }
+  for (size_t i = 0; i < graph->node_len; i++) {
+    if (!marked[i] || graph->nodes[i].kind != Z_PROGRAM_GRAPH_NODE_MODULE) continue;
+    free(marked);
+    patch_op_fail(result, op, "GPH003", "patch delete subtree cannot include the module root", "non-module owned subtree", graph->nodes[i].id);
     return false;
   }
   for (size_t i = 0; i < graph->edge_len; i++) {

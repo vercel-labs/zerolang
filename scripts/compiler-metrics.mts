@@ -68,7 +68,7 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_import.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_lower.c": { maxLines: 1038, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_lower.h": { maxLines: 10, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 646, maxStrcmpCalls: 11 },
+  "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 697, maxStrcmpCalls: 11 },
   "native/zero-c/src/program_graph_patch.c": { maxLines: 591, maxStrcmpCalls: 28 },
   "native/zero-c/src/program_graph_patch.h": { maxLines: 63, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.c": { maxLines: 40, maxStrcmpCalls: 0 },
