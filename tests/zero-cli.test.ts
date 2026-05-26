@@ -274,4 +274,34 @@ describe("native zero CLI", () => {
     assert.match(result.stderr, /FLD001/);
     assert.match(result.stderr, /explain: zero explain FLD001/);
   });
+
+  it("produces ZDN output for check, tokens, parse, and explain", async () => {
+    // check --zdn on a valid program
+    const check = await runZero(["check", "--zdn", "examples/add.0"]);
+    assert.ok(check.stdout.includes("CheckResult"), `expected CheckResult in:\n${check.stdout}`);
+    assert.ok(check.stdout.includes("ok true"), `expected ok true in:\n${check.stdout}`);
+
+    // check --zdn on an invalid program
+    const checkFail = await runZero(["check", "--zdn", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
+    assert.notEqual(checkFail.code, 0);
+    assert.ok(checkFail.stdout.includes("CheckResult"), `expected CheckResult in:\n${checkFail.stdout}`);
+    assert.ok(checkFail.stdout.includes("ok false"), `expected ok false in:\n${checkFail.stdout}`);
+
+    // tokens --zdn
+    const tokens = await runZero(["tokens", "--zdn", "examples/add.0"]);
+    assert.ok(tokens.stdout.includes("TokensResult"), `expected TokensResult in:\n${tokens.stdout}`);
+
+    // parse --zdn
+    const parse = await runZero(["parse", "--zdn", "examples/add.0"]);
+    assert.ok(parse.stdout.includes("ParseResult"), `expected ParseResult in:\n${parse.stdout}`);
+
+    // doc --zdn
+    const doc = await runZero(["doc", "--zdn", "examples/add.0"]);
+    assert.ok(doc.stdout.includes("DocResult"), `expected DocResult in:\n${doc.stdout}`);
+
+    // explain --zdn
+    const explain = await runZero(["explain", "--zdn", "TAR001"]);
+    assert.ok(explain.stdout.includes("ExplainResult"), `expected ExplainResult in:\n${explain.stdout}`);
+    assert.ok(explain.stdout.includes('code "TAR001"'), `expected code field in:\n${explain.stdout}`);
+  });
 });
