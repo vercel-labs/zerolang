@@ -358,3 +358,215 @@ void zdn_print_build(const char *source_file, const char *emit_kind,
   fputs(buf.data, stdout);
   zbuf_free(&buf);
 }
+
+// ── Size result ──
+
+void zdn_print_size(const char *source_file, const char *target_name,
+                    const char *profile, const char *host_target,
+                    size_t lowered_ir_bytes, long long artifact_bytes,
+                    const char *artifact_path) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "SizeResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+  zdn_field_string(&buf, "profile", profile ? profile : "release", 1);
+  zdn_field_string(&buf, "hostTarget", host_target ? host_target : z_host_target(), 1);
+  zdn_field_int(&buf, "loweredIrBytes", (long long)lowered_ir_bytes, 1);
+  zdn_field_nullable_int(&buf, "artifactBytes", artifact_bytes, 1);
+  zdn_field_nullable_string(&buf, "artifactPath", artifact_path, 1);
+
+  // sections array
+  zdn_array_start(&buf, "sections", 1);
+  {
+    zdn_object_start_inline(&buf, 2);
+    zdn_inline_field_string(&buf, "name", "lowered-ir");
+    zdn_inline_field_string(&buf, "kind", "ir");
+    zdn_inline_field_int(&buf, "bytes", (long long)lowered_ir_bytes);
+    zdn_object_end_inline(&buf);
+    zbuf_append(&buf, "\n");
+  }
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Ship result ──
+
+void zdn_print_ship(const char *source_file, const char *target_name,
+                    const char *host_target, const char *profile,
+                    const char *artifact_path, long long artifact_bytes,
+                    long long elapsed_ms, const char *checksum_value) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "ShipResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+  zdn_field_string(&buf, "hostTarget", host_target ? host_target : z_host_target(), 1);
+  zdn_field_string(&buf, "profile", profile ? profile : "release", 1);
+  zdn_field_nullable_string(&buf, "artifactPath", artifact_path, 1);
+  zdn_field_nullable_int(&buf, "artifactBytes", artifact_bytes, 1);
+  zdn_field_int(&buf, "elapsedMs", elapsed_ms, 1);
+  if (checksum_value && checksum_value[0]) {
+    zdn_object_start(&buf, "checksum", 1);
+    zdn_field_string(&buf, "algorithm", "fnv1a64", 2);
+    zdn_field_string(&buf, "path", checksum_value, 2);
+  }
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Doc result ──
+
+void zdn_print_doc(const char *source_file, const char *target_name) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "DocResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Dev result ──
+
+void zdn_print_dev(const char *source_file, const char *target_name,
+                   const char *profile) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "DevResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+  zdn_field_string(&buf, "profile", profile ? profile : "release", 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Time result ──
+
+void zdn_print_time(const char *source_file, const char *target_name,
+                    size_t elapsed_ms) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "TimeResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+  zdn_field_int(&buf, "elapsedMs", (long long)elapsed_ms, 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Tokens result ──
+
+void zdn_print_tokens(const char *source_file) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "TokensResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Parse result ──
+
+void zdn_print_parse(const char *source_file) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "ParseResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Mem result ──
+
+void zdn_print_mem(const char *source_file, const char *target_name,
+                   const char *profile) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "MemResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+  zdn_field_string(&buf, "profile", profile ? profile : "release", 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Graph result ──
+
+void zdn_print_graph(const char *source_file, const char *target_name) {
+  ZBuf buf;
+  zbuf_init(&buf);
+
+  zbuf_append(&buf, "GraphResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", source_file ? source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target_name ? target_name : "host", 1);
+
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+// ── Inline object support ──
+
+void zdn_object_start_inline(ZBuf *buf, int indent_level) {
+  indent(buf, indent_level);
+  zbuf_append_char(buf, '{');
+  zbuf_append_char(buf, ' ');
+}
+
+void zdn_object_end_inline(ZBuf *buf) {
+  zbuf_append_char(buf, '}');
+}
+
+void zdn_inline_field_string(ZBuf *buf, const char *name, const char *value) {
+  zbuf_append(buf, name);
+  zbuf_append(buf, " ");
+  zdn_append_string(buf, value);
+  zbuf_append_char(buf, ' ');
+}
+
+void zdn_inline_field_int(ZBuf *buf, const char *name, long long value) {
+  zbuf_append(buf, name);
+  zbuf_append(buf, " ");
+  zbuf_appendf(buf, "%lld", value);
+  zbuf_append_char(buf, ' ');
+}
+
+void zdn_inline_field_bool(ZBuf *buf, const char *name, bool value) {
+  zbuf_append(buf, name);
+  zbuf_append(buf, " ");
+  zbuf_append(buf, value ? "true " : "false ");
+}
+
+// ── Patch format ──
+
+void zdn_print_patch_header(ZBuf *buf, const char *record_name, int indent_level) {
+  indent(buf, indent_level);
+  zbuf_append(buf, "patch ");
+  zbuf_append(buf, record_name);
+  zbuf_append(buf, "\n");
+}

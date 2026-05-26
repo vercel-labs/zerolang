@@ -9170,6 +9170,10 @@ static int run_graph_validate_command(const Command *command, ZDiag *diag) {
 }
 
 static int run_graph_command(const Command *command, SourceInput *input, Program *program, const ZTargetInfo *target, ZDiag *diag) {
+  if (command->format == FORMAT_ZDN) {
+    zdn_print_graph(input ? input->source_file : "", target ? target->name : "host");
+    return 0;
+  }
   bool graph_dump = command->kind && strcmp(command->kind, "dump") == 0;
   if (command->kind && !graph_dump) {
     fprintf(stderr, "unknown graph mode: %s\n", command->kind);
@@ -9431,7 +9435,9 @@ int main(int argc, char **argv) {
       z_free_source(&token_input);
       return 1;
     }
-    if (command.format == FORMAT_JSON) {
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_tokens(token_input.source_file);
+    } else if (command.format == FORMAT_JSON) {
       ZBuf buf;
       zbuf_init(&buf);
       append_row_tokens_json(&buf, token_input.source_file, &tokens);
@@ -9471,7 +9477,9 @@ int main(int argc, char **argv) {
       z_free_source(&parse_input);
       return 1;
     }
-    if (command.format == FORMAT_JSON) {
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_parse(parse_input.source_file);
+    } else if (command.format == FORMAT_JSON) {
       ZBuf buf;
       zbuf_init(&buf);
       append_parse_json(&buf, parse_input.source_file, &parsed);
@@ -9557,33 +9565,46 @@ int main(int argc, char **argv) {
   }
 
   if (strcmp(command.command, "doc") == 0) {
-    ZBuf doc;
-    zbuf_init(&doc);
-    append_public_docs_json(&doc, &input, &program, target);
-    fputs(doc.data, stdout);
-    zbuf_free(&doc);
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_doc(input.source_file, target ? target->name : "host");
+    } else {
+      ZBuf doc;
+      zbuf_init(&doc);
+      append_public_docs_json(&doc, &input, &program, target);
+      fputs(doc.data, stdout);
+      zbuf_free(&doc);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
   }
 
   if (strcmp(command.command, "dev") == 0) {
-    ZBuf dev;
-    zbuf_init(&dev);
-    append_dev_plan_json(&dev, &input, &program, target, &command);
-    fputs(dev.data, stdout);
-    zbuf_free(&dev);
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_dev(input.source_file, target ? target->name : "host", command.profile);
+    } else {
+      ZBuf dev;
+      zbuf_init(&dev);
+      append_dev_plan_json(&dev, &input, &program, target, &command);
+      fputs(dev.data, stdout);
+      zbuf_free(&dev);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
   }
 
   if (strcmp(command.command, "time") == 0) {
-    ZBuf time_json;
-    zbuf_init(&time_json);
-    append_time_json(&time_json, &input, &program, target, &command);
-    fputs(time_json.data, stdout);
-    zbuf_free(&time_json);
+    if (command.format == FORMAT_ZDN) {
+      long long total_ms = input.parse_ms + input.check_ms + input.lower_ms + input.codegen_ms + input.object_ms + input.link_ms;
+      zdn_print_time(input.source_file, target ? target->name : "host", (size_t)total_ms);
+    } else {
+      ZBuf time_json;
+      zbuf_init(&time_json);
+      append_time_json(&time_json, &input, &program, target, &command);
+      fputs(time_json.data, stdout);
+      zbuf_free(&time_json);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
@@ -9641,11 +9662,15 @@ int main(int argc, char **argv) {
   input.lower_ms = now_ms() - phase_started;
   apply_ir_metrics_to_input(&input, &ir, target);
   if (strcmp(command.command, "mem") == 0) {
-    ZBuf mem_json;
-    zbuf_init(&mem_json);
-    append_direct_memory_json(&mem_json, &input, &program, target, &command, &ir);
-    fputs(mem_json.data, stdout);
-    zbuf_free(&mem_json);
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_mem(input.source_file, target ? target->name : "host", command.profile);
+    } else {
+      ZBuf mem_json;
+      zbuf_init(&mem_json);
+      append_direct_memory_json(&mem_json, &input, &program, target, &command, &ir);
+      fputs(mem_json.data, stdout);
+      zbuf_free(&mem_json);
+    }
     z_free_ir_program(&ir);
     z_free_program(&program);
     z_free_source(&input);
@@ -9895,7 +9920,8 @@ int main(int argc, char **argv) {
         z_free_source(&input);
         return 1;
       }
-      if (command.format == FORMAT_JSON) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
+      if (command.format == FORMAT_ZDN) zdn_print_ship(input.source_file, target->name, z_host_target(), command.profile, exe_file, file_size_or_negative(exe_file), elapsed_ms, ship.checksum_path);
+      else if (command.format == FORMAT_JSON) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
       else print_ship_text(&ship, elapsed_ms);
       ship_artifacts_free(&ship);
     } else if (command.format == FORMAT_ZDN) {
@@ -9913,6 +9939,13 @@ int main(int argc, char **argv) {
     return 0;
   }
   if (strcmp(command.command, "size") == 0) {
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_size(input.source_file, target ? target->name : "host", command.profile, z_host_target(), input.lowered_ir_bytes, -1, NULL);
+      z_free_ir_program(&ir);
+      z_free_program(&program);
+      z_free_source(&input);
+      return 0;
+    }
     CapabilitySummary caps = program_capabilities(&program);
     HelperUseSummary used_helpers = program_used_helpers(&program);
     long long artifact_bytes = -1;

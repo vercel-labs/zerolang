@@ -48,6 +48,9 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.codec.hexEncode", "Maybe<String>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "codec", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
   {"std.codec.utf8Valid", "Bool", 1, {"Span<u8>"}, {NULL}, "codec", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.codec.urlEncode", "Maybe<String>", 2, {"MutSpan<u8>", "String"}, {NULL}, "codec", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
+
+  // std.zdn helpers
+  {"std.zdn.validate", "Bool", 1, {"String"}, {NULL}, "memory", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.mem.copy", "usize", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "memory", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
   {"std.mem.fill", "usize", 2, {"MutSpan<u8>", "u8"}, {NULL}, "memory", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
   {"std.mem.eql", "Bool", 2, {"String", "String"}, {NULL}, "memory", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},

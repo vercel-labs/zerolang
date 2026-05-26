@@ -57,4 +57,53 @@ void zdn_print_build(const char *source_file, const char *emit_kind,
                      const char *artifact_path, long long artifact_bytes,
                      long long elapsed_ms);
 
+// ── Size result ──
+void zdn_print_size(const char *source_file, const char *target_name,
+                    const char *profile, const char *host_target,
+                    size_t lowered_ir_bytes, long long artifact_bytes,
+                    const char *artifact_path);
+
+// ── Ship result ──
+void zdn_print_ship(const char *source_file, const char *target_name,
+                    const char *host_target, const char *profile,
+                    const char *artifact_path, long long artifact_bytes,
+                    long long elapsed_ms, const char *checksum_value);
+
+// ── Doc result ──
+void zdn_print_doc(const char *source_file, const char *target_name);
+
+// ── Dev result ──
+void zdn_print_dev(const char *source_file, const char *target_name,
+                   const char *profile);
+
+// ── Time result ──
+void zdn_print_time(const char *source_file, const char *target_name,
+                    size_t elapsed_ms);
+
+// ── Tokens result ──
+void zdn_print_tokens(const char *source_file);
+
+// ── Parse result ──
+void zdn_print_parse(const char *source_file);
+
+// ── Mem result ──
+void zdn_print_mem(const char *source_file, const char *target_name,
+                   const char *profile);
+
+// ── Graph result ──
+void zdn_print_graph(const char *source_file, const char *target_name);
+
+// ── Inline object support ──
+// Write an inline object: `{ field1 val1 field2 val2 }` on a single line
+void zdn_object_start_inline(ZBuf *buf, int indent);
+void zdn_object_end_inline(ZBuf *buf);
+// Write an inline field inside `{}`
+void zdn_inline_field_string(ZBuf *buf, const char *name, const char *value);
+void zdn_inline_field_int(ZBuf *buf, const char *name, long long value);
+void zdn_inline_field_bool(ZBuf *buf, const char *name, bool value);
+
+// ── Patch format ──
+// Print a patch header: `patch RecordName`
+void zdn_print_patch_header(ZBuf *buf, const char *record_name, int indent);
+
 #endif // ZERO_C_ZDN_FORMAT_H

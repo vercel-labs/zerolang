@@ -15,6 +15,7 @@ static const ZStdSourceModule std_source_modules[] = {
   {"std.math", "std/math.0", zero_embedded_stdlib_std_math_0_chunks},
   {"std.path", "std/path.0", zero_embedded_stdlib_std_path_0_chunks},
   {"std.str", "std/str.0", zero_embedded_stdlib_std_str_0_chunks},
+  {"std.zdn", "std/zdn.0", zero_embedded_stdlib_std_zdn_0_chunks},
 };
 
 static const ZStdSourceCall std_source_calls[] = {
@@ -41,6 +42,7 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.str.startsWith", "__zero_std_str_starts_with", "std.str"},
   {"std.str.trimAscii", "__zero_std_str_trim_ascii", "std.str"},
   {"std.str.wordCountAscii", "__zero_std_str_word_count_ascii", "std.str"},
+  {"std.zdn.validate", "__zero_std_zdn_validate", "std.zdn"},
 };
 
 size_t z_std_source_module_count(void) {

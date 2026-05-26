@@ -1,0 +1,98 @@
+fn __zero_std_zdn_is_digit Bool byte u8
+  ret && (>= byte 48_u8) (<= byte 57_u8)
+
+fn __zero_std_zdn_is_ident_start Bool byte u8
+  ret || (|| (&& (>= byte 65_u8) (<= byte 90_u8)) (&& (>= byte 97_u8) (<= byte 122_u8))) (== byte 95_u8)
+
+fn __zero_std_zdn_is_space Bool byte u8
+  ret || (|| (== byte 32_u8) (== byte 9_u8)) (|| (== byte 10_u8) (== byte 13_u8))
+
+fn __zero_std_zdn_find_line_end usize text Span<u8> start usize
+  mut cursor usize start
+  while && (< cursor (std.mem.len text)) (!= (text[cursor]) 10_u8)
+    set cursor + cursor 1
+  ret cursor
+
+fn __zero_std_zdn_skip_spaces usize text Span<u8> from usize
+  mut cursor usize from
+  while && (< cursor (std.mem.len text)) (__zero_std_zdn_is_space (text[cursor]))
+    set cursor + cursor 1
+  ret cursor
+
+fn __zero_std_zdn_is_comment Bool text Span<u8> pos usize
+  let len usize std.mem.len text
+  if >= (+ pos 1) len
+    ret false
+  ret && (== (text[pos]) 47_u8) (== (text[(+ pos 1)]) 47_u8)
+
+fn __zero_std_zdn_line_is_empty Bool text Span<u8> start usize
+  if >= start (std.mem.len text)
+    ret true
+  let line_end usize __zero_std_zdn_find_line_end text start
+  let content_start usize __zero_std_zdn_skip_spaces text start
+  ret || (>= content_start line_end) (__zero_std_zdn_is_comment text content_start)
+
+fn __zero_std_zdn_compare_lit Bool text Span<u8> pos usize lit Span<u8>
+  let len usize std.mem.len lit
+  if > (+ pos len) (std.mem.len text)
+    ret false
+  mut i usize 0
+  while < i len
+    if != text[(+ pos i)] lit[i]
+      ret false
+    set i + i 1
+  ret true
+
+fn __zero_std_zdn_validate_value Bool text Span<u8> start usize
+  if >= start (std.mem.len text)
+    ret false
+  let ch u8 text[start]
+  if == ch 34_u8
+    mut scan usize + start 1
+    while < scan (std.mem.len text)
+      let c u8 text[scan]
+      if == c 92_u8
+        if >= (+ scan 1) (std.mem.len text)
+          ret false
+        set scan + scan 2
+      else
+        if == c 34_u8
+          ret true
+        set scan + scan 1
+    ret false
+  if == ch 45_u8
+    mut scan usize + start 1
+    if >= scan (std.mem.len text)
+      ret false
+    if == (__zero_std_zdn_is_digit (text[scan])) false
+      ret false
+    ret true
+  if __zero_std_zdn_is_digit ch
+    ret true
+  if __zero_std_zdn_compare_lit text start "true"
+    ret true
+  if __zero_std_zdn_compare_lit text start "false"
+    ret true
+  if __zero_std_zdn_compare_lit text start "null"
+    ret true
+  ret false
+
+fn __zero_std_zdn_validate Bool text Span<u8>
+  let len usize std.mem.len text
+  if == len 0
+    ret false
+  mut cursor usize 0
+  mut found Bool false
+  while < cursor len
+    if == (__zero_std_zdn_line_is_empty text cursor) false
+      set found true
+      break
+    let line_end usize __zero_std_zdn_find_line_end text cursor
+    set cursor + line_end 1
+  if == found false
+    ret false
+  let content_start usize __zero_std_zdn_skip_spaces text cursor
+  let line_end usize __zero_std_zdn_find_line_end text content_start
+  if >= content_start line_end
+    ret false
+  ret __zero_std_zdn_is_ident_start (text[content_start])
