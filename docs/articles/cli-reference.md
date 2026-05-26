@@ -89,6 +89,49 @@ linking facts such as retained runtime objects, provider libraries, and
 `zero ship --json` nests the same contract under
 `releasePreview.targetContract`.
 
+## ZDN Output
+
+Use `--zdn` or `--format zdn` when an AI agent or automated tool
+will read structured output. ZDN (Zero Data Notation) is an
+agent-first format that reuses Zero's row syntax — each
+command produces a record with named fields, nested objects, and
+arrays.
+
+`--zdn` is a shorthand for `--format zdn`. Both flags produce
+the same output. Supported across all commands that accept
+`--json`:
+
+| Command | ZDN record name |
+| --- | --- |
+| `zero check --zdn`   | `CheckResult`    |
+| `zero build --zdn`   | `BuildResult`    |
+| `zero ship --zdn`    | `ShipResult`     |
+| `zero size --zdn`    | `SizeResult`     |
+| `zero doc --zdn`     | `DocResult`      |
+| `zero dev --zdn`     | `DevResult`      |
+| `zero time --zdn`    | `TimeResult`     |
+| `zero mem --zdn`     | `MemResult`      |
+| `zero tokens --zdn`  | `TokensResult`   |
+| `zero parse --zdn`   | `ParseResult`    |
+| `zero graph --zdn`   | `GraphResult`    |
+| `zero explain --zdn` | `ExplainResult`  |
+
+Example output:
+
+```
+zero check --zdn examples/add.0
+```
+
+```
+CheckResult
+  schemaVersion 1
+  ok true
+  sourceFile "examples/add.0"
+  hostTarget "linux-x64"
+  target "linux-x64"
+  diagnostics
+```
+
 ## Build Outputs
 
 | Emit mode | Command |
@@ -143,23 +186,23 @@ document symbols, and quick-fix code actions surfaced from `zero fix` for
 zero --version [--json]
 zero new cli|lib|package <path>
 zero doctor [--json]
-zero check [--json] [--target <target>] [--emit exe|obj] <input>
-zero dev [--json] [--trace] [--target <target>] <input>
+zero check [--json] [--zdn] [--target <target>] [--emit exe|obj] <input>
+zero dev [--json] [--zdn] [--trace] [--target <target>] <input>
 zero run [--target <target>] [--profile dev|release] [--out <file>] <input> [-- args...]
 zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <file>] <input>
-zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
+zero ship [--json] [--zdn] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|validate] [--json] [--target <target>] [--out <file>] <input>
-zero doc [--json] [--target <target>] <input>
-zero size [--json] [--target <target>] [--out <artifact>] <input>
-zero explain [--json] <diagnostic-code>
+zero graph [dump|validate] [--json] [--zdn] [--target <target>] [--out <file>] <input>
+zero doc [--json] [--zdn] [--target <target>] <input>
+zero size [--json] [--zdn] [--target <target>] [--out <artifact>] <input>
+zero explain [--json] [--zdn] <diagnostic-code>
 zero fix --plan --json [--target <target>] <input>
 zero targets
 zero clean [--all]
-zero mem [--json] [--target <target>] <input>
-zero time --json [--target <target>] <input>
+zero mem [--json] [--zdn] [--target <target>] <input>
+zero time --json|--zdn [--target <target>] <input>
 zero abi check|dump [--json] [--target <target>] <input>
-zero tokens --json <input>
-zero parse --json <input>
+zero tokens --json|--zdn <input>
+zero parse --json|--zdn <input>
 ```
