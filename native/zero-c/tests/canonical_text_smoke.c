@@ -72,12 +72,67 @@ static bool parse_source(const char *source, ZCanonicalFacts *facts, ZDiag *diag
   return ok;
 }
 
+static void expect_format_roundtrip(const char *source, const char *label) {
+  ZDiag diag = {0};
+  ZBuf first = {0};
+  if (!z_canonical_text_format_source(source, &first, &diag)) {
+    fprintf(stderr, "%s:%d:%d: failed to format: %s\n%s\n", label, diag.line, diag.column, diag.message, first.data ? first.data : "");
+    free(first.data);
+    exit(1);
+  }
+
+  ZDiag parse_diag = {0};
+  ZCanonicalFacts facts = {0};
+  if (!parse_source(first.data ? first.data : "", &facts, &parse_diag)) {
+    fprintf(stderr, "%s:%d:%d: formatted source does not parse: %s\n", label, parse_diag.line, parse_diag.column, parse_diag.message);
+    free(first.data);
+    exit(1);
+  }
+
+  ZDiag second_diag = {0};
+  ZBuf second = {0};
+  if (!z_canonical_text_format_source(first.data ? first.data : "", &second, &second_diag)) {
+    fprintf(stderr, "%s:%d:%d: failed to reformat: %s\n", label, second_diag.line, second_diag.column, second_diag.message);
+    free(first.data);
+    free(second.data);
+    exit(1);
+  }
+  if (strcmp(first.data ? first.data : "", second.data ? second.data : "") != 0) {
+    fprintf(stderr, "%s: formatter is not idempotent\nfirst:\n%s\nsecond:\n%s\n", label, first.data ? first.data : "", second.data ? second.data : "");
+    free(first.data);
+    free(second.data);
+    exit(1);
+  }
+  free(first.data);
+  free(second.data);
+}
+
 static void expect_accepts(const char *source, const char *label) {
   ZDiag diag = {0};
   ZCanonicalFacts facts = {0};
-  if (parse_source(source, &facts, &diag)) return;
+  if (parse_source(source, &facts, &diag)) {
+    expect_format_roundtrip(source, label);
+    return;
+  }
   fprintf(stderr, "%s:%d:%d: %s\n", label, diag.line, diag.column, diag.message);
   exit(1);
+}
+
+static void expect_formats_to(const char *source, const char *expected, const char *label) {
+  ZDiag diag = {0};
+  ZBuf formatted = {0};
+  if (!z_canonical_text_format_source(source, &formatted, &diag)) {
+    fprintf(stderr, "%s:%d:%d: failed to format: %s\n%s\n", label, diag.line, diag.column, diag.message, formatted.data ? formatted.data : "");
+    free(formatted.data);
+    exit(1);
+  }
+  if (strcmp(formatted.data ? formatted.data : "", expected) != 0) {
+    fprintf(stderr, "%s: unexpected format\nexpected:\n%s\nactual:\n%s\n", label, expected, formatted.data ? formatted.data : "");
+    free(formatted.data);
+    exit(1);
+  }
+  free(formatted.data);
+  expect_format_roundtrip(expected, label);
 }
 
 static void expect_rejects(const char *source, const char *label) {
@@ -114,6 +169,38 @@ static void parses_declarations_and_blocks(void) {
   expect(facts.function_count == 2, "expected two functions");
   expect(facts.block_count == 3, "expected function and if blocks");
   expect(facts.max_block_depth == 2, "expected nested block depth");
+}
+
+static void formats_core_declarations_and_blocks(void) {
+  const char *source =
+    "use std.mem\n"
+    "\n"
+    "\n"
+    "type Point{x:i32,y:i32,}\n"
+    "fn sum(point:Point)->i32{return point.x+point.y}\n"
+    "pub fn main(world:World)->Void raises{let point:Point=Point{x:40,y:2}\n"
+    "let total:i32=sum(point)\n"
+    "if total==42{check world.out.write(\"point works\\n\")}}\n";
+  const char *expected =
+    "use std.mem\n"
+    "\n"
+    "type Point {\n"
+    "    x: i32,\n"
+    "    y: i32,\n"
+    "}\n"
+    "\n"
+    "fn sum(point: Point) -> i32 {\n"
+    "    return point.x + point.y\n"
+    "}\n"
+    "\n"
+    "pub fn main(world: World) -> Void raises {\n"
+    "    let point: Point = Point { x: 40, y: 2 }\n"
+    "    let total: i32 = sum(point)\n"
+    "    if total == 42 {\n"
+    "        check world.out.write(\"point works\\n\")\n"
+    "    }\n"
+    "}\n";
+  expect_formats_to(source, expected, "core declaration formatting");
 }
 
 static void parses_fallibility_choices_and_interfaces(void) {
@@ -385,6 +472,50 @@ static void parses_choice_payload_match_patterns(void) {
   expect_accepts(source, "choice payload match patterns");
 }
 
+static void parses_control_flow_tests_and_static_forms(void) {
+  const char *source =
+    "choice Result {\n"
+    "    ok: u8,\n"
+    "    err: String,\n"
+    "}\n"
+    "\n"
+    "fn fixed<static N: usize, T>(items: [N]T) -> Void {\n"
+    "    return\n"
+    "}\n"
+    "\n"
+    "fn flow(bytes: MutSpan<u8>, result: Result, value: i32) -> u8 raises [InvalidInput] {\n"
+    "    var index: usize = 0\n"
+    "    while index < 4 {\n"
+    "        index = index + 1\n"
+    "    }\n"
+    "    for item in 0..4 {\n"
+    "        defer cleanup()\n"
+    "        check item >= 0\n"
+    "    }\n"
+    "    let first: u8 = bytes[0]\n"
+    "    let part: Span<u8> = bytes[1..4]\n"
+    "    let byte: u8 = value as u8\n"
+    "    let borrowed: MutSpan<u8> = &mut bytes\n"
+    "    let vec: FixedVec<u8, 4> = FixedVec.init<u8, 4>()\n"
+    "    match result {\n"
+    "        .ok(payload) {\n"
+    "            return payload\n"
+    "        }\n"
+    "        .err(message) {\n"
+    "            raise InvalidInput\n"
+    "        }\n"
+    "        _ {\n"
+    "            return byte\n"
+    "        }\n"
+    "    }\n"
+    "}\n"
+    "\n"
+    "test \"flow syntax\" {\n"
+    "    expect true\n"
+    "}\n";
+  expect_accepts(source, "control flow, tests, and static forms");
+}
+
 static void parses_empty_return_but_not_empty_checks(void) {
   expect_accepts("fn ok() -> Void {\n    return\n}\n", "empty return");
   expect_rejects("fn bad() -> Void {\n    check\n}\n", "empty check");
@@ -536,6 +667,7 @@ static void parse_file_arg(const char *mode, const char *path) {
 
 int main(int argc, char **argv) {
   parses_declarations_and_blocks();
+  formats_core_declarations_and_blocks();
   parses_fallibility_choices_and_interfaces();
   parses_nested_generic_type_commas();
   parses_separate_boolean_comparisons();
@@ -550,6 +682,7 @@ int main(int argc, char **argv) {
   parses_error_members_and_prefix_not();
   parses_generic_interfaces();
   parses_choice_payload_match_patterns();
+  parses_control_flow_tests_and_static_forms();
   parses_empty_return_but_not_empty_checks();
   parses_use_declarations_and_zero_arg_calls();
   parses_assignment_statements();

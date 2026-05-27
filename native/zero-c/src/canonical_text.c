@@ -439,6 +439,7 @@ static bool canon_expr_prefix_symbol(const ZCanonicalToken *token) {
 }
 
 static bool canon_validate_type_span(CanonParser *parser, size_t start, size_t end);
+static bool canon_validate_type_span_with_static(CanonParser *parser, size_t start, size_t end, bool allow_static_value);
 
 static bool canon_generic_call_span(CanonParser *parser, size_t expr_start, size_t expr_end, size_t open_index, size_t *close_index) {
   if (open_index == expr_start || open_index >= expr_end) return false;
@@ -723,7 +724,7 @@ static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t 
     if (canon_is_symbol_text(token, "<")) {
       size_t generic_close = 0;
       if (canon_generic_call_span(parser, start, end, i, &generic_close)) {
-        if (!canon_validate_type_span(parser, i + 1, generic_close)) return false;
+        if (!canon_validate_type_span_with_static(parser, i + 1, generic_close, true)) return false;
         i = generic_close;
         continue;
       }
@@ -799,14 +800,14 @@ static bool canon_type_static_value_word(const ZCanonicalToken *token) {
   return token && token->kind == Z_CANON_TOKEN_WORD && (canon_text_eq(token->text, "true") || canon_text_eq(token->text, "false") || canon_text_eq(token->text, "null"));
 }
 
-static bool canon_validate_type_span(CanonParser *parser, size_t start, size_t end) {
+static bool canon_validate_type_span_with_static(CanonParser *parser, size_t start, size_t end, bool allow_static_value) {
   bool bracket_prefix[64] = {0};
   size_t bracket_depth = 0;
   size_t angle_depth = 0;
   bool expect_atom = true;
   for (size_t i = start; i < end; i++) {
     const ZCanonicalToken *token = &parser->tokens->items[i];
-    bool static_value_context = angle_depth > 0 || (bracket_depth > 0 && bracket_prefix[bracket_depth - 1]);
+    bool static_value_context = allow_static_value || angle_depth > 0 || (bracket_depth > 0 && bracket_prefix[bracket_depth - 1]);
     if (token->kind == Z_CANON_TOKEN_WORD) {
       if (canon_text_eq(token->text, "const")) {
         if (!expect_atom) return canon_fail(parser->diag, token, "unexpected type prefix", "type separator", token->text);
@@ -866,6 +867,10 @@ static bool canon_validate_type_span(CanonParser *parser, size_t start, size_t e
   }
   if (expect_atom) return canon_fail(parser->diag, end > start ? &parser->tokens->items[end - 1] : canon_peek(parser), "incomplete type", "type", "delimiter");
   return true;
+}
+
+static bool canon_validate_type_span(CanonParser *parser, size_t start, size_t end) {
+  return canon_validate_type_span_with_static(parser, start, end, false);
 }
 
 static bool canon_parse_type_until(CanonParser *parser, const char *stop_a, const char *stop_b) {

@@ -37,6 +37,7 @@ try {
     "native/zero-c/src",
     "native/zero-c/src/ast.c",
     "native/zero-c/src/canonical_text.c",
+    "native/zero-c/src/canonical_text_format.c",
     "native/zero-c/tests/canonical_text_smoke.c",
     "-o",
     out,
