@@ -54,8 +54,8 @@ use std.parse
 Avoid implicit files. If an import is unknown, run:
 
 ```sh
-zero check --json <package>
-zero graph --json <package>
+zero check <package>
+zero graph <package>
 ```
 
 ## Dependencies
@@ -75,12 +75,24 @@ The resolver is declarative; it records deterministic lock facts under `.zero/pa
 ## Inspect
 
 ```sh
-zero graph --json <package>
-zero doc --json <package>
-zero dev --json --trace <package>
+zero graph <package>
+zero doc <package>
+zero dev <package>
 ```
 
-Useful `graph` facts include modules, source paths, import edges, public and private symbol counts, function effects, required capabilities, target facts, dependency facts, and package cache key inputs.
+Use `--json` when a tool needs exact graph, doc, or dev fields. Useful `graph` facts include modules, source paths, import edges, public and private symbol counts, function effects, required capabilities, target facts, dependency facts, and package cache key inputs.
+
+## Graph Authoring
+
+For agent edits, derive a package graph under `.zero/` and inspect or patch that artifact:
+
+```sh
+zero graph import --out .zero/agent/package.program-graph <package>
+zero graph view .zero/agent/package.program-graph
+zero graph check .zero/agent/package.program-graph
+```
+
+Persist accepted changes back into the package's canonical `.0` or `.row` files. Keep derived graph artifacts out of the package source unless the user explicitly asks for them.
 
 ## Common Repairs
 

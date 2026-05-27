@@ -6,7 +6,7 @@
   "targets": {
     "cli": {
       "kind": "exe",
-      "graph": "hello.0"
+      "main": "hello.0"
     }
   }
 }

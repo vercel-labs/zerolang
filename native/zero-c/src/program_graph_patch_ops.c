@@ -73,8 +73,8 @@ static bool patch_parse_edge_target(const char *text, ZProgramGraphEdgeTarget *o
 }
 
 static bool patch_node_id_valid(const char *text) {
-  if (!text || strncmp(text, "node:", strlen("node:")) != 0 || !text[strlen("node:")]) return false;
-  for (const char *cursor = text + strlen("node:"); *cursor; cursor++) {
+  if (!text || text[0] != '#' || !text[1]) return false;
+  for (const char *cursor = text + 1; *cursor; cursor++) {
     unsigned char ch = (unsigned char)*cursor;
     if (!(isalnum(ch) || ch == '_' || ch == '-' || ch == '.')) return false;
   }
@@ -340,7 +340,7 @@ static bool patch_apply_insert_edge(ZProgramGraph *graph, ZProgramGraphPatchResu
 
 static bool patch_apply_insert(ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZProgramGraphPatchOpResult *op) {
   if (!patch_node_id_valid(op->node)) {
-    patch_op_fail(result, op, "GPH003", "insert node id must be a ProgramGraph node id", "node:<id>", op->node);
+    patch_op_fail(result, op, "GPH003", "insert node id must be a ProgramGraph node id", "#<id>", op->node);
     return false;
   }
   if (patch_find_node(graph, op->node)) {

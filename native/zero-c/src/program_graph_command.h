@@ -20,6 +20,5 @@ bool z_program_graph_command_kind_is_known(const char *kind);
 ZProgramGraphInputMode z_program_graph_command_input_mode(const char *kind);
 bool z_program_graph_command_kind_supports_out(const char *kind);
 ZProgramGraphOutputContract z_program_graph_command_output_contract(const char *kind);
-bool z_program_graph_direct_command_uses_graph_input(const char *command);
 
 #endif

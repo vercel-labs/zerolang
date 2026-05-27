@@ -13,6 +13,8 @@ typedef struct {
   bool allow_internal_symbols;
   SourceInput *source;
   const char *artifact_path;
+  const char *current_module_path;
+  size_t module_count;
   int synthetic_line;
   bool preserve_graph_types;
 } GraphLower;
@@ -120,7 +122,8 @@ static void lower_source_push_module(SourceInput *input, const char *name, const
 
 static void lower_source_push_line(GraphLower *lower, const ZProgramGraphNode *node) {
   if (!lower || !lower->source) return;
-  const char *path = node && node->path && node->path[0] ? node->path : (lower->artifact_path ? lower->artifact_path : "<program-graph>");
+  const char *path = node && node->path && node->path[0] ? node->path : lower->current_module_path;
+  if (!path || !path[0]) path = lower->artifact_path ? lower->artifact_path : "<program-graph>";
   int original_line = node && node->line > 0 ? node->line : 1;
   lower->source->source_line_paths = z_checked_reallocarray(lower->source->source_line_paths, lower->source->source_line_count + 1, sizeof(char *));
   lower->source->source_line_numbers = z_checked_reallocarray(lower->source->source_line_numbers, lower->source->source_line_count + 1, sizeof(int));
@@ -937,7 +940,20 @@ static void lower_top_level_edges(GraphLower *lower, Program *program, const ZPr
 
 static void lower_module(GraphLower *lower, Program *program, const ZProgramGraphNode *module) {
   bool previous_allow_internal_symbols = lower->allow_internal_symbols;
+  const char *previous_module_path = lower->current_module_path;
+  ZBuf module_path;
+  zbuf_init(&module_path);
+  if (module && module->path && module->path[0]) {
+    zbuf_append(&module_path, module->path);
+  } else {
+    zbuf_append(&module_path, lower->artifact_path ? lower->artifact_path : "<program-graph>");
+    if (lower->module_count > 1) {
+      zbuf_append_char(&module_path, '#');
+      zbuf_append(&module_path, module && module->name && module->name[0] ? module->name : "main");
+    }
+  }
   lower->allow_internal_symbols = lower_embedded_std_module(module);
+  lower->current_module_path = module_path.data;
   lower_top_level_edges(lower, program, module, "cImport");
   lower_top_level_edges(lower, program, module, "import");
   lower_top_level_edges(lower, program, module, "const");
@@ -948,6 +964,8 @@ static void lower_module(GraphLower *lower, Program *program, const ZProgramGrap
   lower_top_level_edges(lower, program, module, "choice");
   lower_top_level_edges(lower, program, module, "function");
   lower->allow_internal_symbols = previous_allow_internal_symbols;
+  lower->current_module_path = previous_module_path;
+  zbuf_free(&module_path);
 }
 
 static bool lower_source_has_file(const SourceInput *source, const char *path) {
@@ -983,12 +1001,28 @@ static void lower_init_source_from_graph(SourceInput *source, const ZProgramGrap
   source->source_file = z_strdup(artifact_path && artifact_path[0] ? artifact_path : "<program-graph>");
   source->source = z_strdup("");
   lower_source_set_package_identity(source, graph ? graph->module_identity : NULL);
+  size_t module_count = 0;
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_MODULE) module_count++;
+  }
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
     if (node->kind != Z_PROGRAM_GRAPH_NODE_MODULE) continue;
-    const char *path = node->path && node->path[0] ? node->path : source->source_file;
+    ZBuf synthetic_path;
+    zbuf_init(&synthetic_path);
+    if (node->path && node->path[0]) {
+      zbuf_append(&synthetic_path, node->path);
+    } else {
+      zbuf_append(&synthetic_path, source->source_file);
+      if (module_count > 1) {
+        zbuf_append_char(&synthetic_path, '#');
+        zbuf_append(&synthetic_path, node->name && node->name[0] ? node->name : "main");
+      }
+    }
+    const char *path = synthetic_path.data ? synthetic_path.data : source->source_file;
     lower_source_add_file(source, path);
     lower_source_push_module(source, node->name && node->name[0] ? node->name : "main", path);
+    zbuf_free(&synthetic_path);
   }
   if (source->module_count == 0) {
     lower_source_add_file(source, source->source_file);
@@ -1003,9 +1037,12 @@ static bool lower_to_program(GraphLower *lower, Program *out) {
 
   size_t module_count = 0;
   for (size_t i = 0; i < lower->graph->node_len; i++) {
+    if (lower->graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_MODULE) module_count++;
+  }
+  lower->module_count = module_count;
+  for (size_t i = 0; i < lower->graph->node_len; i++) {
     const ZProgramGraphNode *node = &lower->graph->nodes[i];
     if (node->kind != Z_PROGRAM_GRAPH_NODE_MODULE) continue;
-    module_count++;
     lower_module(lower, out, node);
     if (lower_has_diag(lower)) {
       z_free_program(out);

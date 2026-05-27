@@ -525,43 +525,43 @@ static bool patch_parse_text(char *text, ZProgramGraphPatchResult *result) {
   }
   return true;
 }
-
-bool z_program_graph_apply_patch_file(const char *path, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag) {
+bool z_program_graph_apply_patch_text(const char *label, const char *text, size_t text_len, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag) {
   if (!result) return false;
   *result = (ZProgramGraphPatchResult){0};
   result->actual_graph_hash = z_strdup(graph && graph->graph_hash ? graph->graph_hash : "");
-  size_t text_len = 0;
-  char *text = patch_read_file(path, &text_len, diag);
-  if (!text) return false;
+  if (!text) { text = ""; text_len = 0; }
   if (memchr(text, '\0', text_len)) {
     patch_result_fail(result, "GPH001", "program graph patch contains NUL byte", "text without NUL bytes", "NUL byte");
-    free(text);
+    if (diag && label) diag->path = label;
     return false;
   }
-  bool parsed = patch_parse_text(text, result);
-  free(text);
-  if (!parsed) return false;
-
+  char *copy = z_strndup(text, text_len);
+  bool parsed = patch_parse_text(copy, result); free(copy); if (!parsed) return false;
   if (result->expected_graph_hash && !patch_text_eq(result->expected_graph_hash, result->actual_graph_hash)) {
     patch_result_fail(result, "GPH002", "graph hash precondition failed", result->expected_graph_hash, result->actual_graph_hash);
     return false;
   }
-
   for (size_t i = 0; i < result->operation_len; i++) {
     if (!z_program_graph_patch_apply_operation(graph, result, &result->operations[i])) return false;
     z_program_graph_finalize_identities(graph);
   }
-
   patch_replace_text(&result->actual_graph_hash, graph->graph_hash);
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(graph, &validation)) {
     patch_result_fail(result, "GPH006", validation.message, "shape-valid ProgramGraph", validation.code);
     return false;
   }
-  result->ok = true;
-  return true;
+  result->ok = true; return true;
 }
-
+bool z_program_graph_apply_patch_file(const char *path, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag) {
+  if (!result) return false;
+  size_t text_len = 0;
+  char *text = patch_read_file(path, &text_len, diag);
+  if (!text) { *result = (ZProgramGraphPatchResult){0}; return false; }
+  bool ok = z_program_graph_apply_patch_text(path, text, text_len, graph, result, diag);
+  free(text);
+  return ok;
+}
 void z_program_graph_patch_result_free(ZProgramGraphPatchResult *result) {
   if (!result) return;
   patch_free_text(&result->expected);

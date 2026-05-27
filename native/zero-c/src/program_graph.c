@@ -8,7 +8,6 @@ void z_program_graph_init(ZProgramGraph *graph) {
   *graph = (ZProgramGraph){
     .schema_version = 1,
     .validation_state = Z_PROGRAM_GRAPH_VALIDATION_DECODED,
-    .id_strategy = "deterministic-traversal-r0",
     .module_identity = z_strdup("module:main"),
   };
 }
@@ -48,7 +47,7 @@ static const char *graph_effect_id_field(const ZProgramGraphNode *node) { return
 static bool graph_has_id(const ZProgramGraph *graph, const char *id, GraphIdField field) {
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     const char *candidate = field(&graph->nodes[i]);
-    if (candidate && id && strcmp(candidate, id) == 0) return true;
+    if (candidate && candidate[0] && id && id[0] && strcmp(candidate, id) == 0) return true;
   }
   return false;
 }
@@ -93,7 +92,7 @@ bool z_program_graph_validate(const ZProgramGraph *graph, ZProgramGraphValidatio
   if (!graph) return graph_validation_fail(validation, "GRF001", "program graph is missing", NULL, NULL, NULL, NULL);
   if (!graph->module_identity || !graph->module_identity[0]) return graph_validation_fail(validation, "GRF009", "program graph is missing module identity", NULL, NULL, NULL, NULL);
   for (size_t i = 0; i < graph->node_len; i++) {
-    if (!graph->nodes[i].id) return graph_validation_fail(validation, "GRF002", "node is missing required identity", graph->nodes[i].id, NULL, NULL, NULL);
+    if (!graph->nodes[i].id || !graph->nodes[i].id[0]) return graph_validation_fail(validation, "GRF002", "node is missing required identity", graph->nodes[i].id, NULL, NULL, NULL);
     if (!graph->nodes[i].node_hash) return graph_validation_fail(validation, "GRF007", "node is missing content hash", graph->nodes[i].id, NULL, NULL, NULL);
     for (size_t j = i + 1; j < graph->node_len; j++) {
       if (graph->nodes[j].id && strcmp(graph->nodes[i].id, graph->nodes[j].id) == 0) return graph_validation_fail(validation, "GRF003", "duplicate node id", graph->nodes[i].id, NULL, NULL, NULL);

@@ -17,7 +17,7 @@ bool z_program_graph_direct_roundtrip_graph(const ZProgramGraph *original, const
             z_program_graph_from_program(&lowered_input, &lowered_program, roundtrip);
 
   if (ok) {
-    roundtrip->canonical_source = original->canonical_source;
+    roundtrip->canonical_source = false;
     z_program_graph_semantic_compare(original, roundtrip, comparison);
   }
   else if (diag && diag->code == 0) {
@@ -39,11 +39,7 @@ bool z_program_graph_direct_roundtrip_file(const char *artifact_path, const char
   bool ok = z_program_graph_load(artifact_path, &result->original, diag) &&
             z_program_graph_direct_roundtrip_graph(&result->original, artifact_path, &result->roundtrip, &result->comparison, diag);
 
-  if (ok && out_path) {
-    z_program_graph_apply_storage_metadata(out_path, &result->roundtrip);
-    if (result->roundtrip.canonical_source) result->original.canonical_source = true;
-    if (!z_program_graph_save(out_path, &result->roundtrip, diag)) ok = false;
-  }
+  if (ok && out_path && !z_program_graph_save(out_path, &result->roundtrip, diag)) ok = false;
   return ok;
 }
 

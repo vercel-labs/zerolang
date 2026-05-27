@@ -2596,15 +2596,15 @@ const programGraphDumpJson = JSON.parse((await execFileAsync(zero, ["graph", "du
 const programGraphDumpPath = `${outDir}/hello.program-graph`;
 const programGraphDumpJsonPath = `${outDir}/hello.dump-json.program-graph`;
 const programGraphCanonicalPath = `${outDir}/hello.canonical.program-graph`;
-const programGraphViewPath = `${outDir}/hello.program-graph.0`;
+const programGraphViewPath = `${outDir}/hello.program-graph.zero`;
 const programGraphArtifactRoundtripPath = `${outDir}/hello.roundtrip.program-graph`;
 const programGraphSourceFixturePath = "conformance/program-graph/hello.0";
 const programGraphSourceFixturePackage = "conformance/program-graph";
 const programGraphSourceFixtureRunPath = `${outDir}/program-graph-fixture-run`;
 const programGraphRichPath = `${outDir}/open-ended-slices.program-graph`;
-const programGraphRichViewPath = `${outDir}/open-ended-slices.program-graph.0`;
+const programGraphRichViewPath = `${outDir}/open-ended-slices.program-graph.zero`;
 const programGraphCharPath = `${outDir}/float-char-casts.program-graph`;
-const programGraphCharViewPath = `${outDir}/float-char-casts.program-graph.0`;
+const programGraphCharViewPath = `${outDir}/float-char-casts.program-graph.zero`;
 await rm(programGraphDumpPath, { force: true });
 await rm(programGraphDumpJsonPath, { force: true });
 await rm(programGraphCanonicalPath, { force: true });
@@ -2634,17 +2634,14 @@ const programGraphRoundtripJson = JSON.parse((await execFileAsync(zero, ["graph"
 const programGraphArtifactRoundtrip = await execFileAsync(zero, ["graph", "roundtrip", programGraphDumpPath]);
 const programGraphArtifactRoundtripJson = JSON.parse((await execFileAsync(zero, ["graph", "roundtrip", "--json", "--out", programGraphArtifactRoundtripPath, programGraphDumpPath])).stdout);
 const programGraphSourceFixtureText = await readFile(programGraphSourceFixturePath, "utf8");
-const programGraphSourceFixtureValidateJson = JSON.parse((await execFileAsync(zero, ["graph", "validate", "--json", programGraphSourceFixturePath])).stdout);
 const programGraphSourceFixturePackageCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFixturePackage])).stdout);
 const programGraphSourceFixturePackageRun = await execFileAsync(zero, ["run", "--out", programGraphSourceFixtureRunPath, programGraphSourceFixturePackage]);
 await execFileAsync(zero, ["graph", "dump", "--out", programGraphRichPath, "conformance/native/pass/open-ended-slices.0"]);
 await execFileAsync(zero, ["graph", "view", "--out", programGraphRichViewPath, programGraphRichPath]);
 const programGraphRichView = await readFile(programGraphRichViewPath, "utf8");
-await execFileAsync(zero, ["check", programGraphRichViewPath]);
 await execFileAsync(zero, ["graph", "dump", "--out", programGraphCharPath, "conformance/native/pass/float-char-casts.0"]);
 await execFileAsync(zero, ["graph", "view", "--out", programGraphCharViewPath, programGraphCharPath]);
 const programGraphCharView = await readFile(programGraphCharViewPath, "utf8");
-await execFileAsync(zero, ["check", programGraphCharViewPath]);
 const programGraphViewCoverage = [
   ["compile-time-v1", "examples/compile-time-v1.0", [/field_type "i32"/, /readGate<enabled, selected> &gate/]],
   ["array-repeat-literal", "conformance/native/pass/array-repeat-literal.0", [/\[7_u8;8\]/, /\[0_u8;16\]/]],
@@ -2668,13 +2665,12 @@ const programGraphViewCoverage = [
 ];
 for (const [name, fixture, patterns] of programGraphViewCoverage) {
   const graphPath = `${outDir}/${name}.program-graph`;
-  const viewPath = `${outDir}/${name}.program-graph.0`;
+  const viewPath = `${outDir}/${name}.program-graph.zero`;
   await rm(graphPath, { force: true });
   await rm(viewPath, { force: true });
   await execFileAsync(zero, ["graph", "dump", "--out", graphPath, fixture]);
   await execFileAsync(zero, ["graph", "view", "--out", viewPath, graphPath]);
   const view = await readFile(viewPath, "utf8");
-  await execFileAsync(zero, ["check", viewPath]);
   for (const pattern of patterns) assert.match(view, pattern);
   assert.doesNotMatch(view, /fn __zero_test_/);
   if (name === "systems-package") assert.doesNotMatch(view, /^use (helpers|types)$/m);
@@ -2744,27 +2740,29 @@ assert.equal(programGraphArtifactRoundtripJson.saved.path, programGraphArtifactR
 assert.equal(programGraphArtifactRoundtripJson.saved.kind, "program-graph");
 assert.equal(programGraphArtifactRoundtripJson.view, null);
 assert.equal(await readFile(programGraphArtifactRoundtripPath, "utf8"), programGraphDump);
-assert.equal(programGraphSourceFixtureText, programGraphDump.replace("canonicalSource false", "canonicalSource true"));
-assert.equal(programGraphSourceFixtureValidateJson.ok, true);
-assert.equal(programGraphSourceFixtureValidateJson.artifact, programGraphSourceFixturePath);
-assert.equal(programGraphSourceFixtureValidateJson.canonicalSource, true);
-assert.equal(programGraphSourceFixtureValidateJson.graphHash, programGraphBody.graphHash);
+assert.equal(programGraphSourceFixtureText, await readFile("examples/hello.0", "utf8"));
 assert.equal(programGraphSourceFixturePackageCheckJson.ok, true);
 assert.equal(programGraphSourceFixturePackageCheckJson.sourceFile, programGraphSourceFixturePath);
 assert.equal(programGraphSourceFixturePackageCheckJson.package.name, "program-graph-fixture");
-assert.equal(programGraphSourceFixturePackageCheckJson.graph.canonicalSource, true);
-assert.equal(programGraphSourceFixturePackageCheckJson.graph.lowering, "direct-program-graph");
+assert.equal(programGraphSourceFixturePackageCheckJson.graph, undefined);
 assert.equal(programGraphSourceFixturePackageRun.stdout, "hello from zero\n");
 assert.deepEqual(programGraphDumpJson, programGraphBody);
-assert.match(programGraphDump, /^zero-program-graph v1\n/);
-assert.match(programGraphDump, /moduleIdentity "module:hello"/);
-assert.match(programGraphDump, /graphHash "graph:[0-9a-f]{16}"/);
-assert.match(programGraphDump, /validation "shape-valid" ok/);
-assert.match(programGraphDump, /node id="node:000001" kind="Module"/);
-assert.match(programGraphDump, /edge from="node:000001" to="node:000002" kind="function" target="node" order=0/);
-assert.match(programGraphView, /^# Generated by zero graph view\. Do not edit\.\n/);
+assert.match(programGraphDump, /^zero-graph v1\n/);
+assert.match(programGraphDump, /origin source-text/);
+assert.match(programGraphDump, /module "hello"/);
+assert.match(programGraphDump, /hash "graph:[0-9a-f]{16}"/);
+assert.doesNotMatch(programGraphDump, /validation "shape-valid" ok/);
+assert.doesNotMatch(programGraphDump, /idStrategy/);
+assert.doesNotMatch(programGraphDump, /canonicalSource/);
+assert.doesNotMatch(programGraphDump, /moduleIdentity/);
+assert.doesNotMatch(programGraphDump, /graphHash/);
+assert.doesNotMatch(programGraphDump, /counts nodes=/);
+assert.doesNotMatch(programGraphDump, /node id=/);
+assert.match(programGraphDump, /node #[0-9a-f]{8} Module name:"hello"/);
+assert.match(programGraphDump, /edge #[0-9a-f]{8} function #[0-9a-f]{8} order:0/);
+assert.match(programGraphView, /^# Generated \.zero preview by zero graph view\. Do not edit\.\n# Canonical source is \.0 text, not this projection\.\n/);
 assert.match(programGraphView, /# Source graph: graph:[0-9a-f]{16}/);
-assert.match(programGraphView, /# canonicalSource false/);
+assert.match(programGraphView, /# graph origin source-text/);
 assert.match(programGraphView, /pub fn main Void world World !/);
 assert.match(programGraphView, /check world\.out\.write "hello from zero\\n"/);
 assert.match(programGraphRichView, /bytesTail\(bytes\)\[1\]/);
@@ -2775,30 +2773,28 @@ assert.equal(programGraphBody.validation.ok, true);
 assert.equal(programGraphBody.validation.state, "shape-valid");
 assert(programGraphBody.counts.nodes > 0);
 assert(programGraphBody.counts.edges > 0);
-assert(programGraphBody.nodes.every((item) => /^node:[0-9]{6}$/.test(item.id) && /^nodehash:[0-9a-f]{16}$/.test(item.nodeHash)));
+assert(programGraphBody.nodes.every((item) => /^#[0-9a-f]{8}(-[0-9a-f]{4})?$/.test(item.id) && /^nodehash:[0-9a-f]{16}$/.test(item.nodeHash)));
 assert(programGraphBody.edges.every((item) => item.target === "node"));
-assert(programGraphBody.nodes.some((item) => item.kind === "Module" && item.name === "hello" && /^symbol:[0-9a-f]{16}$/.test(item.symbolId)));
-assert(programGraphBody.nodes.some((item) => item.kind === "Function" && item.name === "main" && item.public === true && item.fallible === true && /^symbol:[0-9a-f]{16}$/.test(item.symbolId) && /^type:[0-9a-f]{16}$/.test(item.typeId)));
-assert(programGraphBody.nodes.some((item) => item.kind === "Param" && item.name === "world" && item.type === "World" && /^symbol:[0-9a-f]{16}$/.test(item.symbolId)));
+assert(programGraphBody.nodes.some((item) => item.kind === "Module" && item.name === "hello" && item.symbolId === "symbol:hello::module"));
+assert(programGraphBody.nodes.some((item) => item.kind === "Function" && item.name === "main" && item.public === true && item.fallible === true && item.symbolId === "symbol:hello::value.main" && /^type:[0-9a-f]{16}$/.test(item.typeId)));
+assert(programGraphBody.nodes.some((item) => item.kind === "Param" && item.name === "world" && item.type === "World" && item.symbolId === "symbol:hello::value.main/param.world"));
 assert(programGraphBody.nodes.some((item) => item.kind === "EffectRef" && item.name === "error" && /^effect:[0-9a-f]{16}$/.test(item.effectId)));
 assert(programGraphBody.nodes.some((item) => item.kind === "Check"));
 assert(programGraphBody.nodes.some((item) => item.kind === "MethodCall"));
 assert(programGraphBody.edges.some((item) => item.kind === "body"));
 const programGraphWrongSchemaPath = `${outDir}/wrong-schema.program-graph`;
-await writeFile(programGraphWrongSchemaPath, "zero-program-graph v2\n");
+await writeFile(programGraphWrongSchemaPath, "zero-graph v2\n");
 const programGraphWrongSchema = await execFileAsync(zero, ["graph", "validate", "--json", programGraphWrongSchemaPath]).catch((error) => error);
 assert(programGraphWrongSchema.code);
 assert.equal(JSON.parse(programGraphWrongSchema.stdout).diagnostics[0].message, "unknown program graph schema version");
 const programGraphFailedArtifactPath = `${outDir}/failed-validation.program-graph`;
 await writeFile(programGraphFailedArtifactPath, [
-  "zero-program-graph v1",
-  "canonicalSource false",
-  "idStrategy \"deterministic-traversal-r0\"",
-  "moduleIdentity \"module:main\"",
-  "graphHash \"\"",
+  "zero-graph v1",
+  "origin source-text",
+  "module \"main\"",
+  "hash \"\"",
   "validation \"decoded\" failed",
-  "diagnostic code=\"GRF001\" message=\"program graph construction failed\"",
-  "counts nodes=0 edges=0",
+  "diagnostic code:\"GRF001\" message:\"program graph construction failed\"",
   "",
 ].join("\n"));
 const programGraphFailedArtifact = await execFileAsync(zero, ["graph", "validate", "--json", programGraphFailedArtifactPath]).catch((error) => error);
@@ -2808,7 +2804,7 @@ const programGraphTrailingArtifactPath = `${outDir}/trailing-content.program-gra
 await writeFile(programGraphTrailingArtifactPath, `${programGraphDump}\nextra\n`);
 const programGraphTrailingArtifact = await execFileAsync(zero, ["graph", "validate", "--json", programGraphTrailingArtifactPath]).catch((error) => error);
 assert(programGraphTrailingArtifact.code);
-assert.equal(JSON.parse(programGraphTrailingArtifact.stdout).diagnostics[0].message, "unexpected content after graph dump");
+assert.equal(JSON.parse(programGraphTrailingArtifact.stdout).diagnostics[0].message, "unexpected content after graph header");
 assert(programGraphBody.edges.some((item) => item.kind === "statement" && item.order === 0));
 
 const programGraphControlFixture = `${outDir}/program-graph-control.0`;

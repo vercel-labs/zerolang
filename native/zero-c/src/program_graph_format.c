@@ -2,7 +2,6 @@
 #include "program_graph_import.h"
 
 #include <ctype.h>
-#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +9,10 @@
 
 static bool graph_format_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
+}
+
+static bool graph_format_text_present(const char *text) {
+  return text && text[0];
 }
 
 static void graph_format_append_quoted(ZBuf *buf, const char *text) {
@@ -59,45 +62,17 @@ static void graph_format_append_validation_json(ZBuf *buf, const ZProgramGraphVa
   zbuf_append(buf, "]}");
 }
 
-static void graph_format_append_validation_dump(ZBuf *buf, const ZProgramGraphValidation *validation) {
-  bool ok = !validation || validation->ok;
-  zbuf_append(buf, "validation ");
-  graph_format_append_quoted(buf, z_program_graph_validation_state_name(validation ? validation->state : Z_PROGRAM_GRAPH_VALIDATION_SHAPE_VALID));
-  zbuf_appendf(buf, " %s\n", ok ? "ok" : "failed");
-  if (!ok) {
-    zbuf_append(buf, "diagnostic code=");
-    graph_format_append_quoted(buf, validation->code);
-    zbuf_append(buf, " message=");
-    graph_format_append_quoted(buf, validation->message);
-    if (validation->node_id[0]) {
-      zbuf_append(buf, " node=");
-      graph_format_append_quoted(buf, validation->node_id);
-    }
-    if (validation->edge_from[0] || validation->edge_to[0]) {
-      zbuf_append(buf, " edgeFrom=");
-      graph_format_append_quoted(buf, validation->edge_from);
-      zbuf_append(buf, " edgeTo=");
-      graph_format_append_quoted(buf, validation->edge_to);
-      zbuf_append(buf, " edgeTarget=");
-      graph_format_append_quoted(buf, validation->edge_target);
-    }
-    zbuf_append_char(buf, '\n');
-  }
-}
-
 static void graph_format_append_failed_json(ZBuf *buf) {
-  zbuf_append(buf, "{\"schemaVersion\":1,\"canonicalSource\":false,\"idStrategy\":\"deterministic-traversal-r0\",\"moduleIdentity\":\"module:main\",\"graphHash\":\"\",\"validation\":{\"state\":\"decoded\",\"ok\":false,\"diagnostics\":[{\"code\":\"GRF001\",\"message\":\"program graph construction failed\"}]},\"counts\":{\"nodes\":0,\"edges\":0},\"nodes\":[],\"edges\":[]}");
+  zbuf_append(buf, "{\"schemaVersion\":1,\"canonicalSource\":false,\"moduleIdentity\":\"module:main\",\"graphHash\":\"\",\"validation\":{\"state\":\"decoded\",\"ok\":false,\"diagnostics\":[{\"code\":\"GRF001\",\"message\":\"program graph construction failed\"}]},\"counts\":{\"nodes\":0,\"edges\":0},\"nodes\":[],\"edges\":[]}");
 }
 
 static void graph_format_append_failed_dump(ZBuf *buf) {
-  zbuf_append(buf, "zero-program-graph v1\n");
-  zbuf_append(buf, "canonicalSource false\n");
-  zbuf_append(buf, "idStrategy \"deterministic-traversal-r0\"\n");
-  zbuf_append(buf, "moduleIdentity \"module:main\"\n");
-  zbuf_append(buf, "graphHash \"\"\n");
+  zbuf_append(buf, "zero-graph v1\n");
+  zbuf_append(buf, "origin source-text\n");
+  zbuf_append(buf, "module \"main\"\n");
+  zbuf_append(buf, "hash \"\"\n");
   zbuf_append(buf, "validation \"decoded\" failed\n");
-  zbuf_append(buf, "diagnostic code=\"GRF001\" message=\"program graph construction failed\"\n");
-  zbuf_append(buf, "counts nodes=0 edges=0\n");
+  zbuf_append(buf, "diagnostic code:\"GRF001\" message:\"program graph construction failed\"\n");
 }
 
 static bool graph_format_parse_fail(ZDiag *diag, size_t line, const char *message) {
@@ -198,13 +173,6 @@ static bool graph_format_parse_size(const char **cursor, size_t *out) {
   return true;
 }
 
-static bool graph_format_parse_int(const char **cursor, int *out) {
-  size_t value = 0;
-  if (!graph_format_parse_size(cursor, &value) || value > INT_MAX) return false;
-  *out = (int)value;
-  return true;
-}
-
 static bool graph_format_parse_bool(const char **cursor, bool *out) {
   if (strncmp(*cursor, "true", 4) == 0) {
     *cursor += 4;
@@ -217,6 +185,63 @@ static bool graph_format_parse_bool(const char **cursor, bool *out) {
     return true;
   }
   return false;
+}
+
+static bool graph_format_parse_attr_key(const char **cursor, char **out) {
+  if (!cursor || !*cursor || **cursor != ' ') return false;
+  (*cursor)++;
+  const char *start = *cursor;
+  while (isalnum((unsigned char)**cursor) || **cursor == '_' || **cursor == '-') (*cursor)++;
+  if (*cursor == start || **cursor != ':') return false;
+  *out = z_strndup(start, (size_t)(*cursor - start));
+  (*cursor)++;
+  return true;
+}
+
+static bool graph_format_assign_text(char **slot, char *value) {
+  if (*slot) {
+    free(value);
+    return false;
+  }
+  *slot = value;
+  return true;
+}
+
+static bool graph_format_parse_text_attr(const char **cursor, char **slot) {
+  char *value = NULL;
+  if (!graph_format_parse_quoted(cursor, &value)) return false;
+  return graph_format_assign_text(slot, value);
+}
+
+static bool graph_format_parse_handle_token(const char **cursor, char **out) {
+  const char *start = cursor ? *cursor : NULL;
+  if (!start || *start != '#') return false;
+  const char *end = start + 1;
+  while (isalnum((unsigned char)*end) || *end == '_' || *end == '-' || *end == '.') end++;
+  if (end == start + 1) return false;
+  *out = z_strndup(start, (size_t)(end - start));
+  *cursor = end;
+  return true;
+}
+
+static bool graph_format_parse_name_token(const char **cursor, char **out) {
+  const char *start = cursor ? *cursor : NULL;
+  if (!start || !(isalpha((unsigned char)*start) || *start == '_')) return false;
+  const char *end = start + 1;
+  while (isalnum((unsigned char)*end) || *end == '_' || *end == '-') end++;
+  *out = z_strndup(start, (size_t)(end - start));
+  *cursor = end;
+  return true;
+}
+
+static bool graph_format_parse_ref_token(const char **cursor, char **out) {
+  const char *start = cursor ? *cursor : NULL;
+  if (!start || !*start || isspace((unsigned char)*start)) return false;
+  const char *end = start;
+  while (*end && !isspace((unsigned char)*end)) end++;
+  *out = z_strndup(start, (size_t)(end - start));
+  *cursor = end;
+  return true;
 }
 
 static bool graph_format_node_kind_from_name(const char *name, ZProgramGraphNodeKind *out) {
@@ -237,6 +262,25 @@ static bool graph_format_edge_target_from_name(const char *name, ZProgramGraphEd
     }
   }
   return false;
+}
+
+static const char *graph_format_module_storage_name(const char *identity) {
+  if (!identity || !identity[0]) return "main";
+  if (strncmp(identity, "module:", strlen("module:")) == 0) return identity + strlen("module:");
+  return identity;
+}
+
+static char *graph_format_module_identity_from_storage(const char *name) {
+  if (!name || !name[0]) return z_strdup("module:main");
+  if (strncmp(name, "module:", strlen("module:")) == 0 ||
+      strncmp(name, "package:", strlen("package:")) == 0) {
+    return z_strdup(name);
+  }
+  ZBuf identity;
+  zbuf_init(&identity);
+  zbuf_append(&identity, "module:");
+  zbuf_append(&identity, name);
+  return identity.data ? identity.data : z_strdup("module:main");
 }
 
 static bool graph_format_validation_state_from_name(const char *name, ZProgramGraphValidationState *out) {
@@ -273,42 +317,46 @@ static bool graph_format_parse_node_line(const char *line, ZProgramGraphNode *ou
   ZProgramGraphNode node = {0};
   char *kind_name = NULL;
   const char *cursor = line;
-  bool ok = graph_format_parse_literal(&cursor, "node id=") &&
-            graph_format_parse_quoted(&cursor, &node.id) &&
-            graph_format_parse_literal(&cursor, " kind=") &&
-            graph_format_parse_quoted(&cursor, &kind_name) &&
-            graph_format_node_kind_from_name(kind_name, &node.kind) &&
-            graph_format_parse_literal(&cursor, " name=") &&
-            graph_format_parse_quoted(&cursor, &node.name) &&
-            graph_format_parse_literal(&cursor, " type=") &&
-            graph_format_parse_quoted(&cursor, &node.type) &&
-            graph_format_parse_literal(&cursor, " value=") &&
-            graph_format_parse_quoted(&cursor, &node.value) &&
-            graph_format_parse_literal(&cursor, " symbolId=") &&
-            graph_format_parse_quoted(&cursor, &node.symbol_id) &&
-            graph_format_parse_literal(&cursor, " typeId=") &&
-            graph_format_parse_quoted(&cursor, &node.type_id) &&
-            graph_format_parse_literal(&cursor, " effectId=") &&
-            graph_format_parse_quoted(&cursor, &node.effect_id) &&
-            graph_format_parse_literal(&cursor, " nodeHash=") &&
-            graph_format_parse_quoted(&cursor, &node.node_hash) &&
-            graph_format_parse_literal(&cursor, " path=") &&
-            graph_format_parse_quoted(&cursor, &node.path) &&
-            graph_format_parse_literal(&cursor, " line=") &&
-            graph_format_parse_int(&cursor, &node.line) &&
-            graph_format_parse_literal(&cursor, " column=") &&
-            graph_format_parse_int(&cursor, &node.column) &&
-            graph_format_parse_literal(&cursor, " public=") &&
-            graph_format_parse_bool(&cursor, &node.is_public) &&
-            graph_format_parse_literal(&cursor, " mutable=") &&
-            graph_format_parse_bool(&cursor, &node.is_mutable) &&
-            graph_format_parse_literal(&cursor, " static=") &&
-            graph_format_parse_bool(&cursor, &node.is_static) &&
-            graph_format_parse_literal(&cursor, " fallible=") &&
-            graph_format_parse_bool(&cursor, &node.fallible) &&
-            graph_format_parse_literal(&cursor, " exportC=") &&
-            graph_format_parse_bool(&cursor, &node.export_c) &&
-            *cursor == 0;
+  bool seen_public = false;
+  bool seen_mutable = false;
+  bool seen_static = false;
+  bool seen_fallible = false;
+  bool seen_export_c = false;
+  bool ok = graph_format_parse_literal(&cursor, "node ") &&
+            graph_format_parse_handle_token(&cursor, &node.id) &&
+            graph_format_parse_literal(&cursor, " ") &&
+            graph_format_parse_name_token(&cursor, &kind_name) &&
+            graph_format_node_kind_from_name(kind_name, &node.kind);
+  while (ok && *cursor) {
+    char *key = NULL;
+    ok = graph_format_parse_attr_key(&cursor, &key);
+    if (!ok) {
+      free(key);
+      break;
+    }
+    if (graph_format_text_eq(key, "name")) ok = graph_format_parse_text_attr(&cursor, &node.name);
+    else if (graph_format_text_eq(key, "type")) ok = graph_format_parse_text_attr(&cursor, &node.type);
+    else if (graph_format_text_eq(key, "value")) ok = graph_format_parse_text_attr(&cursor, &node.value);
+    else if (graph_format_text_eq(key, "public")) {
+      ok = !seen_public && graph_format_parse_bool(&cursor, &node.is_public);
+      seen_public = true;
+    } else if (graph_format_text_eq(key, "mutable")) {
+      ok = !seen_mutable && graph_format_parse_bool(&cursor, &node.is_mutable);
+      seen_mutable = true;
+    } else if (graph_format_text_eq(key, "static")) {
+      ok = !seen_static && graph_format_parse_bool(&cursor, &node.is_static);
+      seen_static = true;
+    } else if (graph_format_text_eq(key, "fallible")) {
+      ok = !seen_fallible && graph_format_parse_bool(&cursor, &node.fallible);
+      seen_fallible = true;
+    } else if (graph_format_text_eq(key, "exportC")) {
+      ok = !seen_export_c && graph_format_parse_bool(&cursor, &node.export_c);
+      seen_export_c = true;
+    } else {
+      ok = false;
+    }
+    free(key);
+  }
   free(kind_name);
   if (!ok) {
     graph_format_free_node_fields(&node);
@@ -320,21 +368,38 @@ static bool graph_format_parse_node_line(const char *line, ZProgramGraphNode *ou
 
 static bool graph_format_parse_edge_line(const char *line, ZProgramGraphEdge *out) {
   ZProgramGraphEdge edge = {0};
-  char *target_name = NULL;
   const char *cursor = line;
-  bool ok = graph_format_parse_literal(&cursor, "edge from=") &&
-            graph_format_parse_quoted(&cursor, &edge.from) &&
-            graph_format_parse_literal(&cursor, " to=") &&
-            graph_format_parse_quoted(&cursor, &edge.to) &&
-            graph_format_parse_literal(&cursor, " kind=") &&
-            graph_format_parse_quoted(&cursor, &edge.kind) &&
-            graph_format_parse_literal(&cursor, " target=") &&
-            graph_format_parse_quoted(&cursor, &target_name) &&
-            graph_format_edge_target_from_name(target_name, &edge.target) &&
-            graph_format_parse_literal(&cursor, " order=") &&
-            graph_format_parse_size(&cursor, &edge.order) &&
-            *cursor == 0;
-  free(target_name);
+  bool seen_target = false;
+  bool seen_order = false;
+  edge.target = Z_PROGRAM_GRAPH_EDGE_TARGET_NODE;
+  bool ok = graph_format_parse_literal(&cursor, "edge ") &&
+            graph_format_parse_handle_token(&cursor, &edge.from) &&
+            graph_format_parse_literal(&cursor, " ") &&
+            graph_format_parse_name_token(&cursor, &edge.kind) &&
+            graph_format_parse_literal(&cursor, " ") &&
+            graph_format_parse_ref_token(&cursor, &edge.to);
+  while (ok && *cursor) {
+    char *key = NULL;
+    ok = graph_format_parse_attr_key(&cursor, &key);
+    if (!ok) {
+      free(key);
+      break;
+    }
+    if (graph_format_text_eq(key, "target")) {
+      char *target_name = NULL;
+      ok = !seen_target &&
+           graph_format_parse_name_token(&cursor, &target_name) &&
+           graph_format_edge_target_from_name(target_name, &edge.target);
+      seen_target = true;
+      free(target_name);
+    } else if (graph_format_text_eq(key, "order")) {
+      ok = !seen_order && graph_format_parse_size(&cursor, &edge.order);
+      seen_order = true;
+    } else {
+      ok = false;
+    }
+    free(key);
+  }
   if (!ok) {
     graph_format_free_edge_fields(&edge);
     return false;
@@ -350,10 +415,7 @@ static bool graph_format_parse_validation_line(const char *line, ZProgramGraphVa
                 graph_format_parse_quoted(&cursor, &state_name) &&
                 graph_format_validation_state_from_name(state_name, state) &&
                 graph_format_parse_literal(&cursor, " ");
-  if (parsed && strncmp(cursor, "ok", 2) == 0) {
-    cursor += 2;
-    *ok_status = true;
-  } else if (parsed && strncmp(cursor, "failed", 6) == 0) {
+  if (parsed && strncmp(cursor, "failed", 6) == 0) {
     cursor += 6;
     *ok_status = false;
   } else {
@@ -362,15 +424,6 @@ static bool graph_format_parse_validation_line(const char *line, ZProgramGraphVa
   parsed = parsed && *cursor == 0;
   free(state_name);
   return parsed;
-}
-
-static bool graph_format_parse_counts_line(const char *line, size_t *node_count, size_t *edge_count) {
-  const char *cursor = line;
-  return graph_format_parse_literal(&cursor, "counts nodes=") &&
-         graph_format_parse_size(&cursor, node_count) &&
-         graph_format_parse_literal(&cursor, " edges=") &&
-         graph_format_parse_size(&cursor, edge_count) &&
-         *cursor == 0;
 }
 
 static void graph_format_copy_node_identity_input(ZProgramGraphNode *dst, const ZProgramGraphNode *src) {
@@ -389,7 +442,13 @@ static void graph_format_copy_node_identity_input(ZProgramGraphNode *dst, const 
   dst->export_c = src->export_c;
 }
 
-static bool graph_format_identities_match(const ZProgramGraph *graph) {
+static void graph_format_replace_text(char **slot, const char *value) {
+  if (!slot) return;
+  free(*slot);
+  *slot = z_strdup(value ? value : "");
+}
+
+static bool graph_format_apply_checked_identities(ZProgramGraph *graph) {
   ZProgramGraph expected;
   z_program_graph_init(&expected);
   expected.schema_version = graph->schema_version;
@@ -412,13 +471,33 @@ static bool graph_format_identities_match(const ZProgramGraph *graph) {
   z_program_graph_finalize_identities(&expected);
   bool ok = graph_format_text_eq(expected.graph_hash, graph->graph_hash);
   for (size_t i = 0; ok && i < graph->node_len; i++) {
-    ok = graph_format_text_eq(expected.nodes[i].symbol_id, graph->nodes[i].symbol_id) &&
-         graph_format_text_eq(expected.nodes[i].type_id, graph->nodes[i].type_id) &&
-         graph_format_text_eq(expected.nodes[i].effect_id, graph->nodes[i].effect_id) &&
-         graph_format_text_eq(expected.nodes[i].node_hash, graph->nodes[i].node_hash);
+    if (graph_format_text_present(graph->nodes[i].symbol_id)) ok = graph_format_text_eq(expected.nodes[i].symbol_id, graph->nodes[i].symbol_id);
+    if (ok && graph_format_text_present(graph->nodes[i].type_id)) ok = graph_format_text_eq(expected.nodes[i].type_id, graph->nodes[i].type_id);
+    if (ok && graph_format_text_present(graph->nodes[i].effect_id)) ok = graph_format_text_eq(expected.nodes[i].effect_id, graph->nodes[i].effect_id);
+    if (ok && graph_format_text_present(graph->nodes[i].node_hash)) ok = graph_format_text_eq(expected.nodes[i].node_hash, graph->nodes[i].node_hash);
+  }
+  if (ok) {
+    graph_format_replace_text(&graph->graph_hash, expected.graph_hash);
+    for (size_t i = 0; i < graph->node_len; i++) {
+      graph_format_replace_text(&graph->nodes[i].symbol_id, expected.nodes[i].symbol_id);
+      graph_format_replace_text(&graph->nodes[i].type_id, expected.nodes[i].type_id);
+      graph_format_replace_text(&graph->nodes[i].effect_id, expected.nodes[i].effect_id);
+      graph_format_replace_text(&graph->nodes[i].node_hash, expected.nodes[i].node_hash);
+    }
   }
   z_program_graph_free(&expected);
   return ok;
+}
+
+static void graph_format_count_records(const char *cursor, size_t *node_count, size_t *edge_count) {
+  const char *scan = cursor;
+  char *line = NULL;
+  while (graph_format_next_line(&scan, &line)) {
+    if (strncmp(line, "node ", 5) == 0) (*node_count)++;
+    else if (strncmp(line, "edge ", 5) == 0) (*edge_count)++;
+    free(line);
+    line = NULL;
+  }
 }
 
 bool z_program_graph_parse_dump(const char *text, ZProgramGraph *out, ZDiag *diag) {
@@ -449,69 +528,72 @@ bool z_program_graph_parse_dump(const char *text, ZProgramGraph *out, ZDiag *dia
   } while (0)
 
   NEXT_REQUIRED_LINE();
-  if (!graph_format_text_eq(line, "zero-program-graph v1")) {
-    if (strncmp(line, "zero-program-graph v", 20) == 0) FAIL("unknown program graph schema version");
-    FAIL("expected zero-program-graph v1 header");
+  if (!graph_format_text_eq(line, "zero-graph v1")) {
+    if (strncmp(line, "zero-graph v", 12) == 0) FAIL("unknown program graph schema version");
+    FAIL("expected zero-graph v1 header");
   }
   out->schema_version = 1;
   NEXT_REQUIRED_LINE();
-  if (graph_format_text_eq(line, "canonicalSource true")) out->canonical_source = true;
-  else if (!graph_format_text_eq(line, "canonicalSource false")) FAIL("expected canonicalSource field");
-  NEXT_REQUIRED_LINE();
-  const char *strategy_cursor = line;
-  char *strategy = NULL;
-  if (!graph_format_parse_literal(&strategy_cursor, "idStrategy ") ||
-      !graph_format_parse_quoted(&strategy_cursor, &strategy) ||
-      !graph_format_text_eq(strategy, "deterministic-traversal-r0") ||
-      *strategy_cursor != 0) {
-    free(strategy);
-    FAIL("expected deterministic graph id strategy");
-  }
-  free(strategy);
+  if (graph_format_text_eq(line, "origin source-text")) out->canonical_source = false;
+  else FAIL("expected program graph origin");
   NEXT_REQUIRED_LINE();
   const char *module_cursor = line;
+  char *module_storage_name = NULL;
   free(out->module_identity);
   out->module_identity = NULL;
-  if (!graph_format_parse_literal(&module_cursor, "moduleIdentity ") ||
-      !graph_format_parse_quoted(&module_cursor, &out->module_identity) ||
-      *module_cursor != 0) FAIL("expected moduleIdentity field");
+  if (!graph_format_parse_literal(&module_cursor, "module ") ||
+      !graph_format_parse_quoted(&module_cursor, &module_storage_name) ||
+      *module_cursor != 0) {
+    free(module_storage_name);
+    FAIL("expected module field");
+  }
+  out->module_identity = graph_format_module_identity_from_storage(module_storage_name);
+  free(module_storage_name);
   NEXT_REQUIRED_LINE();
   const char *hash_cursor = line;
-  if (!graph_format_parse_literal(&hash_cursor, "graphHash ") ||
+  if (!graph_format_parse_literal(&hash_cursor, "hash ") ||
       !graph_format_parse_quoted(&hash_cursor, &out->graph_hash) ||
-      *hash_cursor != 0) FAIL("expected graphHash field");
-  NEXT_REQUIRED_LINE();
-  if (!graph_format_parse_validation_line(line, &out->validation_state, &validation_ok)) FAIL("expected validation field");
-  if (!validation_ok) {
-    size_t validation_line = line_no;
-    NEXT_REQUIRED_LINE();
-    if (strncmp(line, "diagnostic ", 11) != 0) FAIL("expected diagnostic field after failed validation");
-    FAIL_AT(validation_line, "program graph input reports failed validation");
-  }
-  NEXT_REQUIRED_LINE();
-  if (!graph_format_parse_counts_line(line, &node_count, &edge_count)) FAIL("expected node and edge counts");
+      *hash_cursor != 0) FAIL("expected hash field");
+  out->validation_state = Z_PROGRAM_GRAPH_VALIDATION_DECODED;
+  graph_format_count_records(cursor, &node_count, &edge_count);
   out->nodes = z_checked_calloc(node_count, sizeof(ZProgramGraphNode));
   out->node_cap = node_count;
   out->edges = z_checked_calloc(edge_count, sizeof(ZProgramGraphEdge));
   out->edge_cap = edge_count;
-  for (size_t i = 0; i < node_count; i++) {
-    NEXT_REQUIRED_LINE();
-    if (!graph_format_parse_node_line(line, &out->nodes[i])) FAIL("invalid node record");
-    out->node_len++;
-  }
-  for (size_t i = 0; i < edge_count; i++) {
-    NEXT_REQUIRED_LINE();
-    if (!graph_format_parse_edge_line(line, &out->edges[i])) FAIL("invalid edge record");
-    out->edge_len++;
-  }
   free(line);
   line = NULL;
   while (graph_format_next_line(&cursor, &line)) {
     line_no++;
-    bool extra = line[0] != 0; free(line); line = NULL;
-    if (extra) FAIL_AT(line_no, "unexpected content after graph dump");
+    if (line[0] == 0) {
+      free(line);
+      line = NULL;
+      continue;
+    }
+    if (graph_format_parse_validation_line(line, &out->validation_state, &validation_ok)) {
+      if (!validation_ok) {
+        size_t validation_line = line_no;
+        NEXT_REQUIRED_LINE();
+        if (strncmp(line, "diagnostic ", 11) != 0) FAIL("expected diagnostic field after failed validation");
+        FAIL_AT(validation_line, "program graph input reports failed validation");
+      }
+    } else if (strncmp(line, "node ", 5) == 0) {
+      if (out->node_len >= out->node_cap) FAIL("too many node records");
+      if (!graph_format_parse_node_line(line, &out->nodes[out->node_len])) FAIL("invalid node record");
+      if (!out->nodes[out->node_len].path) out->nodes[out->node_len].path = z_strdup("");
+      if (out->nodes[out->node_len].line <= 0) out->nodes[out->node_len].line = (int)line_no;
+      if (out->nodes[out->node_len].column <= 0) out->nodes[out->node_len].column = 1;
+      out->node_len++;
+    } else if (strncmp(line, "edge ", 5) == 0) {
+      if (out->edge_len >= out->edge_cap) FAIL("too many edge records");
+      if (!graph_format_parse_edge_line(line, &out->edges[out->edge_len])) FAIL("invalid edge record");
+      out->edge_len++;
+    } else {
+      FAIL("unexpected content after graph header");
+    }
+    free(line);
+    line = NULL;
   }
-  if (validation_ok && !graph_format_identities_match(out)) FAIL_AT(1, "program graph identities do not match graph content");
+  if (validation_ok && !graph_format_apply_checked_identities(out)) FAIL_AT(1, "program graph identities do not match graph content");
 #undef NEXT_REQUIRED_LINE
 #undef FAIL
 #undef FAIL_AT
@@ -559,7 +641,7 @@ bool z_program_graph_save(const char *path, const ZProgramGraph *graph, ZDiag *d
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(graph, &validation)) return graph_format_storage_validation_fail(path, &validation, diag);
   ZProgramGraph storage = graph ? *graph : (ZProgramGraph){0};
-  z_program_graph_apply_storage_metadata(path, &storage);
+  storage.canonical_source = false;
   ZBuf dump; zbuf_init(&dump);
   z_program_graph_append_dump(&dump, &storage, &validation);
   ZProgramGraph parsed;
@@ -575,9 +657,7 @@ bool z_program_graph_save(const char *path, const ZProgramGraph *graph, ZDiag *d
 }
 
 void z_program_graph_append_json(ZBuf *buf, const ZProgramGraph *graph, const ZProgramGraphValidation *validation) {
-  zbuf_appendf(buf, "{\"schemaVersion\":%u,\"canonicalSource\":%s,\"idStrategy\":", graph ? graph->schema_version : 1, graph && graph->canonical_source ? "true" : "false");
-  graph_format_append_quoted(buf, graph ? graph->id_strategy : "deterministic-traversal-r0");
-  zbuf_append(buf, ",\"moduleIdentity\":");
+  zbuf_appendf(buf, "{\"schemaVersion\":%u,\"canonicalSource\":%s,\"moduleIdentity\":", graph ? graph->schema_version : 1, graph && graph->canonical_source ? "true" : "false");
   graph_format_append_quoted(buf, graph ? graph->module_identity : "module:main");
   zbuf_append(buf, ",\"graphHash\":");
   graph_format_append_quoted(buf, graph ? graph->graph_hash : NULL);
@@ -627,56 +707,86 @@ void z_program_graph_append_json(ZBuf *buf, const ZProgramGraph *graph, const ZP
   zbuf_append(buf, "]}");
 }
 
+static void graph_format_append_text_field(ZBuf *buf, const char *name, const char *value) {
+  if (!graph_format_text_present(value)) return;
+  zbuf_append_char(buf, ' ');
+  zbuf_append(buf, name);
+  zbuf_append_char(buf, ':');
+  graph_format_append_quoted(buf, value);
+}
+
+static void graph_format_append_bool_field(ZBuf *buf, const char *name, bool value) {
+  if (!value) return;
+  zbuf_appendf(buf, " %s:true", name);
+}
+
+static bool graph_format_edge_order_is_semantic(const char *kind) {
+  static const char *const ordered_kinds[] = {
+    "alias",
+    "arg",
+    "arm",
+    "cImport",
+    "case",
+    "choice",
+    "const",
+    "constraint",
+    "enum",
+    "field",
+    "function",
+    "import",
+    "interface",
+    "method",
+    "param",
+    "shape",
+    "statement",
+    "staticParam",
+    "typeArg",
+    "typeParam",
+    "variant",
+  };
+  for (size_t i = 0; i < sizeof(ordered_kinds) / sizeof(ordered_kinds[0]); i++) {
+    if (graph_format_text_eq(kind, ordered_kinds[i])) return true;
+  }
+  return false;
+}
+
 void z_program_graph_append_dump(ZBuf *buf, const ZProgramGraph *graph, const ZProgramGraphValidation *validation) {
-  zbuf_appendf(buf, "zero-program-graph v%u\n", graph ? graph->schema_version : 1);
-  zbuf_appendf(buf, "canonicalSource %s\n", graph && graph->canonical_source ? "true" : "false");
-  zbuf_append(buf, "idStrategy ");
-  graph_format_append_quoted(buf, graph ? graph->id_strategy : "deterministic-traversal-r0");
+  (void)validation;
+  zbuf_appendf(buf, "zero-graph v%u\n", graph ? graph->schema_version : 1);
+  zbuf_append(buf, "origin source-text\n");
+  zbuf_append(buf, "module ");
+  graph_format_append_quoted(buf, graph_format_module_storage_name(graph ? graph->module_identity : "module:main"));
   zbuf_append_char(buf, '\n');
-  zbuf_append(buf, "moduleIdentity ");
-  graph_format_append_quoted(buf, graph ? graph->module_identity : "module:main");
-  zbuf_append_char(buf, '\n');
-  zbuf_append(buf, "graphHash ");
+  zbuf_append(buf, "hash ");
   graph_format_append_quoted(buf, graph ? graph->graph_hash : NULL);
-  zbuf_append_char(buf, '\n');
-  graph_format_append_validation_dump(buf, validation);
-  zbuf_appendf(buf, "counts nodes=%zu edges=%zu\n", graph ? graph->node_len : 0, graph ? graph->edge_len : 0);
+  zbuf_append(buf, "\n\n");
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
-    zbuf_append(buf, "node id=");
-    graph_format_append_quoted(buf, node->id);
-    zbuf_append(buf, " kind=");
-    graph_format_append_quoted(buf, z_program_graph_node_kind_name(node->kind));
-    zbuf_append(buf, " name=");
-    graph_format_append_quoted(buf, node->name);
-    zbuf_append(buf, " type=");
-    graph_format_append_quoted(buf, node->type);
-    zbuf_append(buf, " value=");
-    graph_format_append_quoted(buf, node->value);
-    zbuf_append(buf, " symbolId=");
-    graph_format_append_quoted(buf, node->symbol_id);
-    zbuf_append(buf, " typeId=");
-    graph_format_append_quoted(buf, node->type_id);
-    zbuf_append(buf, " effectId=");
-    graph_format_append_quoted(buf, node->effect_id);
-    zbuf_append(buf, " nodeHash=");
-    graph_format_append_quoted(buf, node->node_hash);
-    zbuf_append(buf, " path=");
-    graph_format_append_quoted(buf, node->path);
-    zbuf_appendf(buf, " line=%d column=%d public=%s mutable=%s static=%s fallible=%s exportC=%s\n",
-                 node->line, node->column, node->is_public ? "true" : "false", node->is_mutable ? "true" : "false", node->is_static ? "true" : "false", node->fallible ? "true" : "false", node->export_c ? "true" : "false");
+    zbuf_append(buf, "node ");
+    zbuf_append(buf, node->id ? node->id : "");
+    zbuf_append_char(buf, ' ');
+    zbuf_append(buf, z_program_graph_node_kind_name(node->kind));
+    graph_format_append_text_field(buf, "name", node->name);
+    graph_format_append_text_field(buf, "type", node->type);
+    graph_format_append_text_field(buf, "value", node->value);
+    graph_format_append_bool_field(buf, "public", node->is_public);
+    graph_format_append_bool_field(buf, "mutable", node->is_mutable);
+    graph_format_append_bool_field(buf, "static", node->is_static);
+    graph_format_append_bool_field(buf, "fallible", node->fallible);
+    graph_format_append_bool_field(buf, "exportC", node->export_c);
+    zbuf_append_char(buf, '\n');
   }
   for (size_t i = 0; graph && i < graph->edge_len; i++) {
     const ZProgramGraphEdge *edge = &graph->edges[i];
-    zbuf_append(buf, "edge from=");
-    graph_format_append_quoted(buf, edge->from);
-    zbuf_append(buf, " to=");
-    graph_format_append_quoted(buf, edge->to);
-    zbuf_append(buf, " kind=");
-    graph_format_append_quoted(buf, edge->kind);
-    zbuf_append(buf, " target=");
-    graph_format_append_quoted(buf, z_program_graph_edge_target_name(edge->target));
-    zbuf_appendf(buf, " order=%zu\n", edge->order);
+    zbuf_append(buf, "edge ");
+    zbuf_append(buf, edge->from ? edge->from : "");
+    zbuf_append_char(buf, ' ');
+    zbuf_append(buf, edge->kind ? edge->kind : "");
+    zbuf_append_char(buf, ' ');
+    zbuf_append(buf, edge->to ? edge->to : "");
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) zbuf_appendf(buf, " target:%s", z_program_graph_edge_target_name(edge->target));
+    if (edge->order != 0 || graph_format_edge_order_is_semantic(edge->kind)) zbuf_appendf(buf, " order:%zu", edge->order);
+    zbuf_append_char(buf, '\n');
   }
 }
 

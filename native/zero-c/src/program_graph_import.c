@@ -1,5 +1,7 @@
 #include "program_graph_import.h"
 
+#include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +35,98 @@ static char *graph_next_node_id(ZProgramGraph *graph) {
   char id[32];
   snprintf(id, sizeof(id), "node:%06zu", ++graph->next_id);
   return z_strdup(id);
+}
+
+static uint64_t graph_id_hash_text(uint64_t hash, const char *text) {
+  const unsigned char *p = (const unsigned char *)(text ? text : "");
+  while (*p) {
+    hash ^= (uint64_t)*p++;
+    hash *= 1099511628211ull;
+  }
+  hash ^= 0xffu;
+  hash *= 1099511628211ull;
+  return hash;
+}
+
+static uint64_t graph_id_hash_u64(uint64_t hash, uint64_t value) {
+  for (unsigned i = 0; i < 8; i++) {
+    hash ^= (value >> (i * 8)) & 0xffu;
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+static uint64_t graph_id_node_hash(const ZProgramGraphNode *node) {
+  uint64_t hash = 1469598103934665603ull;
+  hash = graph_id_hash_text(hash, z_program_graph_node_kind_name(node->kind));
+  hash = graph_id_hash_text(hash, node->name);
+  hash = graph_id_hash_text(hash, node->type);
+  hash = graph_id_hash_text(hash, node->value);
+  hash = graph_id_hash_u64(hash, node->is_public ? 1 : 0);
+  hash = graph_id_hash_u64(hash, node->is_mutable ? 1 : 0);
+  hash = graph_id_hash_u64(hash, node->is_static ? 1 : 0);
+  hash = graph_id_hash_u64(hash, node->fallible ? 1 : 0);
+  hash = graph_id_hash_u64(hash, node->export_c ? 1 : 0);
+  return hash;
+}
+
+static bool graph_id_is_used(char **ids, size_t len, const char *id) {
+  for (size_t i = 0; i < len; i++) {
+    if (ids[i] && id && strcmp(ids[i], id) == 0) return true;
+  }
+  return false;
+}
+
+static char *graph_stable_node_id(const ZProgramGraphNode *node, char **ids, size_t id_len) {
+  uint64_t hash = graph_id_node_hash(node);
+  ZBuf base;
+  zbuf_init(&base);
+  zbuf_appendf(&base, "#%08llx", (unsigned long long)(hash & 0xffffffffull));
+  if (!graph_id_is_used(ids, id_len, base.data)) return base.data ? base.data : z_strdup("#00000000");
+  uint64_t collision = graph_id_hash_text(hash, node->id);
+  ZBuf unique;
+  zbuf_init(&unique);
+  zbuf_append(&unique, base.data);
+  zbuf_appendf(&unique, "-%04llx", (unsigned long long)(collision & 0xffffull));
+  zbuf_free(&base);
+  return unique.data ? unique.data : z_strdup("#00000000");
+}
+
+static const char *graph_remapped_id(const char *old_id, char **old_ids, char **new_ids, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    if (old_ids[i] && old_id && strcmp(old_ids[i], old_id) == 0) return new_ids[i];
+  }
+  return old_id;
+}
+
+static void graph_apply_stable_node_ids(ZProgramGraph *graph) {
+  if (!graph || graph->node_len == 0) return;
+  char **old_ids = z_checked_calloc(graph->node_len, sizeof(char *));
+  char **new_ids = z_checked_calloc(graph->node_len, sizeof(char *));
+  for (size_t i = 0; i < graph->node_len; i++) {
+    old_ids[i] = z_strdup(graph->nodes[i].id ? graph->nodes[i].id : "");
+    new_ids[i] = graph_stable_node_id(&graph->nodes[i], new_ids, i);
+  }
+  for (size_t i = 0; i < graph->node_len; i++) {
+    free(graph->nodes[i].id);
+    graph->nodes[i].id = z_strdup(new_ids[i]);
+  }
+  for (size_t i = 0; i < graph->edge_len; i++) {
+    if (graph->edges[i].target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) {
+      const char *to = graph_remapped_id(graph->edges[i].to, old_ids, new_ids, graph->node_len);
+      free(graph->edges[i].to);
+      graph->edges[i].to = z_strdup(to);
+    }
+    const char *from = graph_remapped_id(graph->edges[i].from, old_ids, new_ids, graph->node_len);
+    free(graph->edges[i].from);
+    graph->edges[i].from = z_strdup(from);
+  }
+  for (size_t i = 0; i < graph->node_len; i++) {
+    free(old_ids[i]);
+    free(new_ids[i]);
+  }
+  free(old_ids);
+  free(new_ids);
 }
 
 static char *graph_module_identity(const SourceInput *input) {
@@ -393,6 +487,7 @@ bool z_program_graph_from_program(const SourceInput *input, const Program *progr
     const Function *fun = &program->functions.items[i];
     graph_build_function(graph, input, fun, graph_module_id_for_line(graph, input, fun->line), "function", i);
   }
+  graph_apply_stable_node_ids(graph);
   z_program_graph_finalize_identities(graph);
   return true;
 }

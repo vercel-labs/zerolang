@@ -1,6 +1,6 @@
 ---
 name: testing
-description: Write and run Zero test blocks with JSON output.
+description: Write and run Zero test blocks.
 ---
 
 # Zero Testing
@@ -25,16 +25,24 @@ test "addition works"
 
 ```sh
 zero test conformance/native/pass/test-blocks.0
-zero test --json conformance/native/pass/test-blocks.0
-zero test --json --filter addition conformance/native/pass/test-blocks.0
-zero test --json conformance/packages/test-app
+zero test --filter addition conformance/native/pass/test-blocks.0
+zero test conformance/packages/test-app
 ```
 
 Use `--filter` for a narrow loop. The filter matches test names by substring.
 
+When an agent is validating a derived ProgramGraph artifact, use the graph test surface:
+
+```sh
+zero graph test .zero/agent/app.program-graph
+zero graph test --filter addition .zero/agent/app.program-graph
+```
+
+Run normal `zero test` after persisting the accepted change to source text.
+
 ## JSON Fields
 
-Useful `zero test --json` fields:
+Use `zero test --json` when a tool or CI job needs exact fields. Useful fields:
 
 - `testDiscovery`: how files and tests were found
 - `fixtures`: fixture inputs and snapshot metadata
@@ -45,7 +53,7 @@ Useful `zero test --json` fields:
 - `results`: per-test name, status, duration, source location, and failure span
 - `stdout`, `stderr`, `durationMs`
 
-Use JSON for agents and CI. Text output is for people.
+Use JSON for machines and CI contracts. Normal test output is the default agent loop.
 
 ## Expected Failures
 
@@ -70,4 +78,4 @@ An expected-fail test passes the command only when it fails as expected. If it s
 2. Run a filtered test while editing.
 3. Run the containing package or fixture before finishing.
 4. Do not leave an expected-fail marker on a fixed bug.
-5. Use `zero check --json` first when the failure is a compile error.
+5. Use `zero check` first when the failure is a compile error; rerun with `--json` only if you need exact diagnostic fields.

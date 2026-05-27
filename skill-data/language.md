@@ -304,4 +304,4 @@ test "shape"
   expect (== (point_sum point) 42)
 ```
 
-If unsure, run `zero check --json <file>` and use the diagnostic span instead of inventing syntax.
+If unsure, run `zero check <file>` instead of inventing syntax. Add `--json` only when you need the exact diagnostic span or structured fields.

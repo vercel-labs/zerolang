@@ -47,9 +47,11 @@ Non-host targets may reject these APIs with target diagnostics. Inspect target f
 
 ```sh
 zero targets
-zero check --json --target linux-musl-x64 <input>
-zero graph --json --target linux-musl-x64 <input>
+zero check --target linux-musl-x64 <input>
+zero graph --target linux-musl-x64 <input>
 ```
+
+Add `--json` only when a tool needs exact target facts or diagnostics.
 
 ## Memory Pattern
 

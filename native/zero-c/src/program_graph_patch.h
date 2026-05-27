@@ -57,7 +57,7 @@ typedef struct {
 } ZProgramGraphPatchResult;
 
 bool z_program_graph_patch_apply_operation(ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZProgramGraphPatchOpResult *op);
+bool z_program_graph_apply_patch_text(const char *label, const char *text, size_t text_len, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag);
 bool z_program_graph_apply_patch_file(const char *path, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag);
 void z_program_graph_patch_result_free(ZProgramGraphPatchResult *result);
-
 #endif

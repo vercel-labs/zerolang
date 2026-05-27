@@ -24,17 +24,17 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
     "graph inspect does not support --out",
     "zero graph inspect [--json] <file.0|file.row|project|zero.json>",
     "zero graph inspect --out",
-    "use zero graph dump or zero graph import with --out when you need saved ProgramGraph input"
+    "use zero graph dump or zero graph import with --out when you need a derived ProgramGraph artifact"
   ),
   GRAPH_OUT("validate", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("view", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_NO_OUT(
     "check",
     Z_PROGRAM_GRAPH_INPUT_ARTIFACT,
-    "graph check does not write generated source views",
-    "zero graph view --out <file.0> <program-graph-or-package>",
+    "graph check does not write generated previews",
+    "zero graph view --out <file.zero> <program-graph-artifact>",
     "zero graph check --out",
-    "run zero graph view to render a generated source view, or run zero graph check without --out to typecheck the ProgramGraph input"
+    "run zero graph view to render a generated .zero preview, or run zero graph check without --out to typecheck the ProgramGraph artifact"
   ),
   GRAPH_OUT("size", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("build", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
@@ -79,18 +79,10 @@ ZProgramGraphOutputContract z_program_graph_command_output_contract(const char *
   static const ZProgramGraphOutputContract fallback = {
     false,
     "graph requires an output-capable subcommand for --out",
-    "zero graph dump|import|validate|patch|roundtrip --out <program-graph-or-module.0> <input>",
+    "zero graph dump|import|validate|patch|roundtrip --out <program-graph-artifact> <input>",
     "zero graph --out",
-    "use zero graph view --out <file.0> for generated source views, or choose a graph subcommand with command-specific output",
+    "use zero graph view --out <file.zero> for generated previews, or choose a graph subcommand with command-specific output",
   };
   const ZProgramGraphCommandKind *item = graph_kind(kind);
   return item ? item->out_contract : fallback;
-}
-
-bool z_program_graph_direct_command_uses_graph_input(const char *command) {
-  static const char *const commands[] = {"check", "build", "run", "test", "size", "ship"};
-  for (size_t i = 0; command && i < sizeof(commands) / sizeof(commands[0]); i++) {
-    if (strcmp(command, commands[i]) == 0) return true;
-  }
-  return false;
 }
