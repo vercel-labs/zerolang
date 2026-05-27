@@ -96,3 +96,40 @@ fn __zero_std_zdn_validate Bool text Span<u8>
   if >= content_start line_end
     ret false
   ret __zero_std_zdn_is_ident_start (text[content_start])
+
+# ── Public API: validateBytes ──
+# Validates a ZDN document from a byte span (same as validate on String)
+pub fn validateBytes Bool text Span<u8>
+  ret __zero_std_zdn_validate text
+
+# ── Public API: streamTokens ──
+# Counts non-empty, non-comment lines in a ZDN document
+pub fn streamTokens usize text String
+  mut count usize 0
+  mut cursor usize 0
+  let len usize std.mem.len text
+  while < cursor len
+    let line_end usize __zero_std_zdn_find_line_end text cursor
+    if != (__zero_std_zdn_line_is_empty text cursor) true
+      set count + count 1
+    set cursor + line_end 1
+  ret count
+
+# ── Public API: streamTokensBytes ──
+# Same as streamTokens but operates directly on a byte span
+pub fn streamTokensBytes usize text Span<u8>
+  mut count usize 0
+  mut cursor usize 0
+  let len usize std.mem.len text
+  while < cursor len
+    let line_end usize __zero_std_zdn_find_line_end text cursor
+    if != (__zero_std_zdn_line_is_empty text cursor) true
+      set count + count 1
+    set cursor + line_end 1
+  ret count
+
+# ── Public API: writeString ──
+# Escapes a string for ZDN output (same escaping rules as JSON).
+# Delegates to std.json.writeString since ZDN uses identical string escaping.
+pub fn writeString Maybe<String> buf MutSpan<u8> value String
+  ret std.json.writeString buf value

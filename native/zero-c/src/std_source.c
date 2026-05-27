@@ -43,6 +43,9 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.str.trimAscii", "__zero_std_str_trim_ascii", "std.str"},
   {"std.str.wordCountAscii", "__zero_std_str_word_count_ascii", "std.str"},
   {"std.zdn.validate", "__zero_std_zdn_validate", "std.zdn"},
+  {"std.zdn.validateBytes", "__zero_std_zdn_validate", "std.zdn"},
+  {"std.zdn.streamTokens", "streamTokens", "std.zdn"},
+  {"std.zdn.streamTokensBytes", "streamTokensBytes", "std.zdn"},
 };
 
 size_t z_std_source_module_count(void) {
