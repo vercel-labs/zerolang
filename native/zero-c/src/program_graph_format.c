@@ -555,15 +555,6 @@ bool z_program_graph_load(const char *path, ZProgramGraph *out, ZDiag *diag) {
   return true;
 }
 
-bool z_program_graph_storage_path_is_canonical_source(const char *path) {
-  size_t path_len = path ? strlen(path) : 0;
-  return path_len >= 2 && path[path_len - 2] == '.' && path[path_len - 1] == '0';
-}
-
-void z_program_graph_apply_storage_metadata(const char *path, ZProgramGraph *graph) {
-  if (graph && z_program_graph_storage_path_is_canonical_source(path)) graph->canonical_source = true;
-}
-
 bool z_program_graph_save(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(graph, &validation)) return graph_format_storage_validation_fail(path, &validation, diag);
