@@ -128,6 +128,17 @@ pub fn streamTokensBytes usize text Span<u8>
     set cursor + line_end 1
   ret count
 
+# ── Public API: parse ──
+# Validates a ZDN document. Returns true if the ZDN is well-formed.
+# Takes an allocator for API compatibility with std.json.parse.
+pub fn parse Bool alloc FixedBufAlloc text String
+  ret __zero_std_zdn_validate text
+
+# ── Public API: parseBytes ──
+# Same as parse but operates directly on a byte span.
+pub fn parseBytes Bool alloc FixedBufAlloc text Span<u8>
+  ret __zero_std_zdn_validate text
+
 # ── Public API: writeString ──
 # Escapes a string for ZDN output (same escaping rules as JSON).
 # Delegates to std.json.writeString since ZDN uses identical string escaping.

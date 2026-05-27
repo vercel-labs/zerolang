@@ -1,5 +1,5 @@
 # Test: std.zdn API functions
-# Validates streamTokens and writeString
+# Validates streamTokens, parse, parseBytes
 
 pub fn main Bool
   # Test: streamTokens on a multi-line ZDN document
@@ -18,6 +18,21 @@ pub fn main Bool
   let empty String ""
   let count3 usize std.zdn.streamTokens empty
   if != count3 0_usize
+    ret false
+
+  # Test: parse on valid ZDN (String input)
+  mut arena_buf [16]u8 [0_u8; 16]
+  mut arena FixedBufAlloc std.mem.fixedBufAlloc arena_buf
+  let parsed Bool std.zdn.parse arena "CheckResult\n  ok true\n"
+  if != parsed true
+    ret false
+
+  # Test: parseBytes on valid ZDN (Span<u8> input)
+  mut arena_buf2 [16]u8 [0_u8; 16]
+  mut arena2 FixedBufAlloc std.mem.fixedBufAlloc arena_buf2
+  let bytes Span<u8> "BuildResult\n  ok true\n"
+  let parsed2 Bool std.zdn.parseBytes arena2 bytes
+  if != parsed2 true
     ret false
 
   ret true

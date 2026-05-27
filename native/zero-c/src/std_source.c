@@ -46,6 +46,8 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.zdn.validateBytes", "__zero_std_zdn_validate", "std.zdn"},
   {"std.zdn.streamTokens", "streamTokens", "std.zdn"},
   {"std.zdn.streamTokensBytes", "streamTokensBytes", "std.zdn"},
+  {"std.zdn.parse", "parse", "std.zdn"},
+  {"std.zdn.parseBytes", "parseBytes", "std.zdn"},
 };
 
 size_t z_std_source_module_count(void) {

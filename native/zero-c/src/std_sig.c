@@ -54,6 +54,8 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.zdn.validateBytes", "Bool", 1, {"Span<u8>"}, {NULL}, "memory", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.zdn.streamTokens", "usize", 1, {"String"}, {NULL}, "memory", "target-neutral", "streaming line count", true, Z_STD_HELPER_KIND_TABLE},
   {"std.zdn.streamTokensBytes", "usize", 1, {"Span<u8>"}, {NULL}, "memory", "target-neutral", "streaming line count", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.zdn.parse", "Bool", 2, {NULL, "String"}, {NULL}, "memory", "target-neutral", "no allocation (validates only)", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.zdn.parseBytes", "Bool", 2, {NULL, "Span<u8>"}, {NULL}, "memory", "target-neutral", "no allocation (validates only)", true, Z_STD_HELPER_KIND_TABLE},
   {"std.zdn.writeString", "Maybe<String>", 2, {"MutSpan<u8>", "String"}, {NULL}, "memory", "target-neutral", "writes caller buffer (same escaping as JSON)", true, Z_STD_HELPER_KIND_TABLE},
   {"std.mem.copy", "usize", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "memory", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
   {"std.mem.fill", "usize", 2, {"MutSpan<u8>", "u8"}, {NULL}, "memory", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
