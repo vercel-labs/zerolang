@@ -19,6 +19,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 ## Target-Neutral Helpers
 
 - `std.mem`: spans, copy, fill, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
+- `std.decimal`: i64-mantissa decimal helpers with caller-managed scale, returning `DecimalResult` on fallible operations.
 - `std.math`: pure `u32` integer helpers, GCD/LCM, powers, modular power, primality, and divisor routines.
 - `std.codec`: byte reads, varint sizing, CRC helpers, and byte checksums.
 - `std.parse`: ASCII predicates and decimal integer parsers returning `Maybe<T>`.

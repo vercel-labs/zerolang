@@ -12,12 +12,21 @@ typedef struct {
 } ZStdSourceCall;
 
 static const ZStdSourceModule std_source_modules[] = {
+  {"std.decimal", "std/decimal.0", zero_embedded_stdlib_std_decimal_0_chunks},
   {"std.math", "std/math.0", zero_embedded_stdlib_std_math_0_chunks},
   {"std.path", "std/path.0", zero_embedded_stdlib_std_path_0_chunks},
   {"std.str", "std/str.0", zero_embedded_stdlib_std_str_0_chunks},
 };
 
 static const ZStdSourceCall std_source_calls[] = {
+  {"std.decimal.abs", "__zero_std_decimal_abs", "std.decimal"},
+  {"std.decimal.add", "__zero_std_decimal_add", "std.decimal"},
+  {"std.decimal.cmp", "__zero_std_decimal_cmp", "std.decimal"},
+  {"std.decimal.div", "__zero_std_decimal_div", "std.decimal"},
+  {"std.decimal.mul", "__zero_std_decimal_mul", "std.decimal"},
+  {"std.decimal.parse", "__zero_std_decimal_parse", "std.decimal"},
+  {"std.decimal.sub", "__zero_std_decimal_sub", "std.decimal"},
+  {"std.decimal.toString", "__zero_std_decimal_to_string", "std.decimal"},
   {"std.math.clampU32", "__zero_std_math_clamp_u32", "std.math"},
   {"std.math.divisorCountU32", "__zero_std_math_divisor_count_u32", "std.math"},
   {"std.math.gcdU32", "__zero_std_math_gcd_u32", "std.math"},

@@ -11,6 +11,7 @@ Runnable modules:
 - `std.io`: buffered reader/writer metadata and byte copy helpers over caller-owned storage.
 - `std.args`: hosted process argument count and indexed lookup.
 - `std.env`: hosted environment variable lookup.
+- `std.decimal`: i64-mantissa decimal helpers (parse, format, fallible arithmetic) with caller-managed scale.
 - `std.fs`: hosted file lifecycle helpers, owned file handles, byte reads/writes, remove, rename, and close.
 - `std.math`: pure fixed-width integer helpers and small number-theory routines.
 - `std.path`: fixed-buffer lexical path helpers.

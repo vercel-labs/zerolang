@@ -67,6 +67,7 @@ Core examples:
 - `examples/allocator-collections.0`: `NullAlloc`, fixed-buffer allocation, `Vec`, empty map/set metadata, and `zero mem --json` allocator budget reporting.
 - `examples/compile-time-v1.0`: bounded `meta`, target/type reflection facts, Bool and enum static values, and compile-time JSON metadata.
 - `examples/ownership-cleanup.0`: `owned<T>` cleanup, canonical `drop`, and `defer` at lexical scope exit.
+- `examples/std-decimal.0`: i64-mantissa decimal helpers (parse, format, fallible arithmetic) with caller-managed scale.
 - `examples/std-math.0`: pure fixed-width integer helpers and number-theory routines.
 - `examples/std-path-io.0`: fixed-buffer `std.path` helpers and caller-owned `std.io` buffers.
 - `examples/std-str.0`: allocation-free byte-string helpers over spans and caller-owned storage.

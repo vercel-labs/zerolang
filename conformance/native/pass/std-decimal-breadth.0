@@ -1,0 +1,194 @@
+pub fn main Void world World !
+  mut ok Bool true
+
+  let parsed std.decimal.parse "67432.18" 2_u8
+  if == parsed.has false
+    set ok false
+  if parsed.has
+    if != parsed.value 6743218_i64
+      set ok false
+
+  let neg std.decimal.parse "-1.5" 2_u8
+  if == neg.has false
+    set ok false
+  if neg.has
+    if != neg.value (- 0_i64 150_i64)
+      set ok false
+
+  let pad std.decimal.parse "5" 2_u8
+  if == pad.has false
+    set ok false
+  if pad.has
+    if != pad.value 500_i64
+      set ok false
+
+  let bad std.decimal.parse "abc" 2_u8
+  if bad.has
+    set ok false
+
+  let empty std.decimal.parse "" 2_u8
+  if empty.has
+    set ok false
+
+  let double_dot std.decimal.parse "1.2.3" 2_u8
+  if double_dot.has
+    set ok false
+
+  let too_fractional std.decimal.parse "1.234" 2_u8
+  if too_fractional.has
+    set ok false
+
+  let min_parsed std.decimal.parse "-9223372036854775808" 0_u8
+  if == min_parsed.has false
+    set ok false
+  if min_parsed.has
+    if != min_parsed.value (- (- 0_i64 9223372036854775807_i64) 1_i64)
+      set ok false
+
+  let max_parsed std.decimal.parse "9223372036854775807" 0_u8
+  if == max_parsed.has false
+    set ok false
+  if max_parsed.has
+    if != max_parsed.value 9223372036854775807_i64
+      set ok false
+
+  mut buffer [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let formatted std.decimal.toString buffer 6743218_i64 2_u8
+  if == formatted.has false
+    set ok false
+  if formatted.has
+    if != (std.mem.len formatted.value) 8
+      set ok false
+
+  mut neg_buf [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let neg_str std.decimal.toString neg_buf (- 0_i64 150_i64) 2_u8
+  if == neg_str.has false
+    set ok false
+  if neg_str.has
+    if != (std.mem.len neg_str.value) 5
+      set ok false
+
+  mut zero_buf [8]u8 [0, 0, 0, 0, 0, 0, 0, 0]
+  let zero_str std.decimal.toString zero_buf 0_i64 0_u8
+  if == zero_str.has false
+    set ok false
+  if zero_str.has
+    if != (std.mem.len zero_str.value) 1
+      set ok false
+
+  mut min_buf [24]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let min_str std.decimal.toString min_buf (- (- 0_i64 9223372036854775807_i64) 1_i64) 0_u8
+  if == min_str.has false
+    set ok false
+  if min_str.has
+    if != (std.mem.len min_str.value) 20
+      set ok false
+
+  mut tiny_buf [2]u8 [0, 0]
+  let too_small std.decimal.toString tiny_buf 6743218_i64 2_u8
+  if too_small.has
+    set ok false
+
+  let sum std.decimal.add 100_i64 250_i64
+  if == sum.has false
+    set ok false
+  if sum.has
+    if != sum.value 350_i64
+      set ok false
+
+  let add_overflow std.decimal.add 9223372036854775807_i64 1_i64
+  if add_overflow.has
+    set ok false
+
+  let add_underflow std.decimal.add (- (- 0_i64 9223372036854775807_i64) 1_i64) (- 0_i64 1_i64)
+  if add_underflow.has
+    set ok false
+
+  let diff std.decimal.sub 350_i64 100_i64
+  if == diff.has false
+    set ok false
+  if diff.has
+    if != diff.value 250_i64
+      set ok false
+
+  let sub_overflow std.decimal.sub 9223372036854775807_i64 (- 0_i64 1_i64)
+  if sub_overflow.has
+    set ok false
+
+  let prod std.decimal.mul 100_i64 200_i64
+  if == prod.has false
+    set ok false
+  if prod.has
+    if != prod.value 20000_i64
+      set ok false
+
+  let mul_overflow std.decimal.mul 9223372036854775807_i64 2_i64
+  if mul_overflow.has
+    set ok false
+
+  let mul_neg std.decimal.mul (- 0_i64 100_i64) 7_i64
+  if == mul_neg.has false
+    set ok false
+  if mul_neg.has
+    if != mul_neg.value (- 0_i64 700_i64)
+      set ok false
+
+  let mul_min_one std.decimal.mul (- (- 0_i64 9223372036854775807_i64) 1_i64) 1_i64
+  if == mul_min_one.has false
+    set ok false
+
+  let mul_min_neg_one std.decimal.mul (- (- 0_i64 9223372036854775807_i64) 1_i64) (- 0_i64 1_i64)
+  if mul_min_neg_one.has
+    set ok false
+
+  let quot std.decimal.div 1000_i64 4_i64
+  if == quot.has false
+    set ok false
+  if quot.has
+    if != quot.value 250_i64
+      set ok false
+
+  let zero_div std.decimal.div 100_i64 0_i64
+  if zero_div.has
+    set ok false
+
+  let div_min_neg_one std.decimal.div (- (- 0_i64 9223372036854775807_i64) 1_i64) (- 0_i64 1_i64)
+  if div_min_neg_one.has
+    set ok false
+
+  if != (std.decimal.cmp 5_i64 10_i64) (- 0_i32 1_i32)
+    set ok false
+  if != (std.decimal.cmp 10_i64 5_i64) 1_i32
+    set ok false
+  if != (std.decimal.cmp 7_i64 7_i64) 0_i32
+    set ok false
+  if != (std.decimal.cmp 9223372036854775807_i64 (- (- 0_i64 9223372036854775807_i64) 1_i64)) 1_i32
+    set ok false
+
+  let abs_pos std.decimal.abs 42_i64
+  if == abs_pos.has false
+    set ok false
+  if abs_pos.has
+    if != abs_pos.value 42_i64
+      set ok false
+
+  let abs_neg std.decimal.abs (- 0_i64 42_i64)
+  if == abs_neg.has false
+    set ok false
+  if abs_neg.has
+    if != abs_neg.value 42_i64
+      set ok false
+
+  let abs_zero std.decimal.abs 0_i64
+  if == abs_zero.has false
+    set ok false
+  if abs_zero.has
+    if != abs_zero.value 0_i64
+      set ok false
+
+  let abs_min std.decimal.abs (- (- 0_i64 9223372036854775807_i64) 1_i64)
+  if abs_min.has
+    set ok false
+
+  if ok
+    check world.out.write "std decimal breadth ok\n"

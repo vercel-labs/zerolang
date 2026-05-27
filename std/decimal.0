@@ -1,0 +1,198 @@
+pub type DecimalResult
+  has Bool
+  value i64
+
+fn __zero_std_decimal_fail DecimalResult
+  let result DecimalResult . has false value 0_i64
+  ret result
+
+fn __zero_std_decimal_ok DecimalResult value i64
+  let result DecimalResult . has true value value
+  ret result
+
+fn __zero_std_decimal_parse DecimalResult text String scale u8
+  let i64_max i64 9223372036854775807_i64
+  let i64_min i64 (- (- 0_i64 i64_max) 1_i64)
+  let len usize std.mem.len text
+  if == len 0
+    ret __zero_std_decimal_fail()
+  mut index usize 0
+  mut negative Bool false
+  if == text[0] 45_u8
+    set negative true
+    set index 1
+  if >= index len
+    ret __zero_std_decimal_fail()
+  mut mantissa i64 0_i64
+  mut seen_digit Bool false
+  mut decimal_point_seen Bool false
+  mut digits_after_decimal u8 0_u8
+  while < index len
+    let byte u8 text[index]
+    if == byte 46_u8
+      if decimal_point_seen
+        ret __zero_std_decimal_fail()
+      set decimal_point_seen true
+    else
+      if && (>= byte 48_u8) (<= byte 57_u8)
+        set seen_digit true
+        let digit i64 ((- byte 48_u8) as i64)
+        if negative
+          if < mantissa (/ i64_min 10_i64)
+            ret __zero_std_decimal_fail()
+          set mantissa * mantissa 10_i64
+          if < mantissa (+ i64_min digit)
+            ret __zero_std_decimal_fail()
+          set mantissa - mantissa digit
+        else
+          if > mantissa (/ i64_max 10_i64)
+            ret __zero_std_decimal_fail()
+          set mantissa * mantissa 10_i64
+          if > digit (- i64_max mantissa)
+            ret __zero_std_decimal_fail()
+          set mantissa + mantissa digit
+        if decimal_point_seen
+          if >= digits_after_decimal scale
+            ret __zero_std_decimal_fail()
+          set digits_after_decimal + digits_after_decimal 1_u8
+      else
+        ret __zero_std_decimal_fail()
+    set index + index 1
+  if == seen_digit false
+    ret __zero_std_decimal_fail()
+  while < digits_after_decimal scale
+    if negative
+      if < mantissa (/ i64_min 10_i64)
+        ret __zero_std_decimal_fail()
+      set mantissa * mantissa 10_i64
+    else
+      if > mantissa (/ i64_max 10_i64)
+        ret __zero_std_decimal_fail()
+      set mantissa * mantissa 10_i64
+    set digits_after_decimal + digits_after_decimal 1_u8
+  ret __zero_std_decimal_ok(mantissa)
+
+fn __zero_std_decimal_to_string Maybe<Span<u8>> buffer MutSpan<u8> mantissa i64 scale u8
+  mut negative Bool false
+  if < mantissa 0_i64
+    set negative true
+  mut value i64 mantissa
+  mut digits [24]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  mut written usize 0
+  if == value 0_i64
+    set digits[0] 48_u8
+    set written 1
+  else
+    while != value 0_i64
+      let remainder i64 % value 10_i64
+      mut d u8 0_u8
+      if negative
+        set d ((- 0_i64 remainder) as u8)
+      else
+        set d (remainder as u8)
+      set digits[written] + 48_u8 d
+      set written + written 1
+      set value / value 10_i64
+  let scale_usize usize (scale as usize)
+  let min_integer_digits usize + 1 scale_usize
+  while < written min_integer_digits
+    set digits[written] 48_u8
+    set written + written 1
+  mut total usize written
+  if > scale 0_u8
+    set total + total 1
+  if negative
+    set total + total 1
+  if > total (std.mem.len buffer)
+    ret null
+  mut out usize 0
+  if negative
+    set buffer[out] 45_u8
+    set out + out 1
+  mut copy_index usize written
+  while > copy_index scale_usize
+    set copy_index - copy_index 1
+    set buffer[out] digits[copy_index]
+    set out + out 1
+  if > scale 0_u8
+    set buffer[out] 46_u8
+    set out + out 1
+    while > copy_index 0
+      set copy_index - copy_index 1
+      set buffer[out] digits[copy_index]
+      set out + out 1
+  ret buffer[..out]
+
+fn __zero_std_decimal_add DecimalResult a i64 b i64
+  let i64_max i64 9223372036854775807_i64
+  let i64_min i64 (- (- 0_i64 i64_max) 1_i64)
+  if > b 0_i64
+    if > a (- i64_max b)
+      ret __zero_std_decimal_fail()
+  if < b 0_i64
+    if < a (- i64_min b)
+      ret __zero_std_decimal_fail()
+  ret __zero_std_decimal_ok(+ a b)
+
+fn __zero_std_decimal_sub DecimalResult a i64 b i64
+  let i64_max i64 9223372036854775807_i64
+  let i64_min i64 (- (- 0_i64 i64_max) 1_i64)
+  if > b 0_i64
+    if < a (+ i64_min b)
+      ret __zero_std_decimal_fail()
+  if < b 0_i64
+    if > a (+ i64_max b)
+      ret __zero_std_decimal_fail()
+  ret __zero_std_decimal_ok(- a b)
+
+fn __zero_std_decimal_mul DecimalResult a i64 b i64
+  let i64_max i64 9223372036854775807_i64
+  let i64_min i64 (- (- 0_i64 i64_max) 1_i64)
+  let neg_one i64 (- 0_i64 1_i64)
+  if == a 0_i64
+    ret __zero_std_decimal_ok(0_i64)
+  if == b 0_i64
+    ret __zero_std_decimal_ok(0_i64)
+  if == a i64_min
+    if == b 1_i64
+      ret __zero_std_decimal_ok(i64_min)
+    ret __zero_std_decimal_fail()
+  if == b i64_min
+    if == a 1_i64
+      ret __zero_std_decimal_ok(i64_min)
+    ret __zero_std_decimal_fail()
+  mut abs_a i64 a
+  if < abs_a 0_i64
+    set abs_a - 0_i64 abs_a
+  mut abs_b i64 b
+  if < abs_b 0_i64
+    set abs_b - 0_i64 abs_b
+  if > abs_a (/ i64_max abs_b)
+    ret __zero_std_decimal_fail()
+  ret __zero_std_decimal_ok(* a b)
+
+fn __zero_std_decimal_div DecimalResult a i64 b i64
+  let i64_max i64 9223372036854775807_i64
+  let i64_min i64 (- (- 0_i64 i64_max) 1_i64)
+  let neg_one i64 (- 0_i64 1_i64)
+  if == b 0_i64
+    ret __zero_std_decimal_fail()
+  if && (== a i64_min) (== b neg_one)
+    ret __zero_std_decimal_fail()
+  ret __zero_std_decimal_ok(/ a b)
+
+fn __zero_std_decimal_cmp i32 a i64 b i64
+  if < a b
+    ret (- 0_i32 1_i32)
+  if > a b
+    ret 1_i32
+  ret 0_i32
+
+fn __zero_std_decimal_abs DecimalResult value i64
+  let i64_max i64 9223372036854775807_i64
+  let i64_min i64 (- (- 0_i64 i64_max) 1_i64)
+  if == value i64_min
+    ret __zero_std_decimal_fail()
+  if < value 0_i64
+    ret __zero_std_decimal_ok(- 0_i64 value)
+  ret __zero_std_decimal_ok(value)

@@ -1,0 +1,35 @@
+pub fn main Void world World !
+  mut ok Bool true
+  let price std.decimal.parse "67432.18" 2_u8
+  if == price.has false
+    set ok false
+  if price.has
+    if != price.value 6743218_i64
+      set ok false
+  let sats i64 100000000_i64
+  let product std.decimal.mul price.value sats
+  if == product.has false
+    set ok false
+  let sum std.decimal.add 100_i64 250_i64
+  if == sum.has false
+    set ok false
+  if sum.has
+    if != sum.value 350_i64
+      set ok false
+  let diff std.decimal.sub 1000_i64 250_i64
+  if == diff.has false
+    set ok false
+  if != (std.decimal.cmp 5_i64 10_i64) (- 0_i32 1_i32)
+    set ok false
+  let abs_val std.decimal.abs (- 0_i64 42_i64)
+  if == abs_val.has false
+    set ok false
+  if abs_val.has
+    if != abs_val.value 42_i64
+      set ok false
+  mut buffer [16]u8 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let formatted std.decimal.toString buffer 6743218_i64 2_u8
+  if == formatted.has false
+    set ok false
+  if ok
+    check world.out.write "std decimal ok\n"

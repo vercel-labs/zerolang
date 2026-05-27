@@ -170,6 +170,14 @@ export const docs: Doc[] = [
     section: "Modules",
   },
   {
+    slug: "module-decimal",
+    title: "std.decimal",
+    description: "i64-mantissa decimal helpers with caller-managed scale (parse, format, fallible arithmetic).",
+    path: "/modules/decimal",
+    sourcePath: "/articles/modules/decimal.md",
+    section: "Modules",
+  },
+  {
     slug: "module-math",
     title: "std.math",
     description: "Pure fixed-width integer helpers and small number-theory routines.",
