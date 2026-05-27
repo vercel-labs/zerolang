@@ -105,12 +105,10 @@ typedef struct {
   char *module_identity;
   char *graph_hash;
   ZProgramGraphNode *nodes;
-  size_t node_len;
-  size_t node_cap;
+  size_t node_len, node_cap;
   ZProgramGraphEdge *edges;
-  size_t edge_len;
-  size_t edge_cap;
-  size_t next_id;
+  size_t edge_len, edge_cap, next_id;
+  bool canonical_source;
 } ZProgramGraph;
 
 typedef struct {

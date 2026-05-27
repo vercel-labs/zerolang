@@ -999,7 +999,7 @@ static void lower_init_source_from_graph(SourceInput *source, const ZProgramGrap
 static bool lower_to_program(GraphLower *lower, Program *out) {
   if (!out) return false;
   *out = (Program){0};
-  if (!lower || !lower->graph) return lower_fail(lower, NULL, "program graph is missing", "ProgramGraph artifact", "missing graph", NULL);
+  if (!lower || !lower->graph) return lower_fail(lower, NULL, "program graph is missing", "ProgramGraph input", "missing graph", NULL);
 
   size_t module_count = 0;
   for (size_t i = 0; i < lower->graph->node_len; i++) {

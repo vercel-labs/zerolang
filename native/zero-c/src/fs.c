@@ -583,10 +583,12 @@ bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag) {
   const char *package_name_path[] = {"package", "name"};
   const char *package_version_path[] = {"package", "version"};
   const char *main_path[] = {"targets", "cli", "main"};
+  const char *graph_path[] = {"targets", "cli", "graph"};
   const char *kind_path[] = {"targets", "cli", "kind"};
   out->package_name = json_get_string_path(manifest, package_name_path, 2);
   out->package_version = json_get_string_path(manifest, package_version_path, 2);
   out->main_path = json_get_string_path(manifest, main_path, 3);
+  out->graph_path = json_get_string_path(manifest, graph_path, 3);
   out->kind = json_get_string_path(manifest, kind_path, 3);
 
   const char *dependencies_path[] = {"dependencies"};
@@ -665,6 +667,7 @@ void z_free_manifest(ZManifest *manifest) {
   free(manifest->package_name);
   free(manifest->package_version);
   free(manifest->main_path);
+  free(manifest->graph_path);
   free(manifest->kind);
   for (size_t i = 0; i < manifest->dependency_count; i++) {
     free(manifest->dependencies[i].name);
@@ -684,6 +687,100 @@ void z_free_manifest(ZManifest *manifest) {
   free(manifest->dependencies);
   free(manifest->c_libs);
   memset(manifest, 0, sizeof(*manifest));
+}
+
+char *z_manifest_path_for_input(const char *input_path) {
+  if (!input_path || !input_path[0]) return NULL;
+  if (strcmp(input_path, "zero.json") == 0 || ends_with(input_path, "/zero.json")) return z_strdup(input_path);
+  char *manifest_path = join_path(input_path, "zero.json");
+  if (file_exists(manifest_path)) return manifest_path;
+  free(manifest_path);
+  return NULL;
+}
+
+static char *manifest_relative_path(const char *manifest_path, const char *relative_path) {
+  if (!relative_path || !relative_path[0]) return NULL;
+  if (relative_path[0] == '/') return normalize_path_text(relative_path);
+  char *root = dirname_of(manifest_path);
+  char *joined = join_path(root, relative_path);
+  char *normalized = normalize_path_text(joined);
+  free(joined);
+  free(root);
+  return normalized;
+}
+
+static void set_manifest_graph_diag(ZDiag *diag, const char *manifest_path, const char *message, const char *expected, const char *actual, const char *help) {
+  if (!diag) return;
+  diag->code = 2002;
+  diag->path = z_strdup(manifest_path ? manifest_path : "");
+  diag->line = 1;
+  diag->column = 1;
+  diag->length = 1;
+  snprintf(diag->message, sizeof(diag->message), "%s", message ? message : "invalid graph target");
+  snprintf(diag->expected, sizeof(diag->expected), "%s", expected ? expected : "targets.cli.graph pointing at saved ProgramGraph input");
+  snprintf(diag->actual, sizeof(diag->actual), "%s", actual ? actual : "invalid targets.cli.graph");
+  snprintf(diag->help, sizeof(diag->help), "%s", help ? help : "set targets.cli.graph to saved ProgramGraph input");
+}
+
+bool z_resolve_manifest_graph_artifact_path(const char *input_path, char **out_artifact_path, bool *handled, bool require_graph, ZDiag *diag) {
+  if (out_artifact_path) *out_artifact_path = NULL;
+  if (handled) *handled = false;
+  char *manifest_path = z_manifest_path_for_input(input_path);
+  if (!manifest_path) return true;
+
+  char *manifest = z_read_file(manifest_path, diag);
+  if (!manifest) {
+    if (diag) diag->path = z_strdup(manifest_path);
+    free(manifest_path);
+    return false;
+  }
+
+  ZManifest parsed_manifest = {0};
+  if (!z_parse_manifest_json(manifest, &parsed_manifest, diag)) {
+    if (diag && !diag->path) diag->path = z_strdup(manifest_path);
+    free(manifest);
+    free(manifest_path);
+    return false;
+  }
+
+  bool ok = true;
+  bool resolved_graph = false;
+  char *artifact_path = NULL;
+  if (!parsed_manifest.graph_path || !parsed_manifest.graph_path[0]) {
+    if (require_graph) {
+      set_manifest_graph_diag(diag,
+                              manifest_path,
+                              "zero.json is missing targets.cli.graph",
+                              "targets.cli.graph pointing at saved ProgramGraph input",
+                              "missing targets.cli.graph",
+                              "run zero graph import --out <program-graph> <source>, then set targets.cli.graph");
+      ok = false;
+    }
+  } else {
+    artifact_path = manifest_relative_path(manifest_path, parsed_manifest.graph_path);
+    if (!artifact_path || !file_exists(artifact_path)) {
+      set_manifest_graph_diag(diag,
+                              manifest_path,
+                              "target ProgramGraph input does not exist",
+                              artifact_path ? artifact_path : parsed_manifest.graph_path,
+                              "missing ProgramGraph input",
+                              "create the ProgramGraph input or update targets.cli.graph");
+      ok = false;
+    } else {
+      resolved_graph = true;
+    }
+  }
+
+  if (ok && resolved_graph && out_artifact_path) {
+    *out_artifact_path = artifact_path;
+    artifact_path = NULL;
+  }
+  if (ok && handled) *handled = resolved_graph;
+  free(artifact_path);
+  z_free_manifest(&parsed_manifest);
+  free(manifest);
+  free(manifest_path);
+  return ok;
 }
 
 static char *dependency_manifest_path(const char *current_manifest_path, const char *dependency_path) {
@@ -794,15 +891,6 @@ bool z_resolve_package_metadata(const char *manifest_path, const char *manifest,
     snprintf(diag->help, sizeof(diag->help), "use an exe target for the native bootstrap compiler");
     return false;
   }
-  if (!parsed_manifest->main_path) {
-    diag->code = 2;
-    diag->path = z_strdup(manifest_path);
-    diag->line = 1;
-    diag->column = 1;
-    snprintf(diag->message, sizeof(diag->message), "zero.json is missing targets.cli.main");
-    return false;
-  }
-
   SourceInput metadata = {0};
   metadata.manifest_path = z_strdup(manifest_path);
   metadata.package_root = dirname_of(manifest_path);

@@ -36,9 +36,15 @@ zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
 zero graph --json examples/systems-package
 zero graph dump examples/hello.0
 zero graph dump --out .zero/out/hello.graph examples/hello.0
+zero graph import --out .zero/out/hello.graph examples/hello.0
+zero graph inspect --json examples/hello.0
 zero graph validate .zero/out/hello.graph
 zero graph view .zero/out/hello.graph
 zero graph check --json .zero/out/hello.graph
+zero graph size --json .zero/out/hello.graph
+zero graph build --json --emit obj --target linux-musl-x64 --out .zero/out/hello.o .zero/out/hello.graph
+zero graph run .zero/out/hello.graph
+zero graph test --json .zero/out/hello.graph
 zero graph patch --out .zero/out/hello.patched.graph .zero/out/hello.graph .zero/out/hello.patch
 zero graph roundtrip examples/hello.0
 zero graph roundtrip .zero/out/hello.graph
@@ -56,6 +62,7 @@ Pass program arguments after `--`:
 
 ```sh
 zero run examples/cli-file.0 -- input.txt
+zero graph run .zero/out/cli-file.graph -- input.txt
 ```
 
 ## JSON Output
@@ -66,12 +73,15 @@ Use `--json` when another tool will read the result. Text output is for people.
 | --- | --- |
 | `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, and `targetReadiness` for the selected target/emit kind. |
 | `zero graph --json` | Modules, public symbols, capabilities, static facts, helper use, and nested `programGraph`. |
-| `zero graph dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <file>` to write the dump artifact. |
-| `zero graph validate --json` | A ProgramGraph artifact readback check with `moduleIdentity`, `graphHash`, counts, validation state, and optional canonical output path. |
-| `zero graph view --json` | A generated Zero-shaped view for a ProgramGraph artifact with `moduleIdentity`, `graphHash`, `canonicalSource: false`, and optional output path. |
-| `zero graph check --json` | Typecheck a ProgramGraph artifact through direct graph lowering with artifact identity, target, `check.lowering: "direct-program-graph"`, target readiness, diagnostics, optional generated-view output path, and an inline failed view when no output path was saved. |
-| `zero graph patch --json` | Checked ProgramGraph artifact edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and optional canonical output path. |
-| `zero graph roundtrip --json` | Source-to-graph-to-view or artifact-to-direct-lower stability with `semanticStable`, lowering mode, original and reparsed graph hashes, raw counts, normalized semantic counts, and optional output. |
+| `zero graph dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <program-graph-or-module.0>` to also write graph storage. |
+| `zero graph import --json` | Source-to-ProgramGraph import with graph identity and validation. With `--out <program-graph-or-module.0>`, writes graph storage and reports `saved.path`. |
+| `zero graph validate --json` | A saved ProgramGraph input readback check with `moduleIdentity`, `graphHash`, `canonicalSource`, counts, validation state, and optional canonical output path. |
+| `zero graph view --json` | A generated Zero-shaped view for saved ProgramGraph input with `moduleIdentity`, `graphHash`, `canonicalSource`, and optional output path. |
+| `zero graph check --json` | Typecheck saved ProgramGraph input through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, and graph-source-mapped diagnostics. |
+| `zero graph size --json` | Size, helper, runtime, profile, and backend facts for saved ProgramGraph input lowered through `direct-program-graph`, with graph identity and `canonicalSource`. |
+| `zero graph build --json` | Build saved ProgramGraph input through direct graph lowering, including graph identity, selected `emit` kind, target, artifact path and size, compiler cache facts, and graph-aware incremental invalidation. |
+| `zero graph patch --json` | Checked ProgramGraph input edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and optional ProgramGraph output path. |
+| `zero graph roundtrip --json` | Source or saved ProgramGraph input stability through direct graph lowering with `semanticStable`, lowering mode, original and roundtripped graph hashes, raw counts, normalized semantic counts, and optional ProgramGraph output. |
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
 | `zero dev --json --trace` | Adds phase timing, cache hit/miss facts, diagnostics passthrough, and `interfaceFingerprints`. |
 | `zero time --json` | Compiler phase timing plus `interfaceFingerprints` and incremental invalidation facts. |
@@ -119,9 +129,22 @@ formatted in ZDN's indentation-based syntax rather than JSON brackets.
 the same output. Supported across all commands that accept
 `--json`:
 
+ProgramGraph input commands (`validate`, `view`, `check`, `size`, `build`,
+`run`, `test`, and `patch`) accept saved `.program-graph` files, canonical graph
+`.0` files, or a package directory or `zero.json` when `targets.cli.graph`
+points at saved ProgramGraph input. `zero graph roundtrip` uses that
+ProgramGraph input for packages that declare it, and otherwise roundtrips source
+input.
+The direct `check`, `size`, `build`, `run`, `test`, and `ship` commands use
+that graph entrypoint for packages that declare it; packages without
+`targets.cli.graph` continue to use `targets.cli.main`.
+Those direct commands also load a `.0` input as ProgramGraph source storage when
+the file starts with the ProgramGraph schema header; ordinary row `.0` files
+continue through the row parser.
+
 ## ProgramGraph Patches
 
-`zero graph patch` applies checked edits to a saved ProgramGraph artifact and
+`zero graph patch` applies checked edits to saved ProgramGraph input and
 prints or writes the canonical patched artifact. Patch files are line-oriented
 text:
 
@@ -129,6 +152,9 @@ text:
 zero-program-graph-patch v1
 expect graphHash "graph:f76987e99677f1b3"
 set node="node:000013" field="value" expect="hello from zero\n" value="hello patched\n"
+insert node="node:patch001" kind="Literal" parent="node:000009" edge="arg" order="1" type="String" value="again\n"
+rename node="node:000002" expect="main" value="start"
+delete node="node:patch001"
 ```
 
 The header is required. `expect graphHash` is optional but recommended; it
@@ -136,12 +162,20 @@ rejects edits against a different artifact. `set` requires `node`, `field`, and
 `value`; `expect` is optional and rejects the operation when the current field
 value differs.
 
-Editable fields are `name`, `type`, `value`, `public`, `mutable`, `static`,
-`fallible`, and `exportC`. Boolean fields accept only `true` or `false`.
-`name` values must be identifier paths or supported operator tokens. `type`
-values must be valid Zero type syntax. Strings support `\\`, `\"`, `\n`,
-`\r`, `\t`, and `\u00XX` escapes for non-NUL bytes. NUL bytes are not valid
-ProgramGraph patch text.
+Supported operations are `set`, `insert`, `insertEdge`, `replace`, `delete`,
+and `rename`. `insert` creates a node and connects it to a parent node with an
+ordered node edge. `insertEdge` connects existing graph facts across `node`,
+`symbol`, `type`, or `effect` target domains. `replace` updates a node in
+place and can require the current node hash through `expect`. `delete` removes
+an owned subtree and rejects external references into that subtree. `rename`
+updates a node name with an optional current-name precondition.
+
+Editable scalar fields are `name`, `type`, `value`, `public`, `mutable`,
+`static`, `fallible`, and `exportC`. Boolean fields accept only `true` or
+`false`. `name` values must be identifier paths or supported operator tokens.
+`type` values must be valid Zero type syntax. Strings support `\\`, `\"`,
+`\n`, `\r`, `\t`, and `\u00XX` escapes for non-NUL bytes. NUL bytes are not
+valid ProgramGraph patch text.
 
 ## Build Outputs
 
@@ -204,7 +238,14 @@ zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <
 zero ship [--json] [--zdn] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--zdn] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|validate|view|check|patch|roundtrip] [--json] [--zdn] [--target <target>] [--out <file>] <input> [patch-file]
+zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--zdn] [--target <target>] <input> [patch-file]
+zero graph [dump|import|validate|roundtrip] [--json] [--zdn] --out <program-graph-or-module.0> <input>
+zero graph view [--json] [--zdn] --out <file.0> <program-graph-or-package>
+zero graph size [--json] [--zdn] [--target <target>] --out <artifact> <program-graph-or-package>
+zero graph patch [--json] [--zdn] --out <program-graph-or-module.0> <program-graph-or-package> <patch-file>
+zero graph build [--json] [--zdn] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
+zero graph run [--zdn] [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
+zero graph test [--json] [--zdn] [--filter <name>] [--target <target>] <program-graph-or-package>
 zero doc [--json] [--zdn] [--target <target>] <input>
 zero size [--json] [--zdn] [--target <target>] [--out <artifact>] <input>
 zero explain [--json] [--zdn] <diagnostic-code>

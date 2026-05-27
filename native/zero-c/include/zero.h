@@ -768,6 +768,7 @@ typedef struct {
   char *package_name;
   char *package_version;
   char *main_path;
+  char *graph_path;
   char *kind;
   ZManifestDependency *dependencies;
   ZManifestCLib *c_libs;
@@ -883,6 +884,8 @@ bool z_map_source_diag(const SourceInput *input, ZDiag *diag);
 void z_free_source(SourceInput *input);
 bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag);
 bool z_resolve_package_metadata(const char *manifest_path, const char *manifest, const ZManifest *parsed_manifest, SourceInput *out, ZDiag *diag);
+char *z_manifest_path_for_input(const char *input_path);
+bool z_resolve_manifest_graph_artifact_path(const char *input_path, char **out_artifact_path, bool *handled, bool require_graph, ZDiag *diag);
 void z_free_manifest(ZManifest *manifest);
 char *z_default_out_path(const char *source_file);
 ZToolchainPlan z_plan_toolchain(const char *cc, const char *profile, const ZTargetInfo *target);

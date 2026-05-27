@@ -819,7 +819,7 @@ void z_program_graph_append_view(ZBuf *buf, const ZProgramGraph *graph) {
   zbuf_append(buf, "# Source graph: ");
   zbuf_append(buf, graph && graph->graph_hash ? graph->graph_hash : "");
   zbuf_append(buf, "\n");
-  zbuf_append(buf, "# canonicalSource false\n\n");
+  zbuf_appendf(buf, "# canonicalSource %s\n\n", graph && graph->canonical_source ? "true" : "false");
   size_t modules = 0;
   size_t renderable_modules = 0;
   for (size_t i = 0; graph && i < graph->node_len; i++) {

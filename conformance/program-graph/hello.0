@@ -1,0 +1,32 @@
+zero-program-graph v1
+canonicalSource true
+idStrategy "deterministic-traversal-r0"
+moduleIdentity "module:hello"
+graphHash "graph:f76987e99677f1b3"
+validation "shape-valid" ok
+counts nodes=13 edges=12
+node id="node:000001" kind="Module" name="hello" type="" value="" symbolId="symbol:8a242dc751d99c7a" typeId="" effectId="" nodeHash="nodehash:96c7f103c1d8c4be" path="examples/hello.0" line=1 column=1 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000002" kind="Function" name="main" type="Void" value="" symbolId="symbol:c8d9de3fb443b96b" typeId="type:b30331c589d91166" effectId="" nodeHash="nodehash:e0554c45b166b95d" path="examples/hello.0" line=1 column=1 public=true mutable=false static=false fallible=true exportC=false
+node id="node:000003" kind="Param" name="world" type="World" value="" symbolId="symbol:078a757dfb7c472a" typeId="type:3660b802c5c23502" effectId="" nodeHash="nodehash:e82c48a66f573352" path="examples/hello.0" line=1 column=18 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000004" kind="TypeRef" name="" type="World" value="" symbolId="" typeId="type:3660b802c5c23502" effectId="" nodeHash="nodehash:54956a46a33fb5ec" path="examples/hello.0" line=1 column=18 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000005" kind="TypeRef" name="" type="Void" value="" symbolId="" typeId="type:b30331c589d91166" effectId="" nodeHash="nodehash:d8def327e81b948d" path="examples/hello.0" line=1 column=1 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000006" kind="EffectRef" name="error" type="" value="" symbolId="" typeId="" effectId="effect:d1c6cb38f134cbfc" nodeHash="nodehash:e8629cba73ba9adc" path="examples/hello.0" line=1 column=1 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000007" kind="Block" name="body" type="" value="" symbolId="" typeId="" effectId="" nodeHash="nodehash:7c94af1e8fde986b" path="examples/hello.0" line=1 column=1 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000008" kind="Check" name="" type="" value="" symbolId="" typeId="" effectId="" nodeHash="nodehash:a32be0bd042521dd" path="examples/hello.0" line=2 column=3 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000009" kind="MethodCall" name="write" type="Void" value="" symbolId="" typeId="type:b30331c589d91166" effectId="" nodeHash="nodehash:3aa938c12159875d" path="examples/hello.0" line=2 column=25 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000010" kind="FieldAccess" name="write" type="" value="" symbolId="" typeId="" effectId="" nodeHash="nodehash:d8e5fb00e876cc8d" path="examples/hello.0" line=2 column=18 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000011" kind="FieldAccess" name="out" type="" value="" symbolId="" typeId="" effectId="" nodeHash="nodehash:01c291c70896bbc2" path="examples/hello.0" line=2 column=14 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000012" kind="Identifier" name="world" type="" value="" symbolId="" typeId="" effectId="" nodeHash="nodehash:7ef8ea011d2b3da6" path="examples/hello.0" line=2 column=9 public=false mutable=false static=false fallible=false exportC=false
+node id="node:000013" kind="Literal" name="" type="String" value="hello from zero\n" symbolId="" typeId="type:0c7be574dddec83b" effectId="" nodeHash="nodehash:f7c51faeeed441a1" path="examples/hello.0" line=2 column=25 public=false mutable=false static=false fallible=false exportC=false
+edge from="node:000001" to="node:000002" kind="function" target="node" order=0
+edge from="node:000002" to="node:000003" kind="param" target="node" order=0
+edge from="node:000003" to="node:000004" kind="type" target="node" order=0
+edge from="node:000002" to="node:000005" kind="returnType" target="node" order=0
+edge from="node:000002" to="node:000006" kind="effect" target="node" order=0
+edge from="node:000011" to="node:000012" kind="left" target="node" order=0
+edge from="node:000010" to="node:000011" kind="left" target="node" order=0
+edge from="node:000009" to="node:000010" kind="left" target="node" order=0
+edge from="node:000009" to="node:000013" kind="arg" target="node" order=0
+edge from="node:000008" to="node:000009" kind="expr" target="node" order=0
+edge from="node:000007" to="node:000008" kind="statement" target="node" order=0
+edge from="node:000002" to="node:000007" kind="body" target="node" order=0

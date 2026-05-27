@@ -15,10 +15,10 @@ type CScanState = {
 };
 
 const fileBudgets = {
-  "native/zero-c/include/zero.h": { maxLines: 980, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 981, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 9846, maxStrcmpCalls: 279 },
-  "native/zero-c/src/main.c": { maxLines: 10940, maxStrcmpCalls: 461 },
+  "native/zero-c/src/main.c": { maxLines: 11244, maxStrcmpCalls: 462 },
   "native/zero-c/src/ir.c": { maxLines: 3750, maxStrcmpCalls: 226 },
   "native/zero-c/src/row_syntax.c": { maxLines: 2150, maxStrcmpCalls: 11 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
@@ -54,11 +54,15 @@ const fileBudgets = {
   "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 330, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff.c": { maxLines: 1195, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 380, maxStrcmpCalls: 0 },
-  "native/zero-c/src/fs.c": { maxLines: 1250, maxStrcmpCalls: 32 },
+  "native/zero-c/src/fs.c": { maxLines: 1255, maxStrcmpCalls: 33 },
   "native/zero-c/src/mir_verify.c": { maxLines: 1300, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 117, maxStrcmpCalls: 4 },
-  "native/zero-c/src/program_graph_compare.c": { maxLines: 266, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_build.c": { maxLines: 60, maxStrcmpCalls: 8 },
+  "native/zero-c/src/program_graph_build.h": { maxLines: 19, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_command.c": { maxLines: 100, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_command.h": { maxLines: 25, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_compare.c": { maxLines: 445, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_compare.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_format.c": { maxLines: 707, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_format.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -68,10 +72,13 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_import.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_lower.c": { maxLines: 1038, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_lower.h": { maxLines: 10, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_patch.c": { maxLines: 513, maxStrcmpCalls: 16 },
-  "native/zero-c/src/program_graph_patch.h": { maxLines: 37, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_roundtrip.c": { maxLines: 40, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 715, maxStrcmpCalls: 11 },
+  "native/zero-c/src/program_graph_patch.c": { maxLines: 591, maxStrcmpCalls: 28 },
+  "native/zero-c/src/program_graph_patch.h": { maxLines: 63, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_roundtrip.c": { maxLines: 55, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.h": { maxLines: 15, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_size.c": { maxLines: 105, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_size.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_view.c": { maxLines: 839, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_view.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
@@ -590,7 +597,7 @@ function knownReturnTypeDivergenceMatches(mismatch) {
     known.checkerReturnType === mismatch.checkerReturnType;
 }
 
-function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
+function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, programGraph) {
   const violations = [];
   for (const path of Object.keys(files).sort()) {
     if (!fileBudgets[path]) {
@@ -781,6 +788,12 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
     violations.push({
       kind: "stdlib-specialized-helper-kind-mismatch",
       mismatches: stdlib.specializedHelperKindMismatches,
+    });
+  }
+  if (programGraph.mainRawGraphCommandOutWrites > 0) {
+    violations.push({
+      kind: "program-graph-raw-command-output-write",
+      programGraph,
     });
   }
   if (!backendFormats.directTarget.ruleMatrix ||
@@ -1450,13 +1463,20 @@ const backendFormats = {
       .map(([path]) => path),
   },
 };
-const violations = budgetViolations(files, allLargeFunctions, stdlib, backendFormats);
+const programGraph = {
+  mainRawGraphCommandOutWrites: countMatches(
+    cCodeText(main),
+    /\bz_write_file\s*\(\s*command->out\s*,\s*graph\.data/g,
+  ),
+};
+const violations = budgetViolations(files, allLargeFunctions, stdlib, backendFormats, programGraph);
 
 const report = {
   schema: 1,
   files,
   largeFunctions: allLargeFunctions.slice(0, 25),
   stdlib,
+  programGraph,
   backendFormats,
   budget: {
     ok: violations.length === 0,
