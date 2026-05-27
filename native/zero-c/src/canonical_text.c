@@ -368,6 +368,28 @@ static bool canon_generic_call_span(CanonParser *parser, size_t expr_start, size
   return false;
 }
 
+static bool canon_empty_postfix_index_close(const ZCanonicalToken *token, const ZCanonicalToken *previous, size_t bracket_depth, const bool bracket_literal[], bool expect_operand) {
+  return canon_is_symbol_text(token, "]") && bracket_depth > 0 && !bracket_literal[bracket_depth] && expect_operand && previous && canon_is_symbol_text(previous, "[");
+}
+
+static void canon_close_expr_delimiter(const ZCanonicalToken *token, int *delimiter_depth, int *brace_depth, size_t *bracket_depth, bool bracket_literal[], size_t bracket_repeat_count[]) {
+  if (*delimiter_depth > 0) (*delimiter_depth)--;
+  if (canon_is_symbol_text(token, "}") && *brace_depth > 0) (*brace_depth)--;
+  if (canon_is_symbol_text(token, "]")) {
+    bracket_repeat_count[*bracket_depth] = 0;
+    bracket_literal[*bracket_depth] = false;
+    if (*bracket_depth > 0) (*bracket_depth)--;
+  }
+}
+
+static bool canon_validate_member_access(CanonParser *parser, const ZCanonicalToken *previous, const ZCanonicalToken *token, const ZCanonicalToken *next, bool expect_operand) {
+  if (expect_operand) return canon_fail(parser->diag, token, "expected expression before member access", "expression", ".");
+  if (!previous || !canon_tokens_connected(previous, token)) return canon_fail(parser->diag, token, "member access must follow an expression directly", "adjacent '.'", ".");
+  if (!next || next->kind != Z_CANON_TOKEN_WORD || canon_is_reserved_word(next->text)) return canon_fail(parser->diag, next ? next : token, "expected field name after member access", "field name", next ? next->text : "end of expression");
+  if (!canon_tokens_connected(token, next)) return canon_fail(parser->diag, next, "field name must follow member access directly", "adjacent field name", next->text);
+  return true;
+}
+
 static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t end) {
   if (start == end) return true;
   bool expect_operand = true;
@@ -425,16 +447,13 @@ static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t 
       continue;
     }
     if (canon_expr_close_symbol(token)) {
+      if (canon_empty_postfix_index_close(token, previous, bracket_depth, bracket_literal, expect_operand)) {
+        return canon_fail(parser->diag, token, "expected index expression before ']'", "index expression", "]");
+      }
       if (expect_operand && !(previous && (canon_expr_open_symbol(previous) || canon_is_symbol_text(previous, "..")))) {
         return canon_fail(parser->diag, token, "expected expression before delimiter", "expression", token->text);
       }
-      if (delimiter_depth > 0) delimiter_depth--;
-      if (canon_is_symbol_text(token, "}") && brace_depth > 0) brace_depth--;
-      if (canon_is_symbol_text(token, "]")) {
-        bracket_repeat_count[bracket_depth] = 0;
-        bracket_literal[bracket_depth] = false;
-        if (bracket_depth > 0) bracket_depth--;
-      }
+      canon_close_expr_delimiter(token, &delimiter_depth, &brace_depth, &bracket_depth, bracket_literal, bracket_repeat_count);
       expect_operand = false;
       saw_operand = true;
       continue;
@@ -459,7 +478,7 @@ static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t 
       continue;
     }
     if (canon_is_symbol_text(token, ".")) {
-      if (expect_operand) return canon_fail(parser->diag, token, "expected expression before member access", "expression", ".");
+      if (!canon_validate_member_access(parser, previous, token, next, expect_operand)) return false;
       expect_operand = true;
       continue;
     }

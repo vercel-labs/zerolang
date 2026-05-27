@@ -373,6 +373,10 @@ static void rejects_noncanonical_spellings(void) {
   expect_rejects("fn bad(ok: Bool) -> Void {\n    if ok {\n        return\n    } return\n}\n", "same-line statement after if block");
   expect_rejects("fn bad() -> Void {\n    defer {\n        return\n    } return\n}\n", "same-line statement after defer block");
   expect_rejects("fn bad() -> Void {\n    let ok: Bool = 1 < 2 > (3)\n}\n", "numeric comparison mistaken for generic call");
+  expect_rejects("fn bad(foo: Foo) -> Void {\n    let value: i32 = foo.1\n}\n", "numeric member access");
+  expect_rejects("fn bad(foo: Foo) -> Void {\n    let value: i32 = foo.()\n}\n", "group member access");
+  expect_rejects("fn bad(foo: Foo) -> Void {\n    let value: i32 = foo.[0]\n}\n", "index member access");
+  expect_rejects("fn bad(items: Items) -> Void {\n    let value: i32 = items[]\n}\n", "empty index expression");
 }
 
 static void parse_file_arg(const char *mode, const char *path) {
