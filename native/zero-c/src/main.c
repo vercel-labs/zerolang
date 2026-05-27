@@ -3330,7 +3330,7 @@ static void print_help(void) {
   printf("  zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph> <file.0|file.row|project|zero.json|graph-artifact>\n");
   printf("  zero graph view [--json] --out <file.0> <graph-artifact-or-package>\n");
   printf("  zero graph size [--json] [--target <target>] --out <artifact> <graph-artifact-or-package>\n");
-  printf("  zero graph patch [--json] --out <file> <graph-artifact-or-package> <patch-file>\n");
+  printf("  zero graph patch [--json] --out <program-graph> <graph-artifact-or-package> <patch-file>\n");
   printf("  zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <graph-artifact-or-package>\n");
   printf("  zero doc [--json] <file.0|file.row|project|zero.json>\n");
   printf("  zero size [--json] [--out <artifact>] <file.0|file.row|project|zero.json>\n");
@@ -3413,7 +3413,7 @@ static void print_command_help(const char *command) {
     printf("Output usage: zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph> <input>\n");
     printf("View output usage: zero graph view [--json] --out <file.0> <graph-artifact-or-package>\n");
     printf("Size output usage: zero graph size [--json] [--target <target>] --out <artifact> <input>\n");
-    printf("Patch output usage: zero graph patch [--json] --out <file> <input> <patch-file>\n\n");
+    printf("Patch output usage: zero graph patch [--json] --out <program-graph> <input> <patch-file>\n\n");
     printf("Build usage: zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact-or-package>\n\nRun usage: zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <graph-artifact-or-package> [-- args...]\n\nTest usage: zero graph test [--json] [--filter <name>] [--target <target>] <graph-artifact-or-package>\n\n");
     printf("Inspect modules, symbols, capabilities, static metadata, stdlib helpers, or deterministic ProgramGraph artifacts.\n\n");
     printf("Subcommands:\n");
@@ -10207,49 +10207,43 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
     return reject_graph_unsupported_out(command, diag);
   }
   if (graph_roundtrip) return run_graph_roundtrip_command(command, input, program, diag);
-  ZBuf graph;
-  zbuf_init(&graph);
-  bool import_json_out = graph_import && command->json && command->out;
-  if (graph_dump) z_append_program_graph_dump(&graph, input, program, command->json && !import_json_out);
-  else append_graph_json(&graph, input, program, target, command);
-  if (graph_dump && command->out && (!command->json || graph_import)) {
-    ZProgramGraph stored;
-    if (!z_program_graph_parse_dump(graph.data ? graph.data : "", &stored, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-      else print_diag(diag->path ? diag->path : command->out, diag);
-      zbuf_free(&graph);
+  if (graph_dump && command->out) {
+    ZProgramGraph stored = {0};
+    if (!z_program_graph_from_program(input, program, &stored)) {
+      diag->code = 2002;
+      diag->path = input ? input->source_file : command->input;
+      diag->line = 1;
+      diag->column = 1;
+      diag->length = 1;
+      snprintf(diag->message, sizeof(diag->message), "failed to build source program graph");
+      if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+      else print_diag(diag->path ? diag->path : command->input, diag);
       return 1;
     }
     if (!z_program_graph_save(command->out, &stored, diag)) {
-      z_program_graph_free(&stored);
       if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
       else print_diag(diag->path ? diag->path : command->out, diag);
-      zbuf_free(&graph);
+      z_program_graph_free(&stored);
       return 1;
     }
-    if (import_json_out) {
+    if (command->json) {
       ZProgramGraphValidation validation = {0};
       z_program_graph_validate(&stored, &validation);
       ZBuf json;
       zbuf_init(&json);
-      append_graph_import_json(&json, command, input, &stored, &validation);
+      if (graph_import) append_graph_import_json(&json, command, input, &stored, &validation);
+      else z_program_graph_append_json(&json, &stored, &validation);
       fputs(json.data, stdout);
       zbuf_free(&json);
     }
     z_program_graph_free(&stored);
-    zbuf_free(&graph);
     return 0;
   }
-  if (command->out) {
-    if (!z_write_file(command->out, graph.data ? graph.data : "", diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-      else print_diag(diag->path ? diag->path : command->out, diag);
-      zbuf_free(&graph);
-      return 1;
-    }
-  } else {
-    fputs(graph.data, stdout);
-  }
+  ZBuf graph;
+  zbuf_init(&graph);
+  if (graph_dump) z_append_program_graph_dump(&graph, input, program, command->json);
+  else append_graph_json(&graph, input, program, target, command);
+  fputs(graph.data, stdout);
   zbuf_free(&graph);
   return 0;
 }

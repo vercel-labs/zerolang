@@ -597,7 +597,7 @@ function knownReturnTypeDivergenceMatches(mismatch) {
     known.checkerReturnType === mismatch.checkerReturnType;
 }
 
-function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
+function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, programGraph) {
   const violations = [];
   for (const path of Object.keys(files).sort()) {
     if (!fileBudgets[path]) {
@@ -788,6 +788,12 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats) {
     violations.push({
       kind: "stdlib-specialized-helper-kind-mismatch",
       mismatches: stdlib.specializedHelperKindMismatches,
+    });
+  }
+  if (programGraph.mainRawGraphCommandOutWrites > 0) {
+    violations.push({
+      kind: "program-graph-raw-command-output-write",
+      programGraph,
     });
   }
   if (!backendFormats.directTarget.ruleMatrix ||
@@ -1457,13 +1463,20 @@ const backendFormats = {
       .map(([path]) => path),
   },
 };
-const violations = budgetViolations(files, allLargeFunctions, stdlib, backendFormats);
+const programGraph = {
+  mainRawGraphCommandOutWrites: countMatches(
+    cCodeText(main),
+    /\bz_write_file\s*\(\s*command->out\s*,\s*graph\.data/g,
+  ),
+};
+const violations = budgetViolations(files, allLargeFunctions, stdlib, backendFormats, programGraph);
 
 const report = {
   schema: 1,
   files,
   largeFunctions: allLargeFunctions.slice(0, 25),
   stdlib,
+  programGraph,
   backendFormats,
   budget: {
     ok: violations.length === 0,
