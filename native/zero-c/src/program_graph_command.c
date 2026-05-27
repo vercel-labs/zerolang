@@ -87,7 +87,7 @@ ZProgramGraphOutputContract z_program_graph_command_output_contract(const char *
   return item ? item->out_contract : fallback;
 }
 
-bool z_program_graph_direct_command_uses_manifest_input(const char *command) {
+bool z_program_graph_direct_command_uses_graph_input(const char *command) {
   static const char *const commands[] = {"check", "build", "run", "test", "size", "ship"};
   for (size_t i = 0; command && i < sizeof(commands) / sizeof(commands[0]); i++) {
     if (strcmp(command, commands[i]) == 0) return true;

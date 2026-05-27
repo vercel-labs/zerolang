@@ -116,6 +116,9 @@ roundtrips source input.
 The direct `check`, `size`, `build`, `run`, `test`, and `ship` commands use
 that graph entrypoint for packages that declare it; packages without
 `targets.cli.graph` continue to use `targets.cli.main`.
+Those direct commands also load a `.0` input as ProgramGraph source storage when
+the file starts with the ProgramGraph schema header; ordinary row `.0` files
+continue through the row parser.
 
 ## ProgramGraph Patches
 

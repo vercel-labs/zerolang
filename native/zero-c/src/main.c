@@ -10074,7 +10074,7 @@ static bool resolve_graph_command_manifest_input(Command *command, bool *artifac
 
 static bool resolve_direct_command_manifest_graph_input(Command *command, bool *handled, ZDiag *diag) {
   if (handled) *handled = false;
-  if (!command || !command->command || !command->input || !z_program_graph_direct_command_uses_manifest_input(command->command)) return true;
+  if (!command || !command->command || !command->input || !z_program_graph_direct_command_uses_graph_input(command->command)) return true;
   char *artifact_path = NULL;
   bool resolved = false;
   if (!z_resolve_manifest_graph_artifact_path(command->input, &artifact_path, &resolved, false, diag)) return false;
@@ -10584,7 +10584,11 @@ int main(int argc, char **argv) {
   Program program = {0};
   bool graph_build_command = strcmp(command.command, "graph") == 0 && command.kind && strcmp(command.kind, "build") == 0;
   bool graph_test_command = strcmp(command.command, "graph") == 0 && command.kind && strcmp(command.kind, "test") == 0;
-  if (direct_graph_manifest_command || graph_build_command || graph_run_command || graph_test_command) {
+  bool direct_graph_source_command =
+    !direct_graph_manifest_command &&
+    z_program_graph_direct_command_uses_graph_input(command.command) &&
+    path_has_program_graph_storage_header(command.input);
+  if (direct_graph_manifest_command || direct_graph_source_command || graph_build_command || graph_run_command || graph_test_command) {
     ZProgramGraphArtifactSource graph_source = {0};
     if (!z_program_graph_prepare_artifact_input(command.input, target, &program, &input, &graph_source, &diag)) {
       if (command.json) print_diag_json(diag.path ? diag.path : command.input, &diag);
@@ -10605,7 +10609,7 @@ int main(int argc, char **argv) {
     input.check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(&input, target, NULL, "checked-body"));
     input.specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(&input, target, command.profile, "specialization"));
     command.graph_source = graph_source;
-    if (!direct_graph_manifest_command) {
+    if (!direct_graph_manifest_command && !direct_graph_source_command) {
       command.command = graph_run_command ? "run" : (graph_test_command ? "test" : "build");
       command.kind = NULL;
     }
