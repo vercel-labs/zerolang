@@ -109,6 +109,12 @@ agent-first format that reuses Zero's row syntax — each
 command produces a record with named fields, nested objects, and
 arrays.
 
+**Since Zero 0.1.4, `--zdn` output includes all fields previously
+available only with `--json`.** Each ZDN record contains the same
+compiler metadata — compileTime, metaCache, interfaceFingerprints,
+incrementalInvalidation, profileSemantics, toolchain plans, and more —
+formatted in ZDN's indentation-based syntax rather than JSON brackets.
+
 `--zdn` is a shorthand for `--format zdn`. Both flags produce
 the same output. Supported across all commands that accept
 `--json`:

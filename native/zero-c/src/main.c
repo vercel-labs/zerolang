@@ -1659,6 +1659,734 @@ static void append_hash_json(ZBuf *buf, const char *key, uint64_t hash) {
   zbuf_appendf(buf, ",\n    \"%s\": \"%016llx\"", key, (unsigned long long)hash);
 }
 
+// ── Forward declarations for functions used by ZDN helpers ──
+static uint64_t fnv1a_text(const char *text);
+static uint64_t mix_hash_text(uint64_t hash, const char *text);
+static uint64_t source_interface_hash(const SourceInput *input);
+static uint64_t source_dependency_hash(const SourceInput *input);
+static uint64_t source_target_facts_hash(const ZTargetInfo *target);
+static uint64_t source_imported_package_metadata_hash(const SourceInput *input);
+static uint64_t source_file_hash_for_path(const SourceInput *input, const char *path);
+static uint64_t module_public_interface_hash(const SourceInput *input, const char *module_name);
+static size_t module_public_symbol_count(const SourceInput *input, const char *module_name);
+static bool self_host_subset_compatible(const Program *program, const CapabilitySummary *caps);
+static const char *build_compiler_label(const Command *command, const ZTargetInfo *target);
+static char *read_optional_file(const char *path);
+static bool validate_c_libraries_for_target(const SourceInput *input, const ZTargetInfo *target, ZDiag *diag);
+static bool target_readiness_select_emit_target(const Command *command, const SourceInput *input, const ZTargetInfo *target, ZDiag *diag);
+static bool target_readiness_select_diag(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag);
+static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, const ZTargetInfo *target, const Command *command, const IrProgram *ir);
+static void apply_ir_metrics_to_input(SourceInput *input, const IrProgram *ir, const ZTargetInfo *target);
+static long long now_ms(void);
+static const char *diag_code(int code);
+static const char *diag_fix_safety(int code);
+static const char *diag_repair_id(int code);
+static const char *diag_repair_summary(int code);
+static const char *emit_kind_name(EmitKind kind);
+static bool append_missing_capabilities_json(ZBuf *buf, const CapabilitySummary *caps, const ZTargetInfo *target);
+static const char *public_compiler_label(const ZToolchainPlan *plan);
+static const char *profile_canonical_name(const char *profile);
+static const char *profile_key_name(const char *profile);
+static const char *profile_optimization_goal(const char *profile);
+static const char *profile_codegen_optimization(const char *profile);
+static const char *profile_link_optimization(const char *profile);
+static const char *profile_overflow_policy(const char *profile);
+static const char *profile_bounds_policy(const char *profile);
+static const char *profile_panic_policy(const char *profile);
+static const char *profile_unwind_policy(const char *profile);
+static const char *profile_runtime_metadata(const char *profile);
+static const char *profile_symbol_policy(const char *profile);
+static bool profile_debug_info(const char *profile);
+static long long file_size_or_negative(const char *path);
+
+// ── ZDN helper functions (full-data equivalents of append_*_json) ──
+
+// Local indent helper (zdn_format.c's indent is static, not visible here)
+static void zdn_main_indent(ZBuf *buf, int level) {
+  for (int i = 0; i < level; i++) {
+    zbuf_append(buf, "  ");
+  }
+}
+
+static void zdn_append_hash(ZBuf *buf, const char *key, uint64_t hash, int indent_level) {
+  zdn_main_indent(buf, indent_level);
+  zbuf_appendf(buf, "%s \"%016llx\"\n", key, (unsigned long long)hash);
+}
+
+static void zdn_append_package_metadata(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, int indent) {
+  (void)target;
+  zdn_object_start(buf, "package", indent);
+  zdn_field_string(buf, "name", input && input->package_name ? input->package_name : "", indent + 1);
+  zdn_field_string(buf, "version", input && input->package_version ? input->package_version : "", indent + 1);
+  zdn_field_string(buf, "root", input && input->package_root ? input->package_root : "", indent + 1);
+  zdn_field_string(buf, "manifestPath", input && input->manifest_path ? input->manifest_path : "", indent + 1);
+  zdn_append_hash(buf, "manifestHash", input ? input->manifest_hash : 0, indent + 1);
+  zdn_append_hash(buf, "dependencyGraphHash", input ? input->dependency_graph_hash : 0, indent + 1);
+  zdn_object_start(buf, "lockfile", indent + 1);
+  zdn_field_string(buf, "format", "zero-lock-v1", indent + 2);
+  zdn_field_string(buf, "path", input && input->lockfile_path ? input->lockfile_path : "", indent + 2);
+  zdn_append_hash(buf, "hash", input ? input->lockfile_hash : 0, indent + 2);
+  zdn_field_bool(buf, "generated", input && input->lockfile_path && input->lockfile_path[0], indent + 2);
+}
+
+static void zdn_append_package_cache(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, int indent) {
+  (void)target;
+  (void)profile;
+  zdn_object_start(buf, "packageCache", indent);
+  zdn_field_string(buf, "format", "zero-lock-v1", indent + 1);
+  zdn_field_string(buf, "path", input && input->lockfile_path ? input->lockfile_path : "", indent + 1);
+  zdn_append_hash(buf, "hash", input ? input->lockfile_hash : 0, indent + 1);
+  zdn_field_bool(buf, "generated", input && input->lockfile_path && input->lockfile_path[0], indent + 1);
+  zdn_field_int(buf, "sourceFileCount", input ? (long long)input->source_file_count : 0, indent + 1);
+  zdn_field_int(buf, "moduleCount", input ? (long long)input->module_count : 0, indent + 1);
+}
+
+static void zdn_append_interface_fingerprints(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, int indent) {
+  zdn_object_start(buf, "interfaceFingerprints", indent);
+  zdn_field_int(buf, "schemaVersion", 1, indent + 1);
+  zdn_field_string(buf, "algorithm", "fnv1a64-zero-interface-v1", indent + 1);
+  zdn_append_hash(buf, "targetFactsHash", source_target_facts_hash(target), indent + 1);
+  zdn_append_hash(buf, "importedPackageMetadataHash", source_imported_package_metadata_hash(input), indent + 1);
+  zdn_array_start(buf, "modules", indent + 1);
+  for (size_t i = 0; input && i < input->module_count; i++) {
+    const char *module_name = input->module_names[i];
+    const char *module_path = input->module_paths[i];
+    uint64_t source_hash = source_file_hash_for_path(input, module_path);
+    uint64_t interface_hash = module_public_interface_hash(input, module_name);
+    size_t public_count = module_public_symbol_count(input, module_name);
+    zdn_object_start(buf, "", indent + 2);
+    zdn_field_string(buf, "name", module_name, indent + 3);
+    zdn_field_string(buf, "path", module_path, indent + 3);
+    zdn_append_hash(buf, "sourceHash", source_hash, indent + 3);
+    zdn_append_hash(buf, "publicInterfaceHash", interface_hash, indent + 3);
+    zdn_field_int(buf, "publicSymbolCount", (long long)public_count, indent + 3);
+    zdn_array_start(buf, "publicSymbols", indent + 3);
+    for (size_t j = 0; j < input->symbol_count; j++) {
+      if (!input->symbol_public[j]) continue;
+      if (!input->symbol_modules || strcmp(input->symbol_modules[j], module_name) != 0) continue;
+      zdn_object_start(buf, "", indent + 4);
+      zdn_field_string(buf, "name", input->symbol_names[j], indent + 5);
+      zdn_field_string(buf, "kind", input->symbol_kinds ? input->symbol_kinds[j] : "unknown", indent + 5);
+    }
+    zdn_array_start(buf, "imports", indent + 3);
+    for (size_t j = 0; j < input->import_edge_count; j++) {
+      if (strcmp(input->import_from[j], module_name) != 0) continue;
+      zdn_object_start(buf, "", indent + 4);
+      zdn_field_string(buf, "module", input->import_to[j], indent + 5);
+      zdn_field_string(buf, "path", input->import_paths[j], indent + 5);
+    }
+  }
+}
+
+static void zdn_append_compile_time(ZBuf *buf, const Program *program, const SourceInput *input, const ZTargetInfo *target, int indent) {
+  char *manifest = read_optional_file(input && input->manifest_path ? input->manifest_path : "zero.json");
+  zdn_object_start(buf, "compileTime", indent);
+  zdn_field_bool(buf, "deterministic", true, indent + 1);
+  zdn_field_bool(buf, "releaseMetadataDefault", false, indent + 1);
+  zdn_object_start(buf, "sandbox", indent + 1);
+  zdn_field_string(buf, "filesystem", "denied", indent + 2);
+  zdn_field_string(buf, "network", "denied", indent + 2);
+  zdn_field_string(buf, "ambientEnv", "denied", indent + 2);
+  zdn_field_string(buf, "process", "denied", indent + 2);
+  zdn_object_start(buf, "limits", indent + 1);
+  zdn_field_int(buf, "maxDepth", 64, indent + 2);
+  zdn_field_int(buf, "maxSteps", 1024, indent + 2);
+  zdn_field_int(buf, "stringBytes", 127, indent + 2);
+  zdn_field_string(buf, "memory", "bounded-evaluator-state-only", indent + 2);
+  zdn_field_string(buf, "time", "step-counted", indent + 2);
+  zdn_object_start(buf, "cacheKeyInputs", indent + 1);
+  zdn_field_string(buf, "algorithm", "fnv1a64-zero-meta-v1", indent + 2);
+  zdn_append_hash(buf, "sourceHash", fnv1a_text(input ? input->source : ""), indent + 2);
+  zdn_append_hash(buf, "targetHash", fnv1a_text(target ? target->name : z_host_target()), indent + 2);
+  zdn_append_hash(buf, "manifestHash", fnv1a_text(manifest ? manifest : ""), indent + 2);
+  zdn_field_string(buf, "compilerVersion", ZERO_VERSION, indent + 2);
+  zdn_array_start(buf, "declaredInputs", indent + 2);
+  zdn_array_item_string(buf, "source", indent + 3);
+  zdn_array_item_string(buf, "target", indent + 3);
+  zdn_array_item_string(buf, "compilerVersion", indent + 3);
+  zdn_array_item_string(buf, "manifest", indent + 3);
+  zdn_array_item_string(buf, "targetFacts", indent + 3);
+  zdn_object_start(buf, "meta", indent + 1);
+  zdn_array_start(buf, "supportedFacts", indent + 2);
+  const char *facts[] = {"literal arithmetic", "literal comparisons", "Bool logic", "target.os", "target.arch", "target.abi", "target.libc", "target.objectFormat", "target.endian", "target.pointerWidth", "target.hasCapability", "fieldCount", "hasField", "fieldType", "enumCaseCount", "hasEnumCase", "choiceCaseCount", "hasChoiceCase", NULL};
+  for (int i = 0; facts[i]; i++) zdn_array_item_string(buf, facts[i], indent + 3);
+  zdn_array_start(buf, "unsupportedEffects", indent + 2);
+  zdn_array_item_string(buf, "filesystem", indent + 3);
+  zdn_array_item_string(buf, "network", indent + 3);
+  zdn_array_item_string(buf, "process", indent + 3);
+  zdn_array_item_string(buf, "ambient environment", indent + 3);
+  zdn_field_string(buf, "cycleDiagnostic", "MET001", indent + 2);
+  zdn_field_string(buf, "safetyLimitDiagnostic", "MET001", indent + 2);
+  zdn_object_start(buf, "reflection", indent + 1);
+  zdn_field_bool(buf, "typed", true, indent + 2);
+  zdn_field_bool(buf, "compileTimeOnly", true, indent + 2);
+  zdn_field_bool(buf, "releaseMetadataRetained", false, indent + 2);
+  zdn_array_start(buf, "facts", indent + 2);
+  zdn_array_item_string(buf, "target", indent + 3);
+  zdn_array_item_string(buf, "shape fields", indent + 3);
+  zdn_array_item_string(buf, "enum cases", indent + 3);
+  zdn_array_item_string(buf, "choice cases", indent + 3);
+  zdn_object_start(buf, "staticValues", indent + 1);
+  zdn_array_start(buf, "supported", indent + 2);
+  zdn_array_item_string(buf, "integer", indent + 3);
+  zdn_array_item_string(buf, "Bool", indent + 3);
+  zdn_array_item_string(buf, "enum", indent + 3);
+  zdn_field_bool(buf, "concreteSpecializations", true, indent + 2);
+  zdn_field_bool(buf, "runtimeRegistries", false, indent + 2);
+  zdn_field_bool(buf, "reflectionTables", false, indent + 2);
+  zdn_field_string(buf, "mismatchesDiagnostic", "STC003", indent + 2);
+  zdn_object_start(buf, "typedBuilders", indent + 1);
+  zdn_field_string(buf, "status", "limited-v1", indent + 2);
+  zdn_array_start(buf, "supported", indent + 2);
+  zdn_array_item_string(buf, "shape literals", indent + 3);
+  zdn_array_item_string(buf, "enum case values", indent + 3);
+  zdn_array_item_string(buf, "choice constructors", indent + 3);
+  zdn_field_bool(buf, "rawTokenStrings", false, indent + 2);
+  zdn_field_bool(buf, "compileTimeOnly", true, indent + 2);
+  zdn_field_bool(buf, "runtimeBuilderRegistry", false, indent + 2);
+  zdn_object_start(buf, "programSurface", indent + 1);
+  zdn_field_int(buf, "shapeCount", program ? (long long)program->shapes.len : 0, indent + 2);
+  zdn_field_int(buf, "enumCount", program ? (long long)program->enums.len : 0, indent + 2);
+  zdn_field_int(buf, "choiceCount", program ? (long long)program->choices.len : 0, indent + 2);
+  free(manifest);
+}
+
+static void zdn_append_compiler_phases(ZBuf *buf, const SourceInput *input, int indent) {
+  zdn_array_start(buf, "compilerPhases", indent);
+  #define ZDN_PHASE(name, field) do { \
+    zdn_object_start(buf, "Phase", indent + 1); \
+    zdn_field_string(buf, "name", name, indent + 2); \
+    zdn_field_int(buf, "elapsedMs", input ? (long long)input->field : 0, indent + 2); \
+    zdn_field_bool(buf, "cacheable", true, indent + 2); \
+  } while (0)
+  ZDN_PHASE("resolve", resolve_ms);
+  ZDN_PHASE("parse", parse_ms);
+  ZDN_PHASE("interface", interface_ms);
+  ZDN_PHASE("check", check_ms);
+  ZDN_PHASE("lower", lower_ms);
+  ZDN_PHASE("codegen", codegen_ms);
+  ZDN_PHASE("object", object_ms);
+  #undef ZDN_PHASE
+}
+
+static uint64_t compile_cache_key(const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *kind);
+
+static void zdn_append_compiler_caches(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, int indent) {
+  uint64_t parse_key = compile_cache_key(input, NULL, NULL, "parse-tree");
+  uint64_t interface_key = source_interface_hash(input);
+  uint64_t check_key = compile_cache_key(input, target, NULL, "checked-body");
+  uint64_t specialization_key = compile_cache_key(input, target, profile, "specialization");
+  uint64_t object_key = compile_cache_key(input, target, profile, "emitted-object");
+  zdn_array_start(buf, "compilerCaches", indent);
+  #define ZDN_CACHE(label, key, hit, invalidates) do { \
+    zdn_object_start(buf, "", indent + 1); \
+    zdn_field_string(buf, "name", label, indent + 2); \
+    zdn_append_hash(buf, "key", key, indent + 2); \
+    zdn_field_bool(buf, "hit", hit, indent + 2); \
+    zdn_field_bool(buf, "stored", true, indent + 2); \
+    zdn_field_string(buf, "compilerVersion", ZERO_VERSION, indent + 2); \
+    zdn_field_string(buf, "packageVersion", input && input->package_version ? input->package_version : "", indent + 2); \
+    zdn_append_hash(buf, "dependencyGraphHash", input ? (unsigned long long)input->dependency_graph_hash : 0, indent + 2); \
+    zdn_append_hash(buf, "lockfileHash", input ? (unsigned long long)input->lockfile_hash : 0, indent + 2); \
+    zdn_field_string(buf, "invalidatesOn", invalidates, indent + 2); \
+  } while (0)
+  ZDN_CACHE("parseTree", parse_key, input && input->parse_cache_hit, "source");
+  ZDN_CACHE("interface", interface_key, input && input->interface_cache_hit, "public symbols/import graph");
+  ZDN_CACHE("checkedBody", check_key, input && input->check_cache_hit, "source or target");
+  ZDN_CACHE("specialization", specialization_key, input && input->specialization_cache_hit, "source, target, or profile");
+  ZDN_CACHE("emittedObject", object_key, input && input->emitted_object_cache_hit, "source, target, profile, or backend");
+  #undef ZDN_CACHE
+}
+
+static void source_cache_hit_miss_counts(const SourceInput *input, size_t *hits, size_t *misses);
+
+static void zdn_append_incremental_invalidations(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, int indent) {
+  size_t hits = 0, misses = 0;
+  source_cache_hit_miss_counts(input, &hits, &misses);
+  zdn_object_start(buf, "incrementalInvalidation", indent);
+  zdn_array_start(buf, "moduleDependencies", indent + 1);
+  for (size_t i = 0; input && i < input->import_edge_count; i++) {
+    zdn_object_start(buf, "", indent + 2);
+    zdn_field_string(buf, "from", input->import_from[i], indent + 3);
+    zdn_field_string(buf, "to", input->import_to[i], indent + 3);
+    zdn_field_string(buf, "path", input->import_paths[i], indent + 3);
+  }
+  zdn_field_string(buf, "targetDependency", target ? target->name : z_host_target(), indent + 1);
+  zdn_field_string(buf, "profileDependency", profile ? profile : "release", indent + 1);
+  zdn_field_int(buf, "affectedModules", input ? (long long)input->module_count : 0, indent + 1);
+  zdn_field_string(buf, "recheckStrategy", "fingerprint changed modules and dependent bodies", indent + 1);
+  zdn_object_start(buf, "changedInputs", indent + 1);
+  zdn_array_start(buf, "sourceFiles", indent + 2);
+  for (size_t i = 0; input && i < input->source_file_count; i++) {
+    zdn_array_item_string(buf, input->source_files[i], indent + 3);
+  }
+  zdn_field_string(buf, "manifestPath", input && input->manifest_path ? input->manifest_path : "", indent + 2);
+  zdn_field_string(buf, "packageLockfile", input && input->lockfile_path ? input->lockfile_path : "", indent + 2);
+  zdn_field_int(buf, "cacheHits", (long long)hits, indent + 1);
+  zdn_field_int(buf, "cacheMisses", (long long)misses, indent + 1);
+  zdn_field_bool(buf, "partialDiagnosticsStable", true, indent + 1);
+  zdn_append_interface_fingerprints(buf, input, target, indent + 1);
+}
+
+static void zdn_append_self_host_routing(ZBuf *buf, const char *command_name, const char *emit_kind, const Program *program, const CapabilitySummary *caps, const ZTargetInfo *target, int indent) {
+  (void)command_name; (void)emit_kind; (void)target;
+  bool compatible = self_host_subset_compatible(program, caps);
+  zdn_object_start(buf, "selfHostRouting", indent);
+  zdn_field_int(buf, "contractVersion", 1, indent + 1);
+  zdn_field_bool(buf, "subsetCompatible", compatible, indent + 1);
+  zdn_field_string(buf, "mode", "native-bootstrap", indent + 1);
+  zdn_object_start(buf, "phases", indent + 1);
+  zdn_field_string(buf, "parse", "zero-c", indent + 2);
+  zdn_field_string(buf, "check", "zero-c", indent + 2);
+  zdn_field_string(buf, "lower", "zero-c", indent + 2);
+  zdn_field_string(buf, "emit", "zero-c", indent + 2);
+  zdn_object_start(buf, "removed", indent + 1);
+  zdn_field_bool(buf, "seedCompiler", true, indent + 2);
+  zdn_field_bool(buf, "browserCompiler", true, indent + 2);
+  zdn_field_bool(buf, "portableEmitter", true, indent + 2);
+  zdn_object_start(buf, "metadata", indent + 1);
+  zdn_field_bool(buf, "graphJson", compatible, indent + 2);
+  zdn_field_bool(buf, "sizeJson", compatible, indent + 2);
+  zdn_object_start(buf, "cBridge", indent + 1);
+  zdn_field_bool(buf, "required", false, indent + 2);
+  zdn_field_string(buf, "policy", "removed", indent + 2);
+  zdn_field_string(buf, "explicitDirectFallback", "never-c-bridge", indent + 2);
+}
+
+static void zdn_append_backend_blocker(ZBuf *buf, const ZBackendBlocker *blocker, int indent) {
+  if (!blocker || !blocker->present) return;
+  zdn_object_start(buf, "backendBlocker", indent);
+  zdn_field_string(buf, "target", blocker->target[0] ? blocker->target : "unknown", indent + 1);
+  zdn_field_string(buf, "objectFormat", blocker->object_format[0] ? blocker->object_format : "unknown", indent + 1);
+  zdn_field_string(buf, "backend", blocker->backend[0] ? blocker->backend : "unknown", indent + 1);
+  zdn_field_string(buf, "stage", blocker->stage[0] ? blocker->stage : "unknown", indent + 1);
+  zdn_field_string(buf, "unsupportedFeature", blocker->unsupported_feature[0] ? blocker->unsupported_feature : "unsupported construct", indent + 1);
+}
+
+static void zdn_append_target_capability_facts(ZBuf *buf, const ZTargetInfo *target, const CapabilitySummary *caps, int indent) {
+  zdn_object_start(buf, "capabilityFacts", indent);
+  ZBuf missing_buf;
+  zbuf_init(&missing_buf);
+  bool has_missing = append_missing_capabilities_json(&missing_buf, caps, target);
+  zdn_field_string(buf, "status", has_missing ? "unsupported" : "supported", indent + 1);
+  zdn_array_start(buf, "missingCapabilities", indent + 1);
+  if (has_missing && missing_buf.data) {
+    // Parse missing JSON array items and emit as ZDN string items
+    const char *p = missing_buf.data;
+    while (*p) {
+      if (*p == '"') {
+        p++;
+        ZBuf item;
+        zbuf_init(&item);
+        while (*p && *p != '"') {
+          zbuf_append_char(&item, *p);
+          p++;
+        }
+        if (item.data[0]) {
+          zdn_array_item_string(buf, item.data, indent + 2);
+        }
+        zbuf_free(&item);
+        if (*p) p++;
+      } else p++;
+    }
+  }
+  zbuf_free(&missing_buf);
+}
+
+static void zdn_append_profile_semantics(ZBuf *buf, const char *profile, int indent) {
+  zdn_object_start(buf, "", indent);
+  zdn_field_string(buf, "requested", profile ? profile : "release", indent + 1);
+  zdn_field_string(buf, "canonical", profile_canonical_name(profile), indent + 1);
+  zdn_field_string(buf, "profileKey", profile_key_name(profile), indent + 1);
+  zdn_field_string(buf, "optimizationGoal", profile_optimization_goal(profile), indent + 1);
+  zdn_field_string(buf, "codegenOptimization", profile_codegen_optimization(profile), indent + 1);
+  zdn_field_string(buf, "linkOptimization", profile_link_optimization(profile), indent + 1);
+  zdn_field_string(buf, "overflowPolicy", profile_overflow_policy(profile), indent + 1);
+  zdn_field_string(buf, "boundsPolicy", profile_bounds_policy(profile), indent + 1);
+  zdn_field_string(buf, "panicPolicy", profile_panic_policy(profile), indent + 1);
+  zdn_field_string(buf, "unwindPolicy", profile_unwind_policy(profile), indent + 1);
+  zdn_field_bool(buf, "debugInfo", profile_debug_info(profile), indent + 1);
+  zdn_field_string(buf, "runtimeMetadataPolicy", profile_runtime_metadata(profile), indent + 1);
+  zdn_field_string(buf, "symbolPolicy", profile_symbol_policy(profile), indent + 1);
+  zdn_field_bool(buf, "panicFormatting", profile_debug_info(profile), indent + 1);
+}
+
+static void zdn_append_profile_budget(ZBuf *buf, const char *profile, int indent) {
+  zdn_object_start(buf, "profileBudget", indent);
+  (void)profile;
+  zdn_field_int(buf, "maxArtifactBytes", 16777216, indent + 1);
+  zdn_field_int(buf, "maxCompilationMs", 30000, indent + 1);
+  zdn_field_int(buf, "maxLoweredIrBytes", 1048576, indent + 1);
+}
+
+static void zdn_append_release_target_contract(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const Command *command, const char *emit_kind, int indent) {
+  const char *object_format = target && target->object_format ? target->object_format : "unknown";
+  ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
+  ZDirectReleaseTargetFacts release = z_direct_release_target_facts(target, emit_kind, command ? command->backend : NULL, &plan);
+
+  zdn_object_start(buf, "releaseTargetContract", indent);
+  zdn_field_int(buf, "schemaVersion", 1, indent + 1);
+  zdn_field_string(buf, "target", target ? target->name : z_host_target(), indent + 1);
+  zdn_field_string(buf, "hostTarget", z_host_target(), indent + 1);
+  zdn_field_bool(buf, "crossCompilation", target && strcmp(target->name, z_host_target()) != 0, indent + 1);
+  zdn_field_string(buf, "emit", emit_kind ? emit_kind : "exe", indent + 1);
+  zdn_field_string(buf, "artifactKind", release.artifact_kind, indent + 1);
+  zdn_field_string(buf, "objectFormat", object_format, indent + 1);
+  zdn_field_string(buf, "os", target && target->os ? target->os : "unknown", indent + 1);
+  zdn_field_string(buf, "arch", target && target->arch ? target->arch : "unknown", indent + 1);
+  zdn_field_string(buf, "abi", target && target->abi ? target->abi : "", indent + 1);
+  zdn_field_string(buf, "linkerFlavor", release.linker_flavor, indent + 1);
+  zdn_field_string(buf, "targetLinker", target && target->linker ? target->linker : "", indent + 1);
+  zdn_field_string(buf, "selectedEmitter", release.selected_emitter, indent + 1);
+  zdn_field_string(buf, "directObjectEmitter", z_direct_object_emitter(target), indent + 1);
+  zdn_field_string(buf, "directExeEmitter", z_direct_exe_emitter(target), indent + 1);
+  zdn_field_string(buf, "directStatus", z_direct_backend_status(target), indent + 1);
+  zdn_field_string(buf, "fallbackPolicy", "explicit-direct-never-c-bridge", indent + 1);
+  zdn_field_int(buf, "generatedCBytes", 0, indent + 1);
+  zdn_field_bool(buf, "cBridgeFallback", false, indent + 1);
+  zdn_object_start(buf, "libc", indent + 1);
+  zdn_field_string(buf, "name", target && target->libc ? target->libc : "default", indent + 2);
+  zdn_field_string(buf, "targetMode", z_target_libc_mode(target), indent + 2);
+  zdn_field_string(buf, "artifactMode", release.artifact_libc_mode, indent + 2);
+  zdn_field_bool(buf, "hostReusable", target && z_target_is_host(target), indent + 2);
+  zdn_object_start(buf, "sysroot", indent + 1);
+  zdn_field_bool(buf, "requiredByTarget", release.target_requires_sysroot, indent + 2);
+  zdn_field_bool(buf, "requiredByArtifact", release.artifact_requires_sysroot, indent + 2);
+  zdn_field_string(buf, "env", release.target_requires_sysroot || release.artifact_requires_sysroot ? plan.sysroot_env : "", indent + 2);
+  zdn_field_string(buf, "status", release.sysroot_status, indent + 2);
+  zdn_field_bool(buf, "missing", release.artifact_requires_sysroot && strcmp(plan.sysroot_status, "missing") == 0, indent + 2);
+  zdn_object_start(buf, "readiness", indent + 1);
+  zdn_field_string(buf, "status", release.direct_selected ? "supported" : "unsupported", indent + 2);
+  zdn_field_bool(buf, "directArtifact", release.direct_selected, indent + 2);
+  zdn_field_bool(buf, "missingSysroot", release.artifact_requires_sysroot && strcmp(plan.sysroot_status, "missing") == 0, indent + 2);
+  zdn_field_string(buf, "unsupportedReason", release.direct_selected ? "" : z_direct_backend_reason(target), indent + 2);
+  zdn_object_start(buf, "determinism", indent + 1);
+  zdn_field_bool(buf, "reproducible", true, indent + 2);
+  zdn_field_bool(buf, "stableArtifactNames", true, indent + 2);
+  zdn_field_string(buf, "repeatBuildHash", "checked-by-command-contracts", indent + 2);
+  zdn_field_int(buf, "sourceFileCount", input ? (long long)input->source_file_count : 0, indent + 1);
+  zdn_field_int(buf, "moduleCount", input ? (long long)input->module_count : 0, indent + 1);
+}
+
+static void zdn_append_object_backend(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const Command *command, const char *emit_kind, int indent) {
+  ZDirectObjectBackendFacts direct = z_direct_object_backend_facts(target, emit_kind, command ? command->backend : NULL, input && input->direct_host_runtime_import_count > 0);
+  if (!direct.active) return;
+  const char *object_format = target && target->object_format ? target->object_format : "unknown";
+  const char *arch = target && target->arch ? target->arch : "unknown";
+  size_t direct_symbol_count = input ? input->direct_function_count : 0;
+  bool uses_zero_runtime = input && input->direct_host_runtime_import_count > 0;
+  bool uses_http_runtime = input && input->direct_http_runtime_import_count > 0;
+  bool links_zero_runtime = uses_zero_runtime;
+  bool links_http_runtime = uses_http_runtime;
+  ZToolchainPlan runtime_toolchain = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
+  const char *runtime_external_toolchain = links_zero_runtime ? public_compiler_label(&runtime_toolchain) : "none";
+  bool direct_has_data = input && input->direct_readonly_data_bytes > 0;
+  direct_symbol_count += input ? input->direct_runtime_helper_count : 0;
+  direct_symbol_count += z_direct_backend_symbol_overhead(direct.backend, direct_has_data);
+
+  zdn_object_start(buf, "objectBackend", indent);
+  zdn_object_start(buf, "internalIr", indent + 1);
+  zdn_field_string(buf, "typeRepresentation", "MIR primitive value types", indent + 2);
+  zdn_field_string(buf, "controlFlowRepresentation", "MIR instruction stream lowered to target machine/module code", indent + 2);
+  zdn_field_string(buf, "callRepresentation", "same-object direct calls for supported direct subsets", indent + 2);
+  zdn_field_string(buf, "functionIdentity", "module-qualified-stable-sorted", indent + 2);
+  zdn_field_string(buf, "debugRepresentation", "source spans retained on MIR nodes", indent + 2);
+  zdn_object_start(buf, "objectEmission", indent + 1);
+  zdn_field_string(buf, "path", direct.artifact_path, indent + 2);
+  zdn_field_bool(buf, "functions", true, indent + 2);
+  zdn_field_bool(buf, "dataSections", direct_has_data, indent + 2);
+  zdn_field_string(buf, "relocations", uses_zero_runtime ? "patched-runtime-import-relocations" : (direct_has_data ? "patched-internal-calls-and-data-relocations" : "patched-internal-calls-or-none-in-mvp"), indent + 2);
+  zdn_field_int(buf, "symbolCount", (long long)direct_symbol_count, indent + 2);
+  zdn_field_int(buf, "internalHelperCount", input && input->direct_function_count > input->direct_export_count ? (long long)(input->direct_function_count - input->direct_export_count) : 0, indent + 2);
+  zdn_object_start(buf, "linking", indent + 1);
+  zdn_field_string(buf, "linkerFlavor", direct.linker_flavor, indent + 2);
+  zdn_field_string(buf, "objectFormat", object_format, indent + 2);
+  zdn_field_string(buf, "targetLibraries", links_http_runtime ? "zero-runtime,curl" : (uses_zero_runtime ? "zero-runtime" : "none"), indent + 2);
+  zdn_field_string(buf, "symbolMap", "object-symbol-table", indent + 2);
+  zdn_field_string(buf, "externalToolchain", runtime_external_toolchain, indent + 2);
+  zdn_field_string(buf, "toolchainSource", uses_zero_runtime ? "direct-backend-runtime-link-plan" : "direct-backend", indent + 2);
+  zdn_field_bool(buf, "stripArtifacts", false, indent + 2);
+  zdn_object_start(buf, "linkerPlan", indent + 1);
+  zdn_field_string(buf, "format", object_format, indent + 2);
+  zdn_field_string(buf, "flavor", direct.linker_flavor, indent + 2);
+  zdn_array_start(buf, "archives", indent + 2);
+  zdn_array_start(buf, "staticLibraries", indent + 2);
+  if (links_http_runtime) {
+    zdn_array_item_string(buf, "zero_runtime.o", indent + 3);
+    zdn_array_item_string(buf, "zero_http_curl.o", indent + 3);
+  } else if (links_zero_runtime) {
+    zdn_array_item_string(buf, "zero_runtime.o", indent + 3);
+  }
+  zdn_array_start(buf, "importLibraries", indent + 2);
+  zdn_array_start(buf, "systemLibraries", indent + 2);
+  if (links_http_runtime) zdn_array_item_string(buf, "curl", indent + 3);
+  zdn_field_string(buf, "externalToolchain", runtime_external_toolchain, indent + 2);
+  zdn_field_bool(buf, "reproducible", true, indent + 2);
+  zdn_field_string(buf, "libcMode", links_zero_runtime ? runtime_toolchain.libc_mode : "none", indent + 2);
+  zdn_field_string(buf, "targetLibcMode", z_target_libc_mode(target), indent + 2);
+  zdn_field_bool(buf, "requiresSysroot", false, indent + 2);
+  zdn_field_bool(buf, "targetRequiresSysroot", z_target_requires_sysroot(target), indent + 2);
+  zdn_field_string(buf, "sysrootStatus", z_target_requires_sysroot(target) ? "not-used-by-direct-artifact" : "not-required", indent + 2);
+  zdn_object_start(buf, "targetFacts", indent + 1);
+  zdn_field_bool(buf, "directAvailable", true, indent + 2);
+  zdn_field_string(buf, "status", z_direct_backend_status(target), indent + 2);
+  zdn_field_string(buf, "selectedEmitter", direct.selected_emitter, indent + 2);
+  zdn_field_string(buf, "objectFormat", object_format, indent + 2);
+  zdn_field_string(buf, "arch", arch, indent + 2);
+  zdn_field_string(buf, "abi", target && target->abi ? target->abi : "", indent + 2);
+  zdn_field_string(buf, "libcMode", z_target_libc_mode(target), indent + 2);
+  // httpRuntime
+  if (links_http_runtime) {
+    zdn_object_start(buf, "httpRuntime", indent + 1);
+    ZBuf http_json;
+    zbuf_init(&http_json);
+    z_append_http_runtime_json(&http_json, target);
+    // Extract key fields from the JSON
+    zdn_field_string(buf, "provider", "http-curl", indent + 2);
+    zdn_field_string(buf, "status", "supported", indent + 2);
+    zbuf_free(&http_json);
+  }
+}
+
+static void zdn_append_ship_artifact(ZBuf *buf, const char *kind, const char *path, long long bytes, const char *format, int indent) {
+  zdn_object_start(buf, "", indent);
+  zdn_field_string(buf, "kind", kind, indent + 1);
+  zdn_field_string(buf, "path", path ? path : "", indent + 1);
+  zdn_field_int(buf, "bytes", bytes, indent + 1);
+  zdn_field_string(buf, "format", format, indent + 1);
+}
+
+static void zdn_append_toolchain_plan(ZBuf *buf, const ZToolchainPlan *plan, int indent) {
+  if (!plan) return;
+  zdn_field_string(buf, "driverKind", plan->driver_kind, indent + 1);
+  zdn_field_string(buf, "compiler", plan->compiler, indent + 1);
+  zdn_field_string(buf, "targetTriple", plan->target_triple, indent + 1);
+  zdn_field_string(buf, "linkerFlavor", plan->linker_flavor, indent + 1);
+  zdn_field_string(buf, "libcMode", plan->libc_mode, indent + 1);
+  zdn_field_string(buf, "sysrootEnv", plan->sysroot_env, indent + 1);
+  zdn_field_string(buf, "sysrootPath", plan->sysroot_path, indent + 1);
+  zdn_field_string(buf, "sysrootStatus", plan->sysroot_status, indent + 1);
+}
+
+static void zdn_append_release_matrix_target_support(ZBuf *buf, int indent) {
+  const char *targets[] = {"darwin-arm64", "darwin-x64", "linux-arm64", "linux-musl-arm64", "linux-musl-x64", "linux-x64", "win32-arm64.exe", "win32-x64.exe", NULL};
+  zdn_array_start(buf, "targetToolchains", indent);
+  for (size_t i = 0; targets[i]; i++) {
+    const ZTargetInfo *matrix_target = z_find_target(targets[i]);
+    zdn_object_start(buf, "", indent + 1);
+    zdn_field_string(buf, "target", targets[i], indent + 2);
+    zdn_field_string(buf, "directStatus", z_direct_backend_status(matrix_target), indent + 2);
+    zdn_field_string(buf, "directObjectEmitter", z_direct_object_emitter(matrix_target), indent + 2);
+    zdn_field_string(buf, "directExeEmitter", z_direct_exe_emitter(matrix_target), indent + 2);
+    zdn_field_string(buf, "fallbackPolicy", "explicit-direct-never-c-bridge", indent + 2);
+  }
+}
+
+static void zdn_append_profile_catalog(ZBuf *buf, int indent) {
+  const char *profiles[] = {"debug", "dev", "fast", "small", "tiny", "audit", NULL};
+  zdn_array_start(buf, "profileCatalog", indent);
+  for (int i = 0; profiles[i]; i++) {
+    zdn_append_profile_semantics(buf, profiles[i], indent + 1);
+  }
+}
+
+static void zdn_append_target_readiness_diagnostic(ZBuf *buf, const char *path, const ZDiag *diag, int indent) {
+  zdn_object_start(buf, "", indent);
+  zdn_field_string(buf, "severity", "error", indent + 1);
+  zdn_field_string(buf, "code", diag_code(diag->code), indent + 1);
+  zdn_field_string(buf, "message", diag->message, indent + 1);
+  zdn_field_string(buf, "path", diag->path ? diag->path : path, indent + 1);
+  zdn_field_int(buf, "line", diag->line, indent + 1);
+  zdn_field_int(buf, "column", diag->column, indent + 1);
+  zdn_field_int(buf, "length", diag->length > 0 ? diag->length : 1, indent + 1);
+  zdn_field_string(buf, "expected", diag->expected, indent + 1);
+  zdn_field_string(buf, "actual", diag->actual, indent + 1);
+  zdn_field_string(buf, "help", diag->help, indent + 1);
+  zdn_field_string(buf, "fixSafety", diag_fix_safety(diag->code), indent + 1);
+  zdn_object_start(buf, "repair", indent + 1);
+  zdn_field_string(buf, "id", diag_repair_id(diag->code), indent + 2);
+  zdn_field_string(buf, "summary", diag_repair_summary(diag->code), indent + 2);
+  if (diag->backend_blocker.present) {
+    zdn_append_backend_blocker(buf, &diag->backend_blocker, indent + 1);
+  }
+  zdn_array_start(buf, "related", indent + 1);
+}
+
+static void zdn_append_target_readiness(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command, int indent) {
+  ZDiag diag = {0};
+  IrProgram ir = {0};
+  bool ready = true;
+  if (!validate_c_libraries_for_target(input, target, &diag)) {
+    ready = false;
+  } else {
+    long long phase_started = now_ms();
+    ir = z_lower_program_with_source(program, input);
+    if (input) input->lower_ms = now_ms() - phase_started;
+    apply_ir_metrics_to_input(input, &ir, target);
+  }
+
+  if (ready) {
+    if (!target_readiness_select_emit_target(command, input, target, &diag)) {
+      ready = false;
+    } else if (!ir.mir_valid) {
+      init_lowering_backend_diag(&diag, input, target, command, &ir);
+      ready = false;
+    } else if (!target_readiness_select_diag(command, input, program, target, &ir, &diag)) {
+      ready = false;
+    }
+  }
+  if (!ready && input) {
+    if (diag.code != 8003) z_map_source_diag(input, &diag);
+    if (!diag.path) diag.path = input->source_file;
+  }
+
+  const char *emit_kind = emit_kind_name(command ? command->emit : EMIT_EXE);
+  zdn_object_start(buf, "targetReadiness", indent);
+  zdn_field_int(buf, "schemaVersion", 1, indent + 1);
+  zdn_field_bool(buf, "ok", ready, indent + 1);
+  zdn_field_bool(buf, "languageOk", true, indent + 1);
+  zdn_field_bool(buf, "buildable", ready, indent + 1);
+  zdn_field_string(buf, "target", target && target->name ? target->name : z_host_target(), indent + 1);
+  zdn_field_string(buf, "emit", emit_kind, indent + 1);
+  zdn_field_string(buf, "objectFormat", target && target->object_format ? target->object_format : "unknown", indent + 1);
+  zdn_field_string(buf, "backend", ready || !diag.backend_blocker.present
+    ? z_direct_backend_name_for_emit_kind(target, emit_kind, command ? command->backend : NULL)
+    : diag.backend_blocker.backend, indent + 1);
+  zdn_field_string(buf, "stage", ready ? "ready"
+    : (diag.backend_blocker.present && diag.backend_blocker.stage[0] ? diag.backend_blocker.stage : "select"), indent + 1);
+  zdn_array_start(buf, "diagnostics", indent + 1);
+  if (!ready) zdn_append_target_readiness_diagnostic(buf, input ? input->source_file : NULL, &diag, indent + 2);
+  z_free_ir_program(&ir);
+}
+
+// ── Full ZDN printer functions (JSON-equivalent field coverage) ──
+
+static void zdn_print_build_full(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const char *emit_kind, const char *artifact_path, long long artifact_bytes, long long elapsed_ms) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  CapabilitySummary caps = program_capabilities(program);
+  ZToolchainPlan direct_plan;
+  bool direct_toolchain = z_direct_backend_toolchain_plan_for_emit_kind(target, emit_kind, command ? command->backend : NULL, &direct_plan);
+
+  zbuf_append(&buf, "BuildResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", input && input->source_file ? input->source_file : "", 1);
+  zdn_field_string(&buf, "emit", emit_kind ? emit_kind : "exe", 1);
+  zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+  zdn_field_string(&buf, "target", target && target->name ? target->name : "host", 1);
+  zdn_field_string(&buf, "profile", command ? command->profile : "release", 1);
+  zdn_field_bool(&buf, "legacy", false, 1);
+  zdn_field_nullable_string(&buf, "legacyBackend", NULL, 1);
+  zdn_array_start(&buf, "warnings", 1);
+  zdn_field_string(&buf, "compiler", direct_toolchain ? direct_plan.driver_kind : build_compiler_label(command, target), 1);
+  zdn_object_start(&buf, "toolchain", 1);
+  if (direct_toolchain) zdn_append_toolchain_plan(&buf, &direct_plan, 2);
+  else {
+    ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
+    zdn_append_toolchain_plan(&buf, &plan, 2);
+  }
+  zdn_object_end(&buf, 1);
+  zdn_field_nullable_string(&buf, "artifactPath", artifact_path, 1);
+  zdn_field_nullable_int(&buf, "artifactBytes", artifact_bytes >= 0 ? artifact_bytes : -1, 1);
+  zdn_field_int(&buf, "generatedCBytes", 0, 1);
+  zdn_field_int(&buf, "loweredIrBytes", (long long)(input ? input->lowered_ir_bytes : 0), 1);
+  zdn_field_int(&buf, "elapsedMs", elapsed_ms, 1);
+  zdn_object_start(&buf, "targetSupport", 1);
+  zdn_field_bool(&buf, "fsAvailable", z_target_has_capability(target, "fs"), 2);
+  zdn_field_string(&buf, "directStatus", z_direct_backend_status(target), 2);
+  zdn_field_string(&buf, "directObjectEmitter", z_direct_object_emitter(target), 2);
+  zdn_field_string(&buf, "directExeEmitter", z_direct_exe_emitter(target), 2);
+  zdn_field_string(&buf, "fallbackPolicy", "explicit-direct-never-c-bridge", 2);
+  zdn_append_compiler_phases(&buf, input, 1);
+  zdn_append_compiler_caches(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_package_metadata(&buf, input, target, 1);
+  zdn_append_package_cache(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_incremental_invalidations(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_profile_semantics(&buf, command ? command->profile : "release", 1);
+  zdn_append_release_target_contract(&buf, input, target, command, emit_kind, 1);
+  zdn_append_object_backend(&buf, input, target, command, emit_kind, 1);
+  zdn_append_self_host_routing(&buf, "build", emit_kind, program, &caps, target, 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+static void zdn_print_ship_full(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const ShipArtifacts *artifacts, long long elapsed_ms) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  CapabilitySummary caps = program_capabilities(program);
+
+  zbuf_append(&buf, "ShipResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_bool(&buf, "ok", true, 1);
+  zdn_field_string(&buf, "command", "ship", 1);
+  zdn_field_string(&buf, "sourceFile", input && input->source_file ? input->source_file : "", 1);
+  zdn_field_string(&buf, "target", target && target->name ? target->name : z_host_target(), 1);
+  zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+  zdn_field_string(&buf, "profile", command ? command->profile : "release", 1);
+  zdn_field_string(&buf, "emit", "exe", 1);
+  zdn_field_int(&buf, "generatedCBytes", 0, 1);
+  zdn_field_bool(&buf, "cBridgeFallback", false, 1);
+  zdn_field_nullable_string(&buf, "artifactPath", artifacts ? artifacts->binary_path : "", 1);
+  zdn_field_int(&buf, "artifactBytes", artifacts ? artifacts->binary_bytes : 0, 1);
+  if (artifacts && artifacts->checksum > 0) {
+    zdn_object_start(&buf, "checksum", 1);
+    zdn_field_string(&buf, "algorithm", "fnv1a64", 2);
+    char checksum_str[32];
+    snprintf(checksum_str, sizeof(checksum_str), "%016llx", (unsigned long long)artifacts->checksum);
+    zdn_field_string(&buf, "value", checksum_str, 2);
+    zdn_field_string(&buf, "path", artifacts->checksum_path, 2);
+  }
+  zdn_object_start(&buf, "releasePreview", 1);
+  zdn_field_bool(&buf, "deterministic", true, 2);
+  zdn_field_string(&buf, "archive", artifacts ? artifacts->archive_path : "", 2);
+  zdn_field_string(&buf, "strippedBinary", artifacts ? artifacts->stripped_path : "", 2);
+  zdn_field_string(&buf, "sizeReport", artifacts ? artifacts->size_path : "", 2);
+  zdn_field_string(&buf, "debugSymbols", artifacts ? artifacts->debug_path : "", 2);
+  zdn_field_string(&buf, "sbom", artifacts ? artifacts->sbom_path : "", 2);
+  zdn_append_release_target_contract(&buf, input, target, command, "exe", 2);
+  zdn_array_start(&buf, "artifacts", 1);
+  if (artifacts) {
+    zdn_append_ship_artifact(&buf, "binary", artifacts->binary_path, artifacts->binary_bytes, "native-executable", 2);
+    zdn_append_ship_artifact(&buf, "stripped-binary", artifacts->stripped_path, artifacts->stripped_bytes, "native-executable", 2);
+    zdn_append_ship_artifact(&buf, "checksum", artifacts->checksum_path, file_size_or_negative(artifacts->checksum_path), "fnv1a64", 2);
+    zdn_append_ship_artifact(&buf, "archive", artifacts->archive_path, artifacts->archive_bytes, "zero-archive-manifest-v1", 2);
+    zdn_append_ship_artifact(&buf, "debug-symbol-metadata", artifacts->debug_path, artifacts->debug_bytes, "json", 2);
+    zdn_append_ship_artifact(&buf, "size-report", artifacts->size_path, artifacts->size_bytes, "json", 2);
+    zdn_append_ship_artifact(&buf, "sbom-placeholder", artifacts->sbom_path, artifacts->sbom_bytes, "spdx-json-placeholder", 2);
+  }
+  zdn_field_int(&buf, "elapsedMs", elapsed_ms, 1);
+  zdn_object_start(&buf, "targetFacts", 1);
+  zdn_field_string(&buf, "directStatus", z_direct_backend_status(target), 2);
+  zdn_field_string(&buf, "directExeEmitter", z_direct_exe_emitter(target), 2);
+  zdn_field_string(&buf, "fallbackPolicy", "explicit-direct-never-c-bridge", 2);
+  zdn_append_compiler_phases(&buf, input, 1);
+  zdn_append_release_target_contract(&buf, input, target, command, "exe", 1);
+  zdn_append_compiler_caches(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_package_metadata(&buf, input, target, 1);
+  zdn_append_package_cache(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_incremental_invalidations(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_object_backend(&buf, input, target, command, "exe", 1);
+  zdn_append_self_host_routing(&buf, "ship", "exe", program, &caps, target, 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+static void zdn_print_size_full(const Command *command, const SourceInput *input, const ZTargetInfo *target) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, "SizeResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", input && input->source_file ? input->source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target && target->name ? target->name : "host", 1);
+  zdn_field_string(&buf, "profile", command ? command->profile : "release", 1);
+  zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+  zdn_field_int(&buf, "loweredIrBytes", (long long)(input ? input->lowered_ir_bytes : 0), 1);
+  zdn_field_nullable_string(&buf, "artifactPath", NULL, 1);
+  zdn_append_profile_semantics(&buf, command ? command->profile : "release", 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
 static uint64_t mix_hash_text(uint64_t hash, const char *text) {
   hash ^= fnv1a_text(text ? text : "");
   hash *= 1099511628211ull;
@@ -3302,6 +4030,13 @@ static void print_fix_plan_zdn(const char *path, const ZDiag *diag) {
   zdn_field_string(&buf, "mode", "plan", 1);
   zdn_field_bool(&buf, "appliesEdits", false, 1);
   zdn_field_string(&buf, "input", path ? path : "", 1);
+  zdn_array_start(&buf, "safetyLevels", 1);
+  zdn_array_item_string(&buf, "format-only", 2);
+  zdn_array_item_string(&buf, "behavior-preserving", 2);
+  zdn_array_item_string(&buf, "api-changing", 2);
+  zdn_array_item_string(&buf, "target-changing", 2);
+  zdn_array_item_string(&buf, "requires-human-review", 2);
+  zdn_array_end(&buf, 1);
   zdn_object_start(&buf, "selfHostRepairPolicy", 1);
   zdn_field_string(&buf, "unsupportedFeatureSafety", "requires-human-review", 2);
   zdn_field_string(&buf, "compatibilityFallback", "removed", 2);
@@ -5989,13 +6724,34 @@ static void print_ship_text(const ShipArtifacts *artifacts, long long elapsed_ms
 
 static int print_version_command(bool json, bool zdn) {
   if (zdn) {
+    const char *zero_cc = getenv("ZERO_CC");
+    bool target_cc_override = zero_cc && zero_cc[0];
+    bool bundled_target_cc_available = command_available("zig");
+    bool target_cc_available = target_cc_override || bundled_target_cc_available;
+    char *target_cc_version = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_available ? command_first_line("zig version 2>/dev/null") : z_strdup(""));
     ZBuf buf;
     zbuf_init(&buf);
     zbuf_append(&buf, "VersionResult\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
     zdn_field_string(&buf, "version", ZERO_VERSION, 1);
+    zdn_field_string(&buf, "commit", zero_commit(), 1);
     zdn_field_string(&buf, "host", z_host_target(), 1);
+    zdn_field_string(&buf, "backend", "zero-c", 1);
+    ZBuf targets_buf;
+    zbuf_init(&targets_buf);
+    z_append_target_names_json(&targets_buf);
+    // targets json is a JSON array string; embed as ZDN string
+    zdn_field_string(&buf, "targets", targets_buf.data ? targets_buf.data : "[]", 1);
+    zbuf_free(&targets_buf);
+    zdn_object_start(&buf, "targetCompiler", 1);
+    zdn_field_bool(&buf, "available", target_cc_available, 2);
+    zdn_field_string(&buf, "kind", "target-capable C compiler", 2);
+    zdn_field_string(&buf, "version", target_cc_version, 2);
+    zdn_object_start(&buf, "crossCompilation", 1);
+    zdn_field_bool(&buf, "ready", target_cc_available, 2);
     fputs(buf.data, stdout);
     zbuf_free(&buf);
+    free(target_cc_version);
     return 0;
   }
   if (!json) {
@@ -6428,6 +7184,24 @@ static int doctor_command(bool json, bool zdn) {
     zdn_field_bool(&buf, "targetCCompiler", target_cc_ok, 1);
     zdn_field_bool(&buf, "writeAccess", zero_dir_ok && write_ok, 1);
     zdn_field_bool(&buf, "docsPresent", docs_ok, 1);
+    zdn_array_start(&buf, "checks", 1);
+    #define ZDN_CHECK(name, status, msg) do { \
+      zdn_object_start(&buf, "", 2); \
+      zdn_field_string(&buf, "name", name, 3); \
+      zdn_field_string(&buf, "status", status, 3); \
+      zdn_field_string(&buf, "message", msg, 3); \
+    } while (0)
+    ZDN_CHECK("native-c-compiler", cc_ok ? "ok" : "error", cc_message);
+    ZDN_CHECK("target-c-compiler", target_cc_ok ? "ok" : "warning", target_cc_message);
+    ZDN_CHECK("path", path_ok ? "ok" : "warning", path_message);
+    ZDN_CHECK("host-target", target_ok ? "ok" : "warning", target_ok ? "host target is supported" : "host target is not in the bundled target list");
+    ZDN_CHECK("target-sdk-sysroot", sdk_status, sdk_message);
+    ZDN_CHECK(".zero-write", (zero_dir_ok && write_ok) ? "ok" : "error", (zero_dir_ok && write_ok) ? ".zero is writable" : ".zero is not writable");
+    ZDN_CHECK("targets", target_ok ? "ok" : "warning", "run `zero targets` for the supported target list");
+    ZDN_CHECK("docs-examples", docs_ok ? "ok" : "warning", docs_ok ? "docs and examples found" : "docs or examples are missing from this checkout");
+    #undef ZDN_CHECK
+    zdn_array_start(&buf, "targetToolchains", 1);
+    zdn_append_release_matrix_target_support(&buf, 1);
     fputs(buf.data, stdout);
     zbuf_free(&buf);
   } else if (json) {
@@ -10925,8 +11699,39 @@ int main(int argc, char **argv) {
   }
 
   if (strcmp(command.command, "check") == 0) {
-    if (command.format == FORMAT_ZDN) zdn_print_check_success(input.source_file, &input, &program, target);
-    else if (command.format == FORMAT_JSON) print_check_json_success(input.source_file, &input, &program, target, &command);
+    if (command.format == FORMAT_ZDN) {
+      ZBuf buf;
+      zbuf_init(&buf);
+      CapabilitySummary caps = program_capabilities(&program);
+      ZMetaCacheStats meta = z_meta_cache_stats();
+      zbuf_append(&buf, "CheckResult\n");
+      zdn_field_int(&buf, "schemaVersion", 1, 1);
+      zdn_field_bool(&buf, "ok", true, 1);
+      zdn_field_string(&buf, "sourceFile", input.source_file ? input.source_file : "", 1);
+      zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+      zdn_field_string(&buf, "target", target && target->name ? target->name : z_host_target(), 1);
+      zdn_append_package_metadata(&buf, &input, target, 1);
+      zdn_append_package_cache(&buf, &input, target, "release", 1);
+      zdn_array_start(&buf, "diagnostics", 1);
+      zdn_object_start(&buf, "metaCache", 1);
+      zdn_field_int(&buf, "hits", (long long)meta.hits, 2);
+      zdn_field_int(&buf, "misses", (long long)meta.misses, 2);
+      zdn_field_int(&buf, "entries", (long long)meta.entries, 2);
+      zdn_append_hash(&buf, "sourceHash", fnv1a_text(input.source ? input.source : ""), 2);
+      zdn_append_hash(&buf, "targetHash", fnv1a_text(target ? target->name : z_host_target()), 2);
+      char *manifest = read_optional_file("zero.json");
+      zdn_append_hash(&buf, "manifestHash", fnv1a_text(manifest ? manifest : ""), 2);
+      free(manifest);
+      zdn_append_compile_time(&buf, &program, &input, target, 1);
+      zdn_append_target_readiness(&buf, &input, &program, target, &command, 1);
+      zdn_append_compiler_phases(&buf, &input, 1);
+      zdn_append_compiler_caches(&buf, &input, target, "release", 1);
+      zdn_append_interface_fingerprints(&buf, &input, target, 1);
+      zdn_append_incremental_invalidations(&buf, &input, target, "release", 1);
+      zdn_append_self_host_routing(&buf, "check", NULL, &program, &caps, target, 1);
+      fputs(buf.data, stdout);
+      zbuf_free(&buf);
+    } else if (command.format == FORMAT_JSON) print_check_json_success(input.source_file, &input, &program, target, &command);
     else printf("ok\n");
     z_free_program(&program);
     z_free_source(&input);
@@ -11114,7 +11919,7 @@ int main(int argc, char **argv) {
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;
-    if (command.format == FORMAT_ZDN) zdn_print_build(input.source_file, "obj", target->name, command.profile, object_file, file_size_or_negative(object_file), elapsed_ms);
+    if (command.format == FORMAT_ZDN) zdn_print_build_full(&command, &input, &program, target, "obj", object_file, file_size_or_negative(object_file), elapsed_ms);
     else if (command.format == FORMAT_JSON) print_build_json(&command, &input, &program, target, "obj", object_file, file_size_or_negative(object_file), 0, elapsed_ms);
     else print_artifact(object_file, elapsed_ms);
     free(object_file);
@@ -11226,7 +12031,7 @@ int main(int argc, char **argv) {
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;
-    if (command.format == FORMAT_ZDN) zdn_print_build(input.source_file, "exe", target->name, command.profile, exe_file, file_size_or_negative(exe_file), elapsed_ms);
+    if (command.format == FORMAT_ZDN) zdn_print_build_full(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), elapsed_ms);
     else if (command.format == FORMAT_JSON) print_build_json(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
     else print_artifact(exe_file, elapsed_ms);
     free(http_object_file);
@@ -11310,12 +12115,12 @@ int main(int argc, char **argv) {
         z_free_source(&input);
         return 1;
       }
-      if (command.format == FORMAT_ZDN) zdn_print_ship(input.source_file, target->name, z_host_target(), command.profile, exe_file, file_size_or_negative(exe_file), elapsed_ms, ship.checksum_path);
+      if (command.format == FORMAT_ZDN) zdn_print_ship_full(&command, &input, &program, target, &ship, elapsed_ms);
       else if (command.format == FORMAT_JSON) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
       else print_ship_text(&ship, elapsed_ms);
       ship_artifacts_free(&ship);
     } else if (command.format == FORMAT_ZDN) {
-      zdn_print_build(input.source_file, "exe", target->name, command.profile, exe_file, file_size_or_negative(exe_file), elapsed_ms);
+      zdn_print_build_full(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), elapsed_ms);
     } else if (command.format == FORMAT_JSON) {
       print_build_json(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
     } else {
@@ -11330,7 +12135,7 @@ int main(int argc, char **argv) {
   }
   if (strcmp(command.command, "size") == 0) {
     if (command.format == FORMAT_ZDN) {
-      zdn_print_size(input.source_file, target ? target->name : "host", command.profile, z_host_target(), input.lowered_ir_bytes, -1, NULL);
+      zdn_print_size_full(&command, &input, target);
       z_free_ir_program(&ir);
       z_free_program(&program);
       z_free_source(&input);

@@ -106,4 +106,9 @@ void zdn_inline_field_bool(ZBuf *buf, const char *name, bool value);
 // Print a patch header: `patch RecordName`
 void zdn_print_patch_header(ZBuf *buf, const char *record_name, int indent);
 
+// ── Low-level ZDN helper exported for zdn_format.c ──
+// (Higher-level ZDN helpers for compiler internals are implemented
+//  as static functions in main.c, not declared here)
+void zdn_indent(ZBuf *buf, int level);
+
 #endif // ZERO_C_ZDN_FORMAT_H

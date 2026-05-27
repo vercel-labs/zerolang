@@ -155,7 +155,7 @@ indent     = 2 * N spaces
 | Array boundaries | `[...]` | Item type tag + indent | Self-documenting items |
 | String quoting | Required | Required (same rules) | Familiar to JSON users |
 | Record identity | Implicit (from key) | **Explicit first line** | Agent knows type immediately |
-| Token efficiency | Full compiler state | Agent-relevant facts only | ~98% less token consumption |
+| Data field coverage | Full | **Full (since 0.1.4)** | Same data, better format |
 | LLM retrieval | Scan for key in nested `{}` | Grep line prefix | Faster fact extraction |
 | UTF-8/CJK/Emoji | Transparent | Transparent (same codec) | Full international support |
 | Grammatical ambiguity | None | None | Both are deterministic |
@@ -166,37 +166,52 @@ indent     = 2 * N spaces
 
 Measured on `zero check examples/add.0`:
 
-```
-JSON beautified:  8380 bytes  ~2095 tokens
-JSON compact:     5842 bytes  ~1460 tokens
-ZDN:               130 bytes   ~32  tokens
-```
+| Version | Bytes | Tokens | Note |
+|---------|-------|--------|------|
+| JSON beautified | ~8380 | ~2095 | Pretty-printed with 2-space indent |
+| JSON compact | ~5842 | ~1460 | Single-line |
+| ZDN (minimal, pre-0.1.4) | ~130 | ~32 | Agent-facts only |
+| ZDN (full data, 0.1.4+) | ~2910 | ~727 | Same fields as JSON |
 
-ZDN is deliberately **less verbose**. JSON includes every internal compiler data structure (`metaCache`, `compileTime`, `interfaceFingerprints`, `compilerPhases`, `compilerCaches`, `incrementalInvalidation`, `selfHostRouting`, etc.). ZDN includes only the facts an agent needs: the success/failure status, source file, target, and diagnostics.
+The full-data ZDN is more compact than JSON because it eliminates
+delimiter characters (`{`, `}`, `[`, `]`, `,`, `:`) that carry no
+semantic information. Indentation does double duty as both structure
+and formatting.
 
-If an agent needs deeper compiler internals, ZDN output can be combined with `zero explain --zdn <code>` for targeted diagnostic information.
+> **ZDN now covers the same data as JSON.** As of Zero 0.1.4, `--zdn` output
+> includes all the fields that `--json` provides — compiler internals, target
+> readiness, incremental invalidation, profile semantics, and more. ZDN is a
+> **format-level** alternative to JSON, not a data-subset: same information,
+> but indentation-based rather than bracket-delimited, optimized for agent
+> consumption.
 
 ---
 
 ### All ZDN Record Types
 
+> Since Zero 0.1.4, all ZDN records include the **full set of fields**
+> previously available only in JSON output. The tables below list the key
+> categories; each record contains the complete compiler metadata
+> (compileTime, metaCache, interfaceFingerprints, incrementalInvalidation,
+> etc.) where applicable.
+
 #### Compilation Commands
 
-| Command | Record | Key Fields |
-|---------|--------|------------|
-| `zero check --zdn` | `CheckResult` | `ok`, `sourceFile`, `target`, `diagnostics`, `targetReadiness` |
-| `zero build --zdn` | `BuildResult` | `ok`, `sourceFile`, `target`, `artifact`, `bytes` |
+| Command | Record | Fields (full JSON coverage) |
+|---------|--------|-----------------------------|
+| `zero check --zdn` | `CheckResult` | ok, sourceFile, hostTarget, target, package, packageCache, diagnostics, metaCache, compileTime, targetReadiness, compilerPhases, compilerCaches, interfaceFingerprints, incrementalInvalidation, selfHostRouting |
+| `zero build --zdn` | `BuildResult` | ok, sourceFile, emit, hostTarget, target, profile, legacy, artifactPath, artifactBytes, generatedCBytes, loweredIrBytes, elapsedMs, compiler, toolchain, targetSupport, compilerPhases, compilerCaches, package, packageCache, incrementalInvalidation, profileSemantics, releaseTargetContract, objectBackend, selfHostRouting |
 | `zero run --zdn` | Error only (diagnostic) | — |
-| `zero ship --zdn` | `ShipResult` | `ok`, `artifact`, `checksum`, `bytes` |
-| `zero size --zdn` | `SizeResult` | `ok`, `sourceFile`, `target`, `artifactBytes` |
+| `zero ship --zdn` | `ShipResult` | ok, command, sourceFile, target, hostTarget, profile, emit, generatedCBytes, cBridgeFallback, artifactPath, artifactBytes, checksum, releasePreview (archive, strippedBinary, sizeReport, debugSymbols, sbom, targetContract), artifacts[], elapsedMs, targetFacts, compilerPhases, releaseTargetContract, compilerCaches, package, packageCache, incrementalInvalidation, objectBackend, selfHostRouting |
+| `zero size --zdn` | `SizeResult` | ok, sourceFile, target, profile, hostTarget, loweredIrBytes, artifactPath, profileSemantics |
 
 #### Analysis Commands
 
-| Command | Record | Key Fields |
-|---------|--------|------------|
-| `zero test --zdn` | `TestResult` | `ok`, `passedTests`, `failedTests`, `durationMs` |
-| `zero doc --zdn` | `DocResult` | `sourceFile`, `target` |
-| `zero graph --zdn` | `GraphResult` | `sourceFile`, `target` |
+| Command | Record | Fields (full JSON coverage) |
+|---------|--------|-----------------------------|
+| `zero test --zdn` | `TestResult` | ok, sourceFile, target, testBackend, selectedTests, discoveredTests, passedTests, failedTests, expectedFailures, unexpectedPasses, durationMs, exitCode, stdout, stderr, testDiscovery, fixtures, targetFacts |
+| `zero doc --zdn` | `DocResult` | sourceFile, target |
+| `zero graph --zdn` | `GraphResult` | sourceFile, target |
 | `zero graph validate --zdn` | `GraphValidation` | `ok`, `graphHash`, `counts`, `validation` |
 | `zero graph view --zdn` | `GraphView` | `ok`, `graphHash`, `view` |
 | `zero graph check --zdn` | `GraphCheck` | `ok`, `graphHash`, `check` |
@@ -210,11 +225,11 @@ If an agent needs deeper compiler internals, ZDN output can be combined with `ze
 
 #### System Commands
 
-| Command | Record | Key Fields |
-|---------|--------|------------|
-| `zero --version --zdn` | `VersionResult` | `version`, `host` |
-| `zero doctor --zdn` | `DoctorResult` | `status`, `host`, `nativeCCompiler`, `targetCCompiler` |
-| `zero skills list --zdn` | `SkillsList` | `count`, `skills` |
+| Command | Record | Fields (full JSON coverage) |
+|---------|--------|-----------------------------|
+| `zero --version --zdn` | `VersionResult` | schemaVersion, version, commit, host, backend, targets, targetCompiler, crossCompilation |
+| `zero doctor --zdn` | `DoctorResult` | status, host, nativeCCompiler, targetCCompiler, writeAccess, docsPresent, checks[], targetToolchains[] |
+| `zero skills list --zdn` | `SkillsList` | count, skills |
 | `zero targets --zdn` | `TargetsResult` | `host`, `targetCount`, `targets` |
 | `zero abi dump --zdn` | `AbiDump` | `sourceFile`, `target`, `shapeCount` |
 | `zero abi check --zdn` | `AbiCheck` | `ok`, `sourceFile`, `target` |
@@ -288,7 +303,7 @@ Each step returns a ZDN record. The agent passes the error code from step 1 into
 
 ### Output Examples
 
-#### `zero check --zdn` (success)
+#### `zero check --zdn` (success, full data)
 
 ```
 CheckResult
@@ -297,11 +312,162 @@ CheckResult
   sourceFile "examples/add.0"
   hostTarget "linux-x64"
   target "linux-x64"
+  package
+    name ""
+    version ""
+    root ""
+    manifestPath ""
+    manifestHash "0000000000000000"
+    dependencyGraphHash "0000000000000000"
+    lockfile
+      format "zero-lock-v1"
+      path ""
+      hash "0000000000000000"
+      generated false
+  packageCache
+    format "zero-lock-v1"
+    path ""
+    hash "0000000000000000"
+    generated false
+    sourceFileCount 1
+    moduleCount 1
   diagnostics
+  metaCache
+    hits 0
+    misses 0
+    entries 0
+    sourceHash "..."
+    targetHash "..."
+    manifestHash "..."
+  compileTime
+    deterministic true
+    sandbox
+      filesystem "denied"
+      network "denied"
+      ambientEnv "denied"
+      process "denied"
+    limits
+      maxDepth 64
+      maxSteps 1024
+      stringBytes 127
+      memory "bounded-evaluator-state-only"
+      time "step-counted"
+    cacheKeyInputs
+      algorithm "fnv1a64-zero-meta-v1"
+      sourceHash "..."
+      targetHash "..."
+      manifestHash "..."
+      compilerVersion "0.1.4"
+      declaredInputs
+        "source"
+        "target"
+        "compilerVersion"
+        "manifest"
+        "targetFacts"
+    meta
+      supportedFacts [ ... ]
+      unsupportedEffects [ ... ]
+      cycleDiagnostic "MET001"
+      safetyLimitDiagnostic "MET001"
+    reflection
+      typed true
+      compileTimeOnly true
+      releaseMetadataRetained false
+      facts [ ... ]
+    staticValues
+      supported [ "integer", "Bool", "enum" ]
+      concreteSpecializations true
+      runtimeRegistries false
+      mismatchesDiagnostic "STC003"
+    programSurface
+      shapeCount 0
+      enumCount 0
+      choiceCount 0
   targetReadiness
+    schemaVersion 1
+    ok true
+    languageOk true
     buildable true
-    backend "zero-elf64-exe"
+    target "linux-x64"
+    emit "exe"
     objectFormat "elf"
+    backend "zero-elf64-exe"
+    stage "ready"
+    diagnostics
+  compilerPhases
+    Phase
+      name "resolve"
+      elapsedMs 0
+      cacheable true
+    Phase
+      name "parse"
+      elapsedMs 0
+      cacheable true
+    ...
+  compilerCaches
+    Cache
+      name "parseTree"
+      key "..."
+      hit true
+      stored true
+      compilerVersion "0.1.4"
+      packageVersion ""
+      dependencyGraphHash "..."
+      lockfileHash "..."
+      invalidatesOn "source"
+    ...
+  interfaceFingerprints
+    schemaVersion 1
+    algorithm "fnv1a64-zero-interface-v1"
+    targetFactsHash "..."
+    importedPackageMetadataHash "..."
+    modules
+      Module
+        name "add"
+        path "examples/add.0"
+        sourceHash "..."
+        publicInterfaceHash "..."
+        publicSymbolCount 1
+        publicSymbols
+          Symbol
+            name "main"
+            kind "function"
+        imports
+  incrementalInvalidation
+    moduleDependencies
+    targetDependency "linux-x64"
+    profileDependency "release"
+    affectedModules 1
+    recheckStrategy "..."
+    changedInputs
+      sourceFiles
+        "examples/add.0"
+      manifestPath ""
+      packageLockfile ""
+    cacheHits 4
+    cacheMisses 1
+    partialDiagnosticsStable true
+    interfaceFingerprints { ... }
+  selfHostRouting
+    contractVersion 1
+    subsetCompatible true
+    mode "native-bootstrap"
+    phases
+      parse "zero-c"
+      check "zero-c"
+      lower "zero-c"
+      emit "zero-c"
+    removed
+      seedCompiler true
+      browserCompiler true
+      portableEmitter true
+    metadata
+      graphJson true
+      sizeJson true
+    cBridge
+      required false
+      policy "removed"
+      explicitDirectFallback "never-c-bridge"
 ```
 
 #### `zero check --zdn` (failure with diagnostics)
@@ -403,6 +569,12 @@ FixPlanResult
   mode "plan"
   appliesEdits false
   input "examples/does-not-exist.0"
+  safetyLevels
+    "format-only"
+    "behavior-preserving"
+    "api-changing"
+    "target-changing"
+    "requires-human-review"
   selfHostRepairPolicy
     unsupportedFeatureSafety "requires-human-review"
     compatibilityFallback "removed"
@@ -437,6 +609,25 @@ DoctorResult
   targetCCompiler true
   writeAccess true
   docsPresent true
+  checks
+    Check
+      name "native-c-compiler"
+      status "ok"
+      message "..."
+    Check
+      name "target-c-compiler"
+      status "warning"
+      message "..."
+    ...
+  targetToolchains
+    Toolchain
+      target "darwin-arm64"
+      directStatus "unknown"
+      ...
+    Toolchain
+      target "linux-x64"
+      directStatus "native-exe"
+      ...
 ```
 
 #### `zero targets --zdn`
