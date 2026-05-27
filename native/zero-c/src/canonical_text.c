@@ -71,7 +71,7 @@ static bool canon_word_start(char ch) { return isalpha((unsigned char)ch) || ch 
 static bool canon_word_part(char ch) { return isalnum((unsigned char)ch) || ch == '_'; }
 
 static bool canon_is_reserved_word(const char *text) {
-  const char *keywords[] = {"as", "break", "check", "choice", "const", "continue", "defer", "else", "enum", "export", "extern", "false", "fn", "for", "fun", "if", "import", "in", "let", "match", "meta", "mut", "null", "packed", "pub", "raise", "raises", "rescue", "ret", "return", "shape", "static", "test", "true", "type", "use", "var", "while", NULL};
+  const char *keywords[] = {"alias", "as", "break", "check", "choice", "const", "continue", "defer", "else", "enum", "expect", "export", "extern", "false", "fn", "for", "fun", "if", "import", "in", "interface", "let", "match", "meta", "mut", "null", "packed", "pub", "raise", "raises", "rescue", "ret", "return", "shape", "static", "test", "true", "type", "use", "var", "while", NULL};
   for (size_t i = 0; keywords[i]; i++) if (canon_text_eq(text, keywords[i])) return true;
   return false;
 }
@@ -456,7 +456,7 @@ static bool canon_generic_call_span(CanonParser *parser, size_t expr_start, size
     if (index + 1 >= expr_end) return false;
     const ZCanonicalToken *next = &parser->tokens->items[index + 1];
     if (!(canon_is_symbol_text(next, "(") || canon_is_symbol_text(next, "{"))) return false;
-    if (!canon_tokens_connected(token, next)) return false;
+    if (canon_is_symbol_text(next, "(") && !canon_tokens_connected(token, next)) return false;
     *close_index = index;
     return true;
   }
@@ -517,16 +517,17 @@ static CanonExprDelimiterKind canon_expr_delimiter_kind(const ZCanonicalToken *t
   return CANON_EXPR_DELIM_OBJECT;
 }
 
-static void canon_note_expr_open_delimiter(const ZCanonicalToken *token, int *delimiter_depth, int *brace_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], size_t delimiter_cap, size_t field_start, bool expect_operand) {
+static void canon_note_expr_open_delimiter(const ZCanonicalToken *token, int *delimiter_depth, int *brace_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], bool object_field_has_colon[], size_t delimiter_cap, size_t field_start, bool expect_operand) {
   (*delimiter_depth)++;
   if ((size_t)*delimiter_depth < delimiter_cap) {
     delimiter_kind[*delimiter_depth] = canon_expr_delimiter_kind(token, expect_operand);
     object_field_start[*delimiter_depth] = field_start;
+    object_field_has_colon[*delimiter_depth] = false;
   }
   if (canon_is_symbol_text(token, "{")) (*brace_depth)++;
 }
 
-static bool canon_note_expr_comma(CanonParser *parser, const ZCanonicalToken *token, int delimiter_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], size_t delimiter_cap, size_t next_field_start, size_t bracket_depth, const bool bracket_literal[], size_t bracket_repeat_count[], size_t bracket_comma_count[]) {
+static bool canon_note_expr_comma(CanonParser *parser, const ZCanonicalToken *token, int delimiter_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], bool object_field_has_colon[], size_t delimiter_cap, size_t next_field_start, size_t bracket_depth, const bool bracket_literal[], size_t bracket_repeat_count[], size_t bracket_comma_count[]) {
   if (delimiter_depth == 0) return canon_fail(parser->diag, token, "unexpected comma in expression", "expression delimiter", ",");
   if ((size_t)delimiter_depth >= delimiter_cap) return canon_fail(parser->diag, token, "expression nesting is too deep", "shallower delimiters", ",");
   CanonExprDelimiterKind kind = delimiter_kind[delimiter_depth];
@@ -538,14 +539,28 @@ static bool canon_note_expr_comma(CanonParser *parser, const ZCanonicalToken *to
     if (bracket_repeat_count[bracket_depth] > 0) return canon_fail(parser->diag, token, "array repeat literal cannot contain comma elements", "one ';'", ",");
     bracket_comma_count[bracket_depth]++;
   }
-  if (kind == CANON_EXPR_DELIM_OBJECT) object_field_start[delimiter_depth] = next_field_start;
+  if (kind == CANON_EXPR_DELIM_OBJECT) {
+    object_field_start[delimiter_depth] = next_field_start;
+    object_field_has_colon[delimiter_depth] = false;
+  }
   return true;
 }
 
-static bool canon_validate_object_colon(CanonParser *parser, const ZCanonicalToken *token, int delimiter_depth, int brace_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], size_t delimiter_cap, size_t colon_index) {
+static bool canon_validate_object_field_complete(CanonParser *parser, const ZCanonicalToken *token, int delimiter_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], const bool object_field_has_colon[], size_t delimiter_cap, size_t boundary_index) {
+  if (delimiter_depth <= 0 || (size_t)delimiter_depth >= delimiter_cap || delimiter_kind[delimiter_depth] != CANON_EXPR_DELIM_OBJECT) return true;
+  if (object_field_start[delimiter_depth] >= boundary_index) return true;
+  if (object_field_has_colon[delimiter_depth]) return true;
+  const ZCanonicalToken *field = &parser->tokens->items[object_field_start[delimiter_depth]];
+  return canon_fail(parser->diag, field, "expected ':' after object field name", ":", token ? token->text : "end of expression");
+}
+
+static bool canon_validate_object_colon(CanonParser *parser, const ZCanonicalToken *token, int delimiter_depth, int brace_depth, CanonExprDelimiterKind delimiter_kind[], size_t object_field_start[], bool object_field_has_colon[], size_t delimiter_cap, size_t colon_index) {
   if (brace_depth == 0) return canon_fail(parser->diag, token, "unexpected ':' in expression", "object field", ":");
   if ((size_t)delimiter_depth >= delimiter_cap || delimiter_kind[delimiter_depth] != CANON_EXPR_DELIM_OBJECT) return canon_fail(parser->diag, token, "unexpected ':' in expression", "object field", ":");
-  return canon_validate_object_field_name(parser, object_field_start[delimiter_depth], colon_index);
+  if (object_field_has_colon[delimiter_depth]) return canon_fail(parser->diag, token, "object field already has a value separator", "one ':'", ":");
+  if (!canon_validate_object_field_name(parser, object_field_start[delimiter_depth], colon_index)) return false;
+  object_field_has_colon[delimiter_depth] = true;
+  return true;
 }
 
 static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t end) {
@@ -556,6 +571,7 @@ static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t 
   int brace_depth = 0;
   CanonExprDelimiterKind delimiter_kind[256] = {0};
   size_t object_field_start[256] = {0};
+  bool object_field_has_colon[256] = {0};
   bool bracket_literal[128] = {0};
   size_t bracket_depth = 0, bracket_repeat_count[128] = {0}, bracket_comma_count[128] = {0};
   for (size_t i = start; i < end; i++) {
@@ -598,7 +614,7 @@ static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t 
       if (canon_is_symbol_text(token, "(") && !expect_operand && previous && !canon_tokens_connected(previous, token)) return canon_fail(parser->diag, token, "call parentheses must follow the callee directly", "adjacent '('", "(");
       if (canon_is_symbol_text(token, "[") && !expect_operand && (!previous || !canon_tokens_connected(previous, token))) return canon_fail(parser->diag, token, "index brackets must follow the indexed expression directly", "adjacent '['", "[");
       if (canon_is_symbol_text(token, "{") && expect_operand) return canon_fail(parser->diag, token, "expected expression before object literal", "expression", "{");
-      canon_note_expr_open_delimiter(token, &delimiter_depth, &brace_depth, delimiter_kind, object_field_start, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i + 1, expect_operand);
+      canon_note_expr_open_delimiter(token, &delimiter_depth, &brace_depth, delimiter_kind, object_field_start, object_field_has_colon, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i + 1, expect_operand);
       if (canon_is_symbol_text(token, "[")) {
         if (bracket_depth + 1 < sizeof(bracket_literal) / sizeof(bracket_literal[0])) bracket_depth++;
         bracket_literal[bracket_depth] = expect_operand; bracket_repeat_count[bracket_depth] = 0; bracket_comma_count[bracket_depth] = 0;
@@ -614,17 +630,19 @@ static bool canon_validate_expr_shape(CanonParser *parser, size_t start, size_t 
       if (expect_operand && !(previous && (canon_expr_open_symbol(previous) || canon_is_symbol_text(previous, "..")))) {
         return canon_fail(parser->diag, token, "expected expression before delimiter", "expression", token->text);
       }
+      if (canon_is_symbol_text(token, "}") && !canon_validate_object_field_complete(parser, token, delimiter_depth, delimiter_kind, object_field_start, object_field_has_colon, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i)) return false;
       canon_close_expr_delimiter(token, &delimiter_depth, &brace_depth, &bracket_depth, bracket_literal, bracket_repeat_count, bracket_comma_count);
       expect_operand = false; saw_operand = true; continue;
     }
     if (canon_is_symbol_text(token, ",")) {
       if (expect_operand) return canon_fail(parser->diag, token, "expected expression before comma", "expression", ",");
-      if (!canon_note_expr_comma(parser, token, delimiter_depth, delimiter_kind, object_field_start, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i + 1, bracket_depth, bracket_literal, bracket_repeat_count, bracket_comma_count)) return false;
+      if (!canon_validate_object_field_complete(parser, token, delimiter_depth, delimiter_kind, object_field_start, object_field_has_colon, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i)) return false;
+      if (!canon_note_expr_comma(parser, token, delimiter_depth, delimiter_kind, object_field_start, object_field_has_colon, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i + 1, bracket_depth, bracket_literal, bracket_repeat_count, bracket_comma_count)) return false;
       expect_operand = true; continue;
     }
     if (canon_is_symbol_text(token, ":")) {
       if (expect_operand) return canon_fail(parser->diag, token, "expected field name before ':'", "field name", ":");
-      if (!canon_validate_object_colon(parser, token, delimiter_depth, brace_depth, delimiter_kind, object_field_start, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i)) return false;
+      if (!canon_validate_object_colon(parser, token, delimiter_depth, brace_depth, delimiter_kind, object_field_start, object_field_has_colon, sizeof(delimiter_kind) / sizeof(delimiter_kind[0]), i)) return false;
       expect_operand = true;
       continue;
     }
@@ -769,6 +787,7 @@ static bool canon_validate_type_span(CanonParser *parser, size_t start, size_t e
       continue;
     }
     if (canon_is_symbol_text(token, ",")) {
+      if (bracket_depth > 0 && bracket_prefix[bracket_depth - 1]) return canon_fail(parser->diag, token, "array type length cannot contain comma", "single array length", ",");
       if (expect_atom) return canon_fail(parser->diag, token, "expected type before comma", "type", ",");
       expect_atom = true;
       continue;

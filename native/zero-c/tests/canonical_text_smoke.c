@@ -291,12 +291,17 @@ static void parses_character_literals(void) {
 
 static void parses_generic_calls_and_array_repeats(void) {
   const char *source =
+    "type Box<T> {\n"
+    "    value: T,\n"
+    "}\n"
+    "\n"
     "fn choose<T, U>(left: T, right: U) -> T {\n"
     "    return left\n"
     "}\n"
     "\n"
     "fn caller(a: i32, b: u8) -> Void {\n"
     "    let value: i32 = choose<i32, u8>(a, b)\n"
+    "    let box: Box<i32> = Box<i32> { value: value }\n"
     "    let bytes: [4]u8 = [0_u8; 4]\n"
     "    check value == 1 || bytes[0] == 0_u8\n"
     "}\n";
@@ -397,6 +402,9 @@ static void rejects_noncanonical_spellings(void) {
   expect_rejects("fn bad() -> Void {\n    check fn\n}\n", "reserved word check expression");
   expect_rejects("fn bad() -> Void {\n    let value: i32 = (items[0)]\n}\n", "mismatched expression delimiters");
   expect_rejects("fn if() -> Void {\n    return\n}\n", "reserved function name");
+  expect_rejects("fn interface() -> Void {\n    return\n}\n", "reserved interface function name");
+  expect_rejects("fn alias() -> Void {\n    return\n}\n", "reserved alias function name");
+  expect_rejects("fn bad() -> Void {\n    let expect: i32 = 1\n}\n", "reserved expect binding name");
   expect_rejects("fn bad() -> 1 {\n    return\n}\n", "literal return type");
   expect_rejects("fn bad(value: \"nope\") -> Void {\n    return\n}\n", "literal parameter type");
   expect_rejects("fn bad() -> Void {\n    let value: char = ''\n}\n", "empty character literal");
@@ -407,6 +415,8 @@ static void rejects_noncanonical_spellings(void) {
   expect_rejects("fn bad() -> Void {\n    let value: i32 = 123abc\n}\n", "malformed number literal");
   expect_rejects("fn bad() -> Void {\n    let value: i32 = 0b102\n}\n", "malformed radix number literal");
   expect_rejects("type Point {\n    x: i32,\n}\n\nfn bad() -> Void {\n    let point: Point = Point { 1: 2 }\n}\n", "numeric object field");
+  expect_rejects("type Point {\n    x: i32,\n}\n\nfn bad() -> Void {\n    let point: Point = Point { x }\n}\n", "object field without value");
+  expect_rejects("type Point {\n    x: i32,\n    y: i32,\n}\n\nfn bad() -> Void {\n    let point: Point = Point { x, y: 1 }\n}\n", "object field without value before comma");
   expect_rejects("alias Bad = 1\n", "literal alias target");
   expect_rejects("alias Bad = 1 + 2\n", "alias expression target");
   expect_rejects("pub alias Bad = 1 + 2\n", "public alias expression target");
@@ -423,6 +433,7 @@ static void rejects_noncanonical_spellings(void) {
   expect_rejects("fn bad() -> Void {\n    check ()\n}\n", "empty grouped check expression");
   expect_rejects("fn bad() -> Void {\n    let value: i32 = ()\n}\n", "empty grouped initializer expression");
   expect_rejects("fn bad() -> Void {\n    let value: i32 = (1, 2)\n}\n", "comma grouped expression");
+  expect_rejects("fn bad() -> Void {\n    let bytes: [4, 5]u8 = [0_u8; 4]\n}\n", "comma in array type length");
   expect_rejects("fn bad() -> Void {\n    let bytes: [4]u8 = [0_u8; 4, 5]\n}\n", "comma after array repeat count");
   expect_rejects("fn bad() -> Void {\n    let bytes: [4]u8 = [0_u8, 1_u8; 4]\n}\n", "mixed array literal and repeat");
   expect_rejects("use \"not-module\"\n", "string use import");
