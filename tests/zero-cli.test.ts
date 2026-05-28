@@ -27,7 +27,7 @@ const runnableDirectTarget =
   null;
 
 function runnableBuildArgs(input: string, out: string) {
-  if (runnableDirectTarget) return ["build", "--emit", "exe", "--target", runnableDirectTarget, input, "--out", out];
+  if (runnableDirectTarget) return ["build", "--text", "--emit", "exe", "--target", runnableDirectTarget, input, "--out", out];
   throw new Error("no runnable direct target for this host");
 }
 
@@ -62,8 +62,8 @@ async function collectSkillMdFiles(dir: string): Promise<string[]> {
 
 describe("native zero CLI", () => {
   it("prints a terse plain version", async () => {
-    assert.equal((await runZero(["--version"])).stdout, "zero 0.1.4\n");
-    assert.equal((await runNativeZero(["--version"])).stdout, "zero 0.1.4\n");
+    assert.equal((await runZero(["--version", "--text"])).stdout, "zero 0.1.4\n");
+    assert.equal((await runNativeZero(["--version", "--text"])).stdout, "zero 0.1.4\n");
   });
 
   it("checks directly and rejects removed legacy build flags", async () => {
@@ -149,7 +149,7 @@ describe("native zero CLI", () => {
 
     const objOut = join(tmpdir(), `zero-target-${Date.now()}.o`);
     try {
-      const objBuild = await runZero(["build", "--emit", "obj", "--target", "linux-musl-arm64", "examples/direct-exe-return.0", "--out", objOut]);
+      const objBuild = await runZero(["build", "--text", "--emit", "obj", "--target", "linux-musl-arm64", "examples/direct-exe-return.0", "--out", objOut]);
       assert.ok(objBuild.stdout.includes(`${objOut} (`));
       assert.match(objBuild.stdout, artifactSummaryPattern);
       const bytes = await readFile(objOut);
@@ -159,7 +159,7 @@ describe("native zero CLI", () => {
       await rm(objOut, { force: true });
     }
 
-    const targets = JSON.parse((await runZero(["targets"])).stdout);
+    const targets = JSON.parse((await runZero(["targets", "--json"])).stdout);
     assert.deepEqual(
       targets.targets.map((target: { name: string }) => target.name),
       supportedTargets,
@@ -210,7 +210,7 @@ describe("native zero CLI", () => {
     assert.notEqual(removedPath.code, 0);
     assert.match(JSON.parse(removedPath.stdout).error, /Unknown skills subcommand: path/);
 
-    const badSkillsFlag = await runZero(["skills", "-x"]).catch((error) => error);
+    const badSkillsFlag = await runZero(["skills", "--text", "-x"]).catch((error) => error);
     assert.notEqual(badSkillsFlag.code, 0);
     assert.match(badSkillsFlag.stderr, /Unknown skills flag: -x/);
 
@@ -250,7 +250,7 @@ describe("native zero CLI", () => {
   });
 
   it("rejects unsupported target triples", async () => {
-    const result = await runZero(["check", "--target", "mips-unknown-none", "examples/hello.0"]).catch((error) => error);
+    const result = await runZero(["check", "--text", "--target", "mips-unknown-none", "examples/hello.0"]).catch((error) => error);
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /unknown target 'mips-unknown-none'/);
   });
@@ -269,7 +269,7 @@ describe("native zero CLI", () => {
   });
 
   it("emits native diagnostic codes", async () => {
-    const result = await runZero(["check", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
+    const result = await runZero(["check", "--text", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /FLD001/);
     assert.match(result.stderr, /explain: zero explain FLD001/);

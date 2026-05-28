@@ -388,7 +388,7 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
       get_all = true;
       continue;
     }
-    if (strcmp(arg, "--full") == 0 || strcmp(arg, "--json") == 0 || strcmp(arg, "--zdn") == 0) continue;
+    if (strcmp(arg, "--full") == 0 || strcmp(arg, "--json") == 0 || strcmp(arg, "--zdn") == 0 || strcmp(arg, "--text") == 0) continue;
     if (arg[0] == '-') {
       char message[160];
       snprintf(message, sizeof(message), "Unknown skills flag: %s", arg);
@@ -448,7 +448,7 @@ static int embedded_skills_command(int argc, char **argv, bool json, bool zdn) {
   const char *subcommand = "list";
   for (int i = 2; i < argc; i++) {
     const char *arg = argv[i];
-    if (strcmp(arg, "--json") == 0 || strcmp(arg, "--zdn") == 0 || strcmp(arg, "--all") == 0 || strcmp(arg, "--full") == 0) continue;
+    if (strcmp(arg, "--json") == 0 || strcmp(arg, "--zdn") == 0 || strcmp(arg, "--all") == 0 || strcmp(arg, "--full") == 0 || strcmp(arg, "--text") == 0) continue;
     if (arg[0] == '-') {
       char message[160];
       snprintf(message, sizeof(message), "Unknown skills flag: %s", arg);
@@ -4457,8 +4457,12 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     else {
       (*index)++;
       if (strcmp(argv[*index], "zdn") == 0) command->format = FORMAT_ZDN;
+      else if (strcmp(argv[*index], "text") == 0) command->format = FORMAT_TEXT;
       else command->unknown_flag = argv[*index];
     }
+    return true;
+  } else if (strcmp(arg, "--text") == 0) {
+    command->format = FORMAT_TEXT;
     return true;
   } else if (strcmp(arg, "--zdn") == 0) {
     command->format = FORMAT_ZDN;
@@ -4517,6 +4521,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
       if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) command->kind = "help";
       else if (strcmp(argv[i], "--json") == 0) command->format = FORMAT_JSON;
       else if (strcmp(argv[i], "--zdn") == 0) command->format = FORMAT_ZDN;
+      else if (strcmp(argv[i], "--text") == 0) command->format = FORMAT_TEXT;
       else if (strcmp(argv[i], "--all") == 0) command->all = true;
       else if (strcmp(argv[i], "--full") == 0) {
         continue;
@@ -11107,7 +11112,22 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
     }
   }
 
-  if (command->format == FORMAT_JSON) {
+  if (command->format == FORMAT_ZDN) {
+    ZBuf z;
+    zbuf_init(&z);
+    zbuf_append(&z, "GraphCheck\n");
+    zdn_field_bool(&z, "ok", ok, 1);
+    zdn_field_string(&z, "sourceFile", command->input ? command->input : "", 1);
+    zdn_field_string(&z, "target", target ? target->name : "", 1);
+    zdn_field_string(&z, "phase", graph_check_phase_name(phase), 1);
+    if (!ok) {
+      zdn_object_start(&z, "diagnostic", 1);
+      zdn_field_int(&z, "code", diag->code, 2);
+      zdn_field_string(&z, "message", diag->message, 2);
+    }
+    fputs(z.data, stdout);
+    zbuf_free(&z);
+  } else if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_check_json(&json, command, target, &graph, &checked_input, &checked_program, ok, ok ? NULL : diag, graph_check_phase_name(phase));
@@ -11128,7 +11148,8 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
 static int run_graph_size_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
   ZProgramGraph graph;
   if (!z_program_graph_load(command->input, &graph, diag)) {
-    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->input, diag);
+    else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     return 1;
   }
@@ -11145,7 +11166,8 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   if (!ok) {
     if (input.source_file) z_map_source_diag(&input, diag);
     if (!diag->path) diag->path = input.source_file ? input.source_file : command->input;
-    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->input, diag);
+    else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -11163,6 +11185,14 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   input.interface_cache_hit = compiler_cache_touch("interface", graph_interface_cache_key(&input, graph.graph_hash));
   input.check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(&input, target, NULL, "checked-body"));
   input.specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(&input, target, command && command->profile ? command->profile : "release", "specialization"));
+  if (command->format == FORMAT_ZDN) {
+    zdn_print_size_full(command, &input, target);
+    z_free_ir_program(&ir);
+    z_free_program(&program);
+    z_free_source(&input);
+    z_program_graph_free(&graph);
+    return 0;
+  }
   int rc = run_size_report_command(command, &input, &program, target, &ir, &graph_source, diag);
   z_free_ir_program(&ir);
   z_free_program(&program);
@@ -11495,10 +11525,6 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
 }
 
 static int run_graph_command(const Command *command, SourceInput *input, Program *program, const ZTargetInfo *target, ZDiag *diag) {
-  if (command->format == FORMAT_ZDN) {
-    zdn_print_graph(input ? input->source_file : "", target ? target->name : "host");
-    return 0;
-  }
   bool graph_import = command->kind && strcmp(command->kind, "import") == 0;
   bool graph_dump = command->kind && (strcmp(command->kind, "dump") == 0 || graph_import);
   bool graph_inspect = command->kind && strcmp(command->kind, "inspect") == 0;
@@ -11531,7 +11557,9 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
       z_program_graph_free(&stored);
       return 1;
     }
-    if (command->format == FORMAT_JSON) {
+    if (command->format == FORMAT_ZDN) {
+      zdn_print_graph(input ? input->source_file : "", target ? target->name : "host");
+    } else if (command->format == FORMAT_JSON) {
       ZProgramGraphValidation validation = {0};
       z_program_graph_validate(&stored, &validation);
       ZBuf json;
@@ -11542,6 +11570,10 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
       zbuf_free(&json);
     }
     z_program_graph_free(&stored);
+    return 0;
+  }
+  if (command->format == FORMAT_ZDN) {
+    zdn_print_graph(input ? input->source_file : "", target ? target->name : "host");
     return 0;
   }
   ZBuf graph;
@@ -11558,7 +11590,7 @@ int main(int argc, char **argv) {
     print_help();
     return 0;
   }
-  Command command = {0};
+  Command command = {.format = FORMAT_ZDN};
   if (!parse_command(argc, argv, &command)) {
     print_help();
     return 1;
@@ -11665,17 +11697,16 @@ int main(int argc, char **argv) {
 
   bool graph_run_command = strcmp(command.command, "graph") == 0 && command.kind && strcmp(command.kind, "run") == 0;
   if (strcmp(command.command, "run") == 0 || graph_run_command) {
-    if (command.format != FORMAT_TEXT) {
+    if (command.format == FORMAT_JSON) {
       diag.code = 2002;
       diag.line = 1;
       diag.column = 1;
       diag.length = 1;
-      snprintf(diag.message, sizeof(diag.message), "%s does not support --json or --format zdn", graph_run_command ? "zero graph run" : "zero run");
+      snprintf(diag.message, sizeof(diag.message), "%s does not support --json", graph_run_command ? "zero graph run" : "zero run");
       snprintf(diag.expected, sizeof(diag.expected), "%s <input>", graph_run_command ? "zero graph run" : "zero run");
       snprintf(diag.actual, sizeof(diag.actual), "%s --json", graph_run_command ? "zero graph run" : "zero run");
       snprintf(diag.help, sizeof(diag.help), "program stdout belongs to the program; use %s --json to inspect the artifact before running it", graph_run_command ? "zero graph build" : "zero build");
-      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag);
-      else print_diag_json(command.input, &diag);
+      print_diag_json(command.input, &diag);
       return 1;
     }
     if (command.emit != EMIT_EXE) {
