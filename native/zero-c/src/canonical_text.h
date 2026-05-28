@@ -68,6 +68,7 @@ ZCanonicalTokenVec z_canonical_text_tokenize(const char *source, ZDiag *diag);
 bool z_canonical_text_parse(const ZCanonicalTokenVec *tokens, ZCanonicalTree *tree, ZCanonicalFacts *facts, ZDiag *diag);
 bool z_canonical_text_format(const ZCanonicalTokenVec *tokens, ZBuf *out, ZDiag *diag);
 bool z_canonical_text_format_source(const char *source, ZBuf *out, ZDiag *diag);
+bool z_canonical_text_write_program(const Program *program, ZBuf *out, ZDiag *diag);
 Program z_parse_canonical_text_program(const ZCanonicalTokenVec *tokens, ZDiag *diag);
 bool z_parse_canonical_text_program_source(const char *source, Program *out, ZDiag *diag);
 void z_free_canonical_text_tokens(ZCanonicalTokenVec *tokens);

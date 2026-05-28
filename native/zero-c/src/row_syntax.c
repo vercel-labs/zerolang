@@ -1662,14 +1662,14 @@ static void row_parse_type_decl(const ZRowTokenVec *tokens, const ZRowTree *tree
   row_push_shape(&program->shapes, shape);
 }
 
-static void row_parse_enum_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, Program *program, ZDiag *diag) {
+static void row_parse_enum_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, Program *program, ZDiag *diag) {
   const ZRowNode *node = &tree->items[row_index];
   size_t pos = node->first_token;
   size_t end = node->first_token + node->token_count;
   if (row_token_text_at(tokens, pos, end, "pub")) pos++;
   row_expect_text(tokens, &pos, end, diag, "enum", "expected enum declaration");
   const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected enum name");
-  EnumDecl item = {.line = node->line, .column = node->column};
+  EnumDecl item = {.is_public = is_public, .line = node->line, .column = node->column};
   if (name) item.name = z_strdup(name->text);
   if (pos < end) item.type = row_parse_type_text(tokens, &pos, end, diag);
   if (!row_expect_end(tokens, pos, end, diag, "enum declaration")) return;
@@ -1686,14 +1686,14 @@ static void row_parse_enum_decl(const ZRowTokenVec *tokens, const ZRowTree *tree
   row_push_enum(&program->enums, item);
 }
 
-static void row_parse_choice_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, Program *program, ZDiag *diag) {
+static void row_parse_choice_decl(const ZRowTokenVec *tokens, const ZRowTree *tree, size_t row_index, bool is_public, Program *program, ZDiag *diag) {
   const ZRowNode *node = &tree->items[row_index];
   size_t pos = node->first_token;
   size_t end = node->first_token + node->token_count;
   if (row_token_text_at(tokens, pos, end, "pub")) pos++;
   row_expect_text(tokens, &pos, end, diag, "choice", "expected choice declaration");
   const ZRowToken *name = row_expect_word(tokens, &pos, end, diag, "expected choice name");
-  Choice item = {.line = node->line, .column = node->column};
+  Choice item = {.is_public = is_public, .line = node->line, .column = node->column};
   if (name) item.name = z_strdup(name->text);
   if (!row_expect_end(tokens, pos, end, diag, "choice declaration")) return;
   for (size_t i = 0; i < tree->len && !row_has_diag(diag); i++) {
@@ -1844,9 +1844,9 @@ Program z_parse_row(const ZRowTokenVec *tokens, const ZRowTree *tree, ZDiag *dia
     } else if (row_token_text_at(tokens, pos, end, "type")) {
       row_parse_type_decl(tokens, tree, i, is_public, shape_layout, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "enum")) {
-      row_parse_enum_decl(tokens, tree, i, &program, diag);
+      row_parse_enum_decl(tokens, tree, i, is_public, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "choice")) {
-      row_parse_choice_decl(tokens, tree, i, &program, diag);
+      row_parse_choice_decl(tokens, tree, i, is_public, &program, diag);
     } else if (row_token_text_at(tokens, pos, end, "test")) {
       if (!row_parse_test_decl(tokens, tree, i, pos, &program, &test_counter, diag)) return program;
     } else {

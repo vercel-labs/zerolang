@@ -7,7 +7,6 @@ Most commands accept the same input forms:
 | Input | Meaning |
 | --- | --- |
 | `file.0` | Canonical Zero source text. |
-| `file.zero` | Generated human-readable graph preview from `zero graph view`; not source. |
 | `project/` | A package directory containing `zero.json`. |
 | `zero.json` | A package manifest. |
 
@@ -40,13 +39,14 @@ zero graph dump --out .zero/out/hello.program-graph examples/hello.0
 zero graph import --out .zero/out/hello.program-graph examples/hello.0
 zero graph inspect --json examples/hello.0
 zero graph validate .zero/out/hello.program-graph
-zero graph view --out .zero/out/hello.zero .zero/out/hello.program-graph
+zero graph view examples/hello.0
+zero graph view --out .zero/out/hello.view.0 .zero/out/hello.program-graph
 zero graph check --json .zero/out/hello.program-graph
 zero graph size --json .zero/out/hello.program-graph
 zero graph build --json --emit obj --target linux-musl-x64 --out .zero/out/hello.o .zero/out/hello.program-graph
 zero graph run .zero/out/hello.program-graph
 zero graph test --json .zero/out/hello.program-graph
-zero graph patch --out .zero/out/hello.patched.program-graph .zero/out/hello.program-graph --expect-graph-hash graph:f76987e99677f1b3 --op 'set node="#610c78bf" field="value" expect="hello\n" value="hello patched\n"'
+zero graph patch .zero/out/hello.view.0 --expect-graph-hash graph:f76987e99677f1b3 --op 'set node="#610c78bf" field="value" expect="hello from zero\n" value="hello patched\n"'
 zero graph roundtrip examples/hello.0
 zero graph roundtrip .zero/out/hello.program-graph
 zero size --json examples/point.0
@@ -78,11 +78,11 @@ another tool needs stable fields.
 | `zero graph dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <program-graph-artifact>` to also write a derived graph artifact. |
 | `zero graph import --json` | Source-to-ProgramGraph import with graph identity and validation. With `--out <program-graph-artifact>`, writes a derived graph artifact and reports `saved.path`. |
 | `zero graph validate --json` | A derived ProgramGraph artifact readback check with `moduleIdentity`, `graphHash`, counts, validation state, and optional normalized artifact output path. |
-| `zero graph view --json` | A generated `.zero` human-readable preview for a ProgramGraph artifact with `moduleIdentity`, `graphHash`, and optional output path. |
-| `zero graph check --json` | Typecheck a ProgramGraph artifact through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, and graph-mapped diagnostics. |
+| `zero graph view --json` | Canonical source text rendered from source or a ProgramGraph artifact with `moduleIdentity`, `graphHash`, and optional output path. |
+| `zero graph check --json` | Typecheck source or a ProgramGraph artifact through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, and graph-mapped diagnostics. |
 | `zero graph size --json` | Size, helper, runtime, profile, and backend facts for a ProgramGraph artifact lowered through `direct-program-graph`, with graph identity. |
 | `zero graph build --json` | Build a ProgramGraph artifact through direct graph lowering, including graph identity, selected `emit` kind, target, artifact path and size, compiler cache facts, and graph-aware incremental invalidation. |
-| `zero graph patch --json` | Checked ProgramGraph artifact edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and optional derived ProgramGraph output path. |
+| `zero graph patch --json` | Checked graph edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and the saved source or artifact path. |
 | `zero graph roundtrip --json` | Source or ProgramGraph artifact stability through direct graph lowering with `semanticStable`, lowering mode, original and roundtripped graph hashes, raw counts, normalized semantic counts, and optional ProgramGraph output. |
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
 | `zero dev --json --trace` | Adds phase timing, cache hit/miss facts, diagnostics passthrough, and `interfaceFingerprints`. |
@@ -112,19 +112,22 @@ linking facts such as retained runtime objects, provider libraries, and
 
 `.0` files are source text. ProgramGraph commands that write graph artifacts
 must use a non-source output path, such as `.zero/out/app.program-graph`.
-Agents can inspect and patch through graph artifacts, but repository source of
-truth remains source text.
+Agents can inspect source through ProgramGraph commands and can patch canonical
+`.0` source through `zero graph patch`. ProgramGraph artifacts remain optional
+debug and interchange files.
 
 ## ProgramGraph Patches
 
-`zero graph patch` applies checked edits to a derived ProgramGraph artifact and
-prints or writes another derived artifact. For small edits, pass one or more
+`zero graph patch` applies checked edits to a graph. When the input is
+canonical `.0` source without comments, the command rewrites that source after
+lowering, formatting, re-parsing, and semantic graph comparison succeeds. Row
+syntax sources such as `examples/hello.0` should be rendered to a canonical view
+or patched as ProgramGraph artifacts. For small edits, pass one or more
 operations inline:
 
 ```sh
 zero graph patch \
-  --out .zero/out/hello.patched.program-graph \
-  .zero/out/hello.program-graph \
+  .zero/out/hello.view.0 \
   --expect-graph-hash graph:f76987e99677f1b3 \
   --op 'set node="#610c78bf" field="value" expect="hello from zero\n" value="hello patched\n"'
 ```
@@ -226,9 +229,9 @@ zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <f
 zero fmt [--check] <input>
 zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
 zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
-zero graph view [--json] --out <file.zero> <program-graph-artifact>
+zero graph view [--json] [--out <file.0>] <program-graph-or-source>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
-zero graph patch [--json] --out <program-graph-artifact> <program-graph-or-package> (<patch-file>|--op <operation>)
+zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
 zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
 zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
 zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>

@@ -1135,7 +1135,7 @@ static void rejects_noncanonical_spellings(void) {
   expect_rejects("enum Bad u8 {\n    one,\n}\n", "enum storage type without colon");
   expect_rejects("enum Bad<T> {\n    one,\n}\n", "generic enum declaration");
   expect_rejects("choice Bad<T> {\n    ok: i32,\n}\n", "generic choice declaration");
-  expect_rejects("choice Bad {\n    ok,\n}\n", "choice variant without explicit type");
+  expect_accepts("choice Bad {\n    ok,\n}\n", "choice variant without payload");
   expect_rejects("choice Result {\n    ok: i32,\n}\n\nfn bad(result: Result) -> Void {\n    match result {\n        ok value {\n            return\n        }\n    }\n}\n", "choice match pattern without dot payload syntax");
   expect_rejects("choice Result {\n    ok: i32,\n}\n\nfn bad(result: Result) -> Void {\n    match result {\n        .ok(left, right) {\n            return\n        }\n    }\n}\n", "multiple choice match payload bindings");
 }

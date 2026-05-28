@@ -2596,15 +2596,15 @@ const programGraphDumpJson = JSON.parse((await execFileAsync(zero, ["graph", "du
 const programGraphDumpPath = `${outDir}/hello.program-graph`;
 const programGraphDumpJsonPath = `${outDir}/hello.dump-json.program-graph`;
 const programGraphCanonicalPath = `${outDir}/hello.canonical.program-graph`;
-const programGraphViewPath = `${outDir}/hello.program-graph.zero`;
+const programGraphViewPath = `${outDir}/hello.graph-view.0`;
 const programGraphArtifactRoundtripPath = `${outDir}/hello.roundtrip.program-graph`;
 const programGraphSourceFixturePath = "conformance/program-graph/hello.0";
 const programGraphSourceFixturePackage = "conformance/program-graph";
 const programGraphSourceFixtureRunPath = `${outDir}/program-graph-fixture-run`;
 const programGraphRichPath = `${outDir}/open-ended-slices.program-graph`;
-const programGraphRichViewPath = `${outDir}/open-ended-slices.program-graph.zero`;
+const programGraphRichViewPath = `${outDir}/open-ended-slices.graph-view.0`;
 const programGraphCharPath = `${outDir}/float-char-casts.program-graph`;
-const programGraphCharViewPath = `${outDir}/float-char-casts.program-graph.zero`;
+const programGraphCharViewPath = `${outDir}/float-char-casts.graph-view.0`;
 await rm(programGraphDumpPath, { force: true });
 await rm(programGraphDumpJsonPath, { force: true });
 await rm(programGraphCanonicalPath, { force: true });
@@ -2643,29 +2643,29 @@ await execFileAsync(zero, ["graph", "dump", "--out", programGraphCharPath, "conf
 await execFileAsync(zero, ["graph", "view", "--out", programGraphCharViewPath, programGraphCharPath]);
 const programGraphCharView = await readFile(programGraphCharViewPath, "utf8");
 const programGraphViewCoverage = [
-  ["compile-time-v1", "examples/compile-time-v1.0", [/field_type "i32"/, /readGate<enabled, selected> &gate/]],
-  ["array-repeat-literal", "conformance/native/pass/array-repeat-literal.0", [/\[7_u8;8\]/, /\[0_u8;16\]/]],
-  ["explicit-casts", "conformance/native/pass/explicit-casts.0", [/byte \(big as u8\)/, /signed \(small as isize\)/]],
-  ["generic-multi-specialization", "conformance/native/pass/generic-multi-specialization.0", [/first<i32, u8> 21 7/, /second<i32, u8> a 6/]],
-  ["generic-shape-nested-defaults-alias", "conformance/native/pass/generic-shape-nested-defaults-alias.0", [/left \(Box \. value 42\) right \(Slot \. item 7_u8\)/]],
-  ["float-primitives", "conformance/native/pass/float-primitives.0", [/let precise f64 1\.0e-3/]],
-  ["meta-typed-target-type", "conformance/native/pass/meta-typed-target-type.0", [/const computed usize \+ \(meta 2\) 2/]],
-  ["nested-lvalues", "conformance/native/pass/nested-lvalues.0", [/start \(Point \. x 3 y 4\) end \(Point \. x 5 y 6\)/]],
-  ["radix-suffix-literals", "conformance/native/pass/radix-suffix-literals.0", [/ret 0x20_usize/, /1_024_usize/, /0x2a_u8/]],
+  ["compile-time-v1", "examples/compile-time-v1.0", [/const field_type: String = meta fieldType\(Point, "x"\)/, /readGate<enabled, selected>\(&gate\)/]],
+  ["array-repeat-literal", "conformance/native/pass/array-repeat-literal.0", [/\[7_u8; 8\]/, /\[0_u8; 16\]/]],
+  ["explicit-casts", "conformance/native/pass/explicit-casts.0", [/let byte: u8 = big as u8/, /let offset: isize = small as isize/]],
+  ["generic-multi-specialization", "conformance/native/pass/generic-multi-specialization.0", [/first<i32, u8>\(21, 7\)/, /second<i32, u8>\(a, 6\)/]],
+  ["generic-shape-nested-defaults-alias", "conformance/native/pass/generic-shape-nested-defaults-alias.0", [/Box \{ value: 42 \}/, /Slot \{ item: 7_u8 \}/]],
+  ["float-primitives", "conformance/native/pass/float-primitives.0", [/let precise: f64 = 1\.0e-3/]],
+  ["meta-typed-target-type", "conformance/native/pass/meta-typed-target-type.0", [/const computed: usize = meta 2 \+ 2/]],
+  ["nested-lvalues", "conformance/native/pass/nested-lvalues.0", [/Point \{ x: 3, y: 4 \}/, /Point \{ x: 5, y: 6 \}/]],
+  ["radix-suffix-literals", "conformance/native/pass/radix-suffix-literals.0", [/return 0x20_usize/, /1_024_usize/, /0x2a_u8/]],
   ["test-blocks", "conformance/native/pass/test-blocks.0", [/test "addition works"/]],
-  ["type-alias-basic", "conformance/native/pass/type-alias-basic.0", [/let count ByteCount 4_usize/]],
-  ["c-abi-export", "conformance/native/pass/c-abi-export.0", [/extern type CPoint/, /export c fn zero_add i32 a i32 b i32/]],
+  ["type-alias-basic", "conformance/native/pass/type-alias-basic.0", [/let count: ByteCount = 4_usize/]],
+  ["c-abi-export", "conformance/native/pass/c-abi-export.0", [/extern type CPoint/, /export c fn zero_add\(a: i32, b: i32\) -> i32/]],
   ["const-layout", "conformance/native/pass/const-layout.0", [/extern type CPoint/, /packed type Header/]],
   ["c-header-import", "conformance/check/pass/c-header-import.0", [/extern c "conformance\/c\/simple\.h" as c/]],
   ["constructors-defaults", "conformance/native/pass/constructors-defaults.0", [/FixedVec\.init<u8, 4>/]],
-  ["direct-call-add", "examples/direct-call-add.0", [/export c fn main i32 a i32 b i32/]],
-  ["generic-static-explicit-shadowing", "conformance/check/pass/generic-static-explicit-shadowing.0", [/Helper\.needsSame<N> left right/]],
-  ["systems-package", "examples/systems-package", [/# Module: helpers/, /# Module: types/, /pub fn main Void world World !/]],
-  ["std-math", "examples/std-math.0", [/pub fn main Void world World !/, /std\.math\.minU32 8 3/]],
+  ["direct-call-add", "examples/direct-call-add.0", [/export c fn main\(a: i32, b: i32\) -> i32/]],
+  ["generic-static-explicit-shadowing", "conformance/check/pass/generic-static-explicit-shadowing.0", [/Helper\.needsSame<N>\(left, right\)/]],
+  ["systems-package", "examples/systems-package", [/use std\.codec/, /pub fn main\(world: World\) -> Void raises/]],
+  ["std-math", "examples/std-math.0", [/pub fn main\(world: World\) -> Void raises/, /std\.math\.minU32\(8, 3\)/]],
 ];
 for (const [name, fixture, patterns] of programGraphViewCoverage) {
   const graphPath = `${outDir}/${name}.program-graph`;
-  const viewPath = `${outDir}/${name}.program-graph.zero`;
+  const viewPath = `${outDir}/${name}.graph-view.0`;
   await rm(graphPath, { force: true });
   await rm(viewPath, { force: true });
   await execFileAsync(zero, ["graph", "dump", "--out", graphPath, fixture]);
@@ -2673,7 +2673,10 @@ for (const [name, fixture, patterns] of programGraphViewCoverage) {
   const view = await readFile(viewPath, "utf8");
   for (const pattern of patterns) assert.match(view, pattern);
   assert.doesNotMatch(view, /fn __zero_test_/);
-  if (name === "systems-package") assert.doesNotMatch(view, /^use (helpers|types)$/m);
+  if (name === "systems-package") {
+    assert.doesNotMatch(view, /^use (helpers|types)$/m);
+    assert.equal((await execFileAsync(zero, ["graph", "check", viewPath])).stdout, "program graph check ok\n");
+  }
   if (name === "std-math") assert.doesNotMatch(view, /fn __zero_std_/);
 }
 for (const fixture of [
@@ -2771,14 +2774,11 @@ assert.doesNotMatch(programGraphDump, /counts nodes=/);
 assert.doesNotMatch(programGraphDump, /node id=/);
 assert.match(programGraphDump, /node #[0-9a-f]{8} Module name:"hello"/);
 assert.match(programGraphDump, /edge #[0-9a-f]{8} function #[0-9a-f]{8} order:0/);
-assert.match(programGraphView, /^# Generated \.zero preview by zero graph view\. Do not edit\.\n# Canonical source is \.0 text, not this projection\.\n/);
-assert.match(programGraphView, /# Source graph: graph:[0-9a-f]{16}/);
-assert.match(programGraphView, /# graph origin source-text/);
-assert.match(programGraphView, /pub fn main Void world World !/);
-assert.match(programGraphView, /check world\.out\.write "hello from zero\\n"/);
+assert.match(programGraphView, /^pub fn main\(world: World\) -> Void raises \{\n/);
+assert.match(programGraphView, /check world\.out\.write\("hello from zero\\n"\)/);
 assert.match(programGraphRichView, /bytesTail\(bytes\)\[1\]/);
 assert.match(programGraphRichView, /numbers\[2\.\.\]/);
-assert.match(programGraphCharView, /== again 'A'/);
+assert.match(programGraphCharView, /again == 'A'/);
 assert.match(programGraphBody.graphHash, /^graph:[0-9a-f]{16}$/);
 assert.equal(programGraphBody.validation.ok, true);
 assert.equal(programGraphBody.validation.state, "shape-valid");

@@ -240,10 +240,12 @@ static bool lower_embedded_std_module(const ZProgramGraphNode *module) {
   if (!module || module->kind != Z_PROGRAM_GRAPH_NODE_MODULE) return false;
   for (size_t i = 0; i < z_std_source_module_count(); i++) {
     const ZStdSourceModule *std_module = z_std_source_module_at(i);
-    if (!std_module || !lower_text_eq(module->path, std_module->path)) continue;
+    if (!std_module) continue;
     const char *short_name = strrchr(std_module->module, '.');
     const char *module_name = short_name ? short_name + 1 : std_module->module;
-    if (lower_text_eq(module->name, std_module->module) || lower_text_eq(module->name, module_name)) return true;
+    bool name_matches = lower_text_eq(module->name, std_module->module) || lower_text_eq(module->name, module_name);
+    bool path_matches = !module->path || !module->path[0] || lower_text_eq(module->path, std_module->path);
+    if (name_matches && path_matches) return true;
   }
   return false;
 }
@@ -527,6 +529,7 @@ static Expr *lower_expr(GraphLower *lower, const ZProgramGraphNode *node) {
         expr->left->text = z_strdup(node->name);
       }
       if (!expr->left) lower_fail(lower, node, "program graph call is missing callee", "left edge or callee name", "missing callee", NULL);
+      expr->prefix_deref = lower_text_eq(node->value, "prefix-deref");
       lower_type_args(lower, node, &expr->type_args);
       lower_args(lower, node, &expr->args);
       return expr;
@@ -869,6 +872,7 @@ static void lower_enum(GraphLower *lower, Program *program, const ZProgramGraphN
   EnumDecl item = {
     .name = z_strdup(node->name && node->name[0] ? node->name : ""),
     .type = node->type && node->type[0] ? z_strdup(node->type) : NULL,
+    .is_public = node->is_public,
     .line = lower_line(lower, node),
     .column = node->column > 0 ? node->column : 1,
   };
@@ -880,6 +884,7 @@ static void lower_choice(GraphLower *lower, Program *program, const ZProgramGrap
   if (!lower_require_top_level_identifier(lower, node, "choice", "program graph choice name is not valid Zero identifier syntax", false)) return;
   Choice item = {
     .name = z_strdup(node->name && node->name[0] ? node->name : ""),
+    .is_public = node->is_public,
     .line = lower_line(lower, node),
     .column = node->column > 0 ? node->column : 1,
   };

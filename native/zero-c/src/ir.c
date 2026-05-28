@@ -89,6 +89,7 @@ static Expr *clone_expr(const Expr *expr) {
   copy->mutable_borrow = expr->mutable_borrow;
   copy->bool_value = expr->bool_value;
   copy->array_repeat = expr->array_repeat;
+  copy->prefix_deref = expr->prefix_deref;
   copy->left = clone_expr(expr->left);
   copy->right = clone_expr(expr->right);
   for (size_t i = 0; i < expr->args.len; i++) push_expr_clone(&copy->args, expr->args.items[i]);
@@ -3682,6 +3683,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
       .name = z_strdup(source->name),
       .type = source->type ? z_strdup(source->type) : NULL,
       .cases = clone_params(&source->cases),
+      .is_public = source->is_public,
       .line = source->line,
       .column = source->column
     };
@@ -3692,6 +3694,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
     ir.program.choices.items[ir.program.choices.len++] = (Choice){
       .name = z_strdup(source->name),
       .cases = clone_params(&source->cases),
+      .is_public = source->is_public,
       .line = source->line,
       .column = source->column
     };
