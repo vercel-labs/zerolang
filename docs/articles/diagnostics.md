@@ -48,9 +48,12 @@ Use:
 zero check examples/hello.0
 ```
 
-## JSON For Tools
+## Structured Output For Tools
 
-JSON is explicit. Use `--json` for agents, CI, editors, deep dives, and tools that need stable structured data.
+Structured output is explicit. Use `--json` for CI, editors, deep dives, and
+tools that need stable machine-readable data. Use `--zdn` (or `--format zdn`)
+for AI agents — ZDN preserves the same structured fields in a more
+agent-friendly indentation-based format.
 
 ```sh
 zero check --json examples/hello.0

@@ -89,7 +89,7 @@ describe("docs registry", () => {
       assert.match(learnZero, new RegExp(topic));
     }
     const diagnostics = await readDoc("diagnostics");
-    assert.match(diagnostics, /JSON For Tools/);
+    assert.match(diagnostics, /Structured Output For Tools/);
     assert.match(diagnostics, /CIMP003/);
     assert.match(diagnostics, /configure-target-c-dependency/);
     assert.match(await readDoc("standard-library"), /zero graph --json/);

@@ -68,6 +68,17 @@ zero graph run .zero/out/cli-file.graph -- input.txt
 ## JSON Output
 
 Use `--json` when another tool will read the result. Text output is for people.
+Use `--zdn` (or `--format zdn`) when an AI agent will read the result — ZDN
+preserves the same structured data as JSON in an agent-friendlier
+indentation-based format.
+
+Three output formats are available on every command that accepts `--json`:
+
+| Flag | Format | Use for |
+| --- | --- | --- |
+| _(none)_ | **TEXT** | Human-readable terminal output (default) |
+| `--json` | **JSON** | External tools, CI, editors |
+| `--zdn` / `--format zdn` | **ZDN** | AI agents and LLMs |
 
 | Command | Useful JSON fields |
 | --- | --- |
@@ -126,8 +137,18 @@ incrementalInvalidation, profileSemantics, toolchain plans, and more —
 formatted in ZDN's indentation-based syntax rather than JSON brackets.
 
 `--zdn` is a shorthand for `--format zdn`. Both flags produce
-the same output. Supported across all commands that accept
-`--json`:
+the same output. `--text` (or `--format text`) requests plain
+human-readable text explicitly — though text is already the default
+when no format flag is given.
+
+| Flag | Output |
+| --- | --- |
+| _(none)_ | Human-readable text |
+| `--text` / `--format text` | Same as default (explicit) |
+| `--json` | Structured JSON for tools |
+| `--zdn` / `--format zdn` | Structured ZDN for agents |
+
+Supported across all commands that accept `--json`:
 
 ProgramGraph input commands (`validate`, `view`, `check`, `size`, `build`,
 `run`, `test`, and `patch`) accept saved `.program-graph` files, canonical graph
