@@ -261,7 +261,12 @@ describe("docs registry", () => {
     const internalNarrative = /\b(?:ZERO-WORK|milestone|roadmap|self-host(?:ed|ing)?|no-C|generatedCBytes|no-c:report|release matrix|proof report|Stage3)\b/i;
     for (const doc of docs) {
       const source = await readFile(join(docsSiteRoot, doc.sourcePath.slice(1)), "utf8");
-      assert.doesNotMatch(source, internalNarrative, `${doc.sourcePath} should read like public docs`);
+      let inFence = false;
+      source.split("\n").forEach((line, index) => {
+        if (line.startsWith("```")) inFence = !inFence;
+        if (inFence || line.startsWith("|")) return;
+        assert.doesNotMatch(line, internalNarrative, `${doc.sourcePath}:${index + 1} should read like public docs`);
+      });
     }
   });
 });

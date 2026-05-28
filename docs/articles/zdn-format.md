@@ -1,6 +1,9 @@
 ## ZDN Format
 
-ZDN (Zero Data Notation) is an **agent-first structured data format** built into the Zero compiler. It is designed for AI agents and LLMs that need to consume compiler output — diagnostics, build results, graph analysis — without the syntactic overhead of JSON.
+ZDN (Zero Data Notation) is an **agent-first structured data format** built
+into the Zero compiler. It is designed for AI agents and LLMs that need to
+consume compiler output — diagnostics, build results, graph analysis — without
+the syntactic overhead of JSON.
 
 ### Design Philosophy
 
