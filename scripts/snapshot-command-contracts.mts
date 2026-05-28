@@ -1235,6 +1235,59 @@ assert.equal(graphSourcePatchJson.saved.path, graphSourcePatchPath);
 assert.match(readFileSync(graphSourcePatchPath, "utf8"), /hello source-backed\\n/);
 assert.equal(zero(["check", graphSourcePatchPath]).stdout, "ok\n");
 assert.equal(zero(["graph", "check", graphSourcePatchPath]).stdout, "program graph check ok\n");
+const graphSourcePackageDir = join(outDir, "graph-source-package");
+const graphSourcePackageMain = join(graphSourcePackageDir, "src", "main.0");
+const graphSourcePackageHelper = join(graphSourcePackageDir, "src", "helper.0");
+rmSync(graphSourcePackageDir, { recursive: true, force: true });
+mkdirSync(join(graphSourcePackageDir, "src"), { recursive: true });
+writeFileSync(
+  join(graphSourcePackageDir, "zero.json"),
+  JSON.stringify(
+    {
+      package: { name: "graph-source-package", version: "0.1.0" },
+      targets: { cli: { kind: "exe", main: "src/main.0" } },
+    },
+    null,
+    2,
+  ) + "\n",
+);
+writeFileSync(
+  graphSourcePackageHelper,
+  "pub fn value() -> i32 {\n" +
+    "    return 41\n" +
+    "}\n",
+);
+writeFileSync(
+  graphSourcePackageMain,
+  "use helper\n\n" +
+    "pub fn main() -> i32 {\n" +
+    "    return value() + 1\n" +
+    "}\n",
+);
+const graphSourcePackageDumpJson = json(["graph", "dump", "--json", graphSourcePackageMain]).body;
+const graphSourcePackageLiteralNode = graphSourcePackageDumpJson.nodes.find(
+  (node) => node.kind === "Literal" && node.path === graphSourcePackageMain && node.value === "1",
+);
+assert(graphSourcePackageLiteralNode);
+const graphSourcePackagePatchJson = json([
+  "graph",
+  "patch",
+  "--json",
+  graphSourcePackageMain,
+  "--expect-graph-hash",
+  graphSourcePackageDumpJson.graphHash,
+  "--op",
+  `set node="${graphSourcePackageLiteralNode.id}" field="value" expect="1" value="2"`,
+]).body;
+assert.equal(graphSourcePackagePatchJson.ok, true);
+assert.equal(graphSourcePackagePatchJson.saved.path, graphSourcePackageMain);
+const graphSourcePackageMainText = readFileSync(graphSourcePackageMain, "utf8");
+assert.match(graphSourcePackageMainText, /^use helper\n\n/);
+assert.match(graphSourcePackageMainText, /return value\(\) \+ 2/);
+assert.doesNotMatch(graphSourcePackageMainText, /pub fn value/);
+assert.equal(readFileSync(graphSourcePackageHelper, "utf8"), "pub fn value() -> i32 {\n    return 41\n}\n");
+assert.equal(zero(["check", graphSourcePackageMain]).stdout, "ok\n");
+assert.equal(zero(["graph", "check", graphSourcePackageMain]).stdout, "program graph check ok\n");
 const graphUserDerefSourcePath = join(outDir, "deref-member.0");
 const graphUserDerefViewPath = join(outDir, "deref-member.view.0");
 const graphPrefixDerefSourcePath = join(outDir, "prefix-deref-member.0");
@@ -2586,6 +2639,7 @@ for (const kind of ["cli", "lib", "package"]) {
   assertTemplateManifest(kind, manifest, readme);
   zero(["check", project]);
   zero(["test", project]);
+  assert.match(zero(["fmt", "--check", project]).stdout, /fmt ok/);
   if (kind !== "lib") {
     const templateRun = zero(["run", "--out", join(project, "run-app"), project]).stdout;
     assert.match(templateRun, kind === "cli" ? /hello from zero\n/ : /package ok\n/);

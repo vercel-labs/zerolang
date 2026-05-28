@@ -3719,6 +3719,8 @@ static bool has_suffix(const char *path, const char *suffix);
 static bool direct_row_reserved_word(const char *text);
 static void direct_row_append_source(SourceInput *input, ZBuf *combined, const char *path, const char *source);
 
+typedef struct { const char *path; const char *source; } DirectSourceReplacement;
+
 static bool is_row_source_path(const char *path) {
   return path && (has_suffix(path, ".0") || has_suffix(path, ".row"));
 }
@@ -4402,14 +4404,16 @@ static bool direct_row_append_referenced_std_sources(SourceInput *input, ZBuf *c
   return !diag || diag->code == 0;
 }
 
-static bool direct_canonical_resolve_file(const char *path, const char *root, SourceInput *input, ZBuf *combined, ZDiag *diag, char ***stack, size_t *stack_len) {
+static char *direct_read_source_with_replacement(const char *path, const DirectSourceReplacement *replacement, ZDiag *diag) { return replacement && replacement->path && path && strlen(replacement->path) == strlen(path) && memcmp(replacement->path, path, strlen(path)) == 0 ? z_strdup(replacement->source ? replacement->source : "") : z_read_file(path, diag); }
+
+static bool direct_canonical_resolve_file(const char *path, const char *root, SourceInput *input, ZBuf *combined, ZDiag *diag, char ***stack, size_t *stack_len, const DirectSourceReplacement *replacement) {
   if (direct_input_has_file(input, path)) return true;
   if (direct_row_stack_contains(*stack, *stack_len, path)) {
     direct_row_set_cycle_diag(diag, root, *stack, *stack_len, path, path, 1, 1, 1);
     return false;
   }
 
-  char *source = z_read_file(path, diag);
+  char *source = direct_read_source_with_replacement(path, replacement, diag);
   if (!source) return false;
   char *module = direct_row_module_name_from_path(root, path);
   *stack = z_checked_reallocarray(*stack, *stack_len + 1, sizeof(char *));
@@ -4460,7 +4464,7 @@ static bool direct_canonical_resolve_file(const char *path, const char *root, So
       break;
     }
     direct_input_push_import_edge(input, module, item->module, import_path, path, item->line, item->column, import_length);
-    bool ok = direct_canonical_resolve_file(import_path, root, input, combined, diag, stack, stack_len);
+    bool ok = direct_canonical_resolve_file(import_path, root, input, combined, diag, stack, stack_len, replacement);
     free(import_path);
     if (!ok) break;
   }
@@ -4485,19 +4489,11 @@ static bool direct_canonical_resolve_file(const char *path, const char *root, So
   return diag->code == 0;
 }
 
-static bool resolve_direct_canonical_source_at_root(const char *path, const char *root, SourceInput *input, ZDiag *diag) {
-  input->source_file = z_strdup(path);
-  input->canonical_text_source = true;
-  ZBuf combined;
-  zbuf_init(&combined);
-  char **stack = NULL;
-  size_t stack_len = 0;
-  bool ok = direct_canonical_resolve_file(path, root, input, &combined, diag, &stack, &stack_len);
-  free(stack);
-  input->source = ok ? combined.data : NULL;
-  if (!ok) zbuf_free(&combined);
-  return ok;
-}
+static bool resolve_direct_canonical_source_at_root_ex(const char *path, const char *root, const DirectSourceReplacement *replacement, SourceInput *input, ZDiag *diag) { input->source_file = z_strdup(path); input->canonical_text_source = true; ZBuf combined; zbuf_init(&combined); char **stack = NULL; size_t stack_len = 0; bool ok = direct_canonical_resolve_file(path, root, input, &combined, diag, &stack, &stack_len, replacement); free(stack); input->source = ok ? combined.data : NULL; if (!ok) zbuf_free(&combined); return ok; }
+
+static bool resolve_direct_canonical_source_at_root(const char *path, const char *root, SourceInput *input, ZDiag *diag) { return resolve_direct_canonical_source_at_root_ex(path, root, NULL, input, diag); }
+
+static bool resolve_direct_canonical_source_with_replacement(const char *path, const DirectSourceReplacement *replacement, SourceInput *input, ZDiag *diag) { char *root = direct_dirname_of(path); bool ok = resolve_direct_canonical_source_at_root_ex(path, root, replacement, input, diag); free(root); return ok; }
 
 static bool resolve_direct_canonical_source(const char *path, SourceInput *input, ZDiag *diag) {
   char *root = direct_dirname_of(path);
@@ -4716,6 +4712,8 @@ static bool load_command_source(const char *input_path, SourceInput *input, ZDia
   set_source_input_diag(input_path, diag);
   return false;
 }
+
+static bool load_format_source(const char *input_path, SourceInput *input, ZDiag *diag) { if (is_row_source_path(input_path)) return load_direct_row_source(input_path, input, diag); SourceInput resolved = {0}; if (!load_command_source(input_path, &resolved, diag)) return false; char *source_file = z_strdup(resolved.source_file ? resolved.source_file : input_path); z_free_source(&resolved); bool ok = load_direct_row_source(source_file, input, diag); free(source_file); return ok; }
 
 static bool finish_checked_source_input(const ZTargetInfo *target, SourceInput *input, Program *program, ZDiag *diag, long long parse_ms) {
   input->parse_ms = parse_ms;
@@ -6447,6 +6445,7 @@ static bool create_package_template(const char *root, const char *name, ZDiag *d
     diag)) return false;
   if (!write_project_file(root, "src/main.0",
     "use math\n"
+    "\n"
     "use model\n\n"
     "pub fn main(world: World) -> Void raises {\n"
     "    let point: Point = Point { value: add_one(41) }\n"
@@ -10095,25 +10094,24 @@ static bool canonical_source_contains_comment(const SourceInput *input, ZDiag *d
   return false;
 }
 
+static bool canonical_source_file_contains_comment(const char *path, ZDiag *diag) { SourceInput input = {0}; input.source_file = z_strdup(path); input.source = z_read_file(path, diag); if (!input.source) { if (diag && !diag->path) diag->path = z_strdup(path); z_free_source(&input); return true; } bool contains = canonical_source_contains_comment(&input, diag); z_free_source(&input); return contains; }
+
 static bool write_source_backed_graph(const Command *command, const ZProgramGraph *graph, const SourceInput *input, ZDiag *diag) {
-  if (canonical_source_contains_comment(input, diag)) return false;
-  ZBuf source;
-  zbuf_init(&source);
-  bool ok = z_program_graph_append_view(&source, graph, command->input, diag);
+  (void)input;
+  if (canonical_source_file_contains_comment(command->input, diag)) return false;
+  ZBuf source; zbuf_init(&source);
+  bool ok = z_program_graph_append_source_view(&source, graph, command->input, diag);
   if (ok) {
-    Program parsed = {0};
-    SourceInput verify_input = {0};
-    ZProgramGraph verify_graph = {0};
-    ZProgramGraphCompare comparison = {0};
-    verify_input.source_file = z_strdup(command->input);
-    verify_input.source = z_strdup(source.data ? source.data : "");
-    direct_input_add_source_metadata(&verify_input);
-    ok = z_parse_canonical_text_program_source(verify_input.source, &parsed, diag);
+    Program parsed = {0}; SourceInput verify_input = {0}; ZProgramGraph verify_graph = {0}; ZProgramGraphCompare comparison = {0};
+    DirectSourceReplacement replacement = {.path = command->input, .source = source.data ? source.data : ""};
+    ok = resolve_direct_canonical_source_with_replacement(command->input, &replacement, &verify_input, diag);
+    if (ok) ok = z_parse_canonical_text_program_source(verify_input.source, &parsed, diag);
     if (ok) {
-      const ZTargetInfo *host_target = z_find_target(z_host_target());
-      z_set_check_target(host_target);
+      const ZTargetInfo *host_target = z_find_target(z_host_target()); z_set_check_target(host_target);
       ok = z_check_program(&parsed, diag);
       if (!ok) z_map_source_diag(&verify_input, diag);
+    } else if (diag && diag->code != 0) {
+      z_map_source_diag(&verify_input, diag);
     }
     if (ok) ok = graph_build_from_source_program(&verify_input, &parsed, true, &verify_graph, diag);
     if (ok) {
@@ -10121,10 +10119,7 @@ static bool write_source_backed_graph(const Command *command, const ZProgramGrap
       if (!comparison.ok) {
         ok = false;
         diag->code = 2002;
-        diag->path = command->input;
-        diag->line = 1;
-        diag->column = 1;
-        diag->length = 1;
+        diag->path = command->input; diag->line = 1; diag->column = 1; diag->length = 1;
         snprintf(diag->message, sizeof(diag->message), "source-backed graph write is not semantically stable");
         snprintf(diag->expected, sizeof(diag->expected), "lowered ProgramGraph semantic shape to match patched graph");
         snprintf(diag->actual, sizeof(diag->actual), "%.120s", comparison.message[0] ? comparison.message : "semantic mismatch");
@@ -11262,7 +11257,7 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "fmt") == 0) {
     SourceInput fmt_input = {0};
-    if (!load_command_source(command.input, &fmt_input, &diag)) {
+    if (!load_format_source(command.input, &fmt_input, &diag)) {
       if (command.json) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
