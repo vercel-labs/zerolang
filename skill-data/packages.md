@@ -84,15 +84,15 @@ Use `--json` when a tool needs exact graph, doc, or dev fields. Useful `graph` f
 
 ## Graph Authoring
 
-For agent edits, derive a package graph under `.zero/` and inspect or patch that artifact:
+For agent edits, inspect the package through the graph. Create an artifact under `.zero/` only when another tool needs a file handoff:
 
 ```sh
+zero graph view <package>
+zero graph check <package>
 zero graph import --out .zero/agent/package.program-graph <package>
-zero graph view .zero/agent/package.program-graph
-zero graph check .zero/agent/package.program-graph
 ```
 
-Persist accepted changes back into the package's canonical `.0` or `.row` files. Keep derived graph artifacts out of the package source unless the user explicitly asks for them.
+Source-backed graph patches rewrite canonical `.0` files directly after validation. Keep derived graph artifacts out of the package source unless the user explicitly asks for them.
 
 ## Common Repairs
 

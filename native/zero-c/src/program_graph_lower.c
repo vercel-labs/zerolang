@@ -240,10 +240,12 @@ static bool lower_embedded_std_module(const ZProgramGraphNode *module) {
   if (!module || module->kind != Z_PROGRAM_GRAPH_NODE_MODULE) return false;
   for (size_t i = 0; i < z_std_source_module_count(); i++) {
     const ZStdSourceModule *std_module = z_std_source_module_at(i);
-    if (!std_module || !lower_text_eq(module->path, std_module->path)) continue;
+    if (!std_module) continue;
     const char *short_name = strrchr(std_module->module, '.');
     const char *module_name = short_name ? short_name + 1 : std_module->module;
-    if (lower_text_eq(module->name, std_module->module) || lower_text_eq(module->name, module_name)) return true;
+    bool name_matches = lower_text_eq(module->name, std_module->module) || lower_text_eq(module->name, module_name);
+    bool path_matches = !module->path || !module->path[0] || lower_text_eq(module->path, std_module->path);
+    if (name_matches && path_matches) return true;
   }
   return false;
 }

@@ -713,6 +713,7 @@ typedef struct {
   int *source_line_numbers;
   SourceDependency *dependencies;
   bool *symbol_public;
+  bool canonical_text_source;
   size_t source_file_count;
   size_t import_count;
   size_t module_count;

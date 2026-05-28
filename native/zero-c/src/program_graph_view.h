@@ -3,6 +3,6 @@
 
 #include "program_graph.h"
 
-void z_program_graph_append_view(ZBuf *buf, const ZProgramGraph *graph);
+bool z_program_graph_append_view(ZBuf *buf, const ZProgramGraph *graph, const char *source_path, ZDiag *diag);
 
 #endif

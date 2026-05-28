@@ -1211,8 +1211,7 @@ static bool canon_parse_field_list(CanonParser *parser, bool typed_fields) {
   while (true) {
     canon_skip_newlines(parser);
     if (!canon_expect_word_token(parser, "expected field or variant name")) return false;
-    if (typed_fields) {
-      if (!canon_expect_symbol(parser, ":", "expected ':' after field name")) return false;
+    if (typed_fields && canon_accept_symbol(parser, ":")) {
       if (!canon_parse_type_until(parser, ",", "}")) return false;
     }
     if (!canon_expect_symbol(parser, ",", "expected trailing comma in declaration list")) return false;

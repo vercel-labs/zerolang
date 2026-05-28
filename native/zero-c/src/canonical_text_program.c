@@ -1174,8 +1174,7 @@ static void canon_parse_field_list_ast(CanonAstParser *parser, ParamVec *out, bo
   while (!canon_ast_has_diag(parser->diag) && !canon_ast_accept(parser, "}")) {
     const ZCanonicalToken *name = canon_ast_expect_word(parser, "expected field or variant name");
     char *type = NULL;
-    if (typed_fields) {
-      canon_ast_expect(parser, ":", "expected ':' after field name");
+    if (typed_fields && canon_ast_accept(parser, ":")) {
       type = canon_parse_type_until_ast(parser, ",", "}");
     }
     if (name) canon_push_param_ast(out, (Param){.name = z_strdup(name->text), .type = type, .line = name->line, .column = name->column});

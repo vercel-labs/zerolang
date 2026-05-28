@@ -43,9 +43,9 @@ Use `zero skills list` to discover additional skills bundled with that Zero vers
 ```sh
 zero check <file-or-package>
 zero graph <file-or-package>
-zero graph dump --out .zero/agent/work.program-graph <file-or-package>
-zero graph view .zero/agent/work.program-graph
-zero graph check .zero/agent/work.program-graph
+zero graph view <file-or-package>
+zero graph check <file-or-package>
+zero graph dump --json <file-or-package>
 zero size <file-or-package>
 zero explain <diagnostic-code>
 ```

@@ -796,6 +796,7 @@ void z_append_program_graph_json(ZBuf *buf, const SourceInput *input, const Prog
     graph_format_append_failed_json(buf);
     return;
   }
+  graph.canonical_source = input && input->canonical_text_source;
   ZProgramGraphValidation validation = {0};
   z_program_graph_validate(&graph, &validation);
   z_program_graph_append_json(buf, &graph, &validation);
@@ -809,6 +810,7 @@ void z_append_program_graph_dump(ZBuf *buf, const SourceInput *input, const Prog
     else graph_format_append_failed_dump(buf);
     return;
   }
+  graph.canonical_source = input && input->canonical_text_source;
   ZProgramGraphValidation validation = {0};
   z_program_graph_validate(&graph, &validation);
   if (json) z_program_graph_append_json(buf, &graph, &validation);
