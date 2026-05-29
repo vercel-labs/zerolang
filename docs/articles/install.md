@@ -9,7 +9,7 @@ zero --version
 ```
 
 The installer downloads the latest matching binary from
-`github.com/vercel-labs/zero`, verifies it against the release checksum file,
+`github.com/vercel-labs/zerolang`, verifies it against the release checksum file,
 and writes it to `$HOME/.zero/bin/zero`. Set `ZERO_INSTALL_DIR` to choose a
 different install directory. On Linux it installs the static musl build by
 default; set `ZERO_LINUX_FLAVOR=gnu` to install the glibc-targeted build.

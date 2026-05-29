@@ -1,4 +1,4 @@
-const REPO = process.env.NEXT_PUBLIC_GITHUB_REPO || "vercel-labs/zero";
+const REPO = process.env.NEXT_PUBLIC_GITHUB_REPO || "vercel-labs/zerolang";
 const REVALIDATE = 86400;
 
 export async function getStarCount(): Promise<string> {
