@@ -246,3 +246,16 @@ Benchmarks run locally by default:
 ```bash
 pnpm run bench
 ```
+
+## Community resources
+
+These repositories are maintained by the community (not Vercel Labs) and pair well with the agent-first workflow:
+
+| Resource | Description |
+|----------|-------------|
+| [HKTITAN/zero-agent-bench](https://github.com/HKTITAN/zero-agent-bench) | Benchmark frontier LLMs writing [Zero](https://zerolang.ai) vs Python — pass rate, fix-loop attempts, diagnostic-code distribution. [Results](https://github.com/HKTITAN/zero-agent-bench/blob/main/results/RESULTS.md). |
+| [HKTITAN/zero-skills](https://github.com/HKTITAN/zero-skills) | Pattern skills (CLI, file input, fix-loop, shapes, errors) validated with `zero check` and the bench harness. |
+| [examples/agent-examples.md](examples/agent-examples.md) | Runnable argv/file-input examples for agents (see also PR #110). |
+| [benchmarks/README.md](benchmarks/README.md) | Pointer to the external agent benchmark. |
+
+Install official compiler skills: `zero skills get zero-language` or `npx skills add vercel-labs/zero`.
