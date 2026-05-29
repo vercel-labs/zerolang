@@ -1,0 +1,2 @@
+export c fn main i32 a i32 b i32
+  ret / a b

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "code": "NAM003",
-  "title": "unknown identifier 'message'",
+  "code": "APP001",
+  "title": "missing main function",
   "fixSafety": "requires-human-review",
   "defaultOutput": "plain-text-no-ansi"
 }

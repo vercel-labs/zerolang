@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "code": "STD002",
+  "title": "unknown std helper 'std.nope'",
+  "fixSafety": "behavior-preserving",
+  "defaultOutput": "plain-text-no-ansi"
+}

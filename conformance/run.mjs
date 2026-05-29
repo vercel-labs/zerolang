@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST_ALLOW_LOCAL !== "1") {
@@ -25,6 +25,46 @@ function runnableExeArgs(input, out) {
 }
 
 await mkdir(outDir, { recursive: true });
+
+const diagnosticDefaultOutputs = new Set(["plain-text-no-ansi"]);
+const diagnosticFixSafeties = new Set([
+  "local-edit",
+  "behavior-preserving",
+  "api-changing",
+  "target-changing",
+  "requires-human-review",
+  "none",
+]);
+
+async function assertDiagnosticSnapshots() {
+  const diagnosticDir = "conformance/diagnostics";
+  const entries = await readdir(diagnosticDir);
+  const fixtures = entries
+    .filter((entry) => entry.endsWith(".0"))
+    .map((entry) => entry.slice(0, -2))
+    .sort();
+  for (const name of fixtures) {
+    const fixture = `${diagnosticDir}/${name}.0`;
+    const expected = JSON.parse(await readFile(`${diagnosticDir}/${name}.expected.json`, "utf8"));
+    const mode = expected.command ?? "check";
+    const args = mode === "build"
+      ? ["build", "--json", ...(expected.args ?? []), fixture]
+      : ["check", "--json", fixture];
+    const result = await execFileAsync(zero, args).catch((error) => error);
+    assert.notEqual(result.code, 0, `${fixture} should emit a diagnostic`);
+    const body = JSON.parse(result.stdout);
+    const diagnostic = body.diagnostics?.[0];
+    assert.equal(body.schemaVersion, expected.schemaVersion, `${fixture} schemaVersion`);
+    assert.equal(diagnostic?.code, expected.code, `${fixture} diagnostic code`);
+    const actualTitle = diagnostic?.title ?? diagnostic?.message;
+    assert.equal(actualTitle, expected.title, `${fixture} title`);
+    assert.ok(actualTitle.length > 0, `${fixture} title should be non-empty`);
+    assert.equal(diagnostic?.fixSafety, expected.fixSafety, `${fixture} fixSafety`);
+    assert(diagnosticFixSafeties.has(diagnostic.fixSafety), `${fixture} has valid fixSafety ${diagnostic.fixSafety}`);
+    const defaultOutput = expected.defaultOutput ?? "plain-text-no-ansi";
+    assert(diagnosticDefaultOutputs.has(defaultOutput), `${fixture} has valid defaultOutput ${defaultOutput}`);
+  }
+}
 
 async function assertBoundsTrap(fixture, name) {
   const out = `${outDir}/${name}`;
@@ -493,6 +533,8 @@ for (const fixture of [
 ]) {
   await execFileAsync(zero, ["check", fixture]);
 }
+
+await assertDiagnosticSnapshots();
 
 const checkJsonSuccess = await execFileAsync(zero, ["check", "--json", "conformance/native/pass/explicit-casts.0"]);
 const checkJsonSuccessBody = JSON.parse(checkJsonSuccess.stdout);

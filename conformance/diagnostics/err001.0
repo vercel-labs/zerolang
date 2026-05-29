@@ -1,0 +1,5 @@
+pub fn helper Void !
+  ret
+
+pub fn main Void world World
+  check helper()

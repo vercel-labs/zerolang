@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "code": "BLD004",
+  "title": "direct AArch64 ELF buildability currently supports functions without parameters",
+  "fixSafety": "requires-human-review",
+  "defaultOutput": "plain-text-no-ansi",
+  "command": "build",
+  "args": [
+    "--emit",
+    "exe",
+    "--target",
+    "linux-arm64",
+    "--out",
+    ".zero/conformance/bld004"
+  ]
+}
