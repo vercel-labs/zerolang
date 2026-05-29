@@ -3598,12 +3598,13 @@ static bool parse_command(int argc, char **argv, Command *command) {
   command->target = "host";
   command->profile = "release";
   if (strcmp(command->command, "new") == 0) {
-    if (argc >= 3) {
-      if (strcmp(argv[2], "--help") == 0 || strcmp(argv[2], "-h") == 0) command->kind = "help";
-      else command->kind = argv[2];
-    }
-    for (int i = 3; i < argc; i++) {
-      if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) return true;
+    for (int i = 2; i < argc; i++) {
+      if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+        if (!command->kind) command->kind = "help";
+        return true;
+      }
+      else if (strcmp(argv[i], "--json") == 0) command->json = true;
+      else if (!command->kind) command->kind = argv[i];
       else if (!command->input) command->input = argv[i];
       else return false;
     }
@@ -6118,8 +6119,51 @@ static int new_command(const Command *command) {
     return 1;
   }
 
+  bool is_lib = strcmp(command->kind, "lib") == 0;
+  const char *entry = is_lib ? "src/lib.0" : "src/main.0";
+
+  if (command->json) {
+    ZBuf buf;
+    ZBuf scratch;
+    zbuf_init(&buf);
+    zbuf_init(&scratch);
+    zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"kind\": ");
+    append_json_string(&buf, command->kind);
+    zbuf_append(&buf, ",\n  \"name\": ");
+    append_json_string(&buf, command->input);
+    zbuf_append(&buf, ",\n  \"path\": ");
+    append_json_string(&buf, command->input);
+    zbuf_append(&buf, ",\n  \"manifest\": ");
+    scratch.len = 0;
+    zbuf_appendf(&scratch, "%s/zero.json", command->input);
+    append_json_string(&buf, scratch.data);
+    zbuf_append(&buf, ",\n  \"entry\": ");
+    scratch.len = 0;
+    zbuf_appendf(&scratch, "%s/%s", command->input, entry);
+    append_json_string(&buf, scratch.data);
+    zbuf_append(&buf, ",\n  \"nextSteps\": [");
+    scratch.len = 0;
+    zbuf_appendf(&scratch, "zero check %s", command->input);
+    append_json_string(&buf, scratch.data);
+    zbuf_append(&buf, ", ");
+    scratch.len = 0;
+    zbuf_appendf(&scratch, "zero test %s", command->input);
+    append_json_string(&buf, scratch.data);
+    if (!is_lib) {
+      zbuf_append(&buf, ", ");
+      scratch.len = 0;
+      zbuf_appendf(&scratch, "zero run %s", command->input);
+      append_json_string(&buf, scratch.data);
+    }
+    zbuf_append(&buf, "]\n}\n");
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+    zbuf_free(&scratch);
+    return 0;
+  }
+
   printf("created %s project %s\n", command->kind, command->input);
-  if (strcmp(command->kind, "lib") == 0) printf("next: cd %s && zero check . && zero test .\n", command->input);
+  if (is_lib) printf("next: cd %s && zero check . && zero test .\n", command->input);
   else printf("next: cd %s && zero check . && zero test . && zero run .\n", command->input);
   return 0;
 }

@@ -2507,6 +2507,35 @@ assert.equal(fixApplyBody.applied, true);
 assert.match(await readFile(fixApplyFixture, "utf8"), /var dst/);
 await execFileAsync(zero, ["check", fixApplyFixture]);
 
+const newCliPath = `${outDir}/new-cli-json-fixture`;
+await rm(newCliPath, { recursive: true, force: true });
+const newCliJson = await execFileAsync(zero, ["new", "--json", "cli", newCliPath]);
+const newCliBody = JSON.parse(newCliJson.stdout);
+assert.equal(newCliBody.schemaVersion, 1);
+assert.equal(newCliBody.ok, true);
+assert.equal(newCliBody.kind, "cli");
+assert.equal(newCliBody.name, newCliPath);
+assert.equal(newCliBody.path, newCliPath);
+assert.equal(newCliBody.manifest, `${newCliPath}/zero.json`);
+assert.equal(newCliBody.entry, `${newCliPath}/src/main.0`);
+assert.deepEqual(newCliBody.nextSteps, [`zero check ${newCliPath}`, `zero test ${newCliPath}`, `zero run ${newCliPath}`]);
+await execFileAsync(zero, ["check", newCliPath]);
+
+const newLibPath = `${outDir}/new-lib-json-fixture`;
+await rm(newLibPath, { recursive: true, force: true });
+const newLibJson = await execFileAsync(zero, ["new", "--json", "lib", newLibPath]);
+const newLibBody = JSON.parse(newLibJson.stdout);
+assert.equal(newLibBody.kind, "lib");
+assert.equal(newLibBody.entry, `${newLibPath}/src/lib.0`);
+assert.deepEqual(newLibBody.nextSteps, [`zero check ${newLibPath}`, `zero test ${newLibPath}`]);
+
+const newPackagePath = `${outDir}/new-package-json-fixture`;
+await rm(newPackagePath, { recursive: true, force: true });
+const newPackageJson = await execFileAsync(zero, ["new", "--json", "package", newPackagePath]);
+const newPackageBody = JSON.parse(newPackageJson.stdout);
+assert.equal(newPackageBody.kind, "package");
+assert.equal(newPackageBody.entry, `${newPackagePath}/src/main.0`);
+
 const importGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/imports"]);
 const importGraphBody = JSON.parse(importGraph.stdout);
 assert.deepEqual(importGraphBody.imports, ["math", "types"]);
