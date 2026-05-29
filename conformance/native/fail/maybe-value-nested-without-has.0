@@ -1,0 +1,9 @@
+type Box {
+    n: u8,
+}
+
+pub fn main() -> Void {
+    let boxes: [1]Box = [Box { n: 1 }]
+    let maybe: Maybe<Box> = std.mem.get(boxes, 0)
+    let n: u8 = maybe.value.n
+}

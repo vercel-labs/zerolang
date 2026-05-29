@@ -1,0 +1,24 @@
+type File {
+    fd: i32,
+}
+
+type Holder {
+    file: owned<File>,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+fn closeAfterBranch(flag: Bool) -> Void {
+    let file: owned<File> = File { fd: 1 }
+    let holder: Holder = Holder { file: file }
+    if flag {
+        close(holder.file)
+        return
+    }
+    close(holder.file)
+}
+
+pub fn main() -> Void {
+    closeAfterBranch(false)
+}

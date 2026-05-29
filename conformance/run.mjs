@@ -340,6 +340,7 @@ for (const fixture of [
   "conformance/native/pass/float-primitives.0",
   "conformance/native/pass/wrapping-saturating-arithmetic.0",
   "conformance/native/pass/maybe-error-flow.0",
+  "conformance/native/pass/maybe-guard-branch-restore.0",
   "conformance/native/pass/match-scalar-guards.0",
   "conformance/native/pass/indexing-primitives.0",
   "conformance/native/pass/checked-bounds-get.0",
@@ -401,6 +402,7 @@ for (const fixture of [
   "conformance/native/pass/match-fallback.0",
   "conformance/native/pass/memory-types.0",
   "conformance/native/pass/owned-transfer.0",
+  "conformance/native/pass/owned-field-move-return-branch.0",
   "conformance/native/pass/owned-drop-cleanup.0",
   "conformance/native/pass/owned-drop-move-suppressed.0",
   "conformance/native/pass/borrow-primitives.0",
@@ -3659,6 +3661,7 @@ for (const fixture of [
   "owned-array-repeat.0",
   "owned-array-element-use-after-move.0",
   "owned-field-use-after-move.0",
+  "owned-field-copy-use-after-move.0",
 ]) {
   const result = await execFileAsync(zero, ["check", `conformance/native/fail/${fixture}`]).catch((error) => error);
   assert.notEqual(result.code, 0);
@@ -3969,6 +3972,9 @@ for (const [fixture, code] of [
   ["type-name-used-as-value.0", /TYP001/],
   ["maybe-value-without-has.0", /MEM002/],
   ["maybe-value-after-assignment.0", /MEM002/],
+  ["maybe-value-nested-without-has.0", /MEM002/],
+  ["maybe-value-nested-assignment-without-has.0", /MEM002/],
+  ["maybe-value-guard-invalidated-by-condition-call.0", /MEM002/],
   ["read-while-mutably-borrowed.0", /BOR001/],
   ["array-reference-borrow-origin.0", /BOR001/],
   ["return-array-reference-escape.0", /BOR002/],

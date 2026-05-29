@@ -1,0 +1,16 @@
+fn read(flag: Bool) -> u8 {
+    let bytes: [1]u8 = [1]
+    var value: Maybe<u8> = std.mem.get(bytes, 0)
+    if value.has {
+        if flag {
+            value = null
+            return 0_u8
+        }
+        return value.value
+    }
+    return 0_u8
+}
+
+pub fn main() -> Void {
+    let byte: u8 = read(false)
+}
