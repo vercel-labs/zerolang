@@ -1,0 +1,130 @@
+shape SourceFacts {
+    imports: usize,
+    functions: usize,
+    shapes: usize,
+    choices: usize,
+    uses_fs: Bool,
+    uses_http: Bool,
+    has_raises: Bool,
+    has_guarded_call: Bool,
+}
+
+fun isIdentByte(byte: u8) -> Bool {
+    if byte >= ('a' as u8) && byte <= ('z' as u8) {
+        return true
+    }
+    if byte >= ('A' as u8) && byte <= ('Z' as u8) {
+        return true
+    }
+    if byte >= ('0' as u8) && byte <= ('9' as u8) {
+        return true
+    }
+    if byte == ('_' as u8) {
+        return true
+    }
+    return false
+}
+
+fun hasAt(bytes: Span<u8>, index: usize, needle: Span<u8>) -> Bool {
+    let needle_len = std.mem.len(needle)
+    if index + needle_len > std.mem.len(bytes) {
+        return false
+    }
+
+    let mut offset: usize = 0
+    while offset < needle_len {
+        if bytes[index + offset] != needle[offset] {
+            return false
+        }
+        offset = offset + 1
+    }
+    return true
+}
+
+fun startsAtBoundary(bytes: Span<u8>, index: usize) -> Bool {
+    if index == 0 {
+        return true
+    }
+    return isIdentByte(bytes[index - 1]) == false
+}
+
+fun endsAtBoundary(bytes: Span<u8>, index: usize, needle: Span<u8>) -> Bool {
+    let end = index + std.mem.len(needle)
+    if end >= std.mem.len(bytes) {
+        return true
+    }
+    return isIdentByte(bytes[end]) == false
+}
+
+fun keywordAt(bytes: Span<u8>, index: usize, needle: Span<u8>) -> Bool {
+    return hasAt(bytes, index, needle) &&
+        startsAtBoundary(bytes, index) &&
+        endsAtBoundary(bytes, index, needle)
+}
+
+fun guardedCallAt(bytes: Span<u8>, index: usize) -> Bool {
+    let prefix = std.mem.span("chec")
+    let full_len: usize = 5
+    if hasAt(bytes, index, prefix) == false {
+        return false
+    }
+    if index + full_len > std.mem.len(bytes) {
+        return false
+    }
+    if bytes[index + 4] != ('k' as u8) {
+        return false
+    }
+    if startsAtBoundary(bytes, index) == false {
+        return false
+    }
+    if index + full_len >= std.mem.len(bytes) {
+        return true
+    }
+    return isIdentByte(bytes[index + full_len]) == false
+}
+
+fun emptyFacts() -> SourceFacts {
+    return SourceFacts {
+        imports: 0,
+        functions: 0,
+        shapes: 0,
+        choices: 0,
+        uses_fs: false,
+        uses_http: false,
+        has_raises: false,
+        has_guarded_call: false
+    }
+}
+
+fun inspect(bytes: Span<u8>) -> SourceFacts {
+    let mut facts: SourceFacts = emptyFacts()
+    let mut index: usize = 0
+    while index < std.mem.len(bytes) {
+        if keywordAt(bytes, index, std.mem.span("use")) {
+            facts.imports = facts.imports + 1
+        }
+        if keywordAt(bytes, index, std.mem.span("fun")) {
+            facts.functions = facts.functions + 1
+        }
+        if keywordAt(bytes, index, std.mem.span("shape")) {
+            facts.shapes = facts.shapes + 1
+        }
+        if keywordAt(bytes, index, std.mem.span("choice")) {
+            facts.choices = facts.choices + 1
+        }
+        if keywordAt(bytes, index, std.mem.span("raises")) {
+            facts.has_raises = true
+        }
+        if guardedCallAt(bytes, index) {
+            facts.has_guarded_call = true
+        }
+        if hasAt(bytes, index, std.mem.span("std.fs")) {
+            facts.uses_fs = true
+        }
+        if hasAt(bytes, index, std.mem.span("std.http")) {
+            facts.uses_http = true
+        }
+        index = index + 1
+    }
+    return facts
+}

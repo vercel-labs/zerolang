@@ -106,6 +106,7 @@ These examples are the small native workflow set used by docs and tests:
 | `readall-cli/` | package-local imports, named errors, `std.fs.readAll`, explicit fixed-buffer allocation | `bin/zero check examples/readall-cli` |
 | `batch3-cli/` | module graph metadata, local `rescue`, path helpers, named fs errors, explicit allocation | `bin/zero check examples/batch3-cli` |
 | `resource-cli/` | args/env fallback, path joins, `std.mem.copy`/`fill`, named-error owned-file resources | `bin/zero check examples/resource-cli` |
+| `agent-source-inspector/` | Zero-native source scanning for agent-relevant facts using fixed buffers and hosted file reads | `bin/zero check examples/agent-source-inspector && bin/zero graph --json examples/agent-source-inspector` |
 | `memory-package/` | target-neutral package imports and byte-span helper checks without hosted file I/O | `bin/zero build --target linux-musl-x64 examples/memory-package --out .zero/out/memory-package` |
 | `direct-package-call-order/` | direct backend package merge order and cross-module helper calls | `bin/zero check examples/direct-package-call-order` |
 | `error-tour/` | copyable failing commands and repaired fixtures for common diagnostics | `bin/zero explain TAR002` |
