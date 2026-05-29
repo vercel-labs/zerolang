@@ -3051,6 +3051,78 @@ static void print_explain_text(const ExplainInfo *info) {
 }
 
 static int explain_command(const Command *command) {
+  if (command->all) {
+    if (command->json) {
+      ZBuf buf;
+      zbuf_init(&buf);
+      zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"command\": \"explain\",\n  \"mode\": \"all\",\n  \"count\": ");
+      int count = 0;
+      for (size_t i = 0; explain_infos[i].code; i++) count++;
+      zbuf_appendf(&buf, "%d", count);
+      zbuf_append(&buf, ",\n  \"diagnostics\": [\n");
+      for (size_t i = 0; explain_infos[i].code; i++) {
+        const ExplainInfo *info = &explain_infos[i];
+        if (i > 0) zbuf_append(&buf, ",\n");
+        zbuf_append(&buf, "    {\n      \"code\": ");
+        append_json_string(&buf, info->code);
+        zbuf_append(&buf, ",\n      \"category\": ");
+        append_json_string(&buf, info->category);
+        zbuf_append(&buf, ",\n      \"title\": ");
+        append_json_string(&buf, info->title);
+        zbuf_append(&buf, ",\n      \"summary\": ");
+        append_json_string(&buf, info->summary);
+        zbuf_append(&buf, ",\n      \"why\": ");
+        append_json_string(&buf, info->why);
+        zbuf_append(&buf, ",\n      \"repair\": {\"id\": ");
+        append_json_string(&buf, diag_repair_id(strcmp(info->code, "TAR001") == 0 ? 6001 :
+                                             strcmp(info->code, "TAR002") == 0 ? 6002 :
+                                             strcmp(info->code, "BLD003") == 0 ? 2003 :
+                                             strcmp(info->code, "TYP009") == 0 ? 3010 :
+                                             strcmp(info->code, "TYP023") == 0 ? 3032 :
+                                             strcmp(info->code, "TYP024") == 0 ? 3033 :
+                                             strcmp(info->code, "TYP025") == 0 ? 3034 :
+                                             strcmp(info->code, "MET001") == 0 ? 3035 :
+                                             strcmp(info->code, "TYP026") == 0 ? 3036 :
+                                             strcmp(info->code, "PUB001") == 0 ? 3037 :
+                                             strcmp(info->code, "IFC001") == 0 ? 3038 :
+                                             strcmp(info->code, "IFC002") == 0 ? 3039 :
+                                             strcmp(info->code, "IFC003") == 0 ? 3040 :
+                                             strcmp(info->code, "IFC004") == 0 ? 3041 :
+                                             strcmp(info->code, "IFC005") == 0 ? 3042 :
+                                             strcmp(info->code, "STC001") == 0 ? 3043 :
+                                             strcmp(info->code, "STC002") == 0 ? 3044 :
+                                             strcmp(info->code, "STC003") == 0 ? 3045 :
+                                             strcmp(info->code, "SHM001") == 0 ? 3046 :
+                                             strcmp(info->code, "SHM002") == 0 ? 3047 :
+                                             strcmp(info->code, "RCV001") == 0 ? 3048 :
+                                             strcmp(info->code, "RCV002") == 0 ? 3049 :
+                                             strcmp(info->code, "ERR002") == 0 ? 1002 :
+                                             strcmp(info->code, "ERR003") == 0 ? 1003 :
+                                             strcmp(info->code, "STD003") == 0 ? 3012 :
+                                             strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
+        zbuf_append(&buf, ",\n        \"summary\": ");
+        append_json_string(&buf, info->canonical_repair);
+        zbuf_append(&buf, "},\n      \"examples\": {\"bad\": ");
+        append_json_string(&buf, info->bad_example);
+        zbuf_append(&buf, ", \"good\": ");
+        append_json_string(&buf, info->good_example);
+        zbuf_append(&buf, "}\n    }");
+      }
+      zbuf_append(&buf, "\n  ]\n}\n");
+      fputs(buf.data, stdout);
+      zbuf_free(&buf);
+    } else {
+      int count = 0;
+      for (size_t i = 0; explain_infos[i].code; i++) count++;
+      printf("Diagnostic catalog (%d codes):\n\n", count);
+      for (size_t i = 0; explain_infos[i].code; i++) {
+        const ExplainInfo *info = &explain_infos[i];
+        printf("  %s  %-12s  %s\n", info->code, info->category, info->title);
+      }
+      printf("\nUse `zero explain <code>` for details.\n");
+    }
+    return 0;
+  }
   const ExplainInfo *info = find_explain_info(command->input);
   if (!info) {
     ZDiag diag = {0};
@@ -3471,8 +3543,11 @@ static void print_command_help(const char *command) {
     printf("Usage: zero time --json [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Emit compiler phase, cache, and invalidation timing facts.\n");
   } else if (strcmp(command, "explain") == 0) {
-    printf("Usage: zero explain [--json] <diagnostic-code>\n\n");
+    printf("Usage: zero explain [--json] <diagnostic-code>\n");
+    printf("       zero explain --json --all\n\n");
     printf("Explain a diagnostic and its repair metadata.\n");
+    printf("  --all    List all known diagnostic codes.\n");
+    printf("  --json   Structured envelope for single code or catalog.\n");
   } else if (strcmp(command, "fix") == 0) {
     printf("Usage: zero fix (--plan|--patch|--apply) --json [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Print repair plans, reviewable patches, or apply behavior-preserving edits.\n");
@@ -10749,7 +10824,7 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "skills") == 0) {
     return embedded_skills_command(argc, argv, command.json);
   }
-  if (!command.input) {
+  if (!command.input && !(strcmp(command.command, "explain") == 0 && command.all)) {
     print_command_help(command.command);
     return 1;
   }
