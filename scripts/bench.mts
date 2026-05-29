@@ -46,6 +46,9 @@ const cases = [
   { name: "zero-hash", expectedStdout: "zero-hash ok", languages: ["zero"] },
   { name: "json", expectedStdout: "json", languages: ["zero"] },
   { name: "networking", expectedStdout: "networking", languages: ["zero"], skipLanguages: ["zero"] },
+  { name: "gcd", expectedStdout: "gcd ok", languages: ["zero"], sources: { zero: "benchmarks/agent/gcd.0" } },
+  { name: "stats", expectedStdout: "stats ok", languages: ["zero"], sources: { zero: "benchmarks/agent/stats.0" } },
+  { name: "token-count", expectedStdout: "token count ok", languages: ["zero"], sources: { zero: "benchmarks/agent/token-count.0" } },
 ];
 
 const languages = [

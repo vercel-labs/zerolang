@@ -1,0 +1,14 @@
+fn gcd u32 a u32 b u32
+  mut x u32 a
+  mut y u32 b
+  while != y 0
+    let temp y
+    set y % x y
+    set x temp
+  ret x
+
+pub fn main Void world World !
+  if && (&& (== (gcd 12 8) 4) (== (gcd 1071 462) 21)) (== (gcd 17 5) 1)
+    check world.out.write "gcd ok\n"
+  else
+    check world.out.write "gcd fail\n"

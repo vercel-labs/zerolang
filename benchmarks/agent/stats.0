@@ -1,0 +1,17 @@
+pub fn main Void world World !
+  let data [5]i32 [3, 1, 7, 0, 12]
+  mut min i32 data[0]
+  mut max i32 data[0]
+  mut sum i32 0
+  mut i usize 0
+  while < i 5
+    set sum + sum data[i]
+    if < data[i] min
+      set min data[i]
+    if > data[i] max
+      set max data[i]
+    set i + i 1
+  if && (&& (== min 0) (== max 12)) (== sum 23)
+    check world.out.write "stats ok\n"
+  else
+    check world.out.write "stats fail\n"
