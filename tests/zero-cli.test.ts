@@ -167,6 +167,22 @@ describe("native zero CLI", () => {
     );
     assert.equal(targets.targets.find((target: { name: string }) => target.name === "linux-musl-x64")?.compilerTarget, "x86_64-linux-musl");
     assert.equal(targets.targets.find((target: { name: string }) => target.name === "win32-x64.exe")?.exeSuffix, ".exe");
+
+    const hostTarget = targets.targets.find((target: { name: string }) => target.name === targets.host);
+    assert.ok(hostTarget, "host target should be in the target table");
+    for (const capability of ["memory", "stdio", "args", "env", "fs", "net", "proc", "time", "rand"]) {
+      assert.ok(hostTarget.capabilities.includes(capability), `host target should expose ${capability}`);
+      assert.equal(
+        hostTarget.capabilityFacts.find((fact: { name: string }) => fact.name === capability)?.available,
+        true,
+        `${capability} should have an available capability fact`,
+      );
+    }
+    assert.equal(
+      hostTarget.capabilityFacts.find((fact: { name: string }) => fact.name === "web")?.available,
+      false,
+      "host target should report web as unavailable",
+    );
   });
 
   it("lists and retrieves bundled skills", async () => {
