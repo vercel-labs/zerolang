@@ -8,10 +8,10 @@ Common profile choices:
 
 | Profile | Use when | Contract |
 | --- | --- | --- |
-| `debug` | You need diagnostics and local symbols. | Checked traps, diagnostic panic path, debug metadata retained. |
-| `fast` | Throughput matters more than minimum size. | Direct codegen optimizes for speed while keeping checked safety boundaries. |
+| `debug` | You need diagnostics and local symbols. | Diagnostic panic path and debug metadata retained. |
+| `fast` | Throughput matters more than minimum size. | Direct codegen optimizes for speed while keeping today's checked bounds behavior. |
 | `small` | This is the default release profile. | Pay-as-used helpers, stripped unrequested metadata, deterministic artifacts. |
-| `tiny` | Artifact size is the main constraint. | Abort-on-trap, minimum runtime metadata, strict helper budget. |
+| `tiny` | Artifact size is the main constraint. | Minimum runtime metadata and strict helper budget. |
 
 Copyable commands:
 
@@ -28,7 +28,7 @@ bin/zero mem --json examples/allocator-collections.0
 - `profileSemantics`: canonical profile, `profileKey`, aliases, and optimization goal.
 - `profileCatalog`: the available profiles and aliases.
 - `profileBudget`: size limits and helper-budget policy for the selected profile.
-- `safetyFacts`: profile-sensitive bounds, overflow, initialization, aliasing, lifetime, ownership, span, MIR, and unchecked-surface policies.
+- `safetyFacts`: current compiler safety facts for bounds, literal integer range checks, runtime arithmetic, initialization, aliasing, lifetime, ownership, span, MIR, and unchecked surfaces.
 
 `zero size --json` adds `sizeBreakdown`, `retentionReasons`, and
 `optimizationHints`, plus the same `safetyFacts`. Start there when an artifact
@@ -38,7 +38,7 @@ is larger than expected.
 
 - `memoryBudgets`: stack, static, heap, arena, and fixed-buffer totals.
 - `allocatorFacts`: which allocator APIs were used.
-- `safetyFacts`: the memory-safety policy contract attached to the selected profile.
+- `safetyFacts`: the current memory-safety contract for the selected profile, including any unchecked runtime surfaces.
 - `allocationInstrumentation`: allocation failure and cleanup facts.
 - `collectionFacts`: fixed-capacity collection usage and no-global-allocator checks.
 

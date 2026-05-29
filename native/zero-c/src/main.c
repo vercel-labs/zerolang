@@ -4634,9 +4634,6 @@ static void append_safety_facts_json(ZBuf *buf, const char *profile) {
   ZSafetyFactsProfile facts = {
     .canonical_profile = canonical,
     .profile_key = profile_key_name(profile),
-    .bounds_policy = profile_bounds_policy(profile),
-    .overflow_policy = profile_overflow_policy(profile),
-    .optimizer_elision = strcmp(canonical, "release-fast") == 0,
   };
   z_append_safety_facts_json(buf, &facts);
 }

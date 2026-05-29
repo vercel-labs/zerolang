@@ -90,8 +90,9 @@ Target support: current compiler targets.
   hidden-global-allocator status.
 - `allocationInstrumentation`: pay-as-used hooks for attempts, successes, failures, requested bytes, granted bytes, and peak live bytes.
 - `collectionFacts`: fixed-capacity `Vec`, owned `ByteBuf`, and empty `Map`/`Set` metadata, including growth/failure/cleanup behavior.
-- `safetyFacts`: the selected profile's bounds, overflow, initialization,
-  aliasing, lifetime, ownership, span, MIR, and unchecked-surface policies.
+- `safetyFacts`: the selected profile plus the current bounds,
+  initialization, aliasing, lifetime, ownership, span, MIR, literal integer
+  range-check, runtime arithmetic, and unchecked-surface facts.
 
 All heap budgets are explicit. A program that only uses `std.mem` remains at
 `heapBytes: 0`, `globalHeapBytes: 0`, and `hiddenHeapAllocation: false` unless

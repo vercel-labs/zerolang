@@ -1330,6 +1330,9 @@ assert.equal(compileTimeBody.compileTime.typedBuilders.status, "limited-v1");
 assert.equal(compileTimeBody.compileTime.typedBuilders.rawTokenStrings, false);
 assert.equal(compileTimeBody.safetyFacts.schemaVersion, 1);
 assert.equal(compileTimeBody.safetyFacts.bounds.runtimeTraps, true);
+assert.equal(compileTimeBody.safetyFacts.bounds.optimizerElision, false);
+assert.equal(compileTimeBody.safetyFacts.overflow.runtimeArithmetic, "unchecked-machine-wrap");
+assert.equal(compileTimeBody.safetyFacts.overflow.unchecked, true);
 assert.equal(compileTimeBody.safetyFacts.initialization.locals, "initializer-required");
 assert.equal(compileTimeBody.safetyFacts.aliasing.mutableAliases, "diagnostic");
 assert.equal(compileTimeBody.safetyFacts.mir.invalidMemoryContractsBlockEmission, true);
@@ -1358,8 +1361,10 @@ assert.equal(buildJsonM6Body.profileSemantics.profileKey, "tiny");
 assert.equal(buildJsonM6Body.profileSemantics.unwindPolicy, "no-unwind-abort");
 assert.equal(buildJsonM6Body.profileSemantics.profileBudget.generatedCBytes, 0);
 assert.equal(buildJsonM6Body.safetyFacts.profile, "tiny");
-assert.equal(buildJsonM6Body.safetyFacts.bounds.policy, "checked-minimal-trap");
-assert.equal(buildJsonM6Body.safetyFacts.overflow.policy, "abort-on-trap");
+assert.equal(buildJsonM6Body.safetyFacts.bounds.policy, "checked");
+assert.equal(buildJsonM6Body.safetyFacts.bounds.optimizerElision, false);
+assert.equal(buildJsonM6Body.safetyFacts.overflow.policy, "literal-range-checked-runtime-unchecked");
+assert.equal(buildJsonM6Body.safetyFacts.overflow.integerLiterals, "range-checked");
 assert.equal(buildJsonM6Body.safetyFacts.ownership.useAfterMove, "diagnostic");
 assert.equal(buildJsonM6Body.profileBudget.helperBudgetPolicy, "pay-as-used-minimum-runtime");
 assert(buildJsonM6Body.profileCatalog.some((item) => item.canonical === "debug" && item.debugInfo === true));
@@ -1384,6 +1389,7 @@ for (const [requestedProfile, canonicalProfile, profileKey] of [
   assert.equal(profileBody.profileSemantics.profileBudget.generatedCBytes, 0);
   assert.equal(profileBody.safetyFacts.profile, canonicalProfile);
   assert.equal(profileBody.safetyFacts.profileKey, profileKey);
+  assert.equal(profileBody.safetyFacts.bounds.optimizerElision, false);
   assert.equal(profileBody.profileBudget.cBridgeFallback, false);
 }
 
