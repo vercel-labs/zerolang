@@ -3183,8 +3183,38 @@ static void append_fix_plan_diagnostic(ZBuf *buf, const char *path, const ZDiag 
   zbuf_append(buf, "}");
 }
 
-static void print_fix_plan_json(const char *path, const ZDiag *diag) {
+static bool diagnostic_can_apply_edits(const ZDiag *diag);
+static bool find_make_binding_mutable_edit(const char *source, int *line_out, int *column_out, char **old_line_out, char **new_line_out);
+
+static void append_fix_plan_edit_preview(ZBuf *buf, const char *path, int line, int column) {
+  int start_column = column > 0 ? column : 1;
+  int end_column = start_column + 3;
+  zbuf_append(buf, "{\"path\":");
+  append_json_string(buf, path ? path : "");
+  zbuf_appendf(buf, ",\"range\":{\"start\":{\"line\":%d,\"column\":%d},\"end\":{\"line\":%d,\"column\":%d},\"columnUnit\":\"utf8-byte\"}",
+               line > 0 ? line : 1,
+               start_column,
+               line > 0 ? line : 1,
+               end_column);
+  zbuf_append(buf, ",\"oldText\":\"let\",\"newText\":\"let mut\",\"precondition\":{\"kind\":\"exact-text\",\"text\":\"let\"}}");
+}
+
+static void print_fix_plan_json(const char *path, const SourceInput *input, const ZDiag *diag) {
   bool has_diag = diag && diag->code != 0;
+  bool can_preview = diagnostic_can_apply_edits(diag);
+  const char *edit_path = input && input->source_file ? input->source_file : path;
+  char *loaded_edit_source = NULL;
+  int edit_line = 0;
+  int edit_column = 0;
+  char *old_line = NULL;
+  char *new_line = NULL;
+  if (can_preview && diag && diag->path && diag->path[0]) edit_path = diag->path;
+  if (can_preview && edit_path && edit_path[0]) {
+    ZDiag read_diag = {0};
+    loaded_edit_source = z_read_file(edit_path, &read_diag);
+  }
+  bool has_preview = can_preview && loaded_edit_source &&
+                     find_make_binding_mutable_edit(loaded_edit_source, &edit_line, &edit_column, &old_line, &new_line);
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
@@ -3204,14 +3234,24 @@ static void print_fix_plan_json(const char *path, const ZDiag *diag) {
     append_json_string(&buf, diag_fix_safety(diag->code));
     zbuf_append(&buf, ", \"summary\": ");
     append_json_string(&buf, diag_repair_summary(diag->code));
-    zbuf_append(&buf, ", \"appliesEdits\": false}");
+    zbuf_append(&buf, ", \"appliesEdits\": false, \"hasPreview\": ");
+    zbuf_append(&buf, has_preview ? "true" : "false");
+    if (has_preview) {
+      zbuf_append(&buf, ", \"edits\": [");
+      append_fix_plan_edit_preview(&buf, edit_path, edit_line, edit_column);
+      zbuf_append(&buf, "]");
+    }
+    zbuf_append(&buf, "}");
   }
   zbuf_append(&buf, "]\n}\n");
   fputs(buf.data, stdout);
   zbuf_free(&buf);
+  free(loaded_edit_source);
+  free(old_line);
+  free(new_line);
 }
 
-static bool find_make_binding_mutable_edit(const char *source, int *line_out, char **old_line_out, char **new_line_out) {
+static bool find_make_binding_mutable_edit(const char *source, int *line_out, int *column_out, char **old_line_out, char **new_line_out) {
   const char *cursor = source ? source : "";
   int line = 1;
   while (*cursor) {
@@ -3230,9 +3270,12 @@ static bool find_make_binding_mutable_edit(const char *source, int *line_out, ch
       zbuf_append(&replacement, "var ");
       zbuf_append(&replacement, let_pos + strlen("let "));
       free(prefix);
-      *line_out = line;
-      *old_line_out = line_text;
-      *new_line_out = replacement.data;
+      if (line_out) *line_out = line;
+      if (column_out) *column_out = (int)prefix_len + 1;
+      if (old_line_out) *old_line_out = line_text;
+      else free(line_text);
+      if (new_line_out) *new_line_out = replacement.data;
+      else zbuf_free(&replacement);
       return true;
     }
     free(line_text);
@@ -3289,7 +3332,7 @@ static int print_or_apply_fix_json(const char *path, SourceInput *input, const Z
   int edit_line = 0;
   char *old_line = NULL;
   char *new_line = NULL;
-  bool has_edit = can_apply && edit_source && find_make_binding_mutable_edit(edit_source, &edit_line, &old_line, &new_line);
+  bool has_edit = can_apply && edit_source && find_make_binding_mutable_edit(edit_source, &edit_line, NULL, &old_line, &new_line);
   bool applied = false;
   if (apply && has_edit) {
     char *updated = apply_single_line_edit(edit_source, edit_line, new_line);
@@ -11031,7 +11074,7 @@ int main(int argc, char **argv) {
         z_free_source(&input);
         return rc;
       }
-      print_fix_plan_json(diag.path ? diag.path : command.input, &diag);
+      print_fix_plan_json(diag.path ? diag.path : command.input, &input, &diag);
       z_free_program(&program);
       z_free_source(&input);
       return 0;
@@ -11046,7 +11089,7 @@ int main(int argc, char **argv) {
   bool is_graph_command = strcmp(command.command, "graph") == 0;
   if (!is_graph_command && !validate_target_capabilities(&program, target, &diag, input.source_file)) {
     if (strcmp(command.command, "fix") == 0) {
-      print_fix_plan_json(input.source_file, &diag);
+      print_fix_plan_json(input.source_file, &input, &diag);
       z_free_program(&program);
       z_free_source(&input);
       return 0;
@@ -11077,7 +11120,7 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "fix") == 0) {
     if (command.apply || command.patch) print_or_apply_fix_json(input.source_file, &input, NULL, command.apply);
-    else print_fix_plan_json(input.source_file, NULL);
+    else print_fix_plan_json(input.source_file, &input, NULL);
     z_free_program(&program);
     z_free_source(&input);
     return 0;
