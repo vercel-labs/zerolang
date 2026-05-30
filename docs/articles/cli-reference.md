@@ -280,9 +280,9 @@ zero test [--json] [--zdn] [--filter <name>] [--target <target>] [--cc <path>] [
 zero fmt [--check] <input>
 zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--zdn] [--target <target>] <input> [patch]
 zero graph [dump|import|validate|roundtrip] [--json] [--zdn] --out <program-graph-artifact> <input>
-zero graph view [--json] [--zdn] --out <file.0> <program-graph-or-source>
+zero graph view [--json] [--zdn] [--out <file.0>] <program-graph-or-source>
 zero graph size [--json] [--zdn] [--target <target>] --out <artifact> <program-graph-or-package>
-zero graph patch [--json] [--zdn] --out <program-graph-artifact> <program-graph-or-source> (<patch-file>|--op <operation>)
+zero graph patch [--json] [--zdn] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
 zero graph build [--json] [--zdn] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
 zero graph run [--zdn] [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
 zero graph test [--json] [--zdn] [--filter <name>] [--target <target>] <program-graph-or-package>
