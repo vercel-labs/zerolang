@@ -363,6 +363,7 @@ typedef enum {
   IR_TYPE_VEC,
   IR_TYPE_MAYBE_BYTE_VIEW,
   IR_TYPE_MAYBE_SCALAR,
+  IR_TYPE_PTR,
   IR_TYPE_RECORD
 } IrTypeKind;
 
@@ -448,7 +449,10 @@ typedef enum {
   IR_VALUE_HTTP_HEADER_LEN,
   IR_VALUE_FIELD_LOAD,
   IR_VALUE_CHECK,
-  IR_VALUE_RESCUE
+  IR_VALUE_RESCUE,
+  IR_VALUE_PTR_FROM_INT,
+  IR_VALUE_PTR_LOAD,
+  IR_VALUE_PTR_ADD
 } IrValueKind;
 
 typedef enum {
@@ -506,7 +510,8 @@ typedef enum {
   IR_INSTR_EXPR,
   IR_INSTR_RETURN,
   IR_INSTR_IF,
-  IR_INSTR_WHILE
+  IR_INSTR_WHILE,
+  IR_INSTR_PTR_STORE
 } IrInstrKind;
 
 struct IrInstr {

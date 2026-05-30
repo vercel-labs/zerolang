@@ -48,6 +48,7 @@ void z_aarch64_emit_load_w_imm(ZBuf *text, unsigned dst, unsigned base, unsigned
 void z_aarch64_emit_load_x_imm(ZBuf *text, unsigned dst, unsigned base, unsigned byte_offset);
 void z_aarch64_emit_load_b_imm(ZBuf *text, unsigned dst, unsigned base, unsigned byte_offset);
 void z_aarch64_emit_store_w_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset);
+void z_aarch64_emit_store_x_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset);
 void z_aarch64_emit_store_b_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset);
 void z_aarch64_emit_add_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
 void z_aarch64_emit_add_x_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);

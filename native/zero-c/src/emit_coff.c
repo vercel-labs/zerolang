@@ -607,6 +607,21 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: return coff_emit_byte_view_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_INDEX_LOAD: return coff_emit_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_FIELD_LOAD: return coff_emit_field_load_value(text, fun, value, diag);
+    case IR_VALUE_PTR_FROM_INT:
+      if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+      return true;
+    case IR_VALUE_PTR_LOAD: {
+      if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+      IrTypeKind elem = value->element_type;
+      if (elem == IR_TYPE_U8) {
+        z_x64_emit_movzx_reg32_ptr_reg_u8(text, 0, 0);
+      } else if (elem == IR_TYPE_U16) {
+        z_x64_emit_movzx_reg32_ptr_reg_disp_u16(text, 0, 0, 0);
+      } else {
+        z_x64_emit_load_reg_ptr_reg(text, 0, 0, elem == IR_TYPE_U64 || elem == IR_TYPE_I64);
+      }
+      return true;
+    }
     default: {
       char actual[64];
       snprintf(actual, sizeof(actual), "unsupported value kind %d", value ? (int)value->kind : -1);
@@ -808,6 +823,19 @@ static bool coff_emit_while_instr(ZBuf *text, const IrFunction *fun, const IrIns
 
 static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, CoffEmitContext *ctx, ZDiag *diag) {
   switch (instr->kind) {
+    case IR_INSTR_PTR_STORE: {
+      if (instr->local_index >= fun->local_len) return coff_diag_at(diag, "direct COFF pointer store local is out of range", instr->line, instr->column, "invalid local");
+      const IrLocal *ptr_local = &fun->locals[instr->local_index];
+      if (ptr_local->type != IR_TYPE_PTR) return coff_diag_at(diag, "direct COFF pointer store requires a Ptr local", instr->line, instr->column, "non-pointer local");
+      IrTypeKind elem = ptr_local->element_type;
+      coff_emit_load_local_eax(text, fun, instr->local_index);
+      z_x64_emit_push_rax(text);
+      if (!instr->value || !coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
+      z_x64_emit_pop_reg64(text, 1);
+      if (elem == IR_TYPE_U8) z_x64_emit_store_ptr_reg8_from_reg(text, 1, 0);
+      else z_x64_emit_store_ptr_reg_from_reg(text, 1, 0, elem == IR_TYPE_U64 || elem == IR_TYPE_I64);
+      return true;
+    }
     case IR_INSTR_WORLD_WRITE: return coff_emit_world_write(text, fun, instr, ctx, diag);
     case IR_INSTR_LOCAL_SET: return coff_emit_local_set_instr(text, fun, instr, ctx, diag);
     case IR_INSTR_FIELD_STORE: return coff_emit_field_store_instr(text, fun, instr, ctx, diag);
@@ -871,6 +899,9 @@ static bool coff_validate_function(const IrFunction *fun, ZDiag *diag) {
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW) {
+      continue;
+    }
+    if (fun->locals[i].type == IR_TYPE_PTR) {
       continue;
     }
     if (fun->locals[i].is_array && (fun->locals[i].element_type == IR_TYPE_U8 || fun->locals[i].element_type == IR_TYPE_U32 || fun->locals[i].element_type == IR_TYPE_I32 || fun->locals[i].element_type == IR_TYPE_USIZE)) continue;

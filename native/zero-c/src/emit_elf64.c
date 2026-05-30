@@ -42,7 +42,7 @@ static bool elf_type_is_i64(IrTypeKind type) {
 }
 
 static bool elf_type_is_supported_scalar(IrTypeKind type) {
-  return elf_type_is_scalar(type) || elf_type_is_i64(type);
+  return elf_type_is_scalar(type) || elf_type_is_i64(type) || type == IR_TYPE_PTR;
 }
 
 static const unsigned elf_param_regs[] = {7, 6, 2, 1, 8, 9};
@@ -1315,6 +1315,17 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_byte_bulk_value(code, fun, value, ctx, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD:
       return elf_emit_byte_index_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PTR_FROM_INT:
+      return elf_emit_core_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PTR_LOAD: {
+      if (!value->left) return elf_diag(diag, "direct ELF64 pointer load requires a pointer operand", value->line, value->column, "missing pointer");
+      if (!elf_emit_core_value(code, fun, value->left, ctx, diag)) return false;
+      IrTypeKind elem = value->element_type;
+      if (elem == IR_TYPE_U8) z_x64_emit_movzx_reg32_ptr_reg_u8(code, 0, 0);
+      else if (elem == IR_TYPE_U16) z_x64_emit_movzx_reg32_ptr_reg_disp_u16(code, 0, 0, 0);
+      else z_x64_emit_load_reg_ptr_reg(code, 0, 0, elem == IR_TYPE_U64 || elem == IR_TYPE_I64);
+      return true;
+    }
     default:
       return elf_diag(diag, "direct ELF64 value kind is unsupported", value->line, value->column, "unsupported value");
   }
@@ -1337,6 +1348,9 @@ static bool elf_validate_function(const IrFunction *fun, ZDiag *diag) {
     }
     if (fun->locals[i].is_record) continue;
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW) {
+      continue;
+    }
+    if (fun->locals[i].type == IR_TYPE_PTR) {
       continue;
     }
     if (fun->locals[i].type == IR_TYPE_ALLOC || fun->locals[i].type == IR_TYPE_VEC ||
@@ -1779,6 +1793,19 @@ static bool elf_emit_byte_view_index_store(ZBuf *text, const IrFunction *fun, co
 }
 
 static bool elf_emit_store_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, ElfEmitContext *ctx, ZDiag *diag) {
+  if (instr->kind == IR_INSTR_PTR_STORE) {
+    if (instr->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 pointer store local is out of range", instr->line, instr->column, "invalid local");
+    const IrLocal *ptr_local = &fun->locals[instr->local_index];
+    if (ptr_local->type != IR_TYPE_PTR) return elf_diag(diag, "direct ELF64 pointer store requires a Ptr local", instr->line, instr->column, "non-pointer local");
+    IrTypeKind elem = ptr_local->element_type;
+    elf_emit_load_local_rax(text, fun, instr->local_index);
+    z_x64_emit_push_rax(text);
+    if (!instr->value || !elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
+    z_x64_emit_pop_reg64(text, 1);
+    if (elem == IR_TYPE_U8) z_x64_emit_store_ptr_reg8_from_reg(text, 1, 0);
+    else z_x64_emit_store_ptr_reg_from_reg(text, 1, 0, elem == IR_TYPE_U64 || elem == IR_TYPE_I64);
+    return true;
+  }
   if (instr->kind == IR_INSTR_INDEX_STORE) {
     if (instr->array_index >= fun->local_len) return elf_diag(diag, "direct ELF64 indexed store array is out of range", instr->line, instr->column, "invalid array local");
     const IrLocal *local = &fun->locals[instr->array_index];
@@ -1879,7 +1906,7 @@ static bool elf_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
   switch (instr->kind) {
     case IR_INSTR_WORLD_WRITE: return elf_emit_world_write(text, fun, instr, ctx, diag);
     case IR_INSTR_LOCAL_SET: return elf_emit_local_set_instr(text, fun, instr, ctx, diag);
-    case IR_INSTR_INDEX_STORE: case IR_INSTR_FIELD_STORE: return elf_emit_store_instr(text, fun, instr, ctx, diag);
+    case IR_INSTR_INDEX_STORE: case IR_INSTR_FIELD_STORE: case IR_INSTR_PTR_STORE: return elf_emit_store_instr(text, fun, instr, ctx, diag);
     case IR_INSTR_EXPR: case IR_INSTR_RAISE: case IR_INSTR_RETURN: return elf_emit_terminal_instr(text, fun, instr, ctx, diag);
     case IR_INSTR_IF: case IR_INSTR_WHILE: return elf_emit_control_instr(text, fun, instr, ctx, diag);
     default: return elf_diag(diag, "direct ELF64 instruction kind is unsupported", instr->line, instr->column, "unsupported instruction");
