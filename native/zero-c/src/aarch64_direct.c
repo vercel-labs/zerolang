@@ -52,7 +52,7 @@ static bool a64_type_is_scalar32(IrTypeKind type) {
 }
 
 static bool a64_type_is_scalar64(IrTypeKind type) {
-  return type == IR_TYPE_I64 || type == IR_TYPE_U64;
+  return type == IR_TYPE_I64 || type == IR_TYPE_U64 || type == IR_TYPE_PTR;
 }
 
 static bool a64_type_is_scalar(IrTypeKind type) {
@@ -596,6 +596,21 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
     case IR_VALUE_BYTE_VIEW_EQ: return a64_emit_byte_view_eq_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: return a64_emit_byte_view_index_load_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_INDEX_LOAD: return a64_emit_index_load_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PTR_FROM_INT:
+      return a64_emit_value_to_reg_at(text, fun, value->left, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PTR_LOAD: {
+      if (!value->left) return a64_diag(diag, "direct AArch64 pointer load requires a pointer operand", value->line, value->column, "missing pointer");
+      if (!a64_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+      IrTypeKind elem = value->element_type;
+      if (elem == IR_TYPE_U8) z_aarch64_emit_load_b_imm(text, reg, 8, 0);
+      else if (elem == IR_TYPE_U16) z_aarch64_emit_load_w_imm(text, reg, 8, 0);
+      else if (elem == IR_TYPE_U32 || elem == IR_TYPE_I32 || elem == IR_TYPE_USIZE) z_aarch64_emit_load_w_imm(text, reg, 8, 0);
+      else if (elem == IR_TYPE_U64 || elem == IR_TYPE_I64) z_aarch64_emit_load_x_imm(text, reg, 8, 0);
+      else return a64_diag(diag, "direct AArch64 pointer load element type is unsupported", value->line, value->column, "unsupported element type");
+      if (elem == IR_TYPE_U16) z_aarch64_emit_uxth_w(text, reg, reg);
+      else if (elem == IR_TYPE_U8) z_aarch64_emit_uxtb_w(text, reg, reg);
+      return true;
+    }
     default:
       return a64_diag(diag, "direct AArch64 value kind is unsupported", value->line, value->column, "unsupported value");
   }
@@ -796,6 +811,20 @@ static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
     z_aarch64_patch_cond19(text, false_patch, text->len);
     return true;
   }
+  if (instr->kind == IR_INSTR_PTR_STORE) {
+    if (instr->local_index >= fun->local_len) return a64_diag(diag, "direct AArch64 pointer store local is out of range", instr->line, instr->column, "invalid local");
+    const IrLocal *ptr_local = &fun->locals[instr->local_index];
+    if (ptr_local->type != IR_TYPE_PTR) return a64_diag(diag, "direct AArch64 pointer store requires a Ptr local", instr->line, instr->column, "non-pointer local");
+    IrTypeKind elem = ptr_local->element_type;
+    if (!instr->value || instr->value->type != elem) return a64_diag(diag, "direct AArch64 pointer store value type mismatch", instr->line, instr->column, "store value mismatch");
+    a64_emit_load_local_x(text, fun, 8, instr->local_index, 0, frame_size);
+    if (!a64_emit_value_to_reg_at(text, fun, instr->value, 9, frame_size, 0, ctx, diag)) return false;
+    if (elem == IR_TYPE_U8) z_aarch64_emit_store_b_imm(text, 9, 8, 0);
+    else if (elem == IR_TYPE_U16 || elem == IR_TYPE_U32 || elem == IR_TYPE_I32 || elem == IR_TYPE_USIZE) z_aarch64_emit_store_w_imm(text, 9, 8, 0);
+    else if (elem == IR_TYPE_U64 || elem == IR_TYPE_I64) z_aarch64_emit_store_x_imm(text, 9, 8, 0);
+    else return a64_diag(diag, "direct AArch64 pointer store element type is unsupported", instr->line, instr->column, "unsupported element type");
+    return true;
+  }
   return a64_diag(diag, "direct AArch64 instruction kind is unsupported", instr->line, instr->column, "unsupported instruction");
 }
 
@@ -818,6 +847,7 @@ static bool a64_validate_function(const IrFunction *fun, ZDiag *diag) {
   for (size_t i = 0; i < fun->local_len; i++) {
     const IrLocal *local = &fun->locals[i];
     if (local->type == IR_TYPE_BYTE_VIEW || local->type == IR_TYPE_MAYBE_BYTE_VIEW) continue;
+    if (local->type == IR_TYPE_PTR) continue;
     if (local->is_array && (local->element_type == IR_TYPE_U8 || local->element_type == IR_TYPE_BOOL ||
                             local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE)) continue;
     if (local->is_array || !a64_type_is_scalar(local->type)) {

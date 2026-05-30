@@ -10,6 +10,7 @@ static bool build_value_supported(const ZBuildability *ctx, const IrValue *value
       case IR_VALUE_STRING_LITERAL: case IR_VALUE_ARRAY_BYTE_VIEW: case IR_VALUE_BYTE_SLICE: case IR_VALUE_BYTE_VIEW_LEN:
       case IR_VALUE_BYTE_VIEW_INDEX_LOAD: case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL: case IR_VALUE_BYTE_VIEW_EQ:
       case IR_VALUE_INDEX_LOAD: case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL:
+      case IR_VALUE_PTR_FROM_INT: case IR_VALUE_PTR_LOAD:
         (void)local_set_value;
         return true;
       default:
@@ -24,6 +25,7 @@ static bool build_value_supported(const ZBuildability *ctx, const IrValue *value
       case IR_VALUE_BYTE_VIEW_INDEX_LOAD: case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL: case IR_VALUE_BYTE_VIEW_EQ:
       case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_CHECK:
       case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL:
+      case IR_VALUE_PTR_FROM_INT: case IR_VALUE_PTR_LOAD:
         return true;
       default:
         (void)local_set_value;
@@ -34,6 +36,7 @@ static bool build_value_supported(const ZBuildability *ctx, const IrValue *value
     case IR_VALUE_INT: case IR_VALUE_BOOL: case IR_VALUE_LOCAL: case IR_VALUE_CAST: case IR_VALUE_BINARY: case IR_VALUE_COMPARE: case IR_VALUE_CALL:
     case IR_VALUE_STRING_LITERAL: case IR_VALUE_ARRAY_BYTE_VIEW: case IR_VALUE_BYTE_SLICE: case IR_VALUE_BYTE_VIEW_LEN:
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD:
+    case IR_VALUE_PTR_FROM_INT: case IR_VALUE_PTR_LOAD:
       return true;
     case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL:
       return true;
@@ -75,6 +78,8 @@ static bool build_value_supported(const ZBuildability *ctx, const IrValue *value
     case IR_VALUE_HTTP_RESPONSE_BODY_OFFSET: case IR_VALUE_HTTP_HEADER_VALUE: case IR_VALUE_HTTP_HEADER_FOUND:
     case IR_VALUE_HTTP_HEADER_OFFSET: case IR_VALUE_HTTP_HEADER_LEN:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
+    case IR_VALUE_PTR_ADD:
+      return false;
   }
   return false;
 }
@@ -159,6 +164,15 @@ static bool build_check_instr(const ZBuildability *ctx, const IrFunction *fun, c
     case IR_INSTR_RAISE:
       if (ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64 || ctx->backend == Z_DIRECT_BACKEND_MACHO_X64) return true;
       return z_build_diag(ctx, diag, "direct backend buildability does not support raise instructions for this emitter", instr->line, instr->column, "IR_INSTR_RAISE");
+    case IR_INSTR_PTR_STORE: {
+      if (!(ctx->backend == Z_DIRECT_BACKEND_ELF_AARCH64 || ctx->backend == Z_DIRECT_BACKEND_COFF_AARCH64 ||
+            ctx->backend == Z_DIRECT_BACKEND_MACHO64 ||
+            ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO_X64 || ctx->backend == Z_DIRECT_BACKEND_COFF_X64)) {
+        return z_build_diag(ctx, diag, "direct backend buildability does not support pointer stores for this emitter", instr->line, instr->column, "IR_INSTR_PTR_STORE");
+      }
+      if (instr->value && !z_build_check_value(ctx, fun, instr->value, false, 0, diag)) return false;
+      return true;
+    }
   }
   return z_build_diag(ctx, diag, "direct backend buildability does not support this instruction", instr->line, instr->column, "unsupported instruction");
 }
@@ -190,7 +204,7 @@ static bool build_check_function_shape(const ZBuildability *ctx, const IrFunctio
     if (ctx->backend == Z_DIRECT_BACKEND_MACHO_X64 && (local->type == IR_TYPE_ALLOC || local->type == IR_TYPE_VEC || local->type == IR_TYPE_MAYBE_SCALAR)) {
       return z_build_diag(ctx, diag, "direct x86_64 Mach-O object buildability does not support this local type", local->line, local->column, z_build_type_name(local->type));
     }
-    if (local->is_record || local->type == IR_TYPE_BYTE_VIEW || local->type == IR_TYPE_ALLOC || local->type == IR_TYPE_VEC || local->type == IR_TYPE_MAYBE_BYTE_VIEW) continue;
+    if (local->is_record || local->type == IR_TYPE_BYTE_VIEW || local->type == IR_TYPE_ALLOC || local->type == IR_TYPE_VEC || local->type == IR_TYPE_MAYBE_BYTE_VIEW || local->type == IR_TYPE_PTR) continue;
     if (ctx->backend != Z_DIRECT_BACKEND_COFF_X64 && local->type == IR_TYPE_MAYBE_SCALAR) continue;
     if (local->is_array) {
       bool array_ok = local->element_type == IR_TYPE_U8 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_U32 ||

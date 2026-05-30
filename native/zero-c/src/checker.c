@@ -1991,6 +1991,15 @@ static bool mutspan_element_text(const char *type, char *out, size_t out_len) {
   return true;
 }
 
+static bool ptr_element_text(const char *type, char *out, size_t out_len) {
+  if (!type || !out || out_len == 0) return false;
+  const char *inner = NULL;
+  size_t inner_len = 0;
+  if (!type_has_generic_arg(type, "Ptr", &inner, &inner_len)) return false;
+  snprintf(out, out_len, "%.*s", (int)inner_len, inner);
+  return true;
+}
+
 static bool validate_type_form_inner(const char *type, ZDiag *diag, int line, int column, bool allow_self) {
   if (!type) return true;
   if (strcmp(type, "Self") == 0 && !allow_self) {
@@ -2002,17 +2011,18 @@ static bool validate_type_form_inner(const char *type, ZDiag *diag, int line, in
     if (!close || close[1] == 0) return set_diag_detail(diag, 3015, "malformed fixed array type", line, column, "[N]T", type, "write a fixed length and element type");
     return validate_type_form_inner(close + 1, diag, line, column, allow_self);
   }
-  if (strcmp(type, "Maybe") == 0 || strcmp(type, "Span") == 0 || strcmp(type, "MutSpan") == 0 || strcmp(type, "ref") == 0 || strcmp(type, "mutref") == 0 || strcmp(type, "owned") == 0) {
-    return set_diag_detail(diag, 3015, "memory type requires one type argument", line, column, "Span<T>, MutSpan<T>, Maybe<T>, ref<T>, mutref<T>, or owned<T>", type, "add the missing type argument");
+  if (strcmp(type, "Maybe") == 0 || strcmp(type, "Span") == 0 || strcmp(type, "MutSpan") == 0 || strcmp(type, "ref") == 0 || strcmp(type, "mutref") == 0 || strcmp(type, "owned") == 0 || strcmp(type, "Ptr") == 0) {
+    return set_diag_detail(diag, 3015, "memory type requires one type argument", line, column, "Span<T>, MutSpan<T>, Maybe<T>, ref<T>, mutref<T>, owned<T>, or Ptr<T>", type, "add the missing type argument");
   }
   if (strncmp(type, "Maybe<", strlen("Maybe<")) == 0 || strncmp(type, "Span<", strlen("Span<")) == 0 || strncmp(type, "MutSpan<", strlen("MutSpan<")) == 0 ||
-      strncmp(type, "ref<", strlen("ref<")) == 0 || strncmp(type, "mutref<", strlen("mutref<")) == 0 || strncmp(type, "owned<", strlen("owned<")) == 0) {
+      strncmp(type, "ref<", strlen("ref<")) == 0 || strncmp(type, "mutref<", strlen("mutref<")) == 0 || strncmp(type, "owned<", strlen("owned<")) == 0 || strncmp(type, "Ptr<", strlen("Ptr<")) == 0) {
     const char *name = "ref";
     if (strncmp(type, "Maybe<", strlen("Maybe<")) == 0) name = "Maybe";
     else if (strncmp(type, "Span<", strlen("Span<")) == 0) name = "Span";
     else if (strncmp(type, "MutSpan<", strlen("MutSpan<")) == 0) name = "MutSpan";
     else if (strncmp(type, "mutref<", strlen("mutref<")) == 0) name = "mutref";
     else if (strncmp(type, "owned<", strlen("owned<")) == 0) name = "owned";
+    else if (strncmp(type, "Ptr<", strlen("Ptr<")) == 0) name = "Ptr";
     const char *inner = NULL;
     size_t inner_len = 0;
     if (!type_has_generic_arg(type, name, &inner, &inner_len)) {
@@ -5245,7 +5255,8 @@ static bool is_int_type(const char *type) {
 }
 
 static bool is_primitive_cast_type(const char *type) {
-  return is_int_type(type) || is_float_type(type) || is_char_type(type);
+  return is_int_type(type) || is_float_type(type) || is_char_type(type) ||
+         (type && strncmp(type, "Ptr<", 4) == 0);
 }
 
 static bool is_abi_scalar_type(const char *type) {
@@ -5730,7 +5741,7 @@ static const ParamVec *generic_type_params_for_name(const Program *program, cons
 
 static bool builtin_type_arg_kind(const char *type_name, size_t arg_index, ZTypeArgKind *out_kind) {
   if (!type_name || !out_kind || arg_index != 0) return false;
-  const char *type_arg_wrappers[] = {"Maybe", "Span", "MutSpan", "ref", "mutref", "owned", NULL};
+  const char *type_arg_wrappers[] = {"Maybe", "Span", "MutSpan", "ref", "mutref", "owned", "Ptr", NULL};
   for (size_t i = 0; type_arg_wrappers[i]; i++) {
     if (strcmp(type_name, type_arg_wrappers[i]) != 0) continue;
     *out_kind = Z_TYPE_ARG_TYPE;
@@ -6338,6 +6349,34 @@ static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Pr
   return true;
 }
 
+static bool check_stdlib_ptr_load_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  if (!check_expr(ctx, program, expr->args.items[0], scope, diag)) return false;
+  const char *actual = expr_type(ctx, program, expr->args.items[0], scope);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], NULL, actual);
+  char element_type[128];
+  if (!ptr_element_text(actual, element_type, sizeof(element_type))) {
+    return set_diag_detail(diag, 3012, "std.mem.ptrLoad expects a Ptr<T> argument", expr->args.items[0]->line, expr->args.items[0]->column, "Ptr<T>", actual, "pass a typed pointer value");
+  }
+  set_expr_resolved_type(expr, element_type);
+  z_call_resolution_set_return_type(resolution, element_type);
+  return true;
+}
+
+static bool check_stdlib_ptr_store_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  if (!check_expr(ctx, program, expr->args.items[0], scope, diag)) return false;
+  const char *ptr_type = expr_type(ctx, program, expr->args.items[0], scope);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], NULL, ptr_type);
+  char element_type[128];
+  if (!ptr_element_text(ptr_type, element_type, sizeof(element_type))) {
+    return set_diag_detail(diag, 3012, "std.mem.ptrStore expects a Ptr<T> as the first argument", expr->args.items[0]->line, expr->args.items[0]->column, "Ptr<T>", ptr_type, "pass a typed pointer value as the first argument");
+  }
+  if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, element_type)) return false;
+  const char *value_type = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], element_type, value_type);
+  set_expr_resolved_type(expr, "Void");
+  return true;
+}
+
 static bool check_stdlib_allocator_len_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name, const char *result_type, const char *len_message, const char *len_help, const char *mut_help) {
   if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, resolution, 0, name, "use std.mem.nullAlloc() or a mut FixedBufAlloc from std.mem.fixedBufAlloc(buffer)", mut_help)) return false;
   if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, "usize")) return false;
@@ -6426,6 +6465,10 @@ static bool check_stdlib_known_call_expected(CheckContext *ctx, const Program *p
     case Z_STD_HELPER_KIND_JSON_PARSE:
     case Z_STD_HELPER_KIND_JSON_PARSE_BYTES:
       return check_stdlib_json_parse_call_expected(ctx, program, expr, scope, diag, resolution, name, kind);
+    case Z_STD_HELPER_KIND_PTR_LOAD:
+      return check_stdlib_ptr_load_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_PTR_STORE:
+      return check_stdlib_ptr_store_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_TABLE:
     case Z_STD_HELPER_KIND_UNKNOWN:
     default:
@@ -10498,7 +10541,7 @@ static bool is_builtin_type_name(const char *name) {
     "Vec", "Map", "Set", "Duration", "RandSource", "ProcStatus", "Address", "Net", "Conn", "Listener",
     "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "BufferedReader", "BufferedWriter",
     "Env", "Args", "Clock", "Rand", "Proc", "Alloc",
-    "Maybe", "Span", "MutSpan", "ref", "mutref", "owned",
+    "Maybe", "Span", "MutSpan", "ref", "mutref", "owned", "Ptr",
     NULL
   };
   for (size_t i = 0; names[i]; i++) {

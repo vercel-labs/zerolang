@@ -148,6 +148,8 @@ static bool ir_type_name_is_mutable_byte_view(const char *type) {
   return type && strcmp(type, "MutSpan<u8>") == 0;
 }
 
+static bool ir_type_is_value(IrTypeKind type);
+
 static IrTypeKind ir_type_kind(const char *type) {
   if (!type) return IR_TYPE_UNSUPPORTED;
   if (strcmp(type, "Void") == 0) return IR_TYPE_VOID;
@@ -180,6 +182,21 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (strcmp(type, "BufferedReader") == 0 || strcmp(type, "BufferedWriter") == 0) return IR_TYPE_BYTE_VIEW;
   if (strcmp(type, "Maybe<MutSpan<u8>>") == 0 || strcmp(type, "Maybe<Span<u8>>") == 0 ||
       strcmp(type, "Maybe<String>") == 0 || strcmp(type, "Maybe<owned<ByteBuf>>") == 0) return IR_TYPE_MAYBE_BYTE_VIEW;
+  if (strncmp(type, "Ptr<", 4) == 0 && type[strlen(type) - 1] == '>') {
+    size_t inner_len = strlen(type) - 5;
+    char *inner = z_strndup(type + 4, inner_len);
+    IrTypeKind inner_kind = ir_type_kind(inner);
+    free(inner);
+    if (ir_type_is_value(inner_kind)) return IR_TYPE_PTR;
+    return IR_TYPE_UNSUPPORTED;
+  }
+  if (strcmp(type, "Ptr<u8>") == 0 ||
+      strcmp(type, "Ptr<u16>") == 0 ||
+      strcmp(type, "Ptr<u32>") == 0 ||
+      strcmp(type, "Ptr<u64>") == 0 ||
+      strcmp(type, "Ptr<usize>") == 0 ||
+      strcmp(type, "Ptr<i32>") == 0 ||
+      strcmp(type, "Ptr<i64>") == 0) return IR_TYPE_PTR;
   if (strcmp(type, "Maybe<JsonDoc>") == 0 ||
       strcmp(type, "Maybe<u8>") == 0 ||
       strcmp(type, "Maybe<u16>") == 0 ||
@@ -212,19 +229,19 @@ static bool ir_type_is_value(IrTypeKind type) {
 
 static bool ir_type_is_direct_local(IrTypeKind type) {
   return type == IR_TYPE_BOOL || ir_type_is_value(type) || type == IR_TYPE_BYTE_VIEW ||
-         type == IR_TYPE_ALLOC || type == IR_TYPE_VEC || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR;
+         type == IR_TYPE_ALLOC || type == IR_TYPE_VEC || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR || type == IR_TYPE_PTR;
 }
 
 static bool ir_type_is_direct_abi(IrTypeKind type) {
-  return type == IR_TYPE_BOOL || ir_type_is_value(type);
+  return type == IR_TYPE_BOOL || ir_type_is_value(type) || type == IR_TYPE_PTR;
 }
 
 static bool ir_type_is_direct_param_abi(IrTypeKind type) {
-  return ir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW;
+  return ir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_PTR;
 }
 
 static bool ir_type_is_direct_return_abi(IrTypeKind type) {
-  return ir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR;
+  return ir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR || type == IR_TYPE_PTR;
 }
 
 static bool ir_type_is_direct_fallible_value(IrTypeKind type) {
@@ -235,6 +252,17 @@ static bool ir_type_is_direct_fallible_value(IrTypeKind type) {
 
 static IrTypeKind ir_maybe_scalar_element_type(const char *type) {
   const char *prefix = "Maybe<";
+  size_t prefix_len = strlen(prefix);
+  size_t len = type ? strlen(type) : 0;
+  if (len <= prefix_len + 1 || strncmp(type, prefix, prefix_len) != 0 || type[len - 1] != '>') return IR_TYPE_UNSUPPORTED;
+  char *inner = z_strndup(type + prefix_len, len - prefix_len - 1);
+  IrTypeKind element = ir_type_kind(inner);
+  free(inner);
+  return ir_type_is_value(element) ? element : IR_TYPE_UNSUPPORTED;
+}
+
+static IrTypeKind ir_ptr_element_type(const char *type) {
+  const char *prefix = "Ptr<";
   size_t prefix_len = strlen(prefix);
   size_t len = type ? strlen(type) : 0;
   if (len <= prefix_len + 1 || strncmp(type, prefix, prefix_len) != 0 || type[len - 1] != '>') return IR_TYPE_UNSUPPORTED;
@@ -403,7 +431,8 @@ static unsigned ir_type_byte_size(IrTypeKind type) {
     case IR_TYPE_USIZE:
     case IR_TYPE_U32: return 4;
     case IR_TYPE_I64:
-    case IR_TYPE_U64: return 8;
+    case IR_TYPE_U64:
+    case IR_TYPE_PTR: return 8;
     default: return 0;
   }
 }
@@ -700,6 +729,13 @@ static IrValue *ir_new_cast_value(IrProgram *ir, IrValue *inner, IrTypeKind type
   if (inner->type == type) return inner;
   IrValue *value = ir_new_value(ir, IR_VALUE_CAST, type, line, column);
   value->left = inner;
+  return value;
+}
+
+static IrValue *ir_new_ptr_from_int_value(IrProgram *ir, IrValue *addr, IrTypeKind element_type, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_PTR_FROM_INT, IR_TYPE_PTR, line, column);
+  value->left = addr;
+  value->element_type = element_type;
   return value;
 }
 
@@ -1294,6 +1330,16 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       IrValue *inner = NULL;
       if (!ir_lower_expr(program, ir, fun, expr->left, &inner)) return false;
       IrTypeKind cast_type = ir_type_kind(expr->resolved_type);
+      if (cast_type == IR_TYPE_PTR && ir_type_is_value(inner->type)) {
+        IrTypeKind element = ir_ptr_element_type(expr->resolved_type);
+        if (element == IR_TYPE_UNSUPPORTED) {
+          ir_free_value(inner);
+          ir_mark_unsupported(ir, "direct backend pointer cast element type is unsupported", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "unknown pointer type");
+          return false;
+        }
+        *out = ir_new_ptr_from_int_value(ir, inner, element, expr->line, expr->column);
+        return true;
+      }
       if (!ir_type_is_value(cast_type) && cast_type != IR_TYPE_BOOL) {
         ir_free_value(inner);
         ir_mark_unsupported(ir, "direct backend cast target type is unsupported", expr->line, expr->column, expr->resolved_type ? expr->resolved_type : "unknown cast type");
@@ -2564,6 +2610,34 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           return true;
         }
       }
+      if (strcmp(callee_name, "std.mem.ptrLoad") == 0 &&
+          expr->args.len == 1 &&
+          expr->args.items[0]) {
+        IrValue *ptr = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &ptr)) {
+          free(callee_name);
+          return false;
+        }
+        if (ptr->type != IR_TYPE_PTR) {
+          ir_free_value(ptr);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.ptrLoad expects a Ptr<T> argument", expr->args.items[0]->line, expr->args.items[0]->column, "non-pointer argument");
+          return false;
+        }
+        IrTypeKind element = ir_ptr_element_type(expr->args.items[0]->resolved_type);
+        if (element == IR_TYPE_UNSUPPORTED) element = ptr->element_type;
+        IrValue *value = ir_new_value(ir, IR_VALUE_PTR_LOAD, element, expr->line, expr->column);
+        value->left = ptr;
+        value->element_type = element;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.mem.ptrStore") == 0) {
+        free(callee_name);
+        *out = NULL;
+        return ir_mark_unsupported(ir, "std.mem.ptrStore must be used as a statement, not an expression", expr->line, expr->column, "ptrStore in expression position"), false;
+      }
       const char *source_backed_std = z_std_source_target_for_public_call(callee_name);
       if (source_backed_std) {
         bool ok = ir_lower_named_direct_call(program, ir, fun, expr, source_backed_std, callee_name, out);
@@ -3055,6 +3129,33 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
     return true;
   }
   if (stmt->kind == STMT_EXPR) {
+    if (stmt->expr && stmt->expr->kind == EXPR_CALL && stmt->expr->left) {
+      char *callee = ir_expr_callee_name(stmt->expr->left);
+      if (callee && strcmp(callee, "std.mem.ptrStore") == 0 && stmt->expr->args.len == 2) {
+        free(callee);
+        const Expr *ptr_arg = stmt->expr->args.items[0];
+        const Expr *value_arg = stmt->expr->args.items[1];
+        if (!ptr_arg || ptr_arg->kind != EXPR_IDENT) {
+          ir_mark_unsupported(ir, "direct backend std.mem.ptrStore first argument must be a Ptr local", stmt->line, stmt->column, "non-identifier pointer");
+          return false;
+        }
+        const IrLocal *ptr_local = ir_function_find_local(mir_fun, ptr_arg->text);
+        if (!ptr_local || ptr_local->type != IR_TYPE_PTR) {
+          ir_mark_unsupported(ir, "direct backend std.mem.ptrStore requires a Ptr<T> local", stmt->line, stmt->column, "non-pointer local");
+          return false;
+        }
+        IrValue *store_value = NULL;
+        if (!ir_lower_expr(program, ir, mir_fun, value_arg, &store_value)) return false;
+        if (!store_value || store_value->type != ptr_local->element_type) {
+          ir_free_value(store_value);
+          ir_mark_unsupported(ir, "direct backend std.mem.ptrStore value type must match pointer element type", stmt->line, stmt->column, "type mismatch");
+          return false;
+        }
+        ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_PTR_STORE, .local_index = ptr_local->index, .value = store_value, .line = stmt->line, .column = stmt->column});
+        return true;
+      }
+      free(callee);
+    }
     IrValue *value = NULL;
     if (!stmt->expr || stmt->expr->kind != EXPR_CALL) {
       ir_mark_unsupported(ir, "direct backend expression statements currently support only Void helper calls", stmt->line, stmt->column, "non-call expression statement");
@@ -3204,8 +3305,12 @@ static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunc
         ir_mark_unsupported(ir, "direct backend local type is unsupported", stmt->line, stmt->column, stmt_type ? stmt_type : "inferred unknown");
         return false;
       }
+      IrTypeKind ptr_elem = IR_TYPE_UNSUPPORTED;
+      if (type == IR_TYPE_PTR) {
+        ptr_elem = ir_ptr_element_type(stmt_type);
+      }
       bool mutable_byte_view = stmt_type && strcmp(stmt_type, "MutSpan<u8>") == 0;
-      ir_function_push_local(ir, mir_fun, stmt->name, type, false, false, false, NULL, IR_TYPE_UNSUPPORTED, 0, 0, 0, stmt->mutable_binding || mutable_byte_view, stmt->line, stmt->column);
+      ir_function_push_local(ir, mir_fun, stmt->name, type, false, false, false, NULL, ptr_elem != IR_TYPE_UNSUPPORTED ? ptr_elem : IR_TYPE_UNSUPPORTED, 0, 0, 0, stmt->mutable_binding || mutable_byte_view, stmt->line, stmt->column);
     } else if (stmt->kind == STMT_IF) {
       if (!ir_collect_stmt_locals(program, ir, mir_fun, &stmt->then_body) || !ir_collect_stmt_locals(program, ir, mir_fun, &stmt->else_body)) return false;
     } else if (stmt->kind == STMT_WHILE) {

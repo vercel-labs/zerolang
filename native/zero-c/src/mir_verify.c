@@ -20,6 +20,7 @@ static const char *mir_type_kind_name(IrTypeKind type) {
     case IR_TYPE_VEC: return "Vec";
     case IR_TYPE_MAYBE_BYTE_VIEW: return "Maybe<ByteView>";
     case IR_TYPE_MAYBE_SCALAR: return "Maybe<scalar>";
+    case IR_TYPE_PTR: return "Ptr";
     case IR_TYPE_RECORD: return "record";
     case IR_TYPE_UNSUPPORTED:
     default:
@@ -32,15 +33,15 @@ static bool mir_type_is_value(IrTypeKind type) {
 }
 
 static bool mir_type_is_direct_abi(IrTypeKind type) {
-  return type == IR_TYPE_BOOL || mir_type_is_value(type);
+  return type == IR_TYPE_BOOL || mir_type_is_value(type) || type == IR_TYPE_PTR;
 }
 
 static bool mir_type_is_direct_param_abi(IrTypeKind type) {
-  return mir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW;
+  return mir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_PTR;
 }
 
 static bool mir_type_is_direct_return_abi(IrTypeKind type) {
-  return mir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR;
+  return mir_type_is_direct_abi(type) || type == IR_TYPE_BYTE_VIEW || type == IR_TYPE_MAYBE_BYTE_VIEW || type == IR_TYPE_MAYBE_SCALAR || type == IR_TYPE_PTR;
 }
 
 static bool mir_type_is_direct_fallible_value(IrTypeKind type) {
@@ -64,7 +65,8 @@ static unsigned mir_type_byte_size(IrTypeKind type) {
     case IR_TYPE_USIZE:
     case IR_TYPE_U32: return 4;
     case IR_TYPE_I64:
-    case IR_TYPE_U64: return 8;
+    case IR_TYPE_U64:
+    case IR_TYPE_PTR: return 8;
     default: return 0;
   }
 }
@@ -1000,6 +1002,32 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_CHECK:
     case IR_VALUE_RESCUE:
       return mir_verify_fallible_flow_value_contract(ir, fun, value);
+    case IR_VALUE_PTR_FROM_INT:
+      if (!mir_verify_value_type(ir, value, IR_TYPE_PTR, "MIR verifier found pointer-from-int result type mismatch", "pointer-from-int result")) return false;
+      return mir_verify_direct_primitive_value(ir, value->left, "MIR verifier found pointer-from-int input type mismatch", "pointer-from-int address input");
+    case IR_VALUE_PTR_LOAD:
+      if (!mir_type_is_integer_value(value->type) || value->type == IR_TYPE_BOOL) {
+        char actual[128];
+        snprintf(actual, sizeof(actual), "result type %s is not an integer value type", mir_type_kind_name(value->type));
+        mir_verify_mark_unsupported(ir, "MIR verifier found pointer load result type mismatch", value->line, value->column, actual);
+        return false;
+      }
+      if (!mir_verify_value_type(ir, value->left, IR_TYPE_PTR, "MIR verifier found pointer load input type mismatch", "pointer load input")) return false;
+      if (value->element_type != value->type) {
+        char actual[128];
+        snprintf(actual, sizeof(actual), "element %s result %s", mir_type_kind_name(value->element_type), mir_type_kind_name(value->type));
+        mir_verify_mark_unsupported(ir, "MIR verifier found pointer load element type mismatch", value->line, value->column, actual);
+        return false;
+      }
+      return true;
+    case IR_VALUE_PTR_ADD:
+      if (!mir_verify_value_type(ir, value, IR_TYPE_PTR, "MIR verifier found pointer-add result type mismatch", "pointer-add result")) return false;
+      if (!mir_verify_value_type(ir, value->left, IR_TYPE_PTR, "MIR verifier found pointer-add input type mismatch", "pointer-add input")) return false;
+      if (!value->right || !mir_type_is_integer_value(value->right->type)) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found pointer-add offset type mismatch", value->line, value->column, value->right ? mir_type_kind_name(value->right->type) : "missing");
+        return false;
+      }
+      return true;
   }
   char actual[128];
   snprintf(actual, sizeof(actual), "value kind %d", (int)value->kind);
@@ -1144,6 +1172,25 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
       }
       break;
     case IR_INSTR_EXPR:
+      break;
+    case IR_INSTR_PTR_STORE:
+      if (!mir_verify_local_index(ir, fun, instr->local_index, instr->line, instr->column, "MIR verifier found pointer store outside the local table")) return false;
+      {
+        const IrLocal *ptr_local = &fun->locals[instr->local_index];
+        if (ptr_local->type != IR_TYPE_PTR) {
+          char actual[160];
+          snprintf(actual, sizeof(actual), "local %s is %s", ptr_local->name ? ptr_local->name : "<unnamed>", mir_type_kind_name(ptr_local->type));
+          mir_verify_mark_unsupported(ir, "MIR verifier found pointer store to a non-pointer local", instr->line, instr->column, actual);
+          return false;
+        }
+        IrTypeKind element_type = ptr_local->element_type;
+        if (!instr->value || instr->value->type != element_type) {
+          char actual[160];
+          snprintf(actual, sizeof(actual), "pointer store has %s but element is %s", instr->value ? mir_type_kind_name(instr->value->type) : "missing", mir_type_kind_name(element_type));
+          mir_verify_mark_unsupported(ir, "MIR verifier found pointer store type mismatch", instr->line, instr->column, actual);
+          return false;
+        }
+      }
       break;
     default: {
       char actual[128];

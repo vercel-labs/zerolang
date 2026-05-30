@@ -169,6 +169,8 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.fs.atomicWrite", "Bool", 3, {"String", "String", "Span<u8>"}, {NULL}, "fs", "host", "uses caller-provided temp path", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.fileLen", "Maybe<usize>", 1, {"mutref<File>"}, {NULL}, "fs", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.close", "Void", 1, {"mutref<File>"}, {NULL}, "fs", "host", "closes owned file handle", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.mem.ptrLoad", NULL, 1, {NULL}, {NULL}, "memory", "target-neutral", "dereferences a typed pointer", false, Z_STD_HELPER_KIND_PTR_LOAD},
+  {"std.mem.ptrStore", "Void", 2, {NULL, NULL}, {NULL}, "memory", "target-neutral", "stores a value through a typed pointer", false, Z_STD_HELPER_KIND_PTR_STORE},
   {NULL, NULL, 0, {NULL}, {NULL}, NULL, NULL, NULL, false, Z_STD_HELPER_KIND_TABLE},
 };
 

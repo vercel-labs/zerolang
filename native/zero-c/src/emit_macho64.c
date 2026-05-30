@@ -62,7 +62,7 @@ static size_t macho_align(size_t value, size_t alignment) { return z_macho_align
 static void macho_pad_to(ZBuf *buf, size_t offset) { z_macho_pad_to(buf, offset); }
 
 static bool macho_type_is_scalar32(IrTypeKind type) { return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE; }
-static bool macho_type_is_scalar64(IrTypeKind type) { return type == IR_TYPE_I64 || type == IR_TYPE_U64; }
+static bool macho_type_is_scalar64(IrTypeKind type) { return type == IR_TYPE_I64 || type == IR_TYPE_U64 || type == IR_TYPE_PTR; }
 static bool macho_type_is_unsigned(IrTypeKind type) { return type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_USIZE || type == IR_TYPE_U32 || type == IR_TYPE_U64; }
 static bool macho_type_is_scalar(IrTypeKind type) { return macho_type_is_scalar32(type) || macho_type_is_scalar64(type); }
 
@@ -900,6 +900,21 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       if (!fun->locals[value->local_index].is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field load requires record local", value->line, value->column, "non-record local");
       macho_emit_load_field(text, fun, reg, value->local_index, value->field_offset, value->type, frame_size);
       return true;
+    case IR_VALUE_PTR_FROM_INT:
+      return macho_emit_value_to_reg_at(text, fun, value->left, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PTR_LOAD: {
+      if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O pointer load requires a pointer operand", value->line, value->column, "missing pointer");
+      if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+      IrTypeKind elem = value->element_type;
+      if (elem == IR_TYPE_U8) z_aarch64_emit_load_b_imm(text, reg, 8, 0);
+      else if (elem == IR_TYPE_U16) z_aarch64_emit_load_w_imm(text, reg, 8, 0);
+      else if (elem == IR_TYPE_U32 || elem == IR_TYPE_I32 || elem == IR_TYPE_USIZE) z_aarch64_emit_load_w_imm(text, reg, 8, 0);
+      else if (elem == IR_TYPE_U64 || elem == IR_TYPE_I64) z_aarch64_emit_load_x_imm(text, reg, 8, 0);
+      else return macho_diag_at(diag, "direct AArch64 Mach-O pointer load element type is unsupported", value->line, value->column, "unsupported element type");
+      if (elem == IR_TYPE_U16) z_aarch64_emit_uxth_w(text, reg, reg);
+      else if (elem == IR_TYPE_U8) z_aarch64_emit_uxtb_w(text, reg, reg);
+      return true;
+    }
     default: {
       char actual[64];
       snprintf(actual, sizeof(actual), "unsupported value kind %d", value ? (int)value->kind : -1);
@@ -1199,6 +1214,19 @@ static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *i
     z_aarch64_emit_store_b_imm(text, 10, 9, 0);
     return true;
   }
+  if (instr->kind == IR_INSTR_PTR_STORE) {
+    if (instr->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O pointer store local is out of range", instr->line, instr->column, "invalid local");
+    const IrLocal *ptr_local = &fun->locals[instr->local_index];
+    if (ptr_local->type != IR_TYPE_PTR) return macho_diag_at(diag, "direct AArch64 Mach-O pointer store requires a Ptr local", instr->line, instr->column, "non-pointer local");
+    IrTypeKind elem = ptr_local->element_type;
+    macho_emit_load_local_x(text, fun, 8, instr->local_index, 0, frame_size);
+    if (!instr->value || !macho_emit_value_to_reg(text, fun, instr->value, 9, frame_size, ctx, diag)) return false;
+    if (elem == IR_TYPE_U8) z_aarch64_emit_store_b_imm(text, 9, 8, 0);
+    else if (elem == IR_TYPE_U16 || elem == IR_TYPE_U32 || elem == IR_TYPE_I32 || elem == IR_TYPE_USIZE) z_aarch64_emit_store_w_imm(text, 9, 8, 0);
+    else if (elem == IR_TYPE_U64 || elem == IR_TYPE_I64) z_aarch64_emit_store_x_imm(text, 9, 8, 0);
+    else return macho_diag_at(diag, "direct AArch64 Mach-O pointer store element type is unsupported", instr->line, instr->column, "unsupported element type");
+    return true;
+  }
   if (instr->kind == IR_INSTR_EXPR) {
     return !instr->value || macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag);
   }
@@ -1291,6 +1319,9 @@ static bool macho_validate_function(const IrFunction *fun, ZDiag *diag) {
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW) {
+      continue;
+    }
+    if (fun->locals[i].type == IR_TYPE_PTR) {
       continue;
     }
     if (fun->locals[i].is_array && (fun->locals[i].element_type == IR_TYPE_U8 || fun->locals[i].element_type == IR_TYPE_BOOL ||

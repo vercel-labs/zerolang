@@ -19,6 +19,7 @@ const char *z_build_type_name(IrTypeKind type) {
     case IR_TYPE_VEC: return "Vec";
     case IR_TYPE_MAYBE_BYTE_VIEW: return "Maybe<MutSpan<u8>>";
     case IR_TYPE_MAYBE_SCALAR: return "Maybe<usize>";
+    case IR_TYPE_PTR: return "Ptr";
     case IR_TYPE_RECORD: return "record";
     default: return "unsupported";
   }
@@ -100,6 +101,9 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_FIELD_LOAD: return "IR_VALUE_FIELD_LOAD";
     case IR_VALUE_CHECK: return "IR_VALUE_CHECK";
     case IR_VALUE_RESCUE: return "IR_VALUE_RESCUE";
+    case IR_VALUE_PTR_FROM_INT: return "IR_VALUE_PTR_FROM_INT";
+    case IR_VALUE_PTR_LOAD: return "IR_VALUE_PTR_LOAD";
+    case IR_VALUE_PTR_ADD: return "IR_VALUE_PTR_ADD";
   }
   return "IR_VALUE_UNKNOWN";
 }
