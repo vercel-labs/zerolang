@@ -10,3 +10,4 @@ npm-debug.log*
 .env*
 !.env.example
 .reasonix
+.codegraph
