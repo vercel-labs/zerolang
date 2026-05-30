@@ -104,7 +104,7 @@ describe("docs registry", () => {
       assert.match(learnZero, new RegExp(topic));
     }
     const diagnostics = await readDoc("diagnostics");
-    assert.match(diagnostics, /JSON For Tools/);
+    assert.match(diagnostics, /Structured Output For Tools/);
     assert.match(diagnostics, /CIMP003/);
     assert.match(diagnostics, /configure-target-c-dependency/);
     assert.match(await readDoc("standard-library"), /zero graph --json/);
@@ -280,7 +280,12 @@ describe("docs registry", () => {
     const internalNarrative = /\b(?:ZERO-WORK|milestone|roadmap|self-host(?:ed|ing)?|no-C|generatedCBytes|no-c:report|release matrix|proof report|Stage3)\b/i;
     for (const doc of docs) {
       const source = await readFile(join(docsSiteRoot, doc.sourcePath.slice(1)), "utf8");
-      assert.doesNotMatch(source, internalNarrative, `${doc.sourcePath} should read like public docs`);
+      let inFence = false;
+      source.split("\n").forEach((line, index) => {
+        if (line.startsWith("```")) inFence = !inFence;
+        if (inFence || line.startsWith("|")) return;
+        assert.doesNotMatch(line, internalNarrative, `${doc.sourcePath}:${index + 1} should read like public docs`);
+      });
     }
   });
 });

@@ -2747,8 +2747,8 @@ assert(callResolutionEdgeFacts.calls.some((item) => item.kind === "stdlib" && it
 
 const programGraphBody = JSON.parse((await execFileAsync(zero, ["graph", "--json", "examples/hello.0"])).stdout).programGraph;
 const programGraphBodyAgain = JSON.parse((await execFileAsync(zero, ["graph", "--json", "examples/hello.0"])).stdout).programGraph;
-const programGraphDump = (await execFileAsync(zero, ["graph", "dump", "examples/hello.0"])).stdout;
-const programGraphDumpAgain = (await execFileAsync(zero, ["graph", "dump", "examples/hello.0"])).stdout;
+const programGraphDump = (await execFileAsync(zero, ["graph", "dump", "--text", "examples/hello.0"])).stdout;
+const programGraphDumpAgain = (await execFileAsync(zero, ["graph", "dump", "--text", "examples/hello.0"])).stdout;
 const programGraphDumpJson = JSON.parse((await execFileAsync(zero, ["graph", "dump", "--json", "examples/hello.0"])).stdout);
 const programGraphDumpPath = `${outDir}/hello.program-graph`;
 const programGraphDumpJsonPath = `${outDir}/hello.dump-json.program-graph`;
@@ -2772,25 +2772,25 @@ await rm(programGraphRichPath, { force: true });
 await rm(programGraphRichViewPath, { force: true });
 await rm(programGraphCharPath, { force: true });
 await rm(programGraphCharViewPath, { force: true });
-const programGraphDumpOut = await execFileAsync(zero, ["graph", "dump", "--out", programGraphDumpPath, "examples/hello.0"]);
+const programGraphDumpOut = await execFileAsync(zero, ["graph", "dump", "--text", "--out", programGraphDumpPath, "examples/hello.0"]);
 const programGraphDumpOutJson = JSON.parse((await execFileAsync(zero, ["graph", "dump", "--json", "--out", programGraphDumpJsonPath, "examples/hello.0"])).stdout);
 const programGraphDumpFile = await readFile(programGraphDumpPath, "utf8");
 const programGraphDumpJsonFile = await readFile(programGraphDumpJsonPath, "utf8");
-const programGraphValidate = await execFileAsync(zero, ["graph", "validate", programGraphDumpPath]);
-const programGraphDumpJsonValidate = await execFileAsync(zero, ["graph", "validate", programGraphDumpJsonPath]);
+const programGraphValidate = await execFileAsync(zero, ["graph", "validate", "--text", programGraphDumpPath]);
+const programGraphDumpJsonValidate = await execFileAsync(zero, ["graph", "validate", "--text", programGraphDumpJsonPath]);
 const programGraphValidateJson = JSON.parse((await execFileAsync(zero, ["graph", "validate", "--json", "--out", programGraphCanonicalPath, programGraphDumpPath])).stdout);
 const programGraphCanonicalFile = await readFile(programGraphCanonicalPath, "utf8");
-const programGraphView = (await execFileAsync(zero, ["graph", "view", programGraphDumpPath])).stdout;
-const programGraphViewAgain = (await execFileAsync(zero, ["graph", "view", programGraphDumpPath])).stdout;
+const programGraphView = (await execFileAsync(zero, ["graph", "view", "--text", programGraphDumpPath])).stdout;
+const programGraphViewAgain = (await execFileAsync(zero, ["graph", "view", "--text", programGraphDumpPath])).stdout;
 const programGraphViewJson = JSON.parse((await execFileAsync(zero, ["graph", "view", "--json", programGraphDumpPath])).stdout);
 const programGraphTypeInvalidView = (await execFileAsync(zero, ["graph", "view", "conformance/check/fail/unknown-name.0"])).stdout;
 const programGraphTypeInvalidCheckJson = await execFileAsync(zero, ["graph", "check", "--json", "conformance/check/fail/unknown-name.0"]).catch((error) => error);
-const programGraphViewOut = await execFileAsync(zero, ["graph", "view", "--out", programGraphViewPath, programGraphDumpPath]);
+const programGraphViewOut = await execFileAsync(zero, ["graph", "view", "--text", "--out", programGraphViewPath, programGraphDumpPath]);
 const programGraphViewFile = await readFile(programGraphViewPath, "utf8");
 const programGraphViewOutJson = JSON.parse((await execFileAsync(zero, ["graph", "view", "--json", "--out", programGraphViewPath, programGraphDumpPath])).stdout);
-const programGraphRoundtrip = await execFileAsync(zero, ["graph", "roundtrip", "examples/hello.0"]);
+const programGraphRoundtrip = await execFileAsync(zero, ["graph", "roundtrip", "--text", "examples/hello.0"]);
 const programGraphRoundtripJson = JSON.parse((await execFileAsync(zero, ["graph", "roundtrip", "--json", "examples/hello.0"])).stdout);
-const programGraphArtifactRoundtrip = await execFileAsync(zero, ["graph", "roundtrip", programGraphDumpPath]);
+const programGraphArtifactRoundtrip = await execFileAsync(zero, ["graph", "roundtrip", "--text", programGraphDumpPath]);
 const programGraphArtifactRoundtripJson = JSON.parse((await execFileAsync(zero, ["graph", "roundtrip", "--json", "--out", programGraphArtifactRoundtripPath, programGraphDumpPath])).stdout);
 const programGraphSourceFixtureText = await readFile(programGraphSourceFixturePath, "utf8");
 const programGraphSourceFixturePackageCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFixturePackage])).stdout);
@@ -3052,7 +3052,7 @@ assert(genericStaticForwardedSizeBody.genericSpecializations.some((item) => item
 assert(genericStaticForwardedSizeBody.genericSpecializations.some((item) => item.name === "z_inner__4"));
 assert(!genericStaticForwardedSizeBody.genericSpecializations.some((item) => item.name === "z_inner__N"));
 
-const targetsJson = await execFileAsync(zero, ["targets"]);
+const targetsJson = await execFileAsync(zero, ["targets", "--json"]);
 const targetsBody = JSON.parse(targetsJson.stdout);
 const linuxMuslTarget = targetsBody.targets.find((item) => item.name === "linux-musl-x64");
 const windowsMsvcTarget = targetsBody.targets.find((item) => item.aliases.includes("x86_64-windows-msvc"));
@@ -3282,7 +3282,7 @@ const readAllInvalidAllocBody = JSON.parse(readAllInvalidAllocJson.stdout);
 assert.equal(readAllInvalidAllocBody.diagnostics[0].code, "STD003");
 assert.match(readAllInvalidAllocBody.diagnostics[0].message, /readAll expects an allocator/);
 
-const zeroTestRun = await execFileAsync(zero, ["test", "conformance/native/pass/test-blocks.0"]);
+const zeroTestRun = await execFileAsync(zero, ["test", "--text", "conformance/native/pass/test-blocks.0"]);
 assert.equal(zeroTestRun.stdout, "1 test(s) ok\n");
 
 const zeroTestJsonRun = await execFileAsync(zero, ["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.0"]);
@@ -3318,7 +3318,7 @@ assert.equal(zeroUnexpectedPassBody.ok, false);
 assert.equal(zeroUnexpectedPassBody.unexpectedPasses, 1);
 assert.equal(zeroUnexpectedPassBody.results[0].status, "unexpected-pass");
 
-const zeroTestFailureRun = await execFileAsync(zero, ["test", "conformance/native/fail/test-expect-runtime-fail.0"]).catch((error) => error);
+const zeroTestFailureRun = await execFileAsync(zero, ["test", "--text", "conformance/native/fail/test-expect-runtime-fail.0"]).catch((error) => error);
 assert.notEqual(zeroTestFailureRun.code, 0);
 assert.match(zeroTestFailureRun.stderr, /zero test expectation failed/);
 assert.match(zeroTestFailureRun.stderr, /expect runtime failure exits nonzero/);
@@ -3479,77 +3479,77 @@ await assertBoundsTrap("conformance/native/fail/index-string.0", "index-string")
 await assertBoundsTrap("conformance/native/fail/slice-string.0", "slice-string");
 await assertBoundsTrap("conformance/native/fail/indexed-mutation-oob.0", "indexed-mutation-oob");
 
-const failed = await execFileAsync(zero, ["check", "conformance/check/fail/unknown-name.0"]).catch((error) => error);
+const failed = await execFileAsync(zero, ["check", "--text", "conformance/check/fail/unknown-name.0"]).catch((error) => error);
 assert.notEqual(failed.code, 0);
 assert.match(failed.stderr, /NAM003/);
 
-const unknownField = await execFileAsync(zero, ["check", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
+const unknownField = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
 assert.notEqual(unknownField.code, 0);
 assert.match(unknownField.stderr, /FLD001/);
 
-const wrongReturnType = await execFileAsync(zero, ["check", "conformance/native/fail/bad-return.0"]).catch((error) => error);
+const wrongReturnType = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-return.0"]).catch((error) => error);
 assert.notEqual(wrongReturnType.code, 0);
 assert.match(wrongReturnType.stderr, /TYP003/);
 
-const maybeRawScalarReturn = await execFileAsync(zero, ["check", "conformance/native/fail/maybe-raw-scalar-return.0"]).catch((error) => error);
+const maybeRawScalarReturn = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/maybe-raw-scalar-return.0"]).catch((error) => error);
 assert.notEqual(maybeRawScalarReturn.code, 0);
 assert.match(maybeRawScalarReturn.stderr, /TYP003/);
 
-const immutableAssignment = await execFileAsync(zero, ["check", "conformance/native/fail/immutable-assignment.0"]).catch((error) => error);
+const immutableAssignment = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/immutable-assignment.0"]).catch((error) => error);
 assert.notEqual(immutableAssignment.code, 0);
 assert.match(immutableAssignment.stderr, /TYP009/);
 
-const indexedMutationImmutable = await execFileAsync(zero, ["check", "conformance/native/fail/indexed-mutation-immutable.0"]).catch((error) => error);
+const indexedMutationImmutable = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/indexed-mutation-immutable.0"]).catch((error) => error);
 assert.notEqual(indexedMutationImmutable.code, 0);
 assert.match(indexedMutationImmutable.stderr, /TYP009/);
 
-const indexedMutationType = await execFileAsync(zero, ["check", "conformance/native/fail/indexed-mutation-type.0"]).catch((error) => error);
+const indexedMutationType = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/indexed-mutation-type.0"]).catch((error) => error);
 assert.notEqual(indexedMutationType.code, 0);
 assert.match(indexedMutationType.stderr, /TYP002/);
 
-const indexedMutationNonInteger = await execFileAsync(zero, ["check", "conformance/native/fail/indexed-mutation-non-integer.0"]).catch((error) => error);
+const indexedMutationNonInteger = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/indexed-mutation-non-integer.0"]).catch((error) => error);
 assert.notEqual(indexedMutationNonInteger.code, 0);
 assert.match(indexedMutationNonInteger.stderr, /TYP022/);
 
-const indexedMutationSpan = await execFileAsync(zero, ["check", "conformance/native/fail/indexed-mutation-span.0"]).catch((error) => error);
+const indexedMutationSpan = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/indexed-mutation-span.0"]).catch((error) => error);
 assert.notEqual(indexedMutationSpan.code, 0);
 assert.match(indexedMutationSpan.stderr, /TYP021/);
 
-const indexedMutationString = await execFileAsync(zero, ["check", "conformance/native/fail/indexed-mutation-string.0"]).catch((error) => error);
+const indexedMutationString = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/indexed-mutation-string.0"]).catch((error) => error);
 assert.notEqual(indexedMutationString.code, 0);
 assert.match(indexedMutationString.stderr, /TYP021/);
 assert.match(indexedMutationString.stderr, /byte-oriented/);
 
-const nestedLvalueImmutableField = await execFileAsync(zero, ["check", "conformance/native/fail/nested-lvalue-immutable-field.0"]).catch((error) => error);
+const nestedLvalueImmutableField = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nested-lvalue-immutable-field.0"]).catch((error) => error);
 assert.notEqual(nestedLvalueImmutableField.code, 0);
 assert.match(nestedLvalueImmutableField.stderr, /TYP009/);
 
-const nestedLvalueFieldType = await execFileAsync(zero, ["check", "conformance/native/fail/nested-lvalue-field-type.0"]).catch((error) => error);
+const nestedLvalueFieldType = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nested-lvalue-field-type.0"]).catch((error) => error);
 assert.notEqual(nestedLvalueFieldType.code, 0);
 assert.match(nestedLvalueFieldType.stderr, /TYP002/);
 
-const nestedLvalueUnknownField = await execFileAsync(zero, ["check", "conformance/native/fail/nested-lvalue-unknown-field.0"]).catch((error) => error);
+const nestedLvalueUnknownField = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nested-lvalue-unknown-field.0"]).catch((error) => error);
 assert.notEqual(nestedLvalueUnknownField.code, 0);
 assert.match(nestedLvalueUnknownField.stderr, /FLD001/);
 
-const nestedLvalueNonIntegerIndex = await execFileAsync(zero, ["check", "conformance/native/fail/nested-lvalue-non-integer-index.0"]).catch((error) => error);
+const nestedLvalueNonIntegerIndex = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nested-lvalue-non-integer-index.0"]).catch((error) => error);
 assert.notEqual(nestedLvalueNonIntegerIndex.code, 0);
 assert.match(nestedLvalueNonIntegerIndex.stderr, /TYP022/);
 
-const nestedLvalueSpanIndex = await execFileAsync(zero, ["check", "conformance/native/fail/nested-lvalue-span-index.0"]).catch((error) => error);
+const nestedLvalueSpanIndex = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nested-lvalue-span-index.0"]).catch((error) => error);
 assert.notEqual(nestedLvalueSpanIndex.code, 0);
 assert.match(nestedLvalueSpanIndex.stderr, /TYP021/);
 
-const nestedLvalueStringIndex = await execFileAsync(zero, ["check", "conformance/native/fail/nested-lvalue-string-index.0"]).catch((error) => error);
+const nestedLvalueStringIndex = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nested-lvalue-string-index.0"]).catch((error) => error);
 assert.notEqual(nestedLvalueStringIndex.code, 0);
 assert.match(nestedLvalueStringIndex.stderr, /TYP021/);
 assert.match(nestedLvalueStringIndex.stderr, /byte-oriented/);
 
-const mutspanImmutableArray = await execFileAsync(zero, ["check", "conformance/native/fail/mutspan-immutable-array.0"]).catch((error) => error);
+const mutspanImmutableArray = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mutspan-immutable-array.0"]).catch((error) => error);
 assert.notEqual(mutspanImmutableArray.code, 0);
 assert.match(mutspanImmutableArray.stderr, /TYP009/);
 
-const memCopyImmutableDst = await execFileAsync(zero, ["check", "conformance/native/fail/mem-copy-immutable-dst.0"]).catch((error) => error);
+const memCopyImmutableDst = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mem-copy-immutable-dst.0"]).catch((error) => error);
 assert.notEqual(memCopyImmutableDst.code, 0);
 assert.match(memCopyImmutableDst.stderr, /TYP009/);
 
@@ -3559,112 +3559,112 @@ const memCopyImmutableDstBody = JSON.parse(memCopyImmutableDstJson.stdout);
 assert.equal(memCopyImmutableDstBody.diagnostics[0].code, "TYP009");
 assert.equal(memCopyImmutableDstBody.diagnostics[0].repair.id, "make-binding-mutable");
 
-const mutspanFromSpan = await execFileAsync(zero, ["check", "conformance/native/fail/mutspan-from-span.0"]).catch((error) => error);
+const mutspanFromSpan = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mutspan-from-span.0"]).catch((error) => error);
 assert.notEqual(mutspanFromSpan.code, 0);
 assert.match(mutspanFromSpan.stderr, /TYP002/);
 
-const mutspanFromString = await execFileAsync(zero, ["check", "conformance/native/fail/mutspan-from-string.0"]).catch((error) => error);
+const mutspanFromString = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mutspan-from-string.0"]).catch((error) => error);
 assert.notEqual(mutspanFromString.code, 0);
 assert.match(mutspanFromString.stderr, /TYP002/);
 
-const mutspanReadonlyIndex = await execFileAsync(zero, ["check", "conformance/native/fail/mutspan-readonly-index.0"]).catch((error) => error);
+const mutspanReadonlyIndex = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mutspan-readonly-index.0"]).catch((error) => error);
 assert.notEqual(mutspanReadonlyIndex.code, 0);
 assert.match(mutspanReadonlyIndex.stderr, /TYP021/);
 
-const mutspanAssignmentType = await execFileAsync(zero, ["check", "conformance/native/fail/mutspan-assignment-type.0"]).catch((error) => error);
+const mutspanAssignmentType = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mutspan-assignment-type.0"]).catch((error) => error);
 assert.notEqual(mutspanAssignmentType.code, 0);
 assert.match(mutspanAssignmentType.stderr, /TYP002/);
 
-const mutspanNonIntegerIndex = await execFileAsync(zero, ["check", "conformance/native/fail/mutspan-non-integer-index.0"]).catch((error) => error);
+const mutspanNonIntegerIndex = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/mutspan-non-integer-index.0"]).catch((error) => error);
 assert.notEqual(mutspanNonIntegerIndex.code, 0);
 assert.match(mutspanNonIntegerIndex.stderr, /TYP022/);
 
-const duplicateFunction = await execFileAsync(zero, ["check", "conformance/native/fail/duplicate-function.0"]).catch((error) => error);
+const duplicateFunction = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/duplicate-function.0"]).catch((error) => error);
 assert.notEqual(duplicateFunction.code, 0);
 assert.match(duplicateFunction.stderr, /NAM004/);
 
-const internalPrefixDeclaration = await execFileAsync(zero, ["check", "conformance/native/fail/internal-prefix-declaration.0"]).catch((error) => error);
+const internalPrefixDeclaration = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/internal-prefix-declaration.0"]).catch((error) => error);
 assert.notEqual(internalPrefixDeclaration.code, 0);
 assert.match(internalPrefixDeclaration.stderr, /NAM004/);
 assert.match(internalPrefixDeclaration.stderr, /reserved compiler-internal symbol name/);
 
-const wrongArity = await execFileAsync(zero, ["check", "conformance/native/fail/wrong-arity.0"]).catch((error) => error);
+const wrongArity = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/wrong-arity.0"]).catch((error) => error);
 assert.notEqual(wrongArity.code, 0);
 assert.match(wrongArity.stderr, /NAM004/);
 
-const unknownEnumCase = await execFileAsync(zero, ["check", "conformance/check/fail/unknown-enum-case.0"]).catch((error) => error);
+const unknownEnumCase = await execFileAsync(zero, ["check", "--text", "conformance/check/fail/unknown-enum-case.0"]).catch((error) => error);
 assert.notEqual(unknownEnumCase.code, 0);
 assert.match(unknownEnumCase.stderr, /VAR001/);
 
-const badStdCall = await execFileAsync(zero, ["check", "conformance/native/fail/bad-std-call.0"]).catch((error) => error);
+const badStdCall = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-std-call.0"]).catch((error) => error);
 assert.notEqual(badStdCall.code, 0);
 assert.match(badStdCall.stderr, /STD002/);
 
-const stdHttpErrorRawInt = await execFileAsync(zero, ["check", "conformance/native/fail/std-http-error-raw-int.0"]).catch((error) => error);
+const stdHttpErrorRawInt = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/std-http-error-raw-int.0"]).catch((error) => error);
 assert.notEqual(stdHttpErrorRawInt.code, 0);
 assert.match(stdHttpErrorRawInt.stderr, /TYP002/);
 
-const stdHttpFetchRawTimeout = await execFileAsync(zero, ["check", "conformance/native/fail/std-http-fetch-raw-timeout.0"]).catch((error) => error);
+const stdHttpFetchRawTimeout = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/std-http-fetch-raw-timeout.0"]).catch((error) => error);
 assert.notEqual(stdHttpFetchRawTimeout.code, 0);
 assert.match(stdHttpFetchRawTimeout.stderr, /STD003/);
 
-const stdJsonParseBytesRawAlloc = await execFileAsync(zero, ["check", "conformance/native/fail/std-json-parsebytes-raw-alloc.0"]).catch((error) => error);
+const stdJsonParseBytesRawAlloc = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/std-json-parsebytes-raw-alloc.0"]).catch((error) => error);
 assert.notEqual(stdJsonParseBytesRawAlloc.code, 0);
 assert.match(stdJsonParseBytesRawAlloc.stderr, /STD003/);
 
-const stdJsonParseBytesImmutableAlloc = await execFileAsync(zero, ["check", "conformance/native/fail/std-json-parsebytes-immutable-alloc.0"]).catch((error) => error);
+const stdJsonParseBytesImmutableAlloc = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/std-json-parsebytes-immutable-alloc.0"]).catch((error) => error);
 assert.notEqual(stdJsonParseBytesImmutableAlloc.code, 0);
 assert.match(stdJsonParseBytesImmutableAlloc.stderr, /STD003/);
 
-const genericMemLenNonSpan = await execFileAsync(zero, ["check", "conformance/native/fail/generic-mem-len-non-span.0"]).catch((error) => error);
+const genericMemLenNonSpan = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/generic-mem-len-non-span.0"]).catch((error) => error);
 assert.notEqual(genericMemLenNonSpan.code, 0);
 assert.match(genericMemLenNonSpan.stderr, /STD003/);
 
-const genericMemEqlMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/generic-mem-eql-mismatch.0"]).catch((error) => error);
+const genericMemEqlMismatch = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/generic-mem-eql-mismatch.0"]).catch((error) => error);
 assert.notEqual(genericMemEqlMismatch.code, 0);
 assert.match(genericMemEqlMismatch.stderr, /STD003/);
 
-const genericMemEqlNonSpan = await execFileAsync(zero, ["check", "conformance/native/fail/generic-mem-eql-non-span.0"]).catch((error) => error);
+const genericMemEqlNonSpan = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/generic-mem-eql-non-span.0"]).catch((error) => error);
 assert.notEqual(genericMemEqlNonSpan.code, 0);
 assert.match(genericMemEqlNonSpan.stderr, /STD003/);
 
-const badMemoryType = await execFileAsync(zero, ["check", "conformance/native/fail/bad-memory-type.0"]).catch((error) => error);
+const badMemoryType = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-memory-type.0"]).catch((error) => error);
 assert.notEqual(badMemoryType.code, 0);
 assert.match(badMemoryType.stderr, /MEM001/);
 
-const checkerArrayElementType = await execFileAsync(zero, ["check", "conformance/check/fail/checker-array-element-type.0"]).catch((error) => error);
+const checkerArrayElementType = await execFileAsync(zero, ["check", "--text", "conformance/check/fail/checker-array-element-type.0"]).catch((error) => error);
 assert.notEqual(checkerArrayElementType.code, 0);
 assert.match(checkerArrayElementType.stderr, /TYP002/);
 
-const checkerRefMismatch = await execFileAsync(zero, ["check", "conformance/check/fail/checker-ref-mismatch.0"]).catch((error) => error);
+const checkerRefMismatch = await execFileAsync(zero, ["check", "--text", "conformance/check/fail/checker-ref-mismatch.0"]).catch((error) => error);
 assert.notEqual(checkerRefMismatch.code, 0);
 assert.match(checkerRefMismatch.stderr, /TYP001/);
 
-const checkerMutrefImmutable = await execFileAsync(zero, ["check", "conformance/check/fail/checker-mutref-immutable.0"]).catch((error) => error);
+const checkerMutrefImmutable = await execFileAsync(zero, ["check", "--text", "conformance/check/fail/checker-mutref-immutable.0"]).catch((error) => error);
 assert.notEqual(checkerMutrefImmutable.code, 0);
 assert.match(checkerMutrefImmutable.stderr, /TYP009/);
 
-const nonexhaustiveMatch = await execFileAsync(zero, ["check", "conformance/native/fail/nonexhaustive-match.0"]).catch((error) => error);
+const nonexhaustiveMatch = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/nonexhaustive-match.0"]).catch((error) => error);
 assert.notEqual(nonexhaustiveMatch.code, 0);
 assert.match(nonexhaustiveMatch.stderr, /MAT002/);
 
-const badChoicePayload = await execFileAsync(zero, ["check", "conformance/native/fail/bad-choice-payload.0"]).catch((error) => error);
+const badChoicePayload = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-choice-payload.0"]).catch((error) => error);
 assert.notEqual(badChoicePayload.code, 0);
 assert.match(badChoicePayload.stderr, /VAR004/);
 
-const allocatorInvalid = await execFileAsync(zero, ["check", "conformance/native/fail/allocator-invalid.0"]).catch((error) => error);
+const allocatorInvalid = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/allocator-invalid.0"]).catch((error) => error);
 assert.notEqual(allocatorInvalid.code, 0);
 assert.match(allocatorInvalid.stderr, /STD003/);
 
-const allocatorImmutableFixedBuf = await execFileAsync(zero, ["check", "conformance/native/fail/allocator-immutable-fixedbuf.0"]).catch((error) => error);
+const allocatorImmutableFixedBuf = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/allocator-immutable-fixedbuf.0"]).catch((error) => error);
 assert.notEqual(allocatorImmutableFixedBuf.code, 0);
 assert.match(allocatorImmutableFixedBuf.stderr, /STD003/);
 
-const byteBufferImmutableAlloc = await execFileAsync(zero, ["check", "conformance/native/fail/byte-buffer-immutable-alloc.0"]).catch((error) => error);
+const byteBufferImmutableAlloc = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/byte-buffer-immutable-alloc.0"]).catch((error) => error);
 assert.notEqual(byteBufferImmutableAlloc.code, 0);
 assert.match(byteBufferImmutableAlloc.stderr, /STD003/);
 
-const ownedUseAfterMove = await execFileAsync(zero, ["check", "conformance/native/fail/owned-use-after-move.0"]).catch((error) => error);
+const ownedUseAfterMove = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/owned-use-after-move.0"]).catch((error) => error);
 assert.notEqual(ownedUseAfterMove.code, 0);
 assert.match(ownedUseAfterMove.stderr, /OWN001/);
 
@@ -3690,279 +3690,279 @@ for (const fixture of [
   assert.match(result.stderr, /OWN001/);
 }
 
-const unsupportedDrop = await execFileAsync(zero, ["check", "conformance/native/fail/unsupported-drop.0"]).catch((error) => error);
+const unsupportedDrop = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/unsupported-drop.0"]).catch((error) => error);
 assert.notEqual(unsupportedDrop.code, 0);
 assert.match(unsupportedDrop.stderr, /OWN002/);
 
-const invalidDropSignature = await execFileAsync(zero, ["check", "conformance/native/fail/invalid-drop-signature.0"]).catch((error) => error);
+const invalidDropSignature = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/invalid-drop-signature.0"]).catch((error) => error);
 assert.notEqual(invalidDropSignature.code, 0);
 assert.match(invalidDropSignature.stderr, /OWN002/);
 
-const borrowMutrefImmutable = await execFileAsync(zero, ["check", "conformance/native/fail/borrow-mutref-immutable.0"]).catch((error) => error);
+const borrowMutrefImmutable = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/borrow-mutref-immutable.0"]).catch((error) => error);
 assert.notEqual(borrowMutrefImmutable.code, 0);
 assert.match(borrowMutrefImmutable.stderr, /TYP009/);
 
-const borrowConflict = await execFileAsync(zero, ["check", "conformance/native/fail/borrow-conflict.0"]).catch((error) => error);
+const borrowConflict = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/borrow-conflict.0"]).catch((error) => error);
 assert.notEqual(borrowConflict.code, 0);
 assert.match(borrowConflict.stderr, /BOR001/);
 
-const borrowAssignWhileBorrowed = await execFileAsync(zero, ["check", "conformance/native/fail/borrow-assign-while-borrowed.0"]).catch((error) => error);
+const borrowAssignWhileBorrowed = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/borrow-assign-while-borrowed.0"]).catch((error) => error);
 assert.notEqual(borrowAssignWhileBorrowed.code, 0);
 assert.match(borrowAssignWhileBorrowed.stderr, /BOR001/);
 
-const borrowAssignThroughRef = await execFileAsync(zero, ["check", "conformance/native/fail/borrow-assign-through-ref.0"]).catch((error) => error);
+const borrowAssignThroughRef = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/borrow-assign-through-ref.0"]).catch((error) => error);
 assert.notEqual(borrowAssignThroughRef.code, 0);
 assert.match(borrowAssignThroughRef.stderr, /TYP009/);
 
-const borrowReturnLocal = await execFileAsync(zero, ["check", "conformance/native/fail/borrow-return-local.0"]).catch((error) => error);
+const borrowReturnLocal = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/borrow-return-local.0"]).catch((error) => error);
 assert.notEqual(borrowReturnLocal.code, 0);
 assert.match(borrowReturnLocal.stderr, /BOR002/);
 
-const borrowWrongType = await execFileAsync(zero, ["check", "conformance/native/fail/borrow-wrong-type.0"]).catch((error) => error);
+const borrowWrongType = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/borrow-wrong-type.0"]).catch((error) => error);
 assert.notEqual(borrowWrongType.code, 0);
 assert.match(borrowWrongType.stderr, /TYP001/);
 
-const refIndexedAssignment = await execFileAsync(zero, ["check", "conformance/native/fail/ref-indexed-assignment.0"]).catch((error) => error);
+const refIndexedAssignment = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/ref-indexed-assignment.0"]).catch((error) => error);
 assert.notEqual(refIndexedAssignment.code, 0);
 assert.match(refIndexedAssignment.stderr, /TYP009/);
 
-const breakOutsideLoop = await execFileAsync(zero, ["check", "conformance/native/fail/break-outside-loop.0"]).catch((error) => error);
+const breakOutsideLoop = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/break-outside-loop.0"]).catch((error) => error);
 assert.notEqual(breakOutsideLoop.code, 0);
 assert.match(breakOutsideLoop.stderr, /TYP012/);
 
-const continueOutsideLoop = await execFileAsync(zero, ["check", "conformance/native/fail/continue-outside-loop.0"]).catch((error) => error);
+const continueOutsideLoop = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/continue-outside-loop.0"]).catch((error) => error);
 assert.notEqual(continueOutsideLoop.code, 0);
 assert.match(continueOutsideLoop.stderr, /TYP013/);
 
-const nonBoolCondition = await execFileAsync(zero, ["check", "conformance/native/fail/non-bool-condition.0"]).catch((error) => error);
+const nonBoolCondition = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/non-bool-condition.0"]).catch((error) => error);
 assert.notEqual(nonBoolCondition.code, 0);
 assert.match(nonBoolCondition.stderr, /TYP010/);
 
-const badMatchPayloadBinding = await execFileAsync(zero, ["check", "conformance/native/fail/bad-match-payload-binding.0"]).catch((error) => error);
+const badMatchPayloadBinding = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-match-payload-binding.0"]).catch((error) => error);
 assert.notEqual(badMatchPayloadBinding.code, 0);
 assert.match(badMatchPayloadBinding.stderr, /MAT004/);
 
-const badNull = await execFileAsync(zero, ["check", "conformance/native/fail/bad-null.0"]).catch((error) => error);
+const badNull = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-null.0"]).catch((error) => error);
 assert.notEqual(badNull.code, 0);
 assert.match(badNull.stderr, /TYP011/);
 
-const badForRange = await execFileAsync(zero, ["check", "conformance/native/fail/bad-for-range.0"]).catch((error) => error);
+const badForRange = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-for-range.0"]).catch((error) => error);
 assert.notEqual(badForRange.code, 0);
 assert.match(badForRange.stderr, /TYP014/);
 
-const badStdArgs = await execFileAsync(zero, ["check", "conformance/native/fail/bad-std-args.0"]).catch((error) => error);
+const badStdArgs = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-std-args.0"]).catch((error) => error);
 assert.notEqual(badStdArgs.code, 0);
 assert.match(badStdArgs.stderr, /STD002/);
 
-const badStdFs = await execFileAsync(zero, ["check", "conformance/native/fail/bad-std-fs.0"]).catch((error) => error);
+const badStdFs = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-std-fs.0"]).catch((error) => error);
 assert.notEqual(badStdFs.code, 0);
 assert.match(badStdFs.stderr, /STD003/);
 
-const fsOpenWithoutCapability = await execFileAsync(zero, ["check", "conformance/native/fail/fs-open-without-capability.0"]).catch((error) => error);
+const fsOpenWithoutCapability = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/fs-open-without-capability.0"]).catch((error) => error);
 assert.notEqual(fsOpenWithoutCapability.code, 0);
 assert.match(fsOpenWithoutCapability.stderr, /STD003/);
 
-const fsReadWithoutMutref = await execFileAsync(zero, ["check", "conformance/native/fail/fs-read-without-mutref.0"]).catch((error) => error);
+const fsReadWithoutMutref = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/fs-read-without-mutref.0"]).catch((error) => error);
 assert.notEqual(fsReadWithoutMutref.code, 0);
 assert.match(fsReadWithoutMutref.stderr, /STD003/);
 
-const unknownStdHelper = await execFileAsync(zero, ["check", "conformance/native/fail/unknown-std-helper.0"]).catch((error) => error);
+const unknownStdHelper = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/unknown-std-helper.0"]).catch((error) => error);
 assert.notEqual(unknownStdHelper.code, 0);
 assert.match(unknownStdHelper.stderr, /STD002/);
 
-const integerU8Overflow = await execFileAsync(zero, ["check", "conformance/native/fail/integer-u8-overflow.0"]).catch((error) => error);
+const integerU8Overflow = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/integer-u8-overflow.0"]).catch((error) => error);
 assert.notEqual(integerU8Overflow.code, 0);
 assert.match(integerU8Overflow.stderr, /TYP016/);
 
-const integerI8Overflow = await execFileAsync(zero, ["check", "conformance/native/fail/integer-i8-overflow.0"]).catch((error) => error);
+const integerI8Overflow = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/integer-i8-overflow.0"]).catch((error) => error);
 assert.notEqual(integerI8Overflow.code, 0);
 assert.match(integerI8Overflow.stderr, /TYP016/);
 
-const integerU64Overflow = await execFileAsync(zero, ["check", "conformance/native/fail/integer-u64-overflow.0"]).catch((error) => error);
+const integerU64Overflow = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/integer-u64-overflow.0"]).catch((error) => error);
 assert.notEqual(integerU64Overflow.code, 0);
 assert.match(integerU64Overflow.stderr, /TYP016/);
 
-const malformedIntegerLiteral = await execFileAsync(zero, ["check", "conformance/native/fail/malformed-integer-literal.0"]).catch((error) => error);
+const malformedIntegerLiteral = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/malformed-integer-literal.0"]).catch((error) => error);
 assert.notEqual(malformedIntegerLiteral.code, 0);
 assert.match(malformedIntegerLiteral.stderr, /TYP015/);
 
-const integerNonliteralNarrowing = await execFileAsync(zero, ["check", "conformance/native/fail/integer-nonliteral-narrowing.0"]).catch((error) => error);
+const integerNonliteralNarrowing = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/integer-nonliteral-narrowing.0"]).catch((error) => error);
 assert.notEqual(integerNonliteralNarrowing.code, 0);
 assert.match(integerNonliteralNarrowing.stderr, /TYP002/);
 
-const stdCodecReadU16Width = await execFileAsync(zero, ["check", "conformance/native/fail/std-codec-read-u16-width.0"]).catch((error) => error);
+const stdCodecReadU16Width = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/std-codec-read-u16-width.0"]).catch((error) => error);
 assert.notEqual(stdCodecReadU16Width.code, 0);
 assert.match(stdCodecReadU16Width.stderr, /TYP002/);
 
-const castStringToInt = await execFileAsync(zero, ["check", "conformance/native/fail/cast-string-to-int.0"]).catch((error) => error);
+const castStringToInt = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/cast-string-to-int.0"]).catch((error) => error);
 assert.notEqual(castStringToInt.code, 0);
 assert.match(castStringToInt.stderr, /TYP017/);
 
-const castBoolToInt = await execFileAsync(zero, ["check", "conformance/native/fail/cast-bool-to-int.0"]).catch((error) => error);
+const castBoolToInt = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/cast-bool-to-int.0"]).catch((error) => error);
 assert.notEqual(castBoolToInt.code, 0);
 assert.match(castBoolToInt.stderr, /TYP017/);
 
-const castIntToSpan = await execFileAsync(zero, ["check", "conformance/native/fail/cast-int-to-span.0"]).catch((error) => error);
+const castIntToSpan = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/cast-int-to-span.0"]).catch((error) => error);
 assert.notEqual(castIntToSpan.code, 0);
 assert.match(castIntToSpan.stderr, /TYP017/);
 
-const castIntToString = await execFileAsync(zero, ["check", "conformance/native/fail/cast-int-to-string.0"]).catch((error) => error);
+const castIntToString = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/cast-int-to-string.0"]).catch((error) => error);
 assert.notEqual(castIntToString.code, 0);
 assert.match(castIntToString.stderr, /TYP017/);
 
-const radixInvalidBinary = await execFileAsync(zero, ["check", "conformance/native/fail/radix-invalid-binary.0"]).catch((error) => error);
+const radixInvalidBinary = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/radix-invalid-binary.0"]).catch((error) => error);
 assert.notEqual(radixInvalidBinary.code, 0);
 assert.match(radixInvalidBinary.stderr, /TYP015/);
 
-const radixEmptyHex = await execFileAsync(zero, ["check", "conformance/native/fail/radix-empty-hex.0"]).catch((error) => error);
+const radixEmptyHex = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/radix-empty-hex.0"]).catch((error) => error);
 assert.notEqual(radixEmptyHex.code, 0);
 assert.match(radixEmptyHex.stderr, /TYP015/);
 
-const literalBadSeparator = await execFileAsync(zero, ["check", "conformance/native/fail/literal-bad-separator.0"]).catch((error) => error);
+const literalBadSeparator = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/literal-bad-separator.0"]).catch((error) => error);
 assert.notEqual(literalBadSeparator.code, 0);
 assert.match(literalBadSeparator.stderr, /TYP015/);
 
-const literalTrailingSeparator = await execFileAsync(zero, ["check", "conformance/native/fail/literal-trailing-separator.0"]).catch((error) => error);
+const literalTrailingSeparator = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/literal-trailing-separator.0"]).catch((error) => error);
 assert.notEqual(literalTrailingSeparator.code, 0);
 assert.match(literalTrailingSeparator.stderr, /TYP015/);
 
-const literalUnknownSuffix = await execFileAsync(zero, ["check", "conformance/native/fail/literal-unknown-suffix.0"]).catch((error) => error);
+const literalUnknownSuffix = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/literal-unknown-suffix.0"]).catch((error) => error);
 assert.notEqual(literalUnknownSuffix.code, 0);
 assert.match(literalUnknownSuffix.stderr, /TYP015/);
 
-const literalSuffixMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/literal-suffix-mismatch.0"]).catch((error) => error);
+const literalSuffixMismatch = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/literal-suffix-mismatch.0"]).catch((error) => error);
 assert.notEqual(literalSuffixMismatch.code, 0);
 assert.match(literalSuffixMismatch.stderr, /TYP002/);
 
-const literalSuffixOverflow = await execFileAsync(zero, ["check", "conformance/native/fail/literal-suffix-overflow.0"]).catch((error) => error);
+const literalSuffixOverflow = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/literal-suffix-overflow.0"]).catch((error) => error);
 assert.notEqual(literalSuffixOverflow.code, 0);
 assert.match(literalSuffixOverflow.stderr, /TYP016/);
 
-const charEmpty = await execFileAsync(zero, ["check", "conformance/native/fail/char-empty.0"]).catch((error) => error);
+const charEmpty = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/char-empty.0"]).catch((error) => error);
 assert.notEqual(charEmpty.code, 0);
 assert.match(charEmpty.stderr, /PAR100/);
 
-const charMultiple = await execFileAsync(zero, ["check", "conformance/native/fail/char-multiple.0"]).catch((error) => error);
+const charMultiple = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/char-multiple.0"]).catch((error) => error);
 assert.notEqual(charMultiple.code, 0);
 assert.match(charMultiple.stderr, /PAR100/);
 
-const charBadEscape = await execFileAsync(zero, ["check", "conformance/native/fail/char-bad-escape.0"]).catch((error) => error);
+const charBadEscape = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/char-bad-escape.0"]).catch((error) => error);
 assert.notEqual(charBadEscape.code, 0);
 assert.match(charBadEscape.stderr, /PAR100/);
 
-const charToString = await execFileAsync(zero, ["check", "conformance/native/fail/char-to-string.0"]).catch((error) => error);
+const charToString = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/char-to-string.0"]).catch((error) => error);
 assert.notEqual(charToString.code, 0);
 assert.match(charToString.stderr, /TYP002/);
 
-const stringToChar = await execFileAsync(zero, ["check", "conformance/native/fail/string-to-char.0"]).catch((error) => error);
+const stringToChar = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/string-to-char.0"]).catch((error) => error);
 assert.notEqual(stringToChar.code, 0);
 assert.match(stringToChar.stderr, /TYP002/);
 
-const charIntegerArithmetic = await execFileAsync(zero, ["check", "conformance/native/fail/char-integer-arithmetic.0"]).catch((error) => error);
+const charIntegerArithmetic = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/char-integer-arithmetic.0"]).catch((error) => error);
 assert.notEqual(charIntegerArithmetic.code, 0);
 assert.match(charIntegerArithmetic.stderr, /TYP002/);
 
-const malformedFloatLiteral = await execFileAsync(zero, ["check", "conformance/native/fail/malformed-float-literal.0"]).catch((error) => error);
+const malformedFloatLiteral = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/malformed-float-literal.0"]).catch((error) => error);
 assert.notEqual(malformedFloatLiteral.code, 0);
 assert.match(malformedFloatLiteral.stderr, /TYP019/);
 
-const floatF32Overflow = await execFileAsync(zero, ["check", "conformance/native/fail/float-f32-overflow.0"]).catch((error) => error);
+const floatF32Overflow = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/float-f32-overflow.0"]).catch((error) => error);
 assert.notEqual(floatF32Overflow.code, 0);
 assert.match(floatF32Overflow.stderr, /TYP020/);
 
-const integerFromFloat = await execFileAsync(zero, ["check", "conformance/native/fail/integer-from-float.0"]).catch((error) => error);
+const integerFromFloat = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/integer-from-float.0"]).catch((error) => error);
 assert.notEqual(integerFromFloat.code, 0);
 assert.match(integerFromFloat.stderr, /TYP002/);
 
-const floatFromInteger = await execFileAsync(zero, ["check", "conformance/native/fail/float-from-integer.0"]).catch((error) => error);
+const floatFromInteger = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/float-from-integer.0"]).catch((error) => error);
 assert.notEqual(floatFromInteger.code, 0);
 assert.match(floatFromInteger.stderr, /TYP002/);
 
-const floatMixedWidth = await execFileAsync(zero, ["check", "conformance/native/fail/float-mixed-width.0"]).catch((error) => error);
+const floatMixedWidth = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/float-mixed-width.0"]).catch((error) => error);
 assert.notEqual(floatMixedWidth.code, 0);
 assert.match(floatMixedWidth.stderr, /TYP002/);
 
-const floatIntArithmetic = await execFileAsync(zero, ["check", "conformance/native/fail/float-int-arithmetic.0"]).catch((error) => error);
+const floatIntArithmetic = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/float-int-arithmetic.0"]).catch((error) => error);
 assert.notEqual(floatIntArithmetic.code, 0);
 assert.match(floatIntArithmetic.stderr, /TYP002/);
 
-const indexNonInteger = await execFileAsync(zero, ["check", "conformance/native/fail/index-non-integer.0"]).catch((error) => error);
+const indexNonInteger = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/index-non-integer.0"]).catch((error) => error);
 assert.notEqual(indexNonInteger.code, 0);
 assert.match(indexNonInteger.stderr, /TYP022/);
 
-const indexNonIndexable = await execFileAsync(zero, ["check", "conformance/native/fail/index-non-indexable.0"]).catch((error) => error);
+const indexNonIndexable = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/index-non-indexable.0"]).catch((error) => error);
 assert.notEqual(indexNonIndexable.code, 0);
 assert.match(indexNonIndexable.stderr, /TYP021/);
 
-const checkedGetNonIndexable = await execFileAsync(zero, ["check", "conformance/native/fail/checked-get-non-indexable.0"]).catch((error) => error);
+const checkedGetNonIndexable = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/checked-get-non-indexable.0"]).catch((error) => error);
 assert.notEqual(checkedGetNonIndexable.code, 0);
 assert.match(checkedGetNonIndexable.stderr, /STD003/);
 
-const checkMaybeVoid = await execFileAsync(zero, ["check", "conformance/native/fail/check-maybe-void.0"]).catch((error) => error);
+const checkMaybeVoid = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/check-maybe-void.0"]).catch((error) => error);
 assert.notEqual(checkMaybeVoid.code, 0);
 assert.match(checkMaybeVoid.stderr, /ERR001/);
 
-const raiseWithoutRaises = await execFileAsync(zero, ["check", "conformance/native/fail/raise-without-raises.0"]).catch((error) => error);
+const raiseWithoutRaises = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/raise-without-raises.0"]).catch((error) => error);
 assert.notEqual(raiseWithoutRaises.code, 0);
 assert.match(raiseWithoutRaises.stderr, /ERR001/);
 
-const raiseUndeclaredError = await execFileAsync(zero, ["check", "conformance/native/fail/raise-undeclared-error.0"]).catch((error) => error);
+const raiseUndeclaredError = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/raise-undeclared-error.0"]).catch((error) => error);
 assert.notEqual(raiseUndeclaredError.code, 0);
 assert.match(raiseUndeclaredError.stderr, /ERR002/);
 
-const uncheckedFallibleCall = await execFileAsync(zero, ["check", "conformance/native/fail/unchecked-fallible-call.0"]).catch((error) => error);
+const uncheckedFallibleCall = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/unchecked-fallible-call.0"]).catch((error) => error);
 assert.notEqual(uncheckedFallibleCall.code, 0);
 assert.match(uncheckedFallibleCall.stderr, /ERR003/);
 
-const errorSetMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/error-set-mismatch.0"]).catch((error) => error);
+const errorSetMismatch = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/error-set-mismatch.0"]).catch((error) => error);
 assert.notEqual(errorSetMismatch.code, 0);
 assert.match(errorSetMismatch.stderr, /ERR002/);
 
-const rescueFallbackTypeMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/rescue-fallback-type-mismatch.0"]).catch((error) => error);
+const rescueFallbackTypeMismatch = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/rescue-fallback-type-mismatch.0"]).catch((error) => error);
 assert.notEqual(rescueFallbackTypeMismatch.code, 0);
 assert.match(rescueFallbackTypeMismatch.stderr, /TYP003|TYP002/);
 
-const stdFsRescueFallbackTypeOverwrite = await execFileAsync(zero, ["check", "conformance/native/fail/std-fs-rescue-fallback-type-overwrite.0"]).catch((error) => error);
+const stdFsRescueFallbackTypeOverwrite = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/std-fs-rescue-fallback-type-overwrite.0"]).catch((error) => error);
 assert.notEqual(stdFsRescueFallbackTypeOverwrite.code, 0);
 assert.match(stdFsRescueFallbackTypeOverwrite.stderr, /TYP002/);
 
-const constFieldAssignment = await execFileAsync(zero, ["check", "conformance/native/fail/const-field-assignment.0"]).catch((error) => error);
+const constFieldAssignment = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/const-field-assignment.0"]).catch((error) => error);
 assert.notEqual(constFieldAssignment.code, 0);
 assert.match(constFieldAssignment.stderr, /TYP009/);
 
-const constMutBorrow = await execFileAsync(zero, ["check", "conformance/native/fail/const-mut-borrow.0"]).catch((error) => error);
+const constMutBorrow = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/const-mut-borrow.0"]).catch((error) => error);
 assert.notEqual(constMutBorrow.code, 0);
 assert.match(constMutBorrow.stderr, /TYP009/);
 
-const badExternLayout = await execFileAsync(zero, ["check", "conformance/native/fail/bad-extern-layout.0"]).catch((error) => error);
+const badExternLayout = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-extern-layout.0"]).catch((error) => error);
 assert.notEqual(badExternLayout.code, 0);
 assert.match(badExternLayout.stderr, /ABI001/);
 
-const badPackedLayout = await execFileAsync(zero, ["check", "conformance/native/fail/bad-packed-layout.0"]).catch((error) => error);
+const badPackedLayout = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-packed-layout.0"]).catch((error) => error);
 assert.notEqual(badPackedLayout.code, 0);
 assert.match(badPackedLayout.stderr, /ABI001/);
 
-const badCExport = await execFileAsync(zero, ["check", "conformance/native/fail/bad-c-export.0"]).catch((error) => error);
+const badCExport = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-c-export.0"]).catch((error) => error);
 assert.notEqual(badCExport.code, 0);
 assert.match(badCExport.stderr, /ABI001/);
 
-const badCExportRaises = await execFileAsync(zero, ["check", "conformance/native/fail/bad-c-export-raises.0"]).catch((error) => error);
+const badCExportRaises = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/bad-c-export-raises.0"]).catch((error) => error);
 assert.notEqual(badCExportRaises.code, 0);
 assert.match(badCExportRaises.stderr, /ABI001/);
 
-const byteBufferUseAfterMove = await execFileAsync(zero, ["check", "conformance/native/fail/byte-buffer-use-after-move.0"]).catch((error) => error);
+const byteBufferUseAfterMove = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/byte-buffer-use-after-move.0"]).catch((error) => error);
 assert.notEqual(byteBufferUseAfterMove.code, 0);
 assert.match(byteBufferUseAfterMove.stderr, /OWN001/);
 
-const testExpectNonBool = await execFileAsync(zero, ["check", "conformance/native/fail/test-expect-non-bool.0"]).catch((error) => error);
+const testExpectNonBool = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/test-expect-non-bool.0"]).catch((error) => error);
 assert.notEqual(testExpectNonBool.code, 0);
 assert.match(testExpectNonBool.stderr, /TYP001/);
 
-const sliceNonIntegerBound = await execFileAsync(zero, ["check", "conformance/native/fail/slice-non-integer-bound.0"]).catch((error) => error);
+const sliceNonIntegerBound = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/slice-non-integer-bound.0"]).catch((error) => error);
 assert.notEqual(sliceNonIntegerBound.code, 0);
 assert.match(sliceNonIntegerBound.stderr, /TYP022/);
 
-const sliceNonSliceable = await execFileAsync(zero, ["check", "conformance/native/fail/slice-non-sliceable.0"]).catch((error) => error);
+const sliceNonSliceable = await execFileAsync(zero, ["check", "--text", "conformance/native/fail/slice-non-sliceable.0"]).catch((error) => error);
 assert.notEqual(sliceNonSliceable.code, 0);
 assert.match(sliceNonSliceable.stderr, /TYP021/);
 
@@ -4092,9 +4092,59 @@ for (const [fixture, code] of [
   ["receiver-method-side-effect-reference-origin.0", /BOR001/],
   ["world-stream-used-as-value.0", /TYP001/],
 ]) {
-  const result = await execFileAsync(zero, ["check", `conformance/native/fail/${fixture}`]).catch((error) => error);
+  const result = await execFileAsync(zero, ["check", "--text", `conformance/native/fail/${fixture}`]).catch((error) => error);
   assert.notEqual(result.code, 0);
   assert.match(result.stderr, code);
+}
+
+// ── ZDN output format tests ──
+
+for (const [fixture, name, zdnCommand, expectedPatterns] of [
+  ["conformance/zdn/pass/hello.0", "check-zdn-pass", ["check", "--zdn"], ["CheckResult", "ok true", `sourceFile "conformance/zdn/pass/hello.0"`]],
+  ["conformance/zdn/pass/hello.0", "tokens-zdn-pass", ["tokens", "--zdn"], ["Tokens", "sourceFile"]],
+  ["conformance/zdn/pass/hello.0", "parse-zdn-pass", ["parse", "--zdn"], ["ParseResult", "sourceFile"]],
+  ["conformance/zdn/pass/hello.0", "doc-zdn-pass", ["doc", "--zdn"], ["DocResult", "sourceFile"]],
+]) {
+  const result = await execFileAsync(zero, [...zdnCommand, fixture]).catch((error) => error);
+  if (result.code) {
+    console.log(`FAIL: ${name} exited with code ${result.code}`);
+    console.log(result.stderr);
+    process.exit(1);
+  }
+  for (const pattern of expectedPatterns) {
+    if (!result.stdout.includes(pattern)) {
+      console.log(`FAIL: ${name} expected "${pattern}" in ZDN output`);
+      console.log(result.stdout);
+      process.exit(1);
+    }
+  }
+}
+
+// Check failure in ZDN format produces a diagnostic
+{
+  const result = await execFileAsync(zero, ["check", "--zdn", "conformance/zdn/fail/unknown-name.0"]).catch((error) => error);
+  assert.notEqual(result.code, 0);
+  assert.ok(result.stdout.includes("Diag") || result.stdout.includes("diagnostic"), `expected ZDN diagnostic in:\n${result.stdout}`);
+}
+
+// test --zdn (pass)
+{
+  const result = await execFileAsync(zero, ["test", "--zdn", "conformance/native/pass/test-blocks.0"]);
+  assert.ok(result.stdout.includes("TestResult"), `expected TestResult in:\n${result.stdout}`);
+  assert.ok(result.stdout.includes("ok true"), `expected ok true in:\n${result.stdout}`);
+}
+
+// fix --plan --zdn
+{
+  const result = await execFileAsync(zero, ["fix", "--plan", "--zdn", "examples/point.0"]);
+  assert.ok(result.stdout.includes("FixPlanResult"), `expected FixPlanResult in:\n${result.stdout}`);
+}
+
+// explain with --zdn
+{
+  const result = await execFileAsync(zero, ["explain", "--zdn", "TAR001"]);
+  assert.ok(result.stdout.includes("ExplainResult"), `expected ExplainResult in:\n${result.stdout}`);
+  assert.ok(result.stdout.includes("code"), `expected 'code' field in:\n${result.stdout}`);
 }
 
 console.log("conformance ok");

@@ -1,0 +1,34 @@
+# Test: std.zdn API functions
+# Validates streamTokens, parse, parseBytes
+
+pub fn main Bool
+  # Test: streamTokens on a multi-line ZDN document
+  let zdn_text String "CheckResult\n  ok true\n  sourceFile \"add.0\"\n"
+  let count usize std.zdn.streamTokens zdn_text
+  if != count 3_usize
+    ret false
+
+  # Test: streamTokens on a single-line ZDN
+  let single String "CheckResult\n"
+  let count2 usize std.zdn.streamTokens single
+  if != count2 1_usize
+    ret false
+
+  # Test: streamTokens on empty text
+  let empty String ""
+  let count3 usize std.zdn.streamTokens empty
+  if != count3 0_usize
+    ret false
+
+  # Test: parse on valid ZDN (String input)
+  let parsed Bool std.zdn.parse "CheckResult\n  ok true\n"
+  if != parsed true
+    ret false
+
+  # Test: parseBytes on valid ZDN (Span<u8> input)
+  let bytes Span<u8> "BuildResult\n  ok true\n"
+  let parsed2 Bool std.zdn.parseBytes bytes
+  if != parsed2 true
+    ret false
+
+  ret true

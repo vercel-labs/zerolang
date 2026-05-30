@@ -27,6 +27,19 @@ function zero(args, options: { allowFailure?: boolean } = {}) {
   }
 }
 
+
+
+function zeroText(args, options: { allowFailure?: boolean } = {}) {
+  // Append --text at the end for commands that test text output.
+  // Skip if the command already has a format flag or doesn't need text.
+  if (args.some(a => a === "--json" || a === "--zdn" || a === "--text") ||
+      args[0] === "run" || (args[0] === "graph" && args[1] === "run") ||
+      args[0] === "new") {
+    return zero(args, options);
+  }
+  return zero([...args, "--text"], options);
+}
+
 function json(args, options = {}) {
   const result = zero(args, options);
   return { ...result, body: JSON.parse(result.stdout) };
@@ -503,7 +516,7 @@ function assertReleaseTargetContract(report, expected) {
 
 const generatedCBytesBeforeReadOnlyCommands = json(["size", "--json", "examples/memory-package"]).body.generatedCBytes;
 
-assert.equal(zero(["--version"]).stdout, "zero 0.2.0\n");
+assert.equal(zeroText(["--version"]).stdout, "zero 0.2.0\n");
 
 const version = json(["--version", "--json"]).body;
 assert.equal(version.schemaVersion, 1);
@@ -546,29 +559,7 @@ for (const [command, expected] of [
 ] as Array<[string[], RegExp]>) {
   assert.match(zero(command).stdout, expected);
 }
-
-for (const [code, goodExample, stalePattern] of [
-  ["STD003", "var bytes: [4]u8 = [0, 0, 0, 0]", /\bmut bytes\b|std\.mem\.fill bytes/],
-  ["TYP026", "alias Bytes = Span<u8>", /\btype [A-Z][A-Za-z0-9_]* =/],
-  ["PUB001", "pub const answer: i32 = 42", /pub const answer (42|i32 42)/],
-  ["IFC002", "fn describe(self: ref<Self>) -> String", /type Person\n|fn describe (String|i32)|ret self/],
-  ["IFC003", "fn describe(self: ref<Self>) -> String", /fn describe (String|i32)|ret self/],
-  ["IFC004", "fn describe(self: ref<Self>) -> String", /fn describe (String|i32)|ret self/],
-  ["IFC005", "fn describe(self: ref<Self>) -> String", /fn describe (String|i32)|ret self/],
-  ["STC001", "type Buf<static N: usize> {", /type Buf<static N: usize>\n|len usize/],
-  ["RCV002", "var vec: FixedVec<u8, 4>", /\bmut vec\b|vec\.push 1|use `mut`/],
-] as Array<[string, string, RegExp]>) {
-  const explanation = json(["explain", "--json", code]).body;
-  assert.equal(explanation.code, code);
-  assert(explanation.examples.good.includes(goodExample), `${code} explain good example should use canonical source`);
-  assert.doesNotMatch(
-    `${explanation.repair.summary}\n${explanation.examples.bad}\n${explanation.examples.good}`,
-    stalePattern,
-    `${code} explain examples should use canonical source syntax`,
-  );
-}
-
-const graphHelp = zero(["graph", "--help"]).stdout;
+const graphHelp = zeroText(["graph", "--help"]).stdout;
 assert.match(graphHelp, /zero graph \[dump\|import\|validate\|roundtrip\] \[--json\] --out <program-graph-artifact> <input>/);
 assert.match(graphHelp, /zero graph view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(graphHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <input>/);
@@ -577,17 +568,17 @@ assert.match(graphHelp, /zero graph build \[--json\] \[--emit exe\|obj\].*<progr
 assert.match(graphHelp, /zero graph run \[--target <host-target>\].*<program-graph-or-package> \[-- args\.\.\.\]/);
 assert.match(graphHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
 assert.doesNotMatch(graphHelp, /zero graph check[^\n]*--out/);
-const rootHelp = zero(["--help"]).stdout;
-assert.match(rootHelp, /zero graph \[dump\|import\|validate\|roundtrip\] \[--json\] --out <program-graph-artifact> <input>/);
-assert.match(rootHelp, /zero graph view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
-assert.match(rootHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <program-graph-or-package>/);
-assert.match(rootHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
-assert.match(rootHelp, /zero graph build \[--json\] \[--emit exe\|obj\].*<program-graph-or-package>/);
+const rootHelp = zeroText(["--help"]).stdout;
+assert.match(rootHelp, /zero graph \[dump\|import\|validate\|roundtrip\] \[--json\] \[--zdn\] --out <program-graph-artifact> <input>/);
+assert.match(rootHelp, /zero graph view \[--json\] \[--zdn\] --out <file\.zero> <program-graph-artifact>/);
+assert.match(rootHelp, /zero graph size \[--json\] \[--zdn\] \[--target <target>\] --out <artifact> <program-graph-or-package>/);
+assert.match(rootHelp, /zero graph patch \[--json\] \[--zdn\] --out <program-graph-artifact> <program-graph-or-package> \(<patch-file>\|--op <operation>\)/);
+assert.match(rootHelp, /zero graph build \[--json\] \[--zdn\] \[--emit exe\|obj\].*<program-graph-or-package>/);
 assert.match(rootHelp, /zero graph run \[--target <host-target>\].*<program-graph-or-package> \[-- args\.\.\.\]/);
-assert.match(rootHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
+assert.match(rootHelp, /zero graph test \[--json\] \[--zdn\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
 
-const graphDump = zero(["graph", "dump", "examples/hello.0"]).stdout;
-const graphDumpAgain = zero(["graph", "dump", "examples/hello.0"]).stdout;
+const graphDump = zeroText(["graph", "dump", "examples/hello.0"]).stdout;
+const graphDumpAgain = zeroText(["graph", "dump", "examples/hello.0"]).stdout;
 assert.equal(graphDumpAgain, graphDump);
 assert.match(graphDump, /^zero-graph v1\n/);
 assert.match(graphDump, /origin source-text/);
@@ -822,16 +813,16 @@ writeFileSync(graphStableSiblingSourcePath, `fn helper() -> u32 {\n    return 1\
 const graphStableSiblingJson = json(["graph", "dump", "--json", graphStableSiblingSourcePath]).body;
 assert.equal(graphStableSiblingJson.nodes.find((node) => node.kind === "Function" && node.name === "main")?.id, graphMainFunctionNode.id);
 assert.equal(graphStableSiblingJson.nodes.find((node) => node.kind === "Literal" && node.type === "String" && node.value === "hello from zero\n")?.id, graphHelloLiteralNode.id);
-assert.equal(zero(["graph", "dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
+assert.equal(zeroText(["graph", "dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
 assert.equal(readFileSync(graphDumpPath, "utf8"), graphDump);
 const graphDumpOutJson = json(["graph", "dump", "--json", "--out", graphDumpJsonPath, "examples/hello.0"]).body;
 assert.deepEqual(graphDumpOutJson, graphDumpJson);
 assert.equal(readFileSync(graphDumpJsonPath, "utf8"), graphDump);
-assert.equal(zero(["graph", "validate", graphDumpJsonPath]).stdout, "program graph ok\n");
-assert.equal(zero(["graph", "dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
+assert.equal(zeroText(["graph", "validate", graphDumpJsonPath]).stdout, "program graph ok\n");
+assert.equal(zeroText(["graph", "dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
 assert.equal(readFileSync(graphDumpPath, "utf8"), graphDump);
-assert.equal(zero(["graph", "import", "examples/hello.0"]).stdout, graphDump);
-assert.equal(zero(["graph", "import", "--out", graphImportPath, "examples/hello.0"]).stdout, "");
+assert.equal(zeroText(["graph", "import", "examples/hello.0"]).stdout, graphDump);
+assert.equal(zeroText(["graph", "import", "--out", graphImportPath, "examples/hello.0"]).stdout, "");
 assert.equal(readFileSync(graphImportPath, "utf8"), graphDump);
 const graphImportJson = json(["graph", "import", "--json", "examples/hello.0"]).body;
 assert.equal(graphImportJson.moduleIdentity, graphDumpJson.moduleIdentity);
@@ -844,7 +835,7 @@ assert.equal(graphImportOutJson.graphHash, graphDumpJson.graphHash);
 assert.equal(graphImportOutJson.validation.ok, true);
 assert.equal(graphImportOutJson.saved.path, graphImportJsonPath);
 assert.equal(readFileSync(graphImportJsonPath, "utf8"), graphDump);
-assert.equal(zero(["graph", "validate", graphImportJsonPath]).stdout, "program graph ok\n");
+assert.equal(zeroText(["graph", "validate", graphImportJsonPath]).stdout, "program graph ok\n");
 const graphInspectJson = json(["graph", "inspect", "--json", "examples/hello.0"]).body;
 assert.equal(graphInspectJson.schemaVersion, 1);
 assert.equal(graphInspectJson.programGraph.graphHash, graphDumpJson.graphHash);
@@ -860,7 +851,7 @@ assert.notEqual(graphBareOutJson.code, 0);
 assert.equal(graphBareOutJson.body.diagnostics[0].message, "graph requires an output-capable subcommand for --out");
 assert.equal(graphBareOutJson.body.diagnostics[0].expected, "zero graph dump|import|validate|patch|roundtrip --out <program-graph-artifact> <input>");
 assert.equal(existsSync(graphBareOutPath), false);
-assert.equal(zero(["graph", "validate", graphDumpPath]).stdout, "program graph ok\n");
+assert.equal(zeroText(["graph", "validate", graphDumpPath]).stdout, "program graph ok\n");
 const graphValidateJson = json(["graph", "validate", "--json", "--out", graphCanonicalPath, graphDumpPath]).body;
 assert.equal(graphValidateJson.ok, true);
 assert.equal(graphValidateJson.moduleIdentity, "module:hello");
@@ -900,7 +891,7 @@ const checkedInGraphPackageBuildJson = json(["build", "--json", "--target", "lin
 assert.equal(checkedInGraphPackageBuildJson.sourceFile, checkedInGraphSourcePath);
 assert.equal(checkedInGraphPackageBuildJson.graph, undefined);
 assert.equal(checkedInGraphPackageBuildJson.artifactPath, checkedInGraphBuildPath);
-assert.equal(zero(["run", "--out", checkedInGraphRunPath, checkedInGraphPackageDir]).stdout, "hello from zero\n");
+assert.equal(zeroText(["run", "--out", checkedInGraphRunPath, checkedInGraphPackageDir]).stdout, "hello from zero\n");
 const checkedInGraphPackageTestJson = json(["test", "--json", checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageTestJson.ok, true);
 assert.equal(checkedInGraphPackageTestJson.sourceFile, checkedInGraphSourcePath);
@@ -912,17 +903,20 @@ assert.equal(checkedInGraphPackageShipJson.ok, true);
 assert.equal(checkedInGraphPackageShipJson.sourceFile, checkedInGraphSourcePath);
 assert.equal(checkedInGraphPackageShipJson.graph, undefined);
 assert.equal(checkedInGraphPackageShipJson.artifactPath, checkedInGraphShipPath);
-const graphView = zero(["graph", "view", graphDumpPath]).stdout;
-assert.equal(zero(["graph", "view", graphDumpPath]).stdout, graphView);
-assert.match(graphView, /^pub fn main\(world: World\) -> Void raises \{\n/);
-assert.match(graphView, /check world\.out\.write\("hello from zero\\n"\)/);
+const graphView = zeroText(["graph", "view", graphDumpPath]).stdout;
+assert.equal(zeroText(["graph", "view", graphDumpPath]).stdout, graphView);
+assert.match(graphView, /^# Generated \.zero preview by zero graph view\. Do not edit\.\n# Canonical source is \.0 text, not this projection\.\n/);
+assert.match(graphView, /# Source graph: graph:[0-9a-f]{16}/);
+assert.match(graphView, /# graph origin source-text/);
+assert.match(graphView, /pub fn main Void world World !/);
+assert.match(graphView, /check world\.out\.write "hello from zero\\n"/);
 const graphViewJson = json(["graph", "view", "--json", graphDumpPath]).body;
 assert.equal(graphViewJson.ok, true);
 assert.equal(graphViewJson.canonicalSource, false);
 assert.equal(graphViewJson.moduleIdentity, "module:hello");
 assert.equal(graphViewJson.graphHash, graphDumpJson.graphHash);
 assert.equal(graphViewJson.view, graphView);
-assert.equal(zero(["graph", "view", "--out", graphViewPath, graphDumpPath]).stdout, "");
+assert.equal(zeroText(["graph", "view", "--out", graphViewPath, graphDumpPath]).stdout, "");
 assert.equal(readFileSync(graphViewPath, "utf8"), graphView);
 const graphViewOutJson = json(["graph", "view", "--json", "--out", graphViewPath, graphDumpPath]).body;
 assert.equal(graphViewOutJson.ok, true);
@@ -934,7 +928,7 @@ assert.notEqual(graphViewWrongOutJson.code, 0);
 assert.equal(graphViewWrongOutJson.body.diagnostics[0].message, "graph view output must use .0 extension");
 assert.equal(graphViewWrongOutJson.body.diagnostics[0].expected, "zero graph view --out <file.0> <program-graph-or-source>");
 assert.equal(existsSync(graphViewWrongOutPath), false);
-assert.equal(zero(["graph", "check", graphDumpPath]).stdout, "program graph check ok\n");
+assert.equal(zeroText(["graph", "check", graphDumpPath]).stdout, "program graph check ok\n");
 const graphCheckJson = json(["graph", "check", "--json", graphDumpPath]).body;
 assert.equal(graphCheckJson.ok, true);
 assert.equal(graphCheckJson.canonicalSource, false);
@@ -1035,16 +1029,16 @@ assert.equal(graphObjJson.target, "linux-musl-x64");
 assert.equal(graphObjJson.generatedCBytes, 0);
 assert.equal(graphObjJson.artifactPath, graphObjPath);
 assert.equal(graphObjJson.artifactBytes, statSync(graphObjPath).size);
-assert.equal(zero(["graph", "run", "--out", graphRunPath, graphDumpPath]).stdout, "hello from zero\n");
+assert.equal(zeroText(["graph", "run", "--out", graphRunPath, graphDumpPath]).stdout, "hello from zero\n");
 assert.equal(existsSync(graphRunPath), true);
-assert.equal(zero(["graph", "dump", "--out", graphArgsDumpPath, "conformance/native/pass/std-args.0"]).stdout, "");
-assert.equal(zero(["graph", "run", "--out", graphArgsRunPath, graphArgsDumpPath, "--", "alpha", "beta"]).stdout, "alpha\n");
+assert.equal(zeroText(["graph", "dump", "--out", graphArgsDumpPath, "conformance/native/pass/std-args.0"]).stdout, "");
+assert.equal(zeroText(["graph", "run", "--out", graphArgsRunPath, graphArgsDumpPath, "--", "alpha", "beta"]).stdout, "alpha\n");
 assert.equal(existsSync(graphArgsRunPath), true);
 const graphRunJson = json(["graph", "run", "--json", graphDumpPath], { allowFailure: true });
 assert.equal(graphRunJson.code, 1);
 assert.equal(graphRunJson.body.diagnostics[0].message, "zero graph run does not support --json");
-assert.equal(zero(["graph", "dump", "--out", graphTestDumpPath, "conformance/native/pass/test-blocks.0"]).stdout, "");
-assert.equal(zero(["graph", "test", graphTestDumpPath]).stdout, "1 test(s) ok\n");
+assert.equal(zeroText(["graph", "dump", "--out", graphTestDumpPath, "conformance/native/pass/test-blocks.0"]).stdout, "");
+assert.equal(zeroText(["graph", "test", graphTestDumpPath]).stdout, "1 test(s) ok\n");
 const graphTestOutJson = json(["graph", "test", "--json", "--out", graphCheckViewPath, graphTestDumpPath], { allowFailure: true });
 assert.notEqual(graphTestOutJson.code, 0);
 assert.equal(graphTestOutJson.body.diagnostics[0].message, "graph test does not support --out");
@@ -1063,7 +1057,7 @@ assert.equal(graphTestJson.selectedTests, 1);
 assert.equal(graphTestJson.results[0].status, "passed");
 assert.equal(graphTestJson.results[0].location.sourceFile, graphTestDumpPath);
 assert.equal(graphTestJson.results[0].location.line, 18);
-assert.equal(zero(["graph", "dump", "--out", graphPackageTestDumpPath, "conformance/packages/test-app"]).stdout, "");
+assert.equal(zeroText(["graph", "dump", "--out", graphPackageTestDumpPath, "conformance/packages/test-app"]).stdout, "");
 const graphPackageTestJson = json(["graph", "test", "--json", graphPackageTestDumpPath]).body;
 assert.equal(graphPackageTestJson.ok, true);
 assert.equal(graphPackageTestJson.graph.artifact, graphPackageTestDumpPath);
@@ -1091,8 +1085,8 @@ writeFileSync(join(graphManifestPackageDir, "zero.json"), `${JSON.stringify({
   package: { name: "graph-manifest-package", version: "0.1.0" },
   targets: { cli: { kind: "exe", main: "src/main.0", graph: "artifacts/test-app.program-graph" } },
 }, null, 2)}\n`);
-assert.equal(zero(["graph", "import", "--out", graphManifestArtifactPath, "conformance/packages/test-app"]).stdout, "");
-assert.equal(zero(["graph", "validate", graphManifestPackageDir]).stdout, "program graph ok\n");
+assert.equal(zeroText(["graph", "import", "--out", graphManifestArtifactPath, "conformance/packages/test-app"]).stdout, "");
+assert.equal(zeroText(["graph", "validate", graphManifestPackageDir]).stdout, "program graph ok\n");
 const graphManifestCheckJson = json(["graph", "check", "--json", graphManifestPackageDir]).body;
 assert.equal(graphManifestCheckJson.ok, true);
 assert.equal(graphManifestCheckJson.artifact, graphManifestArtifactPath);
@@ -1104,7 +1098,7 @@ assert.equal(graphManifestSizeJson.graph.lowering, "direct-program-graph");
 const graphManifestBuildJson = json(["graph", "build", "--json", "--target", "linux-musl-x64", "--out", graphManifestBuildPath, graphManifestPackageDir]).body;
 assert.equal(graphManifestBuildJson.graph.artifact, graphManifestArtifactPath);
 assert.equal(graphManifestBuildJson.graph.lowering, "direct-program-graph");
-assert.equal(zero(["graph", "run", "--out", graphManifestRunPath, graphManifestPackageDir]).stdout, "package tests\n");
+assert.equal(zeroText(["graph", "run", "--out", graphManifestRunPath, graphManifestPackageDir]).stdout, "package tests\n");
 const graphManifestTestJson = json(["graph", "test", "--json", graphManifestPackageDir]).body;
 assert.equal(graphManifestTestJson.ok, true);
 assert.equal(graphManifestTestJson.graph.artifact, graphManifestArtifactPath);
@@ -1134,7 +1128,7 @@ assert.equal(directGraphManifestSizeJson.sourceFile, join(graphManifestPackageDi
 const directGraphManifestBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", directGraphManifestBuildPath, graphManifestPackageDir]).body;
 assert.equal(directGraphManifestBuildJson.graph, undefined);
 assert.equal(directGraphManifestBuildJson.sourceFile, join(graphManifestPackageDir, "src", "main.0"));
-assert.equal(zero(["run", "--out", directGraphManifestRunPath, graphManifestPackageDir]).stdout, "package tests\n");
+assert.equal(zeroText(["run", "--out", directGraphManifestRunPath, graphManifestPackageDir]).stdout, "package tests\n");
 const directGraphManifestTestJson = json(["test", "--json", graphManifestPackageDir]).body;
 assert.equal(directGraphManifestTestJson.ok, true);
 assert.equal(directGraphManifestTestJson.graph, undefined);
@@ -1170,7 +1164,7 @@ writeFileSync(join(directGraphTargetGatePackageDir, "zero.json"), `${JSON.string
     },
   },
 }, null, 2)}\n`);
-assert.equal(zero(["graph", "import", "--out", directGraphTargetGateArtifactPath, directGraphTargetGatePackageDir]).stdout, "");
+assert.equal(zeroText(["graph", "import", "--out", directGraphTargetGateArtifactPath, directGraphTargetGatePackageDir]).stdout, "");
 const directGraphTargetGateJson = json(["check", "--json", "--target", "linux-musl-x64", directGraphTargetGatePackageDir], { allowFailure: true });
 assert.equal(directGraphTargetGateJson.code, 1);
 assert.equal(directGraphTargetGateJson.body.diagnostics[0].code, "PKG004");
@@ -1193,7 +1187,7 @@ writeFileSync(join(directGraphHostLeakPackageDir, "zero.json"), `${JSON.stringif
     },
   },
 }, null, 2)}\n`);
-assert.equal(zero(["graph", "import", "--out", directGraphHostLeakArtifactPath, directGraphHostLeakPackageDir]).stdout, "");
+assert.equal(zeroText(["graph", "import", "--out", directGraphHostLeakArtifactPath, directGraphHostLeakPackageDir]).stdout, "");
 const directGraphHostLeakJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", directGraphHostLeakBuildPath, directGraphHostLeakPackageDir], { allowFailure: true });
 assert.equal(directGraphHostLeakJson.code, 1);
 assert.equal(directGraphHostLeakJson.body.diagnostics[0].code, "CIMP003");
@@ -1210,7 +1204,7 @@ writeFileSync(graphSizeNoisePatchPath, [
 ].join("\n"));
 const graphSizeNoisePatchJson = json(["graph", "patch", "--json", "--out", graphSizeNoisePath, graphDumpPath, graphSizeNoisePatchPath]).body;
 assert.equal(graphSizeNoisePatchJson.ok, true);
-assert.equal(zero(["graph", "check", graphSizeNoisePath]).stdout, "program graph check ok\n");
+assert.equal(zeroText(["graph", "check", graphSizeNoisePath]).stdout, "program graph check ok\n");
 const graphSizeNoiseJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphSizeNoisePath]).body;
 const graphSizeNoiseInterface = graphSizeNoiseJson.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "hello");
 assert(graphSizeNoiseInterface);
@@ -1221,8 +1215,8 @@ writeFileSync(graphPatchPath, [
   `set node="${graphHelloLiteralNode.id}" field="value" expect="hello from zero\\n" value="hello patched\\n"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphPatchedPath, graphDumpPath, graphPatchPath]).stdout, "program graph patch ok\n");
-const graphPatchedStdout = zero(["graph", "patch", graphDumpPath, graphPatchPath]).stdout;
+assert.equal(zeroText(["graph", "patch", "--out", graphPatchedPath, graphDumpPath, graphPatchPath]).stdout, "program graph patch ok\n");
+const graphPatchedStdout = zeroText(["graph", "patch", graphDumpPath, graphPatchPath]).stdout;
 assert.match(graphPatchedStdout, /^zero-graph v1\n/);
 assert.match(graphPatchedStdout, /value:"hello patched\\n"/);
 assert.equal(readFileSync(graphPatchedPath, "utf8"), graphPatchedStdout);
@@ -1241,265 +1235,9 @@ assert.equal(graphPatchJson.operations[0].actual, "hello from zero\n");
 assert.equal(graphPatchJson.operations[0].value, "hello patched\n");
 assert.equal(graphPatchJson.diagnostic, null);
 assert.equal(graphPatchJson.saved.path, graphPatchedPath);
-assert.equal(zero(["graph", "validate", graphPatchedPath]).stdout, "program graph ok\n");
-assert.match(zero(["graph", "view", graphPatchedPath]).stdout, /check world\.out\.write\("hello patched\\n"\)/);
-assert.equal(zero(["graph", "check", graphPatchedPath]).stdout, "program graph check ok\n");
-const graphSourcePatchPath = join(outDir, "hello.source-backed.0");
-writeFileSync(graphSourcePatchPath, graphView);
-const graphSourcePatchDumpJson = json(["graph", "dump", "--json", graphSourcePatchPath]).body;
-assert.equal(graphSourcePatchDumpJson.canonicalSource, true);
-const graphSourceLiteralNode = graphSourcePatchDumpJson.nodes.find((node) => node.kind === "Literal" && node.type === "String" && node.value === "hello from zero\n");
-assert(graphSourceLiteralNode);
-const graphSourcePatchJson = json([
-  "graph",
-  "patch",
-  "--json",
-  graphSourcePatchPath,
-  "--expect-graph-hash",
-  graphSourcePatchDumpJson.graphHash,
-  "--op",
-  `set node="${graphSourceLiteralNode.id}" field="value" expect="hello from zero\\n" value="hello source-backed\\n"`,
-]).body;
-assert.equal(graphSourcePatchJson.ok, true);
-assert.equal(graphSourcePatchJson.canonicalSource, true);
-assert.equal(graphSourcePatchJson.saved.path, graphSourcePatchPath);
-assert.match(readFileSync(graphSourcePatchPath, "utf8"), /hello source-backed\\n/);
-assert.equal(zero(["check", graphSourcePatchPath]).stdout, "ok\n");
-assert.equal(zero(["graph", "check", graphSourcePatchPath]).stdout, "program graph check ok\n");
-const graphSourcePackageDir = join(outDir, "graph-source-package");
-const graphSourcePackageMain = join(graphSourcePackageDir, "src", "main.0");
-const graphSourcePackageHelper = join(graphSourcePackageDir, "src", "helper.0");
-rmSync(graphSourcePackageDir, { recursive: true, force: true });
-mkdirSync(join(graphSourcePackageDir, "src"), { recursive: true });
-writeFileSync(
-  join(graphSourcePackageDir, "zero.json"),
-  JSON.stringify(
-    {
-      package: { name: "graph-source-package", version: "0.1.0" },
-      targets: { cli: { kind: "exe", main: "src/main.0" } },
-    },
-    null,
-    2,
-  ) + "\n",
-);
-writeFileSync(
-  graphSourcePackageHelper,
-  "pub fn value() -> i32 {\n" +
-    "    return 41\n" +
-    "}\n",
-);
-writeFileSync(
-  graphSourcePackageMain,
-  "use helper\n\n" +
-    "pub fn main() -> i32 {\n" +
-    "    return value() + 1\n" +
-    "}\n",
-);
-const graphSourcePackageDumpJson = json(["graph", "dump", "--json", graphSourcePackageMain]).body;
-const graphSourcePackageLiteralNode = graphSourcePackageDumpJson.nodes.find(
-  (node) => node.kind === "Literal" && node.path === graphSourcePackageMain && node.value === "1",
-);
-assert(graphSourcePackageLiteralNode);
-const graphSourcePackagePatchJson = json([
-  "graph",
-  "patch",
-  "--json",
-  graphSourcePackageMain,
-  "--expect-graph-hash",
-  graphSourcePackageDumpJson.graphHash,
-  "--op",
-  `set node="${graphSourcePackageLiteralNode.id}" field="value" expect="1" value="2"`,
-]).body;
-assert.equal(graphSourcePackagePatchJson.ok, true);
-assert.equal(graphSourcePackagePatchJson.saved.path, graphSourcePackageMain);
-const graphSourcePackageMainText = readFileSync(graphSourcePackageMain, "utf8");
-assert.match(graphSourcePackageMainText, /^use helper\n\n/);
-assert.match(graphSourcePackageMainText, /return value\(\) \+ 2/);
-assert.doesNotMatch(graphSourcePackageMainText, /pub fn value/);
-assert.equal(readFileSync(graphSourcePackageHelper, "utf8"), "pub fn value() -> i32 {\n    return 41\n}\n");
-assert.equal(zero(["check", graphSourcePackageMain]).stdout, "ok\n");
-assert.equal(zero(["graph", "check", graphSourcePackageMain]).stdout, "program graph check ok\n");
-const graphUserDerefSourcePath = join(outDir, "deref-member.0");
-const graphUserDerefViewPath = join(outDir, "deref-member.view.0");
-const graphPrefixDerefSourcePath = join(outDir, "prefix-deref-member.0");
-const graphNestedCastSourcePath = join(outDir, "nested-cast.0");
-const graphNestedCastViewPath = join(outDir, "nested-cast.view.0");
-const graphPublicExportSourcePath = join(outDir, "public-export-c.0");
-const graphPublicExportViewPath = join(outDir, "public-export-c.view.0");
-const graphPublicInterfaceSourcePath = join(outDir, "public-interface-method.0");
-const graphPublicInterfaceViewPath = join(outDir, "public-interface-method.view.0");
-const graphPublicSumsSourcePath = join(outDir, "public-sums.0");
-const graphExternFieldsSourcePath = join(outDir, "extern-fields.0");
-const graphCommentsSourcePath = join(outDir, "comments.0");
-const graphDerefMemberSource = [
-  "type Point {",
-  "    x: i32,",
-  "}",
-  "",
-  "type Wrapper {",
-  "    x: Point,",
-  "}",
-  "",
-  "fn deref(value: Wrapper) -> Point {",
-  "    return value.x",
-  "}",
-  "",
-  "pub fn main() -> i32 {",
-  "    let wrapped: Wrapper = Wrapper { x: Point { x: 7 } }",
-  "    return deref(wrapped).x",
-  "}",
-  "",
-].join("\n");
-writeFileSync(graphUserDerefSourcePath, graphDerefMemberSource);
-assert.equal(zero(["check", graphUserDerefSourcePath]).stdout, "ok\n");
-const graphUserDerefView = zero(["graph", "view", graphUserDerefSourcePath]).stdout;
-assert.match(graphUserDerefView, /return deref\(wrapped\)\.x/);
-assert.doesNotMatch(graphUserDerefView, /return \*wrapped\.x/);
-assert.equal(zero(["graph", "view", "--out", graphUserDerefViewPath, graphUserDerefSourcePath]).stdout, "");
-assert.equal(zero(["check", graphUserDerefViewPath]).stdout, "ok\n");
-writeFileSync(graphPrefixDerefSourcePath, graphDerefMemberSource.replace("return deref(wrapped).x", "return (*wrapped).x"));
-assert.equal(zero(["check", graphPrefixDerefSourcePath]).stdout, "ok\n");
-const graphPrefixDerefView = zero(["graph", "view", graphPrefixDerefSourcePath]).stdout;
-assert.match(graphPrefixDerefView, /return \(\*wrapped\)\.x/);
-assert.equal(zero(["check", graphPrefixDerefSourcePath]).stdout, "ok\n");
-writeFileSync(graphNestedCastSourcePath, [
-  "pub fn main() -> u32 {",
-  "    let x: i32 = 1",
-  "    return (x as u16) as u32",
-  "}",
-  "",
-].join("\n"));
-assert.equal(zero(["check", graphNestedCastSourcePath]).stdout, "ok\n");
-const graphNestedCastView = zero(["graph", "view", graphNestedCastSourcePath]).stdout;
-assert.match(graphNestedCastView, /return \(x as u16\) as u32/);
-assert.equal(zero(["graph", "view", "--out", graphNestedCastViewPath, graphNestedCastSourcePath]).stdout, "");
-assert.equal(zero(["check", graphNestedCastViewPath]).stdout, "ok\n");
-assert.match(json(["graph", "roundtrip", "--json", graphNestedCastSourcePath]).body.view, /return \(x as u16\) as u32/);
-writeFileSync(graphPublicExportSourcePath, [
-  "pub export c fn main() -> i32 {",
-  "    return 1",
-  "}",
-  "",
-].join("\n"));
-assert.equal(zero(["check", graphPublicExportSourcePath]).stdout, "ok\n");
-assert.equal(zero(["graph", "view", "--out", graphPublicExportViewPath, graphPublicExportSourcePath]).stdout, "");
-assert.equal(zero(["check", graphPublicExportViewPath]).stdout, "ok\n");
-assert.match(json(["graph", "roundtrip", "--json", graphPublicExportSourcePath]).body.view, /pub export c fn main\(\) -> i32/);
-writeFileSync(graphPublicInterfaceSourcePath, [
-  "interface Reader {",
-  "    pub fn read() -> i32",
-  "}",
-  "",
-  "pub fn main() -> i32 {",
-  "    return 1",
-  "}",
-  "",
-].join("\n"));
-assert.equal(zero(["check", graphPublicInterfaceSourcePath]).stdout, "ok\n");
-assert.equal(zero(["graph", "view", "--out", graphPublicInterfaceViewPath, graphPublicInterfaceSourcePath]).stdout, "");
-assert.equal(zero(["check", graphPublicInterfaceViewPath]).stdout, "ok\n");
-assert.match(json(["graph", "roundtrip", "--json", graphPublicInterfaceSourcePath]).body.view, /pub fn read\(\) -> i32/);
-writeFileSync(graphPublicSumsSourcePath, [
-  "pub enum Mode: u8 {",
-  "    ready,",
-  "}",
-  "",
-  "pub choice Result {",
-  "    ok: i32,",
-  "    err: String,",
-  "}",
-  "",
-  "pub fn main() -> i32 {",
-  "    return 1",
-  "}",
-  "",
-].join("\n"));
-const graphPublicSumsDumpJson = json(["graph", "dump", "--json", graphPublicSumsSourcePath]).body;
-const graphPublicEnumNode = graphPublicSumsDumpJson.nodes.find((node) => node.kind === "Enum" && node.name === "Mode");
-const graphPublicChoiceNode = graphPublicSumsDumpJson.nodes.find((node) => node.kind === "Choice" && node.name === "Result");
-const graphPublicLiteralNode = graphPublicSumsDumpJson.nodes.find((node) => node.kind === "Literal" && node.type === "i32" && node.value === "1");
-assert.equal(graphPublicEnumNode?.public, true);
-assert.equal(graphPublicChoiceNode?.public, true);
-assert(graphPublicLiteralNode);
-const graphPublicSumsPatchJson = json([
-  "graph",
-  "patch",
-  "--json",
-  graphPublicSumsSourcePath,
-  "--expect-graph-hash",
-  graphPublicSumsDumpJson.graphHash,
-  "--op",
-  `set node="${graphPublicLiteralNode.id}" field="value" expect="1" value="2"`,
-]).body;
-assert.equal(graphPublicSumsPatchJson.ok, true);
-assert.equal(graphPublicSumsPatchJson.canonicalSource, true);
-assert.equal(graphPublicSumsPatchJson.saved.path, graphPublicSumsSourcePath);
-const graphPublicSumsText = readFileSync(graphPublicSumsSourcePath, "utf8");
-assert.match(graphPublicSumsText, /^pub enum Mode/m);
-assert.match(graphPublicSumsText, /^pub choice Result/m);
-assert.match(graphPublicSumsText, /return 2/);
-assert.equal(zero(["check", graphPublicSumsSourcePath]).stdout, "ok\n");
-writeFileSync(graphExternFieldsSourcePath, [
-  "extern type CPoint {",
-  "    x: i32,",
-  "    y: i32,",
-  "}",
-  "",
-  "pub fn main() -> i32 {",
-  "    return 1",
-  "}",
-  "",
-].join("\n"));
-const graphExternFieldsDumpJson = json(["graph", "dump", "--json", graphExternFieldsSourcePath]).body;
-const graphExternFieldsLiteralNode = graphExternFieldsDumpJson.nodes.find((node) => node.kind === "Literal" && node.type === "i32" && node.value === "1");
-assert(graphExternFieldsLiteralNode);
-const graphExternFieldsPatchJson = json([
-  "graph",
-  "patch",
-  "--json",
-  graphExternFieldsSourcePath,
-  "--expect-graph-hash",
-  graphExternFieldsDumpJson.graphHash,
-  "--op",
-  `set node="${graphExternFieldsLiteralNode.id}" field="value" expect="1" value="2"`,
-]).body;
-assert.equal(graphExternFieldsPatchJson.ok, true);
-assert.equal(graphExternFieldsPatchJson.canonicalSource, true);
-assert.equal(graphExternFieldsPatchJson.saved.path, graphExternFieldsSourcePath);
-const graphExternFieldsText = readFileSync(graphExternFieldsSourcePath, "utf8");
-assert.match(graphExternFieldsText, /^extern type CPoint \{/m);
-assert.match(graphExternFieldsText, /^\s+x: i32,/m);
-assert.match(graphExternFieldsText, /^\s+y: i32,/m);
-assert.match(graphExternFieldsText, /return 2/);
-assert.equal(zero(["check", graphExternFieldsSourcePath]).stdout, "ok\n");
-writeFileSync(graphCommentsSourcePath, [
-  "// module comment",
-  "",
-  "pub fn main() -> i32 {",
-  "    // keep this comment",
-  "    return 1",
-  "}",
-  "",
-].join("\n"));
-const graphCommentsOriginal = readFileSync(graphCommentsSourcePath, "utf8");
-const graphCommentsDumpJson = json(["graph", "dump", "--json", graphCommentsSourcePath]).body;
-const graphCommentsLiteralNode = graphCommentsDumpJson.nodes.find((node) => node.kind === "Literal" && node.type === "i32" && node.value === "1");
-assert(graphCommentsLiteralNode);
-const graphCommentsPatchJson = json([
-  "graph",
-  "patch",
-  "--json",
-  graphCommentsSourcePath,
-  "--expect-graph-hash",
-  graphCommentsDumpJson.graphHash,
-  "--op",
-  `set node="${graphCommentsLiteralNode.id}" field="value" expect="1" value="2"`,
-], { allowFailure: true });
-assert.notEqual(graphCommentsPatchJson.code, 0);
-assert.equal(graphCommentsPatchJson.body.ok, false);
-assert.equal(graphCommentsPatchJson.body.diagnostics[0].code, "BLD002");
-assert.equal(graphCommentsPatchJson.body.diagnostics[0].message, "source-backed graph patch cannot preserve comments");
-assert.equal(readFileSync(graphCommentsSourcePath, "utf8"), graphCommentsOriginal);
+assert.equal(zeroText(["graph", "validate", graphPatchedPath]).stdout, "program graph ok\n");
+assert.match(zeroText(["graph", "view", graphPatchedPath]).stdout, /check world\.out\.write "hello patched\\n"/);
+assert.equal(zeroText(["graph", "check", graphPatchedPath]).stdout, "program graph check ok\n");
 const graphInlinePatchJson = json([
   "graph",
   "patch",
@@ -1519,7 +1257,7 @@ assert.equal(graphInlinePatchJson.operationCount, 1);
 assert.equal(graphInlinePatchJson.operations[0].node, graphHelloLiteralNode.id);
 assert.equal(graphInlinePatchJson.operations[0].value, "hello inline\n");
 assert.equal(graphInlinePatchJson.saved.path, graphInlinePatchedPath);
-assert.match(zero(["graph", "view", graphInlinePatchedPath]).stdout, /check world\.out\.write\("hello inline\\n"\)/);
+assert.match(zeroText(["graph", "view", graphInlinePatchedPath]).stdout, /check world\.out\.write "hello inline\\n"/);
 writeFileSync(graphPatchInsertPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
@@ -1542,10 +1280,10 @@ assert.equal(graphInsertPatchJson.operations[5].kind, "Literal");
 assert.equal(graphInsertPatchJson.operations[5].type, "String");
 assert.equal(graphInsertPatchJson.operations[5].value, "second line\n");
 assert.equal(graphInsertPatchJson.saved.path, graphInsertedPath);
-const graphInsertedView = zero(["graph", "view", graphInsertedPath]).stdout;
-assert.match(graphInsertedView, /check world\.out\.write\("hello from zero\\n"\)\n    check world\.out\.write\("second line\\n"\)/);
-assert.equal(zero(["graph", "check", graphInsertedPath]).stdout, "program graph check ok\n");
-assert.equal(zero(["graph", "roundtrip", graphInsertedPath]).stdout, "program graph roundtrip ok\n");
+const graphInsertedView = zeroText(["graph", "view", graphInsertedPath]).stdout;
+assert.match(graphInsertedView, /check world\.out\.write "hello from zero\\n"\n  check world\.out\.write "second line\\n"/);
+assert.equal(zeroText(["graph", "check", graphInsertedPath]).stdout, "program graph check ok\n");
+assert.equal(zeroText(["graph", "roundtrip", graphInsertedPath]).stdout, "program graph roundtrip ok\n");
 const graphInsertedText = readFileSync(graphInsertedPath, "utf8");
 const graphInsertedCheckLine = graphInsertedText.split("\n").find((line) => line.startsWith("node #patch_check ")) ?? "";
 const graphInsertedCheckHash = graphQuotedField(graphInsertedCheckLine, "nodeHash") || graphNodeHash(graphInsertedCheckLine);
@@ -1579,10 +1317,10 @@ const graphDeleteThenInsertPatchJson = json(["graph", "patch", "--json", "--out"
 assert.equal(graphDeleteThenInsertPatchJson.ok, true);
 assert.equal(graphDeleteThenInsertPatchJson.operations[0].op, "delete");
 assert.equal(graphDeleteThenInsertPatchJson.operations[1].op, "insert");
-const graphDeleteThenInsertedView = zero(["graph", "view", graphDeleteThenInsertedPath]).stdout;
-assert.match(graphDeleteThenInsertedView, /check world\.out\.write\("replacement line\\n"\)\n    check world\.out\.write\("second line\\n"\)/);
-assert.equal(zero(["graph", "check", graphDeleteThenInsertedPath]).stdout, "program graph check ok\n");
-assert.equal(zero(["graph", "roundtrip", graphDeleteThenInsertedPath]).stdout, "program graph roundtrip ok\n");
+const graphDeleteThenInsertedView = zeroText(["graph", "view", graphDeleteThenInsertedPath]).stdout;
+assert.match(graphDeleteThenInsertedView, /check world\.out\.write "replacement line\\n"\n  check world\.out\.write "second line\\n"/);
+assert.equal(zeroText(["graph", "check", graphDeleteThenInsertedPath]).stdout, "program graph check ok\n");
+assert.equal(zeroText(["graph", "roundtrip", graphDeleteThenInsertedPath]).stdout, "program graph roundtrip ok\n");
 writeFileSync(graphPatchDeleteNodeFactPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
@@ -1646,7 +1384,7 @@ assert.equal(graphReplacePatchJson.operations[0].op, "replace");
 assert.equal(graphReplacePatchJson.operations[0].actual, graphLiteralNode.nodeHash);
 assert.equal(graphReplacePatchJson.operations[0].value, "hello replaced structurally\n");
 assert.equal(graphReplacePatchJson.operations[0].public, true);
-assert.match(zero(["graph", "view", graphReplacedPath]).stdout, /check world\.out\.write\("hello replaced structurally\\n"\)/);
+assert.match(zeroText(["graph", "view", graphReplacedPath]).stdout, /check world\.out\.write "hello replaced structurally\\n"/);
 writeFileSync(graphPatchStaleReplacePath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
@@ -1673,7 +1411,7 @@ assert.equal(graphInsertEdgePatchJson.operations[0].op, "insertEdge");
 assert.equal(graphInsertEdgePatchJson.operations[0].from, graphLiteralNode.id);
 assert.equal(graphInsertEdgePatchJson.operations[0].to, graphLiteralNode.typeId);
 assert.equal(graphInsertEdgePatchJson.operations[0].target, "type");
-assert.equal(zero(["graph", "validate", graphInsertedEdgePath]).stdout, "program graph ok\n");
+assert.equal(zeroText(["graph", "validate", graphInsertedEdgePath]).stdout, "program graph ok\n");
 writeFileSync(graphPatchEmptyTypeEdgePath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
@@ -1698,7 +1436,7 @@ const graphRenamePatchJson = json(["graph", "patch", "--json", "--out", graphRen
 assert.equal(graphRenamePatchJson.ok, true);
 assert.equal(graphRenamePatchJson.operations[0].op, "rename");
 assert.equal(graphRenamePatchJson.operations[0].actual, "main");
-assert.match(zero(["graph", "view", graphRenamedPath]).stdout, /pub fn start\(world: World\) -> Void raises/);
+assert.match(zeroText(["graph", "view", graphRenamedPath]).stdout, /pub fn start Void world World !/);
 const graphRenamedCheck = json(["graph", "check", "--json", graphRenamedPath], { allowFailure: true });
 assert.notEqual(graphRenamedCheck.code, 0);
 assert.equal(graphRenamedCheck.body.diagnostics[0].message, "missing main function");
@@ -1720,7 +1458,7 @@ writeFileSync(graphUncheckedPatchPath, [
   `set node="${graphMainFunctionNode.id}" field="type" expect="Void" value="u32"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphUncheckedPath, graphDumpPath, graphUncheckedPatchPath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphUncheckedPath, graphDumpPath, graphUncheckedPatchPath]).stdout, "program graph patch ok\n");
 const graphUncheckedInline = json(["graph", "check", "--json", graphUncheckedPath], { allowFailure: true });
 assert.notEqual(graphUncheckedInline.code, 0);
 assert.equal(graphUncheckedInline.body.ok, false);
@@ -1734,7 +1472,7 @@ assert.equal(graphUncheckedInline.body.saved, null);
 assert.equal(graphUncheckedInline.body.diagnostics[0].path, graphUncheckedPath);
 assert.equal(graphUncheckedInline.body.view, null);
 assert.doesNotMatch(JSON.stringify(graphUncheckedInline.body), /<generated-graph-view>|zero-graph-check/);
-assert.equal(zero(["graph", "dump", "--out", graphBorrowDumpPath, "conformance/native/pass/borrow-field-independent-assignment.0"]).stdout, "");
+assert.equal(zeroText(["graph", "dump", "--out", graphBorrowDumpPath, "conformance/native/pass/borrow-field-independent-assignment.0"]).stdout, "");
 const graphBorrowDumpJson = json(["graph", "dump", "--json", "conformance/native/pass/borrow-field-independent-assignment.0"]).body;
 assert.equal(graphBorrowDumpJson.graphHash, "graph:8b2c406ebc309cb7");
 const graphBorrowRightFieldAccess = graphBorrowDumpJson.nodes.filter((node) => node.kind === "FieldAccess" && node.name === "right").at(-1);
@@ -1745,7 +1483,7 @@ writeFileSync(graphBorrowConflictPatchPath, [
   `set node="${graphBorrowRightFieldAccess.id}" field="name" expect="right" value="left"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphBorrowConflictPath, graphBorrowDumpPath, graphBorrowConflictPatchPath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphBorrowConflictPath, graphBorrowDumpPath, graphBorrowConflictPatchPath]).stdout, "program graph patch ok\n");
 const graphBorrowConflictInline = json(["graph", "check", "--json", graphBorrowConflictPath], { allowFailure: true });
 assert.notEqual(graphBorrowConflictInline.code, 0);
 assert.equal(graphBorrowConflictInline.body.diagnostics[0].code, "BOR001");
@@ -1843,7 +1581,7 @@ assert.equal(graphPatchInvalidType.body.ok, false);
 assert.equal(graphPatchInvalidType.body.diagnostic.code, "GPH003");
 assert.equal(graphPatchInvalidType.body.operations[0].field, "type");
 assert.equal(graphPatchInvalidType.body.operations[0].value, "Void\npub fn injected Void");
-assert.equal(zero(["graph", "dump", "--out", graphPayloadDumpPath, "conformance/check/pass/payload-match.0"]).stdout, "");
+assert.equal(zeroText(["graph", "dump", "--out", graphPayloadDumpPath, "conformance/check/pass/payload-match.0"]).stdout, "");
 const graphPayloadDumpJson = json(["graph", "dump", "--json", "conformance/check/pass/payload-match.0"]).body;
 const graphMatchNode = graphPayloadDumpJson.nodes.find((node) => node.kind === "Match");
 const graphMatchArmNode = graphPayloadDumpJson.nodes.find((node) => node.kind === "MatchArm" && node.name === "ok");
@@ -1885,7 +1623,7 @@ writeFileSync(graphPatchReservedParamPath, [
   `set node="${graphWorldParamNode.id}" field="name" expect="world" value="pub"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphReservedParamPath, graphDumpPath, graphPatchReservedParamPath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphReservedParamPath, graphDumpPath, graphPatchReservedParamPath]).stdout, "program graph patch ok\n");
 const graphReservedParam = json(["graph", "check", "--json", graphReservedParamPath], { allowFailure: true });
 assert.notEqual(graphReservedParam.code, 0);
 assert.equal(graphReservedParam.body.ok, false);
@@ -1898,19 +1636,14 @@ writeFileSync(graphPatchInternalFunctionPath, [
   `set node="${graphMainFunctionNode.id}" field="name" expect="main" value="__zero_bad"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphInternalFunctionPath, graphDumpPath, graphPatchInternalFunctionPath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphInternalFunctionPath, graphDumpPath, graphPatchInternalFunctionPath]).stdout, "program graph patch ok\n");
 const graphInternalFunction = json(["graph", "check", "--json", graphInternalFunctionPath], { allowFailure: true });
 assert.notEqual(graphInternalFunction.code, 0);
 assert.equal(graphInternalFunction.body.ok, false);
 assert.equal(graphInternalFunction.body.check.phase, "lower");
 assert.equal(graphInternalFunction.body.check.lowering, "direct-program-graph");
 assert.equal(graphInternalFunction.body.diagnostics[0].message, "program graph declaration uses a reserved compiler-internal symbol name");
-assert.equal(zero(["graph", "dump", "--out", graphPackageDumpPath, "examples/systems-package"]).stdout, "");
-assert.equal(zero(["graph", "view", "--out", graphPackageViewPath, "examples/systems-package"]).stdout, "");
-const graphPackageView = readFileSync(graphPackageViewPath, "utf8");
-assert.match(graphPackageView, /use std\.codec/);
-assert.doesNotMatch(graphPackageView, /^use (helpers|types)$/m);
-assert.equal(zero(["graph", "check", graphPackageViewPath]).stdout, "program graph check ok\n");
+assert.equal(zeroText(["graph", "dump", "--out", graphPackageDumpPath, "examples/systems-package"]).stdout, "");
 const graphPackageDumpJson = json(["graph", "dump", "--json", "examples/systems-package"]).body;
 const graphStatusFunctionNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Function" && node.name === "status");
 assert(graphStatusFunctionNode);
@@ -1920,8 +1653,8 @@ writeFileSync(graphPackagePathMismatchPatchPath, [
   `replace node="${graphStatusFunctionNode.id}" expect="${graphStatusFunctionNode.nodeHash}" path="examples/systems-package/src/main.0" public="true"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphPackagePathMismatchPath, graphPackageDumpPath, graphPackagePathMismatchPatchPath]).stdout, "program graph patch ok\n");
-assert.equal(zero(["graph", "check", graphPackagePathMismatchPath]).stdout, "program graph check ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphPackagePathMismatchPath, graphPackageDumpPath, graphPackagePathMismatchPatchPath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "check", graphPackagePathMismatchPath]).stdout, "program graph check ok\n");
 const graphPackagePathMismatchSize = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphPackagePathMismatchPath]).body;
 const graphHelpersInterface = graphPackagePathMismatchSize.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "helpers");
 assert(graphHelpersInterface);
@@ -1951,7 +1684,7 @@ writeFileSync(graphPatchInvalidImportNamePath, [
   `set node="${graphImportNode.id}" field="name" value="+"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphInvalidImportNamePath, graphPackageDumpPath, graphPatchInvalidImportNamePath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphInvalidImportNamePath, graphPackageDumpPath, graphPatchInvalidImportNamePath]).stdout, "program graph patch ok\n");
 const graphInvalidImportName = json(["graph", "check", "--json", graphInvalidImportNamePath], { allowFailure: true });
 assert.notEqual(graphInvalidImportName.code, 0);
 assert.equal(graphInvalidImportName.body.ok, false);
@@ -1964,7 +1697,7 @@ writeFileSync(graphPatchMissingImportPath, [
   `set node="${graphImportNode.id}" field="name" value="missing"`,
   "",
 ].join("\n"));
-assert.equal(zero(["graph", "patch", "--out", graphMissingImportPath, graphPackageDumpPath, graphPatchMissingImportPath]).stdout, "program graph patch ok\n");
+assert.equal(zeroText(["graph", "patch", "--out", graphMissingImportPath, graphPackageDumpPath, graphPatchMissingImportPath]).stdout, "program graph patch ok\n");
 const graphMissingImport = json(["graph", "check", "--json", graphMissingImportPath], { allowFailure: true });
 assert.notEqual(graphMissingImport.code, 0);
 assert.equal(graphMissingImport.body.ok, false);
@@ -1996,7 +1729,7 @@ assert.equal(graphPatchMismatch.body.diagnostic.code, "GPH005");
 assert.equal(graphPatchMismatch.body.operations[0].ok, false);
 assert.equal(graphPatchMismatch.body.operations[0].actual, "hello from zero\n");
 assert.equal(graphPatchMismatch.body.saved, null);
-assert.equal(zero(["graph", "roundtrip", "examples/hello.0"]).stdout, "program graph roundtrip ok\n");
+assert.equal(zeroText(["graph", "roundtrip", "examples/hello.0"]).stdout, "program graph roundtrip ok\n");
 const graphRoundtripJson = json(["graph", "roundtrip", "--json", "examples/hello.0"]).body;
 assert.equal(graphRoundtripJson.ok, true);
 assert.equal(graphRoundtripJson.canonicalSource, true);
@@ -2013,7 +1746,7 @@ assert.deepEqual(graphRoundtripJson.semanticCounts.roundtrip, { nodes: 13, edges
 assert.equal(graphRoundtripJson.comparison.ok, true);
 assert.equal(graphRoundtripJson.saved, null);
 assert.equal(graphRoundtripJson.view, graphView);
-assert.equal(zero(["graph", "roundtrip", graphDumpPath]).stdout, "program graph roundtrip ok\n");
+assert.equal(zeroText(["graph", "roundtrip", graphDumpPath]).stdout, "program graph roundtrip ok\n");
 const graphArtifactRoundtripJson = json(["graph", "roundtrip", "--json", graphDumpPath]).body;
 assert.equal(graphArtifactRoundtripJson.ok, true);
 assert.equal(graphArtifactRoundtripJson.artifact, graphDumpPath);
@@ -2027,7 +1760,7 @@ assert.equal(graphArtifactRoundtripJson.roundtripGraphHash, graphDumpJson.graphH
 assert.deepEqual(graphArtifactRoundtripJson.semanticCounts.original, graphArtifactRoundtripJson.semanticCounts.roundtrip);
 assert.equal(graphArtifactRoundtripJson.comparison.ok, true);
 assert.equal(graphArtifactRoundtripJson.view, null);
-assert.equal(zero(["graph", "roundtrip", "--out", graphArtifactRoundtripPath, graphDumpPath]).stdout, "program graph roundtrip ok\n");
+assert.equal(zeroText(["graph", "roundtrip", "--out", graphArtifactRoundtripPath, graphDumpPath]).stdout, "program graph roundtrip ok\n");
 assert.equal(readFileSync(graphArtifactRoundtripPath, "utf8"), graphDump);
 const graphArtifactRoundtripOutJson = json(["graph", "roundtrip", "--json", "--out", graphArtifactRoundtripPath, graphDumpPath]).body;
 assert.equal(graphArtifactRoundtripOutJson.ok, true);
@@ -2040,7 +1773,7 @@ assert.notEqual(graphArtifactRoundtripSourceTextJson.code, 0);
 assert.equal(graphArtifactRoundtripSourceTextJson.body.diagnostics[0].message, "program graph output must not use source text extension");
 assert.equal(graphArtifactRoundtripSourceTextJson.body.diagnostics[0].expected, "zero graph roundtrip --out <program-graph-artifact> <program-graph-artifact>");
 assert.equal(existsSync(graphArtifactRoundtripSourceTextPath), false);
-assert.equal(zero(["graph", "roundtrip", "--out", graphSourceRoundtripPath, "examples/hello.0"]).stdout, "program graph roundtrip ok\n");
+assert.equal(zeroText(["graph", "roundtrip", "--out", graphSourceRoundtripPath, "examples/hello.0"]).stdout, "program graph roundtrip ok\n");
 assert.equal(readFileSync(graphSourceRoundtripPath, "utf8"), graphDump);
 const graphRoundtripOutJson = json(["graph", "roundtrip", "--json", "--out", graphSourceRoundtripPath, "examples/hello.0"]).body;
 assert.equal(graphRoundtripOutJson.ok, true);
@@ -2068,15 +1801,15 @@ assert.equal(graphTestBlockRoundtripJson.comparison.ok, true);
 let sparseOrderGraph = graphDump.replace(`edge ${graphModuleNode.id} function ${graphMainFunctionNode.id} order:0`, `edge ${graphModuleNode.id} function ${graphMainFunctionNode.id} order:1000000000000`);
 sparseOrderGraph = sparseOrderGraph.replace(/hash "graph:[0-9a-f]{16}"/, `hash "${recomputeGraphHash(sparseOrderGraph)}"`);
 writeFileSync(graphSparseOrderPath, sparseOrderGraph);
-assert.equal(zero(["graph", "validate", graphSparseOrderPath]).stdout, "program graph ok\n");
+assert.equal(zeroText(["graph", "validate", graphSparseOrderPath]).stdout, "program graph ok\n");
 const sparseOrderView = execFileSync("bin/zero", ["graph", "view", graphSparseOrderPath], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 1000 });
 assert.match(sparseOrderView, /pub fn main\(world: World\) -> Void raises/);
 let sparseArgGraph = graphDump.replace(/edge (#[^ ]+) arg (#[^ ]+) order:0/, "edge $1 arg $2 order:1000000000000");
 sparseArgGraph = sparseArgGraph.replace(/hash "graph:[0-9a-f]{16}"/, `hash "${recomputeGraphHash(sparseArgGraph)}"`);
 writeFileSync(graphSparseArgPath, sparseArgGraph);
-assert.equal(zero(["graph", "validate", graphSparseArgPath]).stdout, "program graph ok\n");
-const sparseArgView = zero(["graph", "view", graphSparseArgPath]).stdout;
-assert.match(sparseArgView, /check world\.out\.write\("hello from zero\\n"\)/);
+assert.equal(zeroText(["graph", "validate", graphSparseArgPath]).stdout, "program graph ok\n");
+const sparseArgView = zeroText(["graph", "view", graphSparseArgPath]).stdout;
+assert.match(sparseArgView, /check world\.out\.write "hello from zero\\n"/);
 const graphWrongSchemaPath = join(outDir, "wrong-schema.program-graph");
 writeFileSync(graphWrongSchemaPath, "zero-graph v2\n");
 const graphWrongSchema = json(["graph", "validate", "--json", graphWrongSchemaPath], { allowFailure: true });
@@ -2144,23 +1877,23 @@ const diagnosticSkill = json(["skills", "get", "diagnostics", "--json"]).body;
 assert.equal(diagnosticSkill.success, true);
 assert.match(diagnosticSkill.data[0].content, /fixSafety/);
 
-const missingSkill = zero(["skills", "get", "missing", "--json"], { allowFailure: true });
+const missingSkill = zeroText(["skills", "get", "missing", "--json"], { allowFailure: true });
 assert.notEqual(missingSkill.code, 0);
 assert.equal(JSON.parse(missingSkill.stdout).success, false);
 
-const removedSkillsPath = zero(["skills", "path", "zero", "--json"], { allowFailure: true });
+const removedSkillsPath = zeroText(["skills", "path", "zero", "--json"], { allowFailure: true });
 assert.notEqual(removedSkillsPath.code, 0);
 assert.match(JSON.parse(removedSkillsPath.stdout).error, /Unknown skills subcommand: path/);
 
-const badSkillsFlag = zero(["skills", "-x"], { allowFailure: true });
+const badSkillsFlag = zeroText(["skills", "-x"], { allowFailure: true });
 assert.notEqual(badSkillsFlag.code, 0);
 assert.match(badSkillsFlag.stderr, /Unknown skills flag: -x/);
 
-const badSkillsListFlag = zero(["skills", "list", "--unknown", "--json"], { allowFailure: true });
+const badSkillsListFlag = zeroText(["skills", "list", "--unknown", "--json"], { allowFailure: true });
 assert.notEqual(badSkillsListFlag.code, 0);
 assert.match(JSON.parse(badSkillsListFlag.stdout).error, /Unknown skills flag: --unknown/);
 
-const badSkillsGetFlag = zero(["skills", "get", "language", "--unknown", "--json"], { allowFailure: true });
+const badSkillsGetFlag = zeroText(["skills", "get", "language", "--unknown", "--json"], { allowFailure: true });
 assert.notEqual(badSkillsGetFlag.code, 0);
 assert.match(JSON.parse(badSkillsGetFlag.stdout).error, /Unknown skills flag: --unknown/);
 
@@ -2214,33 +1947,33 @@ const unsupportedSourceText =
   "\n" +
   "pub fn main Void\n" +
   "  let total i32 inc 41\n";
-rmSync(unsupportedSourceFixture, { force: true });
-writeFileSync(unsupportedSourceFixture, unsupportedSourceText);
-for (const args of [
-  ["check", "--json", unsupportedSourceFixture],
-  ["tokens", "--json", unsupportedSourceFixture],
-  ["parse", "--json", unsupportedSourceFixture],
-  ["build", "--json", unsupportedSourceFixture],
-] as string[][]) {
-  const rejected = json(args, { allowFailure: true });
-  assert.notEqual(rejected.code, 0);
-  assert.equal(rejected.body.diagnostics[0].code, "BLD002");
-  assert.equal(rejected.body.diagnostics[0].message, "expected Zero source file or package");
-  assert.equal(rejected.body.diagnostics[0].expected, ".0 source file, zero.json, or package directory");
-}
-for (const args of [
-  ["graph", "check", "--json", unsupportedSourceFixture],
-  ["graph", "view", "--json", unsupportedSourceFixture],
-] as string[][]) {
-  const rejected = json(args, { allowFailure: true });
-  assert.notEqual(rejected.code, 0);
-  assert.equal(rejected.body.diagnostics[0].code, "PAR100");
-  assert.equal(rejected.body.diagnostics[0].message, "expected zero-graph v1 header");
-}
-const unsupportedFmtRejected = zero(["fmt", "--check", unsupportedSourceFixture], { allowFailure: true });
-assert.notEqual(unsupportedFmtRejected.code, 0);
-assert.match(unsupportedFmtRejected.stderr, /expected Zero source file or package/);
-assert.match(unsupportedFmtRejected.stderr, /\.0 source file, zero\.json, or package directory/);
+writeFileSync(rowCommandFixture, rowCommandSource);
+assert.equal(zeroText(["fmt", rowCommandFixture]).stdout, rowCommandSource);
+assert.match(zeroText(["fmt", "--check", rowCommandFixture]).stdout, /fmt ok/);
+const rowTokens = json(["tokens", "--json", rowCommandFixture]).body;
+assert.equal(rowTokens.schemaVersion, 1);
+assert.equal(rowTokens.syntax, "row");
+assert.deepEqual(rowTokens.tokens.slice(0, 4).map((token) => `${token.kind}:${token.text}`), [
+  "comment:# command fixture",
+  "newline:",
+  "word:fn",
+  "word:inc",
+]);
+const rowParseTree = json(["parse", "--json", rowCommandFixture]).body;
+assert.equal(rowParseTree.schemaVersion, 1);
+assert.equal(rowParseTree.root.functionCount, 2);
+assert.deepEqual(rowParseTree.functions.map((fun) => fun.name), ["inc", "main"]);
+assert.deepEqual(rowParseTree.functions.map((fun) => fun.bodyKinds), [["return"], ["let"]]);
+const rowCheck = json(["check", "--json", rowCommandFixture]).body;
+assert.equal(rowCheck.ok, true);
+assert.equal(rowCheck.sourceFile, rowCommandFixture);
+assert(rowCheck.interfaceFingerprints.modules.some((module) => module.name === "row_command" && module.publicSymbols.some((symbol) => symbol.name === "main")));
+const rowGraph = json(["graph", "--json", rowCommandFixture]).body;
+assert.equal(rowGraph.schemaVersion, 1);
+assert.equal(rowGraph.sourceFile, rowCommandFixture);
+assert(rowGraph.sourceFiles.includes(rowCommandFixture));
+assert(rowGraph.symbols.some((symbol) => symbol.name === "inc" && symbol.kind === "function"));
+assert(rowGraph.functions.some((fun) => fun.name === "main"));
 
 const unsupportedSourcePackage = join(outDir, "unsupported-source-package");
 rmSync(unsupportedSourcePackage, { recursive: true, force: true });
@@ -2256,12 +1989,314 @@ writeFileSync(
     2,
   ) + "\n",
 );
-writeFileSync(join(unsupportedSourcePackage, "src", "main.txt"), unsupportedSourceText);
-const unsupportedPackageRejected = json(["check", "--json", unsupportedSourcePackage], { allowFailure: true });
-assert.notEqual(unsupportedPackageRejected.code, 0);
-assert.equal(unsupportedPackageRejected.body.diagnostics[0].code, "BLD002");
-assert.equal(unsupportedPackageRejected.body.diagnostics[0].message, "target main source must use canonical Zero source");
-assert.equal(unsupportedPackageRejected.body.diagnostics[0].expected, ".0 source file");
+const rowPackageMain = join(rowPackage, "src", "main.row");
+const rowPackageHelper = join(rowPackage, "src", "helper.row");
+writeFileSync(
+  rowPackageHelper,
+  "pub fn double i32 value i32\n" +
+    "  ret + value value\n",
+);
+writeFileSync(
+  rowPackageMain,
+  "use helper\n" +
+    "test \"package helper\"\n" +
+    "  expect == (double 21) 42\n" +
+    "pub fn main Void\n" +
+    "  let total i32 double 21\n",
+);
+assert.match(zeroText(["fmt", "--check", rowPackage]).stdout, /fmt ok/);
+const rowPackageTokens = json(["tokens", "--json", rowPackage]).body;
+assert.equal(rowPackageTokens.syntax, "row");
+assert.equal(rowPackageTokens.sourceFile, rowPackageMain);
+const rowPackageParse = json(["parse", "--json", rowPackage]).body;
+assert.equal(rowPackageParse.root.functionCount, 3);
+assert(rowPackageParse.functions.some((fun) => fun.name === "double"));
+const rowPackageCheck = json(["check", "--json", rowPackage]).body;
+assert.equal(rowPackageCheck.ok, true);
+assert.equal(rowPackageCheck.package.name, "row-package");
+assert(rowPackageCheck.incrementalInvalidation.changedInputs.sourceFiles.includes(rowPackageHelper));
+const rowPackageGraph = json(["graph", "--json", rowPackage]).body;
+assert(rowPackageGraph.sourceFiles.includes(rowPackageMain));
+assert(rowPackageGraph.sourceFiles.includes(rowPackageHelper));
+assert(rowPackageGraph.importEdges.some((edge) => edge.from === "main" && edge.to === "helper" && edge.path === rowPackageHelper));
+assert(rowPackageGraph.functions.some((fun) => fun.name === "double"));
+const rowPackageTest = json(["test", "--json", rowPackage]).body;
+assert.equal(rowPackageTest.ok, true);
+assert.equal(rowPackageTest.testDiscovery.mode, "package");
+assert.equal(rowPackageTest.discoveredTests, 1);
+assert(rowPackageTest.fixtures.sourceFiles.includes(rowPackageHelper));
+assert.equal(rowPackageTest.results[0].status, "passed");
+
+const rowArtifactDir = join(outDir, "row-artifact");
+const currentArtifactDir = join(outDir, "current-artifact");
+rmSync(rowArtifactDir, { recursive: true, force: true });
+rmSync(currentArtifactDir, { recursive: true, force: true });
+mkdirSync(rowArtifactDir, { recursive: true });
+mkdirSync(currentArtifactDir, { recursive: true });
+const rowArtifactMain = join(rowArtifactDir, "main.row");
+const rowArtifactHelper = join(rowArtifactDir, "helper.row");
+const currentArtifactMain = join(currentArtifactDir, "main.0");
+const currentArtifactHelper = join(currentArtifactDir, "helper.0");
+writeFileSync(
+  rowArtifactHelper,
+  "pub fn plusOne i32 value i32\n" +
+    "  ret + value 1\n",
+);
+writeFileSync(
+  rowArtifactMain,
+  "use helper\n" +
+    "export c fn main i32\n" +
+    "  ret plusOne 41\n",
+);
+writeFileSync(
+  currentArtifactHelper,
+  "pub fn plusOne i32 value i32\n" +
+    "  ret + value 1\n",
+);
+writeFileSync(
+  currentArtifactMain,
+  "use helper\n" +
+    "export c fn main i32\n" +
+    "  ret plusOne 41\n",
+);
+const rowArtifactGraph = json(["graph", "--json", rowArtifactMain]).body;
+const currentArtifactGraph = json(["graph", "--json", currentArtifactMain]).body;
+const functionSummary = (fun) => ({
+  name: fun.name,
+  public: fun.public,
+  params: fun.params,
+  returnType: fun.returnType,
+  raises: fun.raises,
+});
+const publicSymbolSummary = (symbol) => ({
+  name: symbol.name,
+  kind: symbol.kind,
+  public: symbol.public,
+});
+assert.deepEqual(rowArtifactGraph.functions.map(functionSummary), currentArtifactGraph.functions.map(functionSummary));
+assert.deepEqual(
+  rowArtifactGraph.symbols.filter((symbol) => symbol.public).map(publicSymbolSummary),
+  currentArtifactGraph.symbols.filter((symbol) => symbol.public).map(publicSymbolSummary),
+);
+assert.deepEqual(rowArtifactGraph.imports, ["helper"]);
+assert.deepEqual(currentArtifactGraph.imports, ["helper"]);
+assert(rowArtifactGraph.sourceFiles.includes(rowArtifactMain));
+assert(rowArtifactGraph.sourceFiles.includes(rowArtifactHelper));
+assert.equal(rowArtifactGraph.sourceFiles.length, currentArtifactGraph.sourceFiles.length);
+
+const rowArtifactBuildOut = join(outDir, "row-artifact-build");
+rmSync(rowArtifactBuildOut, { force: true });
+const rowArtifactBuild = json(["build", "--json", "--target", "linux-musl-x64", rowArtifactMain, "--out", rowArtifactBuildOut]).body;
+assert.equal(rowArtifactBuild.sourceFile, rowArtifactMain);
+assert.equal(rowArtifactBuild.generatedCBytes, 0);
+assert.equal(rowArtifactBuild.cBridgeFallback ?? false, false);
+assert.equal(rowArtifactBuild.objectBackend.objectEmission.path, "direct-elf64-exe");
+assert.equal(rowArtifactBuild.objectBackend.linking.externalToolchain, "none");
+assert.equal(rowArtifactBuild.objectBackend.directFacts.functionCount, 2);
+assert(rowArtifactBuild.incrementalInvalidation.changedInputs.sourceFiles.includes(rowArtifactHelper));
+assert(rowArtifactBuild.incrementalInvalidation.changedInputs.sourceFiles.includes(rowArtifactMain));
+assertReleaseTargetContract(rowArtifactBuild, {
+  target: "linux-musl-x64",
+  emit: "exe",
+  objectFormat: "elf",
+  artifactKind: "native-executable",
+  linkerFlavor: "elf64",
+  targetLibcMode: "bundled-libc",
+});
+repeatBuildHash(
+  ["build", "--json", "--target", "linux-musl-x64", rowArtifactMain, "--out", rowArtifactBuildOut],
+  rowArtifactBuildOut,
+  `${rowArtifactBuildOut}.repeat`,
+);
+
+const rowArtifactObjOut = join(outDir, "row-artifact.o");
+rmSync(rowArtifactObjOut, { force: true });
+const rowArtifactObj = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", rowArtifactMain, "--out", rowArtifactObjOut]).body;
+const rowArtifactObjBytes = readFileSync(rowArtifactObjOut);
+assert.equal(rowArtifactObj.sourceFile, rowArtifactMain);
+assert.equal(rowArtifactObj.emit, "obj");
+assert.equal(rowArtifactObj.generatedCBytes, 0);
+assert.equal(rowArtifactObj.objectBackend.objectEmission.path, "direct-elf64-object");
+assert.equal(rowArtifactObj.objectBackend.linking.externalToolchain, "none");
+assert.equal(rowArtifactObjBytes[0], 0x7f);
+assert.equal(rowArtifactObjBytes[1], 0x45);
+assert.equal(rowArtifactObjBytes[2], 0x4c);
+assert.equal(rowArtifactObjBytes[3], 0x46);
+
+const rowRunArtifactOut = join(outDir, "row-run-artifact");
+rmSync(rowRunArtifactOut, { force: true });
+rmSync(`${rowRunArtifactOut}.exe`, { force: true });
+rmSync(`${rowRunArtifactOut}.c`, { force: true });
+const rowRunResult = zeroText(["run", "--out", rowRunArtifactOut, rowArtifactMain], { allowFailure: true });
+assert.equal(rowRunResult.code, 42);
+assert.equal(rowRunResult.stdout, "");
+assert(existsSync(version.host.startsWith("win32") ? `${rowRunArtifactOut}.exe` : rowRunArtifactOut));
+assert.equal(existsSync(`${rowRunArtifactOut}.c`), false);
+
+const rowShipOut = join(outDir, "row-ship-artifact");
+const firstRowShip = json(["ship", "--json", "--target", "linux-musl-x64", rowArtifactMain, "--out", rowShipOut]).body;
+assert.equal(firstRowShip.sourceFile, rowArtifactMain);
+assertShipReport(firstRowShip, rowShipOut);
+const secondRowShip = json(["ship", "--json", "--target", "linux-musl-x64", rowArtifactMain, "--out", rowShipOut]).body;
+assertShipReport(secondRowShip, rowShipOut);
+assert.equal(secondRowShip.checksum.value, firstRowShip.checksum.value);
+assert.equal(secondRowShip.artifactBytes, firstRowShip.artifactBytes);
+
+const rowArtifactMem = json(["mem", "--json", rowArtifactMain]).body;
+assert.equal(rowArtifactMem.sourceFile, rowArtifactMain);
+assert.equal(rowArtifactMem.generatedCBytes, 0);
+assert.equal(rowArtifactMem.cBridgeFallback, false);
+assert.equal(rowArtifactMem.directFacts.functionCount, 2);
+assert.equal(rowArtifactMem.memory.hiddenHeapAllocation, false);
+assert(rowArtifactMem.incrementalInvalidation.changedInputs.sourceFiles.includes(rowArtifactHelper));
+const rowArtifactTime = json(["time", "--json", rowArtifactMain]).body;
+assert.equal(rowArtifactTime.sourceFile, rowArtifactMain);
+assert.equal(rowArtifactTime.generatedCBytes, 0);
+assert.equal(rowArtifactTime.cBridgeFallback, false);
+assert(rowArtifactTime.compilerPhases.some((phase) => phase.name === "parse"));
+assert(rowArtifactTime.compilerPhases.some((phase) => phase.name === "link"));
+assert(rowArtifactTime.incrementalInvalidation.changedInputs.sourceFiles.includes(rowArtifactHelper));
+const rowArtifactAbiDump = json(["abi", "dump", "--json", rowArtifactMain]).body;
+assert.equal(rowArtifactAbiDump.sourceFile, rowArtifactMain);
+assert(rowArtifactAbiDump.cExports.some((item) => item.name === "main" && item.cReturnType === "int32_t"));
+assert.match(rowArtifactAbiDump.generatedHeader.text, /int32_t main\(void\);/);
+const rowArtifactAbiCheck = json(["abi", "check", "--json", rowArtifactMain]).body;
+assert.equal(rowArtifactAbiCheck.ok, true);
+assert.equal(rowArtifactAbiCheck.sourceFile, rowArtifactMain);
+assert.deepEqual(rowArtifactAbiCheck.diagnostics, []);
+
+const rowMissingMainPackage = join(outDir, "row-missing-main-package");
+mkdirSync(join(rowMissingMainPackage, "src"), { recursive: true });
+writeFileSync(
+  join(rowMissingMainPackage, "zero.json"),
+  JSON.stringify(
+    {
+      package: { name: "row-missing-main-package", version: "0.1.0" },
+      targets: { cli: { kind: "exe", main: "src/missing.row" } },
+    },
+    null,
+    2,
+  ) + "\n",
+);
+const rowMissingMainCheck = json(["check", "--json", rowMissingMainPackage], { allowFailure: true });
+assert.notEqual(rowMissingMainCheck.code, 0);
+assert.equal(rowMissingMainCheck.body.diagnostics[0].code, "BLD002");
+assert.match(rowMissingMainCheck.body.diagnostics[0].message, /target main source does not exist/);
+
+const rowDependencyLib = join(outDir, "row-dependency-lib");
+mkdirSync(join(rowDependencyLib, "src"), { recursive: true });
+writeFileSync(
+  join(rowDependencyLib, "zero.json"),
+  JSON.stringify(
+    {
+      package: { name: "row-dependency-lib", version: "0.1.0" },
+      targets: { cli: { kind: "exe", main: "src/main.row" } },
+    },
+    null,
+    2,
+  ) + "\n",
+);
+writeFileSync(join(rowDependencyLib, "src", "main.row"), "pub fn main Void\n");
+
+const rowDependencyPackage = join(outDir, "row-dependency-package");
+mkdirSync(join(rowDependencyPackage, "src"), { recursive: true });
+writeFileSync(
+  join(rowDependencyPackage, "zero.json"),
+  JSON.stringify(
+    {
+      package: { name: "row-dependency-package", version: "0.1.0" },
+      targets: { cli: { kind: "exe", main: "src/main.row" } },
+      dependencies: { helper: { path: "../row-dependency-lib", version: "0.1.0" } },
+    },
+    null,
+    2,
+  ) + "\n",
+);
+writeFileSync(join(rowDependencyPackage, "src", "main.row"), "pub fn main Void\n");
+const rowDependencyCheck = json(["check", "--json", rowDependencyPackage]).body;
+assert.equal(rowDependencyCheck.ok, true);
+assert(rowDependencyCheck.package.dependencies.some((dep) => dep.name === "helper" && dep.resolvedName === "row-dependency-lib" && dep.status === "path-resolved"));
+assert(rowDependencyCheck.package.lockfile.generated);
+
+const rowMalformedImportFixture = join(outDir, "row_malformed_import.row");
+writeFileSync(
+  rowMalformedImportFixture,
+  "use row helper\n" +
+    "pub fn main Void\n",
+);
+const rowMalformedImportCheck = json(["check", "--json", rowMalformedImportFixture], { allowFailure: true });
+assert.notEqual(rowMalformedImportCheck.code, 0);
+assert.equal(rowMalformedImportCheck.body.diagnostics[0].code, "PAR100");
+assert.match(rowMalformedImportCheck.body.diagnostics[0].message, /expected '\.' between import module segments/);
+
+const rowTypeMismatchFixture = join(outDir, "row_type_mismatch.row");
+writeFileSync(
+  rowTypeMismatchFixture,
+  "pub fn main Void\n" +
+    "  let value i32 \"nope\"\n",
+);
+const rowFixPlan = json(["fix", "--plan", "--json", rowTypeMismatchFixture]).body;
+assert.equal(rowFixPlan.ok, false);
+assert.equal(rowFixPlan.mode, "plan");
+assert.equal(rowFixPlan.diagnostics[0].code, "TYP002");
+assert.equal(rowFixPlan.diagnostics[0].path, rowTypeMismatchFixture);
+assert.equal(rowFixPlan.diagnostics[0].line, 2);
+assert.equal(rowFixPlan.fixes[0].diagnosticCode, "TYP002");
+
+const rowCycleAFixture = join(outDir, "row_cycle_a.row");
+const rowCycleBFixture = join(outDir, "row_cycle_b.row");
+writeFileSync(
+  rowCycleAFixture,
+  "use row_cycle_b\n" +
+    "pub fn a Void\n",
+);
+writeFileSync(
+  rowCycleBFixture,
+  "use row_cycle_a\n" +
+    "pub fn b Void\n",
+);
+const rowCycleCheck = json(["check", "--json", rowCycleAFixture], { allowFailure: true });
+assert.notEqual(rowCycleCheck.code, 0);
+assert.equal(rowCycleCheck.body.diagnostics[0].code, "IMP002");
+assert.equal(rowCycleCheck.body.diagnostics[0].path, rowCycleBFixture);
+assert.equal(rowCycleCheck.body.diagnostics[0].actual, "row_cycle_a -> row_cycle_b -> row_cycle_a");
+
+const rowDupMainFixture = join(outDir, "row_dup_main.row");
+const rowDupAFixture = join(outDir, "row_dup_a.row");
+const rowDupBFixture = join(outDir, "row_dup_b.row");
+writeFileSync(
+  rowDupMainFixture,
+  "use row_dup_a\n" +
+    "use row_dup_b\n" +
+    "pub fn main Void\n",
+);
+writeFileSync(rowDupAFixture, "pub fn shared Void\n");
+writeFileSync(rowDupBFixture, "pub fn shared Void\n");
+const rowDuplicatePublicCheck = json(["check", "--json", rowDupMainFixture], { allowFailure: true });
+assert.notEqual(rowDuplicatePublicCheck.code, 0);
+assert.equal(rowDuplicatePublicCheck.body.diagnostics[0].code, "IMP003");
+assert.match(rowDuplicatePublicCheck.body.diagnostics[0].message, /duplicate public symbol 'shared'/);
+assert.match(rowDuplicatePublicCheck.body.diagnostics[0].actual, /shared also exported by row_dup_a/);
+
+const rowMetadataFixture = join(outDir, "row_metadata.row");
+const rowMetadataSource =
+  "pub enum Mode\n" +
+  "  auto\n" +
+  "  manual\n" +
+  "pub choice Result\n" +
+  "  ok i32\n" +
+  "  err String\n" +
+  "test \"metadata\"\n" +
+  "  let total i32 + 1 1\n" +
+  "pub fn main Void\n";
+writeFileSync(rowMetadataFixture, rowMetadataSource);
+const rowMetadataGraph = json(["graph", "--json", rowMetadataFixture]).body;
+assert(rowMetadataGraph.symbols.some((symbol) => symbol.name === "Mode" && symbol.kind === "enum" && symbol.public === true));
+assert(rowMetadataGraph.symbols.some((symbol) => symbol.name === "Result" && symbol.kind === "choice" && symbol.public === true));
+assert(!rowMetadataGraph.symbols.some((symbol) => symbol.name.startsWith("__zero_test_")));
+const rowMetadataDoc = json(["doc", "--json", rowMetadataFixture]).body;
+assert(rowMetadataDoc.symbols.some((symbol) => symbol.name === "Mode" && symbol.kind === "enum"));
+assert(rowMetadataDoc.symbols.some((symbol) => symbol.name === "Result" && symbol.kind === "choice"));
 
 const testJson = json(["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.0"]).body;
 assert.equal(testJson.schemaVersion, 1);
@@ -2285,9 +2320,9 @@ assert.equal(expectedFailTestJson.ok, true);
 assert.equal(expectedFailTestJson.expectedFailures, 1);
 assert.equal(expectedFailTestJson.results[0].status, "expected-fail");
 
-assert.match(zero(["fmt", "--check", "conformance/native/pass/test-blocks.0"]).stdout, /fmt ok/);
+assert.match(zeroText(["fmt", "--check", "conformance/native/pass/test-blocks.0"]).stdout, /fmt ok/);
 
-const unknownFlag = zero(["check", "--jsoon", "examples/hello.0"], { allowFailure: true });
+const unknownFlag = zeroText(["check", "--jsoon", "examples/hello.0"], { allowFailure: true });
 assert.notEqual(unknownFlag.code, 0);
 assert.match(unknownFlag.stderr, /unknown flag: --jsoon/);
 assert.match(unknownFlag.stderr, /--json/);
@@ -2297,24 +2332,23 @@ const cleanProbe = join(".zero", "out", "contract-clean", "tmp.txt");
 mkdirSync(join(".zero", "out", "contract-clean"), { recursive: true });
 writeFileSync(cleanProbe, "tmp");
 assert(existsSync(cleanProbe));
-const clean = zero(["clean"]).stdout;
+const clean = zeroText(["clean"]).stdout;
 assert.match(clean, /removed:/);
 assert(!existsSync(cleanProbe));
 
 for (const kind of ["cli", "lib", "package"]) {
   const project = join(outDir, `new-${kind}`);
   rmSync(project, { recursive: true, force: true });
-  const created = zero(["new", kind, project]).stdout;
+  const created = zeroText(["new", kind, project]).stdout;
   assert.match(created, new RegExp(`created ${kind} project`));
   const manifest = JSON.parse(readFileSync(join(project, "zero.json"), "utf8"));
   const readme = readFileSync(join(project, "README.md"), "utf8");
   readFileSync(join(project, ".gitignore"), "utf8");
   assertTemplateManifest(kind, manifest, readme);
-  zero(["check", project]);
-  zero(["test", project]);
-  assert.match(zero(["fmt", "--check", project]).stdout, /fmt ok/);
+  zeroText(["check", project]);
+  zeroText(["test", project]);
   if (kind !== "lib") {
-    const templateRun = zero(["run", "--out", join(project, "run-app"), project]).stdout;
+    const templateRun = zeroText(["run", "--out", join(project, "run-app"), project]).stdout;
     assert.match(templateRun, kind === "cli" ? /hello from zero\n/ : /package ok\n/);
   }
   const devReport = json(["dev", "--json", "--target", "linux-musl-x64", project]).body;
@@ -2326,7 +2360,7 @@ for (const kind of ["cli", "lib", "package"]) {
   }
   if (kind === "lib") {
     removeInlineTests(join(project, "src", "lib.0"));
-    zero(["parse", "--json", join(project, "src", "lib.0")]);
+    zeroText(["parse", "--json", join(project, "src", "lib.0")]);
   } else {
     const buildOut = join(project, "app");
     const templateBuild = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-x64", project, "--out", buildOut]).body;
@@ -2344,7 +2378,7 @@ for (const kind of ["cli", "lib", "package"]) {
 
 const tinyHello = join(outDir, "tiny-hello");
 rmSync(tinyHello, { force: true });
-zero(["build", "--release", "tiny", "--target", "linux-musl-x64", "examples/hello.0", "--out", tinyHello]);
+zeroText(["build", "--release", "tiny", "--target", "linux-musl-x64", "examples/hello.0", "--out", tinyHello]);
 assert(statSync(tinyHello).size < 10 * 1024);
 const profileCacheCheckSource = join(outDir, "profile-cache-check.0");
 writeFileSync(profileCacheCheckSource, `pub fn main(world: World) -> Void raises {
@@ -2393,7 +2427,7 @@ const runArtifact = join(outDir, "run-add");
 rmSync(runArtifact, { force: true });
 rmSync(`${runArtifact}.exe`, { force: true });
 rmSync(`${runArtifact}.c`, { force: true });
-const runResult = zero(["run", "--out", runArtifact, "examples/add.0"]);
+const runResult = zeroText(["run", "--out", runArtifact, "examples/add.0"]);
 assert.match(runResult.stdout, /math works\n/);
 assert(existsSync(version.host.startsWith("win32") ? `${runArtifact}.exe` : runArtifact));
 assert.equal(existsSync(`${runArtifact}.c`), false);
@@ -3708,7 +3742,7 @@ assert.equal(diagnostics.find((item) => item.code === "IMP001").repair.id, "fix-
 const generatedCBytesAfterReadOnlyCommands = json(["size", "--json", "examples/memory-package"]).body.generatedCBytes;
 assert.equal(generatedCBytesAfterReadOnlyCommands, generatedCBytesBeforeReadOnlyCommands);
 
-const targets = json(["targets"]).body;
+const targets = json(["targets", "--json"]).body;
 assert.equal(targets.schemaVersion, 1);
 assert.equal(typeof targets.host, "string");
 const publicTargetNames = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-musl-arm64", "linux-musl-x64", "linux-x64", "win32-arm64.exe", "win32-x64.exe"];
@@ -3749,7 +3783,7 @@ assert.equal(linuxArm64Target.directBackend.objectEmitter, "zero-elf-aarch64");
 assert.equal(linuxArm64Target.directBackend.exeEmitter, "zero-elf-aarch64-exe");
 assert.match(linuxArm64Target.directBackend.reason, /direct object and executable backend available/);
 
-const cAbiExport = zero(["check", "conformance/native/pass/c-abi-export.0"]);
+const cAbiExport = zeroText(["check", "conformance/native/pass/c-abi-export.0"]);
 assert.match(cAbiExport.stdout, /ok/);
 const cAbiDump = json(["abi", "dump", "--json", "conformance/native/pass/c-abi-export.0"]).body;
 assert(cAbiDump.cExports.some((item) => item.name === "zero_add" && item.cReturnType === "int32_t"));

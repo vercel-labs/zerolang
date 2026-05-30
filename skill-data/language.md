@@ -328,4 +328,4 @@ test "shape" {
 }
 ```
 
-If unsure, run `zero check <file>` instead of inventing syntax. Add `--json` only when you need the exact diagnostic span or structured fields.
+If unsure, run `zero check <file>` instead of inventing syntax. Add `--zdn` (preferred for agents) or `--json` only when you need structured fields.

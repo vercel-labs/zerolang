@@ -50,6 +50,14 @@ export const docs: Doc[] = [
     section: "Reference",
   },
   {
+    slug: "zdn-format",
+    title: "ZDN Format",
+    description: "Zero Data Notation — agent-first structured output reference.",
+    path: "/zdn",
+    sourcePath: "/articles/zdn-format.md",
+    section: "Reference",
+  },
+  {
     slug: "testing",
     title: "Testing And Reliability",
     description: "zero test JSON, package tests, expected-fail tests, snapshots, fuzzing, and hardening gates.",

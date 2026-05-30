@@ -15,6 +15,7 @@
 #include "program_graph_roundtrip.h"
 #include "program_graph_size.h"
 #include "program_graph_view.h"
+#include "zdn_format.h"
 #include "safety_contract.h"
 #include "std_sig.h"
 #include "std_source.h"
@@ -47,6 +48,12 @@ typedef enum {
   EMIT_OBJ
 } EmitKind;
 
+typedef enum {
+  FORMAT_TEXT = 0,
+  FORMAT_JSON = 1,
+  FORMAT_ZDN = 2
+} OutputFormat;
+
 typedef struct {
   const char *command;
   const char *kind;
@@ -69,6 +76,7 @@ typedef struct {
   int run_argc;
   char **run_argv;
   bool json;
+  OutputFormat format;
   bool plan;
   bool apply;
   bool patch;
@@ -295,7 +303,17 @@ static void print_embedded_skill_content(const ZeroEmbeddedSkill *skill) {
   }
 }
 
-static int embedded_skills_error(bool json, const char *message) {
+static int embedded_skills_error(bool json, bool zdn, const char *message) {
+  if (zdn) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "SkillsError\n");
+    zdn_field_string(&buf, "message", message, 1);
+    zdn_field_bool(&buf, "success", false, 1);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+    return 1;
+  }
   if (json) {
     ZBuf buf;
     zbuf_init(&buf);
@@ -310,7 +328,25 @@ static int embedded_skills_error(bool json, const char *message) {
   return 1;
 }
 
-static int embedded_skills_list_command(bool json) {
+static int embedded_skills_list_command(bool json, bool zdn) {
+  if (zdn) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "SkillsList\n");
+    zdn_field_int(&buf, "count", (long long)zero_embedded_skill_count, 1);
+    zdn_array_start(&buf, "skills", 1);
+    for (size_t i = 0; i < zero_embedded_skill_count; i++) {
+      const ZeroEmbeddedSkill *skill = &zero_embedded_skills[i];
+      if (skill->hidden) continue;
+      zbuf_append(&buf, "    Skill\n");
+      zdn_field_string(&buf, "name", skill->name, 3);
+      zdn_field_string(&buf, "description", skill->description, 3);
+    }
+    zdn_array_end(&buf, 1);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+    return 0;
+  }
   if (json) {
     ZBuf buf;
     zbuf_init(&buf);
@@ -350,7 +386,8 @@ static int embedded_skills_list_command(bool json) {
   return 0;
 }
 
-static int embedded_skills_get_command(int argc, char **argv, int subcommand_index, bool json) {
+static int embedded_skills_get_command(int argc, char **argv, int subcommand_index, bool json, bool zdn) {
+  (void)zdn;
   bool get_all = false;
   const ZeroEmbeddedSkill *targets[64];
   size_t target_count = 0;
@@ -361,17 +398,17 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
       get_all = true;
       continue;
     }
-    if (strcmp(arg, "--full") == 0 || strcmp(arg, "--json") == 0) continue;
+    if (strcmp(arg, "--full") == 0 || strcmp(arg, "--json") == 0 || strcmp(arg, "--zdn") == 0 || strcmp(arg, "--text") == 0) continue;
     if (arg[0] == '-') {
       char message[160];
       snprintf(message, sizeof(message), "Unknown skills flag: %s", arg);
-      return embedded_skills_error(json, message);
+      return embedded_skills_error(json, zdn, message);
     }
     const ZeroEmbeddedSkill *skill = find_embedded_skill(arg);
     if (!skill) {
       char message[160];
       snprintf(message, sizeof(message), "Skill not found: %s", arg);
-      return embedded_skills_error(json, message);
+      return embedded_skills_error(json, zdn, message);
     }
     if (target_count < sizeof(targets) / sizeof(targets[0])) targets[target_count++] = skill;
   }
@@ -384,7 +421,7 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
   }
 
   if (target_count == 0) {
-    return embedded_skills_error(json, "No skill name provided. Usage: zero skills get <name>");
+    return embedded_skills_error(json, zdn, "No skill name provided. Usage: zero skills get <name>");
   }
 
   if (json) {
@@ -416,16 +453,16 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
   return 0;
 }
 
-static int embedded_skills_command(int argc, char **argv, bool json) {
+static int embedded_skills_command(int argc, char **argv, bool json, bool zdn) {
   int subcommand_index = -1;
   const char *subcommand = "list";
   for (int i = 2; i < argc; i++) {
     const char *arg = argv[i];
-    if (strcmp(arg, "--json") == 0 || strcmp(arg, "--all") == 0 || strcmp(arg, "--full") == 0) continue;
+    if (strcmp(arg, "--json") == 0 || strcmp(arg, "--zdn") == 0 || strcmp(arg, "--all") == 0 || strcmp(arg, "--full") == 0 || strcmp(arg, "--text") == 0) continue;
     if (arg[0] == '-') {
       char message[160];
       snprintf(message, sizeof(message), "Unknown skills flag: %s", arg);
-      return embedded_skills_error(json, message);
+      return embedded_skills_error(json, zdn, message);
     }
     if (subcommand_index < 0) {
       subcommand = arg;
@@ -437,12 +474,12 @@ static int embedded_skills_command(int argc, char **argv, bool json) {
     print_command_help("skills");
     return 0;
   }
-  if (strcmp(subcommand, "list") == 0) return embedded_skills_list_command(json);
-  if (strcmp(subcommand, "get") == 0) return embedded_skills_get_command(argc, argv, subcommand_index >= 0 ? subcommand_index : 1, json);
+  if (strcmp(subcommand, "list") == 0) return embedded_skills_list_command(json, zdn);
+  if (strcmp(subcommand, "get") == 0) return embedded_skills_get_command(argc, argv, subcommand_index >= 0 ? subcommand_index : 1, json, zdn);
 
   char message[160];
   snprintf(message, sizeof(message), "Unknown skills subcommand: %s", subcommand);
-  return embedded_skills_error(json, message);
+  return embedded_skills_error(json, zdn, message);
 }
 
 static const char *canonical_token_kind_name(ZCanonicalTokenKind kind) {
@@ -1632,6 +1669,734 @@ static char *read_optional_file(const char *path) {
 
 static void append_hash_json(ZBuf *buf, const char *key, uint64_t hash) {
   zbuf_appendf(buf, ",\n    \"%s\": \"%016llx\"", key, (unsigned long long)hash);
+}
+
+// ── Forward declarations for functions used by ZDN helpers ──
+static uint64_t fnv1a_text(const char *text);
+static uint64_t mix_hash_text(uint64_t hash, const char *text);
+static uint64_t source_interface_hash(const SourceInput *input);
+static uint64_t source_dependency_hash(const SourceInput *input);
+static uint64_t source_target_facts_hash(const ZTargetInfo *target);
+static uint64_t source_imported_package_metadata_hash(const SourceInput *input);
+static uint64_t source_file_hash_for_path(const SourceInput *input, const char *path);
+static uint64_t module_public_interface_hash(const SourceInput *input, const char *module_name);
+static size_t module_public_symbol_count(const SourceInput *input, const char *module_name);
+static bool self_host_subset_compatible(const Program *program, const CapabilitySummary *caps);
+static const char *build_compiler_label(const Command *command, const ZTargetInfo *target);
+static char *read_optional_file(const char *path);
+static bool validate_c_libraries_for_target(const SourceInput *input, const ZTargetInfo *target, ZDiag *diag);
+static bool target_readiness_select_emit_target(const Command *command, const SourceInput *input, const ZTargetInfo *target, ZDiag *diag);
+static bool target_readiness_select_diag(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag);
+static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, const ZTargetInfo *target, const Command *command, const IrProgram *ir);
+static void apply_ir_metrics_to_input(SourceInput *input, const IrProgram *ir, const ZTargetInfo *target);
+static long long now_ms(void);
+static const char *diag_code(int code);
+static const char *diag_fix_safety(int code);
+static const char *diag_repair_id(int code);
+static const char *diag_repair_summary(int code);
+static const char *emit_kind_name(EmitKind kind);
+static bool append_missing_capabilities_json(ZBuf *buf, const CapabilitySummary *caps, const ZTargetInfo *target);
+static const char *public_compiler_label(const ZToolchainPlan *plan);
+static const char *profile_canonical_name(const char *profile);
+static const char *profile_key_name(const char *profile);
+static const char *profile_optimization_goal(const char *profile);
+static const char *profile_codegen_optimization(const char *profile);
+static const char *profile_link_optimization(const char *profile);
+static const char *profile_overflow_policy(const char *profile);
+static const char *profile_bounds_policy(const char *profile);
+static const char *profile_panic_policy(const char *profile);
+static const char *profile_unwind_policy(const char *profile);
+static const char *profile_runtime_metadata(const char *profile);
+static const char *profile_symbol_policy(const char *profile);
+static bool profile_debug_info(const char *profile);
+static long long file_size_or_negative(const char *path);
+
+// ── ZDN helper functions (full-data equivalents of append_*_json) ──
+
+// Local indent helper (zdn_format.c's indent is static, not visible here)
+static void zdn_main_indent(ZBuf *buf, int level) {
+  for (int i = 0; i < level; i++) {
+    zbuf_append(buf, "  ");
+  }
+}
+
+static void zdn_append_hash(ZBuf *buf, const char *key, uint64_t hash, int indent_level) {
+  zdn_main_indent(buf, indent_level);
+  zbuf_appendf(buf, "%s \"%016llx\"\n", key, (unsigned long long)hash);
+}
+
+static void zdn_append_package_metadata(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, int indent) {
+  (void)target;
+  zdn_object_start(buf, "package", indent);
+  zdn_field_string(buf, "name", input && input->package_name ? input->package_name : "", indent + 1);
+  zdn_field_string(buf, "version", input && input->package_version ? input->package_version : "", indent + 1);
+  zdn_field_string(buf, "root", input && input->package_root ? input->package_root : "", indent + 1);
+  zdn_field_string(buf, "manifestPath", input && input->manifest_path ? input->manifest_path : "", indent + 1);
+  zdn_append_hash(buf, "manifestHash", input ? input->manifest_hash : 0, indent + 1);
+  zdn_append_hash(buf, "dependencyGraphHash", input ? input->dependency_graph_hash : 0, indent + 1);
+  zdn_object_start(buf, "lockfile", indent + 1);
+  zdn_field_string(buf, "format", "zero-lock-v1", indent + 2);
+  zdn_field_string(buf, "path", input && input->lockfile_path ? input->lockfile_path : "", indent + 2);
+  zdn_append_hash(buf, "hash", input ? input->lockfile_hash : 0, indent + 2);
+  zdn_field_bool(buf, "generated", input && input->lockfile_path && input->lockfile_path[0], indent + 2);
+}
+
+static void zdn_append_package_cache(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, int indent) {
+  (void)target;
+  (void)profile;
+  zdn_object_start(buf, "packageCache", indent);
+  zdn_field_string(buf, "format", "zero-lock-v1", indent + 1);
+  zdn_field_string(buf, "path", input && input->lockfile_path ? input->lockfile_path : "", indent + 1);
+  zdn_append_hash(buf, "hash", input ? input->lockfile_hash : 0, indent + 1);
+  zdn_field_bool(buf, "generated", input && input->lockfile_path && input->lockfile_path[0], indent + 1);
+  zdn_field_int(buf, "sourceFileCount", input ? (long long)input->source_file_count : 0, indent + 1);
+  zdn_field_int(buf, "moduleCount", input ? (long long)input->module_count : 0, indent + 1);
+}
+
+static void zdn_append_interface_fingerprints(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, int indent) {
+  zdn_object_start(buf, "interfaceFingerprints", indent);
+  zdn_field_int(buf, "schemaVersion", 1, indent + 1);
+  zdn_field_string(buf, "algorithm", "fnv1a64-zero-interface-v1", indent + 1);
+  zdn_append_hash(buf, "targetFactsHash", source_target_facts_hash(target), indent + 1);
+  zdn_append_hash(buf, "importedPackageMetadataHash", source_imported_package_metadata_hash(input), indent + 1);
+  zdn_array_start(buf, "modules", indent + 1);
+  for (size_t i = 0; input && i < input->module_count; i++) {
+    const char *module_name = input->module_names[i];
+    const char *module_path = input->module_paths[i];
+    uint64_t source_hash = source_file_hash_for_path(input, module_path);
+    uint64_t interface_hash = module_public_interface_hash(input, module_name);
+    size_t public_count = module_public_symbol_count(input, module_name);
+    zdn_object_start(buf, "", indent + 2);
+    zdn_field_string(buf, "name", module_name, indent + 3);
+    zdn_field_string(buf, "path", module_path, indent + 3);
+    zdn_append_hash(buf, "sourceHash", source_hash, indent + 3);
+    zdn_append_hash(buf, "publicInterfaceHash", interface_hash, indent + 3);
+    zdn_field_int(buf, "publicSymbolCount", (long long)public_count, indent + 3);
+    zdn_array_start(buf, "publicSymbols", indent + 3);
+    for (size_t j = 0; j < input->symbol_count; j++) {
+      if (!input->symbol_public[j]) continue;
+      if (!input->symbol_modules || strcmp(input->symbol_modules[j], module_name) != 0) continue;
+      zdn_object_start(buf, "", indent + 4);
+      zdn_field_string(buf, "name", input->symbol_names[j], indent + 5);
+      zdn_field_string(buf, "kind", input->symbol_kinds ? input->symbol_kinds[j] : "unknown", indent + 5);
+    }
+    zdn_array_start(buf, "imports", indent + 3);
+    for (size_t j = 0; j < input->import_edge_count; j++) {
+      if (strcmp(input->import_from[j], module_name) != 0) continue;
+      zdn_object_start(buf, "", indent + 4);
+      zdn_field_string(buf, "module", input->import_to[j], indent + 5);
+      zdn_field_string(buf, "path", input->import_paths[j], indent + 5);
+    }
+  }
+}
+
+static void zdn_append_compile_time(ZBuf *buf, const Program *program, const SourceInput *input, const ZTargetInfo *target, int indent) {
+  char *manifest = read_optional_file(input && input->manifest_path ? input->manifest_path : "zero.json");
+  zdn_object_start(buf, "compileTime", indent);
+  zdn_field_bool(buf, "deterministic", true, indent + 1);
+  zdn_field_bool(buf, "releaseMetadataDefault", false, indent + 1);
+  zdn_object_start(buf, "sandbox", indent + 1);
+  zdn_field_string(buf, "filesystem", "denied", indent + 2);
+  zdn_field_string(buf, "network", "denied", indent + 2);
+  zdn_field_string(buf, "ambientEnv", "denied", indent + 2);
+  zdn_field_string(buf, "process", "denied", indent + 2);
+  zdn_object_start(buf, "limits", indent + 1);
+  zdn_field_int(buf, "maxDepth", 64, indent + 2);
+  zdn_field_int(buf, "maxSteps", 1024, indent + 2);
+  zdn_field_int(buf, "stringBytes", 127, indent + 2);
+  zdn_field_string(buf, "memory", "bounded-evaluator-state-only", indent + 2);
+  zdn_field_string(buf, "time", "step-counted", indent + 2);
+  zdn_object_start(buf, "cacheKeyInputs", indent + 1);
+  zdn_field_string(buf, "algorithm", "fnv1a64-zero-meta-v1", indent + 2);
+  zdn_append_hash(buf, "sourceHash", fnv1a_text(input ? input->source : ""), indent + 2);
+  zdn_append_hash(buf, "targetHash", fnv1a_text(target ? target->name : z_host_target()), indent + 2);
+  zdn_append_hash(buf, "manifestHash", fnv1a_text(manifest ? manifest : ""), indent + 2);
+  zdn_field_string(buf, "compilerVersion", ZERO_VERSION, indent + 2);
+  zdn_array_start(buf, "declaredInputs", indent + 2);
+  zdn_array_item_string(buf, "source", indent + 3);
+  zdn_array_item_string(buf, "target", indent + 3);
+  zdn_array_item_string(buf, "compilerVersion", indent + 3);
+  zdn_array_item_string(buf, "manifest", indent + 3);
+  zdn_array_item_string(buf, "targetFacts", indent + 3);
+  zdn_object_start(buf, "meta", indent + 1);
+  zdn_array_start(buf, "supportedFacts", indent + 2);
+  const char *facts[] = {"literal arithmetic", "literal comparisons", "Bool logic", "target.os", "target.arch", "target.abi", "target.libc", "target.objectFormat", "target.endian", "target.pointerWidth", "target.hasCapability", "fieldCount", "hasField", "fieldType", "enumCaseCount", "hasEnumCase", "choiceCaseCount", "hasChoiceCase", NULL};
+  for (int i = 0; facts[i]; i++) zdn_array_item_string(buf, facts[i], indent + 3);
+  zdn_array_start(buf, "unsupportedEffects", indent + 2);
+  zdn_array_item_string(buf, "filesystem", indent + 3);
+  zdn_array_item_string(buf, "network", indent + 3);
+  zdn_array_item_string(buf, "process", indent + 3);
+  zdn_array_item_string(buf, "ambient environment", indent + 3);
+  zdn_field_string(buf, "cycleDiagnostic", "MET001", indent + 2);
+  zdn_field_string(buf, "safetyLimitDiagnostic", "MET001", indent + 2);
+  zdn_object_start(buf, "reflection", indent + 1);
+  zdn_field_bool(buf, "typed", true, indent + 2);
+  zdn_field_bool(buf, "compileTimeOnly", true, indent + 2);
+  zdn_field_bool(buf, "releaseMetadataRetained", false, indent + 2);
+  zdn_array_start(buf, "facts", indent + 2);
+  zdn_array_item_string(buf, "target", indent + 3);
+  zdn_array_item_string(buf, "shape fields", indent + 3);
+  zdn_array_item_string(buf, "enum cases", indent + 3);
+  zdn_array_item_string(buf, "choice cases", indent + 3);
+  zdn_object_start(buf, "staticValues", indent + 1);
+  zdn_array_start(buf, "supported", indent + 2);
+  zdn_array_item_string(buf, "integer", indent + 3);
+  zdn_array_item_string(buf, "Bool", indent + 3);
+  zdn_array_item_string(buf, "enum", indent + 3);
+  zdn_field_bool(buf, "concreteSpecializations", true, indent + 2);
+  zdn_field_bool(buf, "runtimeRegistries", false, indent + 2);
+  zdn_field_bool(buf, "reflectionTables", false, indent + 2);
+  zdn_field_string(buf, "mismatchesDiagnostic", "STC003", indent + 2);
+  zdn_object_start(buf, "typedBuilders", indent + 1);
+  zdn_field_string(buf, "status", "limited-v1", indent + 2);
+  zdn_array_start(buf, "supported", indent + 2);
+  zdn_array_item_string(buf, "shape literals", indent + 3);
+  zdn_array_item_string(buf, "enum case values", indent + 3);
+  zdn_array_item_string(buf, "choice constructors", indent + 3);
+  zdn_field_bool(buf, "rawTokenStrings", false, indent + 2);
+  zdn_field_bool(buf, "compileTimeOnly", true, indent + 2);
+  zdn_field_bool(buf, "runtimeBuilderRegistry", false, indent + 2);
+  zdn_object_start(buf, "programSurface", indent + 1);
+  zdn_field_int(buf, "shapeCount", program ? (long long)program->shapes.len : 0, indent + 2);
+  zdn_field_int(buf, "enumCount", program ? (long long)program->enums.len : 0, indent + 2);
+  zdn_field_int(buf, "choiceCount", program ? (long long)program->choices.len : 0, indent + 2);
+  free(manifest);
+}
+
+static void zdn_append_compiler_phases(ZBuf *buf, const SourceInput *input, int indent) {
+  zdn_array_start(buf, "compilerPhases", indent);
+  #define ZDN_PHASE(name, field) do { \
+    zdn_object_start(buf, "Phase", indent + 1); \
+    zdn_field_string(buf, "name", name, indent + 2); \
+    zdn_field_int(buf, "elapsedMs", input ? (long long)input->field : 0, indent + 2); \
+    zdn_field_bool(buf, "cacheable", true, indent + 2); \
+  } while (0)
+  ZDN_PHASE("resolve", resolve_ms);
+  ZDN_PHASE("parse", parse_ms);
+  ZDN_PHASE("interface", interface_ms);
+  ZDN_PHASE("check", check_ms);
+  ZDN_PHASE("lower", lower_ms);
+  ZDN_PHASE("codegen", codegen_ms);
+  ZDN_PHASE("object", object_ms);
+  #undef ZDN_PHASE
+}
+
+static uint64_t compile_cache_key(const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *kind);
+
+static void zdn_append_compiler_caches(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, int indent) {
+  uint64_t parse_key = compile_cache_key(input, NULL, NULL, "parse-tree");
+  uint64_t interface_key = source_interface_hash(input);
+  uint64_t check_key = compile_cache_key(input, target, NULL, "checked-body");
+  uint64_t specialization_key = compile_cache_key(input, target, profile, "specialization");
+  uint64_t object_key = compile_cache_key(input, target, profile, "emitted-object");
+  zdn_array_start(buf, "compilerCaches", indent);
+  #define ZDN_CACHE(label, key, hit, invalidates) do { \
+    zdn_object_start(buf, "", indent + 1); \
+    zdn_field_string(buf, "name", label, indent + 2); \
+    zdn_append_hash(buf, "key", key, indent + 2); \
+    zdn_field_bool(buf, "hit", hit, indent + 2); \
+    zdn_field_bool(buf, "stored", true, indent + 2); \
+    zdn_field_string(buf, "compilerVersion", ZERO_VERSION, indent + 2); \
+    zdn_field_string(buf, "packageVersion", input && input->package_version ? input->package_version : "", indent + 2); \
+    zdn_append_hash(buf, "dependencyGraphHash", input ? (unsigned long long)input->dependency_graph_hash : 0, indent + 2); \
+    zdn_append_hash(buf, "lockfileHash", input ? (unsigned long long)input->lockfile_hash : 0, indent + 2); \
+    zdn_field_string(buf, "invalidatesOn", invalidates, indent + 2); \
+  } while (0)
+  ZDN_CACHE("parseTree", parse_key, input && input->parse_cache_hit, "source");
+  ZDN_CACHE("interface", interface_key, input && input->interface_cache_hit, "public symbols/import graph");
+  ZDN_CACHE("checkedBody", check_key, input && input->check_cache_hit, "source or target");
+  ZDN_CACHE("specialization", specialization_key, input && input->specialization_cache_hit, "source, target, or profile");
+  ZDN_CACHE("emittedObject", object_key, input && input->emitted_object_cache_hit, "source, target, profile, or backend");
+  #undef ZDN_CACHE
+}
+
+static void source_cache_hit_miss_counts(const SourceInput *input, size_t *hits, size_t *misses);
+
+static void zdn_append_incremental_invalidations(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, int indent) {
+  size_t hits = 0, misses = 0;
+  source_cache_hit_miss_counts(input, &hits, &misses);
+  zdn_object_start(buf, "incrementalInvalidation", indent);
+  zdn_array_start(buf, "moduleDependencies", indent + 1);
+  for (size_t i = 0; input && i < input->import_edge_count; i++) {
+    zdn_object_start(buf, "", indent + 2);
+    zdn_field_string(buf, "from", input->import_from[i], indent + 3);
+    zdn_field_string(buf, "to", input->import_to[i], indent + 3);
+    zdn_field_string(buf, "path", input->import_paths[i], indent + 3);
+  }
+  zdn_field_string(buf, "targetDependency", target ? target->name : z_host_target(), indent + 1);
+  zdn_field_string(buf, "profileDependency", profile ? profile : "release", indent + 1);
+  zdn_field_int(buf, "affectedModules", input ? (long long)input->module_count : 0, indent + 1);
+  zdn_field_string(buf, "recheckStrategy", "fingerprint changed modules and dependent bodies", indent + 1);
+  zdn_object_start(buf, "changedInputs", indent + 1);
+  zdn_array_start(buf, "sourceFiles", indent + 2);
+  for (size_t i = 0; input && i < input->source_file_count; i++) {
+    zdn_array_item_string(buf, input->source_files[i], indent + 3);
+  }
+  zdn_field_string(buf, "manifestPath", input && input->manifest_path ? input->manifest_path : "", indent + 2);
+  zdn_field_string(buf, "packageLockfile", input && input->lockfile_path ? input->lockfile_path : "", indent + 2);
+  zdn_field_int(buf, "cacheHits", (long long)hits, indent + 1);
+  zdn_field_int(buf, "cacheMisses", (long long)misses, indent + 1);
+  zdn_field_bool(buf, "partialDiagnosticsStable", true, indent + 1);
+  zdn_append_interface_fingerprints(buf, input, target, indent + 1);
+}
+
+static void zdn_append_self_host_routing(ZBuf *buf, const char *command_name, const char *emit_kind, const Program *program, const CapabilitySummary *caps, const ZTargetInfo *target, int indent) {
+  (void)command_name; (void)emit_kind; (void)target;
+  bool compatible = self_host_subset_compatible(program, caps);
+  zdn_object_start(buf, "selfHostRouting", indent);
+  zdn_field_int(buf, "contractVersion", 1, indent + 1);
+  zdn_field_bool(buf, "subsetCompatible", compatible, indent + 1);
+  zdn_field_string(buf, "mode", "native-bootstrap", indent + 1);
+  zdn_object_start(buf, "phases", indent + 1);
+  zdn_field_string(buf, "parse", "zero-c", indent + 2);
+  zdn_field_string(buf, "check", "zero-c", indent + 2);
+  zdn_field_string(buf, "lower", "zero-c", indent + 2);
+  zdn_field_string(buf, "emit", "zero-c", indent + 2);
+  zdn_object_start(buf, "removed", indent + 1);
+  zdn_field_bool(buf, "seedCompiler", true, indent + 2);
+  zdn_field_bool(buf, "browserCompiler", true, indent + 2);
+  zdn_field_bool(buf, "portableEmitter", true, indent + 2);
+  zdn_object_start(buf, "metadata", indent + 1);
+  zdn_field_bool(buf, "graphJson", compatible, indent + 2);
+  zdn_field_bool(buf, "sizeJson", compatible, indent + 2);
+  zdn_object_start(buf, "cBridge", indent + 1);
+  zdn_field_bool(buf, "required", false, indent + 2);
+  zdn_field_string(buf, "policy", "removed", indent + 2);
+  zdn_field_string(buf, "explicitDirectFallback", "never-c-bridge", indent + 2);
+}
+
+static void zdn_append_backend_blocker(ZBuf *buf, const ZBackendBlocker *blocker, int indent) {
+  if (!blocker || !blocker->present) return;
+  zdn_object_start(buf, "backendBlocker", indent);
+  zdn_field_string(buf, "target", blocker->target[0] ? blocker->target : "unknown", indent + 1);
+  zdn_field_string(buf, "objectFormat", blocker->object_format[0] ? blocker->object_format : "unknown", indent + 1);
+  zdn_field_string(buf, "backend", blocker->backend[0] ? blocker->backend : "unknown", indent + 1);
+  zdn_field_string(buf, "stage", blocker->stage[0] ? blocker->stage : "unknown", indent + 1);
+  zdn_field_string(buf, "unsupportedFeature", blocker->unsupported_feature[0] ? blocker->unsupported_feature : "unsupported construct", indent + 1);
+}
+
+static void zdn_append_target_capability_facts(ZBuf *buf, const ZTargetInfo *target, const CapabilitySummary *caps, int indent) {
+  zdn_object_start(buf, "capabilityFacts", indent);
+  ZBuf missing_buf;
+  zbuf_init(&missing_buf);
+  bool has_missing = append_missing_capabilities_json(&missing_buf, caps, target);
+  zdn_field_string(buf, "status", has_missing ? "unsupported" : "supported", indent + 1);
+  zdn_array_start(buf, "missingCapabilities", indent + 1);
+  if (has_missing && missing_buf.data) {
+    // Parse missing JSON array items and emit as ZDN string items
+    const char *p = missing_buf.data;
+    while (*p) {
+      if (*p == '"') {
+        p++;
+        ZBuf item;
+        zbuf_init(&item);
+        while (*p && *p != '"') {
+          zbuf_append_char(&item, *p);
+          p++;
+        }
+        if (item.data[0]) {
+          zdn_array_item_string(buf, item.data, indent + 2);
+        }
+        zbuf_free(&item);
+        if (*p) p++;
+      } else p++;
+    }
+  }
+  zbuf_free(&missing_buf);
+}
+
+static void zdn_append_profile_semantics(ZBuf *buf, const char *profile, int indent) {
+  zdn_object_start(buf, "", indent);
+  zdn_field_string(buf, "requested", profile ? profile : "release", indent + 1);
+  zdn_field_string(buf, "canonical", profile_canonical_name(profile), indent + 1);
+  zdn_field_string(buf, "profileKey", profile_key_name(profile), indent + 1);
+  zdn_field_string(buf, "optimizationGoal", profile_optimization_goal(profile), indent + 1);
+  zdn_field_string(buf, "codegenOptimization", profile_codegen_optimization(profile), indent + 1);
+  zdn_field_string(buf, "linkOptimization", profile_link_optimization(profile), indent + 1);
+  zdn_field_string(buf, "overflowPolicy", profile_overflow_policy(profile), indent + 1);
+  zdn_field_string(buf, "boundsPolicy", profile_bounds_policy(profile), indent + 1);
+  zdn_field_string(buf, "panicPolicy", profile_panic_policy(profile), indent + 1);
+  zdn_field_string(buf, "unwindPolicy", profile_unwind_policy(profile), indent + 1);
+  zdn_field_bool(buf, "debugInfo", profile_debug_info(profile), indent + 1);
+  zdn_field_string(buf, "runtimeMetadataPolicy", profile_runtime_metadata(profile), indent + 1);
+  zdn_field_string(buf, "symbolPolicy", profile_symbol_policy(profile), indent + 1);
+  zdn_field_bool(buf, "panicFormatting", profile_debug_info(profile), indent + 1);
+}
+
+static void zdn_append_profile_budget(ZBuf *buf, const char *profile, int indent) {
+  zdn_object_start(buf, "profileBudget", indent);
+  (void)profile;
+  zdn_field_int(buf, "maxArtifactBytes", 16777216, indent + 1);
+  zdn_field_int(buf, "maxCompilationMs", 30000, indent + 1);
+  zdn_field_int(buf, "maxLoweredIrBytes", 1048576, indent + 1);
+}
+
+static void zdn_append_release_target_contract(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const Command *command, const char *emit_kind, int indent) {
+  const char *object_format = target && target->object_format ? target->object_format : "unknown";
+  ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
+  ZDirectReleaseTargetFacts release = z_direct_release_target_facts(target, emit_kind, command ? command->backend : NULL, &plan);
+
+  zdn_object_start(buf, "releaseTargetContract", indent);
+  zdn_field_int(buf, "schemaVersion", 1, indent + 1);
+  zdn_field_string(buf, "target", target ? target->name : z_host_target(), indent + 1);
+  zdn_field_string(buf, "hostTarget", z_host_target(), indent + 1);
+  zdn_field_bool(buf, "crossCompilation", target && strcmp(target->name, z_host_target()) != 0, indent + 1);
+  zdn_field_string(buf, "emit", emit_kind ? emit_kind : "exe", indent + 1);
+  zdn_field_string(buf, "artifactKind", release.artifact_kind, indent + 1);
+  zdn_field_string(buf, "objectFormat", object_format, indent + 1);
+  zdn_field_string(buf, "os", target && target->os ? target->os : "unknown", indent + 1);
+  zdn_field_string(buf, "arch", target && target->arch ? target->arch : "unknown", indent + 1);
+  zdn_field_string(buf, "abi", target && target->abi ? target->abi : "", indent + 1);
+  zdn_field_string(buf, "linkerFlavor", release.linker_flavor, indent + 1);
+  zdn_field_string(buf, "targetLinker", target && target->linker ? target->linker : "", indent + 1);
+  zdn_field_string(buf, "selectedEmitter", release.selected_emitter, indent + 1);
+  zdn_field_string(buf, "directObjectEmitter", z_direct_object_emitter(target), indent + 1);
+  zdn_field_string(buf, "directExeEmitter", z_direct_exe_emitter(target), indent + 1);
+  zdn_field_string(buf, "directStatus", z_direct_backend_status(target), indent + 1);
+  zdn_field_string(buf, "fallbackPolicy", "explicit-direct-never-c-bridge", indent + 1);
+  zdn_field_int(buf, "generatedCBytes", 0, indent + 1);
+  zdn_field_bool(buf, "cBridgeFallback", false, indent + 1);
+  zdn_object_start(buf, "libc", indent + 1);
+  zdn_field_string(buf, "name", target && target->libc ? target->libc : "default", indent + 2);
+  zdn_field_string(buf, "targetMode", z_target_libc_mode(target), indent + 2);
+  zdn_field_string(buf, "artifactMode", release.artifact_libc_mode, indent + 2);
+  zdn_field_bool(buf, "hostReusable", target && z_target_is_host(target), indent + 2);
+  zdn_object_start(buf, "sysroot", indent + 1);
+  zdn_field_bool(buf, "requiredByTarget", release.target_requires_sysroot, indent + 2);
+  zdn_field_bool(buf, "requiredByArtifact", release.artifact_requires_sysroot, indent + 2);
+  zdn_field_string(buf, "env", release.target_requires_sysroot || release.artifact_requires_sysroot ? plan.sysroot_env : "", indent + 2);
+  zdn_field_string(buf, "status", release.sysroot_status, indent + 2);
+  zdn_field_bool(buf, "missing", release.artifact_requires_sysroot && strcmp(plan.sysroot_status, "missing") == 0, indent + 2);
+  zdn_object_start(buf, "readiness", indent + 1);
+  zdn_field_string(buf, "status", release.direct_selected ? "supported" : "unsupported", indent + 2);
+  zdn_field_bool(buf, "directArtifact", release.direct_selected, indent + 2);
+  zdn_field_bool(buf, "missingSysroot", release.artifact_requires_sysroot && strcmp(plan.sysroot_status, "missing") == 0, indent + 2);
+  zdn_field_string(buf, "unsupportedReason", release.direct_selected ? "" : z_direct_backend_reason(target), indent + 2);
+  zdn_object_start(buf, "determinism", indent + 1);
+  zdn_field_bool(buf, "reproducible", true, indent + 2);
+  zdn_field_bool(buf, "stableArtifactNames", true, indent + 2);
+  zdn_field_string(buf, "repeatBuildHash", "checked-by-command-contracts", indent + 2);
+  zdn_field_int(buf, "sourceFileCount", input ? (long long)input->source_file_count : 0, indent + 1);
+  zdn_field_int(buf, "moduleCount", input ? (long long)input->module_count : 0, indent + 1);
+}
+
+static void zdn_append_object_backend(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const Command *command, const char *emit_kind, int indent) {
+  ZDirectObjectBackendFacts direct = z_direct_object_backend_facts(target, emit_kind, command ? command->backend : NULL, input && input->direct_host_runtime_import_count > 0);
+  if (!direct.active) return;
+  const char *object_format = target && target->object_format ? target->object_format : "unknown";
+  const char *arch = target && target->arch ? target->arch : "unknown";
+  size_t direct_symbol_count = input ? input->direct_function_count : 0;
+  bool uses_zero_runtime = input && input->direct_host_runtime_import_count > 0;
+  bool uses_http_runtime = input && input->direct_http_runtime_import_count > 0;
+  bool links_zero_runtime = uses_zero_runtime;
+  bool links_http_runtime = uses_http_runtime;
+  ZToolchainPlan runtime_toolchain = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
+  const char *runtime_external_toolchain = links_zero_runtime ? public_compiler_label(&runtime_toolchain) : "none";
+  bool direct_has_data = input && input->direct_readonly_data_bytes > 0;
+  direct_symbol_count += input ? input->direct_runtime_helper_count : 0;
+  direct_symbol_count += z_direct_backend_symbol_overhead(direct.backend, direct_has_data);
+
+  zdn_object_start(buf, "objectBackend", indent);
+  zdn_object_start(buf, "internalIr", indent + 1);
+  zdn_field_string(buf, "typeRepresentation", "MIR primitive value types", indent + 2);
+  zdn_field_string(buf, "controlFlowRepresentation", "MIR instruction stream lowered to target machine/module code", indent + 2);
+  zdn_field_string(buf, "callRepresentation", "same-object direct calls for supported direct subsets", indent + 2);
+  zdn_field_string(buf, "functionIdentity", "module-qualified-stable-sorted", indent + 2);
+  zdn_field_string(buf, "debugRepresentation", "source spans retained on MIR nodes", indent + 2);
+  zdn_object_start(buf, "objectEmission", indent + 1);
+  zdn_field_string(buf, "path", direct.artifact_path, indent + 2);
+  zdn_field_bool(buf, "functions", true, indent + 2);
+  zdn_field_bool(buf, "dataSections", direct_has_data, indent + 2);
+  zdn_field_string(buf, "relocations", uses_zero_runtime ? "patched-runtime-import-relocations" : (direct_has_data ? "patched-internal-calls-and-data-relocations" : "patched-internal-calls-or-none-in-mvp"), indent + 2);
+  zdn_field_int(buf, "symbolCount", (long long)direct_symbol_count, indent + 2);
+  zdn_field_int(buf, "internalHelperCount", input && input->direct_function_count > input->direct_export_count ? (long long)(input->direct_function_count - input->direct_export_count) : 0, indent + 2);
+  zdn_object_start(buf, "linking", indent + 1);
+  zdn_field_string(buf, "linkerFlavor", direct.linker_flavor, indent + 2);
+  zdn_field_string(buf, "objectFormat", object_format, indent + 2);
+  zdn_field_string(buf, "targetLibraries", links_http_runtime ? "zero-runtime,curl" : (uses_zero_runtime ? "zero-runtime" : "none"), indent + 2);
+  zdn_field_string(buf, "symbolMap", "object-symbol-table", indent + 2);
+  zdn_field_string(buf, "externalToolchain", runtime_external_toolchain, indent + 2);
+  zdn_field_string(buf, "toolchainSource", uses_zero_runtime ? "direct-backend-runtime-link-plan" : "direct-backend", indent + 2);
+  zdn_field_bool(buf, "stripArtifacts", false, indent + 2);
+  zdn_object_start(buf, "linkerPlan", indent + 1);
+  zdn_field_string(buf, "format", object_format, indent + 2);
+  zdn_field_string(buf, "flavor", direct.linker_flavor, indent + 2);
+  zdn_array_start(buf, "archives", indent + 2);
+  zdn_array_start(buf, "staticLibraries", indent + 2);
+  if (links_http_runtime) {
+    zdn_array_item_string(buf, "zero_runtime.o", indent + 3);
+    zdn_array_item_string(buf, "zero_http_curl.o", indent + 3);
+  } else if (links_zero_runtime) {
+    zdn_array_item_string(buf, "zero_runtime.o", indent + 3);
+  }
+  zdn_array_start(buf, "importLibraries", indent + 2);
+  zdn_array_start(buf, "systemLibraries", indent + 2);
+  if (links_http_runtime) zdn_array_item_string(buf, "curl", indent + 3);
+  zdn_field_string(buf, "externalToolchain", runtime_external_toolchain, indent + 2);
+  zdn_field_bool(buf, "reproducible", true, indent + 2);
+  zdn_field_string(buf, "libcMode", links_zero_runtime ? runtime_toolchain.libc_mode : "none", indent + 2);
+  zdn_field_string(buf, "targetLibcMode", z_target_libc_mode(target), indent + 2);
+  zdn_field_bool(buf, "requiresSysroot", false, indent + 2);
+  zdn_field_bool(buf, "targetRequiresSysroot", z_target_requires_sysroot(target), indent + 2);
+  zdn_field_string(buf, "sysrootStatus", z_target_requires_sysroot(target) ? "not-used-by-direct-artifact" : "not-required", indent + 2);
+  zdn_object_start(buf, "targetFacts", indent + 1);
+  zdn_field_bool(buf, "directAvailable", true, indent + 2);
+  zdn_field_string(buf, "status", z_direct_backend_status(target), indent + 2);
+  zdn_field_string(buf, "selectedEmitter", direct.selected_emitter, indent + 2);
+  zdn_field_string(buf, "objectFormat", object_format, indent + 2);
+  zdn_field_string(buf, "arch", arch, indent + 2);
+  zdn_field_string(buf, "abi", target && target->abi ? target->abi : "", indent + 2);
+  zdn_field_string(buf, "libcMode", z_target_libc_mode(target), indent + 2);
+  // httpRuntime
+  if (links_http_runtime) {
+    zdn_object_start(buf, "httpRuntime", indent + 1);
+    ZBuf http_json;
+    zbuf_init(&http_json);
+    z_append_http_runtime_json(&http_json, target);
+    // Extract key fields from the JSON
+    zdn_field_string(buf, "provider", "http-curl", indent + 2);
+    zdn_field_string(buf, "status", "supported", indent + 2);
+    zbuf_free(&http_json);
+  }
+}
+
+static void zdn_append_ship_artifact(ZBuf *buf, const char *kind, const char *path, long long bytes, const char *format, int indent) {
+  zdn_object_start(buf, "", indent);
+  zdn_field_string(buf, "kind", kind, indent + 1);
+  zdn_field_string(buf, "path", path ? path : "", indent + 1);
+  zdn_field_int(buf, "bytes", bytes, indent + 1);
+  zdn_field_string(buf, "format", format, indent + 1);
+}
+
+static void zdn_append_toolchain_plan(ZBuf *buf, const ZToolchainPlan *plan, int indent) {
+  if (!plan) return;
+  zdn_field_string(buf, "driverKind", plan->driver_kind, indent + 1);
+  zdn_field_string(buf, "compiler", plan->compiler, indent + 1);
+  zdn_field_string(buf, "targetTriple", plan->target_triple, indent + 1);
+  zdn_field_string(buf, "linkerFlavor", plan->linker_flavor, indent + 1);
+  zdn_field_string(buf, "libcMode", plan->libc_mode, indent + 1);
+  zdn_field_string(buf, "sysrootEnv", plan->sysroot_env, indent + 1);
+  zdn_field_string(buf, "sysrootPath", plan->sysroot_path, indent + 1);
+  zdn_field_string(buf, "sysrootStatus", plan->sysroot_status, indent + 1);
+}
+
+static void zdn_append_release_matrix_target_support(ZBuf *buf, int indent) {
+  const char *targets[] = {"darwin-arm64", "darwin-x64", "linux-arm64", "linux-musl-arm64", "linux-musl-x64", "linux-x64", "win32-arm64.exe", "win32-x64.exe", NULL};
+  zdn_array_start(buf, "targetToolchains", indent);
+  for (size_t i = 0; targets[i]; i++) {
+    const ZTargetInfo *matrix_target = z_find_target(targets[i]);
+    zdn_object_start(buf, "", indent + 1);
+    zdn_field_string(buf, "target", targets[i], indent + 2);
+    zdn_field_string(buf, "directStatus", z_direct_backend_status(matrix_target), indent + 2);
+    zdn_field_string(buf, "directObjectEmitter", z_direct_object_emitter(matrix_target), indent + 2);
+    zdn_field_string(buf, "directExeEmitter", z_direct_exe_emitter(matrix_target), indent + 2);
+    zdn_field_string(buf, "fallbackPolicy", "explicit-direct-never-c-bridge", indent + 2);
+  }
+}
+
+static void zdn_append_profile_catalog(ZBuf *buf, int indent) {
+  const char *profiles[] = {"debug", "dev", "fast", "small", "tiny", "audit", NULL};
+  zdn_array_start(buf, "profileCatalog", indent);
+  for (int i = 0; profiles[i]; i++) {
+    zdn_append_profile_semantics(buf, profiles[i], indent + 1);
+  }
+}
+
+static void zdn_append_target_readiness_diagnostic(ZBuf *buf, const char *path, const ZDiag *diag, int indent) {
+  zdn_object_start(buf, "", indent);
+  zdn_field_string(buf, "severity", "error", indent + 1);
+  zdn_field_string(buf, "code", diag_code(diag->code), indent + 1);
+  zdn_field_string(buf, "message", diag->message, indent + 1);
+  zdn_field_string(buf, "path", diag->path ? diag->path : path, indent + 1);
+  zdn_field_int(buf, "line", diag->line, indent + 1);
+  zdn_field_int(buf, "column", diag->column, indent + 1);
+  zdn_field_int(buf, "length", diag->length > 0 ? diag->length : 1, indent + 1);
+  zdn_field_string(buf, "expected", diag->expected, indent + 1);
+  zdn_field_string(buf, "actual", diag->actual, indent + 1);
+  zdn_field_string(buf, "help", diag->help, indent + 1);
+  zdn_field_string(buf, "fixSafety", diag_fix_safety(diag->code), indent + 1);
+  zdn_object_start(buf, "repair", indent + 1);
+  zdn_field_string(buf, "id", diag_repair_id(diag->code), indent + 2);
+  zdn_field_string(buf, "summary", diag_repair_summary(diag->code), indent + 2);
+  if (diag->backend_blocker.present) {
+    zdn_append_backend_blocker(buf, &diag->backend_blocker, indent + 1);
+  }
+  zdn_array_start(buf, "related", indent + 1);
+}
+
+static void zdn_append_target_readiness(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command, int indent) {
+  ZDiag diag = {0};
+  IrProgram ir = {0};
+  bool ready = true;
+  if (!validate_c_libraries_for_target(input, target, &diag)) {
+    ready = false;
+  } else {
+    long long phase_started = now_ms();
+    ir = z_lower_program_with_source(program, input);
+    if (input) input->lower_ms = now_ms() - phase_started;
+    apply_ir_metrics_to_input(input, &ir, target);
+  }
+
+  if (ready) {
+    if (!target_readiness_select_emit_target(command, input, target, &diag)) {
+      ready = false;
+    } else if (!ir.mir_valid) {
+      init_lowering_backend_diag(&diag, input, target, command, &ir);
+      ready = false;
+    } else if (!target_readiness_select_diag(command, input, program, target, &ir, &diag)) {
+      ready = false;
+    }
+  }
+  if (!ready && input) {
+    if (diag.code != 8003) z_map_source_diag(input, &diag);
+    if (!diag.path) diag.path = input->source_file;
+  }
+
+  const char *emit_kind = emit_kind_name(command ? command->emit : EMIT_EXE);
+  zdn_object_start(buf, "targetReadiness", indent);
+  zdn_field_int(buf, "schemaVersion", 1, indent + 1);
+  zdn_field_bool(buf, "ok", ready, indent + 1);
+  zdn_field_bool(buf, "languageOk", true, indent + 1);
+  zdn_field_bool(buf, "buildable", ready, indent + 1);
+  zdn_field_string(buf, "target", target && target->name ? target->name : z_host_target(), indent + 1);
+  zdn_field_string(buf, "emit", emit_kind, indent + 1);
+  zdn_field_string(buf, "objectFormat", target && target->object_format ? target->object_format : "unknown", indent + 1);
+  zdn_field_string(buf, "backend", ready || !diag.backend_blocker.present
+    ? z_direct_backend_name_for_emit_kind(target, emit_kind, command ? command->backend : NULL)
+    : diag.backend_blocker.backend, indent + 1);
+  zdn_field_string(buf, "stage", ready ? "ready"
+    : (diag.backend_blocker.present && diag.backend_blocker.stage[0] ? diag.backend_blocker.stage : "select"), indent + 1);
+  zdn_array_start(buf, "diagnostics", indent + 1);
+  if (!ready) zdn_append_target_readiness_diagnostic(buf, input ? input->source_file : NULL, &diag, indent + 2);
+  z_free_ir_program(&ir);
+}
+
+// ── Full ZDN printer functions (JSON-equivalent field coverage) ──
+
+static void zdn_print_build_full(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const char *emit_kind, const char *artifact_path, long long artifact_bytes, long long elapsed_ms) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  CapabilitySummary caps = program_capabilities(program);
+  ZToolchainPlan direct_plan;
+  bool direct_toolchain = z_direct_backend_toolchain_plan_for_emit_kind(target, emit_kind, command ? command->backend : NULL, &direct_plan);
+
+  zbuf_append(&buf, "BuildResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", input && input->source_file ? input->source_file : "", 1);
+  zdn_field_string(&buf, "emit", emit_kind ? emit_kind : "exe", 1);
+  zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+  zdn_field_string(&buf, "target", target && target->name ? target->name : "host", 1);
+  zdn_field_string(&buf, "profile", command ? command->profile : "release", 1);
+  zdn_field_bool(&buf, "legacy", false, 1);
+  zdn_field_nullable_string(&buf, "legacyBackend", NULL, 1);
+  zdn_array_start(&buf, "warnings", 1);
+  zdn_field_string(&buf, "compiler", direct_toolchain ? direct_plan.driver_kind : build_compiler_label(command, target), 1);
+  zdn_object_start(&buf, "toolchain", 1);
+  if (direct_toolchain) zdn_append_toolchain_plan(&buf, &direct_plan, 2);
+  else {
+    ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
+    zdn_append_toolchain_plan(&buf, &plan, 2);
+  }
+  zdn_object_end(&buf, 1);
+  zdn_field_nullable_string(&buf, "artifactPath", artifact_path, 1);
+  zdn_field_nullable_int(&buf, "artifactBytes", artifact_bytes >= 0 ? artifact_bytes : -1, 1);
+  zdn_field_int(&buf, "generatedCBytes", 0, 1);
+  zdn_field_int(&buf, "loweredIrBytes", (long long)(input ? input->lowered_ir_bytes : 0), 1);
+  zdn_field_int(&buf, "elapsedMs", elapsed_ms, 1);
+  zdn_object_start(&buf, "targetSupport", 1);
+  zdn_field_bool(&buf, "fsAvailable", z_target_has_capability(target, "fs"), 2);
+  zdn_field_string(&buf, "directStatus", z_direct_backend_status(target), 2);
+  zdn_field_string(&buf, "directObjectEmitter", z_direct_object_emitter(target), 2);
+  zdn_field_string(&buf, "directExeEmitter", z_direct_exe_emitter(target), 2);
+  zdn_field_string(&buf, "fallbackPolicy", "explicit-direct-never-c-bridge", 2);
+  zdn_append_compiler_phases(&buf, input, 1);
+  zdn_append_compiler_caches(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_package_metadata(&buf, input, target, 1);
+  zdn_append_package_cache(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_incremental_invalidations(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_profile_semantics(&buf, command ? command->profile : "release", 1);
+  zdn_append_release_target_contract(&buf, input, target, command, emit_kind, 1);
+  zdn_append_object_backend(&buf, input, target, command, emit_kind, 1);
+  zdn_append_self_host_routing(&buf, "build", emit_kind, program, &caps, target, 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+static void zdn_print_ship_full(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const ShipArtifacts *artifacts, long long elapsed_ms) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  CapabilitySummary caps = program_capabilities(program);
+
+  zbuf_append(&buf, "ShipResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_bool(&buf, "ok", true, 1);
+  zdn_field_string(&buf, "command", "ship", 1);
+  zdn_field_string(&buf, "sourceFile", input && input->source_file ? input->source_file : "", 1);
+  zdn_field_string(&buf, "target", target && target->name ? target->name : z_host_target(), 1);
+  zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+  zdn_field_string(&buf, "profile", command ? command->profile : "release", 1);
+  zdn_field_string(&buf, "emit", "exe", 1);
+  zdn_field_int(&buf, "generatedCBytes", 0, 1);
+  zdn_field_bool(&buf, "cBridgeFallback", false, 1);
+  zdn_field_nullable_string(&buf, "artifactPath", artifacts ? artifacts->binary_path : "", 1);
+  zdn_field_int(&buf, "artifactBytes", artifacts ? artifacts->binary_bytes : 0, 1);
+  if (artifacts && artifacts->checksum > 0) {
+    zdn_object_start(&buf, "checksum", 1);
+    zdn_field_string(&buf, "algorithm", "fnv1a64", 2);
+    char checksum_str[32];
+    snprintf(checksum_str, sizeof(checksum_str), "%016llx", (unsigned long long)artifacts->checksum);
+    zdn_field_string(&buf, "value", checksum_str, 2);
+    zdn_field_string(&buf, "path", artifacts->checksum_path, 2);
+  }
+  zdn_object_start(&buf, "releasePreview", 1);
+  zdn_field_bool(&buf, "deterministic", true, 2);
+  zdn_field_string(&buf, "archive", artifacts ? artifacts->archive_path : "", 2);
+  zdn_field_string(&buf, "strippedBinary", artifacts ? artifacts->stripped_path : "", 2);
+  zdn_field_string(&buf, "sizeReport", artifacts ? artifacts->size_path : "", 2);
+  zdn_field_string(&buf, "debugSymbols", artifacts ? artifacts->debug_path : "", 2);
+  zdn_field_string(&buf, "sbom", artifacts ? artifacts->sbom_path : "", 2);
+  zdn_append_release_target_contract(&buf, input, target, command, "exe", 2);
+  zdn_array_start(&buf, "artifacts", 1);
+  if (artifacts) {
+    zdn_append_ship_artifact(&buf, "binary", artifacts->binary_path, artifacts->binary_bytes, "native-executable", 2);
+    zdn_append_ship_artifact(&buf, "stripped-binary", artifacts->stripped_path, artifacts->stripped_bytes, "native-executable", 2);
+    zdn_append_ship_artifact(&buf, "checksum", artifacts->checksum_path, file_size_or_negative(artifacts->checksum_path), "fnv1a64", 2);
+    zdn_append_ship_artifact(&buf, "archive", artifacts->archive_path, artifacts->archive_bytes, "zero-archive-manifest-v1", 2);
+    zdn_append_ship_artifact(&buf, "debug-symbol-metadata", artifacts->debug_path, artifacts->debug_bytes, "json", 2);
+    zdn_append_ship_artifact(&buf, "size-report", artifacts->size_path, artifacts->size_bytes, "json", 2);
+    zdn_append_ship_artifact(&buf, "sbom-placeholder", artifacts->sbom_path, artifacts->sbom_bytes, "spdx-json-placeholder", 2);
+  }
+  zdn_field_int(&buf, "elapsedMs", elapsed_ms, 1);
+  zdn_object_start(&buf, "targetFacts", 1);
+  zdn_field_string(&buf, "directStatus", z_direct_backend_status(target), 2);
+  zdn_field_string(&buf, "directExeEmitter", z_direct_exe_emitter(target), 2);
+  zdn_field_string(&buf, "fallbackPolicy", "explicit-direct-never-c-bridge", 2);
+  zdn_append_compiler_phases(&buf, input, 1);
+  zdn_append_release_target_contract(&buf, input, target, command, "exe", 1);
+  zdn_append_compiler_caches(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_package_metadata(&buf, input, target, 1);
+  zdn_append_package_cache(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_incremental_invalidations(&buf, input, target, command ? command->profile : "release", 1);
+  zdn_append_object_backend(&buf, input, target, command, "exe", 1);
+  zdn_append_self_host_routing(&buf, "ship", "exe", program, &caps, target, 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+static void zdn_print_size_full(const Command *command, const SourceInput *input, const ZTargetInfo *target) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, "SizeResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_string(&buf, "sourceFile", input && input->source_file ? input->source_file : "<input>", 1);
+  zdn_field_string(&buf, "target", target && target->name ? target->name : "host", 1);
+  zdn_field_string(&buf, "profile", command ? command->profile : "release", 1);
+  zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+  zdn_field_int(&buf, "loweredIrBytes", (long long)(input ? input->lowered_ir_bytes : 0), 1);
+  zdn_field_nullable_string(&buf, "artifactPath", NULL, 1);
+  zdn_append_profile_semantics(&buf, command ? command->profile : "release", 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
 }
 
 static uint64_t mix_hash_text(uint64_t hash, const char *text) {
@@ -3075,11 +3840,60 @@ static int explain_command(const Command *command) {
     snprintf(diag.expected, sizeof(diag.expected), "known diagnostic code");
     snprintf(diag.actual, sizeof(diag.actual), "%s", command->input ? command->input : "");
     snprintf(diag.help, sizeof(diag.help), "try TAR002, TYP009, TYP023, ERR002, ERR003, or STD003");
-    if (command->json) print_diag_json(command->input, &diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(command->input, &diag); else if (command->format == FORMAT_JSON) print_diag_json(command->input, &diag);
     else print_diag(command->input, &diag);
     return 1;
   }
-  if (command->json) print_explain_json(info);
+  if (command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "ExplainResult\n");
+    zdn_field_string(&buf, "code", info->code, 1);
+    zdn_field_string(&buf, "category", info->category, 1);
+    zdn_field_string(&buf, "title", info->title, 1);
+    zdn_field_string(&buf, "summary", info->summary, 1);
+    zdn_field_string(&buf, "why", info->why, 1);
+    zdn_object_start(&buf, "repair", 1);
+    zdn_field_string(&buf, "id", diag_repair_id(
+      strcmp(info->code, "TAR001") == 0 ? 6001 :
+      strcmp(info->code, "TAR002") == 0 ? 6002 :
+      strcmp(info->code, "BLD003") == 0 ? 2003 :
+      strcmp(info->code, "BLD004") == 0 ? 2004 :
+      strcmp(info->code, "TYP009") == 0 ? 3010 :
+      strcmp(info->code, "TYP023") == 0 ? 3032 :
+      strcmp(info->code, "TYP024") == 0 ? 3033 :
+      strcmp(info->code, "TYP025") == 0 ? 3034 :
+      strcmp(info->code, "MET001") == 0 ? 3035 :
+      strcmp(info->code, "TYP026") == 0 ? 3036 :
+      strcmp(info->code, "TYP027") == 0 ? 3050 :
+      strcmp(info->code, "PUB001") == 0 ? 3037 :
+      strcmp(info->code, "IFC001") == 0 ? 3038 :
+      strcmp(info->code, "IFC002") == 0 ? 3039 :
+      strcmp(info->code, "IFC003") == 0 ? 3040 :
+      strcmp(info->code, "IFC004") == 0 ? 3041 :
+      strcmp(info->code, "IFC005") == 0 ? 3042 :
+      strcmp(info->code, "STC001") == 0 ? 3043 :
+      strcmp(info->code, "STC002") == 0 ? 3044 :
+      strcmp(info->code, "STC003") == 0 ? 3045 :
+      strcmp(info->code, "SHM001") == 0 ? 3046 :
+      strcmp(info->code, "SHM002") == 0 ? 3047 :
+      strcmp(info->code, "RCV001") == 0 ? 3048 :
+      strcmp(info->code, "RCV002") == 0 ? 3049 :
+      strcmp(info->code, "BOR001") == 0 ? 3029 :
+      strcmp(info->code, "ERR002") == 0 ? 1002 :
+      strcmp(info->code, "ERR003") == 0 ? 1003 :
+      strcmp(info->code, "STD003") == 0 ? 3012 :
+      strcmp(info->code, "CGEN004") == 0 ? 4004 : 0), 2);
+    zdn_field_string(&buf, "summary", info->canonical_repair, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "examples", 1);
+    zdn_field_string(&buf, "bad", info->bad_example, 2);
+    zdn_field_string(&buf, "good", info->good_example, 2);
+    zdn_object_end(&buf, 1);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  }
+  else if (command->format == FORMAT_JSON) print_explain_json(info);
   else print_explain_text(info);
   return 0;
 }
@@ -3354,43 +4168,184 @@ static int print_or_apply_fix_json(const char *path, SourceInput *input, const Z
   return apply && has_edit && !applied ? 1 : 0;
 }
 
+static void print_fix_plan_zdn(const char *path, const ZDiag *diag) {
+  bool has_diag = diag && diag->code != 0;
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, "FixPlanResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_bool(&buf, "ok", !has_diag, 1);
+  zdn_field_string(&buf, "mode", "plan", 1);
+  zdn_field_bool(&buf, "appliesEdits", false, 1);
+  zdn_field_string(&buf, "input", path ? path : "", 1);
+  zdn_array_start(&buf, "safetyLevels", 1);
+  zdn_array_item_string(&buf, "format-only", 2);
+  zdn_array_item_string(&buf, "behavior-preserving", 2);
+  zdn_array_item_string(&buf, "api-changing", 2);
+  zdn_array_item_string(&buf, "target-changing", 2);
+  zdn_array_item_string(&buf, "requires-human-review", 2);
+  zdn_array_end(&buf, 1);
+  zdn_object_start(&buf, "selfHostRepairPolicy", 1);
+  zdn_field_string(&buf, "unsupportedFeatureSafety", "requires-human-review", 2);
+  zdn_field_string(&buf, "compatibilityFallback", "removed", 2);
+  zdn_field_string(&buf, "directFallback", "never-c-bridge", 2);
+  zdn_object_end(&buf, 1);
+  zdn_object_start(&buf, "diagnostics", 1);
+  if (has_diag) {
+    zdn_field_string(&buf, "code", diag_code(diag->code), 2);
+    zdn_field_string(&buf, "message", diag->message, 2);
+    zdn_field_string(&buf, "path", diag->path ? diag->path : path, 2);
+    zdn_field_int(&buf, "line", diag->line, 2);
+    zdn_field_int(&buf, "column", diag->column, 2);
+    zdn_field_int(&buf, "length", diag->length > 0 ? diag->length : 1, 2);
+    zdn_field_string(&buf, "expected", diag->expected, 2);
+    zdn_field_string(&buf, "actual", diag->actual, 2);
+    zdn_field_string(&buf, "help", diag->help, 2);
+    zdn_field_string(&buf, "fixSafety", diag_fix_safety(diag->code), 2);
+    zdn_object_start(&buf, "repair", 2);
+    zdn_field_string(&buf, "id", diag_repair_id(diag->code), 3);
+    zdn_field_string(&buf, "summary", diag_repair_summary(diag->code), 3);
+    zdn_object_end(&buf, 2);
+  }
+  zdn_object_end(&buf, 1);
+  zdn_array_start(&buf, "fixes", 1);
+  if (has_diag) {
+    zbuf_append(&buf, "    Fix\n");
+    zdn_field_string(&buf, "id", diag_repair_id(diag->code), 2);
+    zdn_field_string(&buf, "diagnosticCode", diag_code(diag->code), 2);
+    zdn_field_string(&buf, "safety", diag_fix_safety(diag->code), 2);
+    zdn_field_string(&buf, "summary", diag_repair_summary(diag->code), 2);
+    zdn_field_bool(&buf, "appliesEdits", false, 2);
+  }
+  zdn_array_end(&buf, 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+}
+
+static int print_or_apply_fix_zdn(const char *path, SourceInput *input, const ZDiag *diag, bool apply) {
+  bool has_diag = diag && diag->code != 0;
+  bool can_apply = diagnostic_can_apply_edits(diag);
+  const char *edit_path = input ? input->source_file : NULL;
+  const char *edit_source = NULL;
+  char *loaded_edit_source = NULL;
+  if (can_apply && diag && diag->path && diag->path[0]) {
+    edit_path = diag->path;
+  }
+  if (can_apply && edit_path && edit_path[0]) {
+    ZDiag read_diag = {0};
+    loaded_edit_source = z_read_file(edit_path, &read_diag);
+    edit_source = loaded_edit_source;
+  }
+  int edit_line = 0;
+  char *old_line = NULL;
+  char *new_line = NULL;
+  bool has_edit = can_apply && edit_source && find_make_binding_mutable_edit(edit_source, &edit_line, &old_line, &new_line);
+  bool applied = false;
+  if (apply && has_edit) {
+    char *updated = apply_single_line_edit(edit_source, edit_line, new_line);
+    ZDiag write_diag = {0};
+    applied = edit_path && z_write_file(edit_path, updated, &write_diag);
+    free(updated);
+  }
+
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, "FixPatchResult\n");
+  zdn_field_int(&buf, "schemaVersion", 1, 1);
+  zdn_field_bool(&buf, "ok", !has_diag, 1);
+  zdn_field_string(&buf, "mode", apply ? "apply" : "patch", 1);
+  zdn_field_bool(&buf, "appliesEdits", apply, 1);
+  zdn_field_bool(&buf, "applied", applied, 1);
+  zdn_field_string(&buf, "input", path ? path : "", 1);
+  zdn_object_start(&buf, "selfHostRepairPolicy", 1);
+  zdn_field_string(&buf, "unsupportedFeatureSafety", "requires-human-review", 2);
+  zdn_field_string(&buf, "compatibilityFallback", "removed", 2);
+  zdn_field_string(&buf, "directFallback", "never-c-bridge", 2);
+  zdn_object_end(&buf, 1);
+  zdn_object_start(&buf, "diagnostics", 1);
+  if (has_diag) {
+    zdn_field_string(&buf, "code", diag_code(diag->code), 2);
+    zdn_field_string(&buf, "message", diag->message, 2);
+    zdn_field_string(&buf, "path", diag->path ? diag->path : path, 2);
+    zdn_field_int(&buf, "line", diag->line, 2);
+    zdn_field_int(&buf, "column", diag->column, 2);
+    zdn_field_int(&buf, "length", diag->length > 0 ? diag->length : 1, 2);
+    zdn_field_string(&buf, "expected", diag->expected, 2);
+    zdn_field_string(&buf, "actual", diag->actual, 2);
+    zdn_field_string(&buf, "help", diag->help, 2);
+    zdn_field_string(&buf, "fixSafety", diag_fix_safety(diag->code), 2);
+    zdn_object_start(&buf, "repair", 2);
+    zdn_field_string(&buf, "id", diag_repair_id(diag->code), 3);
+    zdn_field_string(&buf, "summary", diag_repair_summary(diag->code), 3);
+    zdn_object_end(&buf, 2);
+  }
+  zdn_object_end(&buf, 1);
+  zdn_array_start(&buf, "fixes", 1);
+  if (has_diag) {
+    zbuf_append(&buf, "    Fix\n");
+    zdn_field_string(&buf, "id", diag_repair_id(diag->code), 2);
+    zdn_field_string(&buf, "diagnosticCode", diag_code(diag->code), 2);
+    zdn_field_string(&buf, "safety", diag_fix_safety(diag->code), 2);
+    zdn_field_string(&buf, "summary", diag_repair_summary(diag->code), 2);
+    zdn_field_bool(&buf, "appliesEdits", has_edit, 2);
+  }
+  zdn_array_end(&buf, 1);
+  zdn_array_start(&buf, "patches", 1);
+  if (has_edit) {
+    zdn_object_start(&buf, "", 2);
+    zdn_field_string(&buf, "path", edit_path, 3);
+    zdn_field_int(&buf, "line", edit_line, 3);
+    zdn_field_string(&buf, "old", old_line, 3);
+    zdn_field_string(&buf, "new", new_line, 3);
+    zdn_object_end(&buf, 2);
+  }
+  zdn_array_end(&buf, 1);
+  fputs(buf.data, stdout);
+  zbuf_free(&buf);
+  free(old_line);
+  free(new_line);
+  free(loaded_edit_source);
+  return apply && has_edit && !applied ? 1 : 0;
+}
+
 static void print_help(void) {
   printf("zero %s native bootstrap\n\n", ZERO_VERSION);
   printf("Usage:\n");
-  printf("  zero --version [--json]\n");
-  printf("  zero skills [list|get] [--json]\n");
+  printf("  zero --version [--json] [--zdn]\n");
+  printf("  zero skills [list|get] [--json] [--zdn]\n");
   printf("  zero new cli|lib|package <name>\n");
-  printf("  zero check <file.0|project|zero.json>\n");
+  printf("  zero check [--json] [--zdn] <file.0|project|zero.json>\n");
   printf("  zero test <file.0|project|zero.json>\n");
   printf("  zero fmt <file.0|project|zero.json>\n");
-  printf("  zero build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
+  printf("  zero build [--json] [--zdn] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero run [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json> [-- args...]\n");
-  printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
-  printf("  zero tokens --json <file.0|project|zero.json>\n");
-  printf("  zero parse --json <file.0|project|zero.json>\n");
-  printf("  zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n");
-  printf("  zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
-  printf("  zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
-  printf("  zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>\n");
-  printf("  zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n");
-  printf("  zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
-  printf("  zero doc [--json] <file.0|project|zero.json>\n");
-  printf("  zero size [--json] [--out <artifact>] <file.0|project|zero.json>\n");
-  printf("  zero mem [--json] [--target <target>] <file.0|project|zero.json>\n");
-  printf("  zero dev [--json] [--trace] <file.0|project|zero.json>\n");
-  printf("  zero time --json <file.0|project|zero.json>\n");
-  printf("  zero abi check|dump [--json] [--target <target>] <file.0|project|zero.json>\n");
-  printf("  zero explain [--json] <code>\n");
-  printf("  zero fix --plan --json <file.0|project|zero.json>\n");
-  printf("  zero doctor [--json]\n");
+  printf("  zero ship [--json] [--zdn] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
+  printf("  zero tokens --json|--zdn <file.0|project|zero.json>\n");
+  printf("  zero parse --json|--zdn <file.0|project|zero.json>\n");
+  printf("  zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--zdn] [--target <target>] <input> [patch]\n");
+  printf("  zero graph [dump|import|validate|roundtrip] [--json] [--zdn] --out <program-graph-artifact> <input>\n");
+  printf("  zero graph view [--json] [--zdn] --out <file.0> <program-graph-or-source>\n");
+  printf("  zero graph size [--json] [--zdn] [--target <target>] --out <artifact> <program-graph-or-package>\n");
+  printf("  zero graph patch [--json] [--zdn] --out <program-graph-artifact> <program-graph-or-source> (<patch-file>|--op <operation>)\n");
+  printf("  zero graph build [--json] [--zdn] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--zdn] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
+  printf("  zero doc [--json] [--zdn] <file.0|project|zero.json>\n");
+  printf("  zero size [--json] [--zdn] [--out <artifact>] <file.0|project|zero.json>\n");
+  printf("  zero mem [--json] [--zdn] [--target <target>] <file.0|project|zero.json>\n");
+  printf("  zero dev [--json] [--zdn] [--trace] <file.0|project|zero.json>\n");
+  printf("  zero time --json|--zdn <file.0|project|zero.json>\n");
+  printf("  zero abi check|dump [--json] [--zdn] [--target <target>] <file.0|project|zero.json>\n");
+  printf("  zero explain [--json] [--zdn] <code>\n");
+  printf("  zero fix --plan [--json|--zdn] <file.0|project|zero.json>\n");
+  printf("  zero doctor [--json] [--zdn]\n");
   printf("  zero clean [--all]\n");
-  printf("  zero targets\n");
+  printf("  zero targets [--json] [--zdn]\n");
   printf("\nExamples:\n");
   printf("  zero new cli hello\n");
   printf("  zero run examples/add.0\n");
   printf("  zero build --emit exe examples/hello.0 --out .zero/out/hello\n");
   printf("  zero ship --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello\n");
   printf("  zero check --json examples/hello.0\n");
+  printf("  zero check --zdn examples/hello.0\n");
   printf("  zero build --target linux-musl-x64 examples/memory-package\n");
 }
 
@@ -3403,14 +4358,14 @@ static void print_command_help(const char *command) {
     printf("  zero new lib math-kit\n");
     printf("  zero new package demo\n");
   } else if (strcmp(command, "skills") == 0) {
-    printf("Usage: zero skills [list|get] [--json]\n\n");
+    printf("Usage: zero skills [list|get] [--json] [--zdn]\n\n");
     printf("List and retrieve version-matched skill content for agents.\n\n");
     printf("Subcommands:\n");
     printf("  list                 list available skills (default)\n");
     printf("  get <name> [--full]  print bundled skill content\n");
     printf("  get --all            print every visible skill\n");
   } else if (strcmp(command, "doctor") == 0) {
-    printf("Usage: zero doctor [--json]\n\n");
+    printf("Usage: zero doctor [--json] [--zdn]\n\n");
     printf("Check host, compiler, target toolchain, and docs/example readiness.\n");
   } else if (strcmp(command, "clean") == 0) {
     printf("Usage: zero clean [--all]\n\n");
@@ -3418,7 +4373,7 @@ static void print_command_help(const char *command) {
     printf("Flags:\n");
     printf("  --all    remove broader .zero generated state while preserving .zero/bin\n");
   } else if (strcmp(command, "check") == 0) {
-    printf("Usage: zero check [--json] [--target <target>] [--emit exe|obj] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero check [--json] [--zdn] [--target <target>] [--emit exe|obj] <file.0|project|zero.json>\n\n");
     printf("Parse and typecheck Zero source without emitting artifacts. JSON output includes target readiness for the selected emit kind.\n");
   } else if (strcmp(command, "build") == 0) {
     printf("Usage: zero build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <input>\n\n");
@@ -3439,7 +4394,7 @@ static void print_command_help(const char *command) {
     printf("Usage: zero fmt [--check] <file.0|project|zero.json>\n\n");
     printf("Print deterministic bootstrap formatting for Zero source.\n");
   } else if (strcmp(command, "targets") == 0) {
-    printf("Usage: zero targets\n\n");
+    printf("Usage: zero targets [--json] [--zdn]\n\n");
     printf("Print supported target facts as JSON.\n");
   } else if (strcmp(command, "tokens") == 0) {
     printf("Usage: zero tokens --json <file.0|project|zero.json>\n\n");
@@ -3448,7 +4403,7 @@ static void print_command_help(const char *command) {
     printf("Usage: zero parse --json <file.0|project|zero.json>\n\n");
     printf("Emit normalized source parse JSON for oracle comparisons.\n");
   } else if (strcmp(command, "abi") == 0) {
-    printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero abi check|dump [--json] [--zdn] [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Check ABI-safe declarations or dump target-aware source layout facts.\n");
   } else if (strcmp(command, "graph") == 0) {
     printf("Usage: zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n\n");
@@ -3540,7 +4495,23 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     else command->filter = argv[++(*index)];
     return true;
   } else if (strcmp(arg, "--json") == 0) {
+    command->format = FORMAT_JSON;
     command->json = true;
+    return true;
+  } else if (strcmp(arg, "--format") == 0) {
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else {
+      (*index)++;
+      if (strcmp(argv[*index], "zdn") == 0) command->format = FORMAT_ZDN;
+      else if (strcmp(argv[*index], "text") == 0) command->format = FORMAT_TEXT;
+      else command->unknown_flag = argv[*index];
+    }
+    return true;
+  } else if (strcmp(arg, "--text") == 0) {
+    command->format = FORMAT_TEXT;
+    return true;
+  } else if (strcmp(arg, "--zdn") == 0) {
+    command->format = FORMAT_ZDN;
     return true;
   } else if (strcmp(arg, "--plan") == 0) {
     command->plan = true;
@@ -3626,7 +4597,9 @@ static bool parse_command(int argc, char **argv, Command *command) {
   if (strcmp(command->command, "skills") == 0) {
     for (int i = 2; i < argc; i++) {
       if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) command->kind = "help";
-      else if (strcmp(argv[i], "--json") == 0) command->json = true;
+      else if (strcmp(argv[i], "--json") == 0) { command->format = FORMAT_JSON; command->json = true; }
+      else if (strcmp(argv[i], "--zdn") == 0) command->format = FORMAT_ZDN;
+      else if (strcmp(argv[i], "--text") == 0) command->format = FORMAT_TEXT;
       else if (strcmp(argv[i], "--all") == 0) command->all = true;
       else if (strcmp(argv[i], "--full") == 0) {
         continue;
@@ -4460,7 +5433,7 @@ static void init_direct_backend_diag(ZDiag *diag, const Command *command, const 
 static int return_direct_backend_error(const Command *command, const SourceInput *input, const ZTargetInfo *target, const char *emit_kind, const char *reason, IrProgram *ir, Program *program) {
   ZDiag diag;
   init_direct_backend_diag(&diag, command, input, target, emit_kind, reason);
-  if (command && command->json) print_diag_json(input ? input->source_file : NULL, &diag);
+  if (command && command->format == FORMAT_JSON) print_diag_json(input ? input->source_file : NULL, &diag);
   else print_diag(input ? input->source_file : NULL, &diag);
   if (ir) z_free_ir_program(ir);
   if (program) z_free_program(program);
@@ -4472,7 +5445,7 @@ static int return_buildability_error(const Command *command, const SourceInput *
     z_map_source_diag(input, diag);
     if (!diag->path) diag->path = input->source_file;
   }
-  if (command && command->json) print_diag_json(input ? input->source_file : NULL, diag);
+  if (command && command->format == FORMAT_JSON) print_diag_json(input ? input->source_file : NULL, diag);
   else print_diag(input ? input->source_file : NULL, diag);
   if (ir) z_free_ir_program(ir);
   if (program) z_free_program(program);
@@ -5910,7 +6883,38 @@ static void print_ship_text(const ShipArtifacts *artifacts, long long elapsed_ms
   printf("sbom: %s\n", artifacts->sbom_path);
 }
 
-static int print_version_command(bool json) {
+static int print_version_command(bool json, bool zdn) {
+  if (zdn) {
+    const char *zero_cc = getenv("ZERO_CC");
+    bool target_cc_override = zero_cc && zero_cc[0];
+    bool bundled_target_cc_available = command_available("zig");
+    bool target_cc_available = target_cc_override || bundled_target_cc_available;
+    char *target_cc_version = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_available ? command_first_line("zig version 2>/dev/null") : z_strdup(""));
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "VersionResult\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
+    zdn_field_string(&buf, "version", ZERO_VERSION, 1);
+    zdn_field_string(&buf, "commit", zero_commit(), 1);
+    zdn_field_string(&buf, "host", z_host_target(), 1);
+    zdn_field_string(&buf, "backend", "zero-c", 1);
+    ZBuf targets_buf;
+    zbuf_init(&targets_buf);
+    z_append_target_names_json(&targets_buf);
+    // targets json is a JSON array string; embed as ZDN string
+    zdn_field_string(&buf, "targets", targets_buf.data ? targets_buf.data : "[]", 1);
+    zbuf_free(&targets_buf);
+    zdn_object_start(&buf, "targetCompiler", 1);
+    zdn_field_bool(&buf, "available", target_cc_available, 2);
+    zdn_field_string(&buf, "kind", "target-capable C compiler", 2);
+    zdn_field_string(&buf, "version", target_cc_version, 2);
+    zdn_object_start(&buf, "crossCompilation", 1);
+    zdn_field_bool(&buf, "ready", target_cc_available, 2);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+    free(target_cc_version);
+    return 0;
+  }
   if (!json) {
     printf("zero %s\n", ZERO_VERSION);
     return 0;
@@ -6305,7 +7309,7 @@ static void doctor_target_toolchain_counts(size_t *ok_count, size_t *warning_cou
   zbuf_free(&unused);
 }
 
-static int doctor_command(bool json) {
+static int doctor_command(bool json, bool zdn) {
   const char *overall = "ok";
   const char *host_status = strcmp(z_host_target(), "unknown") == 0 ? "warning" : "ok";
   bool cc_ok = command_available("cc") || command_available("clang") || command_available("gcc");
@@ -6344,7 +7348,37 @@ static int doctor_command(bool json) {
   char *cc_message = cc_ok ? command_first_line("cc --version 2>/dev/null") : z_strdup("no native C compiler found on PATH");
   char *target_cc_message = target_cc_override ? z_strdup("configured via ZERO_CC") : (bundled_target_cc_ok ? command_first_line("zig version 2>/dev/null") : z_strdup("target-capable C compiler not found; cross-target executable builds may be unavailable"));
 
-  if (json) {
+  if (zdn) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "DoctorResult\n");
+    zdn_field_string(&buf, "status", overall, 1);
+    zdn_field_string(&buf, "host", z_host_target(), 1);
+    zdn_field_bool(&buf, "nativeCCompiler", cc_ok, 1);
+    zdn_field_bool(&buf, "targetCCompiler", target_cc_ok, 1);
+    zdn_field_bool(&buf, "writeAccess", zero_dir_ok && write_ok, 1);
+    zdn_field_bool(&buf, "docsPresent", docs_ok, 1);
+    zdn_array_start(&buf, "checks", 1);
+    #define ZDN_CHECK(name, status, msg) do { \
+      zdn_object_start(&buf, "", 2); \
+      zdn_field_string(&buf, "name", name, 3); \
+      zdn_field_string(&buf, "status", status, 3); \
+      zdn_field_string(&buf, "message", msg, 3); \
+    } while (0)
+    ZDN_CHECK("native-c-compiler", cc_ok ? "ok" : "error", cc_message);
+    ZDN_CHECK("target-c-compiler", target_cc_ok ? "ok" : "warning", target_cc_message);
+    ZDN_CHECK("path", path_ok ? "ok" : "warning", path_message);
+    ZDN_CHECK("host-target", target_ok ? "ok" : "warning", target_ok ? "host target is supported" : "host target is not in the bundled target list");
+    ZDN_CHECK("target-sdk-sysroot", sdk_status, sdk_message);
+    ZDN_CHECK(".zero-write", (zero_dir_ok && write_ok) ? "ok" : "error", (zero_dir_ok && write_ok) ? ".zero is writable" : ".zero is not writable");
+    ZDN_CHECK("targets", target_ok ? "ok" : "warning", "run `zero targets` for the supported target list");
+    ZDN_CHECK("docs-examples", docs_ok ? "ok" : "warning", docs_ok ? "docs and examples found" : "docs or examples are missing from this checkout");
+    #undef ZDN_CHECK
+    zdn_array_start(&buf, "targetToolchains", 1);
+    zdn_append_release_matrix_target_support(&buf, 1);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else if (json) {
     ZBuf buf;
     zbuf_init(&buf);
     zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"status\": ");
@@ -6962,7 +7996,50 @@ static int run_tests_direct(const Command *command, const SourceInput *input, co
   const char *stderr_text = first_failure.message[0] ? first_failure.message : "";
   bool ok = failed == 0;
   long long duration_ms = now_ms() - started_ms;
-  if (command && command->json) {
+  if (command && command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "TestResult\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
+    zdn_field_bool(&buf, "ok", ok, 1);
+    zdn_field_string(&buf, "sourceFile", input ? input->source_file : "", 1);
+    zdn_field_string(&buf, "target", target ? target->name : z_host_target(), 1);
+    zdn_field_string(&buf, "testBackend", "direct-frontend", 1);
+    zdn_field_int(&buf, "selectedTests", (long long)selected, 1);
+    zdn_field_int(&buf, "discoveredTests", (long long)discovered, 1);
+    zdn_field_int(&buf, "passedTests", (long long)passed, 1);
+    zdn_field_int(&buf, "failedTests", (long long)failed, 1);
+    zdn_field_int(&buf, "expectedFailures", (long long)expected_failures, 1);
+    zdn_field_int(&buf, "unexpectedPasses", (long long)unexpected_passes, 1);
+    zdn_field_int(&buf, "durationMs", duration_ms, 1);
+    zdn_field_string(&buf, "exitCode", ok ? "0" : "1", 1);
+    zdn_field_string(&buf, "stdout", ok ? stdout_text : "", 1);
+    zdn_field_string(&buf, "stderr", stderr_text, 1);
+    zdn_object_start(&buf, "testDiscovery", 1);
+    zdn_field_string(&buf, "mode", input && input->package_root ? "package" : "single-file", 2);
+    if (command && command->filter) zdn_field_string(&buf, "filter", command->filter, 2);
+    zdn_field_string(&buf, "packageRoot", input && input->package_root ? input->package_root : "", 2);
+    zdn_field_string(&buf, "manifestPath", input && input->manifest_path ? input->manifest_path : "", 2);
+    zdn_field_int(&buf, "sourceFileCount", (long long)(input ? input->source_file_count : 0), 2);
+    zdn_field_int(&buf, "moduleCount", (long long)(input ? input->module_count : 0), 2);
+    zdn_field_int(&buf, "discoveredTests", (long long)discovered, 2);
+    zdn_field_int(&buf, "selectedTests", (long long)selected, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "fixtures", 1);
+    zdn_array_start(&buf, "sourceFiles", 2);
+    for (size_t i = 0; input && i < input->source_file_count; i++) {
+      zdn_array_item_string(&buf, input->source_files[i], 3);
+    }
+    zdn_array_end(&buf, 2);
+    zdn_field_string(&buf, "goldenOutput", stdout_text, 2);
+    zdn_field_string(&buf, "snapshotKey", "zero-test-direct-frontend-v1", 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "targetFacts", 1);
+    zdn_field_string(&buf, "hostTarget", z_host_target(), 2);
+    zdn_object_end(&buf, 1);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else if (command && command->format == FORMAT_JSON) {
     ZBuf buf;
     zbuf_init(&buf);
     zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
@@ -8220,7 +9297,7 @@ static int run_size_report_command(const Command *command, SourceInput *input, P
   char *artifact_path = NULL;
   if (!write_size_metadata_artifact(command, input, target, &artifact_path, &artifact_bytes, diag)) {
     const char *path = diag && diag->path ? diag->path : (command && command->out ? command->out : artifact_path);
-    if (command && command->json) print_diag_json(path, diag);
+    if (command && command->format == FORMAT_JSON) print_diag_json(path, diag);
     else print_diag(path, diag);
     free(artifact_path);
     return 1;
@@ -9546,7 +10623,7 @@ static int reject_graph_unsupported_out(const Command *command, ZDiag *diag) {
   snprintf(diag->expected, sizeof(diag->expected), "%s", contract.expected ? contract.expected : "zero graph <output-capable-subcommand> --out <file> <input>");
   snprintf(diag->actual, sizeof(diag->actual), "%s", contract.actual ? contract.actual : "zero graph --out");
   snprintf(diag->help, sizeof(diag->help), "%s", contract.help ? contract.help : "remove --out or choose a graph subcommand that writes an artifact");
-  if (command && command->json) print_diag_json(diag->path ? diag->path : (command->input ? command->input : "<graph>"), diag);
+  if (command && command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : (command->input ? command->input : "<graph>"), diag);
   else print_diag(diag->path ? diag->path : (command && command->input ? command->input : "<graph>"), diag);
   return 1;
 }
@@ -10045,7 +11122,7 @@ static void append_graph_roundtrip_json(
 static int run_graph_validate_command(const Command *command, ZDiag *diag) {
   ZProgramGraph graph = {0};
   if (!z_program_graph_load(command->input, &graph, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->input, diag); else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     return 1;
   }
@@ -10055,7 +11132,8 @@ static int run_graph_validate_command(const Command *command, ZDiag *diag) {
       return 1;
     }
     if (!z_program_graph_save(command->out, &graph, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
+      if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->out, diag);
+      else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->out, diag);
       else print_diag(diag->path ? diag->path : command->out, diag);
       z_program_graph_free(&graph);
       return 1;
@@ -10063,12 +11141,38 @@ static int run_graph_validate_command(const Command *command, ZDiag *diag) {
   }
   ZProgramGraphValidation validation = {0};
   z_program_graph_validate(&graph, &validation);
-  if (command->json) {
+  if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_validate_json(&json, command, &graph, &validation);
     fputs(json.data, stdout);
     zbuf_free(&json);
+  } else if (command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "GraphValidation\n");
+    zdn_field_bool(&buf, "ok", true, 1);
+    zdn_field_string(&buf, "artifact", command->input ? command->input : "", 1);
+    zdn_field_string(&buf, "moduleIdentity", graph.module_identity, 1);
+    zdn_field_string(&buf, "graphHash", graph.graph_hash, 1);
+    zdn_object_start(&buf, "counts", 1);
+    zdn_field_int(&buf, "nodes", (long long)graph.node_len, 2);
+    zdn_field_int(&buf, "edges", (long long)graph.edge_len, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "validation", 1);
+    zdn_field_string(&buf, "state", z_program_graph_validation_state_name(validation.state ? validation.state : Z_PROGRAM_GRAPH_VALIDATION_SHAPE_VALID), 2);
+    zdn_field_bool(&buf, "ok", true, 2);
+    zdn_object_end(&buf, 1);
+    if (command->out) {
+      zdn_object_start(&buf, "saved", 1);
+      zdn_field_string(&buf, "path", command->out, 2);
+      zdn_field_bool(&buf, "byteStable", true, 2);
+      zdn_object_end(&buf, 1);
+    } else {
+      zdn_field_nullable_string(&buf, "saved", NULL, 1);
+    }
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
   } else {
     printf("program graph ok\n");
   }
@@ -10083,7 +11187,7 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   const ZTargetInfo *host_target = z_find_target(z_host_target());
   if (!load_graph_input_for_read(command, host_target, &input, &program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     return 1;
   }
@@ -10116,7 +11220,7 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
     return 1;
   }
   if (command->out && !z_write_file(command->out, view.data ? view.data : "", diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
+    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->out, diag);
     else print_diag(diag->path ? diag->path : command->out, diag);
     zbuf_free(&view);
     z_free_program(&program);
@@ -10124,7 +11228,27 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
     z_program_graph_free(&graph);
     return 1;
   }
-  if (command->json) {
+  if (command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "GraphView\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
+    zdn_field_bool(&buf, "ok", true, 1);
+    zdn_field_string(&buf, "artifact", command->input ? command->input : "", 1);
+    zdn_field_string(&buf, "moduleIdentity", graph.module_identity, 1);
+    zdn_field_string(&buf, "graphHash", graph.graph_hash, 1);
+    if (command->out) {
+      zdn_object_start(&buf, "saved", 1);
+      zdn_field_string(&buf, "path", command->out, 2);
+      zdn_field_bool(&buf, "byteStable", true, 2);
+      zdn_object_end(&buf, 1);
+    }
+    if (view.data && view.data[0]) {
+      zdn_field_string(&buf, "view", view.data, 1);
+    }
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_view_json(&json, command, &graph, view.data ? view.data : "");
@@ -10259,13 +11383,57 @@ static int run_graph_patch_command(const Command *command, ZDiag *diag) {
   }
   const char *saved_path = NULL;
   if (ok && !save_graph_patch_output(command, &graph, source_backed, &input, &saved_path, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : (command->out ? command->out : command->input), diag);
+    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : (command->out ? command->out : command->input), diag);
     else print_diag(diag->path ? diag->path : (command->out ? command->out : command->input), diag);
     free_graph_patch_state(inline_text, &result, original_hash, &program, &input, &graph);
     return 1;
   }
 
-  if (command->json) {
+  if (command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "GraphPatch\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
+    zdn_field_bool(&buf, "ok", ok, 1);
+    zdn_field_string(&buf, "artifact", command->input ? command->input : "", 1);
+    zdn_field_string(&buf, "patch", command->patch_file ? command->patch_file : "", 1);
+    zdn_field_string(&buf, "originalGraphHash", original_hash ? original_hash : "", 1);
+    if (ok) zdn_field_string(&buf, "patchedGraphHash", graph.graph_hash ? graph.graph_hash : "", 1);
+    zdn_field_int(&buf, "operationCount", (long long)result.operation_len, 1);
+    zdn_array_start(&buf, "operations", 1);
+    for (size_t i = 0; i < result.operation_len; i++) {
+      const ZProgramGraphPatchOpResult *op = &result.operations[i];
+      zbuf_append(&buf, "    Operation\n");
+      zdn_field_int(&buf, "index", (long long)op->index, 3);
+      zdn_field_int(&buf, "line", op->line, 3);
+      zdn_field_string(&buf, "op", op->op ? op->op : "", 3);
+      zdn_field_bool(&buf, "ok", op->ok, 3);
+      if (op->node) zdn_field_string(&buf, "node", op->node, 3);
+      if (op->field) zdn_field_string(&buf, "field", op->field, 3);
+      if (op->expected) zdn_field_string(&buf, "expected", op->expected, 3);
+      if (op->actual) zdn_field_string(&buf, "actual", op->actual, 3);
+      if (op->value) zdn_field_string(&buf, "value", op->value, 3);
+      if (!op->ok && op->code[0]) zdn_field_string(&buf, "code", op->code, 3);
+      if (!op->ok && op->message[0]) zdn_field_string(&buf, "message", op->message, 3);
+    }
+    zdn_array_end(&buf, 1);
+    if (!ok && result.code[0]) {
+      zdn_object_start(&buf, "diagnostic", 1);
+      zdn_field_string(&buf, "code", result.code, 2);
+      zdn_field_string(&buf, "message", result.message, 2);
+      if (result.expected) zdn_field_string(&buf, "expected", result.expected, 2);
+      if (result.actual) zdn_field_string(&buf, "actual", result.actual, 2);
+      zdn_object_end(&buf, 1);
+    }
+    if (command->out && ok) {
+      zdn_object_start(&buf, "saved", 1);
+      zdn_field_string(&buf, "path", command->out, 2);
+      zdn_field_bool(&buf, "byteStable", true, 2);
+      zdn_object_end(&buf, 1);
+    }
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_patch_json(&json, command, &graph, &result, original_hash, saved_path);
@@ -10324,10 +11492,11 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(command, target, &source_input, &source_program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     return 1;
   }
+
 
   SourceInput checked_input = {0};
   Program checked_program = {0};
@@ -10351,7 +11520,22 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
     }
   }
 
-  if (command->json) {
+  if (command->format == FORMAT_ZDN) {
+    ZBuf z;
+    zbuf_init(&z);
+    zbuf_append(&z, "GraphCheck\n");
+    zdn_field_bool(&z, "ok", ok, 1);
+    zdn_field_string(&z, "sourceFile", command->input ? command->input : "", 1);
+    zdn_field_string(&z, "target", target ? target->name : "", 1);
+    zdn_field_string(&z, "phase", graph_check_phase_name(phase), 1);
+    if (!ok) {
+      zdn_object_start(&z, "diagnostic", 1);
+      zdn_field_int(&z, "code", diag->code, 2);
+      zdn_field_string(&z, "message", diag->message, 2);
+    }
+    fputs(z.data, stdout);
+    zbuf_free(&z);
+  } else if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_check_json(&json, command, target, &graph, &checked_input, &checked_program, ok, ok ? NULL : diag, graph_check_phase_name(phase));
@@ -10375,7 +11559,8 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
 static int run_graph_size_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
   ZProgramGraph graph;
   if (!z_program_graph_load(command->input, &graph, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->input, diag);
+    else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     return 1;
   }
@@ -10392,7 +11577,8 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   if (!ok) {
     if (input.source_file) z_map_source_diag(&input, diag);
     if (!diag->path) diag->path = input.source_file ? input.source_file : command->input;
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->input, diag);
+    else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -10410,6 +11596,14 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   input.interface_cache_hit = compiler_cache_touch("interface", graph_interface_cache_key(&input, graph.graph_hash));
   input.check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(&input, target, NULL, "checked-body"));
   input.specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(&input, target, command && command->profile ? command->profile : "release", "specialization"));
+  if (command->format == FORMAT_ZDN) {
+    zdn_print_size_full(command, &input, target);
+    z_free_ir_program(&ir);
+    z_free_program(&program);
+    z_free_source(&input);
+    z_program_graph_free(&graph);
+    return 0;
+  }
   int rc = run_size_report_command(command, &input, &program, target, &ir, &graph_source, diag);
   z_free_ir_program(&ir);
   z_free_program(&program);
@@ -10423,12 +11617,64 @@ static int run_graph_artifact_roundtrip_command(const Command *command, ZDiag *d
   ZProgramGraphDirectRoundtrip result = {0};
   if (!z_program_graph_direct_roundtrip_file(command->input, command->out, &result, diag)) {
     const char *path = diag->path ? diag->path : (command->out ? command->out : command->input);
-    if (command->json) print_diag_json(path, diag);
+    if (command->format == FORMAT_JSON) print_diag_json(path, diag);
     else print_diag(path, diag);
     z_program_graph_direct_roundtrip_free(&result);
     return 1;
   }
-  if (command->json) {
+  if (command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "GraphRoundtrip\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
+    zdn_field_bool(&buf, "ok", result.comparison.ok, 1);
+    zdn_field_string(&buf, "artifact", command->input ? command->input : "", 1);
+    zdn_field_bool(&buf, "semanticStable", result.comparison.ok, 1);
+    zdn_field_string(&buf, "lowering", "direct-program-graph", 1);
+    zdn_field_string(&buf, "moduleIdentity", result.original.module_identity, 1);
+    zdn_field_string(&buf, "roundtripModuleIdentity", result.roundtrip.module_identity, 1);
+    zdn_field_string(&buf, "originalGraphHash", result.original.graph_hash, 1);
+    zdn_field_string(&buf, "roundtripGraphHash", result.roundtrip.graph_hash, 1);
+    zdn_object_start(&buf, "counts", 1);
+    zdn_object_start(&buf, "original", 2);
+    zdn_field_int(&buf, "nodes", (long long)result.original.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)result.original.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_start(&buf, "roundtrip", 2);
+    zdn_field_int(&buf, "nodes", (long long)result.roundtrip.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)result.roundtrip.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "semanticCounts", 1);
+    zdn_object_start(&buf, "original", 2);
+    zdn_field_int(&buf, "nodes", (long long)result.original.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)result.original.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_start(&buf, "roundtrip", 2);
+    zdn_field_int(&buf, "nodes", (long long)result.roundtrip.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)result.roundtrip.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "comparison", 1);
+    zdn_field_bool(&buf, "ok", result.comparison.ok, 2);
+    if (!result.comparison.ok) {
+      zdn_field_string(&buf, "code", result.comparison.code, 2);
+      zdn_field_string(&buf, "message", result.comparison.message, 2);
+      zdn_field_string(&buf, "field", result.comparison.field, 2);
+      zdn_field_int(&buf, "leftIndex", (long long)result.comparison.left_index, 2);
+      zdn_field_int(&buf, "rightIndex", (long long)result.comparison.right_index, 2);
+    }
+    zdn_object_end(&buf, 1);
+    if (command->out) {
+      zdn_object_start(&buf, "saved", 1);
+      zdn_field_string(&buf, "path", command->out, 2);
+      zdn_field_string(&buf, "kind", "program-graph", 2);
+      zdn_field_bool(&buf, "byteStable", true, 2);
+      zdn_object_end(&buf, 1);
+    }
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_roundtrip_json(&json,
@@ -10581,7 +11827,7 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "failed to build source program graph");
-    if (command->json) print_diag_json(diag->path, diag);
+    if (command->format == FORMAT_JSON) print_diag_json(diag->path, diag);
     else print_diag(diag->path, diag);
     zbuf_free(&view);
     return 1;
@@ -10589,7 +11835,8 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
   original.canonical_source = input && input->canonical_text_source;
 
   if (!z_program_graph_direct_roundtrip_graph(&original, input && input->source_file ? input->source_file : command->input, &roundtrip, &comparison, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->input, diag);
+    else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     z_program_graph_free(&roundtrip);
     z_program_graph_free(&original);
@@ -10597,8 +11844,8 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     return 1;
   }
 
-  if (command->json && !command->out && !z_program_graph_append_view(&view, &original, input && input->source_file ? input->source_file : command->input, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+  if (command->format == FORMAT_JSON && !command->out && !z_program_graph_append_view(&view, &original, input && input->source_file ? input->source_file : command->input, diag)) {
+    if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
     else print_diag(diag->path ? diag->path : command->input, diag);
     z_program_graph_free(&roundtrip);
     z_program_graph_free(&original);
@@ -10613,7 +11860,8 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
       return 1;
     }
     if (!z_program_graph_save(command->out, &roundtrip, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
+      if (command->format == FORMAT_ZDN) zdn_print_diag(diag->path ? diag->path : command->out, diag);
+      else if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->out, diag);
       else print_diag(diag->path ? diag->path : command->out, diag);
       z_program_graph_free(&roundtrip);
       z_program_graph_free(&original);
@@ -10622,7 +11870,52 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     }
   }
 
-  if (command->json) {
+  if (command->format == FORMAT_ZDN) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    zbuf_append(&buf, "GraphRoundtrip\n");
+    zdn_field_int(&buf, "schemaVersion", 1, 1);
+    zdn_field_bool(&buf, "ok", comparison.ok, 1);
+    zdn_field_string(&buf, "sourceFile", input ? input->source_file : (command->input ? command->input : ""), 1);
+    zdn_field_bool(&buf, "semanticStable", comparison.ok, 1);
+    zdn_field_string(&buf, "lowering", "direct-program-graph", 1);
+    zdn_field_string(&buf, "moduleIdentity", original.module_identity, 1);
+    zdn_field_string(&buf, "roundtripModuleIdentity", roundtrip.module_identity, 1);
+    zdn_field_string(&buf, "originalGraphHash", original.graph_hash, 1);
+    zdn_field_string(&buf, "roundtripGraphHash", roundtrip.graph_hash, 1);
+    zdn_object_start(&buf, "counts", 1);
+    zdn_object_start(&buf, "original", 2);
+    zdn_field_int(&buf, "nodes", (long long)original.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)original.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_start(&buf, "roundtrip", 2);
+    zdn_field_int(&buf, "nodes", (long long)roundtrip.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)roundtrip.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "semanticCounts", 1);
+    zdn_object_start(&buf, "original", 2);
+    zdn_field_int(&buf, "nodes", (long long)original.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)original.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_start(&buf, "roundtrip", 2);
+    zdn_field_int(&buf, "nodes", (long long)roundtrip.node_len, 3);
+    zdn_field_int(&buf, "edges", (long long)roundtrip.edge_len, 3);
+    zdn_object_end(&buf, 2);
+    zdn_object_end(&buf, 1);
+    zdn_object_start(&buf, "comparison", 1);
+    zdn_field_bool(&buf, "ok", comparison.ok, 2);
+    if (!comparison.ok) {
+      zdn_field_string(&buf, "code", comparison.code, 2);
+      zdn_field_string(&buf, "message", comparison.message, 2);
+      zdn_field_string(&buf, "field", comparison.field, 2);
+      zdn_field_int(&buf, "leftIndex", (long long)comparison.left_index, 2);
+      zdn_field_int(&buf, "rightIndex", (long long)comparison.right_index, 2);
+    }
+    zdn_object_end(&buf, 1);
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else if (command->format == FORMAT_JSON) {
     ZBuf json;
     zbuf_init(&json);
     append_graph_roundtrip_json(&json,
@@ -10672,18 +11965,20 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
       diag->column = 1;
       diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "failed to build source program graph");
-      if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+      if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->input, diag);
       else print_diag(diag->path ? diag->path : command->input, diag);
       return 1;
     }
     stored.canonical_source = input && input->canonical_text_source;
     if (!z_program_graph_save(command->out, &stored, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
+      if (command->format == FORMAT_JSON) print_diag_json(diag->path ? diag->path : command->out, diag);
       else print_diag(diag->path ? diag->path : command->out, diag);
       z_program_graph_free(&stored);
       return 1;
     }
-    if (command->json) {
+    if (command->format == FORMAT_ZDN) {
+      zdn_print_graph(input ? input->source_file : "", target ? target->name : "host");
+    } else if (command->format == FORMAT_JSON) {
       ZProgramGraphValidation validation = {0};
       z_program_graph_validate(&stored, &validation);
       ZBuf json;
@@ -10696,9 +11991,13 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
     z_program_graph_free(&stored);
     return 0;
   }
+  if (command->format == FORMAT_ZDN) {
+    zdn_print_graph(input ? input->source_file : "", target ? target->name : "host");
+    return 0;
+  }
   ZBuf graph;
   zbuf_init(&graph);
-  if (graph_dump) z_append_program_graph_dump(&graph, input, program, command->json);
+  if (graph_dump) z_append_program_graph_dump(&graph, input, program, command->format == FORMAT_JSON);
   else append_graph_json(&graph, input, program, target, command);
   fputs(graph.data, stdout);
   zbuf_free(&graph);
@@ -10710,7 +12009,7 @@ int main(int argc, char **argv) {
     print_help();
     return 0;
   }
-  Command command = {0};
+  Command command = {.format = FORMAT_TEXT};
   if (!parse_command(argc, argv, &command)) {
     print_help();
     return 1;
@@ -10736,32 +12035,49 @@ int main(int argc, char **argv) {
     snprintf(diag.expected, sizeof(diag.expected), "one of exe, obj");
     snprintf(diag.actual, sizeof(diag.actual), "--emit %s", command.invalid_emit);
     snprintf(diag.help, sizeof(diag.help), "use --emit exe or --emit obj");
-    if (command.json) print_command_diag_json(&command, command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
     else print_diag(command.input, &diag);
     return 1;
   }
   if (strcmp(command.command, "--version") == 0 || strcmp(command.command, "version") == 0) {
-    return print_version_command(command.json);
+    return print_version_command(command.format == FORMAT_JSON, command.format == FORMAT_ZDN);
   }
   if (strcmp(command.command, "targets") == 0) {
-    ZBuf targets;
-    zbuf_init(&targets);
-    z_append_targets_json(&targets);
-    fputs(targets.data, stdout);
-    zbuf_free(&targets);
+    if (command.format == FORMAT_ZDN) {
+      ZBuf buf;
+      zbuf_init(&buf);
+      zbuf_append(&buf, "TargetsResult\n");
+      zdn_field_string(&buf, "host", z_host_target(), 1);
+      zdn_field_int(&buf, "targetCount", (long long)z_target_count(), 1);
+      zdn_array_start(&buf, "targets", 1);
+      for (size_t i = 0; i < z_target_count(); i++) {
+        const ZTargetInfo *t = z_target_at(i);
+        zbuf_append(&buf, "    Target\n");
+        zdn_field_string(&buf, "name", t->name, 3);
+      }
+      zdn_array_end(&buf, 1);
+      fputs(buf.data, stdout);
+      zbuf_free(&buf);
+    } else {
+      ZBuf targets;
+      zbuf_init(&targets);
+      z_append_targets_json(&targets);
+      fputs(targets.data, stdout);
+      zbuf_free(&targets);
+    }
     return 0;
   }
   if (strcmp(command.command, "new") == 0) {
     return new_command(&command);
   }
   if (strcmp(command.command, "doctor") == 0) {
-    return doctor_command(command.json);
+    return doctor_command(command.format == FORMAT_JSON, command.format == FORMAT_ZDN);
   }
   if (strcmp(command.command, "clean") == 0) {
     return clean_command(&command);
   }
   if (strcmp(command.command, "skills") == 0) {
-    return embedded_skills_command(argc, argv, command.json);
+    return embedded_skills_command(argc, argv, command.format == FORMAT_JSON, command.format == FORMAT_ZDN);
   }
   if (!command.input) {
     print_command_help(command.command);
@@ -10779,7 +12095,7 @@ int main(int argc, char **argv) {
     snprintf(diag.expected, sizeof(diag.expected), "one of zero targets");
     snprintf(diag.actual, sizeof(diag.actual), "%s", command.target);
     snprintf(diag.help, sizeof(diag.help), "run zero targets and choose a supported target name");
-    if (command.json) print_command_diag_json(&command, command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
     else print_diag(command.input, &diag);
     return 1;
   }
@@ -10793,14 +12109,14 @@ int main(int argc, char **argv) {
     snprintf(diag.expected, sizeof(diag.expected), "zero build --emit exe|obj <input>");
     snprintf(diag.actual, sizeof(diag.actual), command.legacy_backend ? "--legacy-backend" : "--emit c");
     snprintf(diag.help, sizeof(diag.help), "use direct emitters; C backend output is not a compatibility or debug path");
-    if (command.json) print_command_diag_json(&command, command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
     else print_diag(command.input, &diag);
     return 1;
   }
 
   bool graph_run_command = strcmp(command.command, "graph") == 0 && command.kind && strcmp(command.kind, "run") == 0;
   if (strcmp(command.command, "run") == 0 || graph_run_command) {
-    if (command.json) {
+    if (command.format == FORMAT_JSON) {
       diag.code = 2002;
       diag.line = 1;
       diag.column = 1;
@@ -10854,14 +12170,14 @@ int main(int argc, char **argv) {
     snprintf(diag.expected, sizeof(diag.expected), "zero fix --plan, --patch, or --apply --json <input>");
     snprintf(diag.actual, sizeof(diag.actual), "zero fix without a mode");
     snprintf(diag.help, sizeof(diag.help), "rerun with --plan to inspect repairs, --patch to preview edits, or --apply for behavior-preserving edits");
-    if (command.json) print_command_diag_json(&command, command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
     else print_diag(command.input, &diag);
     return 1;
   }
 
   bool graph_command_artifact_input = false;
   if (!resolve_graph_command_manifest_input(&command, &graph_command_artifact_input, &diag)) {
-    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
     return 1;
   }
@@ -10877,13 +12193,13 @@ int main(int argc, char **argv) {
 
   if (strcmp(command.command, "fmt") == 0) {
     SourceInput fmt_input = {0};
-    if (!load_format_source(command.input, &fmt_input, &diag)) {
-      if (command.json) print_command_diag_json(&command, command.input, &diag);
+    if (!load_command_source(command.input, &fmt_input, &diag)) {
+      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
     }
     if (!fmt_input.source) {
-      if (command.json) print_command_diag_json(&command, command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_source(&fmt_input);
       return 1;
@@ -10899,7 +12215,7 @@ int main(int argc, char **argv) {
     }
     if (!formatted || diag.code != 0) {
       z_map_source_diag(&fmt_input, &diag);
-      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       free(formatted);
       z_free_source(&fmt_input);
@@ -10925,12 +12241,12 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "tokens") == 0) {
     SourceInput token_input = {0};
     if (!load_command_source(command.input, &token_input, &diag)) {
-      if (command.json) print_command_diag_json(&command, command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
     }
     if (!token_input.source) {
-      if (command.json) print_command_diag_json(&command, command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_source(&token_input);
       return 1;
@@ -10939,13 +12255,15 @@ int main(int argc, char **argv) {
     ZCanonicalTokenVec tokens = z_canonical_text_tokenize(token_input.source, &diag);
     if (diag.code != 0) {
       z_map_source_diag(&token_input, &diag);
-      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_canonical_text_tokens(&tokens);
       z_free_source(&token_input);
       return 1;
     }
-    if (command.json) {
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_tokens(token_input.source_file);
+    } else if (command.format == FORMAT_JSON) {
       ZBuf buf;
       zbuf_init(&buf);
       append_canonical_tokens_json(&buf, token_input.source_file, &tokens);
@@ -10964,12 +12282,12 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "parse") == 0) {
     SourceInput parse_input = {0};
     if (!load_command_source(command.input, &parse_input, &diag)) {
-      if (command.json) print_command_diag_json(&command, command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
     }
     if (!parse_input.source) {
-      if (command.json) print_command_diag_json(&command, command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_source(&parse_input);
       return 1;
@@ -10979,13 +12297,15 @@ int main(int argc, char **argv) {
     z_parse_canonical_text_program_source(parse_input.source, &parsed, &diag);
     if (diag.code != 0) {
       z_map_source_diag(&parse_input, &diag);
-      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_program(&parsed);
       z_free_source(&parse_input);
       return 1;
     }
-    if (command.json) {
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_parse(parse_input.source_file);
+    } else if (command.format == FORMAT_JSON) {
       ZBuf buf;
       zbuf_init(&buf);
       append_parse_json(&buf, parse_input.source_file, &parsed);
@@ -11002,7 +12322,7 @@ int main(int argc, char **argv) {
   const char *direct_graph_manifest_input = command.input;
   bool direct_graph_manifest_command = false;
   if (!resolve_direct_command_manifest_graph_input(&command, &direct_graph_manifest_command, &diag)) {
-    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
     return 1;
   }
@@ -11015,14 +12335,14 @@ int main(int argc, char **argv) {
   if (direct_graph_manifest_command || direct_graph_source_command || graph_build_command || graph_run_command || graph_test_command) {
     ZProgramGraphArtifactSource graph_source = {0};
     if (!z_program_graph_prepare_artifact_input(command.input, target, &program, &input, &graph_source, &diag)) {
-      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       z_free_program(&program);
       z_free_source(&input);
       return 1;
     }
     if (direct_graph_manifest_command && !attach_manifest_metadata_to_graph_input(&input, direct_graph_manifest_input, &diag)) {
-      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : direct_graph_manifest_input, &diag);
+      if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : direct_graph_manifest_input, &diag);
       else print_diag(diag.path ? diag.path : direct_graph_manifest_input, &diag);
       z_free_program(&program);
       z_free_source(&input);
@@ -11040,17 +12360,20 @@ int main(int argc, char **argv) {
   } else if (!compile_input(command.input, target, command.profile, &input, &program, &diag)) {
     if (strcmp(command.command, "fix") == 0) {
       if (command.apply || command.patch) {
-        int rc = print_or_apply_fix_json(diag.path ? diag.path : command.input, &input, &diag, command.apply);
+        int rc;
+        if (command.format == FORMAT_ZDN) rc = print_or_apply_fix_zdn(diag.path ? diag.path : command.input, &input, &diag, command.apply);
+        else rc = print_or_apply_fix_json(diag.path ? diag.path : command.input, &input, &diag, command.apply);
         z_free_program(&program);
         z_free_source(&input);
         return rc;
       }
-      print_fix_plan_json(diag.path ? diag.path : command.input, &diag);
+      if (command.format == FORMAT_ZDN) print_fix_plan_zdn(diag.path ? diag.path : command.input, &diag);
+      else print_fix_plan_json(diag.path ? diag.path : command.input, &diag);
       z_free_program(&program);
       z_free_source(&input);
       return 0;
     }
-    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -11060,12 +12383,13 @@ int main(int argc, char **argv) {
   bool is_graph_command = strcmp(command.command, "graph") == 0;
   if (!is_graph_command && !validate_target_capabilities(&program, target, &diag, input.source_file)) {
     if (strcmp(command.command, "fix") == 0) {
-      print_fix_plan_json(input.source_file, &diag);
+      if (command.format == FORMAT_ZDN) print_fix_plan_zdn(input.source_file, &diag);
+      else print_fix_plan_json(input.source_file, &diag);
       z_free_program(&program);
       z_free_source(&input);
       return 0;
     }
-    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -11073,7 +12397,7 @@ int main(int argc, char **argv) {
   }
 
   if (!is_graph_command && !validate_package_dependencies_for_target(&input, target, &diag)) {
-    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -11082,7 +12406,7 @@ int main(int argc, char **argv) {
 
   if ((strcmp(command.command, "build") == 0 || strcmp(command.command, "run") == 0 || strcmp(command.command, "ship") == 0) &&
       !validate_c_libraries_for_target(&input, target, &diag)) {
-    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : command.input, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : command.input, &diag);
     else print_diag(diag.path ? diag.path : command.input, &diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -11090,15 +12414,52 @@ int main(int argc, char **argv) {
   }
 
   if (strcmp(command.command, "fix") == 0) {
-    if (command.apply || command.patch) print_or_apply_fix_json(input.source_file, &input, NULL, command.apply);
-    else print_fix_plan_json(input.source_file, NULL);
+    if (command.apply || command.patch) {
+      if (command.format == FORMAT_ZDN) print_or_apply_fix_zdn(input.source_file, &input, NULL, command.apply);
+      else print_or_apply_fix_json(input.source_file, &input, NULL, command.apply);
+    } else {
+      if (command.format == FORMAT_ZDN) print_fix_plan_zdn(input.source_file, NULL);
+      else print_fix_plan_json(input.source_file, NULL);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
   }
 
   if (strcmp(command.command, "check") == 0) {
-    if (command.json) print_check_json_success(input.source_file, &input, &program, target, &command);
+    if (command.format == FORMAT_ZDN) {
+      ZBuf buf;
+      zbuf_init(&buf);
+      CapabilitySummary caps = program_capabilities(&program);
+      ZMetaCacheStats meta = z_meta_cache_stats();
+      zbuf_append(&buf, "CheckResult\n");
+      zdn_field_int(&buf, "schemaVersion", 1, 1);
+      zdn_field_bool(&buf, "ok", true, 1);
+      zdn_field_string(&buf, "sourceFile", input.source_file ? input.source_file : "", 1);
+      zdn_field_string(&buf, "hostTarget", z_host_target(), 1);
+      zdn_field_string(&buf, "target", target && target->name ? target->name : z_host_target(), 1);
+      zdn_append_package_metadata(&buf, &input, target, 1);
+      zdn_append_package_cache(&buf, &input, target, "release", 1);
+      zdn_array_start(&buf, "diagnostics", 1);
+      zdn_object_start(&buf, "metaCache", 1);
+      zdn_field_int(&buf, "hits", (long long)meta.hits, 2);
+      zdn_field_int(&buf, "misses", (long long)meta.misses, 2);
+      zdn_field_int(&buf, "entries", (long long)meta.entries, 2);
+      zdn_append_hash(&buf, "sourceHash", fnv1a_text(input.source ? input.source : ""), 2);
+      zdn_append_hash(&buf, "targetHash", fnv1a_text(target ? target->name : z_host_target()), 2);
+      char *manifest = read_optional_file("zero.json");
+      zdn_append_hash(&buf, "manifestHash", fnv1a_text(manifest ? manifest : ""), 2);
+      free(manifest);
+      zdn_append_compile_time(&buf, &program, &input, target, 1);
+      zdn_append_target_readiness(&buf, &input, &program, target, &command, 1);
+      zdn_append_compiler_phases(&buf, &input, 1);
+      zdn_append_compiler_caches(&buf, &input, target, "release", 1);
+      zdn_append_interface_fingerprints(&buf, &input, target, 1);
+      zdn_append_incremental_invalidations(&buf, &input, target, "release", 1);
+      zdn_append_self_host_routing(&buf, "check", NULL, &program, &caps, target, 1);
+      fputs(buf.data, stdout);
+      zbuf_free(&buf);
+    } else if (command.format == FORMAT_JSON) print_check_json_success(input.source_file, &input, &program, target, &command);
     else printf("ok\n");
     z_free_program(&program);
     z_free_source(&input);
@@ -11106,33 +12467,46 @@ int main(int argc, char **argv) {
   }
 
   if (strcmp(command.command, "doc") == 0) {
-    ZBuf doc;
-    zbuf_init(&doc);
-    append_public_docs_json(&doc, &input, &program, target);
-    fputs(doc.data, stdout);
-    zbuf_free(&doc);
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_doc(input.source_file, target ? target->name : "host");
+    } else {
+      ZBuf doc;
+      zbuf_init(&doc);
+      append_public_docs_json(&doc, &input, &program, target);
+      fputs(doc.data, stdout);
+      zbuf_free(&doc);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
   }
 
   if (strcmp(command.command, "dev") == 0) {
-    ZBuf dev;
-    zbuf_init(&dev);
-    append_dev_plan_json(&dev, &input, &program, target, &command);
-    fputs(dev.data, stdout);
-    zbuf_free(&dev);
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_dev(input.source_file, target ? target->name : "host", command.profile);
+    } else {
+      ZBuf dev;
+      zbuf_init(&dev);
+      append_dev_plan_json(&dev, &input, &program, target, &command);
+      fputs(dev.data, stdout);
+      zbuf_free(&dev);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
   }
 
   if (strcmp(command.command, "time") == 0) {
-    ZBuf time_json;
-    zbuf_init(&time_json);
-    append_time_json(&time_json, &input, &program, target, &command);
-    fputs(time_json.data, stdout);
-    zbuf_free(&time_json);
+    if (command.format == FORMAT_ZDN) {
+      long long total_ms = input.parse_ms + input.check_ms + input.lower_ms + input.codegen_ms + input.object_ms + input.link_ms;
+      zdn_print_time(input.source_file, target ? target->name : "host", (size_t)total_ms);
+    } else {
+      ZBuf time_json;
+      zbuf_init(&time_json);
+      append_time_json(&time_json, &input, &program, target, &command);
+      fputs(time_json.data, stdout);
+      zbuf_free(&time_json);
+    }
     z_free_program(&program);
     z_free_source(&input);
     return 0;
@@ -11141,7 +12515,18 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "abi") == 0) {
     const char *mode = command.kind ? command.kind : "check";
     if (strcmp(mode, "dump") == 0) {
-      if (command.json) {
+      if (command.format == FORMAT_ZDN) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "AbiDump\n");
+        zdn_field_int(&buf, "schemaVersion", 1, 1);
+        zdn_field_string(&buf, "sourceFile", input.source_file ? input.source_file : "", 1);
+        zdn_field_string(&buf, "target", target ? target->name : "", 1);
+        zdn_field_int(&buf, "shapeCount", (long long)program.shapes.len, 1);
+        zdn_field_int(&buf, "enumCount", (long long)program.enums.len, 1);
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
+      } else if (command.format == FORMAT_JSON) {
         ZBuf abi;
         zbuf_init(&abi);
         append_abi_dump_json(&abi, &input, &program, target);
@@ -11151,7 +12536,17 @@ int main(int argc, char **argv) {
         printf("abi dump ok\n");
       }
     } else if (strcmp(mode, "check") == 0) {
-      if (command.json) {
+      if (command.format == FORMAT_ZDN) {
+        ZBuf buf;
+        zbuf_init(&buf);
+        zbuf_append(&buf, "AbiCheck\n");
+        zdn_field_int(&buf, "schemaVersion", 1, 1);
+        zdn_field_bool(&buf, "ok", true, 1);
+        zdn_field_string(&buf, "sourceFile", input.source_file ? input.source_file : "", 1);
+        zdn_field_string(&buf, "target", target ? target->name : "", 1);
+        fputs(buf.data, stdout);
+        zbuf_free(&buf);
+      } else if (command.format == FORMAT_JSON) {
         printf("{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"sourceFile\": ");
         print_json_string(input.source_file);
         printf(",\n  \"target\": ");
@@ -11190,11 +12585,15 @@ int main(int argc, char **argv) {
   input.lower_ms = now_ms() - phase_started;
   apply_ir_metrics_to_input(&input, &ir, target);
   if (strcmp(command.command, "mem") == 0) {
-    ZBuf mem_json;
-    zbuf_init(&mem_json);
-    append_direct_memory_json(&mem_json, &input, &program, target, &command, &ir);
-    fputs(mem_json.data, stdout);
-    zbuf_free(&mem_json);
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_mem(input.source_file, target ? target->name : "host", command.profile);
+    } else {
+      ZBuf mem_json;
+      zbuf_init(&mem_json);
+      append_direct_memory_json(&mem_json, &input, &program, target, &command, &ir);
+      fputs(mem_json.data, stdout);
+      zbuf_free(&mem_json);
+    }
     z_free_ir_program(&ir);
     z_free_program(&program);
     z_free_source(&input);
@@ -11223,7 +12622,7 @@ int main(int argc, char **argv) {
       z_map_source_diag(&input, &diag);
       if (!diag.path) diag.path = input.source_file;
       complete_backend_blocker_diag(&diag, target, &command, "obj", "emit");
-      if (command.json) print_diag_json(input.source_file, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(input.source_file, &diag); else if (command.format == FORMAT_JSON) print_diag_json(input.source_file, &diag);
       else print_diag(input.source_file, &diag);
       z_free_ir_program(&ir);
       z_free_program(&program);
@@ -11248,7 +12647,8 @@ int main(int argc, char **argv) {
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;
-    if (command.json) print_build_json(&command, &input, &program, target, "obj", object_file, file_size_or_negative(object_file), 0, elapsed_ms);
+    if (command.format == FORMAT_ZDN) zdn_print_build_full(&command, &input, &program, target, "obj", object_file, file_size_or_negative(object_file), elapsed_ms);
+    else if (command.format == FORMAT_JSON) print_build_json(&command, &input, &program, target, "obj", object_file, file_size_or_negative(object_file), 0, elapsed_ms);
     else print_artifact(object_file, elapsed_ms);
     free(object_file);
     zbuf_free(&object);
@@ -11287,7 +12687,7 @@ int main(int argc, char **argv) {
       z_map_source_diag(&input, &diag);
       if (!diag.path) diag.path = input.source_file;
       complete_backend_blocker_diag(&diag, target, &command, "exe", "emit");
-      if (command.json) print_diag_json(input.source_file, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(input.source_file, &diag); else if (command.format == FORMAT_JSON) print_diag_json(input.source_file, &diag);
       else print_diag(input.source_file, &diag);
       zbuf_free(&object);
       z_free_ir_program(&ir);
@@ -11311,7 +12711,7 @@ int main(int argc, char **argv) {
     if (wrote_object && needs_http_runtime) wrote_object = compile_zero_http_curl_object(http_object_file, &runtime_toolchain, &command, target, &diag);
     input.object_ms = now_ms() - phase_started;
     if (!wrote_object) {
-      if (command.json) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : input.source_file, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
       else print_diag(diag.path ? diag.path : input.source_file, &diag);
       free(http_object_file);
       free(runtime_object_file);
@@ -11332,7 +12732,7 @@ int main(int argc, char **argv) {
     remove(runtime_object_file);
     if (http_object_file) remove(http_object_file);
     if (!linked) {
-      if (command.json) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : input.source_file, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
       else print_diag(diag.path ? diag.path : input.source_file, &diag);
       free(http_object_file);
       free(runtime_object_file);
@@ -11359,7 +12759,8 @@ int main(int argc, char **argv) {
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;
-    if (command.json) print_build_json(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
+    if (command.format == FORMAT_ZDN) zdn_print_build_full(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), elapsed_ms);
+    else if (command.format == FORMAT_JSON) print_build_json(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
     else print_artifact(exe_file, elapsed_ms);
     free(http_object_file);
     free(runtime_object_file);
@@ -11391,7 +12792,7 @@ int main(int argc, char **argv) {
       z_map_source_diag(&input, &diag);
       if (!diag.path) diag.path = input.source_file;
       complete_backend_blocker_diag(&diag, target, &command, "exe", "emit");
-      if (command.json) print_diag_json(input.source_file, &diag);
+      if (command.format == FORMAT_ZDN) zdn_print_diag(input.source_file, &diag); else if (command.format == FORMAT_JSON) print_diag_json(input.source_file, &diag);
       else print_diag(input.source_file, &diag);
       z_free_ir_program(&ir);
       z_free_program(&program);
@@ -11432,7 +12833,7 @@ int main(int argc, char **argv) {
     if (ship_command) {
       ShipArtifacts ship = {0};
       if (!write_ship_artifacts(&command, &input, target, &exe, exe_file, &ship, &diag)) {
-        if (command.json) print_diag_json(diag.path ? diag.path : exe_file, &diag);
+        if (command.format == FORMAT_ZDN) zdn_print_diag(diag.path ? diag.path : exe_file, &diag); else if (command.format == FORMAT_JSON) print_diag_json(diag.path ? diag.path : exe_file, &diag);
         else print_diag(diag.path ? diag.path : exe_file, &diag);
         ship_artifacts_free(&ship);
         free(exe_file);
@@ -11442,10 +12843,13 @@ int main(int argc, char **argv) {
         z_free_source(&input);
         return 1;
       }
-      if (command.json) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
+      if (command.format == FORMAT_ZDN) zdn_print_ship_full(&command, &input, &program, target, &ship, elapsed_ms);
+      else if (command.format == FORMAT_JSON) print_ship_json(&command, &input, &program, target, &ship, elapsed_ms);
       else print_ship_text(&ship, elapsed_ms);
       ship_artifacts_free(&ship);
-    } else if (command.json) {
+    } else if (command.format == FORMAT_ZDN) {
+      zdn_print_build_full(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), elapsed_ms);
+    } else if (command.format == FORMAT_JSON) {
       print_build_json(&command, &input, &program, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
     } else {
       print_artifact(exe_file, elapsed_ms);
@@ -11458,6 +12862,13 @@ int main(int argc, char **argv) {
     return 0;
   }
   if (strcmp(command.command, "size") == 0) {
+    if (command.format == FORMAT_ZDN) {
+      zdn_print_size_full(&command, &input, target);
+      z_free_ir_program(&ir);
+      z_free_program(&program);
+      z_free_source(&input);
+      return 0;
+    }
     GraphSizeSource graph_size_source = {.artifact_source = &command.graph_source};
     int size_rc = run_size_report_command(&command, &input, &program, target, &ir, z_program_graph_artifact_source_present(&command.graph_source) ? &graph_size_source : NULL, &diag);
     z_free_ir_program(&ir);

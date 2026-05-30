@@ -35,11 +35,11 @@ zero test conformance/native/pass/test-blocks.0
 zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
 zero graph --json examples/systems-package
 zero graph dump examples/hello.0
-zero graph dump --out .zero/out/hello.program-graph examples/hello.0
-zero graph import --out .zero/out/hello.program-graph examples/hello.0
+zero graph dump --out .zero/out/hello.graph examples/hello.0
+zero graph import --out .zero/out/hello.graph examples/hello.0
 zero graph inspect --json examples/hello.0
 zero graph validate .zero/out/hello.program-graph
-zero graph view examples/hello.0
+zero graph view .zero/out/hello.program-graph
 zero graph view --out .zero/out/hello.view.0 .zero/out/hello.program-graph
 zero graph check --json .zero/out/hello.program-graph
 zero graph size --json .zero/out/hello.program-graph
@@ -48,7 +48,7 @@ zero graph run .zero/out/hello.program-graph
 zero graph test --json .zero/out/hello.program-graph
 zero graph patch .zero/out/hello.view.0 --expect-graph-hash graph:f76987e99677f1b3 --op 'set node="#610c78bf" field="value" expect="hello from zero\n" value="hello patched\n"'
 zero graph roundtrip examples/hello.0
-zero graph roundtrip .zero/out/hello.program-graph
+zero graph roundtrip .zero/out/hello.graph
 zero size --json examples/point.0
 zero ship --json --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello
 zero doctor --json
@@ -63,13 +63,23 @@ Pass program arguments after `--`:
 
 ```sh
 zero run examples/cli-file.0 -- input.txt
-zero graph run .zero/out/cli-file.program-graph -- input.txt
+zero graph run .zero/out/cli-file.graph -- input.txt
 ```
 
 ## JSON Output
 
-Normal command output is designed to be readable by agents. Use `--json` when
-another tool needs stable fields.
+Use `--json` when another tool will read the result. Text output is for people.
+Use `--zdn` (or `--format zdn`) when an AI agent will read the result — ZDN
+preserves the same structured data as JSON in an agent-friendlier
+indentation-based format.
+
+Three output formats are available on every command that accepts `--json`:
+
+| Flag | Format | Use for |
+| --- | --- | --- |
+| _(none)_ | **TEXT** | Human-readable terminal output (default) |
+| `--json` | **JSON** | External tools, CI, editors |
+| `--zdn` / `--format zdn` | **ZDN** | AI agents and LLMs |
 
 | Command | Useful JSON fields |
 | --- | --- |
@@ -110,6 +120,50 @@ linking facts such as retained runtime objects, provider libraries, and
 `zero ship --json` nests the same contract under
 `releasePreview.targetContract`.
 
+## ZDN Output
+
+Refer to the [ZDN Format](/zdn) reference for the complete specification,
+syntax grammar, parser example, and output samples for every command.
+
+Use `--zdn` or `--format zdn` when an AI agent or automated tool
+will read structured output. ZDN (Zero Data Notation) is an
+agent-first format that reuses Zero's row syntax — each
+command produces a record with named fields, nested objects, and
+arrays.
+
+**Since Zero 0.1.4, `--zdn` output includes all fields previously
+available only with `--json`.** Each ZDN record contains the same
+compiler metadata — compileTime, metaCache, interfaceFingerprints,
+incrementalInvalidation, profileSemantics, toolchain plans, and more —
+formatted in ZDN's indentation-based syntax rather than JSON brackets.
+
+`--zdn` is a shorthand for `--format zdn`. Both flags produce
+the same output. `--text` (or `--format text`) requests plain
+human-readable text explicitly — though text is already the default
+when no format flag is given.
+
+| Flag | Output |
+| --- | --- |
+| _(none)_ | Human-readable text |
+| `--text` / `--format text` | Same as default (explicit) |
+| `--json` | Structured JSON for tools |
+| `--zdn` / `--format zdn` | Structured ZDN for agents |
+
+Supported across all commands that accept `--json`:
+
+ProgramGraph input commands (`validate`, `view`, `check`, `size`, `build`,
+`run`, `test`, and `patch`) accept saved `.program-graph` files, canonical graph
+`.0` files, or a package directory or `zero.json` when `targets.cli.graph`
+points at saved ProgramGraph input. `zero graph roundtrip` uses that
+ProgramGraph input for packages that declare it, and otherwise roundtrips source
+input.
+The direct `check`, `size`, `build`, `run`, `test`, and `ship` commands use
+that graph entrypoint for packages that declare it; packages without
+`targets.cli.graph` continue to use `targets.cli.main`.
+Those direct commands also load a `.0` input as ProgramGraph source storage when
+the file starts with the ProgramGraph schema header; ordinary row `.0` files
+continue through the row parser.
+
 `.0` files are source text. ProgramGraph commands that write graph artifacts
 must use a non-source output path, such as `.zero/out/app.program-graph`.
 Agents can inspect source through ProgramGraph commands and can patch canonical
@@ -137,14 +191,11 @@ For larger edits, patch files are line-oriented text:
 ```text
 zero-program-graph-patch v1
 expect graphHash "graph:f76987e99677f1b3"
-set node="#610c78bf" field="value" expect="hello from zero\n" value="hello patched\n"
-insert node="#patch001" kind="Literal" parent="#421a4d4b" edge="arg" order="1" type="String" value="again\n"
-rename node="#ea5ea1ca" expect="main" value="start"
-delete node="#patch001"
+set node="node:000013" field="value" expect="hello from zero\n" value="hello patched\n"
+insert node="node:patch001" kind="Literal" parent="node:000009" edge="arg" order="1" type="String" value="again\n"
+rename node="node:000002" expect="main" value="start"
+delete node="node:patch001"
 ```
-
-Use `--patch-text <text>` when a tool already has a complete patch document in
-memory and should not create a temporary file.
 
 The header is required. `expect graphHash` is optional but recommended; it
 rejects edits against a different artifact. `set` requires `node`, `field`, and
@@ -217,33 +268,33 @@ document symbols, and quick-fix code actions surfaced from `zero fix` for
 ## Utility Commands
 
 ```sh
-zero --version [--json]
+zero --version [--json] [--zdn]
 zero new cli|lib|package <path>
-zero doctor [--json]
-zero check [--json] [--target <target>] [--emit exe|obj] <input>
-zero dev [--json] [--trace] [--target <target>] <input>
+zero doctor [--json] [--zdn]
+zero check [--json] [--zdn] [--target <target>] [--emit exe|obj] <input>
+zero dev [--json] [--zdn] [--trace] [--target <target>] <input>
 zero run [--target <target>] [--profile dev|release] [--out <file>] <input> [-- args...]
 zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <file>] <input>
-zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
-zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
+zero ship [--json] [--zdn] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
+zero test [--json] [--zdn] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
-zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
-zero graph view [--json] [--out <file.0>] <program-graph-or-source>
-zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
-zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
-zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
-zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
-zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>
-zero doc [--json] [--target <target>] <input>
-zero size [--json] [--target <target>] [--out <artifact>] <input>
-zero explain [--json] <diagnostic-code>
-zero fix --plan --json [--target <target>] <input>
+zero graph [dump|import|inspect|validate|view|check|size|build|run|test|patch|roundtrip] [--json] [--zdn] [--target <target>] <input> [patch]
+zero graph [dump|import|validate|roundtrip] [--json] [--zdn] --out <program-graph-artifact> <input>
+zero graph view [--json] [--zdn] [--out <file.0>] <program-graph-or-source>
+zero graph size [--json] [--zdn] [--target <target>] --out <artifact> <program-graph-or-package>
+zero graph patch [--json] [--zdn] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
+zero graph build [--json] [--zdn] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
+zero graph run [--zdn] [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
+zero graph test [--json] [--zdn] [--filter <name>] [--target <target>] <program-graph-or-package>
+zero doc [--json] [--zdn] [--target <target>] <input>
+zero size [--json] [--zdn] [--target <target>] [--out <artifact>] <input>
+zero explain [--json] [--zdn] <diagnostic-code>
+zero fix --plan [--json] [--zdn] [--target <target>] <input>
 zero targets
 zero clean [--all]
-zero mem [--json] [--target <target>] <input>
-zero time --json [--target <target>] <input>
-zero abi check|dump [--json] [--target <target>] <input>
-zero tokens --json <input>
-zero parse --json <input>
+zero mem [--json] [--zdn] [--target <target>] <input>
+zero time --json|--zdn [--target <target>] <input>
+zero abi check|dump [--json] [--zdn] [--target <target>] <input>
+zero tokens --json|--zdn <input>
+zero parse --json|--zdn <input>
 ```

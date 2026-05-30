@@ -1,0 +1,2 @@
+pub fn main Void
+  nonexistent_name print
