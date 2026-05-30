@@ -1283,6 +1283,20 @@ static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, co
       ir_mark_unsupported(ir, "direct backend call argument type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, callee->params.items[i].type);
       return false;
     }
+    if (expected == IR_TYPE_BYTE_VIEW) {
+      IrTypeKind expected_element = ir_view_element_type_for_type(param_type_text);
+      IrTypeKind actual_element = arg->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : arg->element_type;
+      if (expected_element == IR_TYPE_UNSUPPORTED) expected_element = IR_TYPE_U8;
+      if (actual_element != expected_element) {
+        ir_free_value(arg);
+        ir_free_value(value);
+        free(specialized_param_type);
+        free(specialized_return_type);
+        free(specialized_name);
+        ir_mark_unsupported(ir, "direct backend call byte-view argument element type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, callee->params.items[i].type);
+        return false;
+      }
+    }
     ir_value_push_arg(ir, value, arg);
     free(specialized_param_type);
   }
@@ -3178,6 +3192,10 @@ static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction 
 static IrFunction *ir_program_push_function(IrProgram *ir, const Function *source, const char *stable_id_text) {
   ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
+  bool hosted_world_main = ir_is_hosted_world_main(source);
+  IrTypeKind source_return_type = ir_type_kind(source->return_type);
+  IrTypeKind mir_return_type = hosted_world_main ? IR_TYPE_I32 : (source->raises ? IR_TYPE_I64 : source_return_type);
+  IrTypeKind return_element_type = source_return_type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(source->return_type) : IR_TYPE_UNSUPPORTED;
   ZBuf stable_id;
   zbuf_init(&stable_id);
   zbuf_append(&stable_id, stable_id_text ? stable_id_text : "main.");
@@ -3185,11 +3203,12 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
   *fun = (IrFunction){
     .name = z_strdup(source->name),
     .stable_id = stable_id.data,
-    .world_param_name = ir_is_hosted_world_main(source) && source->params.items[0].name ? z_strdup(source->params.items[0].name) : NULL,
-    .return_type = ir_is_hosted_world_main(source) ? IR_TYPE_I32 : (source->raises ? IR_TYPE_I64 : ir_type_kind(source->return_type)),
-    .value_return_type = ir_type_kind(source->return_type),
-    .is_exported = source->export_c || ir_is_hosted_world_main(source),
-    .raises = ir_is_hosted_world_main(source) ? false : source->raises,
+    .world_param_name = hosted_world_main && source->params.items[0].name ? z_strdup(source->params.items[0].name) : NULL,
+    .return_type = mir_return_type,
+    .value_return_type = source_return_type,
+    .return_element_type = return_element_type,
+    .is_exported = source->export_c || hosted_world_main,
+    .raises = hosted_world_main ? false : source->raises,
     .line = source->line,
     .column = source->column
   };

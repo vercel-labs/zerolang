@@ -93,7 +93,9 @@ static IrValue value(IrValueKind kind, IrTypeKind type) {
 }
 
 static IrValue byte_view_value(void) {
-  return value(IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW);
+  IrValue view = value(IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW);
+  view.element_type = IR_TYPE_U8;
+  return view;
 }
 
 static IrValue array_byte_view_value(unsigned array_index, unsigned data_len, IrTypeKind element_type) {
@@ -109,6 +111,7 @@ static IrFunction function(const char *name, IrTypeKind return_type, IrTypeKind 
     .name = (char *)name,
     .return_type = return_type,
     .value_return_type = value_return_type,
+    .return_element_type = IR_TYPE_UNSUPPORTED,
     .locals = locals,
     .local_len = local_len,
     .param_count = param_count,
@@ -119,6 +122,12 @@ static IrFunction function(const char *name, IrTypeKind return_type, IrTypeKind 
     .line = 1,
     .column = 1
   };
+}
+
+static IrFunction function_with_return_element(const char *name, IrTypeKind return_type, IrTypeKind value_return_type, IrTypeKind return_element_type, IrLocal *locals, size_t local_len, size_t param_count, IrInstr *instrs, size_t instr_len, size_t frame_bytes, bool raises) {
+  IrFunction fun = function(name, return_type, value_return_type, locals, local_len, param_count, instrs, instr_len, frame_bytes, raises);
+  fun.return_element_type = return_element_type;
+  return fun;
 }
 
 static IrProgram program(IrFunction *functions, size_t function_len) {
@@ -166,6 +175,55 @@ static void valid_direct_call_passes(void) {
   IrFunction functions[] = {caller, callee};
   IrProgram ir = program(functions, 2);
   expect_ok("valid direct call", &ir);
+}
+
+static void valid_byte_view_direct_call_passes(void) {
+  IrValue arg = array_byte_view_value(0, 4, IR_TYPE_I32);
+  IrValue *args[] = {&arg};
+  IrValue call = value(IR_VALUE_CALL, IR_TYPE_VOID);
+  call.element_type = IR_TYPE_VOID;
+  call.callee_index = 1;
+  call.args = args;
+  call.arg_len = 1;
+  IrInstr expr = {.kind = IR_INSTR_EXPR, .value = &call, .line = 1, .column = 1};
+  IrLocal caller_locals[] = {array_local("numbers", IR_TYPE_I32, 0)};
+  IrFunction caller = function("main", IR_TYPE_VOID, IR_TYPE_VOID, caller_locals, 1, 0, &expr, 1, 16, false);
+  IrLocal callee_locals[] = {scalar_local("xs", IR_TYPE_BYTE_VIEW, 0, true)};
+  callee_locals[0].element_type = IR_TYPE_I32;
+  IrFunction callee = function("accept", IR_TYPE_VOID, IR_TYPE_VOID, callee_locals, 1, 1, NULL, 0, 16, false);
+  IrFunction functions[] = {caller, callee};
+  IrProgram ir = program(functions, 2);
+  expect_ok("valid byte-view direct call", &ir);
+}
+
+static void direct_call_byte_view_argument_element_mismatch_fails(void) {
+  IrValue arg = byte_view_value();
+  IrValue *args[] = {&arg};
+  IrValue call = value(IR_VALUE_CALL, IR_TYPE_VOID);
+  call.element_type = IR_TYPE_VOID;
+  call.callee_index = 1;
+  call.args = args;
+  call.arg_len = 1;
+  IrInstr expr = {.kind = IR_INSTR_EXPR, .value = &call, .line = 1, .column = 1};
+  IrFunction caller = function("main", IR_TYPE_VOID, IR_TYPE_VOID, NULL, 0, 0, &expr, 1, 0, false);
+  IrLocal callee_locals[] = {scalar_local("xs", IR_TYPE_BYTE_VIEW, 0, true)};
+  callee_locals[0].element_type = IR_TYPE_I32;
+  IrFunction callee = function("accept", IR_TYPE_VOID, IR_TYPE_VOID, callee_locals, 1, 1, NULL, 0, 16, false);
+  IrFunction functions[] = {caller, callee};
+  IrProgram ir = program(functions, 2);
+  expect_fail("direct call byte-view argument element mismatch", &ir, "direct call byte-view argument element mismatch");
+}
+
+static void direct_call_byte_view_return_element_mismatch_fails(void) {
+  IrValue call = value(IR_VALUE_CALL, IR_TYPE_BYTE_VIEW);
+  call.element_type = IR_TYPE_U8;
+  call.callee_index = 1;
+  IrInstr expr = {.kind = IR_INSTR_EXPR, .value = &call, .line = 1, .column = 1};
+  IrFunction caller = function("main", IR_TYPE_VOID, IR_TYPE_VOID, NULL, 0, 0, &expr, 1, 0, false);
+  IrFunction callee = function_with_return_element("make_span", IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW, IR_TYPE_I32, NULL, 0, 0, NULL, 0, 0, false);
+  IrFunction functions[] = {caller, callee};
+  IrProgram ir = program(functions, 2);
+  expect_fail("direct call byte-view return element mismatch", &ir, "direct call return mismatch");
 }
 
 static void local_value_out_of_range_fails(void) {
@@ -965,6 +1023,9 @@ static void world_write_stream_contract_fails(void) {
 
 int main(void) {
   valid_direct_call_passes();
+  valid_byte_view_direct_call_passes();
+  direct_call_byte_view_argument_element_mismatch_fails();
+  direct_call_byte_view_return_element_mismatch_fails();
   local_value_out_of_range_fails();
   local_write_type_mismatch_fails();
   packed_maybe_scalar_write_passes();
