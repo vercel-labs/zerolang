@@ -78,6 +78,7 @@ typedef struct {
   bool trace;
   bool graph_patch_command;
   EmitKind emit;
+  bool freestanding;
 } Command;
 
 typedef struct {
@@ -3595,6 +3596,9 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
   } else if (strcmp(arg, "--legacy-backend") == 0) {
     command->legacy_backend = true;
     return true;
+  } else if (strcmp(arg, "--freestanding") == 0) {
+    command->freestanding = true;
+    return true;
   } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
     command->kind = "help";
     return true;
@@ -4484,7 +4488,7 @@ static bool direct_buildability_preflight(const Command *command, const SourceIn
     init_lowering_backend_diag(diag, input, target, command, ir);
     return false;
   }
-  return z_direct_buildability_check(ir, target, emit_kind, diag);
+  return z_direct_buildability_check(ir, target, emit_kind, command ? command->freestanding : false, diag);
 }
 
 static void format_file_size(long long bytes, char *out, size_t out_len) {
@@ -8846,7 +8850,7 @@ static bool target_readiness_select_emit_target(const Command *command, const So
 static bool target_readiness_buildability_check(const Command *command, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag) {
   EmitKind emit = command ? command->emit : EMIT_EXE;
   const char *emit_kind = (emit == EMIT_EXE && ir && ir_needs_zero_runtime_object(ir)) ? "obj" : emit_kind_name(emit);
-  if (z_direct_buildability_check(ir, target, emit_kind, diag)) return true;
+  if (z_direct_buildability_check(ir, target, emit_kind, command ? command->freestanding : false, diag)) return true;
   complete_backend_blocker_diag(diag, target, command, emit_kind, diag && diag->backend_blocker.present ? diag->backend_blocker.stage : "buildability");
   return false;
 }
@@ -11009,6 +11013,7 @@ int main(int argc, char **argv) {
 
   SourceInput input = {0};
   Program program = {0};
+  if (command.freestanding) input.allow_missing_main = true;
   bool graph_build_command = strcmp(command.command, "graph") == 0 && command.kind && strcmp(command.kind, "build") == 0;
   bool graph_test_command = strcmp(command.command, "graph") == 0 && command.kind && strcmp(command.kind, "test") == 0;
   bool direct_graph_source_command = false;

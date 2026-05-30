@@ -260,9 +260,9 @@ static bool build_check_executable_shape(const ZBuildability *ctx, const IrProgr
   return true;
 }
 
-bool z_direct_buildability_check(const IrProgram *ir, const ZTargetInfo *target, const char *emit_kind, ZDiag *diag) {
+bool z_direct_buildability_check(const IrProgram *ir, const ZTargetInfo *target, const char *emit_kind, bool freestanding, ZDiag *diag) {
   ZBuildability ctx;
-  if (!z_build_select(ir, target, emit_kind, &ctx, diag)) return false;
+  if (!z_build_select(ir, target, emit_kind, freestanding, &ctx, diag)) return false;
   if (!ir->mir_valid) {
     return z_build_diag(&ctx, diag, ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed", ir->mir_line, ir->mir_column, ir->mir_actual);
   }
@@ -274,6 +274,6 @@ bool z_direct_buildability_check(const IrProgram *ir, const ZTargetInfo *target,
     if (!build_check_instrs(&ctx, &ir->functions[i], ir->functions[i].instrs, ir->functions[i].instr_len, diag)) return false;
   }
   if (!has_export) return z_build_diag(&ctx, diag, "direct backend buildability requires at least one exported function", 1, 1, "no exported function");
-  if (ctx.executable && !build_check_executable_shape(&ctx, ir, diag)) return false;
+  if (ctx.executable && !ctx.freestanding && !build_check_executable_shape(&ctx, ir, diag)) return false;
   return true;
 }

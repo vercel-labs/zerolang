@@ -169,12 +169,13 @@ static const char *build_help_for_backend(ZDirectBackend backend) {
   }
 }
 
-bool z_build_select(const IrProgram *ir, const ZTargetInfo *target, const char *emit_kind, ZBuildability *ctx, ZDiag *diag) {
+bool z_build_select(const IrProgram *ir, const ZTargetInfo *target, const char *emit_kind, bool freestanding, ZBuildability *ctx, ZDiag *diag) {
   memset(ctx, 0, sizeof(*ctx));
   bool executable = emit_kind && strcmp(emit_kind, "exe") == 0;
   ctx->target = target;
   ctx->emit_kind = executable ? "exe" : "obj";
   ctx->executable = executable;
+  ctx->freestanding = freestanding;
   ctx->backend = executable ? z_direct_exe_backend(target) : z_direct_object_backend(target);
   ctx->backend_name = executable ? z_direct_backend_exe_emitter(ctx->backend) : z_direct_backend_object_emitter(ctx->backend);
   ctx->expected = build_expected_for_backend(ctx->backend, executable);
