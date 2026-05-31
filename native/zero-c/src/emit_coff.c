@@ -841,6 +841,28 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
         coff_emit_epilogue(text);
         return true;
       }
+      if (fun->return_type == IR_TYPE_MAYBE_SCALAR && instr->value) {
+        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+          if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
+        } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
+          if (!instr->value->data_len) {
+            z_x64_emit_xor_eax_eax(text);
+            z_x64_emit_xor_reg_reg(text, 2, false);
+          } else if (instr->value->element_type == IR_TYPE_I64 || instr->value->element_type == IR_TYPE_U64) {
+            z_x64_emit_mov_rax_u64(text, instr->value->int_value);
+            z_x64_emit_mov_rdx_from_rax(text);
+            z_x64_emit_mov_eax_u32(text, 1);
+          } else {
+            z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+            z_x64_emit_mov_rdx_from_rax(text);
+            z_x64_emit_mov_eax_u32(text, 1);
+          }
+        } else {
+          return coff_diag_at(diag, "direct COFF Maybe scalar return requires a Maybe scalar value", instr->line, instr->column, "unsupported Maybe scalar return");
+        }
+        coff_emit_epilogue(text);
+        return true;
+      }
       if (instr->value && !coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
       coff_emit_epilogue(text);
       return true;
@@ -866,8 +888,9 @@ static bool coff_validate_function(const IrFunction *fun, ZDiag *diag) {
   for (size_t i = 0; i < fun->param_count; i++) abi_slots += fun->locals[i].type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
   if (abi_slots > 8) return coff_diag_at(diag, "direct COFF object backend supports at most eight ABI parameter slots", fun->line, fun->column, fun->name);
   if (fun->return_type != IR_TYPE_VOID && !coff_type_is_scalar32(fun->return_type) &&
-      fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW) {
-    return coff_diag_at(diag, "direct COFF object backend currently supports Void, 32-bit integer, byte-view, and Maybe byte-view returns", fun->line, fun->column, fun->name);
+      fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW &&
+      fun->return_type != IR_TYPE_MAYBE_SCALAR) {
+    return coff_diag_at(diag, "direct COFF object backend currently supports Void, 32-bit integer, byte-view, Maybe byte-view, and Maybe scalar returns", fun->line, fun->column, fun->name);
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW) {

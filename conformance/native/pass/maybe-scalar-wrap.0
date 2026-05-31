@@ -1,0 +1,20 @@
+fn maybe_u8 Maybe<u8>
+  ret 1_u8
+
+fn maybe_i64 Maybe<i64>
+  ret 42_i64
+
+fn maybe_u64 Maybe<u64>
+  ret 7_u64
+
+fn maybe_u32 Maybe<u32>
+  ret 100_u32
+
+fn maybe_usize Maybe<usize>
+  ret 0_usize
+
+fn maybe_bool Maybe<Bool>
+  ret true
+
+pub fn main Void
+  ret

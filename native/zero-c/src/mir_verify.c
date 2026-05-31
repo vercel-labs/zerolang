@@ -957,7 +957,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
       return mir_verify_maybe_byte_view_literal_contract(ir, value);
     case IR_VALUE_MAYBE_SCALAR_LITERAL:
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_SCALAR, "Maybe scalar literal")) return false;
-      if (!mir_type_is_integer_value(value->element_type) || value->data_len > 1) {
+      if (!(value->element_type == IR_TYPE_BOOL || mir_type_is_integer_value(value->element_type)) || value->data_len > 1) {
         char actual[160];
         snprintf(actual, sizeof(actual), "Maybe scalar literal value %s has flag %u", mir_type_kind_name(value->element_type), value->data_len);
         mir_verify_mark_unsupported(ir, "MIR verifier found invalid Maybe scalar literal", value->line, value->column, actual);

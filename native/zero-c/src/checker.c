@@ -5881,9 +5881,13 @@ static bool type_core_types_compatible_inner(const Program *program, Scope *scop
   if (expected_kind == Z_TYPE_NODE_APPLY && type_core_apply_is(arena, expected, "Maybe") &&
       !type_core_apply_is(arena, actual, "Maybe")) {
     ZTypeId expected_inner = type_core_single_type_arg(arena, expected);
-    return expected_inner != Z_TYPE_ID_INVALID &&
-           type_core_byte_view_abi_like(arena, expected_inner) &&
-           type_core_byte_view_abi_like(arena, actual) &&
+    if (expected_inner == Z_TYPE_ID_INVALID) return false;
+    if (type_core_byte_view_abi_like(arena, expected_inner) &&
+        type_core_byte_view_abi_like(arena, actual)) {
+      return type_core_types_compatible_inner(program, scope, arena, expected_inner, actual, depth + 1);
+    }
+    return !type_core_byte_view_abi_like(arena, expected_inner) &&
+           !type_core_byte_view_abi_like(arena, actual) &&
            type_core_types_compatible_inner(program, scope, arena, expected_inner, actual, depth + 1);
   }
 
@@ -6847,6 +6851,10 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
   if (expr->kind == EXPR_NUMBER) {
     if (is_float_literal_text(expr->text)) return validate_float_literal_for_type(expr, expected, diag);
     return validate_integer_literal_for_type(expr, expected, diag);
+  }
+  if (expr->kind == EXPR_BOOL) {
+    set_expr_resolved_type(expr, "Bool");
+    return true;
   }
   if (expr->kind == EXPR_NULL) {
     if (expected && type_is_named_generic(expected, "Maybe")) {

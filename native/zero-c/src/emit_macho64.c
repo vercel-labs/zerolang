@@ -1230,6 +1230,23 @@ static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *i
       macho_emit_epilogue(text, frame_size, restore_process_args);
       return true;
     }
+    if (fun->return_type == IR_TYPE_MAYBE_SCALAR && instr->value) {
+      if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+        if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
+      } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
+        if (!instr->value->data_len) {
+          z_aarch64_emit_movz_w(text, 0, 0);
+          z_aarch64_emit_movz_w(text, 1, 0);
+        } else {
+          z_aarch64_emit_movz_w(text, 0, 1);
+          z_aarch64_emit_movz_x(text, 1, (uint64_t)instr->value->int_value);
+        }
+      } else {
+        return macho_diag_at(diag, "direct AArch64 Mach-O Maybe scalar return requires a Maybe scalar value", instr->line, instr->column, "unsupported Maybe scalar return");
+      }
+      macho_emit_epilogue(text, frame_size, restore_process_args);
+      return true;
+    }
     if (instr->value && !macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     if (fun->raises && !instr->value) z_aarch64_emit_movz_x(text, 0, 0);
     macho_emit_epilogue(text, frame_size, restore_process_args);
@@ -1286,8 +1303,9 @@ static bool macho_validate_function(const IrFunction *fun, ZDiag *diag) {
     if (abi_slots > 8) return macho_diag_at(diag, "direct AArch64 Mach-O object backend supports at most eight ABI argument slots", fun->line, fun->column, fun->name);
   }
   if (fun->return_type != IR_TYPE_VOID && !macho_type_is_scalar(fun->return_type) &&
-      fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW) {
-    return macho_diag_at(diag, "direct AArch64 Mach-O object backend currently supports Void, primitive integer, byte-view, and Maybe byte-view returns", fun->line, fun->column, fun->name);
+      fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW &&
+      fun->return_type != IR_TYPE_MAYBE_SCALAR) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O object backend currently supports Void, primitive integer, byte-view, Maybe byte-view, and Maybe scalar returns", fun->line, fun->column, fun->name);
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW) {

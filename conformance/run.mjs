@@ -302,6 +302,8 @@ for (const fixture of [
   "conformance/native/pass/choice-match-payload-return-origin.0",
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/native/pass/null-maybe.0",
+  "conformance/native/pass/maybe-raw-scalar-return.0",
+  "conformance/native/pass/maybe-scalar-wrap.0",
   "conformance/native/pass/meta-typed-target-type.0",
   "conformance/native/pass/std-args.0",
   "conformance/native/pass/std-env.0",
@@ -3494,9 +3496,7 @@ const wrongReturnType = await execFileAsync(zero, ["check", "conformance/native/
 assert.notEqual(wrongReturnType.code, 0);
 assert.match(wrongReturnType.stderr, /TYP003/);
 
-const maybeRawScalarReturn = await execFileAsync(zero, ["check", "conformance/native/fail/maybe-raw-scalar-return.0"]).catch((error) => error);
-assert.notEqual(maybeRawScalarReturn.code, 0);
-assert.match(maybeRawScalarReturn.stderr, /TYP003/);
+
 
 const immutableAssignment = await execFileAsync(zero, ["check", "conformance/native/fail/immutable-assignment.0"]).catch((error) => error);
 assert.notEqual(immutableAssignment.code, 0);

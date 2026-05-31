@@ -838,6 +838,28 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
         z_x64_emit_epilogue(text);
         return true;
       }
+      if (fun->return_type == IR_TYPE_MAYBE_SCALAR && instr->value) {
+        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+          if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
+        } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
+          if (!instr->value->data_len) {
+            z_x64_emit_xor_eax_eax(text);
+            z_x64_emit_xor_reg_reg(text, 2, false);
+          } else if (machx64_type_is_i64(instr->value->element_type)) {
+            z_x64_emit_mov_rax_u64(text, instr->value->int_value);
+            z_x64_emit_mov_rdx_from_rax(text);
+            z_x64_emit_mov_eax_u32(text, 1);
+          } else {
+            z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+            z_x64_emit_mov_rdx_from_rax(text);
+            z_x64_emit_mov_eax_u32(text, 1);
+          }
+        } else {
+          return machx64_diag_at(diag, "direct x86_64 Mach-O Maybe scalar return requires a Maybe scalar value", instr->line, instr->column, "unsupported Maybe scalar return");
+        }
+        z_x64_emit_epilogue(text);
+        return true;
+      }
       if (instr->value && !machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
       if (fun->raises && !instr->value) z_x64_emit_xor_rax_rax(text);
       else if (fun->raises && instr->value && !machx64_type_is_i64(instr->value->type)) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
@@ -870,8 +892,9 @@ static bool machx64_validate_function(const IrFunction *fun, ZDiag *diag) {
   for (size_t i = 0; i < fun->param_count; i++) abi_slots += fun->locals[i].type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
   if (abi_slots > 6) return machx64_diag_at(diag, "direct x86_64 Mach-O object backend supports at most six ABI parameter slots", fun->line, fun->column, fun->name);
   if (fun->return_type != IR_TYPE_VOID && !machx64_type_is_supported_scalar(fun->return_type) &&
-      fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW) {
-    return machx64_diag_at(diag, "direct x86_64 Mach-O object backend currently supports Void, integer, byte-view, and Maybe byte-view returns", fun->line, fun->column, fun->name);
+      fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW &&
+      fun->return_type != IR_TYPE_MAYBE_SCALAR) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O object backend currently supports Void, integer, byte-view, Maybe byte-view, and Maybe scalar returns", fun->line, fun->column, fun->name);
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW || fun->locals[i].type == IR_TYPE_MAYBE_BYTE_VIEW) continue;

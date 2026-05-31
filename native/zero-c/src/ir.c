@@ -181,11 +181,14 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (strcmp(type, "Maybe<MutSpan<u8>>") == 0 || strcmp(type, "Maybe<Span<u8>>") == 0 ||
       strcmp(type, "Maybe<String>") == 0 || strcmp(type, "Maybe<owned<ByteBuf>>") == 0) return IR_TYPE_MAYBE_BYTE_VIEW;
   if (strcmp(type, "Maybe<JsonDoc>") == 0 ||
+      strcmp(type, "Maybe<Bool>") == 0 ||
       strcmp(type, "Maybe<u8>") == 0 ||
       strcmp(type, "Maybe<u16>") == 0 ||
       strcmp(type, "Maybe<usize>") == 0 ||
       strcmp(type, "Maybe<i32>") == 0 ||
       strcmp(type, "Maybe<u32>") == 0 ||
+      strcmp(type, "Maybe<i64>") == 0 ||
+      strcmp(type, "Maybe<u64>") == 0 ||
       strcmp(type, "Maybe<owned<File>>") == 0) return IR_TYPE_MAYBE_SCALAR;
   return IR_TYPE_UNSUPPORTED;
 }
@@ -241,7 +244,7 @@ static IrTypeKind ir_maybe_scalar_element_type(const char *type) {
   char *inner = z_strndup(type + prefix_len, len - prefix_len - 1);
   IrTypeKind element = ir_type_kind(inner);
   free(inner);
-  return ir_type_is_value(element) ? element : IR_TYPE_UNSUPPORTED;
+  return (ir_type_is_value(element) || element == IR_TYPE_BOOL) ? element : IR_TYPE_UNSUPPORTED;
 }
 
 static unsigned ir_error_code_for_name(const char *name) {
@@ -2956,6 +2959,20 @@ static bool ir_lower_expr_for_type(const Program *program, IrProgram *ir, const 
     if (!ir_lower_byte_view(program, ir, fun, expr, &view)) return false;
     *out = ir_new_maybe_byte_view_literal(ir, true, view, line, column);
     return true;
+  }
+  if (target_type == IR_TYPE_MAYBE_SCALAR && expr && expr->resolved_type) {
+    IrTypeKind resolved_kind = ir_type_kind(expr->resolved_type);
+    if (resolved_kind != IR_TYPE_MAYBE_SCALAR && resolved_kind != IR_TYPE_MAYBE_BYTE_VIEW &&
+        (ir_type_is_value(resolved_kind) || resolved_kind == IR_TYPE_BOOL)) {
+      IrValue *inner = NULL;
+      if (!ir_lower_expr(program, ir, fun, expr, &inner)) return false;
+      if (inner->kind == IR_VALUE_INT || inner->kind == IR_VALUE_BOOL) {
+        *out = ir_new_maybe_scalar_literal(ir, true, resolved_kind, inner->int_value, line, column);
+        ir_free_value(inner);
+        return true;
+      }
+      ir_free_value(inner);
+    }
   }
   return ir_lower_expr(program, ir, fun, expr, out);
 }
