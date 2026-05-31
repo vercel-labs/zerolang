@@ -338,6 +338,14 @@ function hasAarch64Instruction(bytes, expected) {
   return false;
 }
 
+function hasAarch64CondBranch(bytes, cond) {
+  for (let offset = 0; offset + 4 <= bytes.length; offset++) {
+    const instruction = bytes.readUInt32LE(offset);
+    if ((instruction & 0xff000010) === 0x54000000 && (instruction & 0xf) === cond) return true;
+  }
+  return false;
+}
+
 function hasAarch64VoidReturnEpilogue(bytes) {
   for (let offset = 0; offset + 12 <= bytes.length; offset++) {
     if (bytes.readUInt32LE(offset) !== 0x52800000) continue;
@@ -3543,6 +3551,26 @@ assert.equal(machoOpenByteSliceBuild.compiler, "zero-macho64");
 assert.equal(machoOpenByteSliceBuild.generatedCBytes, 0);
 assert.equal(machoOpenByteSliceBuild.objectBackend.objectEmission.path, "direct-macho64-object");
 assert.equal(machoOpenByteSliceBytes.readUInt32LE(0), 0xfeedfacf);
+const aarch64OpenSliceBoundsFixture = join(outDir, "aarch64-open-byte-slice-bounds.0");
+writeFileSync(aarch64OpenSliceBoundsFixture, `export c fn main() -> u32 {
+    let words: [2]u16 = [1_u16, 2_u16]
+    let suffix: Span<u16> = words[3_usize..]
+    return (std.mem.len(suffix)) as u32
+}
+`);
+const aarch64OpenSliceBoundsPath = join(outDir, "aarch64-open-byte-slice-bounds.o");
+json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", aarch64OpenSliceBoundsFixture, "--out", aarch64OpenSliceBoundsPath]);
+const aarch64OpenSliceBoundsBytes = readFileSync(aarch64OpenSliceBoundsPath);
+assert.equal(aarch64OpenSliceBoundsBytes.readUInt16LE(16), 1);
+assert.equal(aarch64OpenSliceBoundsBytes.readUInt16LE(18), 183);
+assert(hasAarch64CondBranch(aarch64OpenSliceBoundsBytes, 9));
+assert(hasAarch64Instruction(aarch64OpenSliceBoundsBytes, 0xd4200000));
+const machoOpenSliceBoundsPath = join(outDir, "macho-open-byte-slice-bounds.o");
+json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", aarch64OpenSliceBoundsFixture, "--out", machoOpenSliceBoundsPath]);
+const machoOpenSliceBoundsBytes = readFileSync(machoOpenSliceBoundsPath);
+assert.equal(machoOpenSliceBoundsBytes.readUInt32LE(0), 0xfeedfacf);
+assert(hasAarch64CondBranch(machoOpenSliceBoundsBytes, 9));
+assert(hasAarch64Instruction(machoOpenSliceBoundsBytes, 0xd4200000));
 const machOMemoryPackageReadiness = json(["check", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/memory-package"]).body;
 assert.equal(machOMemoryPackageReadiness.ok, true);
 assert.equal(machOMemoryPackageReadiness.diagnostics.length, 0);

@@ -23,6 +23,10 @@ static unsigned build_type_index_shift(IrTypeKind type) {
   return 2;
 }
 
+static bool build_scaled_index_exceeds_imm12(unsigned start, IrTypeKind element_type) {
+  return start > ((unsigned)BUILD_AARCH64_IMM12_MAX >> build_type_index_shift(element_type));
+}
+
 static bool build_byte_view_const_len(const IrValue *view, unsigned *out) {
   if (!view) return false;
   if (view->kind == IR_VALUE_STRING_LITERAL || view->kind == IR_VALUE_ARRAY_BYTE_VIEW) {
@@ -122,7 +126,7 @@ static bool build_check_macho_byte_view_ptr(const ZBuildability *ctx, const IrFu
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     unsigned start = 0;
     if (!build_check_macho_byte_view_ptr(ctx, fun, view->left, diag)) return false;
-    if (build_const_u32_value(view->index, &start) && (start << build_type_index_shift(build_view_element_type(view))) > BUILD_AARCH64_IMM12_MAX) {
+    if (build_const_u32_value(view->index, &start) && build_scaled_index_exceeds_imm12(start, build_view_element_type(view))) {
       return z_build_diag(ctx, diag, "direct AArch64 Mach-O byte slice constant start is too large", view->line, view->column, "unsupported byte slice");
     }
     return true;

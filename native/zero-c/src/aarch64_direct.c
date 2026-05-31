@@ -181,6 +181,20 @@ static void a64_emit_u32_bounds_check(ZBuf *text, unsigned index_reg, unsigned l
   z_aarch64_patch_cond19(text, ok_patch, text->len);
 }
 
+static void a64_emit_u32_upper_bound_check(ZBuf *text, unsigned value_reg, unsigned max_reg) {
+  z_aarch64_emit_cmp_w(text, value_reg, max_reg);
+  size_t ok_patch = z_aarch64_emit_b_cond_placeholder(text, 9);
+  z_aarch64_emit_brk(text);
+  z_aarch64_patch_cond19(text, ok_patch, text->len);
+}
+
+static bool a64_scaled_index_imm12(unsigned start, IrTypeKind element_type, unsigned *out) {
+  unsigned shift = a64_type_index_shift(element_type);
+  if (start > (4095u >> shift)) return false;
+  if (out) *out = start << shift;
+  return true;
+}
+
 static void a64_emit_cast_normalize_reg(ZBuf *text, unsigned reg, IrTypeKind source, IrTypeKind target) {
   switch (target) {
     case IR_TYPE_BOOL:
@@ -292,6 +306,7 @@ static bool a64_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const I
       if (!a64_emit_store_scratch(text, reg, IR_TYPE_U32, scratch_slot, view->left, diag)) return false;
       if (!a64_emit_value_to_reg_at(text, fun, view->index, tmp, frame_size, scratch_slot + 1, ctx, diag)) return false;
       if (!a64_emit_load_scratch(text, reg, IR_TYPE_U32, scratch_slot, view->left, diag)) return false;
+      a64_emit_u32_upper_bound_check(text, tmp, reg);
       a64_emit_binary_reg(text, IR_BIN_SUB, reg, reg, tmp, false);
       return true;
     }
@@ -345,8 +360,8 @@ static bool a64_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const I
     if (!a64_emit_byte_view_ptr_at(text, fun, view->left, reg, frame_size, scratch_slot, ctx, diag)) return false;
     if (!view->index) return true;
     if (a64_const_u32_value(view->index, &start)) {
-      unsigned byte_start = start << a64_type_index_shift(a64_view_element_type(view));
-      if (byte_start > 4095) return a64_diag(diag, "direct AArch64 byte slice constant start is too large", view->line, view->column, "unsupported byte slice");
+      unsigned byte_start = 0;
+      if (!a64_scaled_index_imm12(start, a64_view_element_type(view), &byte_start)) return a64_diag(diag, "direct AArch64 byte slice constant start is too large", view->line, view->column, "unsupported byte slice");
       if (byte_start > 0) z_aarch64_emit_add_x_imm(text, reg, reg, byte_start);
       return true;
     }
@@ -381,10 +396,14 @@ static bool a64_emit_byte_view_pair_at(ZBuf *text, const IrFunction *fun, const 
     if (view->right) {
       if (!a64_emit_value_to_reg_at(text, fun, view->right, 9, frame_size, scratch_slot + 3, ctx, diag)) return false;
       if (!a64_emit_load_scratch(text, 8, view->index ? view->index->type : IR_TYPE_U32, scratch_slot + 2, view->index, diag)) return false;
+      if (!a64_emit_load_scratch(text, 12, IR_TYPE_U32, scratch_slot + 1, view->left, diag)) return false;
+      a64_emit_u32_upper_bound_check(text, 8, 9);
+      a64_emit_u32_upper_bound_check(text, 9, 12);
       a64_emit_binary_reg(text, IR_BIN_SUB, 10, 9, 8, false);
     } else {
       if (!a64_emit_load_scratch(text, 10, IR_TYPE_U32, scratch_slot + 1, view->left, diag)) return false;
       if (!a64_emit_load_scratch(text, 8, view->index ? view->index->type : IR_TYPE_U32, scratch_slot + 2, view->index, diag)) return false;
+      a64_emit_u32_upper_bound_check(text, 8, 10);
       a64_emit_binary_reg(text, IR_BIN_SUB, 10, 10, 8, false);
     }
     if (!a64_emit_load_scratch(text, 11, IR_TYPE_U64, scratch_slot, view->left, diag)) return false;

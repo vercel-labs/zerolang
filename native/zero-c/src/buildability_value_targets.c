@@ -22,6 +22,10 @@ static unsigned build_type_index_shift(IrTypeKind type) {
   return 2;
 }
 
+static bool build_scaled_index_exceeds_imm12(unsigned start, IrTypeKind element_type) {
+  return start > ((unsigned)BUILD_AARCH64_IMM12_MAX >> build_type_index_shift(element_type));
+}
+
 static bool build_aarch64_index_load_uses_scratch(const IrFunction *fun, const IrValue *value) {
   if (!fun || value->kind != IR_VALUE_INDEX_LOAD || value->array_index >= fun->local_len) return true;
   const IrLocal *local = &fun->locals[value->array_index];
@@ -86,7 +90,7 @@ static bool build_aarch64_byte_view_ptr(const ZBuildability *ctx, const IrFuncti
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     unsigned start = 0;
     if (!build_aarch64_byte_view_ptr(ctx, fun, view->left, diag)) return false;
-    if (build_const_u32_value(view->index, &start) && (start << build_type_index_shift(build_view_element_type(view))) > BUILD_AARCH64_IMM12_MAX) {
+    if (build_const_u32_value(view->index, &start) && build_scaled_index_exceeds_imm12(start, build_view_element_type(view))) {
       return z_build_diag(ctx, diag, "direct AArch64 byte slice constant start is too large", view->line, view->column, "unsupported byte slice");
     }
     return true;

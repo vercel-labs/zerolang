@@ -989,6 +989,42 @@ assert.equal(machoOpenByteSliceBuildBody.generatedCBytes, 0);
 assert.equal(machoOpenByteSliceBuildBody.objectBackend.objectEmission.path, "direct-macho64-object");
 await assertMachOArm64Object(`${outDir}/macho-open-byte-slice.o`, "main");
 
+const aarch64OpenSliceBoundsFixture = `${outDir}/aarch64-open-byte-slice-bounds.0`;
+await writeFile(aarch64OpenSliceBoundsFixture, `export c fn main() -> u32 {
+    let words: [2]u16 = [1_u16, 2_u16]
+    let suffix: Span<u16> = words[3_usize..]
+    return (std.mem.len(suffix)) as u32
+}
+`);
+await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "linux-arm64",
+  aarch64OpenSliceBoundsFixture,
+  "--out",
+  `${outDir}/aarch64-open-byte-slice-bounds.o`,
+]);
+const aarch64OpenSliceBoundsBytes = await assertElfAarch64Object(`${outDir}/aarch64-open-byte-slice-bounds.o`, "main");
+assert(hasAarch64CondBranch(aarch64OpenSliceBoundsBytes, 9));
+assert(hasAarch64Instruction(aarch64OpenSliceBoundsBytes, 0xd4200000));
+await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "darwin-arm64",
+  aarch64OpenSliceBoundsFixture,
+  "--out",
+  `${outDir}/macho-open-byte-slice-bounds.o`,
+]);
+const machoOpenSliceBoundsBytes = await assertMachOArm64Object(`${outDir}/macho-open-byte-slice-bounds.o`, "main");
+assert(hasAarch64CondBranch(machoOpenSliceBoundsBytes, 9));
+assert(hasAarch64Instruction(machoOpenSliceBoundsBytes, 0xd4200000));
+
 async function assertAArch64ObjectBuildabilityBlocked(target, backend, outName, expectedMessage) {
   const fixture = "conformance/native/pass/macho-nested-call-scratch-blocked.0";
   const readiness = await execFileAsync(zero, [
