@@ -6366,13 +6366,20 @@ static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Pr
   return true;
 }
 
+static bool stdlib_writable_item_element(const Expr *expr, ZDiag *diag, const char *display_name, const char *element_type) {
+  if (!type_is_const(element_type)) return true;
+  char message[256];
+  snprintf(message, sizeof(message), "%s expects mutable non-const item storage", display_name);
+  return set_diag_detail(diag, 3010, message, expr->line, expr->column, "mutable non-const item storage", element_type, "use a mutable element type when item mutation is required");
+}
+
 static bool stdlib_mutable_items_arg_element(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *display_name, char *element_type, size_t element_len, const char **actual_type) {
   if (!check_expr(ctx, program, expr, scope, diag)) return false;
   const char *actual = expr_type(ctx, program, expr, scope);
   if (actual_type) *actual_type = actual;
-  if (mutspan_element_text(actual, element_type, element_len)) return true;
+  if (mutspan_element_text(actual, element_type, element_len)) return stdlib_writable_item_element(expr, diag, display_name, element_type);
   if (fixed_array_type_parts(actual, NULL, 0, element_type, element_len)) {
-    if (slice_source_is_mutable_storage(expr, scope, actual)) return true;
+    if (slice_source_is_mutable_storage(expr, scope, actual)) return stdlib_writable_item_element(expr, diag, display_name, element_type);
     char message[256];
     snprintf(message, sizeof(message), "%s expects mutable item storage", display_name);
     return set_diag_detail(diag, 3010, message, expr->line, expr->column, "mutable [N]T or MutSpan<T>", "immutable array binding", "declare the array with var or pass a MutSpan<T>");

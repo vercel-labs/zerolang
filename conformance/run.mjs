@@ -3640,6 +3640,10 @@ const memCopyItemsImmutableField = await execFileAsync(zero, ["check", "conforma
 assert.notEqual(memCopyItemsImmutableField.code, 0);
 assert.match(memCopyItemsImmutableField.stderr, /TYP009/);
 
+const memCopyItemsConstDst = await execFileAsync(zero, ["check", "conformance/native/fail/std-mem-copy-items-const-dst.0"]).catch((error) => error);
+assert.notEqual(memCopyItemsConstDst.code, 0);
+assert.match(memCopyItemsConstDst.stderr, /TYP009/);
+
 const memCopyItemsMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/std-mem-copy-items-mismatch.0"]).catch((error) => error);
 assert.notEqual(memCopyItemsMismatch.code, 0);
 assert.match(memCopyItemsMismatch.stderr, /STD003/);
@@ -3655,6 +3659,10 @@ assert.match(memCopyItemsGenericOwned.stderr, /OWN001/);
 const memFillItemsMismatch = await execFileAsync(zero, ["check", "conformance/native/fail/std-mem-fill-items-mismatch.0"]).catch((error) => error);
 assert.notEqual(memFillItemsMismatch.code, 0);
 assert.match(memFillItemsMismatch.stderr, /TYP002|STD003/);
+
+const memFillItemsConstDst = await execFileAsync(zero, ["check", "conformance/native/fail/std-mem-fill-items-const-dst.0"]).catch((error) => error);
+assert.notEqual(memFillItemsConstDst.code, 0);
+assert.match(memFillItemsConstDst.stderr, /TYP009/);
 
 const memFillItemsOwned = await execFileAsync(zero, ["check", "conformance/native/fail/std-mem-fill-items-owned.0"]).catch((error) => error);
 assert.notEqual(memFillItemsOwned.code, 0);
