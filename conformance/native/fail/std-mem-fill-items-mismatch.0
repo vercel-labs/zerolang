@@ -1,0 +1,5 @@
+pub fn main(world: World) -> Void raises {
+    var dst: [2]i32 = [0, 0]
+    let _filled: usize = std.mem.fillItems(dst, 1_u8)
+    check world.out.write("unreachable\n")
+}

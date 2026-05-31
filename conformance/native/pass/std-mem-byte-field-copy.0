@@ -1,0 +1,13 @@
+type ByteHolder {
+    bytes: [4]u8,
+}
+
+pub fn main(world: World) -> Void raises {
+    var holder: ByteHolder = ByteHolder { bytes: [0_u8, 0_u8, 0_u8, 0_u8] }
+    let copied: usize = std.mem.copy(holder.bytes, std.mem.span("xy"))
+    let filled: usize = std.mem.fill(holder.bytes[2..], 122_u8)
+    let fieldBytesOk: Bool = copied == 2 && filled == 2 && holder.bytes[0] == 120_u8 && holder.bytes[1] == 121_u8 && holder.bytes[2] == 122_u8 && holder.bytes[3] == 122_u8
+    if fieldBytesOk {
+        check world.out.write("std mem byte field copy ok\n")
+    }
+}

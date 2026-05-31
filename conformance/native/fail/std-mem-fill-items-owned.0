@@ -1,0 +1,14 @@
+type File {
+    fd: i32,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+pub fn main() -> Void {
+    var files: [1]owned<File> = [File { fd: 1 }]
+    let file: owned<File> = File { fd: 2 }
+    let _filled: usize = std.mem.fillItems(files, file)
+    close(file)
+    close(files[0])
+}

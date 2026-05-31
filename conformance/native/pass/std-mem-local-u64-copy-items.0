@@ -1,0 +1,8 @@
+pub fn main(world: World) -> Void raises {
+    let src: [2]u64 = [4294967296_u64, 8589934592_u64]
+    var dst: [2]u64 = [0_u64, 0_u64]
+    let copied: usize = std.mem.copyItems(dst, src)
+    if copied == 2 && dst[0] == 4294967296_u64 && dst[1] == 8589934592_u64 {
+        check world.out.write("std mem local u64 copy items ok\n")
+    }
+}

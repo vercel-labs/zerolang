@@ -1,0 +1,24 @@
+pub fn main(world: World) -> Void raises {
+    let values: [4]i32 = [1, 2, 3, 4]
+    var scratch: [4]i32 = [0, 0, 0, 0]
+    let copied: usize = std.mem.copyItems(scratch, values)
+    let filled: usize = std.mem.fillItems(scratch[2..], 9)
+    let prefix: Span<i32> = std.mem.prefix(scratch, 3)
+    let tail: Span<i32> = std.mem.dropPrefix(scratch, 2)
+    let scratchSpan: Span<i32> = scratch
+    let different: [4]i32 = [1, 2, 9, 10]
+    let differentSpan: Span<i32> = different
+    var bytes: [5]u8 = [0, 0, 0, 0, 0]
+    let byteCopied: usize = std.mem.copy(bytes[1..], std.mem.span("xy"))
+    let byteFilled: usize = std.mem.fill(bytes[3..], 122_u8)
+    var words: [3]u16 = [10_u16, 20_u16, 30_u16]
+    let wordFilled: usize = std.mem.fillItems(words[1..], 7_u16)
+    let wordTail: Span<u16> = std.mem.dropPrefix(words, 1)
+    let itemsOk: Bool = copied == 4 && filled == 2 && scratch[0] == 1 && scratch[1] == 2 && scratch[2] == 9 && scratch[3] == 9
+    let spansOk: Bool = std.mem.contains(prefix, 9) && !std.mem.contains(prefix, 4) && std.mem.len(tail) == 2 && !std.mem.isEmpty(tail) && std.mem.isEmpty(std.mem.dropPrefix(tail, 2)) && !std.mem.eqlBytes(scratchSpan, differentSpan)
+    let bytesOk: Bool = byteCopied == 2 && byteFilled == 2 && bytes[0] == 0 && bytes[1] == 120 && bytes[2] == 121 && bytes[3] == 122 && bytes[4] == 122
+    let wordsOk: Bool = wordFilled == 2 && words[1] == 7_u16 && words[2] == 7_u16 && std.mem.len(wordTail) == 2 && std.mem.contains(wordTail, 7_u16)
+    if itemsOk && spansOk && bytesOk && wordsOk {
+        check world.out.write("std mem generic items ok\n")
+    }
+}

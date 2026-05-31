@@ -1,0 +1,14 @@
+type File {
+    fd: i32,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+pub fn main() -> Void {
+    var dst: [1]owned<File> = [File { fd: 1 }]
+    var src: [1]owned<File> = [File { fd: 2 }]
+    let _copied: usize = std.mem.copyItems(dst, src)
+    close(src[0])
+    close(dst[0])
+}

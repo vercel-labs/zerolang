@@ -2,12 +2,21 @@
 
 Runnable today:
 
+The item-generic helpers currently support these direct-backed scalar element
+types: `Bool`, `u8`, `u16`, `usize`, `i32`, `u32`, `i64`, and `u64`.
+
 | API | Return | Notes |
 | --- | --- | --- |
 | `std.mem.copy(dst, src)` | `usize` | Copies from `Span<u8>` into caller-owned `MutSpan<u8>` storage and returns the copied byte count. |
+| `std.mem.copyItems(dst, src)` | `usize` | Copies matching scalar `Span<T>` items into caller-owned mutable item storage and returns the copied item count. |
 | `std.mem.fill(dst, value)` | `usize` | Fills caller-owned `MutSpan<u8>` storage with a `u8` byte and returns the filled byte count. |
+| `std.mem.fillItems(dst, value)` | `usize` | Fills caller-owned mutable scalar item storage with a matching `T` value and returns the filled item count. |
 | `std.mem.eql(a, b)` | `Bool` | Compares string-backed byte inputs. |
 | `std.mem.span(value)` | `Span<u8>` | Builds a native `Span<u8>` view over a string literal. |
+| `std.mem.contains(items, needle)` | `Bool` | Searches readable contiguous non-owned scalar `T` storage for a matching value. |
+| `std.mem.isEmpty(items)` | `Bool` | Reports whether readable contiguous scalar item storage has zero items. |
+| `std.mem.prefix(items, count)` | `Span<T>` | Returns a clamped read-only scalar item prefix view. |
+| `std.mem.dropPrefix(items, count)` | `Span<T>` | Returns a clamped read-only scalar item view after the first `count` items. |
 | `std.mem.len(bytes)` | `usize` | Returns the length of a fixed array, `Span<T>`, or `MutSpan<T>`. |
 | `std.mem.get(bytes, index)` | `Maybe<T>` | Reads one indexed element from an array/span-like value when the index is in bounds. |
 | `std.mem.eqlBytes(a, b)` | `Bool` | Compares two `Span<T>`/`MutSpan<T>` values with the same element type. |
@@ -44,9 +53,10 @@ pub fn main(world: World) -> Void raises {
     let copied: usize = std.mem.copy(scratch, bytes)
     var ints: [3]i32 = [1, 2, 3]
     let intSpan: MutSpan<i32> = ints
-    intSpan[1] = 20
+    let filled: usize = std.mem.fillItems(intSpan, 7)
+    let prefix: Span<i32> = std.mem.prefix(intSpan, 2)
     let view: SliceView = SliceView { bytes: bytes, values: intSpan }
-    if copied == 11 && std.mem.len(view.bytes) == 11 && std.mem.eqlBytes(view.bytes, same) && std.mem.len(view.values) == 3 && std.mem.eqlBytes(view.values, intSpan) {
+    if copied == 11 && filled == 3 && std.mem.len(view.bytes) == 11 && std.mem.eqlBytes(view.bytes, same) && std.mem.len(view.values) == 3 && std.mem.contains(view.values, 7) && std.mem.len(prefix) == 2 {
         check world.out.write("memory type forms runnable\n")
     }
 }

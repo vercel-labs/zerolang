@@ -1,0 +1,5 @@
+pub fn main() -> Void {
+    let values: [3]i32 = [1, 2, 3]
+    let count: i32 = 2
+    let _prefix: Span<i32> = std.mem.prefix(values, count)
+}

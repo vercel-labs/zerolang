@@ -186,12 +186,24 @@ void z_aarch64_emit_load_b_imm(ZBuf *text, unsigned dst, unsigned base, unsigned
   z_aarch64_append_u32(text, 0x39400000u | ((byte_offset & 0xfffu) << 10) | ((base & 31u) << 5) | (dst & 31u));
 }
 
+void z_aarch64_emit_load_h_imm(ZBuf *text, unsigned dst, unsigned base, unsigned byte_offset) {
+  z_aarch64_append_u32(text, 0x79400000u | (((byte_offset / 2u) & 0xfffu) << 10) | ((base & 31u) << 5) | (dst & 31u));
+}
+
 void z_aarch64_emit_store_w_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset) {
   z_aarch64_append_u32(text, 0xb9000000u | (((byte_offset / 4u) & 0xfffu) << 10) | ((base & 31u) << 5) | (src & 31u));
 }
 
+void z_aarch64_emit_store_x_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset) {
+  z_aarch64_append_u32(text, 0xf9000000u | (((byte_offset / 8u) & 0xfffu) << 10) | ((base & 31u) << 5) | (src & 31u));
+}
+
 void z_aarch64_emit_store_b_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset) {
   z_aarch64_append_u32(text, 0x39000000u | ((byte_offset & 0xfffu) << 10) | ((base & 31u) << 5) | (src & 31u));
+}
+
+void z_aarch64_emit_store_h_imm(ZBuf *text, unsigned src, unsigned base, unsigned byte_offset) {
+  z_aarch64_append_u32(text, 0x79000000u | (((byte_offset / 2u) & 0xfffu) << 10) | ((base & 31u) << 5) | (src & 31u));
 }
 
 void z_aarch64_emit_add_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs) {

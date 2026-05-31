@@ -1,0 +1,13 @@
+fn store(dst: MutSpan<ref<i32>>, fallback: ref<i32>) -> Void {
+    let local: i32 = 7
+    var scratch: [2]ref<i32> = [&local, &local]
+    let prefix: MutSpan<ref<i32>> = scratch[..1]
+    let _filled: usize = std.mem.fillItems(prefix, fallback)
+    let _copied: usize = std.mem.copyItems(dst, scratch)
+}
+
+pub fn main() -> Void {
+    let fallback: i32 = 1
+    var slots: [2]ref<i32> = [&fallback, &fallback]
+    store(slots, &fallback)
+}

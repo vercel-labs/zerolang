@@ -1,0 +1,13 @@
+type WideCopyHolder {
+    src: [2]u64,
+    dst: [2]u64,
+}
+
+pub fn main(world: World) -> Void raises {
+    var holder: WideCopyHolder = WideCopyHolder { src: [4294967296_u64, 8589934592_u64], dst: [0_u64, 0_u64] }
+    let copied: usize = std.mem.copyItems(holder.dst, holder.src)
+    let copiedWideValues: Bool = copied == 2 && holder.dst[0] == 4294967296_u64 && holder.dst[1] == 8589934592_u64
+    if copiedWideValues {
+        check world.out.write("std mem u64 copy items ok\n")
+    }
+}

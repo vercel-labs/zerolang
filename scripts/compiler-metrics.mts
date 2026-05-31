@@ -17,16 +17,16 @@ type CScanState = {
 const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 985, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
-  "native/zero-c/src/checker.c": { maxLines: 11027, maxStrcmpCalls: 284 },
+  "native/zero-c/src/checker.c": { maxLines: 11267, maxStrcmpCalls: 284 },
   "native/zero-c/src/main.c": { maxLines: 11888, maxStrcmpCalls: 464 },
-  "native/zero-c/src/ir.c": { maxLines: 3750, maxStrcmpCalls: 226 },
+  "native/zero-c/src/ir.c": { maxLines: 3869, maxStrcmpCalls: 226 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability.c": { maxLines: 295, maxStrcmpCalls: 2 },
   "native/zero-c/src/buildability.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability_internal.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability_context.c": { maxLines: 185, maxStrcmpCalls: 1 },
   "native/zero-c/src/buildability_targets.c": { maxLines: 190, maxStrcmpCalls: 0 },
-  "native/zero-c/src/buildability_value_targets.c": { maxLines: 320, maxStrcmpCalls: 0 },
+  "native/zero-c/src/buildability_value_targets.c": { maxLines: 352, maxStrcmpCalls: 0 },
   "native/zero-c/src/call_resolve.c": { maxLines: 200, maxStrcmpCalls: 2 },
   "native/zero-c/src/call_resolve.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/canonical_text.c": { maxLines: 1508, maxStrcmpCalls: 0 },
@@ -46,20 +46,20 @@ const fileBudgets = {
   "native/zero-c/src/elf_emit_state.h": { maxLines: 90, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_format.c": { maxLines: 470, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_format.h": { maxLines: 90, maxStrcmpCalls: 0 },
-  "native/zero-c/src/aarch64_direct.c": { maxLines: 920, maxStrcmpCalls: 1 },
+  "native/zero-c/src/aarch64_direct.c": { maxLines: 994, maxStrcmpCalls: 1 },
   "native/zero-c/src/aarch64_direct.h": { maxLines: 40, maxStrcmpCalls: 0 },
-  "native/zero-c/src/aarch64_emit.c": { maxLines: 380, maxStrcmpCalls: 0 },
-  "native/zero-c/src/aarch64_emit.h": { maxLines: 80, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_macho64.c": { maxLines: 1685, maxStrcmpCalls: 2 },
-  "native/zero-c/src/emit_macho_x64.c": { maxLines: 1310, maxStrcmpCalls: 1 },
+  "native/zero-c/src/aarch64_emit.c": { maxLines: 388, maxStrcmpCalls: 0 },
+  "native/zero-c/src/aarch64_emit.h": { maxLines: 82, maxStrcmpCalls: 0 },
+  "native/zero-c/src/emit_macho64.c": { maxLines: 1773, maxStrcmpCalls: 2 },
+  "native/zero-c/src/emit_macho_x64.c": { maxLines: 1332, maxStrcmpCalls: 1 },
   "native/zero-c/src/macho_emit_state.c": { maxLines: 210, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_emit_state.h": { maxLines: 90, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_elf64.c": { maxLines: 2195, maxStrcmpCalls: 3 },
+  "native/zero-c/src/emit_elf64.c": { maxLines: 2220, maxStrcmpCalls: 3 },
   "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 330, maxStrcmpCalls: 1 },
-  "native/zero-c/src/emit_coff.c": { maxLines: 1195, maxStrcmpCalls: 1 },
+  "native/zero-c/src/emit_coff.c": { maxLines: 1240, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 380, maxStrcmpCalls: 0 },
   "native/zero-c/src/fs.c": { maxLines: 1255, maxStrcmpCalls: 33 },
-  "native/zero-c/src/mir_verify.c": { maxLines: 1300, maxStrcmpCalls: 0 },
+  "native/zero-c/src/mir_verify.c": { maxLines: 1377, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 117, maxStrcmpCalls: 4 },
   "native/zero-c/src/program_graph_build.c": { maxLines: 60, maxStrcmpCalls: 8 },
@@ -89,9 +89,9 @@ const fileBudgets = {
   "native/zero-c/src/safety_contract.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_sig.c": { maxLines: 225, maxStrcmpCalls: 2 },
-  "native/zero-c/src/std_sig.h": { maxLines: 48, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_source.c": { maxLines: 84, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.c": { maxLines: 231, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.h": { maxLines: 53, maxStrcmpCalls: 0 },
+  "native/zero-c/src/std_source.c": { maxLines: 91, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_source.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/target_backend.c": { maxLines: 360, maxStrcmpCalls: 32 },
   "native/zero-c/src/target.c": { maxLines: 465, maxStrcmpCalls: 15 },
@@ -121,7 +121,11 @@ const knownLargeFunctionLimits = new Map([
 const knownReturnTypeDivergences = new Map();
 
 const allowedHelpersWithSpecialArgTypeChecks = [
+  "std.mem.contains",
+  "std.mem.copyItems",
   "std.mem.eqlBytes",
+  "std.mem.fillItems",
+  "std.mem.isEmpty",
   "std.mem.len",
 ];
 
@@ -129,6 +133,12 @@ const expectedStdHelperKinds = new Map([
   ["std.mem.len", "Z_STD_HELPER_KIND_MEM_LEN"],
   ["std.mem.get", "Z_STD_HELPER_KIND_MEM_GET"],
   ["std.mem.eqlBytes", "Z_STD_HELPER_KIND_MEM_EQL_BYTES"],
+  ["std.mem.copyItems", "Z_STD_HELPER_KIND_MEM_COPY_ITEMS"],
+  ["std.mem.fillItems", "Z_STD_HELPER_KIND_MEM_FILL_ITEMS"],
+  ["std.mem.contains", "Z_STD_HELPER_KIND_MEM_CONTAINS"],
+  ["std.mem.isEmpty", "Z_STD_HELPER_KIND_MEM_IS_EMPTY"],
+  ["std.mem.prefix", "Z_STD_HELPER_KIND_MEM_SLICE"],
+  ["std.mem.dropPrefix", "Z_STD_HELPER_KIND_MEM_SLICE"],
   ["std.mem.allocBytes", "Z_STD_HELPER_KIND_MEM_ALLOC_BYTES"],
   ["std.mem.byteBuf", "Z_STD_HELPER_KIND_MEM_BYTE_BUF"],
   ["std.fs.read", "Z_STD_HELPER_KIND_FS_READ"],
@@ -1364,7 +1374,7 @@ const backendFormats = {
       /\bz_x64_emit_add_reg_i8\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_cmp_reg_i8\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_mov_eax_from_ecx\s*\(/.test(coffX64Source) &&
-      /\bz_x64_emit_shl_rcx_imm8\s*\(/.test(coffX64Source) &&
+      (/\bz_x64_emit_shl_rcx_imm8\s*\(/.test(coffX64Source) || /\bz_x64_emit_shl_reg_imm8\s*\(/.test(coffX64Source)) &&
       /\bz_x64_emit_movzx_reg32_ptr_reg_u8\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_load_reg_ptr_reg\s*\(/.test(coffX64Source) &&
       /\bz_x64_emit_store_ptr_reg8_from_reg\s*\(/.test(coffX64Source) &&

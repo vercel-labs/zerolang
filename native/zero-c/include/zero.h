@@ -558,6 +558,7 @@ typedef struct {
   char *world_param_name;
   IrTypeKind return_type;
   IrTypeKind value_return_type;
+  IrTypeKind return_element_type;
   IrLocal *locals;
   size_t local_len;
   size_t local_cap;

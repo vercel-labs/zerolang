@@ -338,6 +338,14 @@ function hasAarch64Instruction(bytes, expected) {
   return false;
 }
 
+function hasAarch64CondBranch(bytes, cond) {
+  for (let offset = 0; offset + 4 <= bytes.length; offset++) {
+    const instruction = bytes.readUInt32LE(offset);
+    if ((instruction & 0xff000010) === 0x54000000 && (instruction & 0xf) === cond) return true;
+  }
+  return false;
+}
+
 function hasAarch64VoidReturnEpilogue(bytes) {
   for (let offset = 0; offset + 12 <= bytes.length; offset++) {
     if (bytes.readUInt32LE(offset) !== 0x52800000) continue;
@@ -3498,6 +3506,18 @@ assert.equal(coffDynamicSliceBuild.objectBackend.objectEmission.path, "direct-co
 assert.equal(coffDynamicSliceBuild.generatedCBytes, 0);
 const coffDynamicSliceBytes = readFileSync(coffDynamicSlicePath);
 assert.equal(coffDynamicSliceBytes.readUInt16LE(0), 0x8664);
+const coffBoolCopyFixture = "conformance/native/pass/std-mem-bool-copy-items.0";
+const coffBoolCopyReadiness = json(["check", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffBoolCopyFixture]).body;
+assert.equal(coffBoolCopyReadiness.ok, true);
+assert.equal(coffBoolCopyReadiness.targetReadiness.ok, true);
+assert.equal(coffBoolCopyReadiness.targetReadiness.buildable, true);
+assert.equal(coffBoolCopyReadiness.targetReadiness.backend, "zero-coff-x64");
+const coffBoolCopyPath = join(outDir, "coff-bool-copy-items.obj");
+const coffBoolCopyBuild = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffBoolCopyFixture, "--out", coffBoolCopyPath]).body;
+assert.equal(coffBoolCopyBuild.objectBackend.objectEmission.path, "direct-coff-x64-object");
+assert.equal(coffBoolCopyBuild.generatedCBytes, 0);
+const coffBoolCopyBytes = readFileSync(coffBoolCopyPath);
+assert.equal(coffBoolCopyBytes.readUInt16LE(0), 0x8664);
 function assertMachOObjectBuildabilityBlocked(fixture: string, outName: string, expectedMessage: RegExp) {
   const readiness = json(["check", "--json", "--emit", "obj", "--target", "darwin-arm64", fixture]).body;
   assert.equal(readiness.ok, true);
@@ -3529,11 +3549,40 @@ assertMachOObjectBuildabilityBlocked(
   "macho-nested-call-scratch.o",
   /scratch spill capacity/,
 );
-assertMachOObjectBuildabilityBlocked(
-  "conformance/native/pass/macho-open-byte-slice-blocked.0",
-  "macho-open-byte-slice.o",
-  /byte-view length/,
-);
+const machoOpenByteSliceFixture = "conformance/native/pass/macho-open-byte-slice.0";
+const machoOpenByteSliceReadiness = json(["check", "--json", "--emit", "obj", "--target", "darwin-arm64", machoOpenByteSliceFixture]).body;
+assert.equal(machoOpenByteSliceReadiness.ok, true);
+assert.equal(machoOpenByteSliceReadiness.diagnostics.length, 0);
+assert.equal(machoOpenByteSliceReadiness.targetReadiness.ok, true);
+assert.equal(machoOpenByteSliceReadiness.targetReadiness.buildable, true);
+assert.equal(machoOpenByteSliceReadiness.targetReadiness.backend, "zero-macho64");
+const machoOpenByteSlicePath = join(outDir, "macho-open-byte-slice.o");
+const machoOpenByteSliceBuild = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", machoOpenByteSliceFixture, "--out", machoOpenByteSlicePath]).body;
+const machoOpenByteSliceBytes = readFileSync(machoOpenByteSlicePath);
+assert.equal(machoOpenByteSliceBuild.compiler, "zero-macho64");
+assert.equal(machoOpenByteSliceBuild.generatedCBytes, 0);
+assert.equal(machoOpenByteSliceBuild.objectBackend.objectEmission.path, "direct-macho64-object");
+assert.equal(machoOpenByteSliceBytes.readUInt32LE(0), 0xfeedfacf);
+const aarch64OpenSliceBoundsFixture = join(outDir, "aarch64-open-byte-slice-bounds.0");
+writeFileSync(aarch64OpenSliceBoundsFixture, `export c fn main() -> u32 {
+    let words: [2]u16 = [1_u16, 2_u16]
+    let suffix: Span<u16> = words[3_usize..]
+    return (std.mem.len(suffix)) as u32
+}
+`);
+const aarch64OpenSliceBoundsPath = join(outDir, "aarch64-open-byte-slice-bounds.o");
+json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", aarch64OpenSliceBoundsFixture, "--out", aarch64OpenSliceBoundsPath]);
+const aarch64OpenSliceBoundsBytes = readFileSync(aarch64OpenSliceBoundsPath);
+assert.equal(aarch64OpenSliceBoundsBytes.readUInt16LE(16), 1);
+assert.equal(aarch64OpenSliceBoundsBytes.readUInt16LE(18), 183);
+assert(hasAarch64CondBranch(aarch64OpenSliceBoundsBytes, 9));
+assert(hasAarch64Instruction(aarch64OpenSliceBoundsBytes, 0xd4200000));
+const machoOpenSliceBoundsPath = join(outDir, "macho-open-byte-slice-bounds.o");
+json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", aarch64OpenSliceBoundsFixture, "--out", machoOpenSliceBoundsPath]);
+const machoOpenSliceBoundsBytes = readFileSync(machoOpenSliceBoundsPath);
+assert.equal(machoOpenSliceBoundsBytes.readUInt32LE(0), 0xfeedfacf);
+assert(hasAarch64CondBranch(machoOpenSliceBoundsBytes, 9));
+assert(hasAarch64Instruction(machoOpenSliceBoundsBytes, 0xd4200000));
 const machOMemoryPackageReadiness = json(["check", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/memory-package"]).body;
 assert.equal(machOMemoryPackageReadiness.ok, true);
 assert.equal(machOMemoryPackageReadiness.diagnostics.length, 0);
@@ -3550,7 +3599,7 @@ const machOMemoryPackageBytes = readFileSync(machOMemoryPackagePath);
 assert.equal(machOMemoryPackageReport.compiler, "zero-macho64");
 assert.equal(machOMemoryPackageReport.generatedCBytes, 0);
 assert.equal(machOMemoryPackageReport.objectBackend.objectEmission.path, "direct-macho64-object");
-assert.equal(machOMemoryPackageReport.objectBackend.directFacts.moduleCount, 3);
+assert.equal(machOMemoryPackageReport.objectBackend.directFacts.moduleCount, 4);
 assert.equal(machOMemoryPackageReport.objectBackend.directFacts.runtimeHelperCount, 1);
 assert.equal(machOMemoryPackageBytes.readUInt32LE(0), 0xfeedfacf);
 assert(machOMemoryPackageBytes.includes(Buffer.from("memory package ok")));

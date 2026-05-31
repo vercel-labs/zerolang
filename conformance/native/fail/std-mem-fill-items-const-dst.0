@@ -1,0 +1,4 @@
+pub fn main() -> Void {
+    var dst: [2]const i32 = [1, 2]
+    let _filled: usize = std.mem.fillItems(dst, 3)
+}

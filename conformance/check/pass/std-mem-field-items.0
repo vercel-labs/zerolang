@@ -1,0 +1,14 @@
+type Holder {
+    values: [3]i32,
+    scratch: [3]i32,
+}
+
+pub fn main() -> Void {
+    var holder: Holder = Holder { values: [1, 2, 3], scratch: [0, 0, 0] }
+    let filled: usize = std.mem.fillItems(holder.values, 8)
+    let copied: usize = std.mem.copyItems(holder.scratch, holder.values)
+    expect filled == 3
+    expect copied == 3
+    expect holder.values[0] == 8
+    expect holder.scratch[2] == 8
+}

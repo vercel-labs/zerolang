@@ -169,6 +169,7 @@ const fixtureTexts = await Promise.all(fixtureFiles.map(async (path) => ({
 const helpersByName = new Map(helpers.map((helper) => [helper.name, helper]));
 const sourceModulesByName = new Map(sourceModules.map((module) => [module.module, module]));
 const sourceCallsByPublicName = new Map(sourceCalls.map((call) => [call.publicName, call]));
+const partiallySourceBackedModules = new Set(["std.mem"]);
 const docsEntries = await readdir(publicModuleDocsDir, { withFileTypes: true });
 const publicModuleDocs = new Set(
   docsEntries
@@ -239,10 +240,12 @@ for (const call of sourceCalls) {
   pushIf(helper !== undefined && !helper.emitsRuntimeHelper, failures, `${call.publicName}: source-backed helper must emit runtime helper code`);
   if (sourceModule && existsSync(sourceModule.path)) {
     const source = await readFile(sourceModule.path, "utf8");
-    pushIf(!source.includes(`fn ${call.targetName}(`), failures, `${call.publicName}: target function ${call.targetName} is missing from ${sourceModule.path}`);
+    const targetPattern = new RegExp(`\\bfn\\s+${call.targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:<[^>]+>)?\\s*\\(`);
+    pushIf(!targetPattern.test(source), failures, `${call.publicName}: target function ${call.targetName} is missing from ${sourceModule.path}`);
   }
 }
 for (const sourceModule of sourceModules) {
+  if (partiallySourceBackedModules.has(sourceModule.module)) continue;
   for (const helper of helpers.filter((candidate) => candidate.module === sourceModule.module)) {
     pushIf(!sourceCallsByPublicName.has(helper.name), failures, `${helper.name}: source-backed module helper is missing std_source.c mapping`);
   }

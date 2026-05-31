@@ -19,7 +19,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 
 ## Target-Neutral Helpers
 
-- `std.mem`: spans, copy, fill, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
+- `std.mem`: spans, byte copy/fill, non-owned scalar item copy/fill/search, scalar item slicing, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
 - `std.math`: pure `u32` integer helpers, GCD/LCM, powers, modular power, primality, and divisor routines.
 - `std.path`: target-neutral lexical path basename, dirname, extension, join, normalize, and relative helpers.
 - `std.codec`: byte reads, varint sizing, CRC helpers, and byte checksums.
@@ -75,6 +75,20 @@ pub fn main() -> Void {
     var storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
     let writable: MutSpan<u8> = storage
     let copied: usize = std.mem.copy(writable, std.mem.span("zero"))
+}
+```
+
+For non-byte scalar item storage, use the generic item helpers. Current direct
+targets support `Bool`, `u8`, `u16`, `usize`, `i32`, `u32`, `i64`, and `u64`
+elements for these helpers.
+
+```zero
+pub fn main() -> Void {
+    var values: [4]i32 = [1, 2, 3, 4]
+    var scratch: [4]i32 = [0, 0, 0, 0]
+    let copied: usize = std.mem.copyItems(scratch, values)
+    let prefix: Span<i32> = std.mem.prefix(scratch, 2)
+    expect copied == 4 && std.mem.contains(prefix, 1)
 }
 ```
 

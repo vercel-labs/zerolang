@@ -1,0 +1,18 @@
+type File {
+    fd: i32,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+fn fill_all<T: Type>(dst: MutSpan<T>, value: T) -> usize {
+    return std.mem.fillItems(dst, value)
+}
+
+pub fn main() -> Void {
+    var files: [1]owned<File> = [File { fd: 1 }]
+    let file: owned<File> = File { fd: 2 }
+    let span: MutSpan<owned<File>> = files
+    let _filled: usize = fill_all<owned<File>>(span, file)
+    close(files[0])
+}

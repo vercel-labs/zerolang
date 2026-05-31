@@ -1,0 +1,15 @@
+pub fn main(world: World) -> Void raises {
+    let src: [3]Bool = [true, false, true]
+    var dst: [3]Bool = [false, false, false]
+    let copied: usize = std.mem.copyItems(dst, src)
+    let copiedValues: Bool = dst[0] && !dst[1] && dst[2]
+    let filled: usize = std.mem.fillItems(dst[1..], true)
+    let span: Span<Bool> = dst
+    let filledValues: Bool = dst[0] && dst[1] && dst[2]
+    let containsOk: Bool = std.mem.contains(span, true) && !std.mem.contains(span, false)
+    let lenOk: Bool = std.mem.len(span) == 3 && !std.mem.isEmpty(span)
+    let ok: Bool = copied == 3 && copiedValues && filled == 2 && filledValues && containsOk && lenOk
+    if ok {
+        check world.out.write("std mem bool copy items ok\n")
+    }
+}

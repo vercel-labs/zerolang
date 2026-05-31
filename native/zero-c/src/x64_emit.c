@@ -699,6 +699,11 @@ void z_x64_emit_mov_ptr_reg_disp_u8(ZBuf *buf, unsigned base_reg, unsigned disp,
 
 void z_x64_emit_store_ptr_reg8_from_reg(ZBuf *buf, unsigned base_reg, unsigned src_reg) { z_x64_emit_ptr_reg_disp_op(buf, 0, 0x88, src_reg, base_reg, 0, false, true); }
 
+void z_x64_emit_store_ptr_reg16_from_reg(ZBuf *buf, unsigned base_reg, unsigned src_reg) {
+  z_x64_append_u8(buf, 0x66);
+  z_x64_emit_ptr_reg_disp_op(buf, 0, 0x89, src_reg, base_reg, 0, false, false);
+}
+
 void z_x64_emit_store_ptr_reg_from_reg(ZBuf *buf, unsigned base_reg, unsigned src_reg, bool wide) { z_x64_emit_ptr_reg_disp_op(buf, 0, 0x89, src_reg, base_reg, 0, wide, false); }
 
 void z_x64_emit_cmp_reg_ptr_reg(ZBuf *buf, unsigned lhs_reg, unsigned base_reg, bool wide) { z_x64_emit_ptr_reg_disp_op(buf, 0, 0x3b, lhs_reg, base_reg, 0, wide, false); }

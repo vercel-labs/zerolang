@@ -1,0 +1,20 @@
+type File {
+    fd: i32,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+fn copy_all<T: Type>(dst: MutSpan<T>, src: Span<T>) -> usize {
+    return std.mem.copyItems(dst, src)
+}
+
+pub fn main() -> Void {
+    var dst: [1]owned<File> = [File { fd: 1 }]
+    var src: [1]owned<File> = [File { fd: 2 }]
+    let dstSpan: MutSpan<owned<File>> = dst
+    let srcSpan: Span<owned<File>> = src
+    let _copied: usize = copy_all<owned<File>>(dstSpan, srcSpan)
+    close(src[0])
+    close(dst[0])
+}

@@ -1,0 +1,15 @@
+fn dynamicIndex() -> usize {
+    return 1
+}
+
+pub fn main(world: World) -> Void raises {
+    var bytes: [2]u8 = [0_u8, 0_u8]
+    var words: [2]u16 = [0_u16, 0_u16]
+    bytes[dynamicIndex() % 2_usize] = 90_u8
+    words[dynamicIndex() % 2_usize] = 4660_u16
+    if bytes[1] == 90_u8 && words[1] == 4660_u16 {
+        check world.out.write("dynamic indexed store ok\n")
+    } else {
+        check world.out.write("dynamic indexed store failed\n")
+    }
+}

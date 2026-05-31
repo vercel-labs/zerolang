@@ -1,0 +1,6 @@
+pub fn main(world: World) -> Void raises {
+    var dst: [2]i32 = [0, 0]
+    let src: [2]u8 = [1_u8, 2_u8]
+    let _copied: usize = std.mem.copyItems(dst, src)
+    check world.out.write("unreachable\n")
+}

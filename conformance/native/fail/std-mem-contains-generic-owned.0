@@ -1,0 +1,18 @@
+type File {
+    fd: i32,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+fn has_file<T: Type>(items: Span<T>, needle: T) -> Bool {
+    return std.mem.contains(items, needle)
+}
+
+pub fn main() -> Void {
+    let files: [1]owned<File> = [File { fd: 1 }]
+    let needle: owned<File> = File { fd: 1 }
+    let span: Span<owned<File>> = files
+    let _has: Bool = has_file<owned<File>>(span, needle)
+    close(files[0])
+}

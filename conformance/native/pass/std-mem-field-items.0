@@ -1,0 +1,18 @@
+type Holder {
+    tag: i32,
+    values: [4]i32,
+    scratch: [4]i32,
+}
+
+pub fn main(world: World) -> Void raises {
+    var holder: Holder = Holder { tag: 77, values: [1, 2, 3, 4], scratch: [0, 0, 0, 0] }
+    let filled: usize = std.mem.fillItems(holder.values[1..], 9)
+    let copied: usize = std.mem.copyItems(holder.scratch, holder.values)
+    let prefix: Span<i32> = std.mem.prefix(holder.scratch, 3)
+    let tail: Span<i32> = std.mem.dropPrefix(holder.values, 2)
+    let fieldItemsOk: Bool = filled == 3 && copied == 4 && holder.tag == 77 && holder.values[0] == 1 && holder.values[1] == 9 && holder.values[3] == 9 && holder.scratch[0] == 1 && holder.scratch[1] == 9 && holder.scratch[3] == 9
+    let fieldSpansOk: Bool = std.mem.len(prefix) == 3 && std.mem.contains(prefix, 9) && std.mem.len(tail) == 2 && tail[0] == 9 && tail[1] == 9
+    if fieldItemsOk && fieldSpansOk {
+        check world.out.write("std mem field items ok\n")
+    }
+}

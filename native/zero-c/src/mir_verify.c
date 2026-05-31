@@ -55,6 +55,10 @@ static bool mir_type_is_integer_value(IrTypeKind type) {
          type == IR_TYPE_U64;
 }
 
+static IrTypeKind mir_view_element_or_u8(IrTypeKind type) {
+  return type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : type;
+}
+
 static unsigned mir_type_byte_size(IrTypeKind type) {
   switch (type) {
     case IR_TYPE_BOOL:
@@ -292,6 +296,11 @@ static bool mir_verify_direct_function_contract(IrProgram *ir, const IrFunction 
     snprintf(actual, sizeof(actual), "return %s", mir_type_kind_name(fun->return_type));
     mir_verify_mark_unsupported(ir, "MIR verifier found non-ABI return type", fun->line, fun->column, actual);
     return false;
+  } else if (!fun->raises && fun->return_type == IR_TYPE_BYTE_VIEW && !mir_type_is_direct_abi(mir_view_element_or_u8(fun->return_element_type))) {
+    char actual[128];
+    snprintf(actual, sizeof(actual), "return element %s", mir_type_kind_name(fun->return_element_type));
+    mir_verify_mark_unsupported(ir, "MIR verifier found non-ABI byte-view return element type", fun->line, fun->column, actual);
+    return false;
   }
   return true;
 }
@@ -312,9 +321,16 @@ static bool mir_verify_direct_call_contract(IrProgram *ir, const IrValue *value)
     return false;
   }
   IrTypeKind expected_call_type = callee->raises ? IR_TYPE_I64 : callee->return_type;
-  if (value->type != expected_call_type || value->element_type != callee->value_return_type) {
+  IrTypeKind actual_value_type = value->element_type;
+  IrTypeKind expected_value_type = callee->value_return_type;
+  if (expected_call_type == IR_TYPE_BYTE_VIEW) {
+    actual_value_type = mir_view_element_or_u8(value->element_type);
+    expected_value_type = mir_view_element_or_u8(callee->return_element_type);
+  }
+  bool element_matches = actual_value_type == expected_value_type;
+  if (value->type != expected_call_type || !element_matches) {
     char actual[192];
-    snprintf(actual, sizeof(actual), "call returns %s value %s but callee returns %s value %s", mir_type_kind_name(value->type), mir_type_kind_name(value->element_type), mir_type_kind_name(expected_call_type), mir_type_kind_name(callee->value_return_type));
+    snprintf(actual, sizeof(actual), "call returns %s value %s but callee returns %s value %s", mir_type_kind_name(value->type), mir_type_kind_name(actual_value_type), mir_type_kind_name(expected_call_type), mir_type_kind_name(expected_value_type));
     mir_verify_mark_unsupported(ir, "MIR verifier found direct call return mismatch", value->line, value->column, actual);
     return false;
   }
@@ -332,6 +348,16 @@ static bool mir_verify_direct_call_contract(IrProgram *ir, const IrValue *value)
       snprintf(actual, sizeof(actual), "argument %zu has %s but parameter has %s", i, mir_type_kind_name(arg->type), mir_type_kind_name(param->type));
       mir_verify_mark_unsupported(ir, "MIR verifier found direct call argument ABI mismatch", arg->line, arg->column, actual);
       return false;
+    }
+    if (arg->type == IR_TYPE_BYTE_VIEW) {
+      IrTypeKind actual_element = mir_view_element_or_u8(arg->element_type);
+      IrTypeKind expected_element = mir_view_element_or_u8(param->element_type);
+      if (actual_element != expected_element) {
+        char actual[192];
+        snprintf(actual, sizeof(actual), "argument %zu element %s but parameter element is %s", i, mir_type_kind_name(actual_element), mir_type_kind_name(expected_element));
+        mir_verify_mark_unsupported(ir, "MIR verifier found direct call byte-view argument element mismatch", arg->line, arg->column, actual);
+        return false;
+      }
     }
   }
   return true;
@@ -420,10 +446,19 @@ static bool mir_verify_mutable_byte_storage(IrProgram *ir, const IrFunction *fun
     if (!mir_verify_local_index(ir, fun, value->array_index, value->line, value->column, message)) return false;
     const IrLocal *local = &fun->locals[value->array_index];
     if (local->is_array && local->element_type == IR_TYPE_U8 && local->is_mutable) return true;
+    if (local->is_record && local->is_mutable && value->element_type == IR_TYPE_U8 &&
+        value->field_offset <= local->byte_size && value->data_len <= local->byte_size - value->field_offset) {
+      return true;
+    }
     char actual[192];
-    snprintf(actual, sizeof(actual), "%s local %s is %s byte array and is %s", role ? role : "storage", local->name ? local->name : "<unnamed>", local->is_array && local->element_type == IR_TYPE_U8 ? "a" : "not a", local->is_mutable ? "mutable" : "immutable");
+    snprintf(actual, sizeof(actual), "%s local %s is %s byte storage and is %s", role ? role : "storage", local->name ? local->name : "<unnamed>", (local->is_array && local->element_type == IR_TYPE_U8) || (local->is_record && value->element_type == IR_TYPE_U8) ? "a" : "not a", local->is_mutable ? "mutable" : "immutable");
     mir_verify_mark_unsupported(ir, message, value->line, value->column, actual);
     return false;
+  }
+  if (value->kind == IR_VALUE_BYTE_SLICE) {
+    if (value->index && !mir_verify_value_is_integer(ir, value->index, message, "slice start")) return false;
+    if (value->right && !mir_verify_value_is_integer(ir, value->right, message, "slice end")) return false;
+    return mir_verify_mutable_byte_storage(ir, fun, state, value->left, message, role);
   }
   if (value->kind == IR_VALUE_MAYBE_VALUE) {
     if (!mir_verify_local_index(ir, fun, value->local_index, value->line, value->column, message)) return false;
@@ -546,19 +581,56 @@ static bool mir_verify_array_byte_view_contract(IrProgram *ir, const IrFunction 
   if (!mir_verify_value_type(ir, value, IR_TYPE_BYTE_VIEW, "MIR verifier found byte-view result type mismatch", "array byte view result")) return false;
   if (!mir_verify_local_index(ir, fun, value->array_index, value->line, value->column, "MIR verifier found array byte view outside the local table")) return false;
   const IrLocal *local = &fun->locals[value->array_index];
-  if (!local->is_array || local->element_type != IR_TYPE_U8) {
+  if (local->is_array) {
+    if ((!mir_type_is_value(local->element_type) && local->element_type != IR_TYPE_BOOL) || value->field_offset != 0) {
+      char actual[160];
+      snprintf(actual, sizeof(actual), "local %s is %s array element %s with field offset %u", local->name ? local->name : "<unnamed>", local->is_array ? "an" : "not an", mir_type_kind_name(local->element_type), value->field_offset);
+      mir_verify_mark_unsupported(ir, "MIR verifier found array byte view from an unsupported array local", value->line, value->column, actual);
+      return false;
+    }
+    if (value->element_type != local->element_type) {
+      char actual[160];
+      snprintf(actual, sizeof(actual), "view element %s but array element is %s", mir_type_kind_name(value->element_type), mir_type_kind_name(local->element_type));
+      mir_verify_mark_unsupported(ir, "MIR verifier found array byte view element mismatch", value->line, value->column, actual);
+      return false;
+    }
+    if (value->data_len != local->array_len) {
+      char actual[128];
+      snprintf(actual, sizeof(actual), "byte view length %u but array length is %u", value->data_len, local->array_len);
+      mir_verify_mark_unsupported(ir, "MIR verifier found array byte view length mismatch", value->line, value->column, actual);
+      return false;
+    }
+    return true;
+  }
+  if (local->is_record) {
+    if (!mir_type_is_value(value->element_type) && value->element_type != IR_TYPE_BOOL) {
+      char actual[160];
+      snprintf(actual, sizeof(actual), "record field view element is %s", mir_type_kind_name(value->element_type));
+      mir_verify_mark_unsupported(ir, "MIR verifier found array byte view from an unsupported record field", value->line, value->column, actual);
+      return false;
+    }
+    unsigned element_size = mir_type_byte_size(value->element_type);
+    if (element_size == 0 || value->data_len > (unsigned)(~0u) / element_size) {
+      char actual[128];
+      snprintf(actual, sizeof(actual), "record field view length %u element %s", value->data_len, mir_type_kind_name(value->element_type));
+      mir_verify_mark_unsupported(ir, "MIR verifier found array byte view record field size overflow", value->line, value->column, actual);
+      return false;
+    }
+    unsigned byte_len = value->data_len * element_size;
+    if (value->field_offset > local->byte_size || byte_len > local->byte_size - value->field_offset) {
+      char actual[160];
+      snprintf(actual, sizeof(actual), "record field offset %u width %u in local size %u", value->field_offset, byte_len, local->byte_size);
+      mir_verify_mark_unsupported(ir, "MIR verifier found array byte view record field outside local storage", value->line, value->column, actual);
+      return false;
+    }
+    return true;
+  }
+  {
     char actual[160];
     snprintf(actual, sizeof(actual), "local %s is %s array element %s", local->name ? local->name : "<unnamed>", local->is_array ? "an" : "not an", mir_type_kind_name(local->element_type));
-    mir_verify_mark_unsupported(ir, "MIR verifier found array byte view from a non-byte array local", value->line, value->column, actual);
+    mir_verify_mark_unsupported(ir, "MIR verifier found array byte view from an unsupported array local", value->line, value->column, actual);
     return false;
   }
-  if (value->data_len != local->array_len) {
-    char actual[128];
-    snprintf(actual, sizeof(actual), "byte view length %u but array length is %u", value->data_len, local->array_len);
-    mir_verify_mark_unsupported(ir, "MIR verifier found array byte view length mismatch", value->line, value->column, actual);
-    return false;
-  }
-  return true;
 }
 
 static bool mir_verify_maybe_value_contract(IrProgram *ir, const IrFunction *fun, const IrValue *value) {
@@ -737,6 +809,21 @@ static bool mir_verify_byte_view_pair(IrProgram *ir, const IrValue *value, const
   return mir_verify_value_type(ir, value ? value->right : NULL, IR_TYPE_BYTE_VIEW, message, right_role);
 }
 
+static IrTypeKind mir_verify_view_element_type(const IrValue *value) {
+  return value ? mir_view_element_or_u8(value->element_type) : IR_TYPE_U8;
+}
+
+static bool mir_verify_byte_view_pair_same_element(IrProgram *ir, const IrValue *value, const char *message) {
+  if (!mir_verify_byte_view_pair(ir, value, message, "byte-view equality left", "byte-view equality right")) return false;
+  IrTypeKind left = mir_verify_view_element_type(value ? value->left : NULL);
+  IrTypeKind right = mir_verify_view_element_type(value ? value->right : NULL);
+  if (left == right) return true;
+  char actual[160];
+  snprintf(actual, sizeof(actual), "left element %s but right element %s", mir_type_kind_name(left), mir_type_kind_name(right));
+  mir_verify_mark_unsupported(ir, "MIR verifier found byte-view equality element mismatch", value ? value->line : 1, value ? value->column : 1, actual);
+  return false;
+}
+
 static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
   if (!ir || !ir->mir_valid || !value) return false;
   switch (value->kind) {
@@ -888,6 +975,18 @@ static bool mir_verify_maybe_byte_view_literal_contract(IrProgram *ir, const IrV
   return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid Maybe byte-view payload", "Maybe byte-view payload");
 }
 
+static bool mir_verify_byte_view_index_load_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid byte-view index load input", "byte-view index load input")) return false;
+  IrTypeKind element_type = value->left->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : value->left->element_type;
+  if (value->type != element_type) {
+    char actual[160];
+    snprintf(actual, sizeof(actual), "index load has %s but view element is %s", mir_type_kind_name(value->type), mir_type_kind_name(value->left->element_type));
+    mir_verify_mark_unsupported(ir, "MIR verifier found byte-view index load result type mismatch", value->line, value->column, actual);
+    return false;
+  }
+  return mir_verify_value_is_integer(ir, value->index, "MIR verifier found invalid byte-view index load index", "byte-view index");
+}
+
 static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {
   if (!ir || !ir->mir_valid) return false;
   if (!value) return true;
@@ -916,12 +1015,10 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
       if (!mir_verify_byte_view_len_result(ir, value)) return false;
       return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid byte-view length input", "byte-view length input");
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD:
-      if (!mir_verify_value_type(ir, value, IR_TYPE_U8, "MIR verifier found byte-view index load result type mismatch", "byte-view index load")) return false;
-      if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid byte-view index load input", "byte-view index load input")) return false;
-      return mir_verify_value_is_integer(ir, value->index, "MIR verifier found invalid byte-view index load index", "byte-view index");
+      return mir_verify_byte_view_index_load_contract(ir, value);
     case IR_VALUE_BYTE_VIEW_EQ:
       if (!mir_verify_value_type(ir, value, IR_TYPE_BOOL, "MIR verifier found byte-view equality result type mismatch", "byte-view equality result")) return false;
-      return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid byte-view equality input", "byte-view equality left", "byte-view equality right");
+      return mir_verify_byte_view_pair_same_element(ir, value, "MIR verifier found invalid byte-view equality input");
     case IR_VALUE_BYTE_COPY:
     case IR_VALUE_BYTE_FILL:
       return mir_verify_byte_mutation_value_contract(ir, fun, state, value);
@@ -1044,7 +1141,19 @@ static bool mir_verify_direct_return_instr(IrProgram *ir, const IrFunction *fun,
     mir_verify_mark_unsupported(ir, "MIR verifier found return value mismatch", instr->line, instr->column, actual);
     return false;
   }
-  if (value && value->type == fun->return_type) return true;
+  if (value && value->type == fun->return_type) {
+    if (fun->return_type == IR_TYPE_BYTE_VIEW) {
+      IrTypeKind actual_element = mir_view_element_or_u8(value->element_type);
+      IrTypeKind expected_element = mir_view_element_or_u8(fun->return_element_type);
+      if (actual_element != expected_element) {
+        char actual[160];
+        snprintf(actual, sizeof(actual), "return element %s but function return element is %s", mir_type_kind_name(actual_element), mir_type_kind_name(expected_element));
+        mir_verify_mark_unsupported(ir, "MIR verifier found return value mismatch", instr->line, instr->column, actual);
+        return false;
+      }
+    }
+    return true;
+  }
   char actual[160];
   snprintf(actual, sizeof(actual), "return has %s but function returns %s", value ? mir_type_kind_name(value->type) : "missing", mir_type_kind_name(fun->return_type));
   mir_verify_mark_unsupported(ir, "MIR verifier found return value mismatch", instr->line, instr->column, actual);
@@ -1085,7 +1194,7 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
         mir_verify_mark_unsupported(ir, "MIR verifier found invalid indexed write index", instr->line, instr->column, actual);
         return false;
       }
-      IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? IR_TYPE_U8 : local->element_type;
+      IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? (local->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : local->element_type) : local->element_type;
       if (!instr->value || instr->value->type != element_type) {
         char actual[160];
         snprintf(actual, sizeof(actual), "indexed write has %s but element is %s", instr->value ? mir_type_kind_name(instr->value->type) : "missing", mir_type_kind_name(element_type));

@@ -144,13 +144,8 @@ static Stmt *clone_stmt(const Stmt *stmt) {
   return copy;
 }
 
-static bool ir_type_name_is_mutable_byte_view(const char *type) {
-  return type && strcmp(type, "MutSpan<u8>") == 0;
-}
-
-static IrTypeKind ir_type_kind(const char *type) {
+static IrTypeKind ir_span_element_kind(const char *type) {
   if (!type) return IR_TYPE_UNSUPPORTED;
-  if (strcmp(type, "Void") == 0) return IR_TYPE_VOID;
   if (strcmp(type, "Bool") == 0 || strcmp(type, "bool") == 0) return IR_TYPE_BOOL;
   if (strcmp(type, "u8") == 0) return IR_TYPE_U8;
   if (strcmp(type, "u16") == 0) return IR_TYPE_U16;
@@ -159,6 +154,54 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (strcmp(type, "u32") == 0) return IR_TYPE_U32;
   if (strcmp(type, "i64") == 0) return IR_TYPE_I64;
   if (strcmp(type, "u64") == 0) return IR_TYPE_U64;
+  return IR_TYPE_UNSUPPORTED;
+}
+
+static bool ir_span_type_element(const char *type, bool *is_mutable, IrTypeKind *element_type) {
+  if (!type) return false;
+  const char *inner = NULL;
+  size_t inner_len = 0;
+  size_t type_len = strlen(type);
+  bool mut = false;
+  if (type_len > strlen("Span<>") && strncmp(type, "Span<", strlen("Span<")) == 0) {
+    inner = type + strlen("Span<");
+    inner_len = type_len - strlen("Span<") - 1;
+  } else if (type_len > strlen("MutSpan<>") && strncmp(type, "MutSpan<", strlen("MutSpan<")) == 0) {
+    inner = type + strlen("MutSpan<");
+    inner_len = type_len - strlen("MutSpan<") - 1;
+    mut = true;
+  } else {
+    return false;
+  }
+  if (inner_len == 0 || type[type_len - 1] != '>') return false;
+  char *element_text = z_strndup(inner, inner_len);
+  IrTypeKind element = ir_span_element_kind(element_text);
+  free(element_text);
+  if (element == IR_TYPE_UNSUPPORTED) return false;
+  if (is_mutable) *is_mutable = mut;
+  if (element_type) *element_type = element;
+  return true;
+}
+
+static bool ir_type_name_is_mutable_byte_view(const char *type) {
+  bool is_mutable = false;
+  return ir_span_type_element(type, &is_mutable, NULL) && is_mutable;
+}
+
+static IrTypeKind ir_type_kind(const char *type);
+
+static IrTypeKind ir_view_element_type_for_type(const char *type) {
+  IrTypeKind element = IR_TYPE_UNSUPPORTED;
+  if (ir_span_type_element(type, NULL, &element)) return element;
+  if (type && ir_type_kind(type) == IR_TYPE_BYTE_VIEW) return IR_TYPE_U8;
+  return IR_TYPE_UNSUPPORTED;
+}
+
+static IrTypeKind ir_type_kind(const char *type) {
+  if (!type) return IR_TYPE_UNSUPPORTED;
+  if (strcmp(type, "Void") == 0) return IR_TYPE_VOID;
+  IrTypeKind scalar_type = ir_span_element_kind(type);
+  if (scalar_type != IR_TYPE_UNSUPPORTED) return scalar_type;
   if (strcmp(type, "Duration") == 0) return IR_TYPE_I64;
   if (strcmp(type, "RandSource") == 0) return IR_TYPE_U32;
   if (strcmp(type, "ProcStatus") == 0) return IR_TYPE_I32;
@@ -168,11 +211,10 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (strcmp(type, "HttpHeaderValue") == 0) return IR_TYPE_U64;
   if (strcmp(type, "Fs") == 0 || strcmp(type, "File") == 0 || strcmp(type, "owned<File>") == 0) return IR_TYPE_I32;
   if (strcmp(type, "String") == 0 ||
-      strcmp(type, "Span<u8>") == 0 ||
       strcmp(type, "Span<const u8>") == 0 ||
-      strcmp(type, "MutSpan<u8>") == 0 ||
       strcmp(type, "ByteBuf") == 0 ||
-      strcmp(type, "owned<ByteBuf>") == 0) {
+      strcmp(type, "owned<ByteBuf>") == 0 ||
+      ir_span_type_element(type, NULL, NULL)) {
     return IR_TYPE_BYTE_VIEW;
   }
   if (strcmp(type, "FixedBufAlloc") == 0) return IR_TYPE_ALLOC;
@@ -538,7 +580,7 @@ static bool ir_parse_fixed_array_type_for_program(const Program *program, const 
     if (len > UINT_MAX) return false;
   }
   IrTypeKind element = ir_type_kind_for_program(program, close + 1);
-  if (element != IR_TYPE_BOOL && element != IR_TYPE_U8 && element != IR_TYPE_I32 && element != IR_TYPE_U32 &&
+  if (element != IR_TYPE_BOOL && element != IR_TYPE_U8 && element != IR_TYPE_U16 && element != IR_TYPE_I32 && element != IR_TYPE_U32 &&
       element != IR_TYPE_USIZE && element != IR_TYPE_I64 && element != IR_TYPE_U64) {
     return false;
   }
@@ -681,7 +723,7 @@ static IrValue *ir_new_maybe_scalar_literal(IrProgram *ir, bool has, IrTypeKind 
 static IrValue *ir_new_maybe_byte_view_literal(IrProgram *ir, bool has, IrValue *view, int line, int column) {
   IrValue *value = ir_new_value(ir, IR_VALUE_MAYBE_BYTE_VIEW_LITERAL, IR_TYPE_MAYBE_BYTE_VIEW, line, column);
   value->data_len = has ? 1u : 0u;
-  value->element_type = IR_TYPE_BYTE_VIEW;
+  value->element_type = view && view->element_type != IR_TYPE_UNSUPPORTED ? view->element_type : IR_TYPE_U8;
   value->left = view;
   return value;
 }
@@ -865,7 +907,7 @@ static bool ir_expr_is_byte_view_source(const Expr *expr) {
   if (expr && expr->resolved_type) {
     unsigned array_len = 0;
     IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
-    if (ir_parse_fixed_array_type(expr->resolved_type, &array_len, &element_type) && element_type == IR_TYPE_U8) return true;
+    if (ir_parse_fixed_array_type(expr->resolved_type, &array_len, &element_type) && (ir_type_is_value(element_type) || element_type == IR_TYPE_BOOL)) return true;
     if (ir_type_kind(expr->resolved_type) == IR_TYPE_BYTE_VIEW) return true;
   }
   return expr && (expr->kind == EXPR_STRING || expr->kind == EXPR_SLICE ||
@@ -874,12 +916,29 @@ static bool ir_expr_is_byte_view_source(const Expr *expr) {
                   (expr->kind == EXPR_MEMBER && expr->resolved_type && ir_type_kind(expr->resolved_type) == IR_TYPE_BYTE_VIEW));
 }
 
-static bool ir_expr_is_mutable_byte_view_dest(const IrFunction *fun, const Expr *expr) {
+static bool ir_expr_is_mutable_record_byte_field_dest(const Program *program, const IrFunction *fun, const Expr *expr) {
+  if (!program || !fun || !expr || expr->kind != EXPR_MEMBER || !expr->left || expr->left->kind != EXPR_IDENT) return false;
+  const IrLocal *record = ir_function_find_local(fun, expr->left->text);
+  unsigned field_offset = 0;
+  bool field_is_array = false;
+  unsigned field_array_len = 0;
+  IrTypeKind field_element_type = IR_TYPE_UNSUPPORTED;
+  if (!record || !record->is_record || !record->is_mutable ||
+      !ir_shape_field_storage_info(program, record->shape_name, expr->text, &field_offset, NULL, &field_is_array, &field_array_len, &field_element_type) ||
+      !field_is_array || field_element_type != IR_TYPE_U8) {
+    return false;
+  }
+  return field_offset <= record->byte_size && field_array_len <= record->byte_size - field_offset;
+}
+
+static bool ir_expr_is_mutable_byte_view_dest(const Program *program, const IrFunction *fun, const Expr *expr) {
   if (!fun || !expr) return false;
+  if (expr->kind == EXPR_SLICE) return ir_expr_is_mutable_byte_view_dest(program, fun, expr->left);
   if (expr->kind == EXPR_MEMBER && expr->left && expr->left->kind == EXPR_IDENT && strcmp(expr->text ? expr->text : "", "value") == 0) {
     const IrLocal *local = ir_function_find_local(fun, expr->left->text);
     return local && local->type == IR_TYPE_MAYBE_BYTE_VIEW;
   }
+  if (ir_expr_is_mutable_record_byte_field_dest(program, fun, expr)) return true;
   if (expr->kind != EXPR_IDENT) return false;
   const IrLocal *local = ir_function_find_local(fun, expr->text);
   if (!local) return false;
@@ -963,6 +1022,7 @@ static bool ir_lower_array_literal_byte_view(IrProgram *ir, const Expr *expr, Ir
   IrValue *value = ir_new_value(ir, IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
   value->data_offset = offset;
   value->data_len = array_len;
+  value->element_type = IR_TYPE_U8;
   *out = value;
   return true;
 }
@@ -980,6 +1040,37 @@ static bool ir_lower_string_literal_byte_view(IrProgram *ir, const Expr *expr, I
   IrValue *value = ir_new_value(ir, IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
   value->data_offset = offset;
   value->data_len = len;
+  value->element_type = IR_TYPE_U8;
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_record_array_field_byte_view(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {
+  if (!expr || expr->kind != EXPR_MEMBER || !expr->left || expr->left->kind != EXPR_IDENT) return false;
+  const IrLocal *record = ir_function_find_local(fun, expr->left->text);
+  unsigned field_offset = 0;
+  bool field_is_array = false;
+  unsigned field_array_len = 0;
+  IrTypeKind field_element_type = IR_TYPE_UNSUPPORTED;
+  if (!record || !record->is_record ||
+      !ir_shape_field_storage_info(program, record->shape_name, expr->text, &field_offset, NULL, &field_is_array, &field_array_len, &field_element_type) ||
+      !field_is_array) {
+    return false;
+  }
+  unsigned element_size = ir_type_byte_size(field_element_type);
+  if (!(ir_type_is_value(field_element_type) || field_element_type == IR_TYPE_BOOL) ||
+      element_size == 0 ||
+      field_array_len > UINT_MAX / element_size ||
+      field_offset > record->byte_size ||
+      field_array_len * element_size > record->byte_size - field_offset) {
+    ir_mark_unsupported(ir, "direct backend record array field byte view has unsupported storage", expr->line, expr->column, expr->text);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
+  value->array_index = record->index;
+  value->field_offset = field_offset;
+  value->data_len = field_array_len;
+  value->element_type = field_element_type;
   *out = value;
   return true;
 }
@@ -1010,6 +1101,7 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
         if (buf && buf->type == IR_TYPE_BYTE_VIEW) {
           IrValue *value = ir_new_value(ir, IR_VALUE_LOCAL, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
           value->local_index = buf->index;
+          value->element_type = buf->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : buf->element_type;
           *out = value;
           return true;
         }
@@ -1027,19 +1119,22 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
     if (local && local->type == IR_TYPE_BYTE_VIEW) {
       IrValue *value = ir_new_value(ir, IR_VALUE_LOCAL, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
       value->local_index = local->index;
+      value->element_type = local->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : local->element_type;
       *out = value;
       return true;
     }
     if (local && local->type == IR_TYPE_MAYBE_BYTE_VIEW) {
       IrValue *value = ir_new_value(ir, IR_VALUE_MAYBE_VALUE, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
       value->local_index = local->index;
+      value->element_type = IR_TYPE_U8;
       *out = value;
       return true;
     }
-    if (local && local->is_array && local->element_type == IR_TYPE_U8) {
+    if (local && local->is_array && (ir_type_is_value(local->element_type) || local->element_type == IR_TYPE_BOOL)) {
       IrValue *value = ir_new_value(ir, IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
       value->array_index = local->index;
       value->data_len = local->array_len;
+      value->element_type = local->element_type;
       *out = value;
       return true;
     }
@@ -1048,6 +1143,7 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
       return false;
     }
   }
+  if (ir_lower_record_array_field_byte_view(program, ir, fun, expr, out)) return true;
   if (expr->kind == EXPR_MEMBER && expr->left && expr->left->kind == EXPR_IDENT && strcmp(expr->text ? expr->text : "", "value") == 0) {
     const IrLocal *local = ir_function_find_local(fun, expr->left->text);
     if (!local || local->type != IR_TYPE_MAYBE_BYTE_VIEW) {
@@ -1056,6 +1152,7 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
     }
     IrValue *value = ir_new_value(ir, IR_VALUE_MAYBE_VALUE, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
     value->local_index = local->index;
+    value->element_type = IR_TYPE_U8;
     *out = value;
     return true;
   }
@@ -1090,6 +1187,7 @@ static bool ir_lower_byte_view(const Program *program, IrProgram *ir, const IrFu
     value->left = base;
     value->index = start;
     value->right = end;
+    value->element_type = base->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : base->element_type;
     *out = value;
     return true;
   }
@@ -1202,7 +1300,7 @@ static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, co
   }
   IrValue *value = ir_new_value(ir, IR_VALUE_CALL, callee->raises ? IR_TYPE_I64 : type, expr->line, expr->column);
   value->callee_index = callee_index;
-  value->element_type = type;
+  value->element_type = type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(return_type_text) : type;
   for (size_t i = 0; i < expr->args.len; i++) {
     char *specialized_param_type = generic_call ? ir_specialize_type_text(callee->params.items[i].type, callee, type_args) : NULL;
     const char *param_type_text = generic_call ? specialized_param_type : callee->params.items[i].type;
@@ -1231,6 +1329,20 @@ static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, co
       free(specialized_name);
       ir_mark_unsupported(ir, "direct backend call argument type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, callee->params.items[i].type);
       return false;
+    }
+    if (expected == IR_TYPE_BYTE_VIEW) {
+      IrTypeKind expected_element = ir_view_element_type_for_type(param_type_text);
+      IrTypeKind actual_element = arg->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : arg->element_type;
+      if (expected_element == IR_TYPE_UNSUPPORTED) expected_element = IR_TYPE_U8;
+      if (actual_element != expected_element) {
+        ir_free_value(arg);
+        ir_free_value(value);
+        free(specialized_param_type);
+        free(specialized_return_type);
+        free(specialized_name);
+        ir_mark_unsupported(ir, "direct backend call byte-view argument element type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, callee->params.items[i].type);
+        return false;
+      }
     }
     ir_value_push_arg(ir, value, arg);
     free(specialized_param_type);
@@ -1442,9 +1554,11 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           ir_mark_unsupported(ir, "direct backend string index must be an integer value", expr->line, expr->column, "non-integer index");
           return false;
         }
-        IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_INDEX_LOAD, IR_TYPE_U8, expr->line, expr->column);
+        IrTypeKind element_type = view->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : view->element_type;
+        IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_INDEX_LOAD, element_type, expr->line, expr->column);
         value->left = view;
         value->index = index;
+        value->element_type = element_type;
         *out = value;
         return true;
       }
@@ -1588,7 +1702,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       }
       if (strcmp(callee_name, "std.mem.fixedBufAlloc") == 0 &&
           expr->args.len == 1 &&
-          ir_expr_is_mutable_byte_view_dest(fun, expr->args.items[0])) {
+          ir_expr_is_mutable_byte_view_dest(program, fun, expr->args.items[0])) {
         IrValue *bytes = NULL;
         if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &bytes)) {
           free(callee_name);
@@ -2333,7 +2447,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           expr->args.len == 2 &&
           expr->args.items[0] &&
           ir_expr_is_byte_view_source(expr->args.items[1])) {
-        if (!ir_expr_is_mutable_byte_view_dest(fun, expr->args.items[0])) {
+        if (!ir_expr_is_mutable_byte_view_dest(program, fun, expr->args.items[0])) {
           free(callee_name);
           ir_mark_unsupported(ir, "direct backend std.io.copy expects a mutable byte destination", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable byte destination");
           return false;
@@ -2356,7 +2470,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       }
       if (strcmp(callee_name, "std.mem.vec") == 0 &&
           expr->args.len == 1 &&
-          ir_expr_is_mutable_byte_view_dest(fun, expr->args.items[0])) {
+          ir_expr_is_mutable_byte_view_dest(program, fun, expr->args.items[0])) {
         IrValue *bytes = NULL;
         if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &bytes)) {
           free(callee_name);
@@ -2452,7 +2566,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           expr->args.len == 2 &&
           expr->args.items[0] &&
           ir_expr_is_byte_view_source(expr->args.items[1])) {
-        if (!ir_expr_is_mutable_byte_view_dest(fun, expr->args.items[0])) {
+        if (!ir_expr_is_mutable_byte_view_dest(program, fun, expr->args.items[0])) {
           free(callee_name);
           ir_mark_unsupported(ir, "direct backend std.mem.copy expects a mutable byte destination", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable byte destination");
           return false;
@@ -2476,7 +2590,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       if (strcmp(callee_name, "std.mem.fill") == 0 &&
           expr->args.len == 2 &&
           expr->args.items[0]) {
-        if (!ir_expr_is_mutable_byte_view_dest(fun, expr->args.items[0])) {
+        if (!ir_expr_is_mutable_byte_view_dest(program, fun, expr->args.items[0])) {
           free(callee_name);
           ir_mark_unsupported(ir, "direct backend std.mem.fill expects a mutable byte destination", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable byte destination");
           return false;
@@ -2695,7 +2809,7 @@ static bool ir_lower_index_store(const Program *program, IrProgram *ir, IrFuncti
       ir_free_value(value);
       return false;
   }
-  IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? IR_TYPE_U8 : local->element_type;
+  IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? (local->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : local->element_type) : local->element_type;
   if (!ir_type_is_value(index->type) || value->type != element_type) {
     ir_free_value(index);
     ir_free_value(value);
@@ -3125,6 +3239,10 @@ static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction 
 static IrFunction *ir_program_push_function(IrProgram *ir, const Function *source, const char *stable_id_text) {
   ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
+  bool hosted_world_main = ir_is_hosted_world_main(source);
+  IrTypeKind source_return_type = ir_type_kind(source->return_type);
+  IrTypeKind mir_return_type = hosted_world_main ? IR_TYPE_I32 : (source->raises ? IR_TYPE_I64 : source_return_type);
+  IrTypeKind return_element_type = source_return_type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(source->return_type) : IR_TYPE_UNSUPPORTED;
   ZBuf stable_id;
   zbuf_init(&stable_id);
   zbuf_append(&stable_id, stable_id_text ? stable_id_text : "main.");
@@ -3132,11 +3250,12 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
   *fun = (IrFunction){
     .name = z_strdup(source->name),
     .stable_id = stable_id.data,
-    .world_param_name = ir_is_hosted_world_main(source) && source->params.items[0].name ? z_strdup(source->params.items[0].name) : NULL,
-    .return_type = ir_is_hosted_world_main(source) ? IR_TYPE_I32 : (source->raises ? IR_TYPE_I64 : ir_type_kind(source->return_type)),
-    .value_return_type = ir_type_kind(source->return_type),
-    .is_exported = source->export_c || ir_is_hosted_world_main(source),
-    .raises = ir_is_hosted_world_main(source) ? false : source->raises,
+    .world_param_name = hosted_world_main && source->params.items[0].name ? z_strdup(source->params.items[0].name) : NULL,
+    .return_type = mir_return_type,
+    .value_return_type = source_return_type,
+    .return_element_type = return_element_type,
+    .is_exported = source->export_c || hosted_world_main,
+    .raises = hosted_world_main ? false : source->raises,
     .line = source->line,
     .column = source->column
   };
@@ -3155,7 +3274,8 @@ static bool ir_collect_function_locals(const Program *program, IrProgram *ir, Ir
       ir_mark_unsupported(ir, "direct backend parameter type is unsupported", param->line, param->column, param->type);
       return false;
     }
-    ir_function_push_local(ir, mir_fun, param->name, type, true, false, false, NULL, IR_TYPE_UNSUPPORTED, 0, 0, 0, ir_type_name_is_mutable_byte_view(param->type), param->line, param->column);
+    IrTypeKind element_type = type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(param->type) : IR_TYPE_UNSUPPORTED;
+    ir_function_push_local(ir, mir_fun, param->name, type, true, false, false, NULL, element_type, 0, 0, 0, ir_type_name_is_mutable_byte_view(param->type), param->line, param->column);
   }
   if (!ir_collect_stmt_locals(program, ir, mir_fun, &source->body)) return false;
 
@@ -3204,8 +3324,9 @@ static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunc
         ir_mark_unsupported(ir, "direct backend local type is unsupported", stmt->line, stmt->column, stmt_type ? stmt_type : "inferred unknown");
         return false;
       }
-      bool mutable_byte_view = stmt_type && strcmp(stmt_type, "MutSpan<u8>") == 0;
-      ir_function_push_local(ir, mir_fun, stmt->name, type, false, false, false, NULL, IR_TYPE_UNSUPPORTED, 0, 0, 0, stmt->mutable_binding || mutable_byte_view, stmt->line, stmt->column);
+      bool mutable_byte_view = ir_type_name_is_mutable_byte_view(stmt_type);
+      IrTypeKind view_element_type = type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(stmt_type) : IR_TYPE_UNSUPPORTED;
+      ir_function_push_local(ir, mir_fun, stmt->name, type, false, false, false, NULL, view_element_type, 0, 0, 0, stmt->mutable_binding || mutable_byte_view, stmt->line, stmt->column);
     } else if (stmt->kind == STMT_IF) {
       if (!ir_collect_stmt_locals(program, ir, mir_fun, &stmt->then_body) || !ir_collect_stmt_locals(program, ir, mir_fun, &stmt->else_body)) return false;
     } else if (stmt->kind == STMT_WHILE) {
@@ -3473,25 +3594,36 @@ static bool ir_collect_generic_specializations_from_stmt_vec(FunctionVec *functi
 
 static bool ir_collect_generic_specializations_from_expr(FunctionVec *functions, ZSpecializationPlan *plan, IrProgram *ir, const Program *program, const Expr *expr) {
   if (!expr) return true;
-  if (expr->kind == EXPR_CALL && expr->left && expr->left->kind == EXPR_IDENT) {
-    const Function *callee = ir_find_source_function(program, expr->left->text, NULL);
+  if (expr->kind == EXPR_CALL && expr->left) {
+    const char *source_name = NULL;
+    char *callee_name = NULL;
+    if (expr->left->kind == EXPR_IDENT) {
+      source_name = expr->left->text;
+    } else {
+      callee_name = ir_expr_callee_name(expr->left);
+      source_name = z_std_source_target_for_public_call(callee_name);
+    }
+    const Function *callee = source_name ? ir_find_source_function(program, source_name, NULL) : NULL;
     const TypeArgVec *type_args = ir_call_type_args(expr);
     if (callee && callee->type_params.len > 0 && type_args && type_args->len == callee->type_params.len) {
       char *specialized_name = NULL;
       ZSpecializationAddResult add_result = z_specialization_plan_add(plan, callee, type_args, &specialized_name);
       if (add_result == Z_SPECIALIZATION_ADD_LIMIT) {
         free(specialized_name);
+        free(callee_name);
         ir_mark_unsupported(ir, "direct backend generic specialization plan exceeded its instantiation limit", expr->line, expr->column, callee->name);
         return false;
       }
       if (add_result == Z_SPECIALIZATION_ADD_NAME_COLLISION) {
         free(specialized_name);
+        free(callee_name);
         ir_mark_unsupported(ir, "direct backend generic specialization name is ambiguous", expr->line, expr->column, callee->name);
         return false;
       }
       if (add_result == Z_SPECIALIZATION_ADD_ADDED) {
         if (ir_function_vec_has_name(functions, specialized_name)) {
           free(specialized_name);
+          free(callee_name);
           ir_mark_unsupported(ir, "direct backend generic specialization name collides with an existing function", expr->line, expr->column, callee->name);
           return false;
         }
@@ -3499,6 +3631,7 @@ static bool ir_collect_generic_specializations_from_expr(FunctionVec *functions,
       }
       free(specialized_name);
     }
+    free(callee_name);
   }
   if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, expr->left)) return false;
   if (!ir_collect_generic_specializations_from_expr(functions, plan, ir, program, expr->right)) return false;
@@ -3530,7 +3663,8 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
   ZSpecializationPlan specialization_plan;
   z_specialization_plan_init(&specialization_plan, IR_SPECIALIZATION_PLAN_LIMIT);
   for (size_t i = 0; i < direct_functions.len; i++) {
-    if (!ir_collect_generic_specializations_from_stmt_vec(&direct_functions, &specialization_plan, ir, program, &direct_functions.items[i].body)) {
+    StmtVec body = direct_functions.items[i].body;
+    if (!ir_collect_generic_specializations_from_stmt_vec(&direct_functions, &specialization_plan, ir, program, &body)) {
       z_specialization_plan_free(&specialization_plan);
       Program temp_program = {0};
       temp_program.functions = direct_functions;

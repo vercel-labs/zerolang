@@ -1,0 +1,9 @@
+type Holder {
+    values: [3]i32,
+}
+
+pub fn main() -> Void {
+    var holder: Holder = Holder { values: [1, 2, 3] }
+    let filled: usize = std.mem.fillItems(holder.values[1..], 9)
+    expect (filled == 2 && holder.values[1] == 9 && holder.values[2] == 9)
+}

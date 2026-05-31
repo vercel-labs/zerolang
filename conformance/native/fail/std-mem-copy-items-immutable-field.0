@@ -1,0 +1,10 @@
+type Holder {
+    values: [2]i32,
+    scratch: [2]i32,
+}
+
+pub fn main(world: World) -> Void raises {
+    let holder: Holder = Holder { values: [1, 2], scratch: [0, 0] }
+    let _copied: usize = std.mem.copyItems(holder.scratch, holder.values)
+    check world.out.write("unreachable\n")
+}

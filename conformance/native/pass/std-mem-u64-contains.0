@@ -1,0 +1,12 @@
+type WideHolder {
+    values: [2]u64,
+}
+
+pub fn main(world: World) -> Void raises {
+    let holder: WideHolder = WideHolder { values: [4294967296_u64, 8589934592_u64] }
+    let containsWide: Bool = std.mem.contains(holder.values, 8589934592_u64)
+    let rejectsLowBitsOnly: Bool = !std.mem.contains(holder.values, 0_u64)
+    if containsWide && rejectsLowBitsOnly {
+        check world.out.write("std mem u64 contains ok\n")
+    }
+}

@@ -93,7 +93,17 @@ static IrValue value(IrValueKind kind, IrTypeKind type) {
 }
 
 static IrValue byte_view_value(void) {
-  return value(IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW);
+  IrValue view = value(IR_VALUE_STRING_LITERAL, IR_TYPE_BYTE_VIEW);
+  view.element_type = IR_TYPE_U8;
+  return view;
+}
+
+static IrValue array_byte_view_value(unsigned array_index, unsigned data_len, IrTypeKind element_type) {
+  IrValue view = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
+  view.array_index = array_index;
+  view.data_len = data_len;
+  view.element_type = element_type;
+  return view;
 }
 
 static IrFunction function(const char *name, IrTypeKind return_type, IrTypeKind value_return_type, IrLocal *locals, size_t local_len, size_t param_count, IrInstr *instrs, size_t instr_len, size_t frame_bytes, bool raises) {
@@ -101,6 +111,7 @@ static IrFunction function(const char *name, IrTypeKind return_type, IrTypeKind 
     .name = (char *)name,
     .return_type = return_type,
     .value_return_type = value_return_type,
+    .return_element_type = IR_TYPE_UNSUPPORTED,
     .locals = locals,
     .local_len = local_len,
     .param_count = param_count,
@@ -111,6 +122,12 @@ static IrFunction function(const char *name, IrTypeKind return_type, IrTypeKind 
     .line = 1,
     .column = 1
   };
+}
+
+static IrFunction function_with_return_element(const char *name, IrTypeKind return_type, IrTypeKind value_return_type, IrTypeKind return_element_type, IrLocal *locals, size_t local_len, size_t param_count, IrInstr *instrs, size_t instr_len, size_t frame_bytes, bool raises) {
+  IrFunction fun = function(name, return_type, value_return_type, locals, local_len, param_count, instrs, instr_len, frame_bytes, raises);
+  fun.return_element_type = return_element_type;
+  return fun;
 }
 
 static IrProgram program(IrFunction *functions, size_t function_len) {
@@ -158,6 +175,55 @@ static void valid_direct_call_passes(void) {
   IrFunction functions[] = {caller, callee};
   IrProgram ir = program(functions, 2);
   expect_ok("valid direct call", &ir);
+}
+
+static void valid_byte_view_direct_call_passes(void) {
+  IrValue arg = array_byte_view_value(0, 4, IR_TYPE_I32);
+  IrValue *args[] = {&arg};
+  IrValue call = value(IR_VALUE_CALL, IR_TYPE_VOID);
+  call.element_type = IR_TYPE_VOID;
+  call.callee_index = 1;
+  call.args = args;
+  call.arg_len = 1;
+  IrInstr expr = {.kind = IR_INSTR_EXPR, .value = &call, .line = 1, .column = 1};
+  IrLocal caller_locals[] = {array_local("numbers", IR_TYPE_I32, 0)};
+  IrFunction caller = function("main", IR_TYPE_VOID, IR_TYPE_VOID, caller_locals, 1, 0, &expr, 1, 16, false);
+  IrLocal callee_locals[] = {scalar_local("xs", IR_TYPE_BYTE_VIEW, 0, true)};
+  callee_locals[0].element_type = IR_TYPE_I32;
+  IrFunction callee = function("accept", IR_TYPE_VOID, IR_TYPE_VOID, callee_locals, 1, 1, NULL, 0, 16, false);
+  IrFunction functions[] = {caller, callee};
+  IrProgram ir = program(functions, 2);
+  expect_ok("valid byte-view direct call", &ir);
+}
+
+static void direct_call_byte_view_argument_element_mismatch_fails(void) {
+  IrValue arg = byte_view_value();
+  IrValue *args[] = {&arg};
+  IrValue call = value(IR_VALUE_CALL, IR_TYPE_VOID);
+  call.element_type = IR_TYPE_VOID;
+  call.callee_index = 1;
+  call.args = args;
+  call.arg_len = 1;
+  IrInstr expr = {.kind = IR_INSTR_EXPR, .value = &call, .line = 1, .column = 1};
+  IrFunction caller = function("main", IR_TYPE_VOID, IR_TYPE_VOID, NULL, 0, 0, &expr, 1, 0, false);
+  IrLocal callee_locals[] = {scalar_local("xs", IR_TYPE_BYTE_VIEW, 0, true)};
+  callee_locals[0].element_type = IR_TYPE_I32;
+  IrFunction callee = function("accept", IR_TYPE_VOID, IR_TYPE_VOID, callee_locals, 1, 1, NULL, 0, 16, false);
+  IrFunction functions[] = {caller, callee};
+  IrProgram ir = program(functions, 2);
+  expect_fail("direct call byte-view argument element mismatch", &ir, "direct call byte-view argument element mismatch");
+}
+
+static void direct_call_byte_view_return_element_mismatch_fails(void) {
+  IrValue call = value(IR_VALUE_CALL, IR_TYPE_BYTE_VIEW);
+  call.element_type = IR_TYPE_U8;
+  call.callee_index = 1;
+  IrInstr expr = {.kind = IR_INSTR_EXPR, .value = &call, .line = 1, .column = 1};
+  IrFunction caller = function("main", IR_TYPE_VOID, IR_TYPE_VOID, NULL, 0, 0, &expr, 1, 0, false);
+  IrFunction callee = function_with_return_element("make_span", IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW, IR_TYPE_I32, NULL, 0, 0, NULL, 0, 0, false);
+  IrFunction functions[] = {caller, callee};
+  IrProgram ir = program(functions, 2);
+  expect_fail("direct call byte-view return element mismatch", &ir, "direct call return mismatch");
 }
 
 static void local_value_out_of_range_fails(void) {
@@ -274,23 +340,31 @@ static void array_load_type_mismatch_fails(void) {
   expect_fail("array load type mismatch", &ir, "array load type mismatch");
 }
 
-static void array_byte_view_contract_fails(void) {
+static void array_scalar_view_contract_passes(void) {
   IrLocal locals[] = {array_local("numbers", IR_TYPE_I32, 0)};
-  IrValue view = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  view.array_index = 0;
-  view.data_len = 4;
-  IrInstr write = {.kind = IR_INSTR_WORLD_WRITE, .value = &view, .line = 1, .column = 1};
-  IrFunction fun = function("main", IR_TYPE_VOID, IR_TYPE_VOID, locals, 1, 0, &write, 1, 16, false);
+  IrValue view = array_byte_view_value(0, 4, IR_TYPE_I32);
+  IrValue len = value(IR_VALUE_BYTE_VIEW_LEN, IR_TYPE_USIZE);
+  len.left = &view;
+  IrInstr ret = {.kind = IR_INSTR_RETURN, .value = &len, .line = 1, .column = 1};
+  IrFunction fun = function("main", IR_TYPE_USIZE, IR_TYPE_USIZE, locals, 1, 0, &ret, 1, 16, false);
   IrProgram ir = program(&fun, 1);
-  ir.direct_runtime_helper_count = 1;
-  expect_fail("array byte view from non-byte array", &ir, "array byte view from a non-byte array local");
+  expect_ok("array scalar view contract", &ir);
+}
+
+static void array_byte_view_element_mismatch_fails(void) {
+  IrLocal locals[] = {array_local("numbers", IR_TYPE_I32, 0)};
+  IrValue view = array_byte_view_value(0, 4, IR_TYPE_U8);
+  IrValue len = value(IR_VALUE_BYTE_VIEW_LEN, IR_TYPE_USIZE);
+  len.left = &view;
+  IrInstr ret = {.kind = IR_INSTR_RETURN, .value = &len, .line = 1, .column = 1};
+  IrFunction fun = function("main", IR_TYPE_USIZE, IR_TYPE_USIZE, locals, 1, 0, &ret, 1, 16, false);
+  IrProgram ir = program(&fun, 1);
+  expect_fail("array byte view element mismatch", &ir, "array byte view element mismatch");
 }
 
 static void array_byte_view_length_mismatch_fails(void) {
   IrLocal locals[] = {array_local("bytes", IR_TYPE_U8, 0)};
-  IrValue view = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  view.array_index = 0;
-  view.data_len = 3;
+  IrValue view = array_byte_view_value(0, 3, IR_TYPE_U8);
   IrInstr write = {.kind = IR_INSTR_WORLD_WRITE, .value = &view, .line = 1, .column = 1};
   IrFunction fun = function("main", IR_TYPE_VOID, IR_TYPE_VOID, locals, 1, 0, &write, 1, 16, false);
   IrProgram ir = program(&fun, 1);
@@ -367,9 +441,7 @@ static void allocator_helper_contract_fails(void) {
     scalar_local("alloc", IR_TYPE_ALLOC, 1, false)
   };
   locals[0].is_mutable = true;
-  IrValue bytes = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  bytes.array_index = 0;
-  bytes.data_len = 4;
+  IrValue bytes = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue alloc = value(IR_VALUE_FIXED_BUF_ALLOC, IR_TYPE_ALLOC);
   alloc.left = &bytes;
   IrInstr set = {.kind = IR_INSTR_LOCAL_SET, .local_index = 1, .value = &alloc, .line = 1, .column = 1};
@@ -384,9 +456,7 @@ static void buffer_helper_contract_fails(void) {
     scalar_local("vec", IR_TYPE_VEC, 1, false)
   };
   locals[0].is_mutable = true;
-  IrValue bytes = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  bytes.array_index = 0;
-  bytes.data_len = 4;
+  IrValue bytes = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue vec = value(IR_VALUE_VEC_INIT, IR_TYPE_VEC);
   vec.left = &bytes;
   IrInstr set = {.kind = IR_INSTR_LOCAL_SET, .local_index = 1, .value = &vec, .line = 1, .column = 1};
@@ -438,9 +508,7 @@ static void vec_init_immutable_storage_fails(void) {
     array_local("storage", IR_TYPE_U8, 0),
     scalar_local("vec", IR_TYPE_VEC, 1, false)
   };
-  IrValue bytes = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  bytes.array_index = 0;
-  bytes.data_len = 4;
+  IrValue bytes = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue vec = value(IR_VALUE_VEC_INIT, IR_TYPE_VEC);
   vec.left = &bytes;
   IrInstr set = {.kind = IR_INSTR_LOCAL_SET, .local_index = 1, .value = &vec, .line = 1, .column = 1};
@@ -542,9 +610,7 @@ static void vec_init_known_maybe_storage_passes(void) {
   locals[2].byte_size = 24;
   locals[2].frame_offset = 56;
   locals[3].frame_offset = 72;
-  IrValue storage = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  storage.array_index = 0;
-  storage.data_len = 4;
+  IrValue storage = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue alloc = value(IR_VALUE_FIXED_BUF_ALLOC, IR_TYPE_ALLOC);
   alloc.left = &storage;
   IrValue length = value(IR_VALUE_INT, IR_TYPE_USIZE);
@@ -580,9 +646,7 @@ static void vec_init_maybe_before_mutable_assignment_fails(void) {
   locals[2].byte_size = 24;
   locals[2].frame_offset = 56;
   locals[3].frame_offset = 72;
-  IrValue storage = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  storage.array_index = 0;
-  storage.data_len = 4;
+  IrValue storage = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue alloc = value(IR_VALUE_FIXED_BUF_ALLOC, IR_TYPE_ALLOC);
   alloc.left = &storage;
   IrValue length = value(IR_VALUE_INT, IR_TYPE_USIZE);
@@ -618,9 +682,7 @@ static void vec_init_maybe_branch_only_assignment_fails(void) {
   locals[2].byte_size = 24;
   locals[2].frame_offset = 56;
   locals[3].frame_offset = 72;
-  IrValue storage = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  storage.array_index = 0;
-  storage.data_len = 4;
+  IrValue storage = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue alloc = value(IR_VALUE_FIXED_BUF_ALLOC, IR_TYPE_ALLOC);
   alloc.left = &storage;
   IrValue length = value(IR_VALUE_INT, IR_TYPE_USIZE);
@@ -660,9 +722,7 @@ static void vec_init_maybe_immutable_overwrite_fails(void) {
   locals[2].byte_size = 24;
   locals[2].frame_offset = 56;
   locals[3].frame_offset = 72;
-  IrValue storage = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  storage.array_index = 0;
-  storage.data_len = 4;
+  IrValue storage = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue alloc = value(IR_VALUE_FIXED_BUF_ALLOC, IR_TYPE_ALLOC);
   alloc.left = &storage;
   IrValue length = value(IR_VALUE_INT, IR_TYPE_USIZE);
@@ -735,6 +795,23 @@ static void byte_view_equality_result_type_mismatch_fails(void) {
   expect_fail("byte-view equality result mismatch", &ir, "byte-view equality result type mismatch");
 }
 
+static void byte_view_equality_element_mismatch_fails(void) {
+  IrLocal locals[] = {
+    array_local("left", IR_TYPE_I32, 0),
+    array_local("right", IR_TYPE_U8, 1)
+  };
+  locals[1].frame_offset = 32;
+  IrValue left = array_byte_view_value(0, 4, IR_TYPE_I32);
+  IrValue right = array_byte_view_value(1, 4, IR_TYPE_U8);
+  IrValue equal = value(IR_VALUE_BYTE_VIEW_EQ, IR_TYPE_BOOL);
+  equal.left = &left;
+  equal.right = &right;
+  IrInstr ret = {.kind = IR_INSTR_RETURN, .value = &equal, .line = 1, .column = 1};
+  IrFunction fun = function("main", IR_TYPE_BOOL, IR_TYPE_BOOL, locals, 2, 0, &ret, 1, 32, false);
+  IrProgram ir = program(&fun, 1);
+  expect_fail("byte-view equality element mismatch", &ir, "byte-view equality element mismatch");
+}
+
 static void binary_operand_type_mismatch_fails(void) {
   IrValue left = value(IR_VALUE_INT, IR_TYPE_I32);
   IrValue right = value(IR_VALUE_BOOL, IR_TYPE_BOOL);
@@ -764,9 +841,7 @@ static void byte_copy_result_type_mismatch_fails(void) {
   IrLocal locals[] = {array_local("dst", IR_TYPE_U8, 0)};
   locals[0].is_mutable = true;
   IrValue src = byte_view_value();
-  IrValue dst = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  dst.array_index = 0;
-  dst.data_len = 4;
+  IrValue dst = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue copy = value(IR_VALUE_BYTE_COPY, IR_TYPE_BOOL);
   copy.left = &src;
   copy.right = &dst;
@@ -780,9 +855,7 @@ static void byte_fill_value_mismatch_fails(void) {
   IrLocal locals[] = {array_local("dst", IR_TYPE_U8, 0)};
   locals[0].is_mutable = true;
   IrValue fill = value(IR_VALUE_INT, IR_TYPE_I32);
-  IrValue dst = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  dst.array_index = 0;
-  dst.data_len = 4;
+  IrValue dst = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue copy = value(IR_VALUE_BYTE_FILL, IR_TYPE_USIZE);
   copy.left = &fill;
   copy.right = &dst;
@@ -917,9 +990,7 @@ static void http_runtime_import_contract_fails(void) {
   IrLocal locals[] = {array_local("response", IR_TYPE_U8, 0)};
   locals[0].is_mutable = true;
   IrValue request = byte_view_value();
-  IrValue response = value(IR_VALUE_ARRAY_BYTE_VIEW, IR_TYPE_BYTE_VIEW);
-  response.array_index = 0;
-  response.data_len = 4;
+  IrValue response = array_byte_view_value(0, 4, IR_TYPE_U8);
   IrValue timeout = value(IR_VALUE_INT, IR_TYPE_I64);
   IrValue fetch = value(IR_VALUE_HTTP_FETCH, IR_TYPE_U64);
   fetch.left = &request;
@@ -952,6 +1023,9 @@ static void world_write_stream_contract_fails(void) {
 
 int main(void) {
   valid_direct_call_passes();
+  valid_byte_view_direct_call_passes();
+  direct_call_byte_view_argument_element_mismatch_fails();
+  direct_call_byte_view_return_element_mismatch_fails();
   local_value_out_of_range_fails();
   local_write_type_mismatch_fails();
   packed_maybe_scalar_write_passes();
@@ -963,7 +1037,8 @@ int main(void) {
   byte_view_write_contract_passes();
   array_load_contract_fails();
   array_load_type_mismatch_fails();
-  array_byte_view_contract_fails();
+  array_scalar_view_contract_passes();
+  array_byte_view_element_mismatch_fails();
   array_byte_view_length_mismatch_fails();
   field_write_contract_fails();
   field_write_partial_overrun_fails();
@@ -990,6 +1065,7 @@ int main(void) {
   http_fetch_immutable_response_fails();
   helper_result_type_mismatch_fails();
   byte_view_equality_result_type_mismatch_fails();
+  byte_view_equality_element_mismatch_fails();
   binary_operand_type_mismatch_fails();
   byte_copy_immutable_destination_fails();
   byte_copy_result_type_mismatch_fails();

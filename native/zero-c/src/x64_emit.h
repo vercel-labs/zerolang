@@ -93,6 +93,7 @@ void z_x64_emit_movzx_reg32_ptr_reg_disp_u16(ZBuf *buf, unsigned dst_reg, unsign
 void z_x64_emit_load_reg_ptr_reg(ZBuf *buf, unsigned dst_reg, unsigned base_reg, bool wide);
 void z_x64_emit_mov_ptr_reg_disp_u8(ZBuf *buf, unsigned base_reg, unsigned disp, unsigned value);
 void z_x64_emit_store_ptr_reg8_from_reg(ZBuf *buf, unsigned base_reg, unsigned src_reg);
+void z_x64_emit_store_ptr_reg16_from_reg(ZBuf *buf, unsigned base_reg, unsigned src_reg);
 void z_x64_emit_store_ptr_reg_from_reg(ZBuf *buf, unsigned base_reg, unsigned src_reg, bool wide);
 void z_x64_emit_cmp_reg_ptr_reg(ZBuf *buf, unsigned lhs_reg, unsigned base_reg, bool wide);
 void z_x64_emit_div_rax_rcx(ZBuf *buf, bool wide, bool uns, bool keep_remainder);

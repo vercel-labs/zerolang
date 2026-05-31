@@ -1,6 +1,7 @@
 #include "zero.h"
 #include "call_resolve.h"
 #include "std_sig.h"
+#include "std_source.h"
 #include "unify.h"
 
 #include <ctype.h>
@@ -1481,6 +1482,27 @@ static bool actual_storage_value_provenance_under_path(CheckContext *ctx, const 
 static char *provenance_context_type_text(const CheckContext *ctx, const Program *program, const char *type, GenericBinding *bindings, size_t binding_len);
 static void scope_clear_maybe_guards_for_mutating_call_args(CheckContext *ctx, const Program *program, const Expr *call, Scope *scope);
 
+static bool slice_source_is_mutable_storage(const Expr *source, Scope *scope, const char *source_type) {
+  if (!source || !scope || !source_type) return false;
+  char source_mutref_inner[160];
+  char source_ref_inner[160];
+  if (named_ref_inner_text(source_type, "mutref", source_mutref_inner, sizeof(source_mutref_inner))) {
+    source_type = source_mutref_inner;
+  } else if (named_ref_inner_text(source_type, "ref", source_ref_inner, sizeof(source_ref_inner))) {
+    return false;
+  }
+  if (type_is_named_generic(source_type, "MutSpan")) return true;
+  char element_type[128];
+  if (!fixed_array_type_parts(source_type, NULL, 0, element_type, sizeof(element_type))) return false;
+  char root[128];
+  char path[256];
+  if (!expr_binding_path(source, root, sizeof(root), path, sizeof(path)) || !scope_has(scope, root)) return false;
+  const char *root_type = scope_type(scope, root);
+  char root_mutref_inner[160];
+  if (named_ref_inner_text(root_type, "mutref", root_mutref_inner, sizeof(root_mutref_inner))) return true;
+  return scope_is_mutable(scope, root);
+}
+
 static bool borrow_expr_source_is_local_storage(const Expr *borrowed, Scope *scope, const char *root) {
   if (!scope_is_param(scope, root)) return true;
   const char *root_type = scope_type(scope, root);
@@ -1543,6 +1565,9 @@ static bool expr_value_provenance(const Expr *expr, Scope *scope, ValueProvenanc
 static bool span_view_expr_provenance(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, const char *view_type, ValueProvenance *origins) {
   if (!expr || !scope || !view_type || !origins) return false;
 
+  char expected_element[128];
+  if (!readable_view_element_text(view_type, expected_element, sizeof(expected_element))) return false;
+
   ValueProvenance existing = {0};
   if (expr_reference_provenance(ctx, program, expr, scope, &existing)) {
     bool added = value_provenance_add_all(origins, &existing);
@@ -1550,9 +1575,6 @@ static bool span_view_expr_provenance(CheckContext *ctx, const Program *program,
     return added;
   }
   value_provenance_free(&existing);
-
-  char expected_element[128];
-  if (!readable_view_element_text(view_type, expected_element, sizeof(expected_element))) return false;
 
   if (expr_is_addressable(expr)) {
     char root[128];
@@ -5586,9 +5608,16 @@ static const char *expr_type(CheckContext *ctx, const Program *program, const Ex
     }
     case EXPR_SLICE: {
       static char slice_type[128];
+      const char *base_type = expr_type(ctx, program, expr->left, scope);
       char element_type[96];
-      if (index_element_type(expr_type(ctx, program, expr->left, scope), element_type, sizeof(element_type))) {
-        snprintf(slice_type, sizeof(slice_type), "Span<%s>", element_type);
+      if (index_element_type(base_type, element_type, sizeof(element_type))) {
+        snprintf(
+          slice_type,
+          sizeof(slice_type),
+          "%s<%s>",
+          slice_source_is_mutable_storage(expr->left, scope, base_type) ? "MutSpan" : "Span",
+          element_type
+        );
         return slice_type;
       }
       return "Unknown";
@@ -6338,6 +6367,165 @@ static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Pr
   return true;
 }
 
+static bool stdlib_writable_item_element(const Expr *expr, ZDiag *diag, const char *display_name, const char *element_type) {
+  if (!type_is_const(element_type)) return true;
+  char message[256];
+  snprintf(message, sizeof(message), "%s expects mutable non-const item storage", display_name);
+  return set_diag_detail(diag, 3010, message, expr->line, expr->column, "mutable non-const item storage", element_type, "use a mutable element type when item mutation is required");
+}
+
+static bool stdlib_mutable_items_arg_element(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *display_name, char *element_type, size_t element_len, const char **actual_type) {
+  if (!check_expr(ctx, program, expr, scope, diag)) return false;
+  const char *actual = expr_type(ctx, program, expr, scope);
+  if (actual_type) *actual_type = actual;
+  if (mutspan_element_text(actual, element_type, element_len)) return stdlib_writable_item_element(expr, diag, display_name, element_type);
+  if (fixed_array_type_parts(actual, NULL, 0, element_type, element_len)) {
+    if (slice_source_is_mutable_storage(expr, scope, actual)) return stdlib_writable_item_element(expr, diag, display_name, element_type);
+    char message[256];
+    snprintf(message, sizeof(message), "%s expects mutable item storage", display_name);
+    return set_diag_detail(diag, 3010, message, expr->line, expr->column, "mutable [N]T or MutSpan<T>", "immutable array binding", "declare the array with var or pass a MutSpan<T>");
+  }
+  char message[256];
+  snprintf(message, sizeof(message), "%s expects mutable item storage", display_name);
+  return set_diag_detail(diag, 3012, message, expr->line, expr->column, "mutable [N]T or MutSpan<T>", actual, "pass caller-owned mutable storage with a concrete element type");
+}
+
+static bool stdlib_readable_items_arg_element(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *display_name, char *element_type, size_t element_len, const char **actual_type) {
+  if (!check_expr(ctx, program, expr, scope, diag)) return false;
+  const char *actual = expr_type(ctx, program, expr, scope);
+  if (actual_type) *actual_type = actual;
+  if (index_element_type(actual, element_type, element_len)) return true;
+  char message[256];
+  snprintf(message, sizeof(message), "%s expects readable item storage", display_name);
+  return set_diag_detail(diag, 3012, message, expr->line, expr->column, "[N]T, Span<T>, MutSpan<T>, or String", actual, "pass readable contiguous storage with a concrete element type");
+}
+
+static void stdlib_span_type_for_element(char *out, size_t out_len, const char *element_type, bool mut) {
+  snprintf(out, out_len, "%s<%s>", mut ? "MutSpan" : "Span", element_type ? element_type : "Unknown");
+}
+
+static void stdlib_record_single_type_arg(const Expr *expr, const char *type) {
+  GenericBinding binding = {.name = "T", .type = (char *)(type ? type : "Unknown")};
+  set_expr_checked_type_args(expr, &binding, 1);
+}
+
+static bool type_references_visible_type_param(Scope *scope, const char *type) {
+  for (Scope *cursor = scope; type && cursor; cursor = cursor->parent)
+    for (size_t i = 0; i < cursor->len; i++)
+      if (cursor->is_type_param && cursor->is_type_param[i] && type_text_references_name(type, cursor->names[i])) return true;
+  return false;
+}
+
+static bool stdlib_reject_owned_item_element(const Program *program, Scope *scope, const char *display_name, const char *element_type, const Expr *expr, ZDiag *diag, const char *action, const char *help) {
+  if (type_references_visible_type_param(scope, element_type)) {
+    char message[256]; snprintf(message, sizeof(message), "%s cannot %s potentially owned generic item elements", display_name, action ? action : "duplicate");
+    return set_diag_detail(diag, 3013, message, expr ? expr->line : 0, expr ? expr->column : 0, "concrete item type without owned values", element_type ? element_type : "Unknown", help ? help : "use a concrete non-owned item type or write each owned element explicitly");
+  }
+  if (!type_contains_owned(program, element_type, 0)) return true;
+  char message[256];
+  snprintf(message, sizeof(message), "%s cannot %s owned item elements", display_name, action ? action : "duplicate");
+  return set_diag_detail(diag, 3013, message, expr ? expr->line : 0, expr ? expr->column : 0, "item type without owned values", element_type ? element_type : "Unknown", help ? help : "write each owned element explicitly so ownership is transferred once");
+}
+
+static bool stdlib_require_supported_item_element(const Program *program, const char *display_name, const char *element_type, const Expr *expr, ZDiag *diag) {
+  const char *resolved = type_strip_const(resolve_alias_type(program, element_type));
+  char pattern[64];
+  snprintf(pattern, sizeof(pattern), "|%s|", resolved ? resolved : "");
+  if ((resolved && !strchr(resolved, '|') && strstr("|Bool|bool|u8|u16|usize|i32|u32|i64|u64|", pattern)) || type_is_named_generic(resolved, "ref") || type_is_named_generic(resolved, "mutref")) return true;
+  char message[256]; snprintf(message, sizeof(message), "%s item element type is not supported", display_name);
+  return set_diag_detail(diag, 3012, message, expr ? expr->line : 0, expr ? expr->column : 0, "Bool, u8, u16, usize, i32, u32, i64, or u64 item storage", element_type ? element_type : "Unknown", "use a supported scalar item type or write a specialized helper for this type");
+}
+
+static bool check_stdlib_mem_copy_items_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *dst_actual = NULL;
+  char element_type[128];
+  if (!stdlib_mutable_items_arg_element(ctx, program, expr->args.items[0], scope, diag, "std.mem.copyItems", element_type, sizeof(element_type), &dst_actual) ||
+      !stdlib_reject_owned_item_element(program, scope, "std.mem.copyItems", element_type, expr->args.items[0], diag, "copy", "move owned values explicitly so each destination receives one owner") ||
+      !stdlib_require_supported_item_element(program, "std.mem.copyItems", element_type, expr->args.items[0], diag)) return false;
+  char expected_dst[160];
+  char expected_src[160];
+  stdlib_span_type_for_element(expected_dst, sizeof(expected_dst), element_type, true);
+  stdlib_span_type_for_element(expected_src, sizeof(expected_src), element_type, false);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_dst, dst_actual);
+  if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, expected_src)) return false;
+  const char *src_actual = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], expected_src, src_actual);
+  if (!types_compatible_in_scope(program, scope, expected_src, src_actual)) {
+    return set_diag_detail(diag, 3012, "std.mem.copyItems source element type must match destination", expr->args.items[1]->line, expr->args.items[1]->column, expected_src, src_actual, "copy between spans with the same element type");
+  }
+  set_expr_resolved_type(expr, "usize");
+  z_call_resolution_set_return_type(resolution, "usize");
+  stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
+static bool check_stdlib_mem_fill_items_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *dst_actual = NULL;
+  char element_type[128];
+  if (!stdlib_mutable_items_arg_element(ctx, program, expr->args.items[0], scope, diag, "std.mem.fillItems", element_type, sizeof(element_type), &dst_actual) ||
+      !stdlib_reject_owned_item_element(program, scope, "std.mem.fillItems", element_type, expr->args.items[0], diag, "duplicate", "write each owned element explicitly so ownership is transferred once") ||
+      !stdlib_require_supported_item_element(program, "std.mem.fillItems", element_type, expr->args.items[0], diag)) return false;
+  char expected_dst[160];
+  stdlib_span_type_for_element(expected_dst, sizeof(expected_dst), element_type, true);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_dst, dst_actual);
+  if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, element_type)) return false;
+  const char *value_actual = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], element_type, value_actual);
+  if (!types_compatible_in_scope(program, scope, element_type, value_actual)) {
+    return set_diag_detail(diag, 3012, "std.mem.fillItems value type must match destination element", expr->args.items[1]->line, expr->args.items[1]->column, element_type, value_actual, "fill storage with a value of the same element type");
+  }
+  set_expr_resolved_type(expr, "usize");
+  z_call_resolution_set_return_type(resolution, "usize");
+  stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
+static bool check_stdlib_mem_contains_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *items_actual = NULL;
+  char element_type[128];
+  if (!stdlib_readable_items_arg_element(ctx, program, expr->args.items[0], scope, diag, resolution && resolution->callee_name ? resolution->callee_name : "std.mem.contains", element_type, sizeof(element_type), &items_actual)) return false;
+  if ((z_std_helper_kind(resolution ? resolution->std_helper : NULL) == Z_STD_HELPER_KIND_MEM_CONTAINS &&
+       !stdlib_reject_owned_item_element(program, scope, "std.mem.contains", element_type, expr->args.items[0], diag, "compare", "compare a non-owned key or move owned values explicitly")) ||
+      !stdlib_require_supported_item_element(program, resolution && resolution->callee_name ? resolution->callee_name : "std.mem.contains", element_type, expr->args.items[0], diag)) return false;
+  char expected_items[160];
+  stdlib_span_type_for_element(expected_items, sizeof(expected_items), element_type, false);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_items, items_actual);
+  if (expr->args.len > 1) {
+    if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, element_type)) return false;
+    const char *needle_actual = expr_type(ctx, program, expr->args.items[1], scope);
+    record_stdlib_arg_fact(resolution, 1, expr->args.items[1], element_type, needle_actual);
+    if (!types_compatible_in_scope(program, scope, element_type, needle_actual)) {
+      return set_diag_detail(diag, 3012, "std.mem.contains needle type must match item element", expr->args.items[1]->line, expr->args.items[1]->column, element_type, needle_actual, "search for a value with the same element type");
+    }
+  }
+  set_expr_resolved_type(expr, "Bool");
+  z_call_resolution_set_return_type(resolution, "Bool");
+  stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
+static bool check_stdlib_mem_slice_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *items_actual = NULL;
+  char element_type[128];
+  if (!stdlib_readable_items_arg_element(ctx, program, expr->args.items[0], scope, diag, resolution && resolution->callee_name ? resolution->callee_name : "std.mem.prefix", element_type, sizeof(element_type), &items_actual) ||
+      !stdlib_require_supported_item_element(program, resolution && resolution->callee_name ? resolution->callee_name : "std.mem.prefix", element_type, expr->args.items[0], diag)) return false;
+  char result_type[160];
+  char expected_items[160];
+  stdlib_span_type_for_element(result_type, sizeof(result_type), element_type, false);
+  stdlib_span_type_for_element(expected_items, sizeof(expected_items), element_type, false);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_items, items_actual);
+  if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, "usize")) return false;
+  const char *count_actual = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "usize", count_actual);
+  if (!types_compatible_in_scope(program, scope, "usize", count_actual)) {
+    return set_diag_detail(diag, 3028, "std.mem slice count must be usize", expr->args.items[1]->line, expr->args.items[1]->column, "usize count", count_actual, "pass a usize count");
+  }
+  set_expr_resolved_type(expr, result_type);
+  z_call_resolution_set_return_type(resolution, result_type);
+  stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
 static bool check_stdlib_allocator_len_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name, const char *result_type, const char *len_message, const char *len_help, const char *mut_help) {
   if (!check_stdlib_allocator_arg(ctx, program, expr, scope, diag, resolution, 0, name, "use std.mem.nullAlloc() or a mut FixedBufAlloc from std.mem.fixedBufAlloc(buffer)", mut_help)) return false;
   if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, "usize")) return false;
@@ -6414,6 +6602,15 @@ static bool check_stdlib_known_call_expected(CheckContext *ctx, const Program *p
       return check_stdlib_mem_get_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_MEM_EQL_BYTES:
       return check_stdlib_mem_eql_bytes_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_MEM_COPY_ITEMS:
+      return check_stdlib_mem_copy_items_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_MEM_FILL_ITEMS:
+      return check_stdlib_mem_fill_items_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_MEM_CONTAINS:
+    case Z_STD_HELPER_KIND_MEM_IS_EMPTY:
+      return check_stdlib_mem_contains_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_MEM_SLICE:
+      return check_stdlib_mem_slice_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_MEM_ALLOC_BYTES:
       return check_stdlib_allocator_len_call_expected(ctx, program, expr, scope, diag, resolution, name, "Maybe<MutSpan<u8>>", "allocation length must be an integer", "pass an integer byte count", "store the fixed buffer allocator in a var binding before allocating");
     case Z_STD_HELPER_KIND_MEM_BYTE_BUF:
@@ -7103,7 +7300,13 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
         }
       }
       char slice_type[160];
-      snprintf(slice_type, sizeof(slice_type), "Span<%s>", element_type);
+      snprintf(
+        slice_type,
+        sizeof(slice_type),
+        "%s<%s>",
+        slice_source_is_mutable_storage(expr->left, scope, base_type) ? "MutSpan" : "Span",
+        element_type
+      );
       set_expr_resolved_type(expr, slice_type);
       return true;
     }
@@ -7799,6 +8002,53 @@ static bool resolve_named_provenance_call(CheckContext *ctx, const Program *prog
   return true;
 }
 
+static bool resolve_source_backed_stdlib_provenance_call(CheckContext *ctx, const Program *program, const Expr *call, Scope *scope, const char *return_type, GenericBinding *context_bindings, size_t context_binding_len, ResolvedProvenanceCall *out, bool *handled) {
+  if (handled) *handled = false;
+  if (!program || !call || call->kind != EXPR_CALL || !call->left || call->left->kind != EXPR_MEMBER || !out) return true;
+
+  ZBuf public_name;
+  zbuf_init(&public_name);
+  member_name_buf(call->left, &public_name);
+  const char *target_name = z_std_source_target_for_public_call(public_name.data);
+  if (!target_name) {
+    zbuf_free(&public_name);
+    return true;
+  }
+  if (handled) *handled = true;
+
+  const Function *callee = find_function(program, target_name);
+  if (!callee) {
+    zbuf_free(&public_name);
+    return false;
+  }
+
+  z_call_resolution_init(&out->resolution);
+  out->resolution.kind = Z_CALL_FUNCTION;
+  out->resolution.call_expr = call;
+  out->resolution.callee_expr = call->left;
+  out->resolution.type_args = checked_call_type_args(call);
+  if (!out->resolution.type_args || out->resolution.type_args->len == 0) out->resolution.type_args = call_type_args(call);
+  out->resolution.callee = callee;
+  out->resolution.param_len = callee->params.len;
+  out->resolution.fallible = callee->raises || callee->has_error_set;
+  z_call_resolution_set_callee_name(&out->resolution, public_name.data);
+  z_call_resolution_set_return_type(&out->resolution, return_type ? return_type : (callee->return_type ? callee->return_type : "Void"));
+  call_resolution_record_function_errors(&out->resolution, callee);
+
+  if (function_is_generic(callee)) {
+    if (!generic_call_bindings_from_checked_call(ctx, program, callee, call, scope, out->resolution.return_type, &out->bindings, &out->binding_len)) {
+      zbuf_free(&public_name);
+      resolved_provenance_call_free(out);
+      return false;
+    }
+    provenance_context_substitute_bindings(ctx, program, out->bindings, out->binding_len, context_bindings, context_binding_len);
+    call_resolution_record_bindings(&out->resolution, out->bindings, out->binding_len);
+  }
+  call_resolution_record_param_facts(ctx, program, callee, call, NULL, 0, scope, out->bindings, out->binding_len, &out->resolution);
+  zbuf_free(&public_name);
+  return true;
+}
+
 static bool resolve_constrained_interface_provenance_call(CheckContext *ctx, const Program *program, const Function *context_fun, const Expr *call, Scope *scope, const char *return_type, GenericBinding *context_bindings, size_t context_binding_len, ResolvedProvenanceCall *out, bool *handled) {
   if (handled) *handled = false;
   if (!resolve_constrained_interface_call(program, context_fun, call, &out->resolution)) return true;
@@ -7860,6 +8110,9 @@ static bool resolve_provenance_call(CheckContext *ctx, const Program *program, c
   if (call->left->kind != EXPR_MEMBER) return false;
 
   bool handled = false;
+  if (!resolve_source_backed_stdlib_provenance_call(ctx, program, call, scope, return_type, context_bindings, context_binding_len, out, &handled)) return false;
+  if (handled) return true;
+
   if (!resolve_shape_namespace_provenance_call(ctx, program, call, scope, return_type, context_bindings, context_binding_len, out, &handled)) return false;
   if (handled) return true;
 
@@ -8421,8 +8674,8 @@ static bool stdlib_borrowed_result_arg_index(const ZStdHelperInfo *helper, size_
 static bool stdlib_result_value_provenance(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ValueProvenance *origins) {
   if (!program || !expr || expr->kind != EXPR_CALL || !expr->left || !origins) return false;
   ZCallResolution resolution = {0};
-  if (!resolve_stdlib_call(expr, &resolution)) return false;
   bool added = false;
+  if (!resolve_stdlib_call(expr, &resolution) || z_call_resolution_expected_arg_count(&resolution) != expr->args.len || !check_stdlib_known_call_expected(ctx, program, expr, scope, &(ZDiag){0}, &resolution)) goto done;
   const char *value_prefix = NULL;
   size_t arg_index = 0;
   if (!stdlib_return_type_is_borrowed_view(resolution.return_type, &value_prefix) ||
@@ -9073,7 +9326,7 @@ static bool function_provenance_summary(CheckContext *ctx, const Program *progra
     const Param *param = &fun->params.items[param_index];
     if (!param->name) continue;
     char *param_type = call_param_type_text(program, fun, param_index, bindings, binding_len);
-    bool mutating_param = type_is_named_generic(param_type, "mutref") || type_is_named_generic(param_type, "MutSpan");
+    bool mutspan_param = type_is_named_generic(param_type, "MutSpan"), mutating_param = type_is_named_generic(param_type, "mutref") || mutspan_param;
     free(param_type);
     if (!mutating_param) continue;
     ValueProvenance value = {0};
@@ -9081,7 +9334,7 @@ static bool function_provenance_summary(CheckContext *ctx, const Program *progra
       for (size_t i = 0; i < value.len; i++) {
         if (!function_param_index_by_name(fun, value.items[i].origin.root, NULL)) summary->callee_local_storage = true;
       }
-      provenance_storage_effect_vec_add(&summary->storage_effects, param->name, NULL, NULL, &value, true);
+      provenance_storage_effect_vec_add(&summary->storage_effects, param->name, NULL, NULL, &value, !mutspan_param);
     }
     value_provenance_free(&value);
   }
@@ -10364,19 +10617,8 @@ static bool validate_shape_layout(const Shape *shape, ZDiag *diag) {
 
 static bool type_references_generic_param(const char *type, const Shape *shape) {
   if (!type || !shape) return false;
-  for (size_t i = 0; i < shape->type_params.len; i++) {
-    const char *name = shape->type_params.items[i].name;
-    if (!name) continue;
-    if (strcmp(type, name) == 0) return true;
-    const char *cursor = type;
-    size_t name_len = strlen(name);
-    while ((cursor = strstr(cursor, name)) != NULL) {
-      bool left_ok = cursor == type || !(isalnum((unsigned char)cursor[-1]) || cursor[-1] == '_');
-      bool right_ok = !(isalnum((unsigned char)cursor[name_len]) || cursor[name_len] == '_');
-      if (left_ok && right_ok) return true;
-      cursor += name_len;
-    }
-  }
+  for (size_t i = 0; i < shape->type_params.len; i++)
+    if (type_text_references_name(type, shape->type_params.items[i].name)) return true;
   return false;
 }
 

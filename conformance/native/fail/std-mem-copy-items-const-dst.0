@@ -1,0 +1,5 @@
+pub fn main() -> Void {
+    var dst: [2]const i32 = [0, 0]
+    let src: [2]const i32 = [1, 2]
+    let _copied: usize = std.mem.copyItems(dst, src)
+}

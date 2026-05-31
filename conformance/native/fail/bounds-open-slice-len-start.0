@@ -1,0 +1,7 @@
+pub fn main(world: World) -> Void raises {
+    let values: [2]u16 = [1_u16, 2_u16]
+    let badLen: usize = std.mem.len(values[3_usize..])
+    if badLen > 0 {
+        check world.out.write("unreachable\n")
+    }
+}

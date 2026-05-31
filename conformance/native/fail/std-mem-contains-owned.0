@@ -1,0 +1,14 @@
+type File {
+    fd: i32,
+}
+
+fn close(file: owned<File>) -> Void {
+}
+
+pub fn main() -> Void {
+    let files: [1]owned<File> = [File { fd: 1 }]
+    let needle: owned<File> = File { fd: 1 }
+    let _has: Bool = std.mem.contains(files, needle)
+    close(needle)
+    close(files[0])
+}

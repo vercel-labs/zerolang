@@ -13,6 +13,7 @@ typedef struct {
 
 static const ZStdSourceModule std_source_modules[] = {
   {"std.math", "std/math.0", zero_embedded_stdlib_std_math_0_chunks},
+  {"std.mem", "std/mem.0", zero_embedded_stdlib_std_mem_0_chunks},
   {"std.path", "std/path.0", zero_embedded_stdlib_std_path_0_chunks},
   {"std.str", "std/str.0", zero_embedded_stdlib_std_str_0_chunks},
 };
@@ -28,6 +29,12 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.math.modPowU32", "__zero_std_math_mod_pow_u32", "std.math"},
   {"std.math.powU32", "__zero_std_math_pow_u32", "std.math"},
   {"std.math.properDivisorSumU32", "__zero_std_math_proper_divisor_sum_u32", "std.math"},
+  {"std.mem.contains", "__zero_std_mem_contains", "std.mem"},
+  {"std.mem.copyItems", "__zero_std_mem_copy_items", "std.mem"},
+  {"std.mem.dropPrefix", "__zero_std_mem_drop_prefix", "std.mem"},
+  {"std.mem.fillItems", "__zero_std_mem_fill_items", "std.mem"},
+  {"std.mem.isEmpty", "__zero_std_mem_is_empty", "std.mem"},
+  {"std.mem.prefix", "__zero_std_mem_prefix", "std.mem"},
   {"std.path.basename", "__zero_std_path_basename", "std.path"},
   {"std.path.dirname", "__zero_std_path_dirname", "std.path"},
   {"std.path.extension", "__zero_std_path_extension", "std.path"},

@@ -1,0 +1,9 @@
+type Point {
+    x: i32,
+    y: i32,
+}
+
+pub fn main() -> Bool {
+    let points: [1]Point = [Point { x: 1, y: 2 }]
+    return std.mem.contains(points, Point { x: 1, y: 2 })
+}

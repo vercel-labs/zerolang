@@ -38,8 +38,52 @@ static bool coff_diag_at(ZDiag *diag, const char *message, int line, int column,
 
 static bool coff_type_is_scalar32(IrTypeKind type) { return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE; }
 
+static bool coff_type_is_i64(IrTypeKind type) { return type == IR_TYPE_I64 || type == IR_TYPE_U64; }
+
 static bool coff_type_is_unsigned(IrTypeKind type) {
-  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE;
+  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE || type == IR_TYPE_U64;
+}
+
+static IrTypeKind coff_view_element_type(const IrValue *view) {
+  return view && view->element_type != IR_TYPE_UNSUPPORTED ? view->element_type : IR_TYPE_U8;
+}
+
+static unsigned coff_type_byte_size(IrTypeKind type) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) return 1;
+  if (type == IR_TYPE_U16) return 2;
+  if (coff_type_is_i64(type)) return 8;
+  return 4;
+}
+
+static bool coff_type_is_array_element(IrTypeKind type) {
+  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_U32 || type == IR_TYPE_I32 || type == IR_TYPE_USIZE || coff_type_is_i64(type);
+}
+
+static bool coff_type_is_word_array_element(IrTypeKind type) {
+  return type == IR_TYPE_U32 || type == IR_TYPE_I32 || type == IR_TYPE_USIZE;
+}
+
+static void coff_emit_load_ptr_element(ZBuf *text, unsigned dst_reg, unsigned base_reg, IrTypeKind element_type) {
+  if (element_type == IR_TYPE_BOOL || element_type == IR_TYPE_U8) z_x64_emit_movzx_reg32_ptr_reg_u8(text, dst_reg, base_reg);
+  else if (element_type == IR_TYPE_U16) z_x64_emit_movzx_reg32_ptr_reg_disp_u16(text, dst_reg, base_reg, 0);
+  else if (coff_type_is_i64(element_type)) z_x64_emit_load_reg_ptr_reg(text, dst_reg, base_reg, true);
+  else z_x64_emit_load_reg_ptr_reg(text, dst_reg, base_reg, false);
+}
+
+static void coff_emit_store_ptr_element(ZBuf *text, unsigned base_reg, unsigned src_reg, IrTypeKind element_type) {
+  if (element_type == IR_TYPE_BOOL || element_type == IR_TYPE_U8) z_x64_emit_store_ptr_reg8_from_reg(text, base_reg, src_reg);
+  else if (element_type == IR_TYPE_U16) z_x64_emit_store_ptr_reg16_from_reg(text, base_reg, src_reg);
+  else if (coff_type_is_i64(element_type)) z_x64_emit_store_ptr_reg_from_reg(text, base_reg, src_reg, true);
+  else z_x64_emit_store_ptr_reg_from_reg(text, base_reg, src_reg, false);
+}
+
+static void coff_emit_scale_index_into_rax(ZBuf *text, IrTypeKind element_type) {
+  z_x64_emit_lea_base_index_scale_disp_reg(text, 0, 0, 1, coff_type_byte_size(element_type), 0);
+}
+
+static void coff_emit_scale_len_reg(ZBuf *text, unsigned reg, IrTypeKind element_type) {
+  unsigned size = coff_type_byte_size(element_type);
+  if (size > 1) z_x64_emit_shl_reg_imm8(text, reg, size == 8 ? 3 : (size == 4 ? 2 : 1), true);
 }
 
 static void coff_emit_cast_normalize_rax(ZBuf *text, IrTypeKind target) {
@@ -68,7 +112,7 @@ static unsigned coff_local_offset(const IrFunction *fun, unsigned local_index) {
 
 static unsigned coff_local_slot_offset(const IrFunction *fun, unsigned local_index, unsigned slot_offset) { unsigned offset = coff_local_offset(fun, local_index); return offset >= slot_offset ? offset - slot_offset : offset; }
 
-static void coff_emit_load_local_eax(ZBuf *text, const IrFunction *fun, unsigned local_index) { z_x64_emit_rbp_disp_reg(text, 0x8b, 0, coff_local_offset(fun, local_index), false); }
+static void coff_emit_load_local_scalar_rax(ZBuf *text, const IrFunction *fun, unsigned local_index, IrTypeKind type) { z_x64_emit_rbp_disp_reg(text, 0x8b, 0, coff_local_offset(fun, local_index), coff_type_is_i64(type)); }
 
 static void coff_emit_load_local_slot_rax(ZBuf *text, const IrFunction *fun, unsigned local_index, unsigned slot_offset) { z_x64_emit_rbp_disp_reg(text, 0x8b, 0, coff_local_slot_offset(fun, local_index, slot_offset), true); }
 
@@ -76,7 +120,7 @@ static void coff_emit_load_local_slot_eax(ZBuf *text, const IrFunction *fun, uns
 
 static void coff_emit_load_local_slot_reg(ZBuf *text, const IrFunction *fun, unsigned local_index, unsigned slot_offset, unsigned reg, bool wide) { z_x64_emit_rbp_disp_reg(text, 0x8b, reg, coff_local_slot_offset(fun, local_index, slot_offset), wide); }
 
-static void coff_emit_store_local_from_reg(ZBuf *text, const IrFunction *fun, unsigned local_index, unsigned reg) { z_x64_emit_rbp_disp_reg(text, 0x89, reg, coff_local_offset(fun, local_index), false); }
+static void coff_emit_store_local_scalar_from_reg(ZBuf *text, const IrFunction *fun, unsigned local_index, unsigned reg, IrTypeKind type) { z_x64_emit_rbp_disp_reg(text, 0x89, reg, coff_local_offset(fun, local_index), coff_type_is_i64(type)); }
 
 static void coff_emit_store_local_slot_from_reg(ZBuf *text, const IrFunction *fun, unsigned local_index, unsigned reg, unsigned slot_offset, bool wide) { z_x64_emit_rbp_disp_reg(text, 0x89, reg, coff_local_slot_offset(fun, local_index, slot_offset), wide); }
 
@@ -85,6 +129,11 @@ static void coff_emit_load_field_eax(ZBuf *text, const IrFunction *fun, unsigned
   if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
     z_x64_append_u8(text, 0x0f);
     z_x64_emit_rbp_disp_reg(text, 0xb6, 0, offset, false);
+  } else if (type == IR_TYPE_U16) {
+    z_x64_append_u8(text, 0x0f);
+    z_x64_emit_rbp_disp_reg(text, 0xb7, 0, offset, false);
+  } else if (coff_type_is_i64(type)) {
+    z_x64_emit_rbp_disp_reg(text, 0x8b, 0, offset, true);
   } else {
     z_x64_emit_rbp_disp_reg(text, 0x8b, 0, offset, false);
   }
@@ -94,6 +143,11 @@ static void coff_emit_store_field_from_eax(ZBuf *text, const IrFunction *fun, un
   unsigned offset = coff_local_slot_offset(fun, local_index, field_offset);
   if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
     z_x64_emit_rbp_disp_reg(text, 0x88, 0, offset, false);
+  } else if (type == IR_TYPE_U16) {
+    z_x64_append_u8(text, 0x66);
+    z_x64_emit_rbp_disp_reg(text, 0x89, 0, offset, false);
+  } else if (coff_type_is_i64(type)) {
+    z_x64_emit_rbp_disp_reg(text, 0x89, 0, offset, true);
   } else {
     z_x64_emit_rbp_disp_reg(text, 0x89, 0, offset, false);
   }
@@ -188,6 +242,13 @@ static bool coff_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrV
 static bool coff_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrValue *view, CoffEmitContext *ctx, ZDiag *diag);
 static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, CoffEmitContext *ctx, ZDiag *diag);
 
+static void coff_emit_u64_upper_bound_check(ZBuf *text, unsigned value_reg, unsigned limit_reg) {
+  z_x64_emit_cmp_reg_reg(text, value_reg, limit_reg, true);
+  size_t ok_patch = z_x64_emit_jcc32_placeholder(text, 0x86);
+  z_x64_emit_ud2(text);
+  z_x64_patch_rel32(text, ok_patch, text->len);
+}
+
 static bool coff_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrValue *view, CoffEmitContext *ctx, ZDiag *diag) {
   unsigned len = 0;
   if (coff_byte_view_const_len(view, &len)) {
@@ -207,39 +268,8 @@ static bool coff_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrV
     z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
     return true;
   }
-  if (view && view->kind == IR_VALUE_BYTE_SLICE && !view->right) {
-    if (!coff_emit_byte_view_len(text, fun, view->left, ctx, diag)) return false;
-    if (!view->index) return true;
-    unsigned start = 0;
-    if (coff_const_u32_value(view->index, &start)) {
-      if (start > 0) z_x64_emit_sub_rax_u32(text, start, true);
-      return true;
-    }
-    z_x64_emit_push_rax(text);
-    if (!coff_emit_value(text, fun, view->index, ctx, diag)) return false;
-    z_x64_emit_mov_rcx_from_rax(text, true);
-    z_x64_emit_pop_rax(text);
-    z_x64_emit_sub_rax_rcx(text, true);
-    return true;
-  }
-  if (view && view->kind == IR_VALUE_BYTE_SLICE && view->right) {
-    unsigned start = 0;
-    if (!view->index || coff_const_u32_value(view->index, &start)) {
-      unsigned end = 0;
-      if (coff_const_u32_value(view->right, &end) && start <= end) {
-        z_x64_emit_mov_eax_u32(text, end - start);
-        return true;
-      }
-      if (!coff_emit_value(text, fun, view->right, ctx, diag)) return false;
-      if (start > 0) z_x64_emit_sub_rax_u32(text, start, true);
-      return true;
-    }
-    if (!coff_emit_value(text, fun, view->index, ctx, diag)) return false;
-    z_x64_emit_push_rax(text);
-    if (!coff_emit_value(text, fun, view->right, ctx, diag)) return false;
-    z_x64_emit_pop_reg64(text, 1);
-    z_x64_emit_sub_reg_reg(text, 0, 1, true);
-    return true;
+  if (view && view->kind == IR_VALUE_BYTE_SLICE) {
+    return coff_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
   }
   (void)ctx;
   return coff_diag_at(diag, "direct COFF byte-view length currently requires a literal, constant slice, or byte-view local", view ? view->line : 1, view ? view->column : 1, "unsupported byte view length");
@@ -258,8 +288,8 @@ static bool coff_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrV
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
-    if (!local->is_array || local->element_type != IR_TYPE_U8) return coff_diag_at(diag, "direct COFF byte-view array requires [N]u8", view->line, view->column, "unsupported array view");
-    z_x64_emit_rbp_disp_reg(text, 0x8d, 0, coff_local_offset(fun, view->array_index), true);
+    if (!((local->is_array && view->field_offset == 0) || local->is_record)) return coff_diag_at(diag, "direct COFF byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
+    z_x64_emit_rbp_disp_reg(text, 0x8d, 0, coff_local_slot_offset(fun, view->array_index, view->field_offset), true);
     return true;
   }
   if (view->kind == IR_VALUE_STRING_LITERAL) {
@@ -273,8 +303,9 @@ static bool coff_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrV
     } else {
       z_x64_emit_mov_eax_u32(text, 0);
     }
-    z_x64_emit_pop_reg64(text, 1);
-    z_x64_emit_add_rax_rcx(text, true);
+    z_x64_emit_mov_rcx_from_rax(text, false);
+    z_x64_emit_pop_reg64(text, 0);
+    coff_emit_scale_index_into_rax(text, coff_view_element_type(view));
     return true;
   }
   return coff_diag_at(diag, "direct COFF value is not a supported byte view", view->line, view->column, "unsupported byte view");
@@ -318,14 +349,18 @@ static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const Ir
       z_x64_emit_push_reg64(text, 1);
       if (!coff_emit_value(text, fun, view->right, ctx, diag)) return false;
       z_x64_emit_pop_reg64(text, 1);
-      z_x64_emit_sub_reg_reg(text, 0, 1, true);
       z_x64_emit_pop_reg64(text, 10);
+      coff_emit_u64_upper_bound_check(text, 1, 0);
+      coff_emit_u64_upper_bound_check(text, 0, 10);
+      z_x64_emit_sub_reg_reg(text, 0, 1, true);
     } else {
-      z_x64_emit_pop_rax(text);
+      z_x64_emit_pop_reg64(text, 10);
+      coff_emit_u64_upper_bound_check(text, 1, 10);
+      z_x64_emit_mov_reg_from_reg(text, 0, 10, true);
       z_x64_emit_sub_reg_reg(text, 0, 1, true);
     }
     z_x64_emit_pop_reg64(text, 8);
-    z_x64_emit_add_reg_reg(text, 8, 1, true);
+    z_x64_emit_lea_base_index_scale_disp_reg(text, 8, 8, 1, coff_type_byte_size(coff_view_element_type(view)), 0);
     coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 8, 0);
     return true;
   }
@@ -340,7 +375,7 @@ static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const Ir
 static bool coff_emit_local_value(ZBuf *text, const IrFunction *fun, const IrValue *value, ZDiag *diag) {
   if (value->local_index >= fun->local_len) return coff_diag_at(diag, "direct COFF local index is out of range", value->line, value->column, "invalid local");
   if (fun->locals[value->local_index].type == IR_TYPE_BYTE_VIEW) return coff_diag_at(diag, "direct COFF byte-view local cannot be used as a scalar", value->line, value->column, "byte-view local");
-  coff_emit_load_local_eax(text, fun, value->local_index);
+  coff_emit_load_local_scalar_rax(text, fun, value->local_index, fun->locals[value->local_index].type);
   return true;
 }
 
@@ -385,12 +420,13 @@ static bool coff_emit_binary_value(ZBuf *text, const IrFunction *fun, const IrVa
   if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
   z_x64_emit_push_rax(text);
   if (!coff_emit_value(text, fun, value->right, ctx, diag)) return false;
-  z_x64_emit_mov_rcx_from_rax(text, false);
+  bool wide = coff_type_is_i64(value->type);
+  z_x64_emit_mov_rcx_from_rax(text, wide);
   z_x64_emit_pop_rax(text);
-  if (value->binary_op == IR_BIN_ADD) z_x64_emit_add_rax_rcx(text, false);
-  else if (value->binary_op == IR_BIN_SUB) z_x64_emit_sub_rax_rcx(text, false);
-  else if (value->binary_op == IR_BIN_MUL) z_x64_emit_imul_rax_rcx(text, false);
-  else z_x64_emit_div_rax_rcx(text, false, coff_type_is_unsigned(value->type), value->binary_op == IR_BIN_MOD);
+  if (value->binary_op == IR_BIN_ADD) z_x64_emit_add_rax_rcx(text, wide);
+  else if (value->binary_op == IR_BIN_SUB) z_x64_emit_sub_rax_rcx(text, wide);
+  else if (value->binary_op == IR_BIN_MUL) z_x64_emit_imul_rax_rcx(text, wide);
+  else z_x64_emit_div_rax_rcx(text, wide, coff_type_is_unsigned(value->type), value->binary_op == IR_BIN_MOD);
   return true;
 }
 
@@ -399,9 +435,10 @@ static bool coff_emit_compare_value(ZBuf *text, const IrFunction *fun, const IrV
   if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
   z_x64_emit_push_rax(text);
   if (!coff_emit_value(text, fun, value->right, ctx, diag)) return false;
-  z_x64_emit_mov_rcx_from_rax(text, false);
+  bool wide = coff_type_is_i64(value->left ? value->left->type : value->type);
+  z_x64_emit_mov_rcx_from_rax(text, wide);
   z_x64_emit_pop_rax(text);
-  z_x64_emit_cmp_rax_rcx_to_bool(text, coff_setcc_opcode(value->compare_op, coff_type_is_unsigned(value->left ? value->left->type : value->type)), false);
+  z_x64_emit_cmp_rax_rcx_to_bool(text, coff_setcc_opcode(value->compare_op, coff_type_is_unsigned(value->left ? value->left->type : value->type)), wide);
   return true;
 }
 
@@ -475,7 +512,9 @@ static bool coff_emit_vec_push_value(ZBuf *text, const IrFunction *fun, const Ir
 static bool coff_emit_byte_view_index_load_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   unsigned const_index = 0;
   unsigned char byte = 0;
-  if (coff_const_u32_value(value->index, &const_index) && coff_byte_view_const_byte(ctx ? ctx->program : NULL, value->left, const_index, &byte)) {
+  if (coff_view_element_type(value->left) == IR_TYPE_U8 &&
+      coff_const_u32_value(value->index, &const_index) &&
+      coff_byte_view_const_byte(ctx ? ctx->program : NULL, value->left, const_index, &byte)) {
     z_x64_emit_mov_eax_u32(text, byte);
     return true;
   }
@@ -489,8 +528,9 @@ static bool coff_emit_byte_view_index_load_value(ZBuf *text, const IrFunction *f
   z_x64_patch_rel32(text, ok_patch, text->len);
   z_x64_emit_mov_rcx_from_rax(text, false);
   z_x64_emit_mov_reg_from_reg(text, 0, 8, true);
-  z_x64_emit_add_rax_rcx(text, true);
-  z_x64_emit_movzx_reg32_ptr_reg_u8(text, 0, 0);
+  IrTypeKind element_type = coff_view_element_type(value->left);
+  coff_emit_scale_index_into_rax(text, element_type);
+  coff_emit_load_ptr_element(text, 0, 0, element_type);
   return true;
 }
 
@@ -534,6 +574,7 @@ static bool coff_emit_byte_view_eq_value(ZBuf *text, const IrFunction *fun, cons
   size_t end = z_x64_emit_jmp32_placeholder(text, 0xe9);
   z_x64_patch_rel32(text, same_len, text->len);
   z_x64_emit_pop_reg64(text, 8);
+  coff_emit_scale_len_reg(text, 10, coff_view_element_type(value->left));
   z_x64_emit_byte_eq_loop(text);
   z_x64_patch_rel32(text, end, text->len);
   return true;
@@ -543,30 +584,21 @@ static bool coff_emit_index_load_value(ZBuf *text, const IrFunction *fun, const 
   if (value->array_index >= fun->local_len) return coff_diag_at(diag, "direct COFF indexed load array is out of range", value->line, value->column, "invalid array local");
   const IrLocal *local = &fun->locals[value->array_index];
   unsigned const_index = 0;
-  if (local->is_array && local->element_type != IR_TYPE_U8 && coff_const_u32_value(value->index, &const_index) && const_index < local->array_len) {
+  if (local->is_array && coff_type_is_word_array_element(local->element_type) && coff_const_u32_value(value->index, &const_index) && const_index < local->array_len) {
     coff_emit_load_local_slot_eax(text, fun, value->array_index, const_index * 4u);
     return true;
   }
-  if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE)) {
+  if (local->is_array && coff_type_is_array_element(local->element_type)) {
     if (!value->index || !coff_emit_value(text, fun, value->index, ctx, diag)) return false;
     coff_emit_u8_array_bounds_check(text, local);
     z_x64_emit_push_rax(text);
     coff_emit_array_base_rdx(text, fun, value->array_index);
     z_x64_emit_pop_reg64(text, 1);
-    z_x64_emit_shl_rcx_imm8(text, 2);
-    z_x64_emit_add_rdx_rcx(text, true);
-    z_x64_emit_load_reg_ptr_reg(text, 0, 2, false);
+    z_x64_emit_lea_base_index_scale_disp_reg(text, 2, 2, 1, coff_type_byte_size(local->element_type), 0);
+    coff_emit_load_ptr_element(text, 0, 2, local->element_type);
     return true;
   }
-  if (!local->is_array || local->element_type != IR_TYPE_U8) return coff_diag_at(diag, "direct COFF indexed load requires [N]u8 or integer arrays", value->line, value->column, "unsupported array local");
-  if (!value->index || !coff_emit_value(text, fun, value->index, ctx, diag)) return false;
-  coff_emit_u8_array_bounds_check(text, local);
-  z_x64_emit_push_rax(text);
-  coff_emit_array_base_rdx(text, fun, value->array_index);
-  z_x64_emit_pop_reg64(text, 1);
-  z_x64_emit_add_rdx_rcx(text, true);
-  z_x64_emit_movzx_reg32_ptr_reg_u8(text, 0, 2);
-  return true;
+  return coff_diag_at(diag, "direct COFF indexed load requires [N]u8 or integer arrays", value->line, value->column, "unsupported array local");
 }
 
 static bool coff_emit_field_load_value(ZBuf *text, const IrFunction *fun, const IrValue *value, ZDiag *diag) {
@@ -579,8 +611,11 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
   if (!value) return coff_diag_at(diag, "direct COFF expression is missing", 1, 1, "missing expression");
   switch (value->kind) {
     case IR_VALUE_BOOL:
-    case IR_VALUE_INT:
       z_x64_emit_mov_eax_u32(text, (uint32_t)value->int_value);
+      return true;
+    case IR_VALUE_INT:
+      if (coff_type_is_i64(value->type)) z_x64_emit_mov_rax_u64(text, (uint64_t)value->int_value);
+      else z_x64_emit_mov_eax_u32(text, (uint32_t)value->int_value);
       return true;
     case IR_VALUE_LOCAL: return coff_emit_local_value(text, fun, value, diag);
     case IR_VALUE_CAST:
@@ -713,7 +748,7 @@ static bool coff_emit_local_set_instr(ZBuf *text, const IrFunction *fun, const I
     case IR_TYPE_ALLOC: return coff_emit_local_set_alloc(text, fun, instr, ctx, diag);
     case IR_TYPE_VEC: return coff_emit_local_set_vec(text, fun, instr, ctx, diag);
     case IR_TYPE_MAYBE_BYTE_VIEW: return coff_emit_local_set_maybe_byte_view(text, fun, instr, ctx, diag);
-    default: if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false; coff_emit_store_local_from_reg(text, fun, instr->local_index, 0); return true;
+    default: if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false; coff_emit_store_local_scalar_from_reg(text, fun, instr->local_index, 0, fun->locals[instr->local_index].type); return true;
   }
 }
 static bool coff_emit_field_store_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, CoffEmitContext *ctx, ZDiag *diag) {
@@ -724,7 +759,9 @@ static bool coff_emit_field_store_instr(ZBuf *text, const IrFunction *fun, const
 }
 
 static bool coff_emit_byte_view_index_store_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, CoffEmitContext *ctx, ZDiag *diag) {
-  if (!instr->value || instr->value->type != IR_TYPE_U8) return coff_diag_at(diag, "direct COFF byte-view indexed store requires u8 value", instr->line, instr->column, "unsupported byte-view store value");
+  const IrLocal *local = instr->array_index < fun->local_len ? &fun->locals[instr->array_index] : NULL;
+  IrTypeKind element_type = local && local->element_type != IR_TYPE_UNSUPPORTED ? local->element_type : IR_TYPE_U8;
+  if (!instr->value || instr->value->type != element_type) return coff_diag_at(diag, "direct COFF byte-view indexed store value type does not match span element", instr->line, instr->column, "unsupported byte-view store value");
   if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
   z_x64_emit_push_rax(text);
   if (!instr->index || !coff_emit_value(text, fun, instr->index, ctx, diag)) return false;
@@ -739,10 +776,10 @@ static bool coff_emit_byte_view_index_store_instr(ZBuf *text, const IrFunction *
   z_x64_emit_push_rax(text);
   coff_emit_load_local_slot_rax(text, fun, instr->array_index, 0);
   z_x64_emit_pop_reg64(text, 1);
-  z_x64_emit_add_rax_rcx(text, true);
+  coff_emit_scale_index_into_rax(text, element_type);
   z_x64_emit_mov_reg_from_rax(text, 2, true);
   z_x64_emit_pop_reg64(text, 0);
-  z_x64_emit_store_ptr_reg8_from_reg(text, 2, 0);
+  coff_emit_store_ptr_element(text, 2, 0, element_type);
   return true;
 }
 
@@ -751,33 +788,23 @@ static bool coff_emit_index_store_instr(ZBuf *text, const IrFunction *fun, const
   const IrLocal *local = &fun->locals[instr->array_index];
   if (local->type == IR_TYPE_BYTE_VIEW) return coff_emit_byte_view_index_store_instr(text, fun, instr, ctx, diag);
   unsigned const_index = 0;
-  if (local->is_array && local->element_type != IR_TYPE_U8 && coff_const_u32_value(instr->index, &const_index) && const_index < local->array_len) {
+  if (local->is_array && coff_type_is_word_array_element(local->element_type) && coff_const_u32_value(instr->index, &const_index) && const_index < local->array_len) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
     coff_emit_store_local_slot_from_reg(text, fun, instr->array_index, 0, const_index * 4u, false);
     return true;
   }
-  if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE)) {
+  if (local->is_array && coff_type_is_array_element(local->element_type)) {
     if (!instr->index || !coff_emit_value(text, fun, instr->index, ctx, diag)) return false;
     coff_emit_u8_array_bounds_check(text, local);
     z_x64_emit_push_rax(text);
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
     z_x64_emit_pop_reg64(text, 1);
     coff_emit_array_base_rdx(text, fun, instr->array_index);
-    z_x64_emit_shl_rcx_imm8(text, 2);
-    z_x64_emit_add_rdx_rcx(text, true);
-    z_x64_emit_store_ptr_reg_from_reg(text, 2, 0, false);
+    z_x64_emit_lea_base_index_scale_disp_reg(text, 2, 2, 1, coff_type_byte_size(local->element_type), 0);
+    coff_emit_store_ptr_element(text, 2, 0, local->element_type);
     return true;
   }
-  if (!local->is_array || local->element_type != IR_TYPE_U8) return coff_diag_at(diag, "direct COFF indexed store requires [N]u8 or integer arrays", instr->line, instr->column, "unsupported array local");
-  if (!instr->index || !coff_emit_value(text, fun, instr->index, ctx, diag)) return false;
-  coff_emit_u8_array_bounds_check(text, local);
-  z_x64_emit_push_rax(text);
-  if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
-  z_x64_emit_pop_reg64(text, 1);
-  coff_emit_array_base_rdx(text, fun, instr->array_index);
-  z_x64_emit_add_rdx_rcx(text, true);
-  z_x64_emit_store_ptr_reg8_from_reg(text, 2, 0);
-  return true;
+  return coff_diag_at(diag, "direct COFF indexed store requires [N]u8 or integer arrays", instr->line, instr->column, "unsupported array local");
 }
 
 static bool coff_emit_if_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, CoffEmitContext *ctx, ZDiag *diag) {
@@ -865,19 +892,19 @@ static bool coff_validate_function(const IrFunction *fun, ZDiag *diag) {
   size_t abi_slots = 0;
   for (size_t i = 0; i < fun->param_count; i++) abi_slots += fun->locals[i].type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
   if (abi_slots > 8) return coff_diag_at(diag, "direct COFF object backend supports at most eight ABI parameter slots", fun->line, fun->column, fun->name);
-  if (fun->return_type != IR_TYPE_VOID && !coff_type_is_scalar32(fun->return_type) &&
+  if (fun->return_type != IR_TYPE_VOID && !coff_type_is_scalar32(fun->return_type) && !coff_type_is_i64(fun->return_type) &&
       fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW) {
-    return coff_diag_at(diag, "direct COFF object backend currently supports Void, 32-bit integer, byte-view, and Maybe byte-view returns", fun->line, fun->column, fun->name);
+    return coff_diag_at(diag, "direct COFF object backend currently supports Void, integer, byte-view, and Maybe byte-view returns", fun->line, fun->column, fun->name);
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     if (fun->locals[i].type == IR_TYPE_BYTE_VIEW) {
       continue;
     }
-    if (fun->locals[i].is_array && (fun->locals[i].element_type == IR_TYPE_U8 || fun->locals[i].element_type == IR_TYPE_U32 || fun->locals[i].element_type == IR_TYPE_I32 || fun->locals[i].element_type == IR_TYPE_USIZE)) continue;
+    if (fun->locals[i].is_array && coff_type_is_array_element(fun->locals[i].element_type)) continue;
     if (fun->locals[i].is_record) continue;
     if (fun->locals[i].type == IR_TYPE_ALLOC || fun->locals[i].type == IR_TYPE_MAYBE_BYTE_VIEW) continue;
     if (fun->locals[i].type == IR_TYPE_VEC) continue;
-    if (fun->locals[i].is_array || !coff_type_is_scalar32(fun->locals[i].type)) {
+    if (fun->locals[i].is_array || (!coff_type_is_scalar32(fun->locals[i].type) && !coff_type_is_i64(fun->locals[i].type))) {
       return coff_diag_at(diag, "direct COFF object backend currently supports only primitive scalar locals", fun->locals[i].line, fun->locals[i].column, fun->locals[i].name);
     }
   }
@@ -907,10 +934,10 @@ static bool coff_emit_function_text(ZBuf *text, const IrFunction *fun, CoffEmitC
       abi_slot++;
       continue;
     }
-    if (abi_slot < 4) coff_emit_store_local_from_reg(text, fun, (unsigned)i, param_regs[abi_slot]);
+    if (abi_slot < 4) coff_emit_store_local_scalar_from_reg(text, fun, (unsigned)i, param_regs[abi_slot], fun->locals[i].type);
     else {
-      z_x64_emit_load_rbp_positive_reg(text, 0, 48u + (unsigned)(abi_slot - 4u) * 8u, false);
-      coff_emit_store_local_from_reg(text, fun, (unsigned)i, 0);
+      z_x64_emit_load_rbp_positive_reg(text, 0, 48u + (unsigned)(abi_slot - 4u) * 8u, coff_type_is_i64(fun->locals[i].type));
+      coff_emit_store_local_scalar_from_reg(text, fun, (unsigned)i, 0, fun->locals[i].type);
     }
     abi_slot++;
   }

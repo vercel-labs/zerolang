@@ -1,0 +1,54 @@
+fn __zero_std_mem_copy_items<T: Type>(dst: MutSpan<T>, src: Span<T>) -> usize {
+    var count: usize = std.mem.len(src)
+    let capacity: usize = std.mem.len(dst)
+    if count > capacity {
+        count = capacity
+    }
+    var index: usize = 0
+    while index < count {
+        dst[index] = src[index]
+        index = index + 1
+    }
+    return count
+}
+
+fn __zero_std_mem_fill_items<T: Type>(dst: MutSpan<T>, value: T) -> usize {
+    var index: usize = 0
+    let len: usize = std.mem.len(dst)
+    while index < len {
+        dst[index] = value
+        index = index + 1
+    }
+    return len
+}
+
+fn __zero_std_mem_contains<T: Type>(items: Span<T>, needle: T) -> Bool {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] == needle {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn __zero_std_mem_is_empty<T: Type>(items: Span<T>) -> Bool {
+    return std.mem.len(items) == 0
+}
+
+fn __zero_std_mem_prefix<T: Type>(items: Span<T>, count: usize) -> Span<T> {
+    var end: usize = count
+    if end > std.mem.len(items) {
+        end = std.mem.len(items)
+    }
+    return items[..end]
+}
+
+fn __zero_std_mem_drop_prefix<T: Type>(items: Span<T>, count: usize) -> Span<T> {
+    var start: usize = count
+    if start > std.mem.len(items) {
+        start = std.mem.len(items)
+    }
+    return items[start..]
+}

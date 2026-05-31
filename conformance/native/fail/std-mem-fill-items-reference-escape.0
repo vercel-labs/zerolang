@@ -1,0 +1,10 @@
+fn storeLocal(dst: MutSpan<ref<i32>>) -> Void {
+    let local: i32 = 7
+    let _filled: usize = std.mem.fillItems(dst, &local)
+}
+
+pub fn main() -> Void {
+    let fallback: i32 = 1
+    var slots: [1]ref<i32> = [&fallback]
+    storeLocal(slots)
+}

@@ -1,0 +1,8 @@
+fn view() -> Span<i32> {
+    let values: [2]i32 = [1, 2]
+    return std.mem.dropPrefix(values, 1)
+}
+
+pub fn main() -> Void {
+    let span: Span<i32> = view()
+}
