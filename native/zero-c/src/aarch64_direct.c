@@ -47,12 +47,10 @@ static bool a64_return_literal(const IrFunction *fun, uint32_t *out, ZDiag *diag
   return false;
 }
 
-static bool a64_type_is_scalar32(IrTypeKind type) {
-  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE;
-}
+static bool a64_type_is_scalar32(IrTypeKind type) { return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32; }
 
 static bool a64_type_is_scalar64(IrTypeKind type) {
-  return type == IR_TYPE_I64 || type == IR_TYPE_U64;
+  return type == IR_TYPE_I64 || type == IR_TYPE_USIZE || type == IR_TYPE_U64;
 }
 
 static bool a64_type_is_scalar(IrTypeKind type) {
@@ -226,10 +224,10 @@ static void a64_emit_cast_normalize_reg(ZBuf *text, unsigned reg, IrTypeKind sou
       return;
     case IR_TYPE_I32:
     case IR_TYPE_U32:
-    case IR_TYPE_USIZE:
       z_aarch64_emit_mov_w(text, reg, reg);
       return;
     case IR_TYPE_I64:
+    case IR_TYPE_USIZE:
     case IR_TYPE_U64:
       if (source == IR_TYPE_I32) z_aarch64_emit_sxtw_x(text, reg, reg);
       else if (!a64_type_is_scalar64(source)) z_aarch64_emit_mov_w(text, reg, reg);
@@ -551,7 +549,7 @@ static bool a64_emit_index_load_to_reg_at(ZBuf *text, const IrFunction *fun, con
   if (value->array_index >= fun->local_len) return a64_diag(diag, "direct AArch64 indexed load array is out of range", value->line, value->column, "invalid array local");
   const IrLocal *local = &fun->locals[value->array_index];
   unsigned const_index = 0;
-  if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE) &&
+  if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32) &&
       a64_const_u32_value(value->index, &const_index) && const_index < local->array_len) {
     a64_emit_load_local_w(text, fun, reg, value->array_index, const_index * 4u, frame_size);
     return true;
@@ -804,7 +802,7 @@ static bool a64_emit_index_store(ZBuf *text, const IrFunction *fun, const IrInst
     return true;
   }
   unsigned const_index = 0;
-  if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE) &&
+  if (local->is_array && (local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32) &&
       a64_const_u32_value(instr->index, &const_index) && const_index < local->array_len) {
     if (!a64_emit_value_to_reg_at(text, fun, instr->value, 10, frame_size, 0, ctx, diag)) return false;
     a64_emit_store_local_w(text, fun, 10, instr->array_index, const_index * 4u, frame_size);
@@ -939,9 +937,9 @@ static bool a64_validate_function(const IrFunction *fun, ZDiag *diag) {
   size_t abi_slots = 0;
   for (size_t i = 0; i < fun->param_count; i++) abi_slots += a64_abi_slots_for_param(&fun->locals[i]);
   if (abi_slots > 8) return a64_diag(diag, "direct AArch64 backend supports at most eight ABI parameter slots", fun->line, fun->column, fun->name);
-  if (fun->return_type != IR_TYPE_VOID && !a64_type_is_scalar32(fun->return_type) &&
+  if (fun->return_type != IR_TYPE_VOID && !a64_type_is_scalar32(fun->return_type) && !a64_type_is_scalar64(fun->return_type) &&
       fun->return_type != IR_TYPE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_BYTE_VIEW && fun->return_type != IR_TYPE_MAYBE_SCALAR) {
-    return a64_diag(diag, "direct AArch64 backend supports Void, 32-bit scalars, byte-view, Maybe byte-view, and Maybe scalar returns", fun->line, fun->column, fun->name);
+    return a64_diag(diag, "direct AArch64 backend supports Void, primitive scalars, byte-view, Maybe byte-view, and Maybe scalar returns", fun->line, fun->column, fun->name);
   }
   for (size_t i = 0; i < fun->local_len; i++) {
     const IrLocal *local = &fun->locals[i];

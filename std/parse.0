@@ -124,7 +124,7 @@ fn __zero_std_parse_parse_usize(value: Span<u8>) -> Maybe<usize> {
     }
     var index: usize = 0
     var total: usize = 0
-    let max: usize = 4294967295
+    let max: usize = 18446744073709551615
     while index < std.mem.len(value) {
         let byte: u8 = value[index]
         if byte < 48_u8 || byte > 57_u8 {

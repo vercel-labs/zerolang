@@ -37,11 +37,11 @@ static bool machx64_diag_at(ZDiag *diag, const char *message, int line, int colu
 }
 
 static bool machx64_type_is_scalar32(IrTypeKind type) {
-  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE;
+  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32;
 }
 
 static bool machx64_type_is_i64(IrTypeKind type) {
-  return type == IR_TYPE_I64 || type == IR_TYPE_U64;
+  return type == IR_TYPE_I64 || type == IR_TYPE_USIZE || type == IR_TYPE_U64;
 }
 
 static bool machx64_type_is_supported_scalar(IrTypeKind type) {
@@ -69,7 +69,7 @@ static bool machx64_type_is_array_element(IrTypeKind type) {
 }
 
 static bool machx64_type_is_word_array_element(IrTypeKind type) {
-  return type == IR_TYPE_U32 || type == IR_TYPE_I32 || type == IR_TYPE_USIZE;
+  return type == IR_TYPE_U32 || type == IR_TYPE_I32;
 }
 
 static void machx64_emit_load_ptr_element(ZBuf *text, unsigned dst_reg, unsigned base_reg, IrTypeKind element_type) {
@@ -427,12 +427,12 @@ static void machx64_emit_cast_normalize_rax(ZBuf *text, IrTypeKind source, IrTyp
       return;
     case IR_TYPE_I32:
     case IR_TYPE_U32:
-    case IR_TYPE_USIZE:
       z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
       return;
     case IR_TYPE_I64:
       if (source == IR_TYPE_I32) z_x64_emit_cdqe(text);
       return;
+    case IR_TYPE_USIZE:
     case IR_TYPE_U64:
       return;
     default:
@@ -739,7 +739,7 @@ static bool machx64_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fu
   if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
     z_x64_emit_mov_eax_u32(text, instr->value->data_len ? 1u : 0u);
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
-    z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+    z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 8, true);
     return true;
   }
@@ -900,7 +900,7 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
         if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
-          z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+          z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
           z_x64_emit_mov_reg_from_rax(text, 2, true);
           z_x64_emit_mov_eax_u32(text, instr->value->data_len ? 1u : 0u);
         } else if (instr->value->kind == IR_VALUE_LOCAL && instr->value->local_index < fun->local_len && fun->locals[instr->value->local_index].type == IR_TYPE_MAYBE_SCALAR) {
@@ -1220,8 +1220,8 @@ static const IrFunction *machx64_find_executable_main(const IrProgram *program, 
     machx64_diag_at(diag, "direct x86_64 Mach-O executable main must not take parameters", fun->line, fun->column, fun->name);
     return NULL;
   }
-  if (fun->return_type != IR_TYPE_VOID && !machx64_type_is_scalar32(fun->return_type)) {
-    machx64_diag_at(diag, "direct x86_64 Mach-O executable main must return Void or a 32-bit-or-smaller scalar", fun->line, fun->column, fun->name);
+  if (fun->return_type != IR_TYPE_VOID && !machx64_type_is_scalar32(fun->return_type) && !machx64_type_is_i64(fun->return_type)) {
+    machx64_diag_at(diag, "direct x86_64 Mach-O executable main must return Void or a primitive scalar", fun->line, fun->column, fun->name);
     return NULL;
   }
   if (out_index) *out_index = index;

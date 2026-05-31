@@ -4,7 +4,8 @@ pub fn main(world: World) -> Void raises {
     let port: Maybe<u16> = std.parse.parseU16("8080")
     let count: Maybe<u32> = std.parse.parseU32("4294967295")
     let parsed_usize: Maybe<usize> = std.parse.parseUsize("12345")
-    let usize_overflow: Maybe<usize> = std.parse.parseUsize("8589934590")
+    let large_usize: Maybe<usize> = std.parse.parseUsize("8589934590")
+    let usize_overflow: Maybe<usize> = std.parse.parseUsize("18446744073709551616")
     let signed: Maybe<i32> = std.parse.parseI32("-2147483648")
     let positive: Maybe<i32> = std.parse.parseI32("+42")
     let bool_value: Maybe<Bool> = std.parse.parseBool("true")
@@ -23,7 +24,7 @@ pub fn main(world: World) -> Void raises {
     let until: usize = std.parse.scanUntilByte("abc:def", 58_u8)
     let min_i32: i32 = 0 - 2147483647 - 1
     let unsigned_ok: Bool = byte.has && byte.value == 255 && !too_big_byte.has && port.has && port.value == 8080 && count.has && count.value == 4294967295_u32
-    let signed_ok: Bool = parsed_usize.has && parsed_usize.value == 12345 && !usize_overflow.has && signed.has && signed.value == min_i32 && positive.has && positive.value == 42
+    let signed_ok: Bool = parsed_usize.has && parsed_usize.value == 12345 && large_usize.has && large_usize.value == 8589934590 && !usize_overflow.has && signed.has && signed.value == min_i32 && positive.has && positive.value == 42
     let text_ok: Bool = bool_value.has && bool_value.value && !trailing.has && runtime_usize.has && runtime_usize.value == 12345 && std.mem.eql(token, "zero")
     let scan_ok: Bool = alpha && digit && whitespace && ident_start && ident_len == 6 && digit_prefixed_ident_len == 0 && digit_len == 3 && space_len == 2 && until == 3
     if unsigned_ok && signed_ok && text_ok && scan_ok {

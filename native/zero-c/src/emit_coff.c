@@ -36,9 +36,9 @@ static bool coff_diag_at(ZDiag *diag, const char *message, int line, int column,
   return false;
 }
 
-static bool coff_type_is_scalar32(IrTypeKind type) { return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE; }
+static bool coff_type_is_scalar32(IrTypeKind type) { return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32; }
 
-static bool coff_type_is_i64(IrTypeKind type) { return type == IR_TYPE_I64 || type == IR_TYPE_U64; }
+static bool coff_type_is_i64(IrTypeKind type) { return type == IR_TYPE_I64 || type == IR_TYPE_USIZE || type == IR_TYPE_U64; }
 
 static bool coff_type_is_unsigned(IrTypeKind type) {
   return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_U32 || type == IR_TYPE_USIZE || type == IR_TYPE_U64;
@@ -60,7 +60,7 @@ static bool coff_type_is_array_element(IrTypeKind type) {
 }
 
 static bool coff_type_is_word_array_element(IrTypeKind type) {
-  return type == IR_TYPE_U32 || type == IR_TYPE_I32 || type == IR_TYPE_USIZE;
+  return type == IR_TYPE_U32 || type == IR_TYPE_I32;
 }
 
 static void coff_emit_load_ptr_element(ZBuf *text, unsigned dst_reg, unsigned base_reg, IrTypeKind element_type) {
@@ -97,7 +97,6 @@ static void coff_emit_cast_normalize_rax(ZBuf *text, IrTypeKind target) {
       return;
     case IR_TYPE_I32:
     case IR_TYPE_U32:
-    case IR_TYPE_USIZE:
       z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
       return;
     default:
@@ -756,7 +755,7 @@ static bool coff_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun, 
   if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
     z_x64_emit_mov_eax_u32(text, instr->value->data_len ? 1u : 0u);
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
-    z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+    z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 8, true);
     return true;
   }
@@ -915,7 +914,7 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
         if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
-          z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+          z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
           z_x64_emit_mov_reg_from_rax(text, 2, true);
           z_x64_emit_mov_eax_u32(text, instr->value->data_len ? 1u : 0u);
         } else if (instr->value->kind == IR_VALUE_LOCAL && instr->value->local_index < fun->local_len && fun->locals[instr->value->local_index].type == IR_TYPE_MAYBE_SCALAR) {
@@ -1153,8 +1152,8 @@ static const IrFunction *coff_find_executable_main(const IrProgram *program, ZDi
     coff_diag_at(diag, "direct COFF x64 executable main must not take parameters", fun->line, fun->column, fun->name);
     return NULL;
   }
-  if (fun->return_type != IR_TYPE_VOID && !coff_type_is_scalar32(fun->return_type)) {
-    coff_diag_at(diag, "direct COFF x64 executable main must return Void or a 32-bit-or-smaller scalar", fun->line, fun->column, fun->name);
+  if (fun->return_type != IR_TYPE_VOID && !coff_type_is_scalar32(fun->return_type) && !coff_type_is_i64(fun->return_type)) {
+    coff_diag_at(diag, "direct COFF x64 executable main must return Void or a primitive scalar", fun->line, fun->column, fun->name);
     return NULL;
   }
   if (out_index) *out_index = index;

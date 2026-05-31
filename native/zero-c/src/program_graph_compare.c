@@ -4,8 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int compare_text_cmp(const char *left, const char *right) {
+  return strcmp(left ? left : "", right ? right : "");
+}
+
 static bool compare_text_eq(const char *left, const char *right) {
-  return strcmp(left ? left : "", right ? right : "") == 0;
+  return compare_text_cmp(left, right) == 0;
 }
 
 static bool compare_fail(
@@ -35,113 +39,14 @@ static size_t compare_missing_index(void) {
   return (size_t)-1;
 }
 
+static int compare_size_t_value(size_t left, size_t right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 static bool compare_edge_kind(const ZProgramGraphEdge *edge, const char *kind) {
   return edge && compare_text_eq(edge->kind, kind);
-}
-
-static bool compare_is_declared_type_ref(const ZProgramGraph *graph, size_t index) {
-  if (!graph || index >= graph->node_len) return false;
-  const ZProgramGraphNode *node = &graph->nodes[index];
-  if (node->kind != Z_PROGRAM_GRAPH_NODE_TYPE_REF) return false;
-  for (size_t i = 0; i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE &&
-        compare_edge_kind(edge, "declaredType") &&
-        compare_text_eq(edge->to, node->id)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static bool compare_has_module_named(const ZProgramGraph *graph, const char *name) {
-  for (size_t i = 0; graph && name && i < graph->node_len; i++) {
-    const ZProgramGraphNode *node = &graph->nodes[i];
-    if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE && compare_text_eq(node->name, name)) return true;
-  }
-  return false;
-}
-
-static bool compare_is_local_import(const ZProgramGraph *graph, size_t index) {
-  if (!graph || index >= graph->node_len) return false;
-  const ZProgramGraphNode *node = &graph->nodes[index];
-  if (node->name && strncmp(node->name, "std.", strlen("std.")) == 0) return false;
-  return node->kind == Z_PROGRAM_GRAPH_NODE_IMPORT && compare_has_module_named(graph, node->name);
-}
-
-static bool compare_skip_node(const ZProgramGraph *graph, size_t index) {
-  return compare_is_declared_type_ref(graph, index) || compare_is_local_import(graph, index);
-}
-
-static bool compare_skip_edge(const ZProgramGraph *graph, const ZProgramGraphEdge *edge) {
-  if (!graph || !edge) return false;
-  size_t source = compare_missing_index();
-  for (size_t i = 0; i < graph->node_len; i++) {
-    if (compare_text_eq(graph->nodes[i].id, edge->from)) {
-      source = i;
-      break;
-    }
-  }
-  if (source != compare_missing_index() && compare_skip_node(graph, source)) return true;
-  if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) return false;
-  size_t target = compare_missing_index();
-  for (size_t i = 0; i < graph->node_len; i++) {
-    if (compare_text_eq(graph->nodes[i].id, edge->to)) {
-      target = i;
-      break;
-    }
-  }
-  return target != compare_missing_index() && compare_skip_node(graph, target);
-}
-
-static bool compare_node_edge_kind_owns_child(const char *kind) {
-  static const char *owned_kinds[] = {
-    "alias",
-    "arg",
-    "arm",
-    "body",
-    "cImport",
-    "case",
-    "choice",
-    "const",
-    "declaredType",
-    "default",
-    "effect",
-    "else",
-    "enum",
-    "error",
-    "expr",
-    "field",
-    "function",
-    "guard",
-    "import",
-    "interface",
-    "left",
-    "method",
-    "param",
-    "rangeEnd",
-    "returnType",
-    "right",
-    "shape",
-    "statement",
-    "target",
-    "then",
-    "type",
-    "typeArg",
-    "typeParam",
-    "value",
-    NULL,
-  };
-  for (size_t i = 0; owned_kinds[i]; i++) {
-    if (compare_text_eq(kind, owned_kinds[i])) return true;
-  }
-  return false;
-}
-
-static bool compare_edge_owns_child_node(const ZProgramGraphEdge *edge) {
-  return edge &&
-         edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE &&
-         compare_node_edge_kind_owns_child(edge->kind);
 }
 
 static const char *const compare_owned_edge_order[] = {
@@ -181,147 +86,380 @@ static const char *const compare_owned_edge_order[] = {
   NULL,
 };
 
-static size_t compare_semantic_node_count(const ZProgramGraph *graph) {
-  size_t count = 0;
-  for (size_t i = 0; graph && i < graph->node_len; i++) {
-    if (!compare_skip_node(graph, i)) count++;
-  }
-  return count;
-}
-
-static size_t compare_semantic_edge_count(const ZProgramGraph *graph) {
-  size_t count = 0;
-  for (size_t i = 0; graph && i < graph->edge_len; i++) {
-    if (!compare_skip_edge(graph, &graph->edges[i])) count++;
-  }
-  return count;
-}
-
-static size_t compare_nth_semantic_edge(const ZProgramGraph *graph, size_t semantic_index) {
-  size_t seen = 0;
-  for (size_t i = 0; graph && i < graph->edge_len; i++) {
-    if (compare_skip_edge(graph, &graph->edges[i])) continue;
-    if (seen == semantic_index) return i;
-    seen++;
-  }
-  return compare_missing_index();
-}
-
-static size_t compare_node_index_by_id(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (compare_text_eq(graph->nodes[i].id, id)) return i;
-  }
-  return compare_missing_index();
-}
-
-static size_t compare_node_index_by_symbol_id(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (compare_text_eq(graph->nodes[i].symbol_id, id)) return i;
-  }
-  return compare_missing_index();
-}
-
-static size_t compare_node_index_by_type_id(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (compare_text_eq(graph->nodes[i].type_id, id)) return i;
-  }
-  return compare_missing_index();
-}
-
-static size_t compare_node_index_by_effect_id(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (compare_text_eq(graph->nodes[i].effect_id, id)) return i;
-  }
-  return compare_missing_index();
-}
-
-static const ZProgramGraphEdge *compare_next_owned_edge_by_order(const ZProgramGraph *graph, const char *from, const char *kind, const bool *visited, bool have_last, size_t last_order) {
-  const ZProgramGraphEdge *best = NULL;
-  size_t best_child = compare_missing_index();
-  for (size_t i = 0; graph && from && kind && i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (!compare_edge_owns_child_node(edge) ||
-        !compare_text_eq(edge->from, from) ||
-        !compare_text_eq(edge->kind, kind) ||
-        (have_last && edge->order <= last_order)) {
-      continue;
-    }
-    size_t child = compare_node_index_by_id(graph, edge->to);
-    if (child == compare_missing_index() || (visited && visited[child])) continue;
-    if (!best || edge->order < best->order || (edge->order == best->order && child < best_child)) {
-      best = edge;
-      best_child = child;
-    }
-  }
-  return best;
-}
-
-static void compare_push_semantic_node(const ZProgramGraph *graph, size_t index, bool *visited, size_t *order, size_t *len) {
-  if (!graph || index >= graph->node_len || visited[index]) return;
-  visited[index] = true;
-  if (!compare_skip_node(graph, index)) order[(*len)++] = index;
-  const char *node_id = graph->nodes[index].id;
+static size_t compare_owned_edge_kind_order(const char *kind) {
   for (size_t i = 0; compare_owned_edge_order[i]; i++) {
-    bool have_last = false;
-    size_t last_order = 0;
-    for (;;) {
-      const ZProgramGraphEdge *edge = compare_next_owned_edge_by_order(graph, node_id, compare_owned_edge_order[i], visited, have_last, last_order);
-      if (!edge) break;
-      size_t child = compare_node_index_by_id(graph, edge->to);
-      last_order = edge->order;
-      have_last = true;
-      compare_push_semantic_node(graph, child, visited, order, len);
+    if (compare_text_eq(kind, compare_owned_edge_order[i])) return i;
+  }
+  return compare_missing_index();
+}
+
+typedef struct {
+  const char *id;
+  size_t index;
+} CompareIdEntry;
+
+typedef struct {
+  size_t from;
+  size_t child;
+  size_t kind_order;
+  size_t order;
+} CompareOwnedEdge;
+
+typedef struct {
+  const ZProgramGraph *graph;
+  CompareIdEntry *node_ids;
+  CompareIdEntry *symbol_ids;
+  CompareIdEntry *type_ids;
+  CompareIdEntry *effect_ids;
+  size_t node_id_len;
+  size_t symbol_id_len;
+  size_t type_id_len;
+  size_t effect_id_len;
+  bool *declared_type_ref;
+  bool *skip_node;
+  CompareOwnedEdge *owned_edges;
+  size_t owned_edge_len;
+  size_t *node_order;
+  size_t node_order_len;
+  size_t *rank;
+  size_t *semantic_edges;
+  size_t semantic_edge_len;
+} CompareIndex;
+
+typedef struct {
+  size_t raw_index;
+  size_t from_rank;
+  size_t to_rank;
+  ZProgramGraphEdgeTarget target;
+  size_t order;
+  const char *kind;
+} CompareEdgeFact;
+
+typedef const char *(*CompareNodeIdGetter)(const ZProgramGraphNode *);
+
+static const char *compare_node_id_value(const ZProgramGraphNode *node) {
+  return node ? node->id : NULL;
+}
+
+static const char *compare_node_symbol_id_value(const ZProgramGraphNode *node) {
+  return node ? node->symbol_id : NULL;
+}
+
+static const char *compare_node_type_id_value(const ZProgramGraphNode *node) {
+  return node ? node->type_id : NULL;
+}
+
+static const char *compare_node_effect_id_value(const ZProgramGraphNode *node) {
+  return node ? node->effect_id : NULL;
+}
+
+static int compare_id_entry_cmp(const void *left_ptr, const void *right_ptr) {
+  const CompareIdEntry *left = left_ptr;
+  const CompareIdEntry *right = right_ptr;
+  int text = compare_text_cmp(left->id, right->id);
+  if (text != 0) return text;
+  if (left->index < right->index) return -1;
+  if (left->index > right->index) return 1;
+  return 0;
+}
+
+static CompareIdEntry *compare_build_id_index(const ZProgramGraph *graph, CompareNodeIdGetter getter, size_t *out_len) {
+  size_t len = 0;
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const char *id = getter(&graph->nodes[i]);
+    if (id && id[0] != '\0') len++;
+  }
+  CompareIdEntry *entries = z_checked_calloc(len ? len : 1, sizeof(CompareIdEntry));
+  size_t write = 0;
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const char *id = getter(&graph->nodes[i]);
+    if (!id || id[0] == '\0') continue;
+    entries[write++] = (CompareIdEntry){.id = id, .index = i};
+  }
+  if (write > 1) qsort(entries, write, sizeof(CompareIdEntry), compare_id_entry_cmp);
+  if (out_len) *out_len = write;
+  return entries;
+}
+
+static size_t compare_lookup_id(const CompareIdEntry *entries, size_t len, const char *id) {
+  if (!entries || !id || id[0] == '\0') return compare_missing_index();
+  size_t low = 0;
+  size_t high = len;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2;
+    int cmp = compare_text_cmp(entries[mid].id, id);
+    if (cmp < 0) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  if (low < len && compare_text_eq(entries[low].id, id)) return entries[low].index;
+  return compare_missing_index();
+}
+
+static size_t compare_index_node_by_id(const CompareIndex *index, const char *id) {
+  return compare_lookup_id(index ? index->node_ids : NULL, index ? index->node_id_len : 0, id);
+}
+
+static size_t compare_index_node_by_symbol_id(const CompareIndex *index, const char *id) {
+  return compare_lookup_id(index ? index->symbol_ids : NULL, index ? index->symbol_id_len : 0, id);
+}
+
+static size_t compare_index_node_by_type_id(const CompareIndex *index, const char *id) {
+  return compare_lookup_id(index ? index->type_ids : NULL, index ? index->type_id_len : 0, id);
+}
+
+static size_t compare_index_node_by_effect_id(const CompareIndex *index, const char *id) {
+  return compare_lookup_id(index ? index->effect_ids : NULL, index ? index->effect_id_len : 0, id);
+}
+
+static bool compare_index_has_module_named(const CompareIndex *index, const char *name) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  for (size_t i = 0; graph && name && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE && compare_text_eq(node->name, name)) return true;
+  }
+  return false;
+}
+
+static void compare_index_build_skip_nodes(CompareIndex *index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  size_t len = graph && graph->node_len ? graph->node_len : 1;
+  index->declared_type_ref = z_checked_calloc(len, sizeof(bool));
+  index->skip_node = z_checked_calloc(len, sizeof(bool));
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE || !compare_edge_kind(edge, "declaredType")) continue;
+    size_t target = compare_index_node_by_id(index, edge->to);
+    if (target != compare_missing_index()) index->declared_type_ref[target] = true;
+  }
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    bool declared_type_ref = node->kind == Z_PROGRAM_GRAPH_NODE_TYPE_REF && index->declared_type_ref[i];
+    bool std_import = node->name && strncmp(node->name, "std.", strlen("std.")) == 0;
+    bool local_import = node->kind == Z_PROGRAM_GRAPH_NODE_IMPORT && !std_import && compare_index_has_module_named(index, node->name);
+    index->skip_node[i] = declared_type_ref || local_import;
+  }
+}
+
+static bool compare_index_skip_node(const CompareIndex *index, size_t node_index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  return graph && node_index < graph->node_len && index->skip_node && index->skip_node[node_index];
+}
+
+static bool compare_index_skip_edge(const CompareIndex *index, const ZProgramGraphEdge *edge) {
+  if (!index || !index->graph || !edge) return false;
+  size_t source = compare_index_node_by_id(index, edge->from);
+  if (source != compare_missing_index() && compare_index_skip_node(index, source)) return true;
+  if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) return false;
+  size_t target = compare_index_node_by_id(index, edge->to);
+  return target != compare_missing_index() && compare_index_skip_node(index, target);
+}
+
+static int compare_owned_edge_cmp(const void *left_ptr, const void *right_ptr) {
+  const CompareOwnedEdge *left = left_ptr;
+  const CompareOwnedEdge *right = right_ptr;
+  int cmp = compare_size_t_value(left->from, right->from);
+  if (cmp != 0) return cmp;
+  cmp = compare_size_t_value(left->kind_order, right->kind_order);
+  if (cmp != 0) return cmp;
+  cmp = compare_size_t_value(left->order, right->order);
+  if (cmp != 0) return cmp;
+  return compare_size_t_value(left->child, right->child);
+}
+
+static void compare_index_build_owned_edges(CompareIndex *index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  size_t count = 0;
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE || compare_owned_edge_kind_order(edge->kind) == compare_missing_index()) continue;
+    if (compare_index_node_by_id(index, edge->from) == compare_missing_index()) continue;
+    if (compare_index_node_by_id(index, edge->to) == compare_missing_index()) continue;
+    count++;
+  }
+  index->owned_edges = z_checked_calloc(count ? count : 1, sizeof(CompareOwnedEdge));
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) continue;
+    size_t kind_order = compare_owned_edge_kind_order(edge->kind);
+    if (kind_order == compare_missing_index()) continue;
+    size_t from = compare_index_node_by_id(index, edge->from);
+    size_t child = compare_index_node_by_id(index, edge->to);
+    if (from == compare_missing_index() || child == compare_missing_index()) continue;
+    index->owned_edges[index->owned_edge_len++] = (CompareOwnedEdge){
+      .from = from,
+      .child = child,
+      .kind_order = kind_order,
+      .order = edge->order,
+    };
+  }
+  if (index->owned_edge_len > 1) qsort(index->owned_edges, index->owned_edge_len, sizeof(CompareOwnedEdge), compare_owned_edge_cmp);
+}
+
+static size_t compare_index_first_owned_edge(const CompareIndex *index, size_t from, size_t kind_order) {
+  size_t low = 0;
+  size_t high = index ? index->owned_edge_len : 0;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2;
+    const CompareOwnedEdge *edge = &index->owned_edges[mid];
+    if (edge->from < from || (edge->from == from && edge->kind_order < kind_order)) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+static void compare_index_push_semantic_node(const CompareIndex *index, size_t node_index, bool *visited, size_t *order, size_t *len) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  if (!graph || node_index >= graph->node_len || visited[node_index]) return;
+  visited[node_index] = true;
+  if (!compare_index_skip_node(index, node_index)) order[(*len)++] = node_index;
+  for (size_t kind_order = 0; compare_owned_edge_order[kind_order]; kind_order++) {
+    size_t edge_index = compare_index_first_owned_edge(index, node_index, kind_order);
+    while (index &&
+           edge_index < index->owned_edge_len &&
+           index->owned_edges[edge_index].from == node_index &&
+           index->owned_edges[edge_index].kind_order == kind_order) {
+      size_t child = index->owned_edges[edge_index].child;
+      if (!visited[child]) compare_index_push_semantic_node(index, child, visited, order, len);
+      edge_index++;
     }
   }
 }
 
-static size_t *compare_semantic_node_order(const ZProgramGraph *graph, size_t *out_len) {
-  size_t len = 0;
-  size_t *order = z_checked_calloc(graph && graph->node_len ? graph->node_len : 1, sizeof(size_t));
-  bool *visited = z_checked_calloc(graph && graph->node_len ? graph->node_len : 1, sizeof(bool));
+static void compare_index_build_node_order(CompareIndex *index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  size_t node_len = graph && graph->node_len ? graph->node_len : 1;
+  index->node_order = z_checked_calloc(node_len, sizeof(size_t));
+  index->rank = z_checked_calloc(node_len, sizeof(size_t));
+  bool *visited = z_checked_calloc(node_len, sizeof(bool));
+  for (size_t i = 0; graph && i < graph->node_len; i++) index->rank[i] = compare_missing_index();
   for (size_t i = 0; graph && i < graph->node_len; i++) {
-    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_MODULE) compare_push_semantic_node(graph, i, visited, order, &len);
+    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_MODULE) compare_index_push_semantic_node(index, i, visited, index->node_order, &index->node_order_len);
   }
   for (size_t i = 0; graph && i < graph->node_len; i++) {
-    if (!visited[i]) compare_push_semantic_node(graph, i, visited, order, &len);
+    if (!visited[i]) compare_index_push_semantic_node(index, i, visited, index->node_order, &index->node_order_len);
+  }
+  for (size_t i = 0; i < index->node_order_len; i++) {
+    if (index->node_order[i] < (graph ? graph->node_len : 0)) index->rank[index->node_order[i]] = i;
   }
   free(visited);
-  if (out_len) *out_len = len;
-  return order;
 }
 
-static size_t *compare_semantic_rank_map(const ZProgramGraph *graph, const size_t *order, size_t order_len) {
-  size_t *rank = z_checked_calloc(graph && graph->node_len ? graph->node_len : 1, sizeof(size_t));
-  for (size_t i = 0; graph && i < graph->node_len; i++) rank[i] = compare_missing_index();
-  for (size_t i = 0; i < order_len; i++) {
-    if (order[i] < (graph ? graph->node_len : 0)) rank[order[i]] = i;
+static size_t compare_index_semantic_rank_for_raw_node(const CompareIndex *index, size_t raw_index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  if (!graph || !index->rank || raw_index >= graph->node_len || compare_index_skip_node(index, raw_index)) return compare_missing_index();
+  return index->rank[raw_index];
+}
+
+static void compare_index_build_semantic_edges(CompareIndex *index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  size_t count = 0;
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    if (!compare_index_skip_edge(index, &graph->edges[i])) count++;
   }
-  return rank;
+  index->semantic_edges = z_checked_calloc(count ? count : 1, sizeof(size_t));
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    if (!compare_index_skip_edge(index, &graph->edges[i])) index->semantic_edges[index->semantic_edge_len++] = i;
+  }
 }
 
-static size_t compare_semantic_rank_for_raw_node(const ZProgramGraph *graph, const size_t *rank, size_t raw_index) {
-  if (!graph || !rank || raw_index >= graph->node_len || compare_skip_node(graph, raw_index)) return compare_missing_index();
-  return rank[raw_index];
-}
-
-static size_t compare_target_index(const ZProgramGraph *graph, const ZProgramGraphEdge *edge, const size_t *rank) {
+static size_t compare_index_target_rank(const CompareIndex *index, const ZProgramGraphEdge *edge) {
   if (!edge) return compare_missing_index();
   size_t raw_index = compare_missing_index();
   switch (edge->target) {
     case Z_PROGRAM_GRAPH_EDGE_TARGET_NODE:
-      raw_index = compare_node_index_by_id(graph, edge->to);
+      raw_index = compare_index_node_by_id(index, edge->to);
       break;
     case Z_PROGRAM_GRAPH_EDGE_TARGET_SYMBOL:
-      raw_index = compare_node_index_by_symbol_id(graph, edge->to);
+      raw_index = compare_index_node_by_symbol_id(index, edge->to);
       break;
     case Z_PROGRAM_GRAPH_EDGE_TARGET_TYPE:
-      raw_index = compare_node_index_by_type_id(graph, edge->to);
+      raw_index = compare_index_node_by_type_id(index, edge->to);
       break;
     case Z_PROGRAM_GRAPH_EDGE_TARGET_EFFECT:
-      raw_index = compare_node_index_by_effect_id(graph, edge->to);
+      raw_index = compare_index_node_by_effect_id(index, edge->to);
       break;
   }
-  return compare_semantic_rank_for_raw_node(graph, rank, raw_index);
+  return compare_index_semantic_rank_for_raw_node(index, raw_index);
+}
+
+static void compare_index_init(CompareIndex *index, const ZProgramGraph *graph) {
+  *index = (CompareIndex){.graph = graph};
+  index->node_ids = compare_build_id_index(graph, compare_node_id_value, &index->node_id_len);
+  index->symbol_ids = compare_build_id_index(graph, compare_node_symbol_id_value, &index->symbol_id_len);
+  index->type_ids = compare_build_id_index(graph, compare_node_type_id_value, &index->type_id_len);
+  index->effect_ids = compare_build_id_index(graph, compare_node_effect_id_value, &index->effect_id_len);
+  compare_index_build_skip_nodes(index);
+  compare_index_build_owned_edges(index);
+  compare_index_build_node_order(index);
+  compare_index_build_semantic_edges(index);
+}
+
+static void compare_index_free(CompareIndex *index) {
+  if (!index) return;
+  free(index->node_ids);
+  free(index->symbol_ids);
+  free(index->type_ids);
+  free(index->effect_ids);
+  free(index->declared_type_ref);
+  free(index->skip_node);
+  free(index->owned_edges);
+  free(index->node_order);
+  free(index->rank);
+  free(index->semantic_edges);
+  *index = (CompareIndex){0};
+}
+
+static int compare_edge_fact_cmp(const void *left_ptr, const void *right_ptr) {
+  const CompareEdgeFact *left = left_ptr;
+  const CompareEdgeFact *right = right_ptr;
+  int cmp = compare_size_t_value(left->from_rank, right->from_rank);
+  if (cmp != 0) return cmp;
+  cmp = compare_size_t_value(left->to_rank, right->to_rank);
+  if (cmp != 0) return cmp;
+  cmp = compare_size_t_value((size_t)left->target, (size_t)right->target);
+  if (cmp != 0) return cmp;
+  cmp = compare_size_t_value(left->order, right->order);
+  if (cmp != 0) return cmp;
+  cmp = compare_text_cmp(left->kind, right->kind);
+  if (cmp != 0) return cmp;
+  return compare_size_t_value(left->raw_index, right->raw_index);
+}
+
+static bool compare_edge_fact_eq(const CompareEdgeFact *left, const CompareEdgeFact *right) {
+  return left &&
+         right &&
+         left->from_rank == right->from_rank &&
+         left->to_rank == right->to_rank &&
+         left->target == right->target &&
+         left->order == right->order &&
+         compare_text_eq(left->kind, right->kind);
+}
+
+static CompareEdgeFact *compare_build_edge_facts(const CompareIndex *index) {
+  const ZProgramGraph *graph = index ? index->graph : NULL;
+  size_t count = index ? index->semantic_edge_len : 0;
+  CompareEdgeFact *facts = z_checked_calloc(count ? count : 1, sizeof(CompareEdgeFact));
+  for (size_t i = 0; graph && index && i < count; i++) {
+    size_t raw_index = index->semantic_edges[i];
+    const ZProgramGraphEdge *edge = &graph->edges[raw_index];
+    size_t from_raw = compare_index_node_by_id(index, edge->from);
+    facts[i] = (CompareEdgeFact){
+      .raw_index = raw_index,
+      .from_rank = compare_index_semantic_rank_for_raw_node(index, from_raw),
+      .to_rank = compare_index_target_rank(index, edge),
+      .target = edge->target,
+      .order = edge->order,
+      .kind = edge->kind,
+    };
+  }
+  if (count > 1) qsort(facts, count, sizeof(CompareEdgeFact), compare_edge_fact_cmp);
+  return facts;
 }
 
 static bool compare_node_text_field(const char *field, const char *left, const char *right, size_t left_index, size_t right_index, ZProgramGraphCompare *out) {
@@ -334,24 +472,20 @@ static bool compare_node_bool_field(const char *field, bool left, bool right, si
   return compare_fail(out, "GRC005", "node flag differs", field, left_index, right_index, 0, 0);
 }
 
-static bool compare_nodes(const ZProgramGraph *left, const ZProgramGraph *right, ZProgramGraphCompare *out) {
-  size_t left_count = 0;
-  size_t right_count = 0;
-  size_t *left_order = compare_semantic_node_order(left, &left_count);
-  size_t *right_order = compare_semantic_node_order(right, &right_count);
+static bool compare_nodes(const CompareIndex *left, const CompareIndex *right, ZProgramGraphCompare *out) {
+  const ZProgramGraph *left_graph = left ? left->graph : NULL;
+  const ZProgramGraph *right_graph = right ? right->graph : NULL;
+  size_t left_count = left ? left->node_order_len : 0;
+  size_t right_count = right ? right->node_order_len : 0;
   if (left_count != right_count) {
-    free(left_order);
-    free(right_order);
     return compare_fail(out, "GRC002", "node count differs", "nodes", 0, 0, left_count, right_count);
   }
   for (size_t i = 0; i < left_count; i++) {
-    size_t left_index = left_order[i];
-    size_t right_index = right_order[i];
-    const ZProgramGraphNode *left_node = &left->nodes[left_index];
-    const ZProgramGraphNode *right_node = &right->nodes[right_index];
+    size_t left_index = left->node_order[i];
+    size_t right_index = right->node_order[i];
+    const ZProgramGraphNode *left_node = &left_graph->nodes[left_index];
+    const ZProgramGraphNode *right_node = &right_graph->nodes[right_index];
     if (left_node->kind != right_node->kind) {
-      free(left_order);
-      free(right_order);
       return compare_fail(out, "GRC003", "node kind differs", "kind", left_index, right_index, 0, 0);
     }
     if (!compare_node_text_field("name", left_node->name, right_node->name, left_index, right_index, out) ||
@@ -362,84 +496,61 @@ static bool compare_nodes(const ZProgramGraph *left, const ZProgramGraph *right,
         !compare_node_bool_field("static", left_node->is_static, right_node->is_static, left_index, right_index, out) ||
         !compare_node_bool_field("fallible", left_node->fallible, right_node->fallible, left_index, right_index, out) ||
         !compare_node_bool_field("exportC", left_node->export_c, right_node->export_c, left_index, right_index, out)) {
-      free(left_order);
-      free(right_order);
       return false;
     }
   }
-  free(left_order);
-  free(right_order);
   return true;
 }
 
-static bool compare_edges(const ZProgramGraph *left, const ZProgramGraph *right, ZProgramGraphCompare *out) {
-  size_t left_count = compare_semantic_edge_count(left);
-  size_t right_count = compare_semantic_edge_count(right);
+static bool compare_edges(const CompareIndex *left, const CompareIndex *right, ZProgramGraphCompare *out) {
+  size_t left_count = left ? left->semantic_edge_len : 0;
+  size_t right_count = right ? right->semantic_edge_len : 0;
   if (left_count != right_count) {
     return compare_fail(out, "GRC006", "edge count differs", "edges", 0, 0, left_count, right_count);
   }
-  size_t left_order_len = 0;
-  size_t right_order_len = 0;
-  size_t *left_order = compare_semantic_node_order(left, &left_order_len);
-  size_t *right_order = compare_semantic_node_order(right, &right_order_len);
-  size_t *left_rank = compare_semantic_rank_map(left, left_order, left_order_len);
-  size_t *right_rank = compare_semantic_rank_map(right, right_order, right_order_len);
-  free(left_order);
-  free(right_order);
-  bool *matched = z_checked_calloc(right_count ? right_count : 1, sizeof(bool));
+  CompareEdgeFact *left_facts = compare_build_edge_facts(left);
+  CompareEdgeFact *right_facts = compare_build_edge_facts(right);
   for (size_t i = 0; i < left_count; i++) {
-    size_t left_index = compare_nth_semantic_edge(left, i);
-    const ZProgramGraphEdge *left_edge = &left->edges[left_index];
-    size_t left_from = compare_semantic_rank_for_raw_node(left, left_rank, compare_node_index_by_id(left, left_edge->from));
-    size_t left_to = compare_target_index(left, left_edge, left_rank);
-    bool found = false;
-    for (size_t j = 0; j < right_count; j++) {
-      if (matched[j]) continue;
-      size_t right_index = compare_nth_semantic_edge(right, j);
-      const ZProgramGraphEdge *right_edge = &right->edges[right_index];
-      size_t right_from = compare_semantic_rank_for_raw_node(right, right_rank, compare_node_index_by_id(right, right_edge->from));
-      size_t right_to = compare_target_index(right, right_edge, right_rank);
-      if (left_from != right_from ||
-          left_to != right_to ||
-          left_edge->target != right_edge->target ||
-          left_edge->order != right_edge->order ||
-          !compare_text_eq(left_edge->kind, right_edge->kind)) {
-        continue;
-      }
-      matched[j] = true;
-      found = true;
-      break;
-    }
-    if (!found) {
-      free(matched);
-      free(left_rank);
-      free(right_rank);
-      return compare_fail(out, "GRC007", "edge semantic fact is missing", "edge", left_index, compare_missing_index(), left_from, left_to);
+    if (!compare_edge_fact_eq(&left_facts[i], &right_facts[i])) {
+      size_t left_index = left_facts[i].raw_index;
+      size_t right_index = right_facts[i].raw_index;
+      size_t left_from = left_facts[i].from_rank;
+      size_t left_to = left_facts[i].to_rank;
+      free(left_facts);
+      free(right_facts);
+      return compare_fail(out, "GRC007", "edge semantic fact differs", "edge", left_index, right_index, left_from, left_to);
     }
   }
-  free(matched);
-  free(left_rank);
-  free(right_rank);
+  free(left_facts);
+  free(right_facts);
   return true;
 }
 
 bool z_program_graph_semantic_compare(const ZProgramGraph *left, const ZProgramGraph *right, ZProgramGraphCompare *out) {
   if (out) *out = (ZProgramGraphCompare){.ok = true};
   if (!left || !right) return compare_fail(out, "GRC001", "program graph is missing", "graph", 0, 0, left ? 1 : 0, right ? 1 : 0);
+  CompareIndex left_index;
+  CompareIndex right_index;
+  compare_index_init(&left_index, left);
+  compare_index_init(&right_index, right);
   if (out) {
-    out->left_semantic_nodes = compare_semantic_node_count(left);
-    out->right_semantic_nodes = compare_semantic_node_count(right);
-    out->left_semantic_edges = compare_semantic_edge_count(left);
-    out->right_semantic_edges = compare_semantic_edge_count(right);
+    out->left_semantic_nodes = left_index.node_order_len;
+    out->right_semantic_nodes = right_index.node_order_len;
+    out->left_semantic_edges = left_index.semantic_edge_len;
+    out->right_semantic_edges = right_index.semantic_edge_len;
   }
+  bool ok = true;
   if (left->schema_version != right->schema_version) {
-    return compare_fail(out, "GRC012", "schema version differs", "schemaVersion", 0, 0, left->schema_version, right->schema_version);
+    ok = compare_fail(out, "GRC012", "schema version differs", "schemaVersion", 0, 0, left->schema_version, right->schema_version);
+  } else if (!compare_text_eq(left->module_identity, right->module_identity)) {
+    ok = compare_fail(out, "GRC013", "module identity differs", "moduleIdentity", 0, 0, 0, 0);
+  } else if (!compare_nodes(&left_index, &right_index, out)) {
+    ok = false;
+  } else if (!compare_edges(&left_index, &right_index, out)) {
+    ok = false;
   }
-  if (!compare_text_eq(left->module_identity, right->module_identity)) {
-    return compare_fail(out, "GRC013", "module identity differs", "moduleIdentity", 0, 0, 0, 0);
-  }
-  if (!compare_nodes(left, right, out)) return false;
-  if (!compare_edges(left, right, out)) return false;
-  if (out) out->ok = true;
-  return true;
+  compare_index_free(&left_index);
+  compare_index_free(&right_index);
+  if (ok && out) out->ok = true;
+  return ok;
 }

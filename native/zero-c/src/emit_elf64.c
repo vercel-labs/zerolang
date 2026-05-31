@@ -34,11 +34,11 @@ static bool elf_ir_diag(ZDiag *diag, const IrProgram *ir) {
 }
 
 static bool elf_type_is_scalar(IrTypeKind type) {
-  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_USIZE || type == IR_TYPE_I32 || type == IR_TYPE_U32;
+  return type == IR_TYPE_BOOL || type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_I32 || type == IR_TYPE_U32;
 }
 
 static bool elf_type_is_i64(IrTypeKind type) {
-  return type == IR_TYPE_I64 || type == IR_TYPE_U64;
+  return type == IR_TYPE_I64 || type == IR_TYPE_USIZE || type == IR_TYPE_U64;
 }
 
 static bool elf_type_is_supported_scalar(IrTypeKind type) {
@@ -62,13 +62,13 @@ static void elf_emit_cast_normalize_rax(ZBuf *code, IrTypeKind source, IrTypeKin
       return;
     case IR_TYPE_I32:
     case IR_TYPE_U32:
-    case IR_TYPE_USIZE:
       z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
       return;
     case IR_TYPE_I64:
+    case IR_TYPE_USIZE:
     case IR_TYPE_U64:
       if (source == IR_TYPE_I32) z_x64_emit_cdqe(code);
-      else if (source != IR_TYPE_I64 && source != IR_TYPE_U64) z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
+      else if (source != IR_TYPE_I64 && source != IR_TYPE_USIZE && source != IR_TYPE_U64) z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
       return;
     default:
       return;
@@ -1724,7 +1724,7 @@ static bool elf_emit_maybe_scalar_local_set(ZBuf *text, const IrFunction *fun, c
   if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
     z_x64_emit_mov_eax_u32(text, instr->value->data_len ? 1u : 0u);
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
-    z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+    z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
     elf_emit_store_local_slot_reg(text, local, 8, 0, true);
     return true;
   }
@@ -1881,7 +1881,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
         if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
-          z_x64_emit_mov_eax_u32(text, (uint32_t)instr->value->int_value);
+          z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
           z_x64_emit_mov_reg_from_rax(text, 2, true);
           z_x64_emit_mov_eax_u32(text, instr->value->data_len ? 1u : 0u);
         } else if (instr->value->kind == IR_VALUE_LOCAL && instr->value->local_index < fun->local_len && fun->locals[instr->value->local_index].type == IR_TYPE_MAYBE_SCALAR) {
@@ -2139,8 +2139,8 @@ static const IrFunction *elf_find_executable_main(const IrProgram *ir, ZDiag *di
     elf_diag(diag, "direct ELF64 executable main must not take parameters", fun->line, fun->column, fun->name);
     return NULL;
   }
-  if (!elf_type_is_scalar(fun->return_type) || elf_type_is_i64(fun->return_type)) {
-    elf_diag(diag, "direct ELF64 executable main must return a 32-bit-or-smaller scalar", fun->line, fun->column, elf_type_name(fun->return_type));
+  if (fun->return_type != IR_TYPE_VOID && !elf_type_is_scalar(fun->return_type) && !elf_type_is_i64(fun->return_type)) {
+    elf_diag(diag, "direct ELF64 executable main must return a primitive scalar", fun->line, fun->column, elf_type_name(fun->return_type));
     return NULL;
   }
   if (!elf_validate_function(fun, diag)) return NULL;

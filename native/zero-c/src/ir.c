@@ -414,7 +414,7 @@ static IrTypeKind ir_type_kind_for_program(const Program *program, const char *t
   if (!item_enum) return IR_TYPE_UNSUPPORTED;
   IrTypeKind backing = ir_type_kind(item_enum->type ? item_enum->type : "u8");
   if (backing == IR_TYPE_U8 || backing == IR_TYPE_U16 || backing == IR_TYPE_U32) return backing;
-  if (backing == IR_TYPE_USIZE) return IR_TYPE_U32;
+  if (backing == IR_TYPE_USIZE) return IR_TYPE_U64;
   return IR_TYPE_UNSUPPORTED;
 }
 
@@ -422,7 +422,7 @@ static IrTypeKind ir_enum_backing_type(const EnumDecl *item_enum) {
   const char *type = item_enum && item_enum->type ? item_enum->type : "u8";
   IrTypeKind backing = ir_type_kind(type);
   if (backing == IR_TYPE_U8 || backing == IR_TYPE_U16 || backing == IR_TYPE_U32) return backing;
-  if (backing == IR_TYPE_USIZE) return IR_TYPE_U32;
+  if (backing == IR_TYPE_USIZE) return IR_TYPE_U64;
   return IR_TYPE_UNSUPPORTED;
 }
 
@@ -443,9 +443,9 @@ static unsigned ir_type_byte_size(IrTypeKind type) {
     case IR_TYPE_U8: return 1;
     case IR_TYPE_U16: return 2;
     case IR_TYPE_I32:
-    case IR_TYPE_USIZE:
     case IR_TYPE_U32: return 4;
     case IR_TYPE_I64:
+    case IR_TYPE_USIZE:
     case IR_TYPE_U64: return 8;
     default: return 0;
   }
@@ -453,8 +453,7 @@ static unsigned ir_type_byte_size(IrTypeKind type) {
 
 static unsigned ir_type_alignment(IrTypeKind type) {
   unsigned size = ir_type_byte_size(type);
-  if (size >= 4) return 4;
-  return size ? size : 1;
+  return size >= 8 ? 8 : (size >= 4 ? 4 : (size ? size : 1));
 }
 
 static bool ir_parse_fixed_array_type(const char *type, unsigned *out_len, IrTypeKind *out_element);
