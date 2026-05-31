@@ -9,6 +9,7 @@ import {
   docsChatMinuteRateLimit,
   isDocsChatRateLimitConfigured,
 } from "@/lib/rate-limit";
+import { getRateLimitIdentifier } from "@/lib/rate-limit-identifier";
 
 export const maxDuration = 60;
 
@@ -71,12 +72,6 @@ function addCacheControl(messages: ModelMessage[]): ModelMessage[] {
     }
     return message;
   });
-}
-
-function getRateLimitIdentifier(req: Request): string {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  const realIp = req.headers.get("x-real-ip");
-  return forwardedFor?.split(",")[0]?.trim() || realIp?.trim() || "anonymous";
 }
 
 async function rateLimitRequest(req: Request): Promise<NextResponse | null> {
