@@ -1,0 +1,17 @@
+fn gcd i32 a i32 b i32
+  mut left a
+  mut right b
+  while != right 0
+    let next % left right
+    set left right
+    set right next
+  ret left
+
+pub fn main Void world World !
+  mut acc 0
+  mut i 0
+  while < i 50000
+    set acc + acc (gcd 462 1071)
+    set i + i 1
+  if == acc 1050000
+    check world.out.write "gcd\n"

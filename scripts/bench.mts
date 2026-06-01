@@ -38,6 +38,7 @@ const cases = [
   { name: "fallibility", expectedStdout: "fallibility" },
   { name: "readall", expectedStdout: "readall", skipLanguages: ["zero"] },
   { name: "branches", expectedStdout: "branches" },
+  { name: "gcd", expectedStdout: "gcd" },
   { name: "module-package", expectedStdout: "module package", languages: ["zero"], sources: { zero: "benchmarks/zero/module-package" } },
   { name: "owned-file", expectedStdout: "owned file", languages: ["zero"], skipLanguages: ["zero"] },
   { name: "rescue", expectedStdout: "rescue", languages: ["zero"] },
