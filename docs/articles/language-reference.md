@@ -18,8 +18,10 @@ pub fn main(world: World) -> Void raises {
 ```
 
 Examples print user output through `World.out` and diagnostics through
-`World.err`. Zero does not expose `std.debug.print` or `std.log`; keeping
-printing capability-based makes formatting small and pay-as-used.
+`World.err`. Zero does not expose `std.debug.print`; `std.log` formats
+structured records into caller-owned buffers, and the caller still chooses the
+explicit output capability. Keeping output capability-based makes formatting
+small and pay-as-used.
 
 `World` is a capability object created by the selected runtime. It is not a
 global singleton.
@@ -739,6 +741,8 @@ Current native helpers include:
 - `std.str`: byte-span string helpers such as
   `reverse(buffer, text) -> Maybe<Span<u8>>`, `contains(text, needle) -> Bool`,
   `trimAscii(text) -> Span<u8>`, and `wordCountAscii(text) -> usize`
+- `std.testing`: Bool-returning helpers for test blocks and byte-output checks
+- `std.log`: explicit-buffer JSON Lines record formatting for structured output
 - `std.fs`: hosted path helpers, explicit `Fs` handles, owned file handles,
   fallible reads/writes, and `readAll` helpers backed by an explicit allocator
   and size limit

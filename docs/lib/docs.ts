@@ -242,6 +242,14 @@ export const docs: Doc[] = [
     section: "Modules",
   },
   {
+    slug: "module-testing",
+    title: "std.testing",
+    description: "Bool-returning helpers for test blocks and output checks.",
+    path: "/modules/testing",
+    sourcePath: "/articles/modules/testing.md",
+    section: "Modules",
+  },
+  {
     slug: "module-text",
     title: "std.text",
     description: "ASCII and UTF-8 byte-backed text validation.",
@@ -271,6 +279,14 @@ export const docs: Doc[] = [
     description: "Validation, field lookup, explicit-allocator parsing, and caller-buffer writing.",
     path: "/modules/json",
     sourcePath: "/articles/modules/json.md",
+    section: "Modules",
+  },
+  {
+    slug: "module-log",
+    title: "std.log",
+    description: "Explicit-buffer structured log record formatting.",
+    path: "/modules/log",
+    sourcePath: "/articles/modules/log.md",
     section: "Modules",
   },
   {

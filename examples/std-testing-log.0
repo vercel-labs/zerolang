@@ -1,0 +1,12 @@
+test "testing helpers compare byte output" {
+    expect std.testing.equalBytes("zero", "zero")
+    expect std.testing.containsBytes("zerolang", "lang")
+}
+
+pub fn main(world: World) -> Void raises {
+    var storage: [128]u8 = [0_u8; 128]
+    let entry: Maybe<Span<u8>> = std.log.keyValue(storage, "info", "event", "startup")
+    if entry.has && std.testing.containsBytes(entry.value, "\"value\":\"startup\"") {
+        check world.out.write(entry.value)
+    }
+}

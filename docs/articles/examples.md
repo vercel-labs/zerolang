@@ -71,6 +71,7 @@ Core examples:
 - `examples/std-path-io.0`: fixed-buffer `std.path` helpers and caller-owned `std.io` buffers.
 - `examples/grep-scan.0`: line-oriented scanning over byte spans with `std.io` and `std.str`.
 - `examples/std-str.0`: allocation-free byte-string helpers over spans and caller-owned storage.
+- `examples/std-testing-log.0`: test-block predicates and explicit-buffer structured log output.
 - `examples/std-text-format-parse.0`: ASCII helpers, runtime parsing, caller-buffer formatting, and UTF-8 validation.
 - `examples/std-data-formats.0`: codec encode/decode, JSON lookup/writing, and URL query helpers over caller-owned buffers.
 - `examples/std-json-bytes.0`: byte-span JSON validation, parsing, and token streaming.

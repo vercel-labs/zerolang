@@ -6935,10 +6935,18 @@ static bool test_value_truthy(const TestValue *value) {
   return false;
 }
 
+static bool test_string_equal(const char *left, const char *right) {
+  const char *a = left ? left : "";
+  const char *b = right ? right : "";
+  size_t a_len = strlen(a);
+  size_t b_len = strlen(b);
+  return a_len == b_len && memcmp(a, b, a_len) == 0;
+}
+
 static bool test_value_equals(const TestValue *left, const TestValue *right) {
   if (!left || !right) return false;
   if (left->kind == TEST_VALUE_STRING && right->kind == TEST_VALUE_STRING) {
-    return strcmp(left->string_value ? left->string_value : "", right->string_value ? right->string_value : "") == 0;
+    return test_string_equal(left->string_value, right->string_value);
   }
   if (left->kind == TEST_VALUE_BOOL && right->kind == TEST_VALUE_BOOL) return left->bool_value == right->bool_value;
   if ((left->kind == TEST_VALUE_INT || left->kind == TEST_VALUE_BOOL) &&
@@ -6946,6 +6954,85 @@ static bool test_value_equals(const TestValue *left, const TestValue *right) {
     long long a = left->kind == TEST_VALUE_BOOL ? (left->bool_value ? 1 : 0) : left->int_value;
     long long b = right->kind == TEST_VALUE_BOOL ? (right->bool_value ? 1 : 0) : right->int_value;
     return a == b;
+  }
+  return false;
+}
+
+static bool test_string_starts_with(const char *text, const char *prefix) {
+  if (!text || !prefix) return false;
+  size_t text_len = strlen(text);
+  size_t prefix_len = strlen(prefix);
+  return prefix_len <= text_len && strncmp(text, prefix, prefix_len) == 0;
+}
+
+static bool test_string_ends_with(const char *text, const char *suffix) {
+  if (!text || !suffix) return false;
+  size_t text_len = strlen(text);
+  size_t suffix_len = strlen(suffix);
+  return suffix_len <= text_len && memcmp(text + text_len - suffix_len, suffix, suffix_len) == 0;
+}
+
+typedef enum {
+  TEST_STD_CALL_EQUALS,
+  TEST_STD_CALL_TRUTHY,
+  TEST_STD_CALL_FALSEY,
+  TEST_STD_CALL_CONTAINS,
+  TEST_STD_CALL_STARTS_WITH,
+  TEST_STD_CALL_ENDS_WITH,
+} TestStdCallKind;
+
+typedef struct {
+  const char *name;
+  size_t arg_count;
+  TestStdCallKind kind;
+} TestStdCallSpec;
+
+static const TestStdCallSpec test_std_calls[] = {
+  {"std.mem.eql", 2, TEST_STD_CALL_EQUALS},
+  {"std.testing.isTrue", 1, TEST_STD_CALL_TRUTHY},
+  {"std.testing.isFalse", 1, TEST_STD_CALL_FALSEY},
+  {"std.testing.equalBool", 2, TEST_STD_CALL_EQUALS},
+  {"std.testing.equalUsize", 2, TEST_STD_CALL_EQUALS},
+  {"std.testing.equalU32", 2, TEST_STD_CALL_EQUALS},
+  {"std.testing.equalI32", 2, TEST_STD_CALL_EQUALS},
+  {"std.testing.equalBytes", 2, TEST_STD_CALL_EQUALS},
+  {"std.testing.containsBytes", 2, TEST_STD_CALL_CONTAINS},
+  {"std.testing.startsWith", 2, TEST_STD_CALL_STARTS_WITH},
+  {"std.testing.endsWith", 2, TEST_STD_CALL_ENDS_WITH},
+};
+
+static const TestStdCallSpec *test_std_call_find(const char *name) {
+  for (size_t i = 0; i < sizeof(test_std_calls) / sizeof(test_std_calls[0]); i++) {
+    if (test_string_equal(test_std_calls[i].name, name)) return &test_std_calls[i];
+  }
+  return NULL;
+}
+
+static bool test_std_call_eval(const TestStdCallSpec *spec, const TestValue *args, TestValue *out) {
+  if (!spec || !args || !out) return false;
+  out->kind = TEST_VALUE_BOOL;
+  switch (spec->kind) {
+    case TEST_STD_CALL_EQUALS:
+      out->bool_value = test_value_equals(&args[0], &args[1]);
+      return true;
+    case TEST_STD_CALL_TRUTHY:
+      out->bool_value = test_value_truthy(&args[0]);
+      return true;
+    case TEST_STD_CALL_FALSEY:
+      out->bool_value = !test_value_truthy(&args[0]);
+      return true;
+    case TEST_STD_CALL_CONTAINS:
+      out->bool_value = args[0].kind == TEST_VALUE_STRING && args[1].kind == TEST_VALUE_STRING &&
+                        strstr(args[0].string_value ? args[0].string_value : "", args[1].string_value ? args[1].string_value : "") != NULL;
+      return true;
+    case TEST_STD_CALL_STARTS_WITH:
+      out->bool_value = args[0].kind == TEST_VALUE_STRING && args[1].kind == TEST_VALUE_STRING &&
+                        test_string_starts_with(args[0].string_value, args[1].string_value);
+      return true;
+    case TEST_STD_CALL_ENDS_WITH:
+      out->bool_value = args[0].kind == TEST_VALUE_STRING && args[1].kind == TEST_VALUE_STRING &&
+                        test_string_ends_with(args[0].string_value, args[1].string_value);
+      return true;
   }
   return false;
 }
@@ -7089,9 +7176,14 @@ static bool test_eval_call_expr(const Program *program, TestEnv *env, const Expr
     }
   }
   bool ok = true;
-  if (strcmp(callee_name, "std.mem.eql") == 0 && expr->args.len == 2) {
-    out->kind = TEST_VALUE_BOOL;
-    out->bool_value = test_value_equals(&args[0], &args[1]);
+  const TestStdCallSpec *std_call = test_std_call_find(callee_name);
+  if (std_call) {
+    if (expr->args.len == std_call->arg_count) {
+      ok = test_std_call_eval(std_call, args, out);
+    } else {
+      ok = false;
+      test_fail(failure, expr, "zero test std helper argument count mismatch");
+    }
   } else {
     const Function *fun = find_program_function(program, callee_name);
     ok = test_eval_function(program, fun, args, expr->args.len, out, failure);
@@ -7336,12 +7428,14 @@ static const char *helper_module_name(const ZStdHelperInfo *helper) {
   if (strncmp(name, "std.search.", strlen("std.search.")) == 0) return "std.search";
   if (strncmp(name, "std.sort.", strlen("std.sort.")) == 0) return "std.sort";
   if (strncmp(name, "std.str.", strlen("std.str.")) == 0) return "std.str";
+  if (strncmp(name, "std.testing.", strlen("std.testing.")) == 0) return "std.testing";
   if (strncmp(name, "std.text.", strlen("std.text.")) == 0) return "std.text";
   if (strncmp(name, "std.io.", strlen("std.io.")) == 0) return "std.io";
   if (strncmp(name, "std.codec.", strlen("std.codec.")) == 0) return "std.codec";
   if (strncmp(name, "std.mem.", strlen("std.mem.")) == 0) return "std.mem";
   if (strncmp(name, "std.parse.", strlen("std.parse.")) == 0) return "std.parse";
   if (strncmp(name, "std.json.", strlen("std.json.")) == 0) return "std.json";
+  if (strncmp(name, "std.log.", strlen("std.log.")) == 0) return "std.log";
   if (strncmp(name, "std.url.", strlen("std.url.")) == 0) return "std.url";
   if (strncmp(name, "std.time.", strlen("std.time.")) == 0) return "std.time";
   if (strncmp(name, "std.rand.", strlen("std.rand.")) == 0) return "std.rand";
@@ -7383,6 +7477,7 @@ static const char *helper_example_path(const ZStdHelperInfo *helper) {
   if (strcmp(module, "std.search") == 0 || strcmp(module, "std.sort") == 0) return "conformance/native/pass/std-search-sort-widths.0";
   if (strcmp(module, "std.mem") == 0) return "examples/memory-primitives.0";
   if (helper && helper->name && strncmp(helper->name, "std.str.", strlen("std.str.")) == 0) return "examples/std-str.0";
+  if (strcmp(module, "std.testing") == 0 || strcmp(module, "std.log") == 0) return "examples/std-testing-log.0";
   if (strcmp(module, "std.text") == 0) return "conformance/native/pass/std-text.0";
   if (helper && helper->name && strncmp(helper->name, "std.math.", strlen("std.math.")) == 0) return "examples/std-math.0";
   if (strcmp(module, "std.io") == 0 || strcmp(module, "std.path") == 0) return "examples/std-path-io.0";

@@ -63,6 +63,9 @@ Apply only the edit you can justify from the source and fix plan. Treat `require
 - `TAR001`: unknown target; inspect `zero targets`.
 - `TAR002`: capability unavailable for selected target.
 - `BLD003`: removed backend flag; use direct emitters.
+- `STD002`: unknown standard-library helper; use a documented `std.<module>.<helper>` name.
+- `STD003`: standard-library capability or contract mismatch; inspect the helper signature and required capability.
+- `TYP009`: immutable value used where a mutable destination is required; make the binding `var` or pass mutable storage.
 
 ## Agent Triage
 

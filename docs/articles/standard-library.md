@@ -22,9 +22,11 @@ Runnable modules:
 - `std.math`: fixed-width integer min/max/clamp, checked and saturating arithmetic, and small number-theory routines.
 - `std.path`: fixed-buffer lexical path helpers.
 - `std.str`: allocation-free byte-string helpers over spans and caller-owned storage.
+- `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
 - `std.parse`: allocation-free byte scanners and integer/bool parsers.
 - `std.codec`: byte-oriented integer encoding, endian reads/writes, varint, base64, hex, and CRC-32 helpers.
 - `std.json`: validation, structured status codes, field lookup, explicit-allocator parsing, and caller-buffer writing.
+- `std.log`: explicit-buffer JSON Lines record formatting.
 - `std.url`: lexical URL splitting, percent/query encoding, query lookup, and append helpers.
 - `std.time`: duration construction, conversion, comparison, and target-gated clock helpers.
 - `std.rand`: explicit deterministic random sources, random bits, and target entropy helpers.

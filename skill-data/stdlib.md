@@ -37,6 +37,8 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.url`: target-neutral URL splitting, percent/query encoding and decoding, query lookup, and query append helpers.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, prefix/suffix, substring, trim, and word counts.
 - `std.io`: buffered reader/writer surfaces, cursor writes, line scanning, and byte copy over caller-owned storage.
+- `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
+- `std.log`: explicit-buffer JSON Lines record formatting.
 
 Prefer `Maybe<T>` return checks over assuming an operation succeeded.
 
@@ -197,6 +199,29 @@ pub fn main() -> Void {
     let bit: Bool = std.rand.nextBool(&mut rng)
     let delay: Duration = std.time.add(std.time.ms(250), std.time.seconds(1))
     expect first == 1025555898_u32 && bit && std.time.asMsFloor(delay) == 1250
+}
+```
+
+Use `std.testing` inside `expect` when the comparison shape matters to readers
+or agents:
+
+```zero
+test "output shape" {
+    expect std.testing.equalBytes("zero", "zero")
+    expect std.testing.containsBytes("zerolang", "lang")
+}
+```
+
+Use `std.log` as a caller-buffer formatter, then write the resulting span
+through an explicit output capability:
+
+```zero
+pub fn main(world: World) -> Void raises {
+    var storage: [128]u8 = [0_u8; 128]
+    let entry: Maybe<Span<u8>> = std.log.keyValue(storage, "info", "event", "startup")
+    if entry.has {
+        check world.out.write(entry.value)
+    }
 }
 ```
 

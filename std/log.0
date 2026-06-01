@@ -1,0 +1,82 @@
+fn __zero_std_log_write(buffer: MutSpan<u8>, offset: usize, bytes: Span<u8>) -> Maybe<usize> {
+    return std.io.writeSpan(buffer, offset, bytes)
+}
+
+fn __zero_std_log_write_json(buffer: MutSpan<u8>, offset: usize, value: Span<u8>) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) {
+        return null
+    }
+    let written: Maybe<Span<u8>> = std.json.writeStringBytes(buffer[offset..], value)
+    if written.has {
+        return offset + std.mem.len(written.value)
+    }
+    return null
+}
+
+fn __zero_std_log_message(buffer: MutSpan<u8>, level: Span<u8>, message: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let opened: Maybe<usize> = __zero_std_log_write(buffer, offset, "{\"level\":")
+    if !opened.has {
+        return null
+    }
+    offset = opened.value
+    let wrote_level: Maybe<usize> = __zero_std_log_write_json(buffer, offset, level)
+    if !wrote_level.has {
+        return null
+    }
+    offset = wrote_level.value
+    let wrote_message_key: Maybe<usize> = __zero_std_log_write(buffer, offset, ",\"message\":")
+    if !wrote_message_key.has {
+        return null
+    }
+    offset = wrote_message_key.value
+    let wrote_message: Maybe<usize> = __zero_std_log_write_json(buffer, offset, message)
+    if !wrote_message.has {
+        return null
+    }
+    offset = wrote_message.value
+    let closed: Maybe<usize> = __zero_std_log_write(buffer, offset, "}\n")
+    if closed.has {
+        return buffer[..closed.value]
+    }
+    return null
+}
+
+fn __zero_std_log_key_value(buffer: MutSpan<u8>, level: Span<u8>, key: Span<u8>, value: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let opened: Maybe<usize> = __zero_std_log_write(buffer, offset, "{\"level\":")
+    if !opened.has {
+        return null
+    }
+    offset = opened.value
+    let wrote_level: Maybe<usize> = __zero_std_log_write_json(buffer, offset, level)
+    if !wrote_level.has {
+        return null
+    }
+    offset = wrote_level.value
+    let wrote_key_name: Maybe<usize> = __zero_std_log_write(buffer, offset, ",\"key\":")
+    if !wrote_key_name.has {
+        return null
+    }
+    offset = wrote_key_name.value
+    let wrote_key: Maybe<usize> = __zero_std_log_write_json(buffer, offset, key)
+    if !wrote_key.has {
+        return null
+    }
+    offset = wrote_key.value
+    let wrote_value_name: Maybe<usize> = __zero_std_log_write(buffer, offset, ",\"value\":")
+    if !wrote_value_name.has {
+        return null
+    }
+    offset = wrote_value_name.value
+    let wrote_value: Maybe<usize> = __zero_std_log_write_json(buffer, offset, value)
+    if !wrote_value.has {
+        return null
+    }
+    offset = wrote_value.value
+    let closed: Maybe<usize> = __zero_std_log_write(buffer, offset, "}\n")
+    if closed.has {
+        return buffer[..closed.value]
+    }
+    return null
+}

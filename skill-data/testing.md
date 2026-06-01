@@ -23,6 +23,18 @@ test "addition works" {
 
 `expect` requires a `Bool`. A false expectation fails the test.
 
+Use `std.testing` helpers when a predicate should be explicit in the source:
+
+```zero
+test "output shape" {
+    expect std.testing.equalBytes("zero", "zero")
+    expect std.testing.containsBytes("zerolang", "lang")
+}
+```
+
+`std.testing` does not register tests or print output. It only returns `Bool`
+values for ordinary `expect` statements.
+
 ## Run
 
 ```sh

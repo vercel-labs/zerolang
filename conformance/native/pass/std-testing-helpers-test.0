@@ -1,0 +1,12 @@
+test "testing helpers support direct test blocks" {
+    expect std.testing.isTrue(true)
+    expect std.testing.isFalse(false)
+    expect std.testing.equalBool(true, true)
+    expect std.testing.equalUsize(4, 4)
+    expect std.testing.equalU32(42_u32, 42_u32)
+    expect std.testing.equalI32(-1, -1)
+    expect std.testing.equalBytes("zero", "zero")
+    expect std.testing.containsBytes("zerolang", "lang")
+    expect std.testing.startsWith("zerolang", "zero")
+    expect std.testing.endsWith("zerolang", "lang")
+}

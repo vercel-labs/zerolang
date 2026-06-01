@@ -1,0 +1,72 @@
+fn testing_helpers_ok() -> Bool {
+    let bytes: Span<u8> = "zerolang"
+    if !std.testing.isTrue(true) {
+        return false
+    }
+    if !std.testing.isFalse(false) {
+        return false
+    }
+    if !std.testing.equalBool(true, true) {
+        return false
+    }
+    if !std.testing.equalUsize(std.mem.len(bytes), 8) {
+        return false
+    }
+    if !std.testing.equalU32(42_u32, 42_u32) {
+        return false
+    }
+    if !std.testing.equalI32(-7, -7) {
+        return false
+    }
+    if !std.testing.equalBytes("zero", "zero") {
+        return false
+    }
+    if !std.testing.containsBytes(bytes, "lang") {
+        return false
+    }
+    if !std.testing.startsWith(bytes, "zero") {
+        return false
+    }
+    if !std.testing.endsWith(bytes, "lang") {
+        return false
+    }
+    return true
+}
+
+fn log_message_ok() -> Bool {
+    var storage: [128]u8 = [0_u8; 128]
+    let entry: Maybe<Span<u8>> = std.log.message(storage, "info", "agent ready")
+    if entry.has {
+        if !std.testing.startsWith(entry.value, "{\"level\":\"info\"") {
+            return false
+        }
+        if !std.testing.containsBytes(entry.value, "\"message\":\"agent ready\"") {
+            return false
+        }
+        return std.testing.endsWith(entry.value, "}\n")
+    }
+    return false
+}
+
+fn log_key_value_ok() -> Bool {
+    var storage: [128]u8 = [0_u8; 128]
+    let entry: Maybe<Span<u8>> = std.log.keyValue(storage, "info", "event", "startup")
+    if entry.has {
+        if !std.testing.startsWith(entry.value, "{\"level\":\"info\"") {
+            return false
+        }
+        if !std.testing.containsBytes(entry.value, "\"key\":\"event\"") {
+            return false
+        }
+        return std.testing.containsBytes(entry.value, "\"value\":\"startup\"")
+    }
+    return false
+}
+
+pub fn main(world: World) -> Void raises {
+    if testing_helpers_ok() && log_message_ok() && log_key_value_ok() {
+        check world.out.write("std testing log ok\n")
+    } else {
+        check world.out.write("std testing log failed\n")
+    }
+}

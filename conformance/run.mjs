@@ -351,6 +351,8 @@ for (const fixture of [
   "conformance/native/pass/std-io-lines.0",
   "conformance/native/pass/std-path-io-breadth.0",
   "conformance/native/pass/std-str-breadth.0",
+  "conformance/native/pass/std-testing-log.0",
+  "conformance/native/pass/std-testing-helpers-test.0",
   "conformance/native/pass/std-path-helper-name-collision.0",
   "conformance/native/pass/std-net-http-breadth.0",
   "conformance/native/pass/std-http-metadata-neutral.0",
@@ -3643,6 +3645,9 @@ assert.match(readAllInvalidAllocBody.diagnostics[0].message, /readAll expects an
 const zeroTestRun = await execFileAsync(zero, ["test", "conformance/native/pass/test-blocks.0"]);
 assert.equal(zeroTestRun.stdout, "1 test(s) ok\n");
 
+const zeroTestingHelpersRun = await execFileAsync(zero, ["test", "conformance/native/pass/std-testing-helpers-test.0"]);
+assert.equal(zeroTestingHelpersRun.stdout, "1 test(s) ok\n");
+
 const zeroTestJsonRun = await execFileAsync(zero, ["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.0"]);
 const zeroTestJsonBody = JSON.parse(zeroTestJsonRun.stdout);
 assert.equal(zeroTestJsonBody.ok, true);
@@ -3936,6 +3941,12 @@ assert.notEqual(memCopyImmutableDstJson.code, 0);
 const memCopyImmutableDstBody = JSON.parse(memCopyImmutableDstJson.stdout);
 assert.equal(memCopyImmutableDstBody.diagnostics[0].code, "TYP009");
 assert.equal(memCopyImmutableDstBody.diagnostics[0].repair.id, "make-binding-mutable");
+
+const stdLogImmutableBufferJson = await execFileAsync(zero, ["check", "--json", "conformance/native/fail/std-log-immutable-buffer.0"]).catch((error) => error);
+assert.notEqual(stdLogImmutableBufferJson.code, 0);
+const stdLogImmutableBufferBody = JSON.parse(stdLogImmutableBufferJson.stdout);
+assert.equal(stdLogImmutableBufferBody.diagnostics[0].code, "TYP009");
+assert.equal(stdLogImmutableBufferBody.diagnostics[0].repair.id, "make-binding-mutable");
 
 const memCopyItemsImmutableDst = await execFileAsync(zero, ["check", "conformance/native/fail/std-mem-copy-items-immutable-dst.0"]).catch((error) => error);
 assert.notEqual(memCopyItemsImmutableDst.code, 0);

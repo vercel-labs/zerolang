@@ -1,0 +1,39 @@
+fn __zero_std_testing_is_true(value: Bool) -> Bool {
+    return value
+}
+
+fn __zero_std_testing_is_false(value: Bool) -> Bool {
+    return !value
+}
+
+fn __zero_std_testing_equal_bool(actual: Bool, expected: Bool) -> Bool {
+    return actual == expected
+}
+
+fn __zero_std_testing_equal_usize(actual: usize, expected: usize) -> Bool {
+    return actual == expected
+}
+
+fn __zero_std_testing_equal_u32(actual: u32, expected: u32) -> Bool {
+    return actual == expected
+}
+
+fn __zero_std_testing_equal_i32(actual: i32, expected: i32) -> Bool {
+    return actual == expected
+}
+
+fn __zero_std_testing_equal_bytes(actual: Span<u8>, expected: Span<u8>) -> Bool {
+    return std.mem.eqlBytes(actual, expected)
+}
+
+fn __zero_std_testing_contains_bytes(actual: Span<u8>, needle: Span<u8>) -> Bool {
+    return std.str.contains(actual, needle)
+}
+
+fn __zero_std_testing_starts_with(actual: Span<u8>, prefix: Span<u8>) -> Bool {
+    return std.str.startsWith(actual, prefix)
+}
+
+fn __zero_std_testing_ends_with(actual: Span<u8>, suffix: Span<u8>) -> Bool {
+    return std.str.endsWith(actual, suffix)
+}

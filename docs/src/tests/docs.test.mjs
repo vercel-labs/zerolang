@@ -189,6 +189,7 @@ describe("docs registry", () => {
       "examples/cli-config.0",
       "examples/grep-scan.0",
       "examples/std-path-io.0",
+      "examples/std-testing-log.0",
       "examples/std-data-formats.0",
       "examples/json-api-client.0",
       "examples/json-api-router.0",

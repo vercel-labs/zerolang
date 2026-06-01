@@ -18,6 +18,8 @@ make -C native/zero-c
 
 bin/zero check --json std/path.0 >/dev/null
 bin/zero check --json std/str.0 >/dev/null
+bin/zero check --json std/testing.0 >/dev/null
+bin/zero check --json std/log.0 >/dev/null
 bin/zero check --json std/math.0 >/dev/null
 bin/zero check --json std/time.0 >/dev/null
 
@@ -94,6 +96,7 @@ expected_output() {
     examples/std-math.0) printf "std math ok" ;;
     examples/file-copy.0) printf "file copy ok" ;;
     examples/grep-scan.0) printf "grep scan ok" ;;
+    examples/std-testing-log.0) printf '{"level":"info","key":"event","value":"startup"}' ;;
     conformance/native/pass/std-crypto-hmac32.0) printf "crypto hmac32 ok" ;;
     conformance/native/pass/string-byte-ergonomics.0) printf "string byte ergonomics ok" ;;
     conformance/native/pass/std-math-breadth.0) printf "std math breadth ok" ;;
@@ -102,6 +105,7 @@ expected_output() {
     conformance/native/pass/std-path-io-breadth.0) printf "std path io breadth ok" ;;
     conformance/native/pass/std-fs-file-helpers.0) printf "std fs file helpers ok" ;;
     conformance/native/pass/std-str-breadth.0) printf "std str breadth ok" ;;
+    conformance/native/pass/std-testing-log.0) printf "std testing log ok" ;;
     examples/std-str.0) printf "std str ok" ;;
     *)
       echo "missing expected output for $1" >&2
@@ -136,6 +140,7 @@ examples=(
   examples/parse-cursor.0
   examples/std-math.0
   examples/std-str.0
+  examples/std-testing-log.0
   examples/file-copy.0
   examples/grep-scan.0
   conformance/native/pass/std-crypto-hmac32.0
@@ -146,6 +151,7 @@ examples=(
   conformance/native/pass/std-path-io-breadth.0
   conformance/native/pass/std-fs-file-helpers.0
   conformance/native/pass/std-str-breadth.0
+  conformance/native/pass/std-testing-log.0
 )
 
 run_native_or_gap() {
@@ -465,6 +471,7 @@ bin/zero size --json examples/hello.0 > .zero/native-test/hello-size.json
 node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/hello-size.json","utf8")); if (!j.compilerRuntimeHelpers.every((h)=>h.payAsUsed===true && h.emitted===false)) process.exit(1);'
 
 [[ "$(bin/zero test conformance/native/pass/test-blocks.0)" == "1 test(s) ok" ]]
+[[ "$(bin/zero test conformance/native/pass/std-testing-helpers-test.0)" == "1 test(s) ok" ]]
 [[ "$(bin/zero run --out .zero/native-test/run-add examples/add.0)" == "math works" ]]
 bin/zero test --json conformance/packages/test-app > .zero/native-test/test-package.json
 node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-package.json","utf8")); if (!j.ok || j.testDiscovery.mode!=="package" || j.discoveredTests!==3 || j.selectedTests!==3 || j.expectedFailures!==1 || !j.fixtures.sourceFiles.some((p)=>p.endsWith("helper.0")) || !j.targetFacts.capabilitySupport) process.exit(1);'
@@ -538,6 +545,12 @@ if bin/zero check conformance/native/fail/mem-copy-immutable-dst.0 2>.zero/nativ
   exit 1
 fi
 grep -q "TYP009" .zero/native-test/mem-copy-immutable-dst.err
+
+if bin/zero check conformance/native/fail/std-log-immutable-buffer.0 2>.zero/native-test/std-log-immutable-buffer.err; then
+  echo "expected std-log-immutable-buffer fixture to fail" >&2
+  exit 1
+fi
+grep -q "TYP009" .zero/native-test/std-log-immutable-buffer.err
 
 expect_native_check_fail() {
   local fixture="$1"

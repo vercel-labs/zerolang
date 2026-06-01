@@ -3852,6 +3852,7 @@ const diagnostics = [
   ["ABI001", ["check", "--json", "conformance/native/fail/bad-c-export.0"]],
   ["PUB001", ["check", "--json", "conformance/check/fail/public-const-missing-type.0"]],
   ["TYP009", ["check", "--json", "conformance/native/fail/mem-copy-immutable-dst.0"]],
+  ["TYP009", ["check", "--json", "conformance/native/fail/std-log-immutable-buffer.0"]],
   ["ERR002", ["check", "--json", "conformance/native/fail/std-fs-create-error-set-mismatch.0"]],
   ["ERR003", ["check", "--json", "conformance/native/fail/std-fs-unchecked-resource-fallible.0"]],
   ["STD003", ["check", "--json", "conformance/native/fail/fs-readall-invalid-alloc.0"]],
@@ -3901,10 +3902,33 @@ assert.match(graphMemCopyHelper.ownershipNotes, /caller-owned storage/);
 assert.equal(graphMemCopyHelper.example, "examples/memory-primitives.0");
 assert.equal(graphMemCopyHelper.apiStability, "bootstrap-stable");
 
+const agentToolsGraph = json(["graph", "--json", "examples/std-testing-log.0"]).body;
+const graphTestingHelper = agentToolsGraph.stdlibHelpers.find((helper) => helper.name === "std.testing.equalBytes");
+assert.equal(graphTestingHelper.module, "std.testing");
+assert.equal(graphTestingHelper.targetSupport, "target-neutral");
+assert.equal(graphTestingHelper.errorBehavior, "infallible");
+assert.equal(graphTestingHelper.example, "examples/std-testing-log.0");
+const graphLogHelper = agentToolsGraph.stdlibHelpers.find((helper) => helper.name === "std.log.keyValue");
+assert.equal(graphLogHelper.module, "std.log");
+assert(graphLogHelper.effects.includes("memory"));
+assert.match(graphLogHelper.allocationBehavior, /caller buffer/);
+assert.equal(graphLogHelper.errorBehavior, "returns null on failure");
+assert.match(graphLogHelper.ownershipNotes, /caller-owned storage/);
+assert.equal(graphLogHelper.example, "examples/std-testing-log.0");
+
 const stdDataSize = json(["size", "--json", "conformance/native/pass/std-codec-json-url.0"]).body;
 const sizeUrlHostHelper = stdDataSize.stdlibHelpers.find((helper) => helper.name === "std.url.host");
 assert.equal(sizeUrlHostHelper.module, "std.url");
 assert.equal(sizeUrlHostHelper.example, "conformance/native/pass/std-codec-json-url.0");
+
+const agentToolsSize = json(["size", "--json", "examples/std-testing-log.0"]).body;
+assert(agentToolsSize.usedStdlibHelpers.some((helper) => helper.name === "std.log.keyValue" && helper.module === "std.log"));
+assert(agentToolsSize.usedStdlibHelpers.some((helper) => helper.name === "std.testing.containsBytes" && helper.module === "std.testing"));
+assert(agentToolsSize.usedStdlibHelpers.every((helper) => helper.module && helper.effects && helper.allocationBehavior && helper.targetSupport && helper.errorBehavior && helper.ownershipNotes && helper.example && helper.apiStability));
+
+const stdTestingTestJson = json(["test", "--json", "conformance/native/pass/std-testing-helpers-test.0"]).body;
+assert.equal(stdTestingTestJson.ok, true);
+assert.equal(stdTestingTestJson.passedTests, 1);
 
 const crcOnlySource = join(outDir, "std-codec-crc-only.0");
 writeFileSync(crcOnlySource, `pub fn main() -> Void {
