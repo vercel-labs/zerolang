@@ -907,6 +907,22 @@ static void imports_cast_comparisons_without_parentheses(void) {
   z_free_program(&program);
 }
 
+static void parses_chained_as_casts(void) {
+  const char *source =
+    "fn narrow(value: u32) -> i32 {\n"
+    "    return value as u8 as i32\n"
+    "}\n";
+  ZDiag diag = {0};
+  Program program = {0};
+  expect(z_parse_canonical_text_program_source(source, &program, &diag), diag.message);
+  Expr *outer = program.functions.items[0].body.items[0]->expr;
+  expect(outer && outer->kind == EXPR_CAST && strcmp(outer->text, "i32") == 0, "expected outer chained cast to i32");
+  Expr *inner = outer->left;
+  expect(inner && inner->kind == EXPR_CAST && strcmp(inner->text, "u8") == 0, "expected inner chained cast to u8");
+  expect(inner->left && inner->left->kind == EXPR_IDENT && strcmp(inner->left->text, "value") == 0, "expected chained cast to wrap the source operand");
+  z_free_program(&program);
+}
+
 static void expect_program_checks_and_roundtrips(const char *source, const char *label, bool library) {
   ZDiag diag = {0};
   Program program = {0};
@@ -1196,6 +1212,7 @@ int main(int argc, char **argv) {
   imports_decoded_literals_and_prefix_forms();
   imports_call_arguments_with_casts();
   imports_cast_comparisons_without_parentheses();
+  parses_chained_as_casts();
   parses_checks_and_graph_roundtrips_core_program();
   parses_checks_and_graph_roundtrips_library_program();
   parses_checks_and_graph_roundtrips_generic_shape_literal();
