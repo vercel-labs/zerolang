@@ -1,0 +1,41 @@
+fn __zero_std_time_zero() -> Duration {
+    return std.time.ns(0)
+}
+
+fn __zero_std_time_minutes(value: i32) -> Duration {
+    return std.time.ns((value as i64) * 60000000000)
+}
+
+fn __zero_std_time_hours(value: i32) -> Duration {
+    return std.time.ns((value as i64) * 3600000000000)
+}
+
+fn __zero_std_time_min(left: Duration, right: Duration) -> Duration {
+    if std.time.lessThan(left, right) {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_time_max(left: Duration, right: Duration) -> Duration {
+    if std.time.lessThan(left, right) {
+        return right
+    }
+    return left
+}
+
+fn __zero_std_time_clamp(value: Duration, low: Duration, high: Duration) -> Duration {
+    let lower: Duration = __zero_std_time_min(low, high)
+    let upper: Duration = __zero_std_time_max(low, high)
+    if std.time.lessThan(value, lower) {
+        return lower
+    }
+    if std.time.lessThan(upper, value) {
+        return upper
+    }
+    return value
+}
+
+fn __zero_std_time_is_zero(value: Duration) -> Bool {
+    return std.time.asNs(value) == 0
+}

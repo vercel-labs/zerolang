@@ -745,6 +745,22 @@ static IrValue *ir_new_cast_value(IrProgram *ir, IrValue *inner, IrTypeKind type
   return value;
 }
 
+static IrValue *ir_new_binary_value(IrProgram *ir, IrBinaryOp op, IrTypeKind type, IrValue *left, IrValue *right, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_BINARY, type, line, column);
+  value->binary_op = op;
+  value->left = left;
+  value->right = right;
+  return value;
+}
+
+static IrValue *ir_new_compare_value(IrProgram *ir, IrCompareOp op, IrValue *left, IrValue *right, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_COMPARE, IR_TYPE_BOOL, line, column);
+  value->compare_op = op;
+  value->left = left;
+  value->right = right;
+  return value;
+}
+
 static void ir_free_value(IrValue *value) {
   if (!value) return;
   ir_free_value(value->index);
@@ -796,6 +812,19 @@ static const IrLocal *ir_function_find_local(const IrFunction *fun, const char *
     if (strcmp(fun->locals[i - 1].name, name) == 0) return &fun->locals[i - 1];
   }
   return NULL;
+}
+
+static const IrLocal *ir_find_mutable_rand_source_local(IrProgram *ir, const IrFunction *fun, const Expr *arg, const char *helper_name) {
+  if (!arg || arg->kind != EXPR_BORROW || !arg->mutable_borrow || !arg->left || arg->left->kind != EXPR_IDENT) {
+    ir_mark_unsupported(ir, "direct backend std.rand helper expects a mutable RandSource local", arg ? arg->line : 1, arg ? arg->column : 1, helper_name ? helper_name : "std.rand");
+    return NULL;
+  }
+  const IrLocal *rng = ir_function_find_local(fun, arg->left->text);
+  if (!rng || rng->type != IR_TYPE_U32 || !rng->is_mutable) {
+    ir_mark_unsupported(ir, "direct backend std.rand helper expects a mutable RandSource local", arg->line, arg->column, "non-mutable RandSource");
+    return NULL;
+  }
+  return rng;
 }
 
 static const Function *ir_find_source_function(const Program *program, const char *name, unsigned *out_index) {
@@ -966,6 +995,113 @@ static bool ir_is_world_stream_write(const IrFunction *fun, const Expr *expr, co
 }
 
 static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out);
+
+static bool ir_lower_time_duration_constructor(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *arg, unsigned long long scale, int line, int column, IrValue **out) {
+  if (!arg) {
+    ir_mark_unsupported(ir, "direct backend time duration constructor is missing an argument", line, column, "missing argument");
+    return false;
+  }
+  unsigned long long literal = 0;
+  if (arg->kind == EXPR_NUMBER && ir_parse_integer_literal(arg->text ? arg->text : "0", &literal)) {
+    if (scale != 0 && literal > (unsigned long long)INT64_MAX / scale) {
+      ir_mark_unsupported(ir, "direct backend time duration literal exceeds i64 nanoseconds", arg->line, arg->column, arg->text);
+      return false;
+    }
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_I64, literal * scale, line, column);
+    return true;
+  }
+
+  IrValue *value = NULL;
+  if (!ir_lower_expr(program, ir, fun, arg, &value)) return false;
+  if (!ir_type_is_value(value->type)) {
+    ir_free_value(value);
+    ir_mark_unsupported(ir, "direct backend time duration constructor argument must be an integer value", arg->line, arg->column, "non-integer duration");
+    return false;
+  }
+  value = ir_new_cast_value(ir, value, IR_TYPE_I64, line, column);
+  if (scale != 1) {
+    IrValue *factor = ir_new_integer_literal_value(ir, IR_TYPE_I64, scale, line, column);
+    value = ir_new_binary_value(ir, IR_BIN_MUL, IR_TYPE_I64, value, factor, line, column);
+  }
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_time_duration_div_floor(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *arg, unsigned long long divisor, IrTypeKind result_type, int line, int column, IrValue **out) {
+  if (!arg) {
+    ir_mark_unsupported(ir, "direct backend time conversion is missing a Duration argument", line, column, "missing argument");
+    return false;
+  }
+  IrValue *duration = NULL;
+  if (!ir_lower_expr(program, ir, fun, arg, &duration)) return false;
+  duration = ir_new_cast_value(ir, duration, IR_TYPE_I64, line, column);
+  IrValue *value = duration;
+  if (divisor != 1) {
+    IrValue *factor = ir_new_integer_literal_value(ir, IR_TYPE_I64, divisor, line, column);
+    value = ir_new_binary_value(ir, IR_BIN_DIV, IR_TYPE_I64, duration, factor, line, column);
+  }
+  *out = result_type == IR_TYPE_I64 ? value : ir_new_cast_value(ir, value, result_type, line, column);
+  return true;
+}
+
+static bool ir_std_time_duration_scale(const char *name, unsigned long long *out_scale) {
+  static const struct { const char *name; unsigned long long scale; } entries[] = {
+    {"std.time.ns", 1ull},
+    {"std.time.us", 1000ull},
+    {"std.time.ms", 1000000ull},
+    {"std.time.seconds", 1000000000ull},
+    {"std.time.minutes", 60000000000ull},
+    {"std.time.hours", 3600000000000ull},
+  };
+  for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
+    if (strcmp(name, entries[i].name) == 0) {
+      *out_scale = entries[i].scale;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool ir_std_time_conversion(const char *name, unsigned long long *out_divisor, IrTypeKind *out_type) {
+  static const struct { const char *name; unsigned long long divisor; IrTypeKind type; } entries[] = {
+    {"std.time.asNs", 1ull, IR_TYPE_I64},
+    {"std.time.asUsFloor", 1000ull, IR_TYPE_I64},
+    {"std.time.asMsFloor", 1000000ull, IR_TYPE_I32},
+    {"std.time.asSecondsFloor", 1000000000ull, IR_TYPE_I64},
+  };
+  for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
+    if (strcmp(name, entries[i].name) == 0) {
+      *out_divisor = entries[i].divisor;
+      *out_type = entries[i].type;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool ir_std_time_binary_op(const char *name, IrBinaryOp *out_op) {
+  if (strcmp(name, "std.time.add") == 0) {
+    *out_op = IR_BIN_ADD;
+    return true;
+  }
+  if (strcmp(name, "std.time.sub") == 0) {
+    *out_op = IR_BIN_SUB;
+    return true;
+  }
+  return false;
+}
+
+static bool ir_is_std_rand_entropy_call(const char *name) {
+  static const char *names[] = {
+    "std.rand.entropyU32",
+    "std.rand.entropySeed",
+    "std.crypto.secureRandomU32",
+  };
+  for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+    if (strcmp(name, names[i]) == 0) return true;
+  }
+  return false;
+}
 
 static bool ir_u8_literal_byte(const Expr *expr, unsigned char *out) {
   if (!expr || !out) return false;
@@ -1742,17 +1878,14 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if ((strcmp(callee_name, "std.time.ms") == 0 || strcmp(callee_name, "std.time.seconds") == 0) && expr->args.len == 1) {
-        unsigned long long n = 0;
-        if (expr->args.items[0] && expr->args.items[0]->kind == EXPR_NUMBER && ir_parse_integer_literal(expr->args.items[0]->text, &n)) {
-          IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I64, expr->line, expr->column);
-          value->int_value = n * (strcmp(callee_name, "std.time.ms") == 0 ? 1000000ull : 1000000000ull);
-          free(callee_name);
-          *out = value;
-          return true;
-        }
+      unsigned long long time_scale = 0;
+      if (expr->args.len == 1 && ir_std_time_duration_scale(callee_name, &time_scale)) {
+        bool ok = ir_lower_time_duration_constructor(program, ir, fun, expr->args.items[0], time_scale, expr->line, expr->column, out);
+        free(callee_name);
+        return ok;
       }
-      if ((strcmp(callee_name, "std.time.add") == 0 || strcmp(callee_name, "std.time.sub") == 0) && expr->args.len == 2) {
+      IrBinaryOp time_op = IR_BIN_ADD;
+      if (expr->args.len == 2 && ir_std_time_binary_op(callee_name, &time_op)) {
         IrValue *left = NULL;
         IrValue *right = NULL;
         if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &left) ||
@@ -1762,22 +1895,31 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           free(callee_name);
           return false;
         }
-        IrValue *value = ir_new_value(ir, IR_VALUE_BINARY, IR_TYPE_I64, expr->line, expr->column);
-        value->binary_op = strcmp(callee_name, "std.time.add") == 0 ? IR_BIN_ADD : IR_BIN_SUB;
-        value->left = left;
-        value->right = right;
+        IrValue *value = ir_new_binary_value(ir, time_op, IR_TYPE_I64, left, right, expr->line, expr->column);
         free(callee_name);
         *out = value;
         return true;
       }
-      if (strcmp(callee_name, "std.time.asMsFloor") == 0 && expr->args.len == 1) {
-        IrValue *duration = NULL;
-        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &duration)) {
+      unsigned long long time_divisor = 0;
+      IrTypeKind time_result_type = IR_TYPE_I64;
+      if (expr->args.len == 1 && ir_std_time_conversion(callee_name, &time_divisor, &time_result_type)) {
+        bool ok = ir_lower_time_duration_div_floor(program, ir, fun, expr->args.items[0], time_divisor, time_result_type, expr->line, expr->column, out);
+        free(callee_name);
+        return ok;
+      }
+      if (strcmp(callee_name, "std.time.lessThan") == 0 && expr->args.len == 2) {
+        IrValue *left = NULL;
+        IrValue *right = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &left) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[1], &right)) {
+          ir_free_value(left);
+          ir_free_value(right);
           free(callee_name);
           return false;
         }
-        IrValue *value = ir_new_value(ir, IR_VALUE_TIME_AS_MS, IR_TYPE_I32, expr->line, expr->column);
-        value->left = duration;
+        left = ir_new_cast_value(ir, left, IR_TYPE_I64, expr->line, expr->column);
+        right = ir_new_cast_value(ir, right, IR_TYPE_I64, expr->line, expr->column);
+        IrValue *value = ir_new_compare_value(ir, IR_CMP_LT, left, right, expr->line, expr->column);
         free(callee_name);
         *out = value;
         return true;
@@ -1804,14 +1946,10 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = seed;
         return true;
       }
-      if (strcmp(callee_name, "std.rand.nextU32") == 0 && expr->args.len == 1 &&
-          expr->args.items[0] && expr->args.items[0]->kind == EXPR_BORROW &&
-          expr->args.items[0]->mutable_borrow && expr->args.items[0]->left &&
-          expr->args.items[0]->left->kind == EXPR_IDENT) {
-        const IrLocal *rng = ir_function_find_local(fun, expr->args.items[0]->left->text);
-        if (!rng || rng->type != IR_TYPE_U32 || !rng->is_mutable) {
+      if (strcmp(callee_name, "std.rand.nextU32") == 0 && expr->args.len == 1) {
+        const IrLocal *rng = ir_find_mutable_rand_source_local(ir, fun, expr->args.items[0], callee_name);
+        if (!rng) {
           free(callee_name);
-          ir_mark_unsupported(ir, "direct backend std.rand.nextU32 expects a mutable RandSource local", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable RandSource");
           return false;
         }
         IrValue *value = ir_new_value(ir, IR_VALUE_RAND_NEXT_U32, IR_TYPE_U32, expr->line, expr->column);
@@ -1820,7 +1958,21 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if ((strcmp(callee_name, "std.rand.entropyU32") == 0 || strcmp(callee_name, "std.crypto.secureRandomU32") == 0) && expr->args.len == 0) {
+      if (strcmp(callee_name, "std.rand.nextBool") == 0 && expr->args.len == 1) {
+        const IrLocal *rng = ir_find_mutable_rand_source_local(ir, fun, expr->args.items[0], callee_name);
+        if (!rng) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *next = ir_new_value(ir, IR_VALUE_RAND_NEXT_U32, IR_TYPE_U32, expr->line, expr->column);
+        next->local_index = rng->index;
+        IrValue *mod = ir_new_binary_value(ir, IR_BIN_MOD, IR_TYPE_U32, next, ir_new_integer_literal_value(ir, IR_TYPE_U32, 2u, expr->line, expr->column), expr->line, expr->column);
+        IrValue *value = ir_new_compare_value(ir, IR_CMP_EQ, mod, ir_new_integer_literal_value(ir, IR_TYPE_U32, 1u, expr->line, expr->column), expr->line, expr->column);
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (expr->args.len == 0 && ir_is_std_rand_entropy_call(callee_name)) {
         IrValue *value = ir_new_value(ir, IR_VALUE_RAND_ENTROPY_U32, IR_TYPE_U32, expr->line, expr->column);
         free(callee_name);
         *out = value;

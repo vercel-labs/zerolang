@@ -3,19 +3,163 @@ pub fn main(world: World) -> Void raises {
     if std.math.minU32(8, 3) != 3 {
         ok = false
     }
-    if std.math.minU32(4000000000_u32, 3) != 3 {
+    if std.math.minI32(0_i32 - 8_i32, 3) != 0_i32 - 8_i32 {
         ok = false
     }
-    if std.math.maxU32(8, 3) != 8 {
+    if std.math.minUsize(8_usize, 3_usize) != 3_usize {
+        ok = false
+    }
+    if std.math.minI64(8_i64, 3_i64) != 3_i64 {
+        ok = false
+    }
+    if std.math.minU64(8_u64, 3_u64) != 3_u64 {
         ok = false
     }
     if std.math.maxU32(4000000000_u32, 3) != 4000000000_u32 {
         ok = false
     }
+    if std.math.maxI32(0_i32 - 8_i32, 3) != 3 {
+        ok = false
+    }
+    if std.math.maxUsize(8_usize, 3_usize) != 8_usize {
+        ok = false
+    }
+    if std.math.maxI64(8_i64, 3_i64) != 8_i64 {
+        ok = false
+    }
+    if std.math.maxU64(8_u64, 3_u64) != 8_u64 {
+        ok = false
+    }
     if std.math.clampU32(10, 2, 7) != 7 {
         ok = false
     }
-    if std.math.clampU32(1, 7, 2) != 2 {
+    if std.math.clampI32(0_i32 - 10_i32, 0_i32 - 5_i32, 7) != 0_i32 - 5_i32 {
+        ok = false
+    }
+    if std.math.clampUsize(1_usize, 7_usize, 2_usize) != 2_usize {
+        ok = false
+    }
+    if std.math.clampI64(10_i64, 2_i64, 7_i64) != 7_i64 {
+        ok = false
+    }
+    if std.math.clampU64(1_u64, 7_u64, 2_u64) != 2_u64 {
+        ok = false
+    }
+    if std.math.absI32(0_i32 - 7_i32) != 7_u32 {
+        ok = false
+    }
+    if std.math.absI64(0_i64 - 9_i64) != 9_u64 {
+        ok = false
+    }
+    let add_u32: Maybe<u32> = std.math.checkedAddU32(40_u32, 2_u32)
+    if add_u32.has {
+        if add_u32.value != 42_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let add_u32_overflow: Maybe<u32> = std.math.checkedAddU32(4294967295_u32, 1_u32)
+    if add_u32_overflow.has {
+        ok = false
+    }
+    let sub_u32: Maybe<u32> = std.math.checkedSubU32(44_u32, 2_u32)
+    if sub_u32.has {
+        if sub_u32.value != 42_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let sub_u32_underflow: Maybe<u32> = std.math.checkedSubU32(1_u32, 2_u32)
+    if sub_u32_underflow.has {
+        ok = false
+    }
+    let mul_u32: Maybe<u32> = std.math.checkedMulU32(6_u32, 7_u32)
+    if mul_u32.has {
+        if mul_u32.value != 42_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let mul_u32_overflow: Maybe<u32> = std.math.checkedMulU32(4000000000_u32, 2_u32)
+    if mul_u32_overflow.has {
+        ok = false
+    }
+    let add_usize: Maybe<usize> = std.math.checkedAddUsize(40_usize, 2_usize)
+    if add_usize.has {
+        if add_usize.value != 42_usize {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let sub_usize: Maybe<usize> = std.math.checkedSubUsize(44_usize, 2_usize)
+    if sub_usize.has {
+        if sub_usize.value != 42_usize {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let mul_usize: Maybe<usize> = std.math.checkedMulUsize(6_usize, 7_usize)
+    if mul_usize.has {
+        if mul_usize.value != 42_usize {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let add_i32: Maybe<i32> = std.math.checkedAddI32(40, 2)
+    if add_i32.has {
+        if add_i32.value != 42 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let sub_i32: Maybe<i32> = std.math.checkedSubI32(40, 0_i32 - 2_i32)
+    if sub_i32.has {
+        if sub_i32.value != 42 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let mul_i32: Maybe<i32> = std.math.checkedMulI32(6, 7)
+    if mul_i32.has {
+        if mul_i32.value != 42 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    if std.math.saturatingAddU32(4294967295_u32, 1_u32) != 4294967295_u32 {
+        ok = false
+    }
+    if std.math.saturatingSubU32(1_u32, 2_u32) != 0_u32 {
+        ok = false
+    }
+    if std.math.saturatingMulU32(4000000000_u32, 2_u32) != 4294967295_u32 {
+        ok = false
+    }
+    if std.math.saturatingAddUsize(18446744073709551615_usize, 1_usize) != 18446744073709551615_usize {
+        ok = false
+    }
+    if std.math.saturatingSubUsize(1_usize, 2_usize) != 0_usize {
+        ok = false
+    }
+    if std.math.saturatingMulUsize(18446744073709551615_usize, 2_usize) != 18446744073709551615_usize {
+        ok = false
+    }
+    if std.math.saturatingAddI32(2147483647, 1) != 2147483647 {
+        ok = false
+    }
+    if std.math.saturatingSubI32(0_i32 - 2147483647_i32 - 1_i32, 1) != 0_i32 - 2147483647_i32 - 1_i32 {
+        ok = false
+    }
+    if std.math.saturatingMulI32(2147483647, 2) != 2147483647 {
         ok = false
     }
     if std.math.gcdU32(84, 30) != 6 {
@@ -24,19 +168,73 @@ pub fn main(world: World) -> Void raises {
     if std.math.lcmU32(21, 6) != 42 {
         ok = false
     }
+    let checked_lcm: Maybe<u32> = std.math.checkedLcmU32(21_u32, 6_u32)
+    if checked_lcm.has {
+        if checked_lcm.value != 42_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let checked_lcm_overflow: Maybe<u32> = std.math.checkedLcmU32(4000000000_u32, 3_u32)
+    if checked_lcm_overflow.has {
+        ok = false
+    }
     if std.math.powU32(3, 4) != 81 {
         ok = false
     }
-    if std.math.modPowU32(4, 13, 497) != 445 {
+    let checked_pow: Maybe<u32> = std.math.checkedPowU32(2_u32, 10_u32)
+    if checked_pow.has {
+        if checked_pow.value != 1024_u32 {
+            ok = false
+        }
+    } else {
         ok = false
     }
-    if std.math.modPowU32(9, 0, 1) != 0 {
+    let checked_pow_overflow: Maybe<u32> = std.math.checkedPowU32(2_u32, 32_u32)
+    if checked_pow_overflow.has {
+        ok = false
+    }
+    if std.math.modPowU32(4, 13, 497) != 445 {
         ok = false
     }
     if !std.math.isPrimeU32(31) {
         ok = false
     }
     if std.math.isPrimeU32(33) {
+        ok = false
+    }
+    if !std.math.isEvenU32(42) {
+        ok = false
+    }
+    if !std.math.isOddU32(41) {
+        ok = false
+    }
+    if std.math.sqrtFloorU32(99) != 9 {
+        ok = false
+    }
+    let factorial: Maybe<u32> = std.math.factorialU32(5_u32)
+    if factorial.has {
+        if factorial.value != 120_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let factorial_overflow: Maybe<u32> = std.math.factorialU32(13_u32)
+    if factorial_overflow.has {
+        ok = false
+    }
+    let binomial: Maybe<u32> = std.math.binomialU32(5_u32, 2_u32)
+    if binomial.has {
+        if binomial.value != 10_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let binomial_invalid: Maybe<u32> = std.math.binomialU32(2_u32, 5_u32)
+    if binomial_invalid.has {
         ok = false
     }
     if std.math.divisorCountU32(28) != 6 {

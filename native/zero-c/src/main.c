@@ -3980,16 +3980,20 @@ static bool direct_source_path_has_module_suffix(const char *path, const char *m
   return before == '/' || before == '\\';
 }
 
-static bool direct_source_is_embedded_std_source_file(const char *path, const char *source) {
+static const ZStdSourceModule *direct_embedded_std_source_module_for_file(const char *path, const char *source) {
   for (size_t i = 0; i < z_std_source_module_count(); i++) {
     const ZStdSourceModule *module = z_std_source_module_at(i);
     if (!module || !direct_source_path_has_module_suffix(path, module->path)) continue;
     char *embedded = z_std_source_module_copy_source(module);
     bool ok = embedded && strcmp(source ? source : "", embedded) == 0;
     free(embedded);
-    if (ok) return true;
+    if (ok) return module;
   }
-  return false;
+  return NULL;
+}
+
+static bool direct_source_is_embedded_std_source_file(const char *path, const char *source) {
+  return direct_embedded_std_source_module_for_file(path, source) != NULL;
 }
 
 static bool direct_input_add_program_symbol(SourceInput *input, const char *module, const char *kind, const char *name, bool is_public, bool allow_internal_names, int line, int column, ZDiag *diag) {
@@ -4164,6 +4168,11 @@ static void direct_std_source_set_cycle_diag(ZDiag *diag, const ZStdSourceModule
 static bool direct_canonical_append_std_source_recursive(SourceInput *input, ZBuf *combined, const ZStdSourceModule *module, ZDiag *diag, const ZStdSourceModule **stack, size_t *stack_len) {
   if (!module) return true;
   if (direct_input_has_file(input, module->path)) return true;
+  if (input && input->source_file &&
+      direct_source_path_has_module_suffix(input->source_file, module->path) &&
+      direct_source_is_embedded_std_source_file(input->source_file, input->source)) {
+    return true;
+  }
   if (direct_std_source_stack_contains(stack, stack_len ? *stack_len : 0, module)) {
     direct_std_source_set_cycle_diag(diag, stack, stack_len ? *stack_len : 0, module);
     return false;
@@ -4200,10 +4209,10 @@ static bool direct_canonical_append_std_source_recursive(SourceInput *input, ZBu
   return ok && (!diag || diag->code == 0);
 }
 
-static bool direct_canonical_append_referenced_std_sources(SourceInput *input, ZBuf *combined, const Program *program, ZDiag *diag) {
+static bool direct_canonical_append_referenced_std_sources(SourceInput *input, ZBuf *combined, const Program *program, const ZStdSourceModule *owner, ZDiag *diag) {
   const ZStdSourceModule **stack = z_checked_calloc(z_std_source_module_count(), sizeof(ZStdSourceModule *));
   size_t stack_len = 0;
-  bool ok = direct_canonical_append_referenced_std_sources_recursive(input, combined, program, NULL, diag, stack, &stack_len);
+  bool ok = direct_canonical_append_referenced_std_sources_recursive(input, combined, program, owner, diag, stack, &stack_len);
   free(stack);
   return ok;
 }
@@ -4387,7 +4396,8 @@ static bool direct_canonical_resolve_file(const char *path, const char *root, So
     return false;
   }
 
-  if (!direct_canonical_append_referenced_std_sources(input, combined, &program, diag)) {
+  const ZStdSourceModule *std_owner = direct_embedded_std_source_module_for_file(path, source);
+  if (!direct_canonical_append_referenced_std_sources(input, combined, &program, std_owner, diag)) {
     if (!diag->path) diag->path = z_strdup(path);
   }
 

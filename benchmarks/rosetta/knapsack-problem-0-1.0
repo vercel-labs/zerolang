@@ -1,15 +1,5 @@
-fn pow2(exp: u32) -> u32 {
-    var result: u32 = 1
-    var i: u32 = 0
-    while i < exp {
-        result = result * 2
-        i = i + 1
-    }
-    return result
-}
-
 fn hasBit(mask: u32, bit: u32) -> Bool {
-    return mask / pow2(bit) % 2 == 1
+    return mask / std.math.powU32(2, bit) % 2 == 1
 }
 
 fn bestValue() -> u32 {

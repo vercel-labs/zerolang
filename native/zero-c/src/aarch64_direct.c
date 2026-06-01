@@ -651,6 +651,16 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
     case IR_VALUE_BINARY: return a64_emit_binary_value_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_COMPARE: return a64_emit_compare_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_CALL: return a64_emit_call_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_RAND_NEXT_U32:
+      if (value->local_index >= fun->local_len) return a64_diag(diag, "direct AArch64 std.rand.nextU32 local is out of range", value->line, value->column, "invalid RandSource");
+      a64_emit_load_local_w(text, fun, 8, value->local_index, 0, frame_size);
+      z_aarch64_emit_movz_w(text, 9, 1664525u);
+      z_aarch64_emit_mul_w_reg(text, 8, 8, 9);
+      z_aarch64_emit_movz_w(text, 9, 1013904223u);
+      z_aarch64_emit_add_w_reg(text, 8, 8, 9);
+      a64_emit_store_local_w(text, fun, 8, value->local_index, 0, frame_size);
+      if (reg != 8) z_aarch64_emit_mov_w(text, reg, 8);
+      return true;
     case IR_VALUE_MAYBE_HAS:
       if (value->local_index >= fun->local_len ||
           (fun->locals[value->local_index].type != IR_TYPE_MAYBE_BYTE_VIEW && fun->locals[value->local_index].type != IR_TYPE_MAYBE_SCALAR)) {

@@ -222,9 +222,10 @@ pub fn main() -> Void {
 
     var rng: RandSource = std.rand.seed(7_u32)
     let random: u32 = std.rand.nextU32(&mut rng)
+    let bit: Bool = std.rand.nextBool(&mut rng)
 
     let duration: Duration = std.time.add(std.time.ms(250), std.time.seconds(1))
-    expect std.time.asMsFloor(duration) == 1250
+    expect random == 1025555898_u32 && bit && std.time.asMsFloor(duration) == 1250
 }
 ```
 

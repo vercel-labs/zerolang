@@ -1,12 +1,6 @@
 fn squareDoor(door: usize) -> Bool {
-    var root: usize = 1
-    while root * root <= door {
-        if root * root == door {
-            return true
-        }
-        root = root + 1
-    }
-    return false
+    let root: usize = std.math.sqrtFloorU32(door as u32) as usize
+    return root * root == door
 }
 
 pub fn main(world: World) -> Void raises {

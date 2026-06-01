@@ -1,0 +1,64 @@
+pub fn main(world: World) -> Void raises {
+    var ok: Bool = true
+    let duration: Duration = std.time.add(std.time.us(2500_i64), std.time.ms(1))
+    let window: Duration = std.time.add(std.time.minutes(1), std.time.seconds(30))
+    let clamped: Duration = std.time.clamp(std.time.seconds(3), std.time.seconds(1), std.time.seconds(2))
+    if std.time.asNs(std.time.ns(42_i64)) != 42_i64 {
+        ok = false
+    }
+    if std.time.asUsFloor(std.time.ns(1999_i64)) != 1_i64 {
+        ok = false
+    }
+    if std.time.asMsFloor(duration) != 3 {
+        ok = false
+    }
+    if std.time.asSecondsFloor(window) != 90_i64 {
+        ok = false
+    }
+    if std.time.asSecondsFloor(clamped) != 2_i64 {
+        ok = false
+    }
+    if !std.time.lessThan(std.time.zero(), duration) {
+        ok = false
+    }
+    if !std.time.isZero(std.time.zero()) {
+        ok = false
+    }
+    var rng: RandSource = std.rand.seed(7_u32)
+    let first: u32 = std.rand.nextU32(&mut rng)
+    let bit: Bool = std.rand.nextBool(&mut rng)
+    let third: u32 = std.rand.nextU32(&mut rng)
+    if first != 1025555898_u32 || !bit || third != 2630631676_u32 {
+        ok = false
+    }
+    let factorial: Maybe<u32> = std.math.factorialU32(5_u32)
+    if factorial.has {
+        if factorial.value != 120_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let binomial: Maybe<u32> = std.math.binomialU32(6_u32, 2_u32)
+    if binomial.has {
+        if binomial.value != 15_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let checked: Maybe<u32> = std.math.checkedPowU32(2_u32, 10_u32)
+    if checked.has {
+        if checked.value != 1024_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    if std.math.sqrtFloorU32(99) != 9 || std.math.saturatingAddU32(4294967295_u32, 1_u32) != 4294967295_u32 {
+        ok = false
+    }
+    if ok {
+        check world.out.write("std numeric random time ok\n")
+    }
+}

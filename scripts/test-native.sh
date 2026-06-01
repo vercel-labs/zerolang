@@ -19,6 +19,7 @@ make -C native/zero-c
 bin/zero check --json std/path.0 >/dev/null
 bin/zero check --json std/str.0 >/dev/null
 bin/zero check --json std/math.0 >/dev/null
+bin/zero check --json std/time.0 >/dev/null
 
 mkdir -p .zero/native-test .zero/conformance
 
@@ -95,6 +96,7 @@ expected_output() {
     conformance/native/pass/std-crypto-hmac32.0) printf "crypto hmac32 ok" ;;
     conformance/native/pass/string-byte-ergonomics.0) printf "string byte ergonomics ok" ;;
     conformance/native/pass/std-math-breadth.0) printf "std math breadth ok" ;;
+    conformance/native/pass/std-numeric-random-time.0) printf "std numeric random time ok" ;;
     conformance/native/pass/std-path-io-breadth.0) printf "std path io breadth ok" ;;
     conformance/native/pass/std-str-breadth.0) printf "std str breadth ok" ;;
     examples/std-str.0) printf "std str ok" ;;
@@ -135,6 +137,7 @@ examples=(
   conformance/native/pass/std-crypto-hmac32.0
   conformance/native/pass/string-byte-ergonomics.0
   conformance/native/pass/std-math-breadth.0
+  conformance/native/pass/std-numeric-random-time.0
   conformance/native/pass/std-path-io-breadth.0
   conformance/native/pass/std-str-breadth.0
 )

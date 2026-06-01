@@ -4,14 +4,24 @@ Runnable today:
 
 | API | Return | Notes |
 | --- | --- | --- |
+| `std.time.ns(value)` | `Duration` | Builds a nanosecond duration. |
+| `std.time.us(value)` | `Duration` | Builds a microsecond duration. |
 | `std.time.ms(value)` | `Duration` | Builds a millisecond duration. |
 | `std.time.seconds(value)` | `Duration` | Builds a second duration. |
+| `std.time.minutes(value)` | `Duration` | Builds a minute duration. |
+| `std.time.hours(value)` | `Duration` | Builds an hour duration. |
+| `std.time.zero()` | `Duration` | Returns a zero duration. |
 | `std.time.add(a, b)` | `Duration` | Adds two durations. |
 | `std.time.sub(a, b)` | `Duration` | Subtracts one duration from another. |
 | `std.time.min(a, b)` | `Duration` | Returns the smaller duration. |
 | `std.time.max(a, b)` | `Duration` | Returns the larger duration. |
+| `std.time.clamp(value, low, high)` | `Duration` | Clamps a duration between normalized bounds. |
+| `std.time.asNs(value)` | `i64` | Converts to nanoseconds. |
+| `std.time.asUsFloor(value)` | `i64` | Converts to whole microseconds. |
 | `std.time.asMsFloor(value)` | `i32` | Converts to whole milliseconds. |
+| `std.time.asSecondsFloor(value)` | `i64` | Converts to whole seconds. |
 | `std.time.lessThan(a, b)` | `Bool` | Compares two durations. |
+| `std.time.isZero(value)` | `Bool` | Reports whether a duration is zero. |
 | `std.time.monotonic()` | `Duration` | Reads a monotonic target clock where available. |
 | `std.time.wallSeconds()` | `i64` | Reads target wall-clock seconds where available. |
 

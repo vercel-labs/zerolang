@@ -18,14 +18,14 @@ Runnable modules:
 - `std.args`: hosted process argument count and indexed lookup.
 - `std.env`: hosted environment variable lookup.
 - `std.fs`: hosted file lifecycle helpers, owned file handles, byte reads/writes, remove, rename, and close.
-- `std.math`: pure fixed-width integer helpers and small number-theory routines.
+- `std.math`: fixed-width integer min/max/clamp, checked and saturating arithmetic, and small number-theory routines.
 - `std.path`: fixed-buffer lexical path helpers.
 - `std.str`: allocation-free byte-string helpers over spans and caller-owned storage.
 - `std.parse`: allocation-free byte scanners and integer/bool parsers.
 - `std.codec`: byte-oriented integer encoding, varint length, and CRC-32 helpers.
 - `std.json`: string and byte-span validation, streaming token counts, explicit-allocator parsing, and caller-buffer string writing.
-- `std.time`: duration math plus target-gated monotonic and wall-clock helpers.
-- `std.rand`: explicit deterministic random sources and target entropy helpers.
+- `std.time`: duration construction, conversion, comparison, and target-gated clock helpers.
+- `std.rand`: explicit deterministic random sources, random bits, and target entropy helpers.
 - `std.proc`: host process status helpers behind the process capability.
 - `std.crypto`: small hash, keyed hash, constant-time equality, and entropy helpers.
 - `std.net`: network capability metadata and bootstrap connection/listener handles.

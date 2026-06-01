@@ -1,16 +1,21 @@
 pub fn main(world: World) -> Void raises {
     let duration: Duration = std.time.sub(std.time.seconds(2), std.time.ms(500))
+    let short: Duration = std.time.us(250000_i64)
+    let window: Duration = std.time.add(std.time.minutes(1), std.time.seconds(30))
+    let bounded: Duration = std.time.clamp(std.time.hours(2), std.time.seconds(1), std.time.minutes(10))
+    let zero: Duration = std.time.zero()
     let _now: Duration = std.time.monotonic()
     let wall: i64 = std.time.wallSeconds()
     var rng: RandSource = std.rand.seed(7_u32)
     let first: u32 = std.rand.nextU32(&mut rng)
-    let second: u32 = std.rand.nextU32(&mut rng)
+    let second: Bool = std.rand.nextBool(&mut rng)
     let _entropy: u32 = std.rand.entropyU32()
+    let _entropy_seed: RandSource = std.rand.entropySeed()
     let status: ProcStatus = std.proc.spawn("zero-noop")
     let hash: u32 = std.crypto.hash32(std.mem.span("message"))
     let hmac: u32 = std.crypto.hmac32(std.mem.span("key"), std.mem.span("message"))
     let _secure: u32 = std.crypto.secureRandomU32()
-    if std.time.asMsFloor(duration) == 1500 && wall > 0 && first != second && std.proc.exitCode(status) == 0 && hash != 0_u32 && hmac != 0_u32 && std.crypto.constantTimeEql(std.mem.span("same"), std.mem.span("same")) {
+    if std.time.asNs(std.time.ns(42_i64)) == 42_i64 && std.time.asUsFloor(short) == 250000_i64 && std.time.asMsFloor(duration) == 1500 && std.time.asSecondsFloor(window) == 90_i64 && std.time.asSecondsFloor(bounded) == 600_i64 && std.time.isZero(zero) && wall > 0 && first == 1025555898_u32 && second && std.proc.exitCode(status) == 0 && hash != 0_u32 && hmac != 0_u32 && std.crypto.constantTimeEql(std.mem.span("same"), std.mem.span("same")) {
         check world.out.write("std platform ok\n")
     }
 }

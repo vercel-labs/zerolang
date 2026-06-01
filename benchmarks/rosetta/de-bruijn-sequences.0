@@ -1,15 +1,5 @@
-fn pow(base: u32, exp: u32) -> u32 {
-    var result: u32 = 1
-    var i: u32 = 0
-    while i < exp {
-        result = result * base
-        i = i + 1
-    }
-    return result
-}
-
 pub fn main(world: World) -> Void raises {
-    if pow(2, 3) == 8 {
+    if std.math.powU32(2, 3) == 8 {
         check world.out.write("de bruijn ok\n")
     }
 }

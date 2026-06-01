@@ -3102,10 +3102,34 @@ writeFileSync(directStdMathSource, `export c fn main() -> u8 {
     if std.math.minU32(4000000000_u32, 3) != 3 {
         ok = false
     }
+    if std.math.minI32(0_i32 - 8_i32, 3) != 0_i32 - 8_i32 {
+        ok = false
+    }
+    if std.math.minUsize(8_usize, 3_usize) != 3_usize {
+        ok = false
+    }
+    if std.math.minI64(8_i64, 3_i64) != 3_i64 {
+        ok = false
+    }
+    if std.math.minU64(8_u64, 3_u64) != 3_u64 {
+        ok = false
+    }
     if std.math.maxU32(8, 3) != 8 {
         ok = false
     }
     if std.math.maxU32(4000000000_u32, 3) != 4000000000_u32 {
+        ok = false
+    }
+    if std.math.maxI32(0_i32 - 8_i32, 3) != 3 {
+        ok = false
+    }
+    if std.math.maxUsize(8_usize, 3_usize) != 8_usize {
+        ok = false
+    }
+    if std.math.maxI64(8_i64, 3_i64) != 8_i64 {
+        ok = false
+    }
+    if std.math.maxU64(8_u64, 3_u64) != 8_u64 {
         ok = false
     }
     if std.math.clampU32(10, 2, 7) != 7 {
@@ -3117,13 +3141,66 @@ writeFileSync(directStdMathSource, `export c fn main() -> u8 {
     if std.math.clampU32(1, 7, 2) != 2 {
         ok = false
     }
+    if std.math.clampI32(0_i32 - 10_i32, 0_i32 - 5_i32, 7) != 0_i32 - 5_i32 {
+        ok = false
+    }
+    if std.math.clampUsize(1_usize, 7_usize, 2_usize) != 2_usize {
+        ok = false
+    }
+    if std.math.clampI64(10_i64, 2_i64, 7_i64) != 7_i64 {
+        ok = false
+    }
+    if std.math.clampU64(1_u64, 7_u64, 2_u64) != 2_u64 {
+        ok = false
+    }
+    if std.math.absI32(0_i32 - 7_i32) != 7_u32 {
+        ok = false
+    }
+    if std.math.absI64(0_i64 - 9_i64) != 9_u64 {
+        ok = false
+    }
+    let checked_add_u32: Maybe<u32> = std.math.checkedAddU32(40_u32, 2_u32)
+    let checked_sub_u32: Maybe<u32> = std.math.checkedSubU32(44_u32, 2_u32)
+    let checked_mul_u32: Maybe<u32> = std.math.checkedMulU32(6_u32, 7_u32)
+    let checked_add_usize: Maybe<usize> = std.math.checkedAddUsize(40_usize, 2_usize)
+    let checked_sub_usize: Maybe<usize> = std.math.checkedSubUsize(44_usize, 2_usize)
+    let checked_mul_usize: Maybe<usize> = std.math.checkedMulUsize(6_usize, 7_usize)
+    let checked_add_i32: Maybe<i32> = std.math.checkedAddI32(40, 2)
+    let checked_sub_i32: Maybe<i32> = std.math.checkedSubI32(40, 0_i32 - 2_i32)
+    let checked_mul_i32: Maybe<i32> = std.math.checkedMulI32(6, 7)
+    if !checked_add_u32.has || !checked_sub_u32.has || !checked_mul_u32.has || !checked_add_usize.has || !checked_sub_usize.has || !checked_mul_usize.has || !checked_add_i32.has || !checked_sub_i32.has || !checked_mul_i32.has {
+        ok = false
+    }
+    let checked_add_u32_overflow: Maybe<u32> = std.math.checkedAddU32(4294967295_u32, 1_u32)
+    let checked_sub_u32_overflow: Maybe<u32> = std.math.checkedSubU32(1_u32, 2_u32)
+    let checked_mul_u32_overflow: Maybe<u32> = std.math.checkedMulU32(4000000000_u32, 2_u32)
+    if checked_add_u32_overflow.has || checked_sub_u32_overflow.has || checked_mul_u32_overflow.has {
+        ok = false
+    }
+    if std.math.saturatingAddU32(4294967295_u32, 1_u32) != 4294967295_u32 || std.math.saturatingSubU32(1_u32, 2_u32) != 0_u32 || std.math.saturatingMulU32(4000000000_u32, 2_u32) != 4294967295_u32 {
+        ok = false
+    }
+    if std.math.saturatingAddUsize(18446744073709551615_usize, 1_usize) != 18446744073709551615_usize || std.math.saturatingSubUsize(1_usize, 2_usize) != 0_usize || std.math.saturatingMulUsize(18446744073709551615_usize, 2_usize) != 18446744073709551615_usize {
+        ok = false
+    }
+    if std.math.saturatingAddI32(2147483647, 1) != 2147483647 || std.math.saturatingSubI32(0_i32 - 2147483647_i32 - 1_i32, 1) != 0_i32 - 2147483647_i32 - 1_i32 || std.math.saturatingMulI32(2147483647, 2) != 2147483647 {
+        ok = false
+    }
     if std.math.gcdU32(84, 30) != 6 {
         ok = false
     }
     if std.math.lcmU32(21, 6) != 42 {
         ok = false
     }
+    let checked_lcm: Maybe<u32> = std.math.checkedLcmU32(21_u32, 6_u32)
+    if !checked_lcm.has {
+        ok = false
+    }
     if std.math.powU32(3, 4) != 81 {
+        ok = false
+    }
+    let checked_pow: Maybe<u32> = std.math.checkedPowU32(2_u32, 10_u32)
+    if !checked_pow.has {
         ok = false
     }
     if std.math.modPowU32(4, 13, 497) != 445 {
@@ -3136,6 +3213,17 @@ writeFileSync(directStdMathSource, `export c fn main() -> u8 {
         ok = false
     }
     if std.math.isPrimeU32(33) {
+        ok = false
+    }
+    if !std.math.isEvenU32(42) || !std.math.isOddU32(41) {
+        ok = false
+    }
+    if std.math.sqrtFloorU32(99) != 9 {
+        ok = false
+    }
+    let factorial: Maybe<u32> = std.math.factorialU32(5_u32)
+    let binomial: Maybe<u32> = std.math.binomialU32(5_u32, 2_u32)
+    if !factorial.has || !binomial.has {
         ok = false
     }
     if std.math.divisorCountU32(28) != 6 {
@@ -3162,9 +3250,63 @@ for (const { target, compiler, emissionPath, magic } of directByteCopyFillTarget
   if (compiler === "zero-coff-x64") {
     assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x92, 0xc0])));
     assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x97, 0xc0])));
-    assert.equal(directStdMathBytes.includes(Buffer.from([0x0f, 0x9c, 0xc0])), false);
-    assert.equal(directStdMathBytes.includes(Buffer.from([0x0f, 0x9f, 0xc0])), false);
+    assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x9c, 0xc0])));
+    assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x9f, 0xc0])));
   }
+}
+const directStdTimeRandSource = join(outDir, "direct-std-time-rand-matrix.0");
+writeFileSync(directStdTimeRandSource, `export c fn main() -> u8 {
+    var ok: Bool = true
+    let duration: Duration = std.time.add(std.time.us(2500_i64), std.time.ms(1))
+    let window: Duration = std.time.add(std.time.minutes(1), std.time.seconds(30))
+    let clamped: Duration = std.time.clamp(std.time.hours(2), std.time.seconds(1), std.time.minutes(10))
+    let zero: Duration = std.time.zero()
+    if std.time.asNs(std.time.ns(42_i64)) != 42_i64 {
+        ok = false
+    }
+    if std.time.asUsFloor(std.time.ns(1999_i64)) != 1_i64 {
+        ok = false
+    }
+    if std.time.asMsFloor(duration) != 3 {
+        ok = false
+    }
+    if std.time.asSecondsFloor(window) != 90_i64 {
+        ok = false
+    }
+    if std.time.asSecondsFloor(clamped) != 600_i64 {
+        ok = false
+    }
+    if !std.time.lessThan(zero, duration) || !std.time.isZero(zero) {
+        ok = false
+    }
+    if std.time.asSecondsFloor(std.time.max(duration, window)) != 90_i64 {
+        ok = false
+    }
+    if std.time.asNs(std.time.min(duration, window)) != 3500000_i64 {
+        ok = false
+    }
+    var rng: RandSource = std.rand.seed(7_u32)
+    let first: u32 = std.rand.nextU32(&mut rng)
+    let bit: Bool = std.rand.nextBool(&mut rng)
+    let third: u32 = std.rand.nextU32(&mut rng)
+    if first != 1025555898_u32 || !bit || third != 2630631676_u32 {
+        ok = false
+    }
+    if ok {
+        return 1_u8
+    }
+    return 0_u8
+}
+`);
+for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
+  const directStdTimeRandPath = join(outDir, `direct-std-time-rand-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
+  rmSync(directStdTimeRandPath, { force: true });
+  const directStdTimeRandReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdTimeRandSource, "--out", directStdTimeRandPath]).body;
+  const directStdTimeRandBytes = readFileSync(directStdTimeRandPath);
+  assert.equal(directStdTimeRandReport.compiler, compiler);
+  assert.equal(directStdTimeRandReport.generatedCBytes, 0);
+  assert.equal(directStdTimeRandReport.objectBackend.objectEmission.path, emissionPath);
+  assert(directStdTimeRandBytes.subarray(0, magic.length).equals(magic));
 }
 const directMachOPath = join(outDir, "direct-darwin-arm64.o");
 rmSync(directMachOPath, { force: true });

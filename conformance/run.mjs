@@ -345,6 +345,7 @@ for (const fixture of [
   "conformance/native/pass/std-fs-polish.0",
   "conformance/native/pass/std-fs-breadth.0",
   "conformance/native/pass/std-math-breadth.0",
+  "conformance/native/pass/std-numeric-random-time.0",
   "conformance/native/pass/std-path-io-breadth.0",
   "conformance/native/pass/std-str-breadth.0",
   "conformance/native/pass/std-path-helper-name-collision.0",
@@ -3725,6 +3726,7 @@ assert.deepEqual(packageGraph.sourceFiles.sort(), [
   "conformance/check/pass/package/src/types.0",
   "std/mem.0",
   "std/parse.0",
+  "std/time.0",
 ]);
 assert(packageGraph.requiresCapabilities.includes("codec"));
 assert(packageGraph.requiresCapabilities.includes("parse"));
@@ -3796,6 +3798,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/range-slices.0", "range-slices", { stdout: "range slices ok\n" }],
   ["conformance/native/pass/byte-view-call-single-eval.0", "byte-view-call-single-eval", { stdout: "byte view call single eval ok\n" }],
   ["conformance/native/pass/std-math-breadth.0", "std-math-breadth", { stdout: "std math breadth ok\n" }],
+  ["conformance/native/pass/std-numeric-random-time.0", "std-numeric-random-time", { stdout: "std numeric random time ok\n" }],
   ["conformance/native/pass/std-str-breadth.0", "std-str-breadth", { stdout: "std str breadth ok\n" }],
   ["conformance/native/pass/std-mem-generic-items.0", "std-mem-generic-items", { stdout: "std mem generic items ok\n" }],
   ["conformance/native/pass/std-mem-field-items.0", "std-mem-field-items", { stdout: "std mem field items ok\n" }],

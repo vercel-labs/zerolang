@@ -1,15 +1,8 @@
-fn factorial(n: u32) -> u32 {
-    var result: u32 = 1
-    var value: u32 = 2
-    while value <= n {
-        result = result * value
-        value = value + 1
-    }
-    return result
-}
-
 pub fn main(world: World) -> Void raises {
-    if factorial(4) == 24 {
-        check world.out.write("permutations by swapping ok\n")
+    let value: Maybe<u32> = std.math.factorialU32(4_u32)
+    if value.has {
+        if value.value == 24_u32 {
+            check world.out.write("permutations by swapping ok\n")
+        }
     }
 }

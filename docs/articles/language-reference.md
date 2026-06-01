@@ -726,10 +726,11 @@ Current native helpers include:
 - `std.parse`: byte scanners, integer parsers, and boolean parsers
 - `std.fmt`: caller-buffer formatting for boolean and integer text
 - `std.text`: ASCII and UTF-8 validation helpers
-- `std.time`: duration helpers such as `ms`, `seconds`, `add`, and `asMsFloor`
+- `std.time`: duration helpers such as `ns`, `us`, `ms`, `seconds`,
+  `minutes`, `hours`, `add`, `clamp`, and `asMsFloor`
 - `std.args`: CLI helpers `len()` and `get(index) -> Maybe<String>`
-- `std.math`: pure fixed-width helpers such as `gcdU32`, `powU32`,
-  `modPowU32`, and `isPrimeU32`
+- `std.math`: pure fixed-width helpers such as checked and saturating
+  arithmetic, `gcdU32`, `powU32`, `sqrtFloorU32`, and `isPrimeU32`
 - `std.path`: fixed-buffer path helpers `basename(path) -> String`,
   `dirname(path) -> String`, `extension(path) -> String`,
   `join(buffer, left, right) -> Maybe<String>`,

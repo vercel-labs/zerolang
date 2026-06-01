@@ -625,6 +625,13 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
     case IR_VALUE_BINARY: return coff_emit_binary_value(text, fun, value, ctx, diag);
     case IR_VALUE_COMPARE: return coff_emit_compare_value(text, fun, value, ctx, diag);
     case IR_VALUE_CALL: return coff_emit_call_value(text, fun, value, ctx, diag);
+    case IR_VALUE_RAND_NEXT_U32:
+      if (value->local_index >= fun->local_len) return coff_diag_at(diag, "direct COFF std.rand.nextU32 local is out of range", value->line, value->column, "invalid RandSource");
+      coff_emit_load_local_slot_eax(text, fun, value->local_index, 0);
+      z_x64_emit_imul_reg_i32(text, 0, 1664525, false);
+      z_x64_emit_add_rax_u32(text, 1013904223u, false);
+      coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 0, 0, false);
+      return true;
     case IR_VALUE_VEC_LEN:
     case IR_VALUE_VEC_CAPACITY:
       if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec helper requires a Vec local", value->line, value->column, "invalid Vec local");

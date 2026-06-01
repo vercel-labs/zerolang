@@ -24,6 +24,291 @@ fn __zero_std_math_clamp_u32(value: u32, low: u32, high: u32) -> u32 {
     return value
 }
 
+fn __zero_std_math_min_i32(left: i32, right: i32) -> i32 {
+    if left < right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_max_i32(left: i32, right: i32) -> i32 {
+    if left > right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_clamp_i32(value: i32, low: i32, high: i32) -> i32 {
+    let lower: i32 = __zero_std_math_min_i32(low, high)
+    let upper: i32 = __zero_std_math_max_i32(low, high)
+    if value < lower {
+        return lower
+    }
+    if value > upper {
+        return upper
+    }
+    return value
+}
+
+fn __zero_std_math_min_usize(left: usize, right: usize) -> usize {
+    if left < right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_max_usize(left: usize, right: usize) -> usize {
+    if left > right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_clamp_usize(value: usize, low: usize, high: usize) -> usize {
+    let lower: usize = __zero_std_math_min_usize(low, high)
+    let upper: usize = __zero_std_math_max_usize(low, high)
+    if value < lower {
+        return lower
+    }
+    if value > upper {
+        return upper
+    }
+    return value
+}
+
+fn __zero_std_math_min_i64(left: i64, right: i64) -> i64 {
+    if left < right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_max_i64(left: i64, right: i64) -> i64 {
+    if left > right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_clamp_i64(value: i64, low: i64, high: i64) -> i64 {
+    let lower: i64 = __zero_std_math_min_i64(low, high)
+    let upper: i64 = __zero_std_math_max_i64(low, high)
+    if value < lower {
+        return lower
+    }
+    if value > upper {
+        return upper
+    }
+    return value
+}
+
+fn __zero_std_math_min_u64(left: u64, right: u64) -> u64 {
+    if left < right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_max_u64(left: u64, right: u64) -> u64 {
+    if left > right {
+        return left
+    }
+    return right
+}
+
+fn __zero_std_math_clamp_u64(value: u64, low: u64, high: u64) -> u64 {
+    let lower: u64 = __zero_std_math_min_u64(low, high)
+    let upper: u64 = __zero_std_math_max_u64(low, high)
+    if value < lower {
+        return lower
+    }
+    if value > upper {
+        return upper
+    }
+    return value
+}
+
+fn __zero_std_math_abs_i32(value: i32) -> u32 {
+    let min_i32: i32 = 0 - 2147483647 - 1
+    if value == min_i32 {
+        return 2147483648_u32
+    }
+    if value < 0 {
+        return (0 - value) as u32
+    }
+    return value as u32
+}
+
+fn __zero_std_math_abs_i64(value: i64) -> u64 {
+    let min_i64: i64 = 0 - 9223372036854775807 - 1
+    if value == min_i64 {
+        return 9223372036854775808_u64
+    }
+    if value < 0 {
+        return (0_i64 - value) as u64
+    }
+    return value as u64
+}
+
+fn __zero_std_math_checked_add_u32(left: u32, right: u32) -> Maybe<u32> {
+    if left > 4294967295_u32 - right {
+        return null
+    }
+    return left + right
+}
+
+fn __zero_std_math_checked_sub_u32(left: u32, right: u32) -> Maybe<u32> {
+    if left < right {
+        return null
+    }
+    return left - right
+}
+
+fn __zero_std_math_checked_mul_u32(left: u32, right: u32) -> Maybe<u32> {
+    if left != 0 && right > 4294967295_u32 / left {
+        return null
+    }
+    return left * right
+}
+
+fn __zero_std_math_saturating_add_u32(left: u32, right: u32) -> u32 {
+    let result: Maybe<u32> = __zero_std_math_checked_add_u32(left, right)
+    if result.has {
+        return result.value
+    }
+    return 4294967295_u32
+}
+
+fn __zero_std_math_saturating_sub_u32(left: u32, right: u32) -> u32 {
+    let result: Maybe<u32> = __zero_std_math_checked_sub_u32(left, right)
+    if result.has {
+        return result.value
+    }
+    return 0
+}
+
+fn __zero_std_math_saturating_mul_u32(left: u32, right: u32) -> u32 {
+    let result: Maybe<u32> = __zero_std_math_checked_mul_u32(left, right)
+    if result.has {
+        return result.value
+    }
+    return 4294967295_u32
+}
+
+fn __zero_std_math_checked_add_usize(left: usize, right: usize) -> Maybe<usize> {
+    let max: usize = 18446744073709551615
+    if left > max - right {
+        return null
+    }
+    return left + right
+}
+
+fn __zero_std_math_checked_sub_usize(left: usize, right: usize) -> Maybe<usize> {
+    if left < right {
+        return null
+    }
+    return left - right
+}
+
+fn __zero_std_math_checked_mul_usize(left: usize, right: usize) -> Maybe<usize> {
+    let max: usize = 18446744073709551615
+    if left != 0 && right > max / left {
+        return null
+    }
+    return left * right
+}
+
+fn __zero_std_math_saturating_add_usize(left: usize, right: usize) -> usize {
+    let result: Maybe<usize> = __zero_std_math_checked_add_usize(left, right)
+    if result.has {
+        return result.value
+    }
+    return 18446744073709551615
+}
+
+fn __zero_std_math_saturating_sub_usize(left: usize, right: usize) -> usize {
+    let result: Maybe<usize> = __zero_std_math_checked_sub_usize(left, right)
+    if result.has {
+        return result.value
+    }
+    return 0
+}
+
+fn __zero_std_math_saturating_mul_usize(left: usize, right: usize) -> usize {
+    let result: Maybe<usize> = __zero_std_math_checked_mul_usize(left, right)
+    if result.has {
+        return result.value
+    }
+    return 18446744073709551615
+}
+
+fn __zero_std_math_checked_add_i32(left: i32, right: i32) -> Maybe<i32> {
+    let max: i32 = 2147483647
+    let min: i32 = 0 - 2147483647 - 1
+    if right > 0 && left > max - right {
+        return null
+    }
+    if right < 0 && left < min - right {
+        return null
+    }
+    return left + right
+}
+
+fn __zero_std_math_checked_sub_i32(left: i32, right: i32) -> Maybe<i32> {
+    let max: i32 = 2147483647
+    let min: i32 = 0 - 2147483647 - 1
+    if right > 0 && left < min + right {
+        return null
+    }
+    if right < 0 && left > max + right {
+        return null
+    }
+    return left - right
+}
+
+fn __zero_std_math_checked_mul_i32(left: i32, right: i32) -> Maybe<i32> {
+    let max: i64 = 2147483647
+    let min: i64 = 0 - 2147483647 - 1
+    let wide: i64 = (left as i64) * (right as i64)
+    if wide > max || wide < min {
+        return null
+    }
+    return wide as i32
+}
+
+fn __zero_std_math_saturating_add_i32(left: i32, right: i32) -> i32 {
+    let result: Maybe<i32> = __zero_std_math_checked_add_i32(left, right)
+    if result.has {
+        return result.value
+    }
+    if right > 0 {
+        return 2147483647
+    }
+    return 0 - 2147483647 - 1
+}
+
+fn __zero_std_math_saturating_sub_i32(left: i32, right: i32) -> i32 {
+    let result: Maybe<i32> = __zero_std_math_checked_sub_i32(left, right)
+    if result.has {
+        return result.value
+    }
+    if right > 0 {
+        return 0 - 2147483647 - 1
+    }
+    return 2147483647
+}
+
+fn __zero_std_math_saturating_mul_i32(left: i32, right: i32) -> i32 {
+    let result: Maybe<i32> = __zero_std_math_checked_mul_i32(left, right)
+    if result.has {
+        return result.value
+    }
+    if (left < 0 && right < 0) || (left > 0 && right > 0) {
+        return 2147483647
+    }
+    return 0 - 2147483647 - 1
+}
+
 fn __zero_std_math_gcd_u32(a0: u32, b0: u32) -> u32 {
     var a: u32 = a0
     var b: u32 = b0
@@ -42,6 +327,13 @@ fn __zero_std_math_lcm_u32(left: u32, right: u32) -> u32 {
     return left / __zero_std_math_gcd_u32(left, right) * right
 }
 
+fn __zero_std_math_checked_lcm_u32(left: u32, right: u32) -> Maybe<u32> {
+    if left == 0 || right == 0 {
+        return 0_u32
+    }
+    return __zero_std_math_checked_mul_u32(left / __zero_std_math_gcd_u32(left, right), right)
+}
+
 fn __zero_std_math_pow_u32(base: u32, exponent: u32) -> u32 {
     var result: u32 = 1
     var current: u32 = base
@@ -52,6 +344,30 @@ fn __zero_std_math_pow_u32(base: u32, exponent: u32) -> u32 {
         }
         current = current * current
         exp = exp / 2
+    }
+    return result
+}
+
+fn __zero_std_math_checked_pow_u32(base: u32, exponent: u32) -> Maybe<u32> {
+    var result: u32 = 1
+    var current: u32 = base
+    var exp: u32 = exponent
+    while exp > 0 {
+        if exp % 2 == 1 {
+            let next_result: Maybe<u32> = __zero_std_math_checked_mul_u32(result, current)
+            if !next_result.has {
+                return null
+            }
+            result = next_result.value
+        }
+        exp = exp / 2
+        if exp > 0 {
+            let next_current: Maybe<u32> = __zero_std_math_checked_mul_u32(current, current)
+            if !next_current.has {
+                return null
+            }
+            current = next_current.value
+        }
     }
     return result
 }
@@ -91,6 +407,63 @@ fn __zero_std_math_is_prime_u32(value: u32) -> Bool {
         divisor = divisor + 2
     }
     return true
+}
+
+fn __zero_std_math_is_even_u32(value: u32) -> Bool {
+    return value % 2 == 0
+}
+
+fn __zero_std_math_is_odd_u32(value: u32) -> Bool {
+    return value % 2 == 1
+}
+
+fn __zero_std_math_sqrt_floor_u32(value: u32) -> u32 {
+    var low: u32 = 0
+    var high: u32 = 65536
+    while low + 1 < high {
+        let mid: u32 = low + (high - low) / 2
+        if mid <= value / mid {
+            low = mid
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_math_factorial_u32(value: u32) -> Maybe<u32> {
+    var result: u32 = 1
+    var next: u32 = 2
+    while next <= value {
+        let multiplied: Maybe<u32> = __zero_std_math_checked_mul_u32(result, next)
+        if !multiplied.has {
+            return null
+        }
+        result = multiplied.value
+        next = next + 1
+    }
+    return result
+}
+
+fn __zero_std_math_binomial_u32(n: u32, k0: u32) -> Maybe<u32> {
+    if k0 > n {
+        return null
+    }
+    var k: u32 = k0
+    if k > n - k {
+        k = n - k
+    }
+    var result: u32 = 1
+    var i: u32 = 1
+    while i <= k {
+        let multiplied: Maybe<u32> = __zero_std_math_checked_mul_u32(result, n - k + i)
+        if !multiplied.has {
+            return null
+        }
+        result = multiplied.value / i
+        i = i + 1
+    }
+    return result
 }
 
 fn __zero_std_math_divisor_count_u32(value: u32) -> u32 {

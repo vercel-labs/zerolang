@@ -26,12 +26,12 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.ascii`: ASCII byte predicates, case conversion, and digit value helpers.
 - `std.fmt`: caller-buffer formatting for booleans and integer text.
 - `std.text`: ASCII and UTF-8 byte-backed text validation.
-- `std.math`: pure `u32` integer helpers, GCD/LCM, powers, modular power, primality, and divisor routines.
+- `std.math`: fixed-width min/max/clamp, checked and saturating integer arithmetic, GCD/LCM, powers, modular power, roots, combinatorics, primality, and divisor routines.
 - `std.path`: target-neutral lexical path basename, dirname, extension, join, normalize, and relative helpers.
 - `std.codec`: byte reads, varint sizing, CRC helpers, and byte checksums.
 - `std.parse`: byte scanners and integer/bool parsers returning `Maybe<T>`.
-- `std.time`: duration construction and conversion helpers.
-- `std.rand`: explicit deterministic random sources.
+- `std.time`: duration construction, conversion, comparison, clamp, and target-gated clock helpers.
+- `std.rand`: explicit deterministic random sources, random bits, and target entropy helpers.
 - `std.crypto`: small hash and byte-oriented crypto helpers.
 - `std.json`: explicit-buffer JSON parsing and string writing helpers.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, prefix/suffix, substring, trim, and word counts.
@@ -148,6 +148,30 @@ pub fn main() -> Void {
         let formatted: Maybe<Span<u8>> = std.fmt.i32(out, parsed.value)
         expect formatted.has && std.mem.eql(formatted.value, "-42")
     }
+}
+```
+
+Use `std.math` checked helpers when overflow is a normal input outcome:
+
+```zero
+pub fn main() -> Void {
+    let value: Maybe<u32> = std.math.checkedMulU32(6_u32, 7_u32)
+    if value.has {
+        expect value.value == 42_u32
+    }
+    expect std.math.sqrtFloorU32(99) == 9
+}
+```
+
+Keep random sources explicit and durations typed:
+
+```zero
+pub fn main() -> Void {
+    var rng: RandSource = std.rand.seed(7_u32)
+    let first: u32 = std.rand.nextU32(&mut rng)
+    let bit: Bool = std.rand.nextBool(&mut rng)
+    let delay: Duration = std.time.add(std.time.ms(250), std.time.seconds(1))
+    expect first == 1025555898_u32 && bit && std.time.asMsFloor(delay) == 1250
 }
 ```
 

@@ -169,7 +169,7 @@ const fixtureTexts = await Promise.all(fixtureFiles.map(async (path) => ({
 const helpersByName = new Map(helpers.map((helper) => [helper.name, helper]));
 const sourceModulesByName = new Map(sourceModules.map((module) => [module.module, module]));
 const sourceCallsByPublicName = new Map(sourceCalls.map((call) => [call.publicName, call]));
-const partiallySourceBackedModules = new Set(["std.mem"]);
+const partiallySourceBackedModules = new Set(["std.mem", "std.time"]);
 const docsEntries = await readdir(publicModuleDocsDir, { withFileTypes: true });
 const publicModuleDocs = new Set(
   docsEntries
