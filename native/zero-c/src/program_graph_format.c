@@ -303,6 +303,7 @@ static void graph_format_free_node_fields(ZProgramGraphNode *node) {
   free(node->type_id);
   free(node->effect_id);
   free(node->node_hash);
+  free(node->path_id);
   *node = (ZProgramGraphNode){0};
 }
 
@@ -685,6 +686,8 @@ void z_program_graph_append_json(ZBuf *buf, const ZProgramGraph *graph, const ZP
     graph_format_append_quoted(buf, node->effect_id);
     zbuf_append(buf, ",\"nodeHash\":");
     graph_format_append_quoted(buf, node->node_hash);
+    zbuf_append(buf, ",\"pathId\":");
+    graph_format_append_quoted(buf, node->path_id);
     zbuf_append(buf, ",\"path\":");
     graph_format_append_quoted(buf, node->path);
     zbuf_appendf(buf, ",\"line\":%d,\"column\":%d,\"public\":%s,\"mutable\":%s,\"static\":%s,\"fallible\":%s,\"exportC\":%s}",

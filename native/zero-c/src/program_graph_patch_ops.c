@@ -654,6 +654,7 @@ static bool patch_apply_delete(ZProgramGraph *graph, ZProgramGraphPatchResult *r
       free(node->type_id);
       free(node->effect_id);
       free(node->node_hash);
+      free(node->path_id);
       continue;
     }
     if (write_node != i) graph->nodes[write_node] = *node;
