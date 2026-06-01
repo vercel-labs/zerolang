@@ -106,8 +106,9 @@ static size_t zero_curl_response_append(ZeroCurlResponseBuf *out, const char *pt
     /* libcurl emits separate blocks for interim and final responses; keep the final block. */
     if (zero_curl_response_header_starts_block(ptr, n)) out->headers_len = 0;
   }
+  if (out->too_large) return 0;
   size_t used = out->headers_len + out->body_len;
-  if (used > out->cap || n > out->cap - used) {
+  if (used < out->headers_len || used > out->cap || n > out->cap - used) {
     out->too_large = 1;
     return 0;
   }
