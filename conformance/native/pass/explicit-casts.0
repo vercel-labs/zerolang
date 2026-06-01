@@ -25,8 +25,9 @@ pub fn main(world: World) -> Void raises {
     let size: usize = count as usize
     let offset: isize = small as isize
     let sum: u16 = small as u16 + 1 as u16
+    let chained: i32 = big as u8 as i32
     let bag: CastBag = CastBag { byte: big as u8, count: small as u32, size: count as usize, signed: small as isize }
-    if byte == 44 && count == 42 && size == 42 && offset == 42 && sum == 43 && narrow(big) == 44 && widen(small) == 42 && toSize(7) == 7 && bag.byte == 44 {
+    if byte == 44 && count == 42 && size == 42 && offset == 42 && sum == 43 && chained == 44 && narrow(big) == 44 && widen(small) == 42 && toSize(7) == 7 && bag.byte == 44 {
         check world.out.write("explicit casts ok\n")
     }
 }
