@@ -3156,6 +3156,32 @@ const programGraphRichView = await readFile(programGraphRichViewPath, "utf8");
 await execFileAsync(zero, ["graph", "dump", "--out", programGraphCharPath, "conformance/native/pass/float-char-casts.0"]);
 await execFileAsync(zero, ["graph", "view", "--out", programGraphCharViewPath, programGraphCharPath]);
 const programGraphCharView = await readFile(programGraphCharViewPath, "utf8");
+
+// Structural node identity (pathId): every node carries a content-independent
+// pathId, the pathId stays stable across a value-only edit while the
+// content-addressed id/nodeHash change, and pathIds are unique within a graph.
+const pathIdFixturePath = `${outDir}/path-id-edit.0`;
+await writeFile(
+  pathIdFixturePath,
+  'pub fn main(world: World) -> Void raises {\n    let big: u32 = 300\n    check world.out.write("x")\n}\n',
+);
+const pathIdBefore = JSON.parse((await execFileAsync(zero, ["graph", "dump", "--json", pathIdFixturePath])).stdout);
+for (const node of pathIdBefore.nodes) assert.ok(node.pathId && node.pathId.length > 0, "every node carries a non-empty pathId");
+const pathIdValues = pathIdBefore.nodes.map((node) => node.pathId);
+assert.equal(new Set(pathIdValues).size, pathIdValues.length, "pathIds are unique within a graph");
+const pathIdBeforeAgain = JSON.parse((await execFileAsync(zero, ["graph", "dump", "--json", pathIdFixturePath])).stdout);
+assert.deepEqual(pathIdBeforeAgain.nodes.map((node) => node.pathId), pathIdValues, "pathIds are deterministic across dumps");
+const pathIdLiteralBefore = pathIdBefore.nodes.find((node) => node.kind === "Literal" && node.value === "300");
+assert.ok(pathIdLiteralBefore, "expected a literal node with value 300");
+await execFileAsync(zero, ["graph", "patch", pathIdFixturePath, "--op", `set node="${pathIdLiteralBefore.id}" field="value" expect="300" value="301"`]);
+const pathIdAfter = JSON.parse((await execFileAsync(zero, ["graph", "dump", "--json", pathIdFixturePath])).stdout);
+const pathIdLiteralAfter = pathIdAfter.nodes.find((node) => node.kind === "Literal" && node.value === "301");
+assert.ok(pathIdLiteralAfter, "expected the edited literal node with value 301");
+assert.equal(pathIdLiteralAfter.pathId, pathIdLiteralBefore.pathId, "pathId stayed stable across a value-only edit");
+assert.notEqual(pathIdLiteralAfter.id, pathIdLiteralBefore.id, "content-addressed id changed after the edit");
+assert.notEqual(pathIdLiteralAfter.nodeHash, pathIdLiteralBefore.nodeHash, "nodeHash changed after the edit");
+await rm(pathIdFixturePath, { force: true });
+
 const programGraphViewCoverage = [
   ["compile-time-v1", "examples/compile-time-v1.0", [/const field_type: String = meta fieldType\(Point, "x"\)/, /readGate<enabled, selected>\(&gate\)/]],
   ["array-repeat-literal", "conformance/native/pass/array-repeat-literal.0", [/\[7_u8; 8\]/, /\[0_u8; 16\]/]],

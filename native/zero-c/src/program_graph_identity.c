@@ -393,10 +393,14 @@ void z_program_graph_finalize_identities(ZProgramGraph *graph) {
     free(node->type_id);
     free(node->effect_id);
     free(node->node_hash);
+    free(node->path_id);
     node->symbol_id = graph_node_symbol_id_in_graph(graph, i, 0);
     node->type_id = graph_node_type_id(node);
     node->effect_id = graph_node_effect_id(node);
     node->node_hash = graph_format_domain_id("nodehash", graph_node_hash_value(node));
+    /* Structural identity is derived from edges/ids; kept out of graph_hash since
+     * those inputs are already hashed below. */
+    node->path_id = z_program_graph_node_path_id(graph, i);
     graph_hash = graph_hash_text(graph_hash, node->id);
     graph_hash = graph_hash_text(graph_hash, node->node_hash);
     graph_hash = graph_hash_text(graph_hash, node->symbol_id);
@@ -413,4 +417,32 @@ void z_program_graph_finalize_identities(ZProgramGraph *graph) {
   }
   free(graph->graph_hash);
   graph->graph_hash = graph_format_domain_id("graph", graph_hash);
+}
+
+static void graph_append_path_id(ZBuf *out, const ZProgramGraph *graph, const char *node_id, size_t depth) {
+  if (!graph || !node_id || depth > graph->node_len) return;
+  const ZProgramGraphEdge *edge = graph_owner_edge_for_node(graph, node_id);
+  if (edge) {
+    graph_append_path_id(out, graph, edge->from, depth + 1);
+    zbuf_append_char(out, '/');
+    zbuf_append(out, edge->kind ? edge->kind : "");
+    zbuf_appendf(out, "[%zu]", edge->order);
+    return;
+  }
+  /* No owning edge: this is a root. Anchor on the module identity so the path is
+   * content-independent and stable across edits. */
+  size_t index = graph_find_node_index(graph, node_id);
+  if (index != SIZE_MAX && graph->nodes[index].kind == Z_PROGRAM_GRAPH_NODE_MODULE) {
+    zbuf_append(out, graph->module_identity ? graph->module_identity : "module:main");
+  } else {
+    zbuf_append(out, node_id);
+  }
+}
+
+char *z_program_graph_node_path_id(const ZProgramGraph *graph, size_t node_index) {
+  if (!graph || node_index >= graph->node_len) return NULL;
+  ZBuf out;
+  zbuf_init(&out);
+  graph_append_path_id(&out, graph, graph->nodes[node_index].id, 0);
+  return out.data ? out.data : z_strdup("");
 }

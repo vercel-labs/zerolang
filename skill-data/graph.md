@@ -46,6 +46,12 @@ zero graph inspect --json <file-or-package>
 zero graph patch --json <file.0> --expect-graph-hash graph:f76987e99677f1b3 --op 'rename node="#ea5ea1ca" expect="main" value="start"'
 ```
 
+Each node also carries a `pathId`: a structural location such as
+`module:hello/function[0]/body[0]/statement[0]` derived from the node's owning
+edges. Unlike the content-addressed `id`/`nodeHash`, a `pathId` stays stable when
+only a node's contents change, so it is a durable handle for the same logical node
+across edits.
+
 ## Patches
 
 Graph patches are checked against the input graph hash and node facts:

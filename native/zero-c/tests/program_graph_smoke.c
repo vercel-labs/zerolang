@@ -306,8 +306,65 @@ static void expect_lower_rejects_reserved_call_name(void) {
   z_program_graph_free(&graph);
 }
 
+static void expect_stable_path_identity(void) {
+  /* Build: module -> function(main) -> block(body) -> let(big: u32) -> literal(300).
+   * The literal is an expression-level node: it has no symbol_id today, and its
+   * content hash (node_hash / #id) is derived from its value. A structural pathId
+   * must stay stable when only the value changes. */
+  ZProgramGraph graph;
+  z_program_graph_init(&graph);
+  free(graph.module_identity);
+  graph.module_identity = z_strdup("module:main");
+  graph.nodes = z_checked_calloc(5, sizeof(ZProgramGraphNode));
+  graph.node_len = 5;
+  graph.node_cap = 5;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "main", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_LET, "big", "u32");
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_LITERAL, NULL, "u32");
+  graph.nodes[4].value = z_strdup("300");
+  graph.edges = z_checked_calloc(4, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 4;
+  graph.edge_cap = 4;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000004", "#000005", "value", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  z_program_graph_finalize_identities(&graph);
+
+  /* finalize_identities populates the stored pathId, matching the on-demand helper. */
+  const char *expected_path = "module:main/function[0]/body[0]/statement[0]/value[0]";
+  expect(graph.nodes[4].path_id != NULL, "finalize did not populate the literal pathId");
+  expect(strcmp(graph.nodes[4].path_id, expected_path) == 0,
+         "literal pathId did not match its structural location");
+  char *on_demand = z_program_graph_node_path_id(&graph, 4);
+  expect(on_demand != NULL && strcmp(on_demand, graph.nodes[4].path_id) == 0,
+         "on-demand pathId disagreed with the stored field");
+  free(on_demand);
+  /* The gap pathId fills: expression-level nodes carry no symbol identity today. */
+  expect(graph.nodes[4].symbol_id == NULL, "literal unexpectedly carries a symbol_id");
+  expect(graph.nodes[3].path_id != NULL && strcmp(graph.nodes[3].path_id, graph.nodes[4].path_id) != 0,
+         "distinct nodes shared a pathId");
+  char *first_hash = z_strdup(graph.nodes[4].node_hash);
+
+  /* Edit only the literal's value. Content identity must change; pathId must not. */
+  free(graph.nodes[4].value);
+  graph.nodes[4].value = z_strdup("301");
+  z_program_graph_finalize_identities(&graph);
+
+  expect(graph.nodes[4].path_id != NULL && strcmp(graph.nodes[4].path_id, expected_path) == 0,
+         "pathId changed after a value-only edit");
+  expect(strcmp(graph.nodes[4].node_hash, first_hash) != 0,
+         "node_hash did not change after a value edit");
+
+  free(first_hash);
+  z_program_graph_free(&graph);
+}
+
 int main(void) {
   expect_lowered_program();
+  expect_stable_path_identity();
   expect_lower_rejects_bad_imports();
   expect_lower_rejects_reserved_function_name();
   expect_lower_rejects_internal_function_name();
