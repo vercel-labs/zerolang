@@ -21,6 +21,8 @@ typedef struct {
 typedef struct {
   size_t patch_offset;
   unsigned callee_index;
+  unsigned external_index;
+  bool external_call;
 } CoffA64CallPatch;
 
 typedef struct {
@@ -86,7 +88,12 @@ static bool coff_a64_record_call_patch(void *user, size_t patch_offset, unsigned
     state->calls.items = z_checked_reallocarray(state->calls.items, state->calls.cap, sizeof(CoffA64CallPatch));
   }
   if (!state->calls.items) return coff_a64_diag(diag, "direct COFF AArch64 backend ran out of memory", value ? value->line : 1, value ? value->column : 1, "allocation failed");
-  state->calls.items[state->calls.len++] = (CoffA64CallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  state->calls.items[state->calls.len++] = (CoffA64CallPatch){
+    .patch_offset = patch_offset,
+    .callee_index = callee_index,
+    .external_index = value ? value->external_index : 0,
+    .external_call = value && value->external_call
+  };
   return true;
 }
 
@@ -100,8 +107,25 @@ static void coff_a64_emit_state_free(CoffA64EmitState *state) {
 static void coff_a64_patch_call_branches(ZBuf *text, const CoffA64CallPatches *patches, const size_t *offsets, size_t function_count) {
   for (size_t i = 0; patches && i < patches->len; i++) {
     const CoffA64CallPatch *patch = &patches->items[i];
+    if (patch->external_call) continue;
     if (patch->callee_index < function_count) z_aarch64_patch_branch26(text, patch->patch_offset, offsets[patch->callee_index]);
   }
+}
+
+static void coff_a64_append_external_call_relocations(ZBuf *relocs, const CoffA64CallPatches *patches, uint32_t external_symbol_base) {
+  for (size_t i = 0; patches && i < patches->len; i++) {
+    const CoffA64CallPatch *patch = &patches->items[i];
+    if (!patch->external_call) continue;
+    z_coff_append_reloc(relocs, (uint32_t)patch->patch_offset, external_symbol_base + patch->external_index, Z_COFF_RELOC_ARM64_BRANCH26);
+  }
+}
+
+static size_t coff_a64_external_call_relocation_count(const CoffA64CallPatches *patches) {
+  size_t count = 0;
+  for (size_t i = 0; patches && i < patches->len; i++) {
+    if (patches->items[i].external_call) count++;
+  }
+  return count;
 }
 
 static void coff_a64_append_object_rodata_relocations(ZBuf *text, ZBuf *relocs, const CoffA64DataPatches *patches, unsigned rodata_base_offset) {
@@ -196,7 +220,7 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
   if (has_rodata) z_aarch64_direct_append_rodata(&rodata, program, rodata_base_offset);
 
   size_t *offsets = z_checked_calloc(program->function_len, sizeof(size_t));
-  ZCoffSymbol *symbols = z_checked_calloc(program->function_len, sizeof(ZCoffSymbol));
+  ZCoffSymbol *symbols = z_checked_calloc(program->function_len + program->external_function_len, sizeof(ZCoffSymbol));
   if (!offsets || !symbols) {
     free(offsets);
     free(symbols);
@@ -253,13 +277,23 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
   }
   coff_a64_patch_call_branches(&text, &state.calls, offsets, program->function_len);
   if (has_rodata) coff_a64_append_object_rodata_relocations(&text, &relocs, &state.data, rodata_base_offset);
+  uint32_t external_symbol_base = (has_rodata ? 2u : 1u) + (uint32_t)symbol_len;
+  for (size_t i = 0; i < program->external_function_len; i++) {
+    symbols[symbol_len++] = (ZCoffSymbol){
+      .name = program->external_functions[i].symbol ? program->external_functions[i].symbol : "zero_external",
+      .section_number = 0,
+      .type = 0x20,
+      .storage_class = Z_COFF_SYMBOL_EXTERNAL
+    };
+  }
+  coff_a64_append_external_call_relocations(&relocs, &state.calls, external_symbol_base);
 
   ZCoffObjectImage image = {
     .machine = Z_COFF_MACHINE_ARM64,
     .text = &text,
     .rodata = has_rodata ? &rodata : NULL,
     .text_relocs = &relocs,
-    .text_reloc_count = (uint16_t)state.data.len,
+    .text_reloc_count = (uint16_t)(state.data.len + coff_a64_external_call_relocation_count(&state.calls)),
     .symbols = symbols,
     .symbol_len = symbol_len
   };

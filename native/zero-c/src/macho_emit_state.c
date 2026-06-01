@@ -54,14 +54,21 @@ void z_macho_emit_context_free(MachOEmitContext *ctx) {
 }
 
 bool z_macho_record_call_patch(MachOEmitContext *ctx, size_t patch_offset, unsigned callee_index, const IrValue *value, ZDiag *diag) {
-  if (!ctx || callee_index >= ctx->function_count) {
+  if (!ctx || (((!value) || !value->external_call) && callee_index >= ctx->function_count)) {
     return macho_emit_state_diag_at(diag, "direct AArch64 Mach-O call target is out of range", value ? value->line : 1, value ? value->column : 1, "invalid callee");
   }
   if (ctx->call_patch_len == ctx->call_patch_cap) {
     ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
     ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(MachOCallPatch));
   }
-  ctx->call_patches[ctx->call_patch_len++] = (MachOCallPatch){.patch_offset = patch_offset, .callee_index = callee_index, .line = value ? value->line : 1, .column = value ? value->column : 1};
+  ctx->call_patches[ctx->call_patch_len++] = (MachOCallPatch){
+    .patch_offset = patch_offset,
+    .callee_index = callee_index,
+    .external_index = value ? value->external_index : 0,
+    .line = value ? value->line : 1,
+    .column = value ? value->column : 1,
+    .external_call = value && value->external_call
+  };
   return true;
 }
 
@@ -127,10 +134,11 @@ static void macho_append_branch_relocations(ZBuf *relocs, const MachOPatchList *
   }
 }
 
-void z_macho_append_call_relocations(ZBuf *relocs, const MachOEmitContext *ctx) {
+void z_macho_append_call_relocations(ZBuf *relocs, const MachOEmitContext *ctx, uint32_t external_symbol_base) {
   for (size_t i = 0; ctx && i < ctx->call_patch_len; i++) {
     const MachOCallPatch *patch = &ctx->call_patches[i];
-    uint32_t reloc_info = (patch->callee_index & 0x00ffffffu) |
+    uint32_t symbol_index = patch->external_call ? external_symbol_base + patch->external_index : patch->callee_index;
+    uint32_t reloc_info = (symbol_index & 0x00ffffffu) |
                           (1u << 24) |
                           (2u << 25) |
                           (1u << 27) |

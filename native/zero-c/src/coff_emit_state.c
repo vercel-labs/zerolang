@@ -41,14 +41,19 @@ void z_coff_emit_context_free(CoffEmitContext *ctx) {
 }
 
 bool z_coff_record_call_patch(CoffEmitContext *ctx, size_t patch_offset, unsigned callee_index, const IrValue *value, ZDiag *diag) {
-  if (!ctx || callee_index >= ctx->function_count) {
+  if (!ctx || (((!value) || !value->external_call) && callee_index >= ctx->function_count)) {
     return coff_emit_state_diag(diag, "direct COFF call target index is out of range", value ? value->line : 1, value ? value->column : 1, "invalid callee");
   }
   if (ctx->call_patch_len == ctx->call_patch_cap) {
     ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
     ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(CoffCallPatch));
   }
-  ctx->call_patches[ctx->call_patch_len++] = (CoffCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  ctx->call_patches[ctx->call_patch_len++] = (CoffCallPatch){
+    .patch_offset = patch_offset,
+    .callee_index = callee_index,
+    .external_index = value ? value->external_index : 0,
+    .external_call = value && value->external_call
+  };
   return true;
 }
 
@@ -92,6 +97,7 @@ size_t z_coff_text_relocation_count(const CoffEmitContext *ctx) {
 void z_coff_patch_call_patches(ZBuf *text, const CoffEmitContext *ctx) {
   for (size_t i = 0; ctx && i < ctx->call_patch_len; i++) {
     const CoffCallPatch *patch = &ctx->call_patches[i];
+    if (patch->external_call) continue;
     z_x64_patch_rel32(text, patch->patch_offset, ctx->function_offsets[patch->callee_index]);
   }
 }
@@ -104,10 +110,11 @@ void z_coff_patch_runtime_patches(ZBuf *text, const CoffEmitContext *ctx, CoffRu
   }
 }
 
-void z_coff_append_call_relocations(ZBuf *relocs, const CoffEmitContext *ctx, uint32_t function_symbol_base) {
+void z_coff_append_call_relocations(ZBuf *relocs, const CoffEmitContext *ctx, uint32_t function_symbol_base, uint32_t external_symbol_base) {
   for (size_t i = 0; ctx && i < ctx->call_patch_len; i++) {
     const CoffCallPatch *patch = &ctx->call_patches[i];
-    z_coff_append_reloc_amd64(relocs, (uint32_t)patch->patch_offset, function_symbol_base + patch->callee_index, Z_COFF_RELOC_AMD64_REL32);
+    uint32_t symbol_index = patch->external_call ? external_symbol_base + patch->external_index : function_symbol_base + patch->callee_index;
+    z_coff_append_reloc_amd64(relocs, (uint32_t)patch->patch_offset, symbol_index, Z_COFF_RELOC_AMD64_REL32);
   }
 }
 

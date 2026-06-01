@@ -1,4 +1,5 @@
 #include "zero.h"
+#include "c_import.h"
 #include "mir_verify.h"
 #include "specialize.h"
 #include "std_source.h"
@@ -849,6 +850,43 @@ static bool ir_find_function_index(const IrProgram *ir, const char *name, unsign
   return false;
 }
 
+static void ir_external_function_push_param(IrProgram *ir, IrExternalFunction *function, IrTypeKind type) {
+  function->param_types = ir_grow_tracked_items(ir, function->param_types, function->param_len, &function->param_cap, 4, sizeof(IrTypeKind));
+  function->param_types[function->param_len++] = type;
+}
+
+static bool ir_find_external_function_index(const IrProgram *ir, const ZCImportFunction *function, unsigned *out_index) {
+  if (!ir || !function || !function->name) return false;
+  for (size_t i = 0; i < ir->external_function_len; i++) {
+    const IrExternalFunction *candidate = &ir->external_functions[i];
+    if (!candidate->symbol || strcmp(candidate->symbol, function->name) != 0 || candidate->return_type != ir_type_kind(function->return_zero_type) || candidate->param_len != function->param_len) continue;
+    bool params_match = true;
+    for (size_t p = 0; p < function->param_len; p++) {
+      if (candidate->param_types[p] != ir_type_kind(function->params[p].zero_type)) {
+        params_match = false;
+        break;
+      }
+    }
+    if (params_match) {
+      if (out_index) *out_index = (unsigned)i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static unsigned ir_add_external_function(IrProgram *ir, const ZCImportFunction *function) {
+  unsigned index = 0;
+  if (ir_find_external_function_index(ir, function, &index)) return index;
+  ir->external_functions = ir_grow_tracked_items(ir, ir->external_functions, ir->external_function_len, &ir->external_function_cap, 4, sizeof(IrExternalFunction));
+  IrExternalFunction *external = &ir->external_functions[ir->external_function_len];
+  *external = (IrExternalFunction){.symbol = z_strdup(function->name), .return_type = ir_type_kind(function->return_zero_type)};
+  for (size_t i = 0; i < function->param_len; i++) {
+    ir_external_function_push_param(ir, external, ir_type_kind(function->params[i].zero_type));
+  }
+  return (unsigned)ir->external_function_len++;
+}
+
 typedef struct {
   const char *name;
   const char *stable_id;
@@ -1381,6 +1419,66 @@ static char *ir_specialized_function_name(const Function *fun, const TypeArgVec 
 
 static char *ir_specialize_type_text(const char *type, const Function *fun, const TypeArgVec *type_args);
 
+static bool ir_lower_c_import_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {
+  if (!program || !expr || expr->kind != EXPR_CALL || !expr->left || expr->left->kind != EXPR_MEMBER ||
+      !expr->left->left || expr->left->left->kind != EXPR_IDENT) {
+    return false;
+  }
+  const char *alias = expr->left->left->text;
+  const char *symbol = expr->left->text;
+  if (ir_function_find_local(fun, alias)) return false;
+  if (!z_c_import_alias_exists(program, alias)) return false;
+  ZCImportFunction function = {0};
+  if (!z_c_import_find_function(program, alias, symbol, &function, NULL)) {
+    ir_mark_unsupported(ir, "direct backend extern c symbol is missing from imported header", expr->line, expr->column, symbol ? symbol : "missing C symbol");
+    return true;
+  }
+  IrTypeKind return_type = ir_type_kind(function.return_zero_type);
+  if (return_type != IR_TYPE_VOID && !ir_type_is_direct_abi(return_type)) {
+    ir_mark_unsupported(ir, "direct backend extern c return type is unsupported", expr->line, expr->column, function.return_c_type ? function.return_c_type : "unsupported C return type");
+    z_c_import_function_free(&function);
+    return true;
+  }
+  if (expr->args.len != function.param_len) {
+    ir_mark_unsupported(ir, "direct backend extern c call argument count does not match header", expr->line, expr->column, symbol ? symbol : "C function");
+    z_c_import_function_free(&function);
+    return true;
+  }
+  for (size_t i = 0; i < function.param_len; i++) {
+    IrTypeKind param_type = ir_type_kind(function.params[i].zero_type);
+    if (!ir_type_is_direct_abi(param_type)) {
+      ir_mark_unsupported(ir, "direct backend extern c parameter type is unsupported", expr->line, expr->column, function.params[i].c_type ? function.params[i].c_type : "unsupported C parameter type");
+      z_c_import_function_free(&function);
+      return true;
+    }
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_CALL, return_type, expr->line, expr->column);
+  value->external_call = true;
+  value->external_index = ir_add_external_function(ir, &function);
+  value->element_type = return_type;
+  for (size_t i = 0; i < expr->args.len; i++) {
+    IrTypeKind expected = ir_type_kind(function.params[i].zero_type);
+    IrValue *arg = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, expr->args.items[i], expected, &arg)) {
+      ir_free_value(value);
+      z_c_import_function_free(&function);
+      return true;
+    }
+    if (arg->type != expected) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend extern c argument type does not match parameter", expr->args.items[i]->line, expr->args.items[i]->column, function.params[i].zero_type ? function.params[i].zero_type : "Unknown");
+      z_c_import_function_free(&function);
+      return true;
+    }
+    ir_value_push_arg(ir, value, arg);
+  }
+  ir->direct_c_import_call_count++;
+  *out = value;
+  z_c_import_function_free(&function);
+  return true;
+}
+
 static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, const char *source_name, const char *display_name, IrValue **out) {
   unsigned callee_index = 0;
   const Function *callee = ir_find_source_function(program, source_name, NULL);
@@ -1724,6 +1822,10 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
     }
     case EXPR_CALL: {
       char *callee_name = ir_expr_callee_name(expr->left);
+      if (ir_lower_c_import_call(program, ir, fun, expr, out)) {
+        free(callee_name);
+        return *out != NULL;
+      }
       if ((strcmp(callee_name, "std.codec.readU8") == 0 ||
            strcmp(callee_name, "std.codec.readU16") == 0 ||
            strcmp(callee_name, "std.codec.readU32") == 0) &&
@@ -3893,6 +3995,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
     ir.program.c_imports.items = ir_grow_items(ir.program.c_imports.items, ir.program.c_imports.len, &ir.program.c_imports.cap, 4, sizeof(CImport));
     ir.program.c_imports.items[ir.program.c_imports.len++] = (CImport){
       .header = source->header ? z_strdup(source->header) : NULL,
+      .resolved_header = source->resolved_header ? z_strdup(source->resolved_header) : NULL,
       .alias = source->alias ? z_strdup(source->alias) : NULL,
       .line = source->line,
       .column = source->column
@@ -4004,6 +4107,11 @@ void z_free_ir_program(IrProgram *program) {
     free(fun->instrs);
   }
   free(program->functions);
+  for (size_t i = 0; i < program->external_function_len; i++) {
+    free(program->external_functions[i].symbol);
+    free(program->external_functions[i].param_types);
+  }
+  free(program->external_functions);
   for (size_t i = 0; i < program->data_segment_len; i++) {
     free(program->data_segments[i].bytes);
   }

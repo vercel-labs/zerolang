@@ -518,12 +518,15 @@ static bool macho_emit_byte_view_pair_at(ZBuf *text, const IrFunction *fun, cons
 }
 
 static bool macho_emit_call_to_reg(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
-  const IrFunction *callee = ctx && ctx->program && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
-  if (!callee) return macho_diag_at(diag, "direct AArch64 Mach-O call target is unavailable", value->line, value->column, "invalid callee");
+  const IrFunction *callee = ctx && ctx->program && !value->external_call && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
+  const IrExternalFunction *external = ctx && ctx->program && value->external_call && value->external_index < ctx->program->external_function_len ? &ctx->program->external_functions[value->external_index] : NULL;
+  if (!callee && !external) return macho_diag_at(diag, "direct AArch64 Mach-O call target is unavailable", value->line, value->column, "invalid callee");
+  size_t param_count = external ? external->param_len : callee->param_count;
   unsigned abi_slots = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
-    if (i >= callee->param_count) return macho_diag_at(diag, "direct AArch64 Mach-O call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
-    unsigned slots = macho_abi_slots_for_param(&callee->locals[i]);
+    if (i >= param_count) return macho_diag_at(diag, "direct AArch64 Mach-O call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    unsigned slots = param_type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
     if (abi_slots + slots > 8) return macho_diag_at(diag, "direct AArch64 Mach-O call supports at most eight ABI argument slots", value->line, value->column, "too many arguments");
     abi_slots += slots;
   }
@@ -534,8 +537,8 @@ static bool macho_emit_call_to_reg(ZBuf *text, const IrFunction *fun, const IrVa
   unsigned arg_slot = scratch_slot;
   for (size_t i = 0; i < value->arg_len; i++) {
     const IrValue *arg = value->args[i];
-    const IrLocal *param = &callee->locals[i];
-    if (param->type == IR_TYPE_BYTE_VIEW) {
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    if (param_type == IR_TYPE_BYTE_VIEW) {
       if (!macho_emit_byte_view_pair_at(text, fun, arg, 8, 9, frame_size, nested_slot, ctx, diag)) return false;
       if (!macho_emit_store_scratch(text, 8, IR_TYPE_U64, arg_slot, arg, diag)) return false;
       if (!macho_emit_store_scratch(text, 9, IR_TYPE_U32, arg_slot + 1, arg, diag)) return false;
@@ -550,8 +553,8 @@ static bool macho_emit_call_to_reg(ZBuf *text, const IrFunction *fun, const IrVa
   unsigned abi_slot = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
     const IrValue *arg = value->args[i];
-    const IrLocal *param = &callee->locals[i];
-    if (param->type == IR_TYPE_BYTE_VIEW) {
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    if (param_type == IR_TYPE_BYTE_VIEW) {
       if (!macho_emit_load_scratch(text, abi_slot, IR_TYPE_U64, arg_slot, arg, diag)) return false;
       if (!macho_emit_load_scratch(text, abi_slot + 1, IR_TYPE_U32, arg_slot + 1, arg, diag)) return false;
       arg_slot += 2;
@@ -563,7 +566,7 @@ static bool macho_emit_call_to_reg(ZBuf *text, const IrFunction *fun, const IrVa
     abi_slot++;
   }
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  if (!z_macho_record_call_patch(ctx, patch, value->callee_index, value, diag)) return false;
+  if (!z_macho_record_call_patch(ctx, patch, value->external_call ? 0 : value->callee_index, value, diag)) return false;
   if (reg != 0) {
     if (macho_type_is_scalar64(value->type)) z_aarch64_emit_mov_x(text, reg, 0);
     else z_aarch64_emit_mov_w(text, reg, 0);
@@ -1505,7 +1508,7 @@ static void macho_append_rodata(ZBuf *rodata, const IrProgram *program, unsigned
 typedef struct {
   ZBuf text, rodata, relocs, strings;
   size_t *offsets;
-  uint32_t *function_string_offsets, runtime_string_offsets[MACHO_RUNTIME_HELPER_COUNT];
+  uint32_t *function_string_offsets, *external_string_offsets, runtime_string_offsets[MACHO_RUNTIME_HELPER_COUNT];
   ZMachOSymbol *symbols;
   size_t symbol_len;
   uint32_t symbol_count, rodata_string_offset;
@@ -1536,6 +1539,7 @@ static void macho_object_build_free(MachOObjectBuild *build) {
   free(build->symbols);
   z_macho_emit_context_free(&build->ctx);
   free(build->function_string_offsets);
+  free(build->external_string_offsets);
   free(build->offsets);
   zbuf_free(&build->strings);
   zbuf_free(&build->relocs);
@@ -1554,7 +1558,8 @@ static bool macho_object_build_init(MachOObjectBuild *build, const IrProgram *pr
   if (build->has_rodata) macho_append_rodata(&build->rodata, program, build->rodata_base_offset);
   build->offsets = z_checked_calloc(program->function_len, sizeof(size_t));
   build->function_string_offsets = z_checked_calloc(program->function_len, sizeof(uint32_t));
-  if (!build->offsets || !build->function_string_offsets) {
+  build->external_string_offsets = program->external_function_len > 0 ? z_checked_calloc(program->external_function_len, sizeof(uint32_t)) : NULL;
+  if (!build->offsets || !build->function_string_offsets || (program->external_function_len > 0 && !build->external_string_offsets)) {
     macho_object_build_free(build);
     return macho_diag(diag, build->offsets ? "out of memory while emitting Mach-O symbols" : "out of memory while emitting Mach-O object");
   }
@@ -1585,7 +1590,6 @@ static bool macho_object_emit_functions(MachOObjectBuild *build, const IrProgram
 }
 
 static void macho_object_append_relocations(MachOObjectBuild *build, const IrProgram *program) {
-  z_macho_append_call_relocations(&build->relocs, &build->ctx);
   if (build->has_rodata) z_macho_append_data_relocations(&build->relocs, &build->ctx, (unsigned)program->function_len);
   uint32_t next_symbol = (uint32_t)program->function_len + (build->has_rodata ? 1u : 0u);
   for (unsigned helper = 0; helper < MACHO_RUNTIME_HELPER_COUNT; helper++) {
@@ -1593,6 +1597,8 @@ static void macho_object_append_relocations(MachOObjectBuild *build, const IrPro
     if (z_macho_runtime_patch_count(&build->ctx, runtime_helper) == 0) continue;
     z_macho_append_runtime_relocations(&build->relocs, &build->ctx, runtime_helper, next_symbol++);
   }
+  z_macho_append_call_relocations(&build->relocs, &build->ctx, next_symbol);
+  next_symbol += (uint32_t)program->external_function_len;
   build->symbol_count = next_symbol;
 }
 
@@ -1607,6 +1613,12 @@ static void macho_object_append_symbol_strings(MachOObjectBuild *build) {
     if (z_macho_runtime_patch_count(&build->ctx, runtime_helper) == 0) continue;
     build->runtime_string_offsets[helper] = (uint32_t)build->strings.len;
     zbuf_append(&build->strings, z_macho_runtime_helper_symbol(runtime_helper));
+    append_u8(&build->strings, 0);
+  }
+  for (size_t i = 0; i < build->ctx.program->external_function_len; i++) {
+    build->external_string_offsets[i] = (uint32_t)build->strings.len;
+    zbuf_append_char(&build->strings, '_');
+    zbuf_append(&build->strings, build->ctx.program->external_functions[i].symbol ? build->ctx.program->external_functions[i].symbol : "zero_external");
     append_u8(&build->strings, 0);
   }
 }
@@ -1634,6 +1646,9 @@ static bool macho_object_build_symbols(MachOObjectBuild *build, const IrProgram 
     MachORuntimeHelper runtime_helper = (MachORuntimeHelper)helper;
     if (z_macho_runtime_patch_count(&build->ctx, runtime_helper) == 0) continue;
     build->symbols[build->symbol_len++] = (ZMachOSymbol){ .string_offset = build->runtime_string_offsets[helper], .type = 0x01 };
+  }
+  for (size_t i = 0; i < program->external_function_len; i++) {
+    build->symbols[build->symbol_len++] = (ZMachOSymbol){ .string_offset = build->external_string_offsets[i], .type = 0x01 };
   }
   return true;
 }

@@ -22,6 +22,8 @@ typedef struct {
 typedef struct {
   size_t patch_offset;
   unsigned callee_index;
+  unsigned external_index;
+  bool external_call;
 } CoffCallPatch;
 
 typedef struct {
@@ -47,7 +49,7 @@ size_t z_coff_runtime_patch_count(const CoffEmitContext *ctx, CoffRuntimeHelper 
 size_t z_coff_text_relocation_count(const CoffEmitContext *ctx);
 void z_coff_patch_call_patches(ZBuf *text, const CoffEmitContext *ctx);
 void z_coff_patch_runtime_patches(ZBuf *text, const CoffEmitContext *ctx, CoffRuntimeHelper helper, size_t target_offset);
-void z_coff_append_call_relocations(ZBuf *relocs, const CoffEmitContext *ctx, uint32_t function_symbol_base);
+void z_coff_append_call_relocations(ZBuf *relocs, const CoffEmitContext *ctx, uint32_t function_symbol_base, uint32_t external_symbol_base);
 void z_coff_append_rodata_relocations(ZBuf *relocs, const CoffEmitContext *ctx, uint32_t rodata_symbol);
 void z_coff_append_runtime_relocations(ZBuf *relocs, const CoffEmitContext *ctx, CoffRuntimeHelper helper, uint32_t runtime_symbol);
 

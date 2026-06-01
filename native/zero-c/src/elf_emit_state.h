@@ -35,6 +35,8 @@ typedef struct {
 typedef struct {
   size_t patch_offset;
   unsigned callee_index;
+  unsigned external_index;
+  bool external_call;
 } ElfCallPatch;
 
 typedef struct {
@@ -69,6 +71,7 @@ bool z_elf_has_runtime_patches(const ElfEmitContext *ctx);
 void z_elf_patch_call_patches(ZBuf *code, const ElfEmitContext *ctx);
 void z_elf_patch_rodata_patches(ZBuf *code, const ElfEmitContext *ctx);
 void z_elf_append_rodata_relocations(ZBuf *rela_text, const ElfEmitContext *ctx, uint32_t rodata_symbol);
+void z_elf_append_external_call_relocations(ZBuf *rela_text, const ElfEmitContext *ctx, uint32_t external_symbol_base);
 void z_elf_append_runtime_relocations(ZBuf *rela_text, const ElfEmitContext *ctx, ElfRuntimeHelper helper, uint32_t runtime_symbol);
 
 #endif

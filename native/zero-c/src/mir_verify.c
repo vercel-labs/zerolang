@@ -312,6 +312,37 @@ static bool mir_verify_direct_function_contract(IrProgram *ir, const IrFunction 
 
 static bool mir_verify_direct_call_contract(IrProgram *ir, const IrValue *value) {
   if (!ir || !ir->mir_valid || !value || value->kind != IR_VALUE_CALL) return ir && ir->mir_valid;
+  if (value->external_call) {
+    if (value->external_index >= ir->external_function_len) {
+      char actual[128];
+      snprintf(actual, sizeof(actual), "external index %u with %zu external function(s)", value->external_index, ir->external_function_len);
+      mir_verify_mark_unsupported(ir, "MIR verifier found external call target outside the import table", value->line, value->column, actual);
+      return false;
+    }
+    const IrExternalFunction *callee = &ir->external_functions[value->external_index];
+    if (value->arg_len != callee->param_len) {
+      char actual[160];
+      snprintf(actual, sizeof(actual), "%zu argument(s) for %zu parameter(s) on %s", value->arg_len, callee->param_len, callee->symbol ? callee->symbol : "<external>");
+      mir_verify_mark_unsupported(ir, "MIR verifier found external call arity mismatch", value->line, value->column, actual);
+      return false;
+    }
+    if (value->type != callee->return_type || value->element_type != callee->return_type) {
+      char actual[192];
+      snprintf(actual, sizeof(actual), "call returns %s value %s but external returns %s", mir_type_kind_name(value->type), mir_type_kind_name(value->element_type), mir_type_kind_name(callee->return_type));
+      mir_verify_mark_unsupported(ir, "MIR verifier found external call return mismatch", value->line, value->column, actual);
+      return false;
+    }
+    for (size_t i = 0; i < value->arg_len; i++) {
+      const IrValue *arg = value->args[i];
+      if (!arg || arg->type != callee->param_types[i]) {
+        char actual[192];
+        snprintf(actual, sizeof(actual), "argument %zu has %s but external parameter has %s", i, arg ? mir_type_kind_name(arg->type) : "missing", mir_type_kind_name(callee->param_types[i]));
+        mir_verify_mark_unsupported(ir, "MIR verifier found external call argument ABI mismatch", arg ? arg->line : value->line, arg ? arg->column : value->column, actual);
+        return false;
+      }
+    }
+    return true;
+  }
   if (value->callee_index >= ir->function_len) {
     char actual[128];
     snprintf(actual, sizeof(actual), "callee index %u with %zu MIR function(s)", value->callee_index, ir->function_len);

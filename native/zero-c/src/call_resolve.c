@@ -175,6 +175,7 @@ const char *z_call_kind_name(ZCallKind kind) {
     case Z_CALL_CONSTRAINED_INTERFACE: return "constrained_interface";
     case Z_CALL_CONCRETE_CONSTRAINED_SHAPE: return "concrete_constrained_shape";
     case Z_CALL_CHOICE_CONSTRUCTOR: return "choice_constructor";
+    case Z_CALL_C_IMPORT: return "c_import";
     case Z_CALL_UNKNOWN:
     default:
       return "unknown";

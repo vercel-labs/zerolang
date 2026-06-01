@@ -586,12 +586,15 @@ static bool a64_emit_index_load_to_reg_at(ZBuf *text, const IrFunction *fun, con
 }
 
 static bool a64_emit_call_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
-  const IrFunction *callee = ctx && ctx->program && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
-  if (!callee) return a64_diag(diag, "direct AArch64 call target is unavailable", value->line, value->column, "invalid callee");
+  const IrFunction *callee = ctx && ctx->program && !value->external_call && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
+  const IrExternalFunction *external = ctx && ctx->program && value->external_call && value->external_index < ctx->program->external_function_len ? &ctx->program->external_functions[value->external_index] : NULL;
+  if (!callee && !external) return a64_diag(diag, "direct AArch64 call target is unavailable", value->line, value->column, "invalid callee");
+  size_t param_count = external ? external->param_len : callee->param_count;
   unsigned abi_slots = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
-    if (i >= callee->param_count) return a64_diag(diag, "direct AArch64 call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
-    unsigned slots = a64_abi_slots_for_param(&callee->locals[i]);
+    if (i >= param_count) return a64_diag(diag, "direct AArch64 call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    unsigned slots = param_type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
     if (abi_slots + slots > 8) return a64_diag(diag, "direct AArch64 call supports at most eight ABI argument slots", value->line, value->column, "too many arguments");
     abi_slots += slots;
   }
@@ -602,8 +605,8 @@ static bool a64_emit_call_to_reg_at(ZBuf *text, const IrFunction *fun, const IrV
   unsigned arg_slot = scratch_slot;
   for (size_t i = 0; i < value->arg_len; i++) {
     const IrValue *arg = value->args[i];
-    const IrLocal *param = &callee->locals[i];
-    if (param->type == IR_TYPE_BYTE_VIEW) {
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    if (param_type == IR_TYPE_BYTE_VIEW) {
       if (!a64_emit_byte_view_pair_at(text, fun, arg, 8, 9, frame_size, nested_slot, ctx, diag)) return false;
       if (!a64_emit_store_scratch(text, 8, IR_TYPE_U64, arg_slot, arg, diag)) return false;
       if (!a64_emit_store_scratch(text, 9, IR_TYPE_U32, arg_slot + 1, arg, diag)) return false;
@@ -618,8 +621,8 @@ static bool a64_emit_call_to_reg_at(ZBuf *text, const IrFunction *fun, const IrV
   unsigned abi_slot = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
     const IrValue *arg = value->args[i];
-    const IrLocal *param = &callee->locals[i];
-    if (param->type == IR_TYPE_BYTE_VIEW) {
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    if (param_type == IR_TYPE_BYTE_VIEW) {
       if (!a64_emit_load_scratch(text, abi_slot, IR_TYPE_U64, arg_slot, arg, diag)) return false;
       if (!a64_emit_load_scratch(text, abi_slot + 1, IR_TYPE_U32, arg_slot + 1, arg, diag)) return false;
       arg_slot += 2;
@@ -631,7 +634,7 @@ static bool a64_emit_call_to_reg_at(ZBuf *text, const IrFunction *fun, const IrV
     abi_slot++;
   }
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  if (!a64_record_call_patch(ctx, patch, value->callee_index, diag, value)) return false;
+  if (!a64_record_call_patch(ctx, patch, value->external_call ? 0 : value->callee_index, diag, value)) return false;
   if (reg != 0) {
     if (a64_type_is_scalar64(value->type)) z_aarch64_emit_mov_x(text, reg, 0);
     else z_aarch64_emit_mov_w(text, reg, 0);

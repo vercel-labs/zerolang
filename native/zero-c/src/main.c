@@ -697,7 +697,64 @@ static bool compile_zero_http_curl_object(const char *runtime_object_file, const
   return ok;
 }
 
-static bool link_zero_runtime_executable(const char *object_file, const char *runtime_object_file, const char *http_object_file, const char *exe_file, const ZToolchainPlan *plan, const ZTargetInfo *target, ZDiag *diag) {
+static bool json_array_next_string(const char **cursor, char *out, size_t out_len) {
+  if (!cursor || !*cursor || !out || out_len == 0) return false;
+  const char *start = strchr(*cursor, '"');
+  if (!start) return false;
+  start++;
+  size_t len = 0;
+  while (start[len] && start[len] != '"') len++;
+  if (!start[len]) return false;
+  size_t copy_len = len < out_len - 1 ? len : out_len - 1;
+  memcpy(out, start, copy_len);
+  out[copy_len] = 0;
+  *cursor = start + len + 1;
+  return true;
+}
+
+static bool runtime_path_is_absolute(const char *path) {
+  if (!path || !path[0]) return false;
+  return path[0] == '/' || (strlen(path) > 2 && path[1] == ':');
+}
+
+static void append_c_link_file_flags(ZBuf *flags, const char *package_root, const char *lib_json) {
+  const char *cursor = lib_json ? lib_json : "";
+  char item[512];
+  while (json_array_next_string(&cursor, item, sizeof(item))) {
+    char *path = runtime_path_is_absolute(item) ? z_strdup(item) : runtime_join_path(package_root && package_root[0] ? package_root : ".", item);
+    zbuf_appendf(flags, " '%s'", path);
+    free(path);
+  }
+}
+
+static void append_c_link_name_flags(ZBuf *flags, const char *link_json) {
+  const char *cursor = link_json ? link_json : "";
+  char item[256];
+  while (json_array_next_string(&cursor, item, sizeof(item))) {
+    zbuf_appendf(flags, " -l%s", item);
+  }
+}
+
+static void append_manifest_c_link_flags(ZBuf *flags, const SourceInput *input) {
+  if (!flags || !input || !input->manifest_path) return;
+  ZDiag read_diag = {0};
+  char *manifest = z_read_file(input->manifest_path, &read_diag);
+  if (!manifest) return;
+  ZManifest parsed = {0};
+  if (!z_parse_manifest_json(manifest, &parsed, &read_diag)) {
+    free(manifest);
+    return;
+  }
+  for (size_t i = 0; i < parsed.c_lib_count; i++) {
+    const ZManifestCLib *lib = &parsed.c_libs[i];
+    append_c_link_file_flags(flags, input->package_root, lib->lib_json);
+    append_c_link_name_flags(flags, lib->link_json);
+  }
+  z_free_manifest(&parsed);
+  free(manifest);
+}
+
+static bool link_zero_runtime_executable(const char *object_file, const char *runtime_object_file, const char *http_object_file, const char *exe_file, const ZToolchainPlan *plan, const ZTargetInfo *target, const SourceInput *input, ZDiag *diag) {
 #if defined(__linux__)
   const char *linux_no_pie = " -no-pie";
 #else
@@ -705,7 +762,13 @@ static bool link_zero_runtime_executable(const char *object_file, const char *ru
 #endif
   const char *object_files[3] = {object_file, runtime_object_file, http_object_file};
   size_t object_count = http_object_file && http_object_file[0] ? 3 : 2;
-  bool ok = z_toolchain_link_objects(plan, target, object_files, object_count, exe_file, linux_no_pie, http_object_file && http_object_file[0] ? "-lcurl 2>/dev/null" : "2>/dev/null");
+  ZBuf post_flags;
+  zbuf_init(&post_flags);
+  append_manifest_c_link_flags(&post_flags, input);
+  if (http_object_file && http_object_file[0]) zbuf_append(&post_flags, " -lcurl");
+  zbuf_append(&post_flags, " 2>/dev/null");
+  bool ok = z_toolchain_link_objects(plan, target, object_files, object_count, exe_file, linux_no_pie, post_flags.data ? post_flags.data : "2>/dev/null");
+  zbuf_free(&post_flags);
   if (!ok && diag) {
     diag->code = 2003;
     diag->line = 1;
@@ -4612,7 +4675,35 @@ static bool load_format_source(const char *input_path, SourceInput *input, ZDiag
   return ok;
 }
 
+static char *resolve_c_import_header_path(const SourceInput *input, const char *header) {
+  if (!header || !header[0]) return z_strdup(header ? header : "");
+  if (runtime_path_is_absolute(header) || direct_file_exists(header)) return z_strdup(header);
+  if (input && input->package_root && input->package_root[0]) {
+    char *package_path = direct_join_path(input->package_root, header);
+    if (direct_file_exists(package_path)) return package_path;
+    free(package_path);
+  }
+  if (input && input->source_file && input->source_file[0]) {
+    char *dir = direct_dirname_of(input->source_file);
+    char *source_path = direct_join_path(dir, header);
+    free(dir);
+    if (direct_file_exists(source_path)) return source_path;
+    free(source_path);
+  }
+  return z_strdup(header);
+}
+
+static void resolve_program_c_import_header_paths(const SourceInput *input, Program *program) {
+  for (size_t i = 0; program && i < program->c_imports.len; i++) {
+    CImport *item = &program->c_imports.items[i];
+    char *resolved = resolve_c_import_header_path(input, item->header);
+    free(item->resolved_header);
+    item->resolved_header = resolved;
+  }
+}
+
 static bool finish_checked_source_input(const ZTargetInfo *target, const char *profile, SourceInput *input, Program *program, ZDiag *diag, long long parse_ms) {
+  resolve_program_c_import_header_paths(input, program);
   input->parse_ms = parse_ms;
   input->interface_ms = input->resolve_ms;
   input->parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(input, NULL, NULL, "parse-tree"));
@@ -5258,6 +5349,7 @@ static RuntimeImportAudit runtime_import_audit_from_ir(const IrProgram *ir) {
 
 static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
   if (!value) return false;
+  if (value->kind == IR_VALUE_CALL && value->external_call) return true;
   if (value->kind == IR_VALUE_JSON_PARSE_BYTES ||
       value->kind == IR_VALUE_JSON_VALIDATE_BYTES ||
       value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
@@ -8928,7 +9020,8 @@ static void append_c_imports_json(ZBuf *buf, const Program *program, const ZTarg
     const CImport *import = &program->c_imports.items[i];
     if (i > 0) zbuf_append(buf, ", ");
     ZDiag read_diag = {0};
-    char *header = z_read_file(import->header, &read_diag);
+    const char *read_path = import->resolved_header && import->resolved_header[0] ? import->resolved_header : import->header;
+    char *header = z_read_file(read_path, &read_diag);
     uint64_t header_hash = fnv1a_text(header ? header : "");
     zbuf_append(buf, "{\"header\":");
     append_json_string(buf, import->header);
@@ -9197,6 +9290,7 @@ static void apply_ir_metrics_to_input(SourceInput *input, const IrProgram *ir, c
   input->direct_runtime_helper_count = ir->direct_runtime_helper_count;
   input->direct_host_runtime_import_count = ir->direct_host_runtime_import_count;
   input->direct_http_runtime_import_count = ir->direct_http_runtime_import_count;
+  input->direct_c_import_call_count = ir->direct_c_import_call_count;
 }
 
 static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, const ZTargetInfo *target, const Command *command, const IrProgram *ir) {
@@ -11712,7 +11806,7 @@ int main(int argc, char **argv) {
     }
 
     phase_started = now_ms();
-    bool linked = link_zero_runtime_executable(object_file, runtime_object_file, http_object_file, exe_file, &runtime_toolchain, target, &diag);
+    bool linked = link_zero_runtime_executable(object_file, runtime_object_file, http_object_file, exe_file, &runtime_toolchain, target, &input, &diag);
     if (linked) chmod(exe_file, 0755);
     input.link_ms = now_ms() - phase_started;
     remove(object_file);

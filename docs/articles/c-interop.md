@@ -27,7 +27,8 @@ Invalid export surfaces fail before C emission:
 bin/zero check --json conformance/native/fail/bad-c-export.0
 ```
 
-Header imports are available as typed metadata:
+Header imports expose typed metadata and scalar C functions are callable through
+the declared import alias:
 
 ```sh
 bin/zero graph --json --target linux-musl-x64 conformance/check/pass/c-header-import.0
@@ -35,6 +36,18 @@ bin/zero graph --json --target linux-musl-x64 conformance/check/pass/c-header-im
 
 The graph JSON exposes `cImports[].typedModel` with imported functions,
 constants, structs, enums, and typedefs.
+
+```zero
+extern c "/tmp/zero_ext.h" as c
+
+pub fn main() -> i32 {
+    return c.zero_ext_add(20, 22)
+}
+```
+
+Callable imports are limited to direct scalar ABI types today: `Void`, `Bool`,
+`u8`, `u16`, `usize`, `i32`, `u32`, `i64`, and `u64`. Pointer, array, struct,
+and unsupported-width parameters should be wrapped behind a small C shim.
 
 It also includes a cache object keyed by:
 

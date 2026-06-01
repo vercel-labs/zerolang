@@ -8,7 +8,8 @@
 #include <stdlib.h>
 
 enum {
-  R_AARCH64_ABS64 = 257u
+  R_AARCH64_ABS64 = 257u,
+  R_AARCH64_CALL26 = 283u
 };
 
 typedef struct {
@@ -19,6 +20,8 @@ typedef struct {
 typedef struct {
   size_t patch_offset;
   unsigned callee_index;
+  unsigned external_index;
+  bool external_call;
 } A64ElfCallPatch;
 
 typedef struct {
@@ -64,7 +67,12 @@ static bool a64_elf_record_call_patch(void *user, size_t patch_offset, unsigned 
     ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(A64ElfCallPatch));
   }
   if (!ctx->call_patches) return a64_diag(diag, "direct AArch64 ELF backend ran out of memory", value ? value->line : 1, value ? value->column : 1, "allocation failed");
-  ctx->call_patches[ctx->call_patch_len++] = (A64ElfCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  ctx->call_patches[ctx->call_patch_len++] = (A64ElfCallPatch){
+    .patch_offset = patch_offset,
+    .callee_index = callee_index,
+    .external_index = value ? value->external_index : 0,
+    .external_call = value && value->external_call
+  };
   return true;
 }
 
@@ -106,6 +114,7 @@ static void a64_patch_data_patches(ZBuf *text, const A64ElfPatchContext *patches
 static void a64_patch_call_patches(ZBuf *text, const A64ElfPatchContext *patches, const size_t *function_offsets, size_t function_count) {
   for (size_t i = 0; patches && i < patches->call_patch_len; i++) {
     const A64ElfCallPatch *patch = &patches->call_patches[i];
+    if (patch->external_call) continue;
     if (patch->callee_index < function_count) z_aarch64_patch_branch26(text, patch->patch_offset, function_offsets[patch->callee_index]);
   }
 }
@@ -115,6 +124,49 @@ static void a64_append_data_relocations(ZBuf *rela_text, const A64ElfPatchContex
     const A64ElfDataPatch *patch = &patches->data_patches[i];
     z_elf_append_rela(rela_text, patch->patch_offset, rodata_symbol, R_AARCH64_ABS64, patch->data_offset - rodata_base_offset);
   }
+}
+
+static void a64_append_external_call_relocations(ZBuf *rela_text, const A64ElfPatchContext *patches, uint32_t external_symbol_base) {
+  for (size_t i = 0; patches && i < patches->call_patch_len; i++) {
+    const A64ElfCallPatch *patch = &patches->call_patches[i];
+    if (!patch->external_call) continue;
+    z_elf_append_rela(rela_text, patch->patch_offset, external_symbol_base + patch->external_index, R_AARCH64_CALL26, 0);
+  }
+}
+
+static uint32_t a64_append_exported_function_symbols(ZBuf *symtab, const IrProgram *ir, const size_t *function_offsets, const size_t *function_sizes, const uint32_t *symbol_names, bool has_rodata) {
+  uint32_t external_symbol_base = has_rodata ? 2u : 1u;
+  for (size_t i = 0; i < ir->function_len; i++) {
+    if (function_sizes[i] > 0 && ir->functions[i].is_exported) {
+      z_elf_append_symbol(symtab, symbol_names[i], 0x12, 1, function_offsets[i], function_sizes[i]);
+      external_symbol_base++;
+    }
+  }
+  return external_symbol_base;
+}
+
+static void a64_append_external_symbols(ZBuf *strtab, ZBuf *symtab, const IrProgram *ir, uint32_t *external_names) {
+  for (size_t i = 0; i < ir->external_function_len; i++) {
+    external_names[i] = (uint32_t)strtab->len;
+    zbuf_append(strtab, ir->external_functions[i].symbol ? ir->external_functions[i].symbol : "zero_external");
+    z_elf_append_u8(strtab, 0);
+    z_elf_append_symbol(symtab, external_names[i], 0x12, 0, 0, 0);
+  }
+}
+
+static void a64_write_object_image(ZBuf *out, ZBuf *text, ZBuf *rodata, ZBuf *rela_text, ZBuf *symtab, ZBuf *strtab, bool has_rodata) {
+  ZElfObjectImage image = {
+    .machine = Z_ELF_MACHINE_AARCH64,
+    .text = text,
+    .text_align = 16,
+    .rodata = has_rodata ? rodata : NULL,
+    .rodata_align = 8,
+    .rela_text = rela_text->len > 0 ? rela_text : NULL,
+    .symtab = symtab,
+    .strtab = strtab,
+    .local_symbol_count = has_rodata ? 2 : 1
+  };
+  z_elf_write_object64(out, &image);
 }
 
 bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *diag) {
@@ -148,10 +200,12 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
   size_t *function_offsets = z_checked_calloc(ir->function_len, sizeof(size_t));
   size_t *function_sizes = z_checked_calloc(ir->function_len, sizeof(size_t));
   uint32_t *symbol_names = z_checked_calloc(ir->function_len, sizeof(uint32_t));
-  if (!function_offsets || !function_sizes || !symbol_names) {
+  uint32_t *external_names = ir->external_function_len > 0 ? z_checked_calloc(ir->external_function_len, sizeof(uint32_t)) : NULL;
+  if (!function_offsets || !function_sizes || !symbol_names || (ir->external_function_len > 0 && !external_names)) {
     free(function_offsets);
     free(function_sizes);
     free(symbol_names);
+    free(external_names);
     zbuf_free(&text);
     zbuf_free(&rodata);
     zbuf_free(&rela_text);
@@ -180,6 +234,7 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
       free(function_offsets);
       free(function_sizes);
       free(symbol_names);
+      free(external_names);
       zbuf_free(&text);
       zbuf_free(&rodata);
       zbuf_free(&rela_text);
@@ -199,6 +254,7 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
     free(function_offsets);
     free(function_sizes);
     free(symbol_names);
+    free(external_names);
     zbuf_free(&text);
     zbuf_free(&rodata);
     zbuf_free(&rela_text);
@@ -209,27 +265,17 @@ bool z_emit_elf_aarch64_object_from_ir(const IrProgram *ir, ZBuf *out, ZDiag *di
 
   a64_patch_call_patches(&text, &patch_ctx, function_offsets, ir->function_len);
   if (has_rodata) a64_append_data_relocations(&rela_text, &patch_ctx, rodata_base_offset, 1);
-  for (size_t i = 0; i < ir->function_len; i++) {
-    if (function_sizes[i] > 0 && ir->functions[i].is_exported) z_elf_append_symbol(&symtab, symbol_names[i], 0x12, 1, function_offsets[i], function_sizes[i]);
-  }
+  uint32_t external_symbol_base = a64_append_exported_function_symbols(&symtab, ir, function_offsets, function_sizes, symbol_names, has_rodata);
+  a64_append_external_symbols(&strtab, &symtab, ir, external_names);
+  a64_append_external_call_relocations(&rela_text, &patch_ctx, external_symbol_base);
 
-  ZElfObjectImage image = {
-    .machine = Z_ELF_MACHINE_AARCH64,
-    .text = &text,
-    .text_align = 16,
-    .rodata = has_rodata ? &rodata : NULL,
-    .rodata_align = 8,
-    .rela_text = rela_text.len > 0 ? &rela_text : NULL,
-    .symtab = &symtab,
-    .strtab = &strtab,
-    .local_symbol_count = has_rodata ? 2 : 1
-  };
-  z_elf_write_object64(out, &image);
+  a64_write_object_image(out, &text, &rodata, &rela_text, &symtab, &strtab, has_rodata);
 
   a64_elf_patch_context_free(&patch_ctx);
   free(function_offsets);
   free(function_sizes);
   free(symbol_names);
+  free(external_names);
   zbuf_free(&text);
   zbuf_free(&rodata);
   zbuf_free(&rela_text);

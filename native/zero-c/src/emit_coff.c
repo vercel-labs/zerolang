@@ -444,12 +444,15 @@ static bool coff_emit_compare_value(ZBuf *text, const IrFunction *fun, const IrV
 
 static bool coff_emit_call_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   static const unsigned param_regs[] = {1, 2, 8, 9};
-  const IrFunction *callee = ctx && ctx->program && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
-  if (!callee) return coff_diag_at(diag, "direct COFF call target is unavailable", value->line, value->column, "invalid callee");
+  const IrFunction *callee = ctx && ctx->program && !value->external_call && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
+  const IrExternalFunction *external = ctx && ctx->program && value->external_call && value->external_index < ctx->program->external_function_len ? &ctx->program->external_functions[value->external_index] : NULL;
+  if (!callee && !external) return coff_diag_at(diag, "direct COFF call target is unavailable", value->line, value->column, "invalid callee");
+  size_t param_count = external ? external->param_len : callee->param_count;
   size_t abi_slots = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
-    if (i >= callee->param_count) return coff_diag_at(diag, "direct COFF call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
-    abi_slots += callee->locals[i].type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
+    if (i >= param_count) return coff_diag_at(diag, "direct COFF call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    abi_slots += param_type == IR_TYPE_BYTE_VIEW ? 2u : 1u;
   }
   if (abi_slots > 8) return coff_diag_at(diag, "direct COFF call supports at most eight ABI argument slots", value->line, value->column, "too many arguments");
   size_t stack_slots = abi_slots > 4 ? abi_slots - 4 : 0;
@@ -461,8 +464,8 @@ static bool coff_emit_call_value(ZBuf *text, const IrFunction *fun, const IrValu
   size_t abi_slot = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
     const IrValue *arg = value->args[i];
-    const IrLocal *param = &callee->locals[i];
-    if (param->type == IR_TYPE_BYTE_VIEW) {
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    if (param_type == IR_TYPE_BYTE_VIEW) {
       if (!coff_emit_byte_view_pair(text, fun, arg, 0, 2, ctx, diag)) return false;
       z_x64_emit_store_rsp_offset_reg(text, 0, temp_base + (unsigned)abi_slot * 8u, true);
       z_x64_emit_store_rsp_offset_reg(text, 2, temp_base + (unsigned)(abi_slot + 1u) * 8u, true);
@@ -483,7 +486,7 @@ static bool coff_emit_call_value(ZBuf *text, const IrFunction *fun, const IrValu
   }
   size_t patch = z_x64_emit_call32_placeholder(text);
   z_x64_emit_add_rsp(text, total_stack);
-  return z_coff_record_call_patch(ctx, patch, value->callee_index, value, diag);
+  return z_coff_record_call_patch(ctx, patch, value->external_call ? 0 : value->callee_index, value, diag);
 }
 
 static bool coff_emit_vec_push_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
@@ -1093,7 +1096,8 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
 
   unsigned section_symbol_count = has_rodata ? 2u : 1u;
   bool has_world_write = z_coff_runtime_patch_count(&ctx, COFF_RUNTIME_WORLD_WRITE) > 0;
-  size_t symbol_len = program->function_len + (has_world_write ? 1u : 0u);
+  size_t external_symbol_base = section_symbol_count + program->function_len + (has_world_write ? 1u : 0u);
+  size_t symbol_len = program->function_len + (has_world_write ? 1u : 0u) + program->external_function_len;
   ZCoffSymbol *symbols = z_checked_calloc(symbol_len, sizeof(ZCoffSymbol));
   if (!symbols) {
     z_coff_emit_context_free(&ctx);
@@ -1104,7 +1108,7 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
     return coff_diag(diag, "out of memory while emitting COFF object");
   }
   z_coff_patch_call_patches(&text, &ctx);
-  z_coff_append_call_relocations(&relocs, &ctx, section_symbol_count);
+  z_coff_append_call_relocations(&relocs, &ctx, section_symbol_count, (uint32_t)external_symbol_base);
   z_coff_append_rodata_relocations(&relocs, &ctx, 1u);
   uint32_t world_write_symbol_index = section_symbol_count + (uint32_t)program->function_len;
   z_coff_append_runtime_relocations(&relocs, &ctx, COFF_RUNTIME_WORLD_WRITE, world_write_symbol_index);
@@ -1121,6 +1125,14 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
   if (has_world_write) {
     symbols[program->function_len] = (ZCoffSymbol){
       .name = z_coff_runtime_helper_symbol(COFF_RUNTIME_WORLD_WRITE),
+      .section_number = 0,
+      .type = 0x20,
+      .storage_class = Z_COFF_SYMBOL_EXTERNAL
+    };
+  }
+  for (size_t i = 0; i < program->external_function_len; i++) {
+    symbols[program->function_len + (has_world_write ? 1u : 0u) + i] = (ZCoffSymbol){
+      .name = program->external_functions[i].symbol ? program->external_functions[i].symbol : "zero_external",
       .section_number = 0,
       .type = 0x20,
       .storage_class = Z_COFF_SYMBOL_EXTERNAL

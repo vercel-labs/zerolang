@@ -36,8 +36,10 @@ typedef struct {
 typedef struct {
   size_t patch_offset;
   unsigned callee_index;
+  unsigned external_index;
   int line;
   int column;
+  bool external_call;
 } MachOCallPatch;
 
 typedef struct {
@@ -70,7 +72,7 @@ bool z_macho_record_instr_runtime_patch(MachOEmitContext *ctx, MachORuntimeHelpe
 size_t z_macho_runtime_patch_count(const MachOEmitContext *ctx, MachORuntimeHelper helper);
 const MachOPatchList *z_macho_runtime_patch_list(const MachOEmitContext *ctx, MachORuntimeHelper helper);
 bool z_macho_has_unsupported_exe_runtime_patches(const MachOEmitContext *ctx);
-void z_macho_append_call_relocations(ZBuf *relocs, const MachOEmitContext *ctx);
+void z_macho_append_call_relocations(ZBuf *relocs, const MachOEmitContext *ctx, uint32_t external_symbol_base);
 void z_macho_append_runtime_relocations(ZBuf *relocs, const MachOEmitContext *ctx, MachORuntimeHelper helper, unsigned symbol_index);
 size_t z_macho_data_relocation_count(const MachOEmitContext *ctx);
 size_t z_macho_text_relocation_count(const MachOEmitContext *ctx);

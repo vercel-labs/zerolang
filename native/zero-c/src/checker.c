@@ -1,5 +1,6 @@
 #include "zero.h"
 #include "call_resolve.h"
+#include "c_import.h"
 #include "std_sig.h"
 #include "std_source.h"
 #include "unify.h"
@@ -5184,6 +5185,37 @@ static bool resolve_stdlib_call(const Expr *call, ZCallResolution *out) {
   return resolve_stdlib_callee(call->left, call, out);
 }
 
+static bool resolve_c_import_call(const Program *program, const Expr *call, Scope *scope, ZCallResolution *out) {
+  if (!program || !call || call->kind != EXPR_CALL || !call->left || call->left->kind != EXPR_MEMBER ||
+      !call->left->left || call->left->left->kind != EXPR_IDENT || !out) {
+    return false;
+  }
+  const char *alias = call->left->left->text;
+  const char *symbol = call->left->text;
+  if (scope_has(scope, alias)) return false;
+  ZCImportFunction function = {0};
+  if (!z_c_import_find_function(program, alias, symbol, &function, NULL)) return false;
+  z_call_resolution_init(out);
+  out->kind = Z_CALL_C_IMPORT;
+  out->call_expr = call;
+  out->callee_expr = call->left;
+  out->type_args = call_type_args(call);
+  out->param_len = function.param_len;
+  ZBuf name;
+  zbuf_init(&name);
+  zbuf_append(&name, alias ? alias : "");
+  zbuf_append_char(&name, '.');
+  zbuf_append(&name, symbol ? symbol : "");
+  z_call_resolution_set_callee_name(out, name.data);
+  z_call_resolution_set_return_type(out, function.return_zero_type);
+  for (size_t i = 0; i < function.param_len && i < call->args.len; i++) {
+    z_call_resolution_add_arg(out, i, call->args.items[i], function.params[i].zero_type, NULL);
+  }
+  zbuf_free(&name);
+  z_c_import_function_free(&function);
+  return true;
+}
+
 static bool resolve_stdlib_fallible_call(const Expr *expr, ZCallResolution *out) {
   if (!out) return false;
   ZCallResolution resolution = {0};
@@ -5590,6 +5622,7 @@ static bool resolve_expr_call_for_type(CheckContext *ctx, const Program *program
     resolve_constrained_interface_call(program, ctx ? ctx->function : NULL, call, resolution) ||
     resolve_receiver_shape_call(ctx, program, call, scope, NULL, resolution) ||
     resolve_choice_constructor_call(program, call, resolution) ||
+    resolve_c_import_call(program, call, scope, resolution) ||
     resolve_stdlib_call(call, resolution);
 }
 
@@ -6968,6 +7001,75 @@ static bool check_stdlib_call_expected(CheckContext *ctx, const Program *program
   return ok;
 }
 
+static bool c_import_function_supported(const ZCImportFunction *function, char *actual, size_t actual_len) {
+  if (!function) return false;
+  if (strcmp(function->return_zero_type ? function->return_zero_type : "Unknown", "Unknown") == 0) {
+    snprintf(actual, actual_len, "return type '%s'", function->return_c_type ? function->return_c_type : "<missing>");
+    return false;
+  }
+  for (size_t i = 0; i < function->param_len; i++) {
+    if (strcmp(function->params[i].zero_type ? function->params[i].zero_type : "Unknown", "Unknown") == 0) {
+      snprintf(actual, actual_len, "parameter %zu type '%s'", i + 1, function->params[i].c_type ? function->params[i].c_type : "<missing>");
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool check_c_import_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, bool *handled) {
+  diag = check_context_diag(ctx, diag);
+  if (handled) *handled = false;
+  if (!handled || !program || !expr || !expr->left || expr->left->kind != EXPR_MEMBER ||
+      !expr->left->left || expr->left->left->kind != EXPR_IDENT) {
+    return true;
+  }
+  const char *alias = expr->left->left->text;
+  const char *symbol = expr->left->text;
+  if (scope_has(scope, alias)) return true;
+  if (!z_c_import_alias_exists(program, alias)) return true;
+  *handled = true;
+  ZCImportFunction function = {0};
+  if (!z_c_import_find_function(program, alias, symbol, &function, diag)) {
+    char actual[192];
+    snprintf(actual, sizeof(actual), "%s.%s", alias ? alias : "<alias>", symbol ? symbol : "<symbol>");
+    return set_diag_detail(diag, 8004, "extern c function is not declared in imported header", expr->line, expr->column, "function declared in extern c header", actual, "call a symbol from the imported header or update the header");
+  }
+  const TypeArgVec *type_args = call_type_args(expr);
+  if (type_args && type_args->len > 0) {
+    z_c_import_function_free(&function);
+    return set_diag_detail(diag, 3032, "extern c functions cannot use Zero type arguments", expr->line, expr->column, "plain extern c call", "type-argument call", "wrap generic behavior in Zero or expose a concrete C shim");
+  }
+  char unsupported[192];
+  if (!c_import_function_supported(&function, unsupported, sizeof(unsupported))) {
+    z_c_import_function_free(&function);
+    return set_diag_detail(diag, 8004, "extern c function uses unsupported C ABI type", expr->line, expr->column, "supported scalar C ABI types", unsupported, "wrap unsupported C behind a scalar C shim before importing it");
+  }
+  if (expr->args.len != function.param_len) {
+    char message[256];
+    snprintf(message, sizeof(message), "extern c function '%s.%s' expects %zu argument(s), got %zu", alias ? alias : "", symbol ? symbol : "", function.param_len, expr->args.len);
+    z_c_import_function_free(&function);
+    return set_diag_detail(diag, 3004, message, expr->line, expr->column, "matching extern c signature", "wrong argument count", "update the call or the C shim signature");
+  }
+  for (size_t i = 0; i < expr->args.len; i++) {
+    const char *expected = function.params[i].zero_type ? function.params[i].zero_type : "Unknown";
+    if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, expected)) {
+      z_c_import_function_free(&function);
+      return false;
+    }
+    const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
+    if (!types_compatible_in_scope(program, scope, expected, actual)) {
+      char message[256];
+      snprintf(message, sizeof(message), "argument %zu to extern c function '%s.%s' has incompatible type", i + 1, alias ? alias : "", symbol ? symbol : "");
+      bool ok = set_diag_detail(diag, 3012, message, expr->args.items[i]->line, expr->args.items[i]->column, expected, actual, "pass the Zero scalar type that matches the C parameter");
+      z_c_import_function_free(&function);
+      return ok;
+    }
+  }
+  set_expr_resolved_type(expr, function.return_zero_type ? function.return_zero_type : "Unknown");
+  z_c_import_function_free(&function);
+  return true;
+}
+
 static bool check_choice_constructor_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, bool *handled) {
   diag = check_context_diag(ctx, diag);
   if (handled) *handled = false;
@@ -7302,6 +7404,9 @@ static bool check_call_expr_expected(CheckContext *ctx, const Program *program, 
   if (!check_choice_constructor_call_expected(ctx, program, expr, scope, diag, &choice_call_handled)) return false;
   if (choice_call_handled) return true;
   if (expr->left && expr->left->kind == EXPR_MEMBER) {
+    bool c_import_call_handled = false;
+    if (!check_c_import_call_expected(ctx, program, expr, scope, diag, &c_import_call_handled)) return false;
+    if (c_import_call_handled) return true;
     bool shape_namespace_call_handled = false;
     if (!check_shape_namespace_call_expected(ctx, program, expr, scope, diag, expected, &shape_namespace_call_handled)) return false;
     if (shape_namespace_call_handled) return true;
@@ -8599,10 +8704,32 @@ static bool call_facts_resolve_stdlib_call(CheckContext *ctx, const Program *pro
   return true;
 }
 
+static bool call_facts_resolve_c_import_call(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZCallResolution *out) {
+  if (!resolve_c_import_call(program, expr, scope, out)) return false;
+  if (z_call_resolution_expected_arg_count(out) != expr->args.len) {
+    z_call_resolution_free(out);
+    return false;
+  }
+  ZDiag ignored = {0};
+  bool handled = false;
+  if (!check_c_import_call_expected(ctx, program, expr, scope, &ignored, &handled) || !handled) {
+    z_call_resolution_free(out);
+    return false;
+  }
+  for (size_t i = 0; i < out->arg_len; i++) {
+    if (out->args[i].arg_expr) {
+      free(out->args[i].actual_type);
+      out->args[i].actual_type = z_strdup(expr_type(ctx, program, out->args[i].arg_expr, scope));
+    }
+  }
+  return true;
+}
+
 static bool call_facts_resolve_call(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ResolvedProvenanceCall *resolved) {
   if (!expr || expr->kind != EXPR_CALL || !resolved) return false;
   *resolved = (ResolvedProvenanceCall){0};
   if (call_facts_resolve_stdlib_call(ctx, program, expr, scope, &resolved->resolution)) return true;
+  if (call_facts_resolve_c_import_call(ctx, program, expr, scope, &resolved->resolution)) return true;
   if (resolve_choice_constructor_call(program, expr, &resolved->resolution)) {
     if (resolved->resolution.choice_case && resolved->resolution.choice_case->type && expr->args.len > 0) {
       z_call_resolution_add_arg(&resolved->resolution, 0, expr->args.items[0], resolved->resolution.choice_case->type, expr_type(ctx, program, expr->args.items[0], scope));
@@ -8758,10 +8885,11 @@ static void call_facts_collect_consts(ZBuf *buf, const SourceInput *input, bool 
 }
 
 void z_append_call_resolution_facts_json(ZBuf *buf, const SourceInput *input, const Program *program) {
+  static const ZCallKind supported_kinds[] = {Z_CALL_FUNCTION, Z_CALL_STDLIB, Z_CALL_RECEIVER, Z_CALL_SHAPE_NAMESPACE, Z_CALL_CONSTRAINED_INTERFACE, Z_CALL_CONCRETE_CONSTRAINED_SHAPE, Z_CALL_CHOICE_CONSTRUCTOR, Z_CALL_C_IMPORT};
   zbuf_append(buf, "{\"schemaVersion\":1,\"supportedKinds\":[");
-  for (int kind = Z_CALL_FUNCTION; kind <= Z_CALL_CHOICE_CONSTRUCTOR; kind++) {
-    if (kind > Z_CALL_FUNCTION) zbuf_append(buf, ",");
-    call_facts_append_json_string(buf, z_call_kind_name((ZCallKind)kind));
+  for (size_t i = 0; i < sizeof(supported_kinds) / sizeof(supported_kinds[0]); i++) {
+    if (i > 0) zbuf_append(buf, ",");
+    call_facts_append_json_string(buf, z_call_kind_name(supported_kinds[i]));
   }
   zbuf_append(buf, "],\"calls\":[");
   bool wrote = false;
@@ -11312,7 +11440,8 @@ static bool validate_c_imports(const Program *program, ZDiag *diag) {
   for (size_t i = 0; program && i < program->c_imports.len; i++) {
     const CImport *import = &program->c_imports.items[i];
     ZDiag read_diag = {0};
-    char *header = z_read_file(import->header, &read_diag);
+    const char *read_path = import->resolved_header && import->resolved_header[0] ? import->resolved_header : import->header;
+    char *header = z_read_file(read_path, &read_diag);
     if (!header) {
       return set_diag_detail(diag, 8001, "extern c header could not be read", import->line, import->column, "readable C header path", import->header ? import->header : "<missing>", "make the header path package-relative and target-specific");
     }

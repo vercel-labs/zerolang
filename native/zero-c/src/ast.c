@@ -82,6 +82,7 @@ static void free_use_import_vec(UseImportVec *vec) {
 static void free_c_import_vec(CImportVec *vec) {
   for (size_t i = 0; i < vec->len; i++) {
     free(vec->items[i].header);
+    free(vec->items[i].resolved_header);
     free(vec->items[i].alias);
   }
   free(vec->items);

@@ -54,14 +54,19 @@ void z_elf_emit_context_free(ElfEmitContext *ctx) {
 }
 
 bool z_elf_record_call_patch(ElfEmitContext *ctx, size_t patch_offset, unsigned callee_index, ZDiag *diag, const IrValue *value) {
-  if (!ctx || callee_index >= ctx->function_count) {
+  if (!ctx || (((!value) || !value->external_call) && callee_index >= ctx->function_count)) {
     return elf_emit_state_diag(diag, "direct ELF64 call target index is out of range", value ? value->line : 1, value ? value->column : 1, "invalid callee");
   }
   if (ctx->call_patch_len + 1 > ctx->call_patch_cap) {
     ctx->call_patch_cap = z_grow_capacity(ctx->call_patch_cap, ctx->call_patch_len + 1, 8);
     ctx->call_patches = z_checked_reallocarray(ctx->call_patches, ctx->call_patch_cap, sizeof(ElfCallPatch));
   }
-  ctx->call_patches[ctx->call_patch_len++] = (ElfCallPatch){.patch_offset = patch_offset, .callee_index = callee_index};
+  ctx->call_patches[ctx->call_patch_len++] = (ElfCallPatch){
+    .patch_offset = patch_offset,
+    .callee_index = callee_index,
+    .external_index = value ? value->external_index : 0,
+    .external_call = value && value->external_call
+  };
   return true;
 }
 
@@ -104,6 +109,7 @@ bool z_elf_has_runtime_patches(const ElfEmitContext *ctx) {
 void z_elf_patch_call_patches(ZBuf *code, const ElfEmitContext *ctx) {
   for (size_t i = 0; ctx && i < ctx->call_patch_len; i++) {
     const ElfCallPatch *patch = &ctx->call_patches[i];
+    if (patch->external_call) continue;
     z_x64_patch_rel32(code, patch->patch_offset, ctx->function_offsets[patch->callee_index]);
   }
 }
@@ -121,6 +127,14 @@ void z_elf_patch_rodata_patches(ZBuf *code, const ElfEmitContext *ctx) {
 void z_elf_append_rodata_relocations(ZBuf *rela_text, const ElfEmitContext *ctx, uint32_t rodata_symbol) {
   for (size_t i = 0; ctx && i < ctx->rodata_patch_len; i++) {
     z_elf_append_rela(rela_text, ctx->rodata_patches[i].patch_offset, rodata_symbol, 1, ctx->rodata_patches[i].data_offset - ctx->rodata_base_offset);
+  }
+}
+
+void z_elf_append_external_call_relocations(ZBuf *rela_text, const ElfEmitContext *ctx, uint32_t external_symbol_base) {
+  for (size_t i = 0; ctx && i < ctx->call_patch_len; i++) {
+    const ElfCallPatch *patch = &ctx->call_patches[i];
+    if (!patch->external_call) continue;
+    z_elf_append_rela(rela_text, patch->patch_offset, external_symbol_base + patch->external_index, 4, -4);
   }
 }
 

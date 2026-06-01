@@ -939,12 +939,15 @@ static bool elf_emit_http_value(ZBuf *code, const IrFunction *fun, const IrValue
 }
 
 static bool elf_emit_call_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
-  const IrFunction *callee = ctx && ctx->ir && value->callee_index < ctx->ir->function_len ? &ctx->ir->functions[value->callee_index] : NULL;
-  if (!callee) return elf_diag(diag, "direct ELF64 call target is unavailable", value->line, value->column, "invalid callee");
+  const IrFunction *callee = ctx && ctx->ir && !value->external_call && value->callee_index < ctx->ir->function_len ? &ctx->ir->functions[value->callee_index] : NULL;
+  const IrExternalFunction *external = ctx && ctx->ir && value->external_call && value->external_index < ctx->ir->external_function_len ? &ctx->ir->external_functions[value->external_index] : NULL;
+  if (!callee && !external) return elf_diag(diag, "direct ELF64 call target is unavailable", value->line, value->column, "invalid callee");
+  size_t param_count = external ? external->param_len : callee->param_count;
   size_t abi_slots = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
-    if (i >= callee->param_count) return elf_diag(diag, "direct ELF64 call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
-    unsigned slots = callee->locals[i].type == IR_TYPE_BYTE_VIEW ? 2 : 1;
+    if (i >= param_count) return elf_diag(diag, "direct ELF64 call parameter metadata is unavailable", value->line, value->column, "invalid callee parameter");
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    unsigned slots = param_type == IR_TYPE_BYTE_VIEW ? 2 : 1;
     if (abi_slots + slots > 8) return elf_diag(diag, "direct ELF64 call supports at most eight ABI argument slots", value->line, value->column, "too many arguments");
     abi_slots += slots;
   }
@@ -955,8 +958,8 @@ static bool elf_emit_call_value(ZBuf *code, const IrFunction *fun, const IrValue
   if (total_stack > 0) z_x64_emit_sub_rsp(code, total_stack);
   size_t abi_slot = 0;
   for (size_t i = 0; i < value->arg_len; i++) {
-    const IrLocal *param = &callee->locals[i];
-    if (param->type == IR_TYPE_BYTE_VIEW) {
+    IrTypeKind param_type = external ? external->param_types[i] : callee->locals[i].type;
+    if (param_type == IR_TYPE_BYTE_VIEW) {
       if (!elf_emit_byte_view_pair(code, fun, value->args[i], 0, 2, ctx, diag)) return false;
       z_x64_emit_store_rsp_offset_reg(code, 0, temp_base + (unsigned)abi_slot * 8u, true);
       z_x64_emit_store_rsp_offset_reg(code, 2, temp_base + (unsigned)(abi_slot + 1u) * 8u, true);
@@ -977,7 +980,7 @@ static bool elf_emit_call_value(ZBuf *code, const IrFunction *fun, const IrValue
   }
   size_t patch = z_x64_emit_call32_placeholder(code);
   if (total_stack > 0) z_x64_emit_add_rsp(code, total_stack);
-  return z_elf_record_call_patch(ctx, patch, value->callee_index, diag, value);
+  return z_elf_record_call_patch(ctx, patch, value->external_call ? 0 : value->callee_index, diag, value);
 }
 
 static bool elf_emit_core_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
@@ -2027,7 +2030,7 @@ static void elf_append_rodata(ZBuf *rodata, const IrProgram *ir, unsigned base_o
 typedef struct {
   ZBuf text, rodata, rela_text, strtab, symtab;
   size_t *function_offsets, *function_sizes;
-  uint32_t *symbol_names, runtime_names[ELF_RUNTIME_HELPER_COUNT];
+  uint32_t *symbol_names, *external_names, runtime_names[ELF_RUNTIME_HELPER_COUNT];
   ElfEmitContext ctx;
   uint32_t local_symbol_count;
   bool has_rodata;
@@ -2059,7 +2062,7 @@ static void elf_object_build_init(ElfObjectBuild *build, const IrProgram *ir) {
 }
 
 static void elf_object_build_free(ElfObjectBuild *build) {
-  free(build->function_offsets); free(build->function_sizes); free(build->symbol_names);
+  free(build->function_offsets); free(build->function_sizes); free(build->symbol_names); free(build->external_names);
   z_elf_emit_context_free(&build->ctx);
   zbuf_free(&build->text); zbuf_free(&build->rodata); zbuf_free(&build->rela_text); zbuf_free(&build->strtab); zbuf_free(&build->symtab);
 }
@@ -2068,7 +2071,8 @@ static bool elf_object_build_alloc_tables(ElfObjectBuild *build, const IrProgram
   build->function_offsets = z_checked_calloc(ir->function_len, sizeof(size_t));
   build->function_sizes = z_checked_calloc(ir->function_len, sizeof(size_t));
   build->symbol_names = z_checked_calloc(ir->function_len, sizeof(uint32_t));
-  return build->function_offsets && build->function_sizes && build->symbol_names ? true : elf_diag(diag, "direct ELF64 object backend ran out of memory", 1, 1, "allocation failed");
+  build->external_names = ir->external_function_len > 0 ? z_checked_calloc(ir->external_function_len, sizeof(uint32_t)) : NULL;
+  return build->function_offsets && build->function_sizes && build->symbol_names && (ir->external_function_len == 0 || build->external_names) ? true : elf_diag(diag, "direct ELF64 object backend ran out of memory", 1, 1, "allocation failed");
 }
 
 static void elf_object_build_start_context(ElfObjectBuild *build, const IrProgram *ir) {
@@ -2094,6 +2098,11 @@ static void elf_append_object_runtime_names(ElfObjectBuild *build) {
     build->runtime_names[helper] = (uint32_t)build->strtab.len;
     zbuf_append(&build->strtab, z_elf_runtime_helper_symbol(runtime_helper)); z_elf_append_u8(&build->strtab, 0);
   }
+  for (size_t i = 0; build->ctx.ir && i < build->ctx.ir->external_function_len; i++) {
+    build->external_names[i] = (uint32_t)build->strtab.len;
+    zbuf_append(&build->strtab, build->ctx.ir->external_functions[i].symbol ? build->ctx.ir->external_functions[i].symbol : "zero_external");
+    z_elf_append_u8(&build->strtab, 0);
+  }
 }
 
 static void elf_finish_object_symbols(ElfObjectBuild *build, const IrProgram *ir) {
@@ -2108,6 +2117,8 @@ static void elf_finish_object_symbols(ElfObjectBuild *build, const IrProgram *ir
     runtime_symbols[helper] = next_runtime_symbol++;
     z_elf_append_runtime_relocations(&build->rela_text, &build->ctx, runtime_helper, runtime_symbols[helper]);
   }
+  uint32_t external_symbol_base = next_runtime_symbol;
+  z_elf_append_external_call_relocations(&build->rela_text, &build->ctx, external_symbol_base);
   for (size_t i = 0; i < ir->function_len; i++) {
     if (ir->functions[i].is_exported) continue;
     z_elf_append_symbol(&build->symtab, build->symbol_names[i], 0x02, 1, build->function_offsets[i], build->function_sizes[i]);
@@ -2121,6 +2132,9 @@ static void elf_finish_object_symbols(ElfObjectBuild *build, const IrProgram *ir
     ElfRuntimeHelper runtime_helper = (ElfRuntimeHelper)helper;
     if (z_elf_runtime_patch_count(&build->ctx, runtime_helper) == 0) continue;
     z_elf_append_symbol(&build->symtab, build->runtime_names[helper], 0x12, 0, 0, 0);
+  }
+  for (size_t i = 0; i < ir->external_function_len; i++) {
+    z_elf_append_symbol(&build->symtab, build->external_names[i], 0x12, 0, 0, 0);
   }
 }
 

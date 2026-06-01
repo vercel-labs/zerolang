@@ -310,6 +310,7 @@ typedef struct {
 
 typedef struct {
   char *header;
+  char *resolved_header;
   char *alias;
   int line;
   int column;
@@ -485,6 +486,8 @@ struct IrValue {
   unsigned data_len;
   IrTypeKind element_type;
   unsigned error_code;
+  unsigned external_index;
+  bool external_call;
   IrBinaryOp binary_op;
   IrCompareOp compare_op;
   IrValue **args;
@@ -574,10 +577,21 @@ typedef struct {
 } IrFunction;
 
 typedef struct {
+  char *symbol;
+  IrTypeKind return_type;
+  IrTypeKind *param_types;
+  size_t param_len;
+  size_t param_cap;
+} IrExternalFunction;
+
+typedef struct {
   Program program;
   IrFunction *functions;
   size_t function_len;
   size_t function_cap;
+  IrExternalFunction *external_functions;
+  size_t external_function_len;
+  size_t external_function_cap;
   IrDataSegment *data_segments;
   size_t data_segment_len;
   size_t data_segment_cap;
@@ -601,6 +615,7 @@ typedef struct {
   size_t direct_runtime_helper_count;
   size_t direct_host_runtime_import_count;
   size_t direct_http_runtime_import_count;
+  size_t direct_c_import_call_count;
 } IrProgram;
 
 typedef struct {
@@ -672,6 +687,7 @@ typedef struct {
   size_t direct_runtime_helper_count;
   size_t direct_host_runtime_import_count;
   size_t direct_http_runtime_import_count;
+  size_t direct_c_import_call_count;
   bool parse_cache_hit;
   bool interface_cache_hit;
   bool check_cache_hit;

@@ -542,6 +542,7 @@ for (const fixture of [
   "conformance/check/pass/static-method-namespace.0",
   "conformance/check/pass/fmt-core-usability.0",
   "conformance/check/pass/c-header-import.0",
+  "conformance/check/pass/c-import-local-shadowing.0",
   "conformance/check/pass/match-fallback.0",
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/check/pass/memory-types.0",
@@ -3488,6 +3489,34 @@ assert(simpleHeaderImport.typedModel.structs.some((item) => item.name === "zero_
 assert(simpleHeaderImport.typedModel.enums.some((item) => item.name === "zero_c_color" && item.cases.some((entry) => entry.name === "ZERO_C_BLUE")));
 assert(simpleHeaderImport.typedModel.typedefs.some((item) => item.name === "zero_c_int" && item.target === "int"));
 assert.equal(typeof simpleHeaderImport.cache.target, "string");
+
+const externCallRoot = `/tmp/zero-extern-c-call-${process.pid}`;
+await rm(externCallRoot, { recursive: true, force: true });
+await mkdir(`${externCallRoot}/src`, { recursive: true });
+await mkdir(`${externCallRoot}/vendor/include`, { recursive: true });
+await mkdir(`${externCallRoot}/vendor/lib`, { recursive: true });
+await writeFile(`${externCallRoot}/vendor/include/zero_ext.h`, "int zero_ext_add(int, int);\n");
+await writeFile(`${externCallRoot}/vendor/lib/zero_ext.c`, '#include "zero_ext.h"\nint zero_ext_add(int a, int b) { return a + b; }\n');
+await execFileAsync("cc", ["-I", `${externCallRoot}/vendor/include`, "-c", `${externCallRoot}/vendor/lib/zero_ext.c`, "-o", `${externCallRoot}/vendor/lib/zero_ext.o`]);
+await writeFile(`${externCallRoot}/zero.json`, JSON.stringify({
+  package: { name: "extern-c-call", version: "0.1.0" },
+  targets: { cli: { kind: "exe", main: "src/main.0" } },
+  c: { libs: { ext: { headers: ["vendor/include/zero_ext.h"], include: ["vendor/include"], lib: ["vendor/lib/zero_ext.o"], link: [], mode: "static" } } }
+}, null, 2));
+await writeFile(`${externCallRoot}/src/main.0`, `extern c "vendor/include/zero_ext.h" as c
+
+pub fn main(world: World) -> Void raises {
+    let total: i32 = c.zero_ext_add(20, 22)
+    if total == 42 {
+        check world.out.write("extern c call ok\\n")
+    } else {
+        check world.out.write("extern c call failed\\n")
+    }
+}
+`);
+const externCallRun = await execFileAsync(zero, ["run", externCallRoot]);
+assert.equal(externCallRun.stdout, "extern c call ok\n");
+await rm(externCallRoot, { recursive: true, force: true });
 
 const cInteropGraph = await execFileAsync(zero, ["graph", "--json", "examples/c-interop"]);
 const cInteropGraphBody = JSON.parse(cInteropGraph.stdout);
