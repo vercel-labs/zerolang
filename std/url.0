@@ -214,6 +214,9 @@ fn __zero_std_url_path(url: Span<u8>) -> Span<u8> {
 fn __zero_std_url_query(url: Span<u8>) -> Maybe<Span<u8>> {
     var start: usize = 0
     while start < std.mem.len(url) && url[start] != 63_u8 {
+        if url[start] == 35_u8 {
+            return null
+        }
         start = start + 1
     }
     if start >= std.mem.len(url) {
@@ -274,35 +277,43 @@ fn __zero_std_url_write_query_param(buffer: MutSpan<u8>, key: Span<u8>, value: S
 }
 
 fn __zero_std_url_append_query(buffer: MutSpan<u8>, base: Span<u8>, query: Span<u8>) -> Maybe<Span<u8>> {
-    if std.mem.len(base) >= std.mem.len(buffer) {
+    let base_len: usize = std.mem.len(base)
+    if base_len >= std.mem.len(buffer) {
         return null
     }
+    if std.mem.len(query) > std.mem.len(buffer) - base_len - 1 {
+        return null
+    }
+    var fragment: usize = 0
+    while fragment < base_len && base[fragment] != 35_u8 {
+        fragment = fragment + 1
+    }
     var output: usize = 0
-    while output < std.mem.len(base) {
+    while output < fragment {
         buffer[output] = base[output]
         output = output + 1
     }
     var separator: u8 = 63_u8
     var index: usize = 0
-    while index < std.mem.len(base) {
+    while index < fragment {
         if base[index] == 63_u8 {
             separator = 38_u8
         }
         index = index + 1
     }
-    if output >= std.mem.len(buffer) {
-        return null
-    }
     buffer[output] = separator
     output = output + 1
-    if std.mem.len(query) > std.mem.len(buffer) - output {
-        return null
-    }
     var query_index: usize = 0
     while query_index < std.mem.len(query) {
         buffer[output] = query[query_index]
         output = output + 1
         query_index = query_index + 1
+    }
+    var fragment_index: usize = fragment
+    while fragment_index < base_len {
+        buffer[output] = base[fragment_index]
+        output = output + 1
+        fragment_index = fragment_index + 1
     }
     return buffer[..output]
 }

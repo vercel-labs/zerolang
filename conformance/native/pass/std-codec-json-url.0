@@ -95,6 +95,7 @@ pub fn main(world: World) -> Void raises {
     let host: Maybe<Span<u8>> = std.url.host(url)
     let path: Span<u8> = std.url.path(url)
     let query: Maybe<Span<u8>> = std.url.query(url)
+    let fragment_query: Maybe<Span<u8>> = std.url.query("https://example.com/path#frag?q=1")
     if !scheme.has || !std.mem.eql(scheme.value, "https") || !authority.has || !std.mem.eql(authority.value, "user@example.com:443") || !host.has || !std.mem.eql(host.value, "example.com") || !std.mem.eql(path, "/path/to") || !query.has {
         ok = false
     }
@@ -114,12 +115,20 @@ pub fn main(world: World) -> Void raises {
     if !appended.has || !std.mem.eql(appended.value, "https://example.com/path?q=zero+lang") {
         ok = false
     }
+    var append_fragment_buf: [56]u8 = [0_u8; 56]
+    var appended_fragment: Maybe<Span<u8>> = null
+    if query_param.has {
+        appended_fragment = std.url.appendQuery(append_fragment_buf, "https://example.com/path#frag", query_param.value)
+    }
+    if fragment_query.has || !appended_fragment.has || !std.mem.eql(appended_fragment.value, "https://example.com/path?q=zero+lang#frag") {
+        ok = false
+    }
 
     let json: Span<u8> = "{\"name\":\"zero\\nlang\",\"count\":42,\"ok\":true,\"nested\":{\"x\":1},\"list\":[1,2]}"
     if std.json.errorNone() != 0_u32 || std.json.errorInvalid() != 1_u32 || std.json.errorTrailing() != 2_u32 {
         ok = false
     }
-    if std.json.validateError(json) != std.json.errorNone() || std.json.validateError("{") != std.json.errorInvalid() || std.json.validateError("{} x") != std.json.errorTrailing() {
+    if std.json.validateError(json) != std.json.errorNone() || std.json.validateError("{") != std.json.errorInvalid() || std.json.validateError("{} x") != std.json.errorTrailing() || std.json.validateError("[1,]") != std.json.errorInvalid() || std.json.validateError("{\"a\":1,}") != std.json.errorInvalid() {
         ok = false
     }
     let count_field: Maybe<Span<u8>> = std.json.field(json, "count")
@@ -127,7 +136,9 @@ pub fn main(world: World) -> Void raises {
     let bool_value: Maybe<Bool> = std.json.bool(json, "ok")
     var name_buf: [16]u8 = [0_u8; 16]
     let name: Maybe<Span<u8>> = std.json.string(name_buf, json, "name")
-    if !count_field.has || !std.mem.eql(count_field.value, "42") || !count.has || count.value != 42_u32 || !bool_value.has || !bool_value.value || !name.has || !std.mem.eql(name.value, "zero\nlang") {
+    let malformed_count: Maybe<u32> = std.json.u32("{\"count\":42", "count")
+    let malformed_field: Maybe<Span<u8>> = std.json.field("{\"name\":\"zero\",", "name")
+    if !count_field.has || !std.mem.eql(count_field.value, "42") || !count.has || count.value != 42_u32 || !bool_value.has || !bool_value.value || !name.has || !std.mem.eql(name.value, "zero\nlang") || malformed_count.has || malformed_field.has {
         ok = false
     }
 

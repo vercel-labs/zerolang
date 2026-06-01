@@ -237,8 +237,12 @@ fn __zero_std_json_value_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
                 }
             } else if state == 1_u8 {
                 if bytes[index] == 44_u8 {
-                    states[depth - 1] = 0_u8
                     index = index + 1
+                    let next: usize = __zero_std_json_skip_ws(bytes, index)
+                    if next >= std.mem.len(bytes) || bytes[next] == 93_u8 {
+                        return null
+                    }
+                    states[depth - 1] = 0_u8
                 } else if bytes[index] == 93_u8 {
                     depth = depth - 1
                     index = index + 1
@@ -325,8 +329,12 @@ fn __zero_std_json_value_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
                 }
             } else if state == 5_u8 {
                 if bytes[index] == 44_u8 {
-                    states[depth - 1] = 2_u8
                     index = index + 1
+                    let next: usize = __zero_std_json_skip_ws(bytes, index)
+                    if next >= std.mem.len(bytes) || bytes[next] == 125_u8 {
+                        return null
+                    }
+                    states[depth - 1] = 2_u8
                 } else if bytes[index] == 125_u8 {
                     depth = depth - 1
                     index = index + 1
@@ -416,6 +424,9 @@ fn __zero_std_json_field(bytes: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
     if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
         return null
     }
+    var found: Bool = false
+    var found_start: usize = 0
+    var found_end: usize = 0
     while index < std.mem.len(bytes) {
         let key_end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
         if !key_end.has {
@@ -431,17 +442,29 @@ fn __zero_std_json_field(bytes: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
         if !value_end.has {
             return null
         }
-        if matched {
-            return bytes[value_start..value_end.value]
+        if matched && !found {
+            found = true
+            found_start = value_start
+            found_end = value_end.value
         }
         index = __zero_std_json_skip_ws(bytes, value_end.value)
         if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+            let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+            if trailing != std.mem.len(bytes) {
+                return null
+            }
+            if found {
+                return bytes[found_start..found_end]
+            }
             return null
         }
         if index >= std.mem.len(bytes) || bytes[index] != 44_u8 {
             return null
         }
         index = __zero_std_json_skip_ws(bytes, index + 1)
+        if index >= std.mem.len(bytes) || bytes[index] == 125_u8 {
+            return null
+        }
     }
     return null
 }
