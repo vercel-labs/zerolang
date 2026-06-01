@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.27.1
+
+<!-- release:start -->
+
+- Restricts source inputs to canonical `.0` files and removes the legacy row source parser, tightening the public surface to only canonical text.
+- Exposes memory safety facts in compiler JSON and strengthens memory safety diagnostics with owned field tracking, Maybe guard propagation, alias-aware checks, and branch-local leak detection.
+- Adds source-backed stdlib modules with dependency resolution, contracts validation, and reachability-based inclusion of helpers.
+- Expands stdlib coverage with `std.mem` generic memory helpers, fixed-storage collection algorithms, text and parsing utilities, numeric/random/time modules, codec/JSON/URL data format helpers, hosted file and HTTP API helpers, and agent testing/logging tools.
+- Supports direct checksum helpers on darwin with CRC32 coverage.
+- Hardens direct emitters with span bounds fixes, `u16` field width corrections, Mach-O `u64` comparisons, AArch64 open slice bounds traps, COFF Bool array item helpers, and ELF64 `usize` runtime helper returns.
+- Fixes borrow accounting for `MutSpan`, collection memory tracking, and generic span equality emission across direct backends.
+
+### Contributors
+
+- @ctate
+
+<!-- release:end -->
+
 ## 0.2.0
 
 <!-- release:start -->
