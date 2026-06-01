@@ -1,0 +1,12 @@
+pub fn main(world: World) -> Void raises {
+    let viaString: u32 = std.codec.crc32("123456789")
+    let viaBytes: u32 = std.codec.crc32Bytes(std.mem.span("123456789"))
+    let viaHash: u32 = std.crypto.hash32(std.mem.span("123456789"))
+    let empty: u32 = std.codec.crc32("")
+    let padded: Span<u8> = std.mem.span("0123456789")
+    let end: usize = std.mem.len(padded)
+    let dynamicSlice: u32 = std.codec.crc32Bytes(padded[1..end])
+    if viaString == 3421780262_u32 && viaBytes == 3421780262_u32 && viaHash == 3421780262_u32 && empty == 0_u32 && dynamicSlice == 3421780262_u32 {
+        check world.out.write("codec crc32 ok\n")
+    }
+}

@@ -56,6 +56,11 @@ void z_aarch64_emit_add_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned r
 void z_aarch64_emit_add_x_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
 void z_aarch64_emit_add_x_reg_lsl(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs, unsigned shift);
 void z_aarch64_emit_lsr_x_imm(ZBuf *text, unsigned dst, unsigned src, unsigned shift);
+void z_aarch64_emit_lsr_w_imm(ZBuf *text, unsigned dst, unsigned src, unsigned shift);
+void z_aarch64_emit_eor_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
+void z_aarch64_emit_and_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
+void z_aarch64_emit_mvn_w(ZBuf *text, unsigned dst, unsigned src);
+void z_aarch64_emit_movk_w(ZBuf *text, unsigned dst, uint32_t imm16, unsigned shift_halfwords);
 void z_aarch64_emit_sub_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
 void z_aarch64_emit_sub_x_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
 void z_aarch64_emit_mul_w_reg(ZBuf *text, unsigned dst, unsigned lhs, unsigned rhs);
@@ -70,6 +75,7 @@ void z_aarch64_emit_b_offset_words(ZBuf *text, int32_t words);
 void z_aarch64_emit_byte_copy_min_loop(ZBuf *text, unsigned result_reg);
 void z_aarch64_emit_byte_fill_loop(ZBuf *text, unsigned result_reg);
 void z_aarch64_emit_byte_eq_loop(ZBuf *text, unsigned result_reg);
+void z_aarch64_emit_crc32_bytes_loop(ZBuf *text, unsigned result_reg);
 
 size_t z_aarch64_emit_bl_placeholder(ZBuf *text);
 size_t z_aarch64_emit_b_placeholder(ZBuf *text);

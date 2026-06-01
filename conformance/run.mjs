@@ -373,6 +373,7 @@ for (const fixture of [
   "conformance/native/pass/array-repeat-record-field.0",
   "conformance/native/pass/integer-widths.0",
   "conformance/native/pass/std-codec-widths.0",
+  "conformance/native/pass/std-codec-crc32.0",
   "conformance/native/pass/std-crypto-hmac32.0",
   "conformance/native/pass/parse-integers.0",
   "conformance/native/pass/explicit-casts.0",
@@ -3749,6 +3750,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/integer-widths.0", "integer-widths", { stdout: "integer widths ok\n" }],
   ["conformance/native/pass/std-codec-widths.0", "std-codec-widths", { stdout: "codec widths ok\n" }],
   ["conformance/native/pass/std-codec-json-url.0", "std-codec-json-url", { stdout: "std codec json url ok\n" }],
+  ["conformance/native/pass/std-codec-crc32.0", "std-codec-crc32", { stdout: "codec crc32 ok\n" }],
   ["conformance/native/pass/std-crypto-hmac32.0", "std-crypto-hmac32", { stdout: "crypto hmac32 ok\n" }],
   ["conformance/native/pass/parse-integers.0", "parse-integers", { stdout: "parse integers ok\n" }],
   ["conformance/native/pass/std-parse-text.0", "std-parse-text", { stdout: "std parse text ok\n" }],
@@ -3780,6 +3782,24 @@ await assertDirectRuntimeRequired("conformance/native/pass/generic-nested-local-
 await assertDirectRuntimeRequired("conformance/native/pass/generic-static-array-specialization.0", "generic-static-array-specialization-required", { stdout: "generic static array specialization ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-static-forwarded-array-specialization.0", "generic-static-forwarded-array-specialization-required", { stdout: "generic static forwarded array specialization ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/explicit-cast-narrow-direct.0", "explicit-cast-narrow-direct-required", { stdout: "explicit cast narrow direct ok\n" });
+
+// darwin-arm64 Mach-O CRC32 codegen coverage (issue #230 / Tier 1 backend codegen): the
+// IR_VALUE_CRC32_BYTES lowering must build for the default Apple-Silicon host backend even on
+// non-darwin CI runners, where the resulting executable is validated structurally rather than run.
+const crc32MachOExe = await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--emit",
+  "exe",
+  "--target",
+  "darwin-arm64",
+  "conformance/native/pass/std-codec-crc32.0",
+  "--out",
+  `${outDir}/std-codec-crc32-darwin`,
+]);
+const crc32MachOExeBody = JSON.parse(crc32MachOExe.stdout);
+assert.equal(crc32MachOExeBody.compiler, "zero-macho64");
+await assertMachOArm64Executable(`${outDir}/std-codec-crc32-darwin`);
 
 const abiDump = await execFileAsync(zero, ["abi", "dump", "--json", "conformance/native/pass/const-layout.0"]);
 const abiDumpBody = JSON.parse(abiDump.stdout);

@@ -26,7 +26,7 @@ const fileBudgets = {
   "native/zero-c/src/buildability_internal.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability_context.c": { maxLines: 185, maxStrcmpCalls: 1 },
   "native/zero-c/src/buildability_targets.c": { maxLines: 190, maxStrcmpCalls: 0 },
-  "native/zero-c/src/buildability_value_targets.c": { maxLines: 352, maxStrcmpCalls: 0 },
+  "native/zero-c/src/buildability_value_targets.c": { maxLines: 358, maxStrcmpCalls: 0 },
   "native/zero-c/src/call_resolve.c": { maxLines: 200, maxStrcmpCalls: 2 },
   "native/zero-c/src/call_resolve.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/canonical_text.c": { maxLines: 1508, maxStrcmpCalls: 0 },
@@ -48,9 +48,9 @@ const fileBudgets = {
   "native/zero-c/src/macho_format.h": { maxLines: 90, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_direct.c": { maxLines: 1057, maxStrcmpCalls: 1 },
   "native/zero-c/src/aarch64_direct.h": { maxLines: 40, maxStrcmpCalls: 0 },
-  "native/zero-c/src/aarch64_emit.c": { maxLines: 388, maxStrcmpCalls: 0 },
-  "native/zero-c/src/aarch64_emit.h": { maxLines: 82, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_macho64.c": { maxLines: 1817, maxStrcmpCalls: 2 },
+  "native/zero-c/src/aarch64_emit.c": { maxLines: 438, maxStrcmpCalls: 0 },
+  "native/zero-c/src/aarch64_emit.h": { maxLines: 88, maxStrcmpCalls: 0 },
+  "native/zero-c/src/emit_macho64.c": { maxLines: 1826, maxStrcmpCalls: 2 },
   "native/zero-c/src/emit_macho_x64.c": { maxLines: 1388, maxStrcmpCalls: 1 },
   "native/zero-c/src/macho_emit_state.c": { maxLines: 210, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_emit_state.h": { maxLines: 90, maxStrcmpCalls: 0 },
@@ -116,7 +116,7 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/checker.c|static bool expr_reference_provenance(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ValueProvenance *origins) {", 175],
   ["native/zero-c/src/main.c|static int run_tests_direct(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target) {", 151],
   ["native/zero-c/src/checker.c|static bool check_scalar_match(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth, const char *match_type) {", 127],
-  ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 127],
+  ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 129],
 ]);
 
 const knownReturnTypeDivergences = new Map();
