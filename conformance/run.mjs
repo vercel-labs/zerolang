@@ -542,6 +542,7 @@ for (const fixture of [
   "conformance/check/pass/static-method-namespace.0",
   "conformance/check/pass/fmt-core-usability.0",
   "conformance/check/pass/c-header-import.0",
+  "conformance/check/pass/c-import-local-shadowing.0",
   "conformance/check/pass/match-fallback.0",
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/check/pass/memory-types.0",

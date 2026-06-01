@@ -5185,13 +5185,14 @@ static bool resolve_stdlib_call(const Expr *call, ZCallResolution *out) {
   return resolve_stdlib_callee(call->left, call, out);
 }
 
-static bool resolve_c_import_call(const Program *program, const Expr *call, ZCallResolution *out) {
+static bool resolve_c_import_call(const Program *program, const Expr *call, Scope *scope, ZCallResolution *out) {
   if (!program || !call || call->kind != EXPR_CALL || !call->left || call->left->kind != EXPR_MEMBER ||
       !call->left->left || call->left->left->kind != EXPR_IDENT || !out) {
     return false;
   }
   const char *alias = call->left->left->text;
   const char *symbol = call->left->text;
+  if (scope_has(scope, alias)) return false;
   ZCImportFunction function = {0};
   if (!z_c_import_find_function(program, alias, symbol, &function, NULL)) return false;
   z_call_resolution_init(out);
@@ -5621,7 +5622,7 @@ static bool resolve_expr_call_for_type(CheckContext *ctx, const Program *program
     resolve_constrained_interface_call(program, ctx ? ctx->function : NULL, call, resolution) ||
     resolve_receiver_shape_call(ctx, program, call, scope, NULL, resolution) ||
     resolve_choice_constructor_call(program, call, resolution) ||
-    resolve_c_import_call(program, call, resolution) ||
+    resolve_c_import_call(program, call, scope, resolution) ||
     resolve_stdlib_call(call, resolution);
 }
 
@@ -7024,6 +7025,7 @@ static bool check_c_import_call_expected(CheckContext *ctx, const Program *progr
   }
   const char *alias = expr->left->left->text;
   const char *symbol = expr->left->text;
+  if (scope_has(scope, alias)) return true;
   if (!z_c_import_alias_exists(program, alias)) return true;
   *handled = true;
   ZCImportFunction function = {0};
@@ -8703,7 +8705,7 @@ static bool call_facts_resolve_stdlib_call(CheckContext *ctx, const Program *pro
 }
 
 static bool call_facts_resolve_c_import_call(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZCallResolution *out) {
-  if (!resolve_c_import_call(program, expr, out)) return false;
+  if (!resolve_c_import_call(program, expr, scope, out)) return false;
   if (z_call_resolution_expected_arg_count(out) != expr->args.len) {
     z_call_resolution_free(out);
     return false;
@@ -8883,10 +8885,11 @@ static void call_facts_collect_consts(ZBuf *buf, const SourceInput *input, bool 
 }
 
 void z_append_call_resolution_facts_json(ZBuf *buf, const SourceInput *input, const Program *program) {
+  static const ZCallKind supported_kinds[] = {Z_CALL_FUNCTION, Z_CALL_STDLIB, Z_CALL_RECEIVER, Z_CALL_SHAPE_NAMESPACE, Z_CALL_CONSTRAINED_INTERFACE, Z_CALL_CONCRETE_CONSTRAINED_SHAPE, Z_CALL_CHOICE_CONSTRUCTOR, Z_CALL_C_IMPORT};
   zbuf_append(buf, "{\"schemaVersion\":1,\"supportedKinds\":[");
-  for (int kind = Z_CALL_FUNCTION; kind <= Z_CALL_C_IMPORT; kind++) {
-    if (kind > Z_CALL_FUNCTION) zbuf_append(buf, ",");
-    call_facts_append_json_string(buf, z_call_kind_name((ZCallKind)kind));
+  for (size_t i = 0; i < sizeof(supported_kinds) / sizeof(supported_kinds[0]); i++) {
+    if (i > 0) zbuf_append(buf, ",");
+    call_facts_append_json_string(buf, z_call_kind_name(supported_kinds[i]));
   }
   zbuf_append(buf, "],\"calls\":[");
   bool wrote = false;

@@ -1426,6 +1426,7 @@ static bool ir_lower_c_import_call(const Program *program, IrProgram *ir, const 
   }
   const char *alias = expr->left->left->text;
   const char *symbol = expr->left->text;
+  if (ir_function_find_local(fun, alias)) return false;
   if (!z_c_import_alias_exists(program, alias)) return false;
   ZCImportFunction function = {0};
   if (!z_c_import_find_function(program, alias, symbol, &function, NULL)) {
