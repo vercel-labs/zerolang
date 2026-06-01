@@ -63,7 +63,8 @@ pub fn main(world: World) -> Void raises {
         }
     }
     let invalid_varint: Maybe<u32> = std.codec.varintDecode("\xff\xff\xff\xff\xff")
-    if invalid_varint.has {
+    let trailing_varint: Maybe<u32> = std.codec.varintDecode("\xac\x02\x01")
+    if invalid_varint.has || trailing_varint.has {
         ok = false
     }
 

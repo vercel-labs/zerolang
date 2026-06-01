@@ -253,6 +253,9 @@ fn __zero_std_codec_varint_decode(bytes: Span<u8>) -> Maybe<u32> {
         }
         value = value + chunk * multiplier
         if byte < 128_u8 {
+            if index + 1 != std.mem.len(bytes) {
+                return null
+            }
             return value
         }
         if multiplier > 268435456_u32 {
