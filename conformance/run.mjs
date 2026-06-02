@@ -3641,6 +3641,13 @@ assert(externCallImport.typedModel.functions.some((item) => item.name === "zero_
 assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_commented"));
 assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_block_commented"));
 assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_disabled"));
+const externCallGraphArtifact = `${externCallRoot}/extern-call.program-graph`;
+await execFileAsync(zero, ["graph", "dump", "--out", externCallGraphArtifact, externCallRoot]);
+const externCallGraphCheck = await execFileAsync(zero, ["graph", "check", "--json", externCallGraphArtifact]);
+assert.equal(JSON.parse(externCallGraphCheck.stdout).ok, true);
+const externCallGraphSizeArtifact = `${externCallRoot}/extern-call-size-metadata.json`;
+const externCallGraphSize = await execFileAsync(zero, ["graph", "size", "--json", "--out", externCallGraphSizeArtifact, externCallGraphArtifact]);
+assert.equal(JSON.parse(externCallGraphSize.stdout).graph.moduleIdentity, "package:extern-c-call@0.1.0");
 const externCallBuildOut = `${externCallRoot}/extern-call`;
 const externCallBuild = await execFileAsync(zero, ["build", "--json", externCallRoot, "--out", externCallBuildOut]);
 const externCallBuildBody = JSON.parse(externCallBuild.stdout);
@@ -3665,6 +3672,11 @@ assert.equal(
 );
 assert.equal(externCallBuildBody.releaseTargetContract.selectedEmitter, externCallBuildBody.releaseTargetContract.directObjectEmitter);
 assert.equal(externCallBuildBody.releaseTargetContract.libc.artifactMode, externCallBuildBody.releaseTargetContract.libc.targetMode);
+const externCallGraphBuildOut = `${externCallRoot}/extern-call-graph`;
+const externCallGraphBuild = await execFileAsync(zero, ["graph", "build", "--json", externCallGraphArtifact, "--out", externCallGraphBuildOut]);
+const externCallGraphBuildBody = JSON.parse(externCallGraphBuild.stdout);
+assert.equal(externCallGraphBuildBody.emit, "exe");
+assert(externCallGraphBuildBody.objectBackend.linkerPlan.staticLibraries.some((item) => item.endsWith(externCallObjectRel)));
 const externCallRun = await execFileAsync(zero, ["run", externCallRoot]);
 assert.equal(externCallRun.stdout, "extern c call ok\n");
 const externCallScalarBuildOut = `${externCallScalarRoot}/extern-scalar`;

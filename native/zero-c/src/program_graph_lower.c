@@ -236,6 +236,94 @@ static bool lower_starts_with(const char *text, const char *prefix) {
   return strncmp(text, prefix, len) == 0;
 }
 
+static bool lower_path_is_absolute(const char *path) {
+  if (!path || !path[0]) return false;
+  return path[0] == '/' || (strlen(path) > 2 && path[1] == ':');
+}
+
+static bool lower_file_exists(const char *path) {
+  FILE *file = path && path[0] ? fopen(path, "rb") : NULL;
+  if (!file) return false;
+  fclose(file);
+  return true;
+}
+
+static char *lower_dirname_of(const char *path) {
+  const char *slash = path ? strrchr(path, '/') : NULL;
+  if (!slash) return z_strdup(".");
+  if (slash == path) return z_strdup("/");
+  return z_strndup(path, (size_t)(slash - path));
+}
+
+static char *lower_join_path(const char *left, const char *right) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, left && left[0] ? left : ".");
+  if (buf.len == 0 || buf.data[buf.len - 1] != '/') zbuf_append_char(&buf, '/');
+  zbuf_append(&buf, right ? right : "");
+  return buf.data;
+}
+
+static char *lower_parent_dir(const char *dir) {
+  if (!dir || !dir[0] || strcmp(dir, ".") == 0 || strcmp(dir, "/") == 0) return NULL;
+  char *parent = lower_dirname_of(dir);
+  if (strcmp(parent, dir) == 0) {
+    free(parent);
+    return NULL;
+  }
+  return parent;
+}
+
+static char *lower_find_manifest_for_source_path(const char *path) {
+  if (!path || !path[0]) return NULL;
+  char *dir = lower_dirname_of(path);
+  while (dir && dir[0]) {
+    char *manifest = lower_join_path(dir, "zero.json");
+    if (lower_file_exists(manifest)) {
+      free(dir);
+      return manifest;
+    }
+    free(manifest);
+    char *parent = lower_parent_dir(dir);
+    free(dir);
+    dir = parent;
+  }
+  return NULL;
+}
+
+static void lower_source_seed_package_manifest(SourceInput *source, const ZProgramGraph *graph) {
+  if (!source || source->manifest_path || !graph || !lower_starts_with(graph->module_identity, "package:")) return;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (!node->path || !node->path[0]) continue;
+    char *manifest = lower_find_manifest_for_source_path(node->path);
+    if (!manifest) continue;
+    source->manifest_path = manifest;
+    source->package_root = lower_dirname_of(manifest);
+    return;
+  }
+}
+
+static char *lower_resolve_c_import_header_path(const GraphLower *lower, const ZProgramGraphNode *node, const char *header) {
+  if (!header || !header[0]) return z_strdup(header ? header : "");
+  if (lower_path_is_absolute(header)) return z_strdup(header);
+  if (lower && lower->source && lower->source->package_root && lower->source->package_root[0]) {
+    char *package_path = lower_join_path(lower->source->package_root, header);
+    if (lower_file_exists(package_path)) return package_path;
+    free(package_path);
+  }
+  const char *source_path = node && node->path && node->path[0] ? node->path : (lower ? lower->current_module_path : NULL);
+  if (source_path && source_path[0]) {
+    char *dir = lower_dirname_of(source_path);
+    char *source_relative = lower_join_path(dir, header);
+    free(dir);
+    if (lower_file_exists(source_relative)) return source_relative;
+    free(source_relative);
+  }
+  if (lower_file_exists(header)) return z_strdup(header);
+  return z_strdup(header);
+}
+
 static bool lower_embedded_std_module(const ZProgramGraphNode *module) {
   if (!module || module->kind != Z_PROGRAM_GRAPH_NODE_MODULE) return false;
   for (size_t i = 0; i < z_std_source_module_count(); i++) {
@@ -807,8 +895,10 @@ static void lower_import(GraphLower *lower, Program *program, const ZProgramGrap
 
 static void lower_c_import(GraphLower *lower, Program *program, const ZProgramGraphNode *node) {
   if (!lower_require_identifier(lower, node, node ? node->name : NULL, "program graph C import alias is not valid Zero identifier syntax")) return;
+  const char *header = node->value && node->value[0] ? node->value : "";
   lower_push_c_import(&program->c_imports, (CImport){
-    .header = z_strdup(node->value && node->value[0] ? node->value : ""),
+    .header = z_strdup(header),
+    .resolved_header = lower_resolve_c_import_header_path(lower, node, header),
     .alias = z_strdup(node->name && node->name[0] ? node->name : ""),
     .line = lower_line(lower, node),
     .column = node->column > 0 ? node->column : 1,
@@ -1005,6 +1095,7 @@ static void lower_init_source_from_graph(SourceInput *source, const ZProgramGrap
   source->source_file = z_strdup(artifact_path && artifact_path[0] ? artifact_path : "<program-graph>");
   source->source = z_strdup("");
   lower_source_set_package_identity(source, graph ? graph->module_identity : NULL);
+  lower_source_seed_package_manifest(source, graph);
   size_t module_count = 0;
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_MODULE) module_count++;

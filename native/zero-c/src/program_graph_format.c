@@ -2,6 +2,7 @@
 #include "program_graph_import.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -173,6 +174,13 @@ static bool graph_format_parse_size(const char **cursor, size_t *out) {
   return true;
 }
 
+static bool graph_format_parse_int(const char **cursor, int *out) {
+  size_t value = 0;
+  if (!graph_format_parse_size(cursor, &value) || value > (size_t)INT_MAX) return false;
+  *out = (int)value;
+  return true;
+}
+
 static bool graph_format_parse_bool(const char **cursor, bool *out) {
   if (strncmp(*cursor, "true", 4) == 0) {
     *cursor += 4;
@@ -322,6 +330,8 @@ static bool graph_format_parse_node_line(const char *line, ZProgramGraphNode *ou
   bool seen_static = false;
   bool seen_fallible = false;
   bool seen_export_c = false;
+  bool seen_line = false;
+  bool seen_column = false;
   bool ok = graph_format_parse_literal(&cursor, "node ") &&
             graph_format_parse_handle_token(&cursor, &node.id) &&
             graph_format_parse_literal(&cursor, " ") &&
@@ -337,7 +347,14 @@ static bool graph_format_parse_node_line(const char *line, ZProgramGraphNode *ou
     if (graph_format_text_eq(key, "name")) ok = graph_format_parse_text_attr(&cursor, &node.name);
     else if (graph_format_text_eq(key, "type")) ok = graph_format_parse_text_attr(&cursor, &node.type);
     else if (graph_format_text_eq(key, "value")) ok = graph_format_parse_text_attr(&cursor, &node.value);
-    else if (graph_format_text_eq(key, "public")) {
+    else if (graph_format_text_eq(key, "path")) ok = graph_format_parse_text_attr(&cursor, &node.path);
+    else if (graph_format_text_eq(key, "line")) {
+      ok = !seen_line && graph_format_parse_int(&cursor, &node.line);
+      seen_line = true;
+    } else if (graph_format_text_eq(key, "column")) {
+      ok = !seen_column && graph_format_parse_int(&cursor, &node.column);
+      seen_column = true;
+    } else if (graph_format_text_eq(key, "public")) {
       ok = !seen_public && graph_format_parse_bool(&cursor, &node.is_public);
       seen_public = true;
     } else if (graph_format_text_eq(key, "mutable")) {
@@ -720,6 +737,11 @@ static void graph_format_append_bool_field(ZBuf *buf, const char *name, bool val
   zbuf_appendf(buf, " %s:true", name);
 }
 
+static void graph_format_append_int_field(ZBuf *buf, const char *name, int value) {
+  if (value <= 0) return;
+  zbuf_appendf(buf, " %s:%d", name, value);
+}
+
 static bool graph_format_edge_order_is_semantic(const char *kind) {
   static const char *const ordered_kinds[] = {
     "alias",
@@ -769,6 +791,11 @@ void z_program_graph_append_dump(ZBuf *buf, const ZProgramGraph *graph, const ZP
     graph_format_append_text_field(buf, "name", node->name);
     graph_format_append_text_field(buf, "type", node->type);
     graph_format_append_text_field(buf, "value", node->value);
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT) {
+      graph_format_append_text_field(buf, "path", node->path);
+      graph_format_append_int_field(buf, "line", node->line);
+      graph_format_append_int_field(buf, "column", node->column);
+    }
     graph_format_append_bool_field(buf, "public", node->is_public);
     graph_format_append_bool_field(buf, "mutable", node->is_mutable);
     graph_format_append_bool_field(buf, "static", node->is_static);
