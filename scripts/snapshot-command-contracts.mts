@@ -1219,7 +1219,7 @@ assert.equal(graphPackageSourceCheckJson.check.lowering, "direct-program-graph")
 writeFileSync(graphSizeNoisePatchPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
-  `insert node="#patch_size_noise" kind="Function" parent="${graphModuleNode.id}" edge="backlink" order="0" name="ghost" type="Void" public="true" path="examples/hello.0" line="1" column="1"`,
+  `insertEdge from="${graphHelloLiteralNode.id}" to="${graphHelloLiteralNode.typeId}" edge="sizeProbeType" target="type" order="0"`,
   "",
 ].join("\n"));
 const graphSizeNoisePatchJson = json(["graph", "patch", "--json", "--out", graphSizeNoisePath, graphDumpPath, graphSizeNoisePatchPath]).body;
@@ -2082,15 +2082,17 @@ assert.equal(graphTestBlockRoundtripJson.comparison.ok, true);
 let sparseOrderGraph = graphDump.replace(`edge ${graphModuleNode.id} function ${graphMainFunctionNode.id} order:0`, `edge ${graphModuleNode.id} function ${graphMainFunctionNode.id} order:1000000000000`);
 sparseOrderGraph = sparseOrderGraph.replace(/hash "graph:[0-9a-f]{16}"/, `hash "${recomputeGraphHash(sparseOrderGraph)}"`);
 writeFileSync(graphSparseOrderPath, sparseOrderGraph);
-assert.equal(zero(["graph", "validate", graphSparseOrderPath]).stdout, "program graph ok\n");
-const sparseOrderView = execFileSync("bin/zero", ["graph", "view", graphSparseOrderPath], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 1000 });
-assert.match(sparseOrderView, /pub fn main\(world: World\) -> Void raises/);
+const sparseOrderValidate = json(["graph", "validate", "--json", graphSparseOrderPath], { allowFailure: true });
+assert.notEqual(sparseOrderValidate.code, 0);
+assert.equal(sparseOrderValidate.body.diagnostics[0].actual, "GRF013");
+assert.match(sparseOrderValidate.body.diagnostics[0].message, /ordered edge group is sparse/);
 let sparseArgGraph = graphDump.replace(/edge (#[^ ]+) arg (#[^ ]+) order:0/, "edge $1 arg $2 order:1000000000000");
 sparseArgGraph = sparseArgGraph.replace(/hash "graph:[0-9a-f]{16}"/, `hash "${recomputeGraphHash(sparseArgGraph)}"`);
 writeFileSync(graphSparseArgPath, sparseArgGraph);
-assert.equal(zero(["graph", "validate", graphSparseArgPath]).stdout, "program graph ok\n");
-const sparseArgView = zero(["graph", "view", graphSparseArgPath]).stdout;
-assert.match(sparseArgView, /check world\.out\.write\("hello from zero\\n"\)/);
+const sparseArgValidate = json(["graph", "validate", "--json", graphSparseArgPath], { allowFailure: true });
+assert.notEqual(sparseArgValidate.code, 0);
+assert.equal(sparseArgValidate.body.diagnostics[0].actual, "GRF013");
+assert.match(sparseArgValidate.body.diagnostics[0].message, /ordered edge group is sparse/);
 const graphWrongSchemaPath = join(outDir, "wrong-schema.program-graph");
 writeFileSync(graphWrongSchemaPath, "zero-graph v2\n");
 const graphWrongSchema = json(["graph", "validate", "--json", graphWrongSchemaPath], { allowFailure: true });

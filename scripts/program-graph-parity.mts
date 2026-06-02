@@ -432,10 +432,18 @@ try {
 
   for (const fixture of [
     "examples/hello.0",
+    "examples/type-alias.0",
+    "examples/static-interface.0",
+    "examples/direct-rescue-basic.0",
     "examples/std-math.0",
     "examples/systems-package",
+    "examples/readall-cli",
     "examples/direct-package-arrays/src/main.0",
     "conformance/check/pass/c-header-import.0",
+    "conformance/native/pass/borrow-field-independent-assignment.0",
+    "conformance/native/pass/open-ended-slices.0",
+    "conformance/native/pass/allocator-primitives.0",
+    "conformance/native/pass/std-fs-fallible.0",
     "benchmarks/rosetta/fibonacci-sequence.0",
   ]) {
     await assertCheckParity(fixture);
@@ -443,9 +451,17 @@ try {
 
   for (const fixture of [
     "examples/hello.0",
+    "examples/type-alias.0",
+    "examples/static-interface.0",
+    "examples/direct-rescue-basic.0",
     "examples/std-math.0",
     "examples/systems-package",
+    "examples/readall-cli",
     "conformance/check/pass/c-header-import.0",
+    "conformance/native/pass/borrow-field-independent-assignment.0",
+    "conformance/native/pass/open-ended-slices.0",
+    "conformance/native/pass/allocator-primitives.0",
+    "conformance/native/pass/std-fs-fallible.0",
     "benchmarks/rosetta/fibonacci-sequence.0",
   ]) {
     await assertRoundtripStable(fixture);

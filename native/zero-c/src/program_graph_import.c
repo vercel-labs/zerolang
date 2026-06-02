@@ -92,6 +92,18 @@ static void graph_add_edge(ZProgramGraph *graph, const char *from, const char *t
   graph_add_edge_target(graph, from, to, kind, Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, order);
 }
 
+static size_t graph_next_edge_order(const ZProgramGraph *graph, const char *from, const char *kind) {
+  size_t order = 0;
+  for (size_t i = 0; graph && from && kind && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE && edge->from && edge->kind &&
+        strcmp(edge->from, from) == 0 && strcmp(edge->kind, kind) == 0) {
+      order++;
+    }
+  }
+  return order;
+}
+
 static const char *graph_find_module_id(const ZProgramGraph *graph, const char *module_name) {
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
@@ -313,13 +325,15 @@ static void graph_build_imports(ZProgramGraph *graph, const SourceInput *input, 
     const CImport *item = &program->c_imports.items[i];
     const char *path = graph_source_path(input, item->line);
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_C_IMPORT, item->alias, NULL, item->header, path, graph_source_line(input, item->line), item->column);
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node->id, "cImport", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node->id, "cImport", graph_next_edge_order(graph, module_id, "cImport"));
   }
   for (size_t i = 0; program && i < program->use_imports.len; i++) {
     const UseImport *item = &program->use_imports.items[i];
     const char *path = graph_source_path(input, item->line);
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_IMPORT, item->module, NULL, item->alias, path, graph_source_line(input, item->line), item->column);
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node->id, "import", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node->id, "import", graph_next_edge_order(graph, module_id, "import"));
   }
 }
 
@@ -329,7 +343,8 @@ static void graph_build_consts_and_aliases(ZProgramGraph *graph, const SourceInp
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_CONST, item->name, item->type, NULL, graph_source_path(input, item->line), graph_source_line(input, item->line), item->column);
     const char *node_id = node->id;
     node->is_public = item->is_public;
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node_id, "const", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node_id, "const", graph_next_edge_order(graph, module_id, "const"));
     if (item->expr) graph_add_edge(graph, node_id, graph_build_expr(graph, input, item->expr), "value", 0);
   }
   for (size_t i = 0; program && i < program->aliases.len; i++) {
@@ -337,7 +352,8 @@ static void graph_build_consts_and_aliases(ZProgramGraph *graph, const SourceInp
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_TYPE_ALIAS, item->name, item->target, NULL, graph_source_path(input, item->line), graph_source_line(input, item->line), item->column);
     const char *node_id = node->id;
     node->is_public = item->is_public;
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node_id, "alias", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node_id, "alias", graph_next_edge_order(graph, module_id, "alias"));
     graph_add_type_ref(graph, node_id, "target", item->target, graph_source_path(input, item->line), graph_source_line(input, item->line), item->column, 0);
   }
 }
@@ -348,7 +364,8 @@ static void graph_build_aggregate_decls(ZProgramGraph *graph, const SourceInput 
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_SHAPE, shape->name, NULL, shape->layout, graph_source_path(input, shape->line), graph_source_line(input, shape->line), shape->column);
     const char *node_id = node->id;
     node->is_public = shape->is_public;
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, shape->line), node_id, "shape", i);
+    const char *module_id = graph_module_id_for_line(graph, input, shape->line);
+    graph_add_edge(graph, module_id, node_id, "shape", graph_next_edge_order(graph, module_id, "shape"));
     graph_build_params(graph, input, &shape->type_params, node_id, "typeParam");
     graph_build_top_level_params(graph, input, &shape->fields, node_id, "field", Z_PROGRAM_GRAPH_NODE_FIELD);
     for (size_t method = 0; method < shape->methods.len; method++) graph_build_function(graph, input, &shape->methods.items[method], node_id, "method", method);
@@ -358,7 +375,8 @@ static void graph_build_aggregate_decls(ZProgramGraph *graph, const SourceInput 
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_INTERFACE, item->name, NULL, NULL, graph_source_path(input, item->line), graph_source_line(input, item->line), item->column);
     const char *node_id = node->id;
     node->is_public = item->is_public;
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node_id, "interface", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node_id, "interface", graph_next_edge_order(graph, module_id, "interface"));
     graph_build_params(graph, input, &item->type_params, node_id, "typeParam");
     for (size_t method = 0; method < item->methods.len; method++) graph_build_function(graph, input, &item->methods.items[method], node_id, "method", method);
   }
@@ -370,7 +388,8 @@ static void graph_build_sum_decls(ZProgramGraph *graph, const SourceInput *input
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_ENUM, item->name, item->type, NULL, graph_source_path(input, item->line), graph_source_line(input, item->line), item->column);
     const char *node_id = node->id;
     node->is_public = item->is_public;
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node_id, "enum", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node_id, "enum", graph_next_edge_order(graph, module_id, "enum"));
     graph_build_top_level_params(graph, input, &item->cases, node_id, "case", Z_PROGRAM_GRAPH_NODE_ENUM_CASE);
   }
   for (size_t i = 0; program && i < program->choices.len; i++) {
@@ -378,7 +397,8 @@ static void graph_build_sum_decls(ZProgramGraph *graph, const SourceInput *input
     ZProgramGraphNode *node = graph_add_node(graph, Z_PROGRAM_GRAPH_NODE_CHOICE, item->name, NULL, NULL, graph_source_path(input, item->line), graph_source_line(input, item->line), item->column);
     const char *node_id = node->id;
     node->is_public = item->is_public;
-    graph_add_edge(graph, graph_module_id_for_line(graph, input, item->line), node_id, "choice", i);
+    const char *module_id = graph_module_id_for_line(graph, input, item->line);
+    graph_add_edge(graph, module_id, node_id, "choice", graph_next_edge_order(graph, module_id, "choice"));
     graph_build_top_level_params(graph, input, &item->cases, node_id, "case", Z_PROGRAM_GRAPH_NODE_CHOICE_CASE);
   }
 }
@@ -395,7 +415,8 @@ bool z_program_graph_from_program(const SourceInput *input, const Program *progr
   graph_build_sum_decls(graph, input, program);
   for (size_t i = 0; program && i < program->functions.len; i++) {
     const Function *fun = &program->functions.items[i];
-    graph_build_function(graph, input, fun, graph_module_id_for_line(graph, input, fun->line), "function", i);
+    const char *module_id = graph_module_id_for_line(graph, input, fun->line);
+    graph_build_function(graph, input, fun, module_id, "function", graph_next_edge_order(graph, module_id, "function"));
   }
   z_program_graph_assign_source_node_ids(graph);
   z_program_graph_finalize_identities(graph);
