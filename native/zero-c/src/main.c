@@ -5018,6 +5018,30 @@ static void init_direct_llvm_ir_unavailable_diag(ZDiag *diag, const Command *com
   z_diag_set_backend_blocker(diag, &blocker);
 }
 
+static bool metadata_backend_request_buildable(const Command *command, const SourceInput *input, const ZTargetInfo *target, ZDiag *diag) {
+  EmitKind emit = command ? command->emit : EMIT_EXE;
+  const char *emit_kind = emit_kind_name(emit);
+  const char *path = input && input->source_file ? input->source_file : (command ? command->input : NULL);
+  if (emit == EMIT_LLVM_IR) {
+    if (z_backend_request_is_llvm(command ? command->backend : NULL, emit_kind)) z_backend_init_llvm_unavailable_diag(diag, target, emit_kind, path);
+    else init_direct_llvm_ir_unavailable_diag(diag, command, target, path);
+    return false;
+  }
+  if (z_backend_request_is_llvm(command ? command->backend : NULL, emit_kind)) {
+    z_backend_init_llvm_unavailable_diag(diag, target, emit_kind, path);
+    return false;
+  }
+  const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
+  if (direct_request) {
+    ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target);
+    if (!z_direct_requested_backend_matches(direct_request, direct_obj.backend)) {
+      init_direct_backend_request_mismatch_diag(diag, command, input, target, emit_kind);
+      return false;
+    }
+  }
+  return true;
+}
+
 static int return_direct_backend_error(const Command *command, const SourceInput *input, const ZTargetInfo *target, const char *emit_kind, const char *reason, IrProgram *ir, Program *program) {
   ZDiag diag;
   init_direct_backend_diag(&diag, command, input, target, emit_kind, reason);
@@ -11189,17 +11213,7 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
     return 1;
   }
 
-  if (command && command->emit == EMIT_LLVM_IR) {
-    if (z_backend_request_is_llvm(command->backend, emit_kind_name(command->emit))) z_backend_init_llvm_unavailable_diag(diag, target, emit_kind_name(command->emit), command->input);
-    else init_direct_llvm_ir_unavailable_diag(diag, command, target, command->input);
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag); else print_diag(diag->path ? diag->path : command->input, diag);
-    z_free_program(&program);
-    z_free_source(&input);
-    z_program_graph_free(&graph);
-    return 1;
-  }
-  if (z_backend_request_is_llvm(command ? command->backend : NULL, emit_kind_name(command ? command->emit : EMIT_EXE))) {
-    z_backend_init_llvm_unavailable_diag(diag, target, emit_kind_name(command ? command->emit : EMIT_EXE), command ? command->input : NULL);
+  if (!metadata_backend_request_buildable(command, &input, target, diag)) {
     if (command && command->json) print_diag_json(diag->path ? diag->path : command->input, diag); else print_diag(diag->path ? diag->path : (command ? command->input : NULL), diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -12003,6 +12017,11 @@ int main(int argc, char **argv) {
   input.lower_ms = now_ms() - phase_started;
   apply_ir_metrics_to_input(&input, &ir, target);
   if (strcmp(command.command, "mem") == 0) {
+    if (!metadata_backend_request_buildable(&command, &input, target, &diag)) {
+      int rc = return_buildability_error(&command, &input, &diag, &ir, &program);
+      z_free_source(&input);
+      return rc;
+    }
     ZBuf mem_json;
     zbuf_init(&mem_json);
     append_direct_memory_json(&mem_json, &input, &program, target, &command, &ir);
@@ -12018,12 +12037,17 @@ int main(int argc, char **argv) {
   bool ship_command = strcmp(command.command, "ship") == 0;
   bool size_command = strcmp(command.command, "size") == 0;
   bool artifact_command = build_command || run_command || ship_command;
-  if ((artifact_command || size_command) && command.emit == EMIT_LLVM_IR) {
+  if (size_command && !metadata_backend_request_buildable(&command, &input, target, &diag)) {
+    int rc = return_buildability_error(&command, &input, &diag, &ir, &program);
+    z_free_source(&input);
+    return rc;
+  }
+  if (artifact_command && command.emit == EMIT_LLVM_IR) {
     if (z_backend_request_is_llvm(command.backend, emit_kind_name(command.emit))) z_backend_init_llvm_unavailable_diag(&diag, target, emit_kind_name(command.emit), input.source_file);
     else init_direct_llvm_ir_unavailable_diag(&diag, &command, target, input.source_file);
     int rc = return_buildability_error(&command, &input, &diag, &ir, &program); z_free_source(&input); return rc;
   }
-  if ((artifact_command || size_command) && z_backend_request_is_llvm(command.backend, emit_kind_name(command.emit))) {
+  if (artifact_command && z_backend_request_is_llvm(command.backend, emit_kind_name(command.emit))) {
     z_backend_init_llvm_unavailable_diag(&diag, target, emit_kind_name(command.emit), input.source_file);
     int rc = return_buildability_error(&command, &input, &diag, &ir, &program); z_free_source(&input); return rc;
   }

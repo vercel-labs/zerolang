@@ -281,10 +281,15 @@ ZDirectObjectBackendFacts z_direct_object_backend_facts(const ZTargetInfo *targe
   const char *emitter = z_direct_backend_emitter_for_emit_kind(target, emit_kind, requested_backend);
   if (metadata_only || runtime_linked_exe) {
     backend = z_direct_object_backend(target);
-    emitter = z_direct_backend_object_emitter(backend);
-    if (metadata_only && (!emitter || strcmp(emitter, "none") == 0)) emitter = "metadata-only";
+    if (metadata_only && requested_backend && requested_backend[0] && !z_direct_requested_backend_matches(requested_backend, backend)) {
+      backend = Z_DIRECT_BACKEND_NONE;
+      emitter = "none";
+    } else {
+      emitter = z_direct_backend_object_emitter(backend);
+      if (metadata_only && (!emitter || strcmp(emitter, "none") == 0)) emitter = "metadata-only";
+    }
   }
-  bool active = metadata_only || runtime_linked_exe || (backend != Z_DIRECT_BACKEND_NONE && (emit_obj || requested_exe));
+  bool active = (metadata_only && backend != Z_DIRECT_BACKEND_NONE) || runtime_linked_exe || (backend != Z_DIRECT_BACKEND_NONE && (emit_obj || requested_exe));
   bool executable_artifact = requested_exe && !runtime_linked_exe;
   ZDirectObjectBackendFacts facts = {
     .backend = backend,
