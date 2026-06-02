@@ -763,6 +763,12 @@ typedef enum {
   Z_DIRECT_BACKEND_COFF_AARCH64
 } ZDirectBackend;
 
+typedef enum {
+  Z_BACKEND_FAMILY_UNKNOWN,
+  Z_BACKEND_FAMILY_DIRECT,
+  Z_BACKEND_FAMILY_LLVM
+} ZBackendFamily;
+
 typedef struct {
   const char *driver_kind;
   const char *selection_source;
@@ -914,6 +920,14 @@ const char *z_direct_runtime_link_blocker(const ZTargetInfo *target, bool needs_
 bool z_direct_backend_emitter_is_executable(const char *emitter);
 bool z_direct_backend_is_request_name(const char *requested_backend);
 bool z_direct_requested_backend_matches(const char *requested_backend, ZDirectBackend backend);
+ZBackendFamily z_backend_family_from_request(const char *requested_backend, const char *emit_kind);
+const char *z_backend_family_name(ZBackendFamily family);
+bool z_backend_request_is_known(const char *requested_backend, const char *emit_kind);
+bool z_backend_request_is_llvm(const char *requested_backend, const char *emit_kind);
+const char *z_backend_direct_request_name(const char *requested_backend);
+const char *z_backend_request_expected(void);
+void z_backend_init_unknown_diag(ZDiag *diag, const char *requested_backend, const char *path);
+void z_backend_init_llvm_unavailable_diag(ZDiag *diag, const ZTargetInfo *target, const char *emit_kind, const char *path);
 const char *z_direct_backend_status(const ZTargetInfo *target);
 const char *z_direct_object_emitter(const ZTargetInfo *target);
 const char *z_direct_exe_emitter(const ZTargetInfo *target);

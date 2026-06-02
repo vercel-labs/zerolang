@@ -1583,7 +1583,31 @@ async function assertAgentSurfaceOwnedDropUnsupported(target, emit, outName, exp
 await assertAgentSurfaceOwnedDropUnsupported("linux-musl-x64", "obj", "agent-surface-owned-drop-elf.o", /ELF64/, "elf", "zero-elf64");
 await assertAgentSurfaceOwnedDropUnsupported("darwin-arm64", "obj", "agent-surface-owned-drop-macho.o", /Mach-O/, "macho", "zero-macho64");
 await assertAgentSurfaceOwnedDropUnsupported("win32-x64.exe", "obj", "agent-surface-owned-drop-coff.obj", /COFF/, "coff", "zero-coff-x64");
-await assertAgentSurfaceOwnedDropUnsupported("darwin-arm64", "obj", "agent-surface-owned-drop-macho-backend-ignored.o", /Mach-O/, "macho", "zero-macho64", { extraArgs: ["--backend", "zero-elf64"] });
+
+const mismatchedDirectEmitter = await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "darwin-arm64",
+  "--backend",
+  "zero-elf64",
+  "examples/add.0",
+  "--out",
+  `${outDir}/direct-emitter-mismatch.o`,
+]).catch((error) => error);
+assert.notEqual(mismatchedDirectEmitter.code, 0);
+const mismatchedDirectEmitterBody = JSON.parse(mismatchedDirectEmitter.stdout);
+assert.equal(mismatchedDirectEmitterBody.diagnostics[0].code, "BLD004");
+assert.equal(mismatchedDirectEmitterBody.diagnostics[0].actual, "--backend zero-elf64");
+assert.deepEqual(mismatchedDirectEmitterBody.diagnostics[0].backendBlocker, {
+  target: "darwin-arm64",
+  objectFormat: "macho",
+  backend: "zero-elf64",
+  stage: "target-selection",
+  unsupportedFeature: "requested direct emitter does not match target",
+});
 
 const commonPassFixtures = [
   ["conformance/common/pass/array-sum-min-max.0", "common-array-sum-min-max", { stdout: "array sum min max ok\n" }],
