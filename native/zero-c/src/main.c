@@ -671,9 +671,7 @@ static bool compile_zero_runtime_object(const char *runtime_object_file, const Z
   runtime_compile_inputs_free(&inputs);
   if (!ok && diag) {
     diag->code = 2003;
-    diag->line = 1;
-    diag->column = 1;
-    diag->length = 1;
+    diag->line = diag->column = diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "host runtime object build failed");
     snprintf(diag->expected, sizeof(diag->expected), "C compiler can compile the embedded Zero runtime source");
     snprintf(diag->actual, sizeof(diag->actual), "runtime object compile command failed");
@@ -822,14 +820,17 @@ static void append_manifest_c_link_flags(ZBuf *flags, const SourceInput *input) 
   free(manifest);
 }
 
-static bool link_zero_runtime_executable(const char *object_file, const char *runtime_object_file, const char *http_object_file, const char *exe_file, const ZToolchainPlan *plan, const ZTargetInfo *target, const SourceInput *input, ZDiag *diag) {
+static bool link_direct_object_executable(const char *object_file, const char *runtime_object_file, const char *http_object_file, const char *exe_file, const ZToolchainPlan *plan, const ZTargetInfo *target, const SourceInput *input, bool links_zero_runtime, ZDiag *diag) {
 #if defined(__linux__)
   const char *linux_no_pie = " -no-pie";
 #else
   const char *linux_no_pie = "";
 #endif
-  const char *object_files[3] = {object_file, runtime_object_file, http_object_file};
-  size_t object_count = http_object_file && http_object_file[0] ? 3 : 2;
+  const char *object_files[3] = {0};
+  size_t object_count = 0;
+  if (object_file && object_file[0]) object_files[object_count++] = object_file;
+  if (runtime_object_file && runtime_object_file[0]) object_files[object_count++] = runtime_object_file;
+  if (http_object_file && http_object_file[0]) object_files[object_count++] = http_object_file;
   ZBuf post_flags;
   zbuf_init(&post_flags);
   if (input && input->direct_c_import_call_count > 0) append_manifest_c_link_flags(&post_flags, input);
@@ -842,10 +843,10 @@ static bool link_zero_runtime_executable(const char *object_file, const char *ru
     diag->line = 1;
     diag->column = 1;
     diag->length = 1;
-    snprintf(diag->message, sizeof(diag->message), "host runtime link failed");
-    snprintf(diag->expected, sizeof(diag->expected), "direct object plus zero runtime object link successfully");
-    snprintf(diag->actual, sizeof(diag->actual), "runtime link command failed");
-    snprintf(diag->help, sizeof(diag->help), http_object_file && http_object_file[0] ? "install libcurl or inspect the direct object, runtime objects, and host C linker diagnostics" : "inspect the direct object, runtime object, and host C linker diagnostics");
+    snprintf(diag->message, sizeof(diag->message), "%s", links_zero_runtime ? "host runtime link failed" : "extern C link failed");
+    snprintf(diag->expected, sizeof(diag->expected), "%s", links_zero_runtime ? "direct object plus zero runtime object link successfully" : "direct object plus extern C link inputs link successfully");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", links_zero_runtime ? "runtime link command failed" : "extern C link command failed");
+    snprintf(diag->help, sizeof(diag->help), http_object_file && http_object_file[0] ? "install libcurl or inspect the direct object, runtime objects, and host C linker diagnostics" : "inspect the direct object, optional runtime object, extern C link inputs, and host C linker diagnostics");
   }
   return ok;
 }
@@ -5435,7 +5436,6 @@ static RuntimeImportAudit runtime_import_audit_from_ir(const IrProgram *ir) {
 
 static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
   if (!value) return false;
-  if (value->kind == IR_VALUE_CALL && value->external_call) return true;
   if (value->kind == IR_VALUE_JSON_PARSE_BYTES ||
       value->kind == IR_VALUE_JSON_VALIDATE_BYTES ||
       value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
@@ -5481,6 +5481,9 @@ static bool ir_needs_zero_runtime_object(const IrProgram *ir) {
   }
   return false;
 }
+
+static bool ir_needs_linked_executable_object(const IrProgram *ir) { return ir_needs_zero_runtime_object(ir) || (ir && ir->direct_c_import_call_count > 0); }
+static bool ir_linked_executable_needs_zero_runtime_object(const IrProgram *ir) { return ir_needs_zero_runtime_object(ir) || (ir && ir->direct_c_import_call_count > 0 && ir->direct_runtime_helper_count > 0); }
 
 static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) {
   if (!audit) return 0;
@@ -5714,7 +5717,7 @@ static void append_target_libraries_label_json(ZBuf *buf, bool links_zero_runtim
   zbuf_free(&label);
 }
 
-static void append_object_linker_plan_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const ZDirectObjectBackendFacts *direct, const ZToolchainPlan *runtime_toolchain, const char *object_format, const char *runtime_external_toolchain, bool links_zero_runtime, bool links_http_runtime, bool uses_c_imports) {
+static void append_object_linker_plan_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const ZDirectObjectBackendFacts *direct, const ZToolchainPlan *runtime_toolchain, const char *object_format, const char *runtime_external_toolchain, bool uses_external_toolchain, bool links_zero_runtime, bool links_http_runtime, bool uses_c_imports) {
   ZBuf static_libraries;
   ZBuf system_libraries;
   zbuf_init(&static_libraries);
@@ -5740,10 +5743,10 @@ static void append_object_linker_plan_json(ZBuf *buf, const SourceInput *input, 
   zbuf_append(buf, ",\"rpaths\":[],\"loadPaths\":[],\"visibility\":\"exported-c-and-main-only\",\"crossLinking\":true,\"externalToolchain\":");
   append_json_string(buf, runtime_external_toolchain);
   zbuf_append(buf, ",\"reproducible\":true,\"libcMode\":");
-  append_json_string(buf, links_zero_runtime && runtime_toolchain ? runtime_toolchain->libc_mode : "none");
+  append_json_string(buf, uses_external_toolchain && runtime_toolchain ? runtime_toolchain->libc_mode : "none");
   zbuf_append(buf, ",\"targetLibcMode\":");
   append_json_string(buf, z_target_libc_mode(target));
-  bool artifact_requires_sysroot = links_zero_runtime && runtime_toolchain && runtime_toolchain->requires_sysroot;
+  bool artifact_requires_sysroot = uses_external_toolchain && runtime_toolchain && runtime_toolchain->requires_sysroot;
   zbuf_appendf(buf, ",\"requiresSysroot\":%s,\"targetRequiresSysroot\":%s,\"sysrootStatus\":",
                artifact_requires_sysroot ? "true" : "false",
                z_target_requires_sysroot(target) ? "true" : "false");
@@ -5763,16 +5766,16 @@ static void append_object_backend_json(ZBuf *buf, const SourceInput *input, cons
     const char *object_format = target && target->object_format ? target->object_format : "unknown";
     const char *arch = target && target->arch ? target->arch : "unknown";
     size_t direct_symbol_count = input ? input->direct_function_count : 0;
-    bool links_zero_runtime = uses_host_runtime || (linked_executable && uses_c_imports);
+    bool links_zero_runtime = uses_host_runtime || (linked_executable && input && input->direct_runtime_helper_count > 0);
     bool links_http_runtime = uses_http_runtime;
     ZToolchainPlan runtime_toolchain = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
-    const char *runtime_external_toolchain = links_zero_runtime ? public_compiler_label(&runtime_toolchain) : "none";
-    const char *toolchain_source = uses_host_runtime && uses_c_imports
+    const char *runtime_external_toolchain = linked_executable ? public_compiler_label(&runtime_toolchain) : "none";
+    const char *toolchain_source = links_zero_runtime && uses_c_imports
       ? "direct-backend-runtime-and-c-import-link-plan"
-      : (uses_c_imports ? "direct-backend-c-import-link-plan" : (uses_host_runtime ? "direct-backend-runtime-link-plan" : "direct-backend"));
-    const char *relocations = uses_c_imports && uses_host_runtime
+      : (uses_c_imports ? "direct-backend-c-import-link-plan" : (links_zero_runtime ? "direct-backend-runtime-link-plan" : "direct-backend"));
+    const char *relocations = uses_c_imports && links_zero_runtime
       ? "patched-runtime-and-external-c-relocations"
-      : (uses_c_imports ? "patched-external-c-call-relocations" : (uses_host_runtime ? "patched-runtime-import-relocations" : NULL));
+      : (uses_c_imports ? "patched-external-c-call-relocations" : (links_zero_runtime ? "patched-runtime-import-relocations" : NULL));
     zbuf_append(buf, "{\"internalIr\":{\"typeRepresentation\":\"MIR primitive value types\",\"controlFlowRepresentation\":\"MIR instruction stream lowered to target machine/module code\",\"callRepresentation\":\"same-object direct calls for supported direct subsets\",\"functionIdentity\":\"module-qualified-stable-sorted\",\"debugRepresentation\":\"source spans retained on MIR nodes\"}");
     bool direct_has_data = input && input->direct_readonly_data_bytes > 0;
     direct_symbol_count += input ? input->direct_runtime_helper_count : 0;
@@ -5802,7 +5805,7 @@ static void append_object_backend_json(ZBuf *buf, const SourceInput *input, cons
       zbuf_append(buf, ",\"httpRuntime\":");
       z_append_http_runtime_json(buf, target);
     }
-    append_object_linker_plan_json(buf, input, target, &direct, &runtime_toolchain, object_format, runtime_external_toolchain, links_zero_runtime, links_http_runtime, uses_c_imports);
+    append_object_linker_plan_json(buf, input, target, &direct, &runtime_toolchain, object_format, runtime_external_toolchain, linked_executable, links_zero_runtime, links_http_runtime, uses_c_imports);
     zbuf_append(buf, ",\"targetFacts\":{\"directAvailable\":true,\"status\":");
     append_json_string(buf, z_direct_backend_status(target));
     zbuf_append(buf, ",\"selectedEmitter\":");
@@ -9491,7 +9494,7 @@ static bool target_readiness_select_emit_target(const Command *command, const So
 
 static bool target_readiness_buildability_check(const Command *command, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag) {
   EmitKind emit = command ? command->emit : EMIT_EXE;
-  const char *emit_kind = (emit == EMIT_EXE && ir && ir_needs_zero_runtime_object(ir)) ? "obj" : emit_kind_name(emit);
+  const char *emit_kind = (emit == EMIT_EXE && ir && ir_needs_linked_executable_object(ir)) ? "obj" : emit_kind_name(emit);
   if (z_direct_buildability_check(ir, target, emit_kind, diag)) return true;
   complete_backend_blocker_diag(diag, target, command, emit_kind, diag && diag->backend_blocker.present ? diag->backend_blocker.stage : "buildability");
   return false;
@@ -9506,11 +9509,13 @@ static bool target_readiness_select_diag(const Command *command, const SourceInp
     return false;
   }
 
-  if (ir && ir_needs_zero_runtime_object(ir)) {
+  bool needs_zero_runtime = ir && ir_linked_executable_needs_zero_runtime_object(ir);
+  bool needs_linked_executable = ir && ir_needs_linked_executable_object(ir);
+  if (needs_linked_executable) {
     RuntimeImportAudit audit = runtime_import_audit_from_ir(ir);
     bool needs_http_runtime = runtime_import_audit_uses_http_provider(&audit);
     ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, needs_http_runtime);
-    if (!runtime_object.supported) {
+    if (needs_zero_runtime && !runtime_object.supported) {
       init_direct_backend_diag(diag, command, input, target, emit_kind, runtime_object.blocker);
       return false;
     }
@@ -11917,26 +11922,21 @@ int main(int argc, char **argv) {
     z_free_source(&input);
     return 1;
   }
-  bool needs_zero_runtime = artifact_command && command.emit == EMIT_EXE && ir_needs_zero_runtime_object(&ir);
-  if (needs_zero_runtime) {
+  bool needs_linked_executable = artifact_command && command.emit == EMIT_EXE && ir_needs_linked_executable_object(&ir);
+  bool needs_zero_runtime = needs_linked_executable && ir_linked_executable_needs_zero_runtime_object(&ir);
+  if (needs_linked_executable) {
     RuntimeImportAudit runtime_audit = runtime_import_audit_from_ir(&ir);
     bool needs_http_runtime = runtime_import_audit_uses_http_provider(&runtime_audit);
     ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, needs_http_runtime);
-    if (ship_command) {
-      int rc = return_direct_backend_error(&command, &input, target, "exe", "host runtime link plan is not wired into ship yet; use zero build or zero run", &ir, &program);
-      z_free_source(&input);
-      return rc;
-    }
-    if (!runtime_object.supported) {
-      int rc = return_direct_backend_error(&command, &input, target, "exe", runtime_object.blocker, &ir, &program);
-      z_free_source(&input);
-      return rc;
-    }
+    ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target);
+    if (ship_command) { int rc = return_direct_backend_error(&command, &input, target, "exe", "external object link plan is not wired into ship yet; use zero build or zero run", &ir, &program); z_free_source(&input); return rc; }
+    if (needs_zero_runtime && !runtime_object.supported) { int rc = return_direct_backend_error(&command, &input, target, "exe", runtime_object.blocker, &ir, &program); z_free_source(&input); return rc; }
+    if (!direct_obj.available) { int rc = return_direct_backend_error(&command, &input, target, "exe", direct_obj.unsupported_reason, &ir, &program); z_free_source(&input); return rc; }
     if (!direct_buildability_preflight(&command, &input, target, "obj", &ir, &diag)) { int rc = return_buildability_error(&command, &input, &diag, &ir, &program); z_free_source(&input); return rc; }
     ZBuf object;
     zbuf_init(&object);
     phase_started = now_ms();
-    bool emitted_object = z_emit_direct_object_from_ir(runtime_object.backend, &ir, &object, &diag);
+    bool emitted_object = z_emit_direct_object_from_ir(direct_obj.backend, &ir, &object, &diag);
     input.codegen_ms = now_ms() - phase_started;
     if (!emitted_object) {
       z_map_source_diag(&input, &diag);
@@ -11955,14 +11955,14 @@ int main(int argc, char **argv) {
     char *exe_file = apply_target_suffix(base_exe_file, target);
     free(base_exe_file);
     char *object_file = path_with_suffix(exe_file, ".zero.o");
-    char *runtime_object_file = path_with_suffix(exe_file, ".zero-runtime.o");
+    char *runtime_object_file = needs_zero_runtime ? path_with_suffix(exe_file, ".zero-runtime.o") : NULL;
     char *http_object_file = needs_http_runtime ? path_with_suffix(exe_file, ".zero-http-curl.o") : NULL;
     ZToolchainPlan runtime_toolchain = z_plan_toolchain(command.cc, command.profile, target);
 
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, runtime_object.cache_key));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, needs_zero_runtime ? runtime_object.cache_key : direct_obj.artifact_path));
     bool wrote_object = z_write_binary_file(object_file, (const unsigned char *)object.data, object.len, &diag);
-    if (wrote_object) wrote_object = compile_zero_runtime_object(runtime_object_file, &runtime_toolchain, &command, target, &diag);
+    if (wrote_object && needs_zero_runtime) wrote_object = compile_zero_runtime_object(runtime_object_file, &runtime_toolchain, &command, target, &diag);
     if (wrote_object && needs_http_runtime) wrote_object = compile_zero_http_curl_object(http_object_file, &runtime_toolchain, &command, target, &diag);
     input.object_ms = now_ms() - phase_started;
     if (!wrote_object) {
@@ -11980,11 +11980,11 @@ int main(int argc, char **argv) {
     }
 
     phase_started = now_ms();
-    bool linked = link_zero_runtime_executable(object_file, runtime_object_file, http_object_file, exe_file, &runtime_toolchain, target, &input, &diag);
+    bool linked = link_direct_object_executable(object_file, runtime_object_file, http_object_file, exe_file, &runtime_toolchain, target, &input, needs_zero_runtime, &diag);
     if (linked) chmod(exe_file, 0755);
     input.link_ms = now_ms() - phase_started;
     remove(object_file);
-    remove(runtime_object_file);
+    if (runtime_object_file) remove(runtime_object_file);
     if (http_object_file) remove(http_object_file);
     if (!linked) {
       if (command.json) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
