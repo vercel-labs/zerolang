@@ -283,6 +283,15 @@ async function assertSourceEditIdentityBaseline() {
   assert.notEqual(renamedHelper.symbolId, beforeHelper.symbolId, "renaming a declaration should change symbolId");
   if (requireStableNodeIds) assert.equal(renamedHelper.id, beforeHelper.id, "strict stable node id check");
 
+  await writeFile(fixture, `fn inserted() -> i32 {\n    return 0\n}\n\n${original}`);
+  const sameShapeSiblingGraph = await zeroJson(["graph", "dump", "--json", fixture]);
+  const sameShapeHelper = sameShapeSiblingGraph.nodes.find((node) => node.kind === "Function" && node.name === "helper");
+  const insertedHelper = sameShapeSiblingGraph.nodes.find((node) => node.kind === "Function" && node.name === "inserted");
+  assert(sameShapeHelper, "missing helper after same-shape sibling insertion");
+  assert(insertedHelper, "missing inserted same-shape sibling");
+  assert.equal(sameShapeHelper.id, beforeHelper.id, "inserting a same-shape sibling should not steal the existing declaration ID");
+  assert.notEqual(insertedHelper.id, beforeHelper.id, "same-shape sibling should get a collision-resolved ID");
+
   await writeFile(fixture, original.replace("    check world.out.write", "    let marker: i32 = 1\n    check world.out.write"));
   const insertedGraph = await zeroJson(["graph", "dump", "--json", fixture]);
   const insertedCheck = insertedGraph.nodes.find((node) => node.kind === "Check");

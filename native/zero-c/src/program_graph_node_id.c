@@ -4,14 +4,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static bool graph_text_eq(const char *left, const char *right) {
+static int graph_text_cmp(const char *left, const char *right) {
   const unsigned char *a = (const unsigned char *)(left ? left : "");
   const unsigned char *b = (const unsigned char *)(right ? right : "");
   while (*a && *b && *a == *b) {
     a++;
     b++;
   }
-  return *a == *b;
+  return (int)*a - (int)*b;
+}
+
+static bool graph_text_eq(const char *left, const char *right) {
+  return graph_text_cmp(left, right) == 0;
 }
 
 static uint64_t graph_hash_text(uint64_t hash, const char *text) {
@@ -141,19 +145,44 @@ static const ZProgramGraphEdge *graph_owner_edge_for_node(const ZProgramGraph *g
   return NULL;
 }
 
-static char *graph_source_node_id(const ZProgramGraph *graph, const ZProgramGraphNode *node, const ZProgramGraphEdge *owner_edge, const char *owner_new_id, char **ids, size_t id_len) {
+static char *graph_source_node_base_id(const ZProgramGraph *graph, const ZProgramGraphNode *node, const ZProgramGraphEdge *owner_edge, const char *owner_new_id) {
   uint64_t hash = graph_node_id_hash_value(graph, node, owner_edge, owner_new_id);
   ZBuf base;
   zbuf_init(&base);
   zbuf_appendf(&base, "#%s_%08llx", graph_node_id_domain(node), (unsigned long long)(hash & 0xffffffffull));
+  return base.data ? base.data : z_strdup("#node_00000000");
+}
+
+static uint64_t graph_collision_hash_value(const ZProgramGraphNode *node) {
+  uint64_t hash = 1469598103934665603ull;
+  hash = graph_hash_text(hash, graph_node_id_domain(node));
+  hash = graph_hash_text(hash, z_program_graph_node_kind_name(node->kind));
+  hash = graph_hash_text(hash, node->name);
+  hash = graph_hash_text(hash, node->type);
+  hash = graph_hash_text(hash, node->value);
+  hash = graph_hash_text(hash, node->path);
+  hash = graph_hash_u64(hash, (uint64_t)(node->line > 0 ? node->line : 0));
+  hash = graph_hash_u64(hash, (uint64_t)(node->column > 0 ? node->column : 0));
+  hash = graph_hash_u64(hash, node->is_public ? 1 : 0);
+  hash = graph_hash_u64(hash, node->is_mutable ? 1 : 0);
+  hash = graph_hash_u64(hash, node->is_static ? 1 : 0);
+  hash = graph_hash_u64(hash, node->fallible ? 1 : 0);
+  hash = graph_hash_u64(hash, node->export_c ? 1 : 0);
+  return hash;
+}
+
+static char *graph_source_node_collision_id(const ZProgramGraphNode *node, const char *base_id, char **ids, size_t id_len, size_t rank) {
+  ZBuf base;
+  zbuf_init(&base);
+  zbuf_append(&base, base_id);
   if (!graph_id_is_used(ids, id_len, base.data)) return base.data ? base.data : z_strdup("#node_00000000");
-  uint64_t collision = graph_hash_text(hash, node->id);
+  uint64_t collision = graph_collision_hash_value(node);
   for (size_t attempt = 0;; attempt++) {
     ZBuf unique;
     zbuf_init(&unique);
     zbuf_append(&unique, base.data);
-    if (attempt == 0) zbuf_appendf(&unique, "-%04llx", (unsigned long long)(collision & 0xffffull));
-    else zbuf_appendf(&unique, "-%04llx-%zu", (unsigned long long)(collision & 0xffffull), attempt);
+    if (attempt == 0 && rank == 0) zbuf_appendf(&unique, "-%04llx", (unsigned long long)(collision & 0xffffull));
+    else zbuf_appendf(&unique, "-%04llx-%zu", (unsigned long long)(collision & 0xffffull), attempt + rank);
     if (graph_id_is_used(ids, id_len, unique.data)) {
       zbuf_free(&unique);
       continue;
@@ -168,20 +197,93 @@ static const char *graph_remapped_id(const char *old_id, char **old_ids, char **
   return index == SIZE_MAX ? old_id : new_ids[index];
 }
 
+static int graph_collision_node_cmp(const ZProgramGraphNode *left, const ZProgramGraphNode *right) {
+  int cmp = graph_text_cmp(left ? left->name : NULL, right ? right->name : NULL);
+  if (cmp != 0) return cmp;
+  cmp = graph_text_cmp(left ? left->value : NULL, right ? right->value : NULL);
+  if (cmp != 0) return cmp;
+  cmp = graph_text_cmp(left ? left->type : NULL, right ? right->type : NULL);
+  if (cmp != 0) return cmp;
+  cmp = graph_text_cmp(left ? left->path : NULL, right ? right->path : NULL);
+  if (cmp != 0) return cmp;
+  int left_line = left && left->line > 0 ? left->line : 0;
+  int right_line = right && right->line > 0 ? right->line : 0;
+  if (left_line != right_line) return left_line < right_line ? -1 : 1;
+  int left_column = left && left->column > 0 ? left->column : 0;
+  int right_column = right && right->column > 0 ? right->column : 0;
+  if (left_column != right_column) return left_column < right_column ? -1 : 1;
+  return 0;
+}
+
+static void graph_sort_collision_group(const ZProgramGraph *graph, size_t *items, size_t len) {
+  for (size_t i = 1; i < len; i++) {
+    size_t item = items[i];
+    size_t cursor = i;
+    while (cursor > 0 && graph_collision_node_cmp(&graph->nodes[item], &graph->nodes[items[cursor - 1]]) < 0) {
+      items[cursor] = items[cursor - 1];
+      cursor--;
+    }
+    items[cursor] = item;
+  }
+}
+
 void z_program_graph_assign_source_node_ids(ZProgramGraph *graph) {
   if (!graph || graph->node_len == 0) return;
   char **old_ids = z_checked_calloc(graph->node_len, sizeof(char *));
   char **new_ids = z_checked_calloc(graph->node_len, sizeof(char *));
+  char **base_ids = z_checked_calloc(graph->node_len, sizeof(char *));
+  bool *assigned = z_checked_calloc(graph->node_len, sizeof(bool));
+  size_t *ready = z_checked_calloc(graph->node_len, sizeof(size_t));
+  bool *ready_used = z_checked_calloc(graph->node_len, sizeof(bool));
+  size_t *group = z_checked_calloc(graph->node_len, sizeof(size_t));
   for (size_t i = 0; i < graph->node_len; i++) old_ids[i] = z_strdup(graph->nodes[i].id ? graph->nodes[i].id : "");
-  for (size_t i = 0; i < graph->node_len; i++) {
-    const ZProgramGraphEdge *owner_edge = graph_owner_edge_for_node(graph, graph->nodes[i].id);
-    const char *owner_new_id = NULL;
-    if (owner_edge) {
-      size_t owner_index = graph_find_old_id(old_ids, i, owner_edge->from);
-      if (owner_index != SIZE_MAX) owner_new_id = new_ids[owner_index];
+
+  size_t assigned_count = 0;
+  while (assigned_count < graph->node_len) {
+    size_t ready_len = 0;
+    for (size_t i = 0; i < graph->node_len; i++) {
+      if (assigned[i]) continue;
+      const ZProgramGraphEdge *owner_edge = graph_owner_edge_for_node(graph, old_ids[i]);
+      const char *owner_new_id = NULL;
+      if (owner_edge) {
+        size_t owner_index = graph_find_old_id(old_ids, graph->node_len, owner_edge->from);
+        if (owner_index != SIZE_MAX) {
+          if (!assigned[owner_index]) continue;
+          owner_new_id = new_ids[owner_index];
+        }
+      }
+      free(base_ids[i]);
+      base_ids[i] = graph_source_node_base_id(graph, &graph->nodes[i], owner_edge, owner_new_id);
+      ready[ready_len++] = i;
     }
-    new_ids[i] = graph_source_node_id(graph, &graph->nodes[i], owner_edge, owner_new_id, new_ids, i);
+    if (ready_len == 0) {
+      for (size_t i = 0; i < graph->node_len; i++) {
+        if (assigned[i]) continue;
+        free(base_ids[i]);
+        base_ids[i] = graph_source_node_base_id(graph, &graph->nodes[i], NULL, NULL);
+        ready[ready_len++] = i;
+      }
+    }
+
+    for (size_t i = 0; i < ready_len; i++) ready_used[i] = false;
+    for (size_t i = 0; i < ready_len; i++) {
+      if (ready_used[i]) continue;
+      size_t group_len = 0;
+      for (size_t j = i; j < ready_len; j++) {
+        if (ready_used[j] || !graph_text_eq(base_ids[ready[i]], base_ids[ready[j]])) continue;
+        ready_used[j] = true;
+        group[group_len++] = ready[j];
+      }
+      graph_sort_collision_group(graph, group, group_len);
+      for (size_t j = 0; j < group_len; j++) {
+        size_t index = group[j];
+        new_ids[index] = graph_source_node_collision_id(&graph->nodes[index], base_ids[index], new_ids, graph->node_len, j);
+        assigned[index] = true;
+        assigned_count++;
+      }
+    }
   }
+
   for (size_t i = 0; i < graph->node_len; i++) {
     free(graph->nodes[i].id);
     graph->nodes[i].id = z_strdup(new_ids[i]);
@@ -199,7 +301,13 @@ void z_program_graph_assign_source_node_ids(ZProgramGraph *graph) {
   for (size_t i = 0; i < graph->node_len; i++) {
     free(old_ids[i]);
     free(new_ids[i]);
+    free(base_ids[i]);
   }
+  free(group);
+  free(ready_used);
+  free(ready);
+  free(assigned);
+  free(base_ids);
   free(old_ids);
   free(new_ids);
 }
