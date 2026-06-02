@@ -1482,6 +1482,11 @@ static bool ir_lower_c_import_call(const Program *program, IrProgram *ir, const 
     ir_mark_unsupported(ir, "direct backend extern c symbol is missing from imported header", expr->line, expr->column, symbol ? symbol : "missing C symbol");
     return true;
   }
+  if (function.old_style_params) {
+    ir_mark_unsupported(ir, "direct backend extern c function uses an old-style empty C parameter list", expr->line, expr->column, symbol ? symbol : "C function");
+    z_c_import_function_free(&function);
+    return true;
+  }
   IrTypeKind return_type = ir_type_kind(function.return_zero_type);
   if (return_type != IR_TYPE_VOID && !ir_type_is_direct_abi(return_type)) {
     ir_mark_unsupported(ir, "direct backend extern c return type is unsupported", expr->line, expr->column, function.return_c_type ? function.return_c_type : "unsupported C return type");

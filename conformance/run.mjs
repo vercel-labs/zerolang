@@ -3552,6 +3552,10 @@ zero_ext_add(
     int left,
     int right
 );
+// int zero_ext_commented(int value);
+/*
+int zero_ext_block_commented(int value);
+*/
 #if 0
 int zero_ext_disabled(int value);
 #endif
@@ -3595,6 +3599,12 @@ pub fn main() -> i32 {
     return c.zero_ext_disabled(1)
 }
 `);
+await writeFile(`${externCallRoot}/src/commented.0`, `extern c "vendor/include/zero_ext.h" as c
+
+pub fn main() -> i32 {
+    return c.zero_ext_commented(1)
+}
+`);
 await writeFile(`${externCallScalarRoot}/src/main.0`, `extern c "${externCallRoot}/vendor/include/zero_ext.h" as c
 
 export c fn main() -> i32 {
@@ -3608,6 +3618,11 @@ const externCallDisabledCheck = await execFileAsync(`${process.cwd()}/bin/zero`,
 assert.notEqual(externCallDisabledCheck.code, 0);
 const externCallDisabledCheckBody = JSON.parse(externCallDisabledCheck.stdout);
 assert.equal(externCallDisabledCheckBody.diagnostics[0].code, "CIMP004");
+const externCallCommentedCheck = await execFileAsync(`${process.cwd()}/bin/zero`, ["check", "--json", "src/commented.0"], { cwd: externCallRoot }).catch((error) => error);
+assert.notEqual(externCallCommentedCheck.code, 0);
+const externCallCommentedCheckBody = JSON.parse(externCallCommentedCheck.stdout);
+assert.equal(externCallCommentedCheckBody.diagnostics[0].code, "CIMP004");
+assert.match(externCallCommentedCheckBody.diagnostics[0].message, /not declared/);
 const externCallScalarCrossReadiness = await execFileAsync(zero, ["check", "--json", "--target", "linux-musl-arm64", externCallScalarRoot]);
 const externCallScalarCrossReadinessBody = JSON.parse(externCallScalarCrossReadiness.stdout);
 assert.equal(externCallScalarCrossReadinessBody.ok, true);
@@ -3620,6 +3635,8 @@ const externCallImport = externCallGraphBody.cImports.find((item) => item.header
 assert(externCallImport);
 assert(externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_add" && item.returnType === "int" && item.params.length === 2));
 assert(externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_dirty_u8" && item.returnType === "unsigned char" && item.params.length === 0));
+assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_commented"));
+assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_block_commented"));
 assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_disabled"));
 const externCallBuildOut = `${externCallRoot}/extern-call`;
 const externCallBuild = await execFileAsync(zero, ["build", "--json", externCallRoot, "--out", externCallBuildOut]);
@@ -3783,6 +3800,11 @@ assert.notEqual(cHeaderUnsupportedJson.code, 0);
 const cHeaderUnsupportedBody = JSON.parse(cHeaderUnsupportedJson.stdout);
 assert.equal(cHeaderUnsupportedBody.diagnostics[0].code, "CIMP002");
 assert.match(cHeaderUnsupportedBody.diagnostics[0].actual, /variadic/);
+const cHeaderOldStyleJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/c-import-old-style.0"]).catch((error) => error);
+assert.notEqual(cHeaderOldStyleJson.code, 0);
+const cHeaderOldStyleBody = JSON.parse(cHeaderOldStyleJson.stdout);
+assert.equal(cHeaderOldStyleBody.diagnostics[0].code, "CIMP002");
+assert.match(cHeaderOldStyleBody.diagnostics[0].actual, /old-style/);
 const cImportMissingSymbolJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/c-import-missing-symbol.0"]).catch((error) => error);
 assert.notEqual(cImportMissingSymbolJson.code, 0);
 const cImportMissingSymbolBody = JSON.parse(cImportMissingSymbolJson.stdout);

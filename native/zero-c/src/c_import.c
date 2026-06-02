@@ -16,6 +16,49 @@ static char *trim_span_copy(const char *start, const char *end) {
   return z_strndup(start, (size_t)(end - start));
 }
 
+char *z_c_header_strip_comments(const char *header) {
+  ZBuf out;
+  zbuf_init(&out);
+  const char *cursor = header ? header : "";
+  while (*cursor) {
+    if (cursor[0] == '/' && cursor[1] == '/') {
+      cursor += 2;
+      while (*cursor && *cursor != '\n') cursor++;
+      if (*cursor == '\n') zbuf_append_char(&out, *cursor++);
+      continue;
+    }
+    if (cursor[0] == '/' && cursor[1] == '*') {
+      zbuf_append_char(&out, ' ');
+      cursor += 2;
+      while (*cursor) {
+        if (cursor[0] == '*' && cursor[1] == '/') {
+          cursor += 2;
+          break;
+        }
+        if (*cursor == '\n') zbuf_append_char(&out, '\n');
+        cursor++;
+      }
+      continue;
+    }
+    if (*cursor == '"' || *cursor == '\'') {
+      char quote = *cursor;
+      zbuf_append_char(&out, *cursor++);
+      while (*cursor) {
+        char ch = *cursor++;
+        zbuf_append_char(&out, ch);
+        if (ch == '\\' && *cursor) {
+          zbuf_append_char(&out, *cursor++);
+          continue;
+        }
+        if (ch == quote) break;
+      }
+      continue;
+    }
+    zbuf_append_char(&out, *cursor++);
+  }
+  return out.data ? out.data : z_strdup("");
+}
+
 static const char *last_ident_start_before(const char *start, const char *end) {
   const char *cursor = end;
   while (cursor > start && !c_ident_char(cursor[-1])) cursor--;
@@ -178,7 +221,10 @@ static bool c_import_parse_function_line(const char *line, ZCImportFunction *out
     .return_c_type = return_c_type,
     .return_zero_type = mapped_return,
   };
-  c_import_parse_params(out, paren + 1, close);
+  char *params_text = trim_span_copy(paren + 1, close);
+  out->old_style_params = params_text[0] == 0;
+  free(params_text);
+  if (!out->old_style_params) c_import_parse_params(out, paren + 1, close);
   return true;
 }
 
@@ -299,7 +345,8 @@ static bool c_import_linkage_wrapper_line(const char *line) {
 
 bool z_c_header_parse_functions(const char *header, ZCImportFunctionVec *out) {
   if (!out) return false;
-  const char *cursor = header ? header : "";
+  char *stripped = z_c_header_strip_comments(header);
+  const char *cursor = stripped ? stripped : "";
   CImportPreprocFrame *frames = NULL;
   size_t preproc_depth = 0;
   size_t preproc_cap = 0;
@@ -332,6 +379,7 @@ bool z_c_header_parse_functions(const char *header, ZCImportFunctionVec *out) {
   }
   zbuf_free(&declaration);
   free(frames);
+  free(stripped);
   return true;
 }
 
@@ -340,6 +388,7 @@ static void c_import_function_clone(ZCImportFunction *out, const ZCImportFunctio
     .name = z_strdup(source->name),
     .return_c_type = z_strdup(source->return_c_type),
     .return_zero_type = z_strdup(source->return_zero_type),
+    .old_style_params = source->old_style_params,
   };
   for (size_t i = 0; i < source->param_len; i++) {
     c_import_function_push_param(out, (ZCImportParam){

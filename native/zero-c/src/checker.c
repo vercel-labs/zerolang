@@ -7003,6 +7003,10 @@ static bool check_stdlib_call_expected(CheckContext *ctx, const Program *program
 
 static bool c_import_function_supported(const ZCImportFunction *function, char *actual, size_t actual_len) {
   if (!function) return false;
+  if (function->old_style_params) {
+    snprintf(actual, actual_len, "old-style empty parameter list on '%s'", function->name ? function->name : "<function>");
+    return false;
+  }
   if (strcmp(function->return_zero_type ? function->return_zero_type : "Unknown", "Unknown") == 0) {
     snprintf(actual, actual_len, "return type '%s'", function->return_c_type ? function->return_c_type : "<missing>");
     return false;
@@ -11445,21 +11449,34 @@ static bool validate_c_imports(const Program *program, ZDiag *diag) {
     if (!header) {
       return set_diag_detail(diag, 8001, "extern c header could not be read", import->line, import->column, "readable C header path", import->header ? import->header : "<missing>", "make the header path package-relative and target-specific");
     }
+    char *surface = z_c_header_strip_comments(header);
     bool unsupported = false;
     const char *reason = NULL;
-    if (strstr(header, "...")) {
+    if (strstr(surface ? surface : header, "...")) {
       unsupported = true;
       reason = "variadic function";
-    } else if (c_header_has_function_like_macro(header)) {
+    } else if (c_header_has_function_like_macro(surface ? surface : header)) {
       unsupported = true;
       reason = "function-like macro";
-    } else if (strstr(header, "[]")) {
+    } else if (strstr(surface ? surface : header, "[]")) {
       unsupported = true;
       reason = "flexible array";
-    } else if (strstr(header, ":")) {
+    } else if (strstr(surface ? surface : header, ":")) {
       unsupported = true;
       reason = "bitfield";
+    } else {
+      ZCImportFunctionVec functions = {0};
+      z_c_header_parse_functions(surface ? surface : header, &functions);
+      for (size_t fn = 0; fn < functions.len; fn++) {
+        if (functions.items[fn].old_style_params) {
+          unsupported = true;
+          reason = "old-style empty parameter list";
+          break;
+        }
+      }
+      z_c_import_function_vec_free(&functions);
     }
+    free(surface);
     free(header);
     if (unsupported) {
       return set_diag_detail(diag, 8002, "extern c header contains unsupported C surface", import->line, import->column, "functions, constants, structs, enums, and typedefs", reason, "wrap unsupported C behind a small C shim or remove it from this imported header");

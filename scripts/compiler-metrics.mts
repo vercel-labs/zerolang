@@ -17,7 +17,7 @@ type CScanState = {
 const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 990, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
-  "native/zero-c/src/checker.c": { maxLines: 11695, maxStrcmpCalls: 287 },
+  "native/zero-c/src/checker.c": { maxLines: 11710, maxStrcmpCalls: 287 },
   "native/zero-c/src/main.c": { maxLines: 12126, maxStrcmpCalls: 468 },
   "native/zero-c/src/ir.c": { maxLines: 4206, maxStrcmpCalls: 228 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
@@ -27,7 +27,7 @@ const fileBudgets = {
   "native/zero-c/src/buildability_context.c": { maxLines: 185, maxStrcmpCalls: 1 },
   "native/zero-c/src/buildability_targets.c": { maxLines: 190, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability_value_targets.c": { maxLines: 371, maxStrcmpCalls: 0 },
-  "native/zero-c/src/c_import.c": { maxLines: 400, maxStrcmpCalls: 48 },
+  "native/zero-c/src/c_import.c": { maxLines: 450, maxStrcmpCalls: 48 },
   "native/zero-c/src/c_import.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/call_resolve.c": { maxLines: 200, maxStrcmpCalls: 2 },
   "native/zero-c/src/call_resolve.h": { maxLines: 100, maxStrcmpCalls: 0 },

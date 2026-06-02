@@ -1,0 +1,5 @@
+extern c "conformance/c/old-style.h" as c
+
+pub fn main() -> Void {
+    let value: i32 = c.zero_c_old_style()
+}
