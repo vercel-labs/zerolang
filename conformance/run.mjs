@@ -3513,6 +3513,41 @@ const cImportMissingLinkBuild = await execFileAsync(zero, ["build", "--json", "c
 assert.notEqual(cImportMissingLinkBuild.code, 0);
 assert.equal(JSON.parse(cImportMissingLinkBuild.stdout).diagnostics[0].code, "CIMP005");
 
+const cImportPartialLinkRoot = `/tmp/zero-c-import-partial-link-${process.pid}`;
+await rm(cImportPartialLinkRoot, { recursive: true, force: true });
+await mkdir(`${cImportPartialLinkRoot}/src`, { recursive: true });
+await mkdir(`${cImportPartialLinkRoot}/vendor/include`, { recursive: true });
+await writeFile(`${cImportPartialLinkRoot}/vendor/include/a.h`, "int zero_a_add(int left, int right);\n");
+await writeFile(`${cImportPartialLinkRoot}/vendor/include/b.h`, "int zero_b_add(int left, int right);\n");
+await writeFile(`${cImportPartialLinkRoot}/zero.json`, JSON.stringify({
+  package: { name: "c-import-partial-link", version: "0.1.0" },
+  targets: { cli: { kind: "exe", main: "src/main.0" } },
+  c: { libs: {
+    a: { headers: ["vendor/include/a.h"], include: ["vendor/include"], lib: ["vendor/lib/a.o"], link: [], mode: "static" },
+    b: { headers: ["vendor/include/b.h"], include: ["vendor/include"], lib: [], link: [], mode: "static" }
+  } }
+}, null, 2));
+await writeFile(`${cImportPartialLinkRoot}/src/main.0`, `extern c "vendor/include/a.h" as a
+extern c "vendor/include/b.h" as b
+
+export c fn main() -> i32 {
+    return a.zero_a_add(1, 2) + b.zero_b_add(3, 4)
+}
+`);
+const cImportPartialLinkReadiness = await execFileAsync(zero, ["check", "--json", cImportPartialLinkRoot]);
+const cImportPartialLinkReadinessBody = JSON.parse(cImportPartialLinkReadiness.stdout);
+assert.equal(cImportPartialLinkReadinessBody.ok, true);
+assert.equal(cImportPartialLinkReadinessBody.targetReadiness.ok, false);
+assert.equal(cImportPartialLinkReadinessBody.targetReadiness.buildable, false);
+assert.equal(cImportPartialLinkReadinessBody.targetReadiness.diagnostics[0].code, "CIMP005");
+assert.match(cImportPartialLinkReadinessBody.targetReadiness.diagnostics[0].actual, /b\.h/);
+const cImportPartialLinkBuild = await execFileAsync(zero, ["build", "--json", cImportPartialLinkRoot, "--out", `${cImportPartialLinkRoot}/partial-link`]).catch((error) => error);
+assert.notEqual(cImportPartialLinkBuild.code, 0);
+const cImportPartialLinkBuildBody = JSON.parse(cImportPartialLinkBuild.stdout);
+assert.equal(cImportPartialLinkBuildBody.diagnostics[0].code, "CIMP005");
+assert.match(cImportPartialLinkBuildBody.diagnostics[0].actual, /b\.h/);
+await rm(cImportPartialLinkRoot, { recursive: true, force: true });
+
 const externCallRoot = `/tmp/zero-extern-c-call-${process.pid}`;
 const externCallShadowRoot = `/tmp/zero-extern-c-shadow-${process.pid}`;
 const externCallScalarRoot = `/tmp/zero-extern-c-scalar-${process.pid}`;

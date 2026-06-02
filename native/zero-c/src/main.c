@@ -9350,78 +9350,77 @@ static void append_c_libraries_json(ZBuf *buf, const SourceInput *input, const Z
 
 static bool validate_c_libraries_for_target(const SourceInput *input, const ZTargetInfo *target, const Command *command, ZDiag *diag) {
   bool require_link_plan = c_import_link_plan_required(input, command);
+  bool ok = true;
   char manifest_path[512];
   manifest_path_for_input(input, manifest_path, sizeof(manifest_path));
-  ZDiag read_diag = {0};
-  char *manifest = z_read_file(manifest_path, &read_diag);
+  ZDiag read_diag = {0}; char *manifest = z_read_file(manifest_path, &read_diag);
+  if (!manifest && !require_link_plan) return true;
   if (!manifest) {
-    if (require_link_plan) {
-      set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", "zero.json was not found");
-      return false;
-    }
-    return true;
+    set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", "zero.json was not found");
+    return false;
   }
   ZManifest parsed_manifest = {0};
-  if (!z_parse_manifest_json(manifest, &parsed_manifest, &read_diag)) {
-    free(manifest);
-    return true;
-  }
-  bool has_link_inputs = false;
+  if (!z_parse_manifest_json(manifest, &parsed_manifest, &read_diag)) { free(manifest); return true; }
+  bool *direct_import_has_link_inputs = NULL;
+  if (require_link_plan) direct_import_has_link_inputs = z_checked_calloc(input->direct_c_import_header_count ? input->direct_c_import_header_count : 1, sizeof(bool));
+  if (require_link_plan && input->direct_c_import_header_count == 0) { set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", "no direct C import headers were recorded"); ok = false; goto done; }
   for (size_t i = 0; i < parsed_manifest.c_lib_count; i++) {
     ZManifestCLib *lib = &parsed_manifest.c_libs[i];
     if (c_lib_uses_unsafe_foreign_discovery(lib, target)) {
-      diag->code = 8003;
-      diag->path = z_strdup(manifest_path);
-      diag->line = 1;
-      diag->column = 1;
-      diag->length = 1;
+      diag->code = 8003; diag->path = z_strdup(manifest_path);
+      diag->line = diag->column = diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "foreign target C dependency would use host discovery");
       snprintf(diag->expected, sizeof(diag->expected), "package-relative vendored headers/libraries or target sysroot");
       snprintf(diag->actual, sizeof(diag->actual), "c.libs.%s uses %s%s", lib->name ? lib->name : "<unknown>", c_lib_has_host_paths(lib) ? "host include/lib paths" : "", (lib->pkg_config && lib->pkg_config[0]) ? " pkg-config" : "");
       snprintf(diag->help, sizeof(diag->help), "add target-tagged vendored include/lib entries or set the target sysroot; host /usr paths and host pkg-config are not reused for foreign targets");
-      z_free_manifest(&parsed_manifest);
-      free(manifest);
-      return false;
+      ok = false; goto done;
     }
-    bool matches_used_c_import = !require_link_plan || c_lib_matches_direct_c_imports(input, lib);
-    if (require_link_plan && matches_used_c_import) {
-      const char *lib_cursor = lib->lib_json ? lib->lib_json : "";
-      char lib_item[512];
+    if (require_link_plan && c_lib_matches_direct_c_imports(input, lib)) {
+      bool lib_has_link_inputs = false;
+      const char *lib_cursor = lib->lib_json ? lib->lib_json : ""; char lib_item[512];
       while (json_array_next_string(&lib_cursor, lib_item, sizeof(lib_item))) {
-        has_link_inputs = true;
+        lib_has_link_inputs = true;
         if (!c_link_path_is_safe(lib_item)) {
           char actual[512];
           snprintf(actual, sizeof(actual), "c.libs.%s.lib contains an empty or control-character path", lib->name ? lib->name : "<unknown>");
           set_c_import_link_plan_diag(diag, manifest_path, "extern C library path is unsafe", actual);
-          z_free_manifest(&parsed_manifest);
-          free(manifest);
-          return false;
+          ok = false; goto done;
         }
       }
-      const char *link_cursor = lib->link_json ? lib->link_json : "";
-      char link_item[256];
+      const char *link_cursor = lib->link_json ? lib->link_json : ""; char link_item[256];
       while (json_array_next_string(&link_cursor, link_item, sizeof(link_item))) {
-        has_link_inputs = true;
+        lib_has_link_inputs = true;
         if (!c_link_name_is_safe(link_item)) {
           char actual[512];
           snprintf(actual, sizeof(actual), "c.libs.%s.link contains unsafe library name '%s'", lib->name ? lib->name : "<unknown>", link_item);
           set_c_import_link_plan_diag(diag, manifest_path, "extern C system library name is unsafe", actual);
-          z_free_manifest(&parsed_manifest);
-          free(manifest);
-          return false;
+          ok = false; goto done;
         }
+      }
+      if (!lib_has_link_inputs) continue;
+      for (size_t header_index = 0; header_index < input->direct_c_import_header_count; header_index++) {
+        SourceInput one_header = *input;
+        one_header.direct_c_import_header_count = 1; one_header.direct_c_import_headers = &input->direct_c_import_headers[header_index];
+        one_header.direct_c_import_resolved_headers = &input->direct_c_import_resolved_headers[header_index];
+        if (!direct_import_has_link_inputs[header_index] && c_lib_matches_direct_c_imports(&one_header, lib)) direct_import_has_link_inputs[header_index] = true;
       }
     }
   }
-  if (require_link_plan && !has_link_inputs) {
-    set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", "no matching c.libs.*.headers entry with lib or link inputs was found");
-    z_free_manifest(&parsed_manifest);
-    free(manifest);
-    return false;
+  if (require_link_plan) {
+    for (size_t header_index = 0; header_index < input->direct_c_import_header_count; header_index++) {
+      if (direct_import_has_link_inputs[header_index]) continue;
+      char actual[128];
+      const char *header = input->direct_c_import_headers[header_index] && input->direct_c_import_headers[header_index][0] ? input->direct_c_import_headers[header_index] : (input->direct_c_import_resolved_headers[header_index] ? input->direct_c_import_resolved_headers[header_index] : "<unknown>");
+      snprintf(actual, sizeof(actual), "no lib/link inputs for imported header %.72s", header);
+      set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", actual);
+      ok = false; goto done;
+    }
   }
+done:
+  free(direct_import_has_link_inputs);
   z_free_manifest(&parsed_manifest);
   free(manifest);
-  return true;
+  return ok;
 }
 
 static bool validate_package_dependencies_for_target(const SourceInput *input, const ZTargetInfo *target, ZDiag *diag) {
