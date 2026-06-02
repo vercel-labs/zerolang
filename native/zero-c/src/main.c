@@ -99,6 +99,7 @@ typedef struct {
 } ShipArtifacts;
 
 static void print_command_help(const char *command);
+static void manifest_path_for_input(const SourceInput *input, char *manifest_path, size_t manifest_path_len);
 
 static const char *diag_code(int code) {
   switch (code) {
@@ -836,22 +837,20 @@ static void append_json_array_item_string(ZBuf *buf, bool *first, const char *va
 }
 
 static void append_manifest_c_link_plan_items_json(ZBuf *static_libraries, bool *static_first, ZBuf *system_libraries, bool *system_first, const SourceInput *input) {
-  if (!input || !input->manifest_path) return;
-  ZDiag read_diag = {0};
-  char *manifest = z_read_file(input->manifest_path, &read_diag);
-  if (!manifest) return;
+  char manifest_path[512];
+  if (!input) return;
+  manifest_path_for_input(input, manifest_path, sizeof(manifest_path)); if (!manifest_path[0]) return;
+  ZDiag read_diag = {0}; char *manifest = z_read_file(manifest_path, &read_diag); if (!manifest) return;
+  const char *package_root = input->package_root && input->package_root[0] ? input->package_root : ".";
   ZManifest parsed = {0};
-  if (!z_parse_manifest_json(manifest, &parsed, &read_diag)) {
-    free(manifest);
-    return;
-  }
+  if (!z_parse_manifest_json(manifest, &parsed, &read_diag)) { free(manifest); return; }
   for (size_t i = 0; i < parsed.c_lib_count; i++) {
     const ZManifestCLib *lib = &parsed.c_libs[i];
     if (!c_lib_matches_direct_c_imports(input, lib)) continue;
     const char *lib_cursor = lib->lib_json ? lib->lib_json : "";
     char lib_item[512];
     while (json_array_next_string(&lib_cursor, lib_item, sizeof(lib_item))) {
-      char *path = runtime_path_is_absolute(lib_item) ? z_strdup(lib_item) : runtime_join_path(input->package_root && input->package_root[0] ? input->package_root : ".", lib_item);
+      char *path = runtime_path_is_absolute(lib_item) ? z_strdup(lib_item) : runtime_join_path(package_root, lib_item);
       append_json_array_item_string(static_libraries, static_first, path);
       free(path);
     }
@@ -866,19 +865,17 @@ static void append_manifest_c_link_plan_items_json(ZBuf *static_libraries, bool 
 }
 
 static void append_manifest_c_link_flags(ZBuf *flags, const SourceInput *input) {
-  if (!flags || !input || !input->manifest_path) return;
-  ZDiag read_diag = {0};
-  char *manifest = z_read_file(input->manifest_path, &read_diag);
-  if (!manifest) return;
+  char manifest_path[512];
+  if (!flags || !input) return;
+  manifest_path_for_input(input, manifest_path, sizeof(manifest_path)); if (!manifest_path[0]) return;
+  ZDiag read_diag = {0}; char *manifest = z_read_file(manifest_path, &read_diag); if (!manifest) return;
+  const char *package_root = input->package_root && input->package_root[0] ? input->package_root : ".";
   ZManifest parsed = {0};
-  if (!z_parse_manifest_json(manifest, &parsed, &read_diag)) {
-    free(manifest);
-    return;
-  }
+  if (!z_parse_manifest_json(manifest, &parsed, &read_diag)) { free(manifest); return; }
   for (size_t i = 0; i < parsed.c_lib_count; i++) {
     const ZManifestCLib *lib = &parsed.c_libs[i];
     if (!c_lib_matches_direct_c_imports(input, lib)) continue;
-    append_c_link_file_flags(flags, input->package_root, lib->lib_json);
+    append_c_link_file_flags(flags, package_root, lib->lib_json);
     append_c_link_name_flags(flags, lib->link_json);
   }
   z_free_manifest(&parsed);
@@ -3282,6 +3279,7 @@ static const ExplainInfo explain_infos[] = {
     "let vec: FixedVec<u8, 4> = FixedVec { len: 0, items: [0, 0, 0, 0] }\ncheck vec.push(1_u8)",
     "var vec: FixedVec<u8, 4> = FixedVec { len: 0, items: [0, 0, 0, 0] }\ncheck vec.push(1_u8)",
   },
+  {"CIMP004", "c-import", "C import call unsupported or missing", "An extern C call names a symbol that is not declared in the imported header, or the function signature uses a C ABI type Zero cannot call directly.", "Zero validates callable C surfaces from the imported header before lowering so direct artifacts do not depend on undeclared symbols or unsupported ABI layouts.", "Call a function declared by the imported header, or wrap unsupported C ABI types behind a small scalar C shim.", "extern c \"vendor/include/ext.h\" as c\nlet value: i32 = c.missing_symbol(1, 2)", "extern c \"vendor/include/ext.h\" as c\nlet value: i32 = c.ext_add(1, 2)"},
   {
     "CIMP005",
     "c-import",
@@ -3348,7 +3346,7 @@ static void print_explain_json(const ExplainInfo *info) {
                                          strcmp(info->code, "ERR002") == 0 ? 1002 :
                                          strcmp(info->code, "ERR003") == 0 ? 1003 :
                                          strcmp(info->code, "STD003") == 0 ? 3012 :
-                                         strcmp(info->code, "CIMP005") == 0 ? 8005 :
+                                         strncmp(info->code, "CIMP00", 6) == 0 ? 8000 + (info->code[6] - '0') :
                                          strcmp(info->code, "CGEN004") == 0 ? 4004 : 0));
   zbuf_append(&buf, ", \"summary\": ");
   append_json_string(&buf, info->canonical_repair);
