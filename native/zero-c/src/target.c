@@ -441,6 +441,7 @@ void z_append_targets_json(ZBuf *buf) {
     append_target_libc_json(buf, &targets[i]);
     zbuf_append(buf, ", \"directBackend\": ");
     append_target_direct_backend_json(buf, &targets[i]);
+    zbuf_append(buf, ", \"backendFamilies\": {\"default\": \"direct\", \"known\": [\"direct\", \"llvm\"], \"available\": [\"direct\"], \"fallbackPolicy\": \"none\", \"llvm\": {\"status\": \"unavailable\", \"buildable\": false, \"emit\": [\"llvm-ir\"], \"reason\": \"LLVM backend is recognized but not available\"}}");
     zbuf_append(buf, ", \"httpRuntime\": ");
     z_append_http_runtime_json(buf, &targets[i]);
     zbuf_appendf(buf, "}%s\n", i + 1 < target_count ? "," : "");

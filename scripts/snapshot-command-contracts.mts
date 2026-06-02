@@ -581,7 +581,7 @@ assert.match(graphHelp, /zero graph \[dump\|import\|validate\|roundtrip\] \[--js
 assert.match(graphHelp, /zero graph view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(graphHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <input>/);
 assert.match(graphHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
-assert.match(graphHelp, /zero graph build \[--json\] \[--emit exe\|obj\].*<program-graph-or-package>/);
+assert.match(graphHelp, /zero graph build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<program-graph-or-package>/);
 assert.match(graphHelp, /zero graph run \[--target <host-target>\].*<program-graph-or-package> \[-- args\.\.\.\]/);
 assert.match(graphHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
 assert.doesNotMatch(graphHelp, /zero graph check[^\n]*--out/);
@@ -590,7 +590,7 @@ assert.match(rootHelp, /zero graph \[dump\|import\|validate\|roundtrip\] \[--jso
 assert.match(rootHelp, /zero graph view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(rootHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <program-graph-or-package>/);
 assert.match(rootHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
-assert.match(rootHelp, /zero graph build \[--json\] \[--emit exe\|obj\].*<program-graph-or-package>/);
+assert.match(rootHelp, /zero graph build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<program-graph-or-package>/);
 assert.match(rootHelp, /zero graph run \[--target <host-target>\].*<program-graph-or-package> \[-- args\.\.\.\]/);
 assert.match(rootHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
 
@@ -3678,6 +3678,45 @@ assert.equal(invalidCheckEmit.body.ok, false);
 assert.equal(invalidCheckEmit.body.diagnostics[0].code, "BLD002");
 assert.equal(invalidCheckEmit.body.diagnostics[0].actual, "--emit bogus");
 assert.equal(invalidCheckEmit.body.targetReadiness, undefined);
+const unknownBackend = json(["check", "--json", "--backend", "bogus", "examples/hello.0"], { allowFailure: true });
+assert.equal(unknownBackend.code, 1);
+assert.equal(unknownBackend.body.diagnostics[0].code, "BLD002");
+assert.equal(unknownBackend.body.diagnostics[0].actual, "--backend bogus");
+assert.match(unknownBackend.body.diagnostics[0].expected, /direct, llvm/);
+const unknownBackendWithLlvmEmit = json(["check", "--json", "--emit", "llvm-ir", "--backend", "bogus", "examples/hello.0"], { allowFailure: true });
+assert.equal(unknownBackendWithLlvmEmit.code, 1);
+assert.equal(unknownBackendWithLlvmEmit.body.diagnostics[0].code, "BLD002");
+assert.equal(unknownBackendWithLlvmEmit.body.diagnostics[0].actual, "--backend bogus");
+const llvmReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.0"]).body;
+assert.equal(llvmReadiness.ok, true);
+assert.equal(llvmReadiness.targetReadiness.ok, false);
+assert.equal(llvmReadiness.targetReadiness.backend, "llvm");
+assert.equal(llvmReadiness.targetReadiness.stage, "backend-selection");
+assert.equal(llvmReadiness.targetReadiness.diagnostics[0].code, "BLD004");
+assert.deepEqual(llvmReadiness.targetReadiness.diagnostics[0].backendBlocker, {
+  target: version.host,
+  objectFormat: version.host.startsWith("win32") ? "coff" : (version.host.startsWith("linux") ? "elf" : "macho"),
+  backend: "llvm",
+  stage: "backend-selection",
+  unsupportedFeature: "llvm backend unavailable",
+});
+const llvmBuild = json(["build", "--json", "--backend", "llvm", "examples/add.0", "--out", join(outDir, "add-llvm")], { allowFailure: true });
+assert.notEqual(llvmBuild.code, 0);
+assert.equal(llvmBuild.body.diagnostics[0].code, "BLD004");
+assert.equal(llvmBuild.body.diagnostics[0].backendBlocker.backend, "llvm");
+assert.equal(llvmBuild.body.diagnostics[0].backendBlocker.stage, "backend-selection");
+const llvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "examples/add.0", "--out", join(outDir, "add.ll")], { allowFailure: true });
+assert.notEqual(llvmIrBuild.code, 0);
+assert.equal(llvmIrBuild.body.diagnostics[0].code, "BLD004");
+assert.equal(llvmIrBuild.body.diagnostics[0].actual, "backend=llvm emit=llvm-ir");
+const llvmGraphCheck = json(["graph", "check", "--json", "--backend", "llvm", "examples/add.0"]).body;
+assert.equal(llvmGraphCheck.ok, true);
+assert.equal(llvmGraphCheck.targetReadiness.ok, false);
+assert.equal(llvmGraphCheck.targetReadiness.diagnostics[0].backendBlocker.backend, "llvm");
+const llvmSize = json(["size", "--json", "--backend", "llvm", "examples/add.0"], { allowFailure: true });
+assert.notEqual(llvmSize.code, 0);
+assert.equal(llvmSize.body.diagnostics[0].code, "BLD004");
+assert.equal(llvmSize.body.diagnostics[0].backendBlocker.stage, "backend-selection");
 const backendBlockedReadiness = json(["check", "--json", "--emit", "obj", "--target", "linux-musl-x64", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0"]).body;
 assert.equal(backendBlockedReadiness.ok, true);
 assert.equal(backendBlockedReadiness.diagnostics.length, 0);
@@ -4113,6 +4152,15 @@ assert.equal(linuxArm64Target.directBackend.status, "native-exe");
 assert.equal(linuxArm64Target.directBackend.objectEmitter, "zero-elf-aarch64");
 assert.equal(linuxArm64Target.directBackend.exeEmitter, "zero-elf-aarch64-exe");
 assert.match(linuxArm64Target.directBackend.reason, /direct object and executable backend available/);
+for (const target of targets.targets) {
+  assert.equal(target.backendFamilies.default, "direct");
+  assert.deepEqual(target.backendFamilies.known, ["direct", "llvm"]);
+  assert.deepEqual(target.backendFamilies.available, ["direct"]);
+  assert.equal(target.backendFamilies.fallbackPolicy, "none");
+  assert.equal(target.backendFamilies.llvm.status, "unavailable");
+  assert.equal(target.backendFamilies.llvm.buildable, false);
+  assert.deepEqual(target.backendFamilies.llvm.emit, ["llvm-ir"]);
+}
 
 const cAbiExport = zero(["check", "conformance/native/pass/c-abi-export.0"]);
 assert.match(cAbiExport.stdout, /ok/);

@@ -170,9 +170,15 @@ valid ProgramGraph patch text.
 | --- | --- |
 | Native executable | `zero build --emit exe --target linux-musl-x64 <input>` |
 | Native object | `zero build --emit obj --target linux-musl-x64 <input>` |
+| LLVM IR | `zero build --emit llvm-ir --backend llvm --target linux-musl-x64 <input>` |
 
 Removed backend flags report `BLD003`. Use direct emitters; the removed C
 backend is not a compatibility path.
+
+`direct` is the default backend family. `llvm` is a recognized backend family
+and `llvm-ir` is a recognized emit kind, but LLVM output is not available yet.
+Explicit LLVM requests report `BLD004` with `backendBlocker.backend: "llvm"`;
+they do not fall back to direct emitters.
 
 ## Tests
 
@@ -218,10 +224,10 @@ document symbols, and quick-fix code actions surfaced from `zero fix` for
 zero --version [--json]
 zero new cli|lib|package <path>
 zero doctor [--json]
-zero check [--json] [--target <target>] [--emit exe|obj] <input>
+zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] <input>
 zero dev [--json] [--trace] [--target <target>] <input>
 zero run [--target <target>] [--profile dev|release] [--out <file>] <input> [-- args...]
-zero build [--emit exe|obj] [--target <target>] [--profile dev|release] [--out <file>] <input>
+zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile dev|release] [--out <file>] <input>
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
@@ -230,7 +236,7 @@ zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifa
 zero graph view [--json] [--out <file.0>] <program-graph-or-source>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
 zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
-zero graph build [--json] [--emit exe|obj] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
+zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
 zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
 zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>
 zero doc [--json] [--target <target>] <input>
