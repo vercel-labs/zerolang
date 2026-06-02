@@ -1016,8 +1016,10 @@ assert.deepEqual(llvmAddBuildBody.objectBackend.linkerPlan.staticLibraries, ["ze
 const llvmAddIr = await readFile(llvmAddIrPath, "utf8");
 assert.match(llvmAddIr, /@\.zero\.data\.0 = private unnamed_addr constant \[12 x i8\] c"math works\\0A\\00", align 1/);
 assert.match(llvmAddIr, /declare i32 @zero_world_write\(i32, ptr, i64\)/);
+assert.match(llvmAddIr, /declare void @llvm\.trap\(\)/);
 assert.match(llvmAddIr, /define i32 @\.zero\.fn\.[0-9]+\.answer\(\) \{/);
 assert.match(llvmAddIr, /call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i64 11\)/);
+assert.match(llvmAddIr, /%v[0-9]+ = call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i64 11\)\n  %v[0-9]+ = icmp eq i32 %v[0-9]+, 0\n  br i1 %v[0-9]+, label %L[0-9]+, label %L[0-9]+\nL[0-9]+:\n  call void @llvm\.trap\(\)\n  unreachable\nL[0-9]+:/);
 
 const llvmSymbolCollisionSourcePath = `${outDir}/llvm-symbol-collision.0`;
 const llvmSymbolCollisionIrPath = `${outDir}/llvm-symbol-collision.ll`;
@@ -1048,6 +1050,31 @@ assert.match(llvmSymbolCollisionIr, /define i32 @\.zero\.fn\.[0-9]+\.foo\(\) \{/
 assert.match(llvmSymbolCollisionIr, /define i32 @z_fn_0_foo\(\) \{/);
 assert.match(llvmSymbolCollisionIr, /call i32 @\.zero\.fn\.[0-9]+\.foo\(\)/);
 assert.equal((llvmSymbolCollisionIr.match(/define i32 @z_fn_0_foo\(\) \{/g) || []).length, 1);
+
+const llvmLongExportName = `llvm_export_${"a".repeat(200)}`;
+const llvmLongExportSourcePath = `${outDir}/llvm-long-export.0`;
+const llvmLongExportIrPath = `${outDir}/llvm-long-export.ll`;
+await writeFile(llvmLongExportSourcePath, `export c fn ${llvmLongExportName}() -> i32 {
+    return 7
+}
+
+export c fn main() -> i32 {
+    return ${llvmLongExportName}()
+}
+`);
+await execFileAsync(zero, [
+  "build",
+  "--emit",
+  "llvm-ir",
+  "--backend",
+  "llvm",
+  llvmLongExportSourcePath,
+  "--out",
+  llvmLongExportIrPath,
+]);
+const llvmLongExportIr = await readFile(llvmLongExportIrPath, "utf8");
+assert(llvmLongExportIr.includes(`define i32 @${llvmLongExportName}() {`));
+assert(llvmLongExportIr.includes(`call i32 @${llvmLongExportName}()`));
 
 const directStringMachOExe = await execFileAsync(zero, [
   "build",

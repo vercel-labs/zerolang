@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
@@ -98,20 +99,19 @@ static bool llvm_name_is_ident(const char *name) {
   return true;
 }
 
-static void llvm_symbol_for_function(const IrProgram *program, unsigned index, char *buf, size_t len) {
+static char *llvm_symbol_for_function(const IrProgram *program, unsigned index) {
   const IrFunction *fun = program && index < program->function_len ? &program->functions[index] : NULL;
   const char *name = fun && fun->name ? fun->name : "function";
-  if (fun && fun->is_exported && llvm_name_is_ident(name)) {
-    snprintf(buf, len, "%s", name);
-    return;
+  ZBuf buf; zbuf_init(&buf);
+  if (fun && fun->is_exported && llvm_name_is_ident(name)) zbuf_append(&buf, name);
+  else {
+    zbuf_appendf(&buf, ".zero.fn.%u.", index);
+    for (size_t i = 0; name[i]; i++) {
+      unsigned char ch = (unsigned char)name[i];
+      zbuf_append_char(&buf, (char)((isalnum(ch) || ch == '_') ? ch : '_'));
+    }
   }
-  size_t at = (size_t)snprintf(buf, len, ".zero.fn.%u.", index);
-  if (at >= len) return;
-  for (size_t i = 0; name[i] && at + 1 < len; i++) {
-    unsigned char ch = (unsigned char)name[i];
-    buf[at++] = (char)((isalnum(ch) || ch == '_') ? ch : '_');
-  }
-  buf[at] = 0;
+  return buf.data;
 }
 
 static const IrLocal *llvm_local(const IrFunction *fun, unsigned index) {
@@ -194,8 +194,6 @@ static bool llvm_emit_call(LlvmEmit *emit, const IrValue *value, LlvmValue *out,
     llvm_set_diag(diag, emit->program, value->line, value->column, "LLVM IR backend call target is missing", "missing call target", "emit");
     return false;
   }
-  char symbol[160];
-  llvm_symbol_for_function(emit->program, value->callee_index, symbol, sizeof(symbol));
   LlvmValue args[32];
   if (value->arg_len > sizeof(args) / sizeof(args[0])) {
     llvm_set_diag(diag, emit->program, value->line, value->column, "LLVM IR backend call has too many arguments", "call argument count", "lower");
@@ -204,6 +202,7 @@ static bool llvm_emit_call(LlvmEmit *emit, const IrValue *value, LlvmValue *out,
   for (size_t i = 0; i < value->arg_len; i++) {
     if (!llvm_emit_value(emit, value->args[i], &args[i], diag)) return false;
   }
+  char *symbol = llvm_symbol_for_function(emit->program, value->callee_index);
   if (value->type == IR_TYPE_VOID) {
     zbuf_appendf(emit->out, "  call void @%s(", symbol);
   } else {
@@ -219,6 +218,7 @@ static bool llvm_emit_call(LlvmEmit *emit, const IrValue *value, LlvmValue *out,
     out->type = IR_TYPE_VOID;
     snprintf(out->text, sizeof(out->text), "void");
   }
+  free(symbol);
   return true;
 }
 
@@ -230,9 +230,7 @@ static bool llvm_emit_short_circuit_binary(LlvmEmit *emit, const IrValue *value,
     llvm_set_diag(diag, emit->program, value->line, value->column, "LLVM IR backend Boolean operator left operand must be Bool", "non-Bool short-circuit operand", "lower");
     return false;
   }
-  unsigned rhs_label = llvm_label(emit);
-  unsigned const_label = llvm_label(emit);
-  unsigned end_label = llvm_label(emit);
+  unsigned rhs_label = llvm_label(emit), const_label = llvm_label(emit), end_label = llvm_label(emit);
   zbuf_appendf(emit->out, "  br i1 %s, label %%L%u, label %%L%u\n", left.text, is_and ? rhs_label : const_label, is_and ? const_label : rhs_label);
   llvm_emit_label(emit, rhs_label);
   LlvmValue right;
@@ -350,11 +348,17 @@ static bool llvm_emit_world_write(LlvmEmit *emit, const IrInstr *instr, ZDiag *d
     llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend string data segment is missing", "missing readonly data", "emit");
     return false;
   }
-  LlvmValue ptr;
-  llvm_temp(emit, &ptr, IR_TYPE_U64);
+  LlvmValue ptr; llvm_temp(emit, &ptr, IR_TYPE_U64);
   const IrDataSegment *segment = &emit->program->data_segments[segment_index];
   zbuf_appendf(emit->out, "  %s = getelementptr inbounds [%u x i8], ptr @.zero.data.%zu, i64 0, i64 %u\n", ptr.text, segment->len, segment_index, delta);
-  zbuf_appendf(emit->out, "  call i32 @zero_world_write(i32 %u, ptr %s, i64 %u)\n", instr->field_offset == 2 ? 2u : 1u, ptr.text, view->data_len);
+  LlvmValue status, ok; llvm_temp(emit, &status, IR_TYPE_I32);
+  zbuf_appendf(emit->out, "  %s = call i32 @zero_world_write(i32 %u, ptr %s, i64 %u)\n", status.text, instr->field_offset == 2 ? 2u : 1u, ptr.text, view->data_len);
+  llvm_temp(emit, &ok, IR_TYPE_BOOL); unsigned ok_label = llvm_label(emit), trap_label = llvm_label(emit);
+  zbuf_appendf(emit->out, "  %s = icmp eq i32 %s, 0\n", ok.text, status.text);
+  zbuf_appendf(emit->out, "  br i1 %s, label %%L%u, label %%L%u\n", ok.text, ok_label, trap_label);
+  llvm_emit_label(emit, trap_label);
+  zbuf_append(emit->out, "  call void @llvm.trap()\n  unreachable\n");
+  llvm_emit_label(emit, ok_label);
   return true;
 }
 
@@ -400,9 +404,7 @@ static bool llvm_emit_instr(LlvmEmit *emit, const IrInstr *instr, bool *terminat
         llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend branch condition must be Bool", "non-Bool branch condition", "lower");
         return false;
       }
-      unsigned then_label = llvm_label(emit);
-      unsigned else_label = llvm_label(emit);
-      unsigned end_label = llvm_label(emit);
+      unsigned then_label = llvm_label(emit), else_label = llvm_label(emit), end_label = llvm_label(emit);
       zbuf_appendf(emit->out, "  br i1 %s, label %%L%u, label %%L%u\n", cond.text, then_label, else_label);
       llvm_emit_label(emit, then_label);
       bool then_term = false;
@@ -417,9 +419,7 @@ static bool llvm_emit_instr(LlvmEmit *emit, const IrInstr *instr, bool *terminat
       return true;
     }
     case IR_INSTR_WHILE: {
-      unsigned cond_label = llvm_label(emit);
-      unsigned body_label = llvm_label(emit);
-      unsigned end_label = llvm_label(emit);
+      unsigned cond_label = llvm_label(emit), body_label = llvm_label(emit), end_label = llvm_label(emit);
       zbuf_appendf(emit->out, "  br label %%L%u\n", cond_label);
       llvm_emit_label(emit, cond_label);
       LlvmValue cond;
@@ -478,9 +478,9 @@ static bool llvm_validate_function(const IrProgram *program, const IrFunction *f
 static bool llvm_emit_function(const IrProgram *program, unsigned index, ZBuf *out, ZDiag *diag) {
   const IrFunction *fun = &program->functions[index];
   if (!llvm_validate_function(program, fun, diag)) return false;
-  char symbol[160];
-  llvm_symbol_for_function(program, index, symbol, sizeof(symbol));
+  char *symbol = llvm_symbol_for_function(program, index);
   zbuf_appendf(out, "define %s @%s(", llvm_type_name(fun->return_type), symbol);
+  free(symbol);
   size_t written_params = 0;
   for (size_t i = 0; i < fun->local_len; i++) {
     const IrLocal *local = &fun->locals[i];
@@ -521,7 +521,7 @@ bool z_emit_llvm_ir_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag) {
   zbuf_append(out, "; zero llvm-ir v1\n");
   zbuf_appendf(out, "target triple = \"%s\"\n\n", llvm_target_triple(program->target));
   llvm_append_data_globals(out, program);
-  if (program->data_segment_len > 0) zbuf_append(out, "declare i32 @zero_world_write(i32, ptr, i64)\n\n");
+  if (program->data_segment_len > 0) zbuf_append(out, "declare i32 @zero_world_write(i32, ptr, i64)\ndeclare void @llvm.trap()\n\n");
   for (unsigned i = 0; i < program->function_len; i++) {
     if (!llvm_emit_function(program, i, out, diag)) {
       zbuf_free(out);
