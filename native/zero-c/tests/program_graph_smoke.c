@@ -306,15 +306,75 @@ static void expect_lower_rejects_reserved_call_name(void) {
   z_program_graph_free(&graph);
 }
 
-int main(void) {
-  expect_lowered_program();
-  expect_lower_rejects_bad_imports();
-  expect_lower_rejects_reserved_function_name();
-  expect_lower_rejects_internal_function_name();
-  expect_lower_allows_embedded_std_internal_function_name();
-  expect_lower_rejects_reserved_call_name();
+static void expect_validation_code(ZProgramGraph *graph, const char *code, const char *message) {
+  z_program_graph_finalize_identities(graph);
+  ZProgramGraphValidation validation = {0};
+  expect(!z_program_graph_validate(graph, &validation), message);
+  expect(strcmp(validation.code, code) == 0, "validation reported wrong code");
+}
 
+static void expect_validation_allows_unconstrained_type_params(void) {
   ZProgramGraph graph;
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(5, sizeof(ZProgramGraphNode));
+  graph.node_len = 5;
+  graph.node_cap = 5;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_SHAPE, "Box", NULL);
+  graph.nodes[1].value = z_strdup("auto");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_PARAM, "T", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_FIELD, "value", "T");
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_TYPE_REF, NULL, "T");
+  graph.edges = z_checked_calloc(4, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 4;
+  graph.edge_cap = 4;
+  set_edge(&graph.edges[0], "#000001", "#000002", "shape", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "typeParam", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000002", "#000004", "field", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000004", "#000005", "type", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  z_program_graph_finalize_identities(&graph);
+
+  ZProgramGraphValidation validation = {0};
+  expect(z_program_graph_validate(&graph, &validation), "unconstrained type param failed validation");
+  z_program_graph_free(&graph);
+}
+
+static void expect_validation_rejects_malformed_graphs(void) {
+  ZProgramGraph graph;
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(4, sizeof(ZProgramGraphNode));
+  graph.node_len = 4;
+  graph.node_cap = 4;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  graph.nodes[1].is_public = true;
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_CHECK, NULL, NULL);
+  graph.edges = z_checked_calloc(4, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 4;
+  graph.edge_cap = 4;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 2);
+  expect_validation_code(&graph, "GRF013", "sparse ordered statement edges validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(3, sizeof(ZProgramGraphNode));
+  graph.node_len = 3;
+  graph.node_cap = 3;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  graph.edges = z_checked_calloc(2, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 2;
+  graph.edge_cap = 2;
+  set_edge(&graph.edges[0], "#000001", "#000002", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF012", "invalid module child edge validated");
+  z_program_graph_free(&graph);
+
   z_program_graph_init(&graph);
   graph.nodes = z_checked_calloc(2, sizeof(ZProgramGraphNode));
   graph.node_len = 2;
@@ -324,7 +384,185 @@ int main(void) {
   graph.edges = z_checked_calloc(1, sizeof(ZProgramGraphEdge));
   graph.edge_len = 1;
   graph.edge_cap = 1;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF016", "function without body validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(4, sizeof(ZProgramGraphNode));
+  graph.node_len = 4;
+  graph.node_cap = 4;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_PARAM, "world", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  graph.edges = z_checked_calloc(3, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 3;
+  graph.edge_cap = 3;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "param", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000002", "#000004", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF014", "value param without type validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(1, sizeof(ZProgramGraphNode));
+  graph.node_len = 1;
+  graph.node_cap = 1;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_LITERAL, NULL, NULL);
+  expect_validation_code(&graph, "GRF014", "literal without value validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(5, sizeof(ZProgramGraphNode));
+  graph.node_len = 5;
+  graph.node_cap = 5;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_CHECK, NULL, NULL);
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_LITERAL, NULL, NULL);
+  graph.nodes[4].value = z_strdup("true");
+  graph.edges = z_checked_calloc(4, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 4;
+  graph.edge_cap = 4;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000004", "#000005", "left", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF016", "statement check with left edge validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(6, sizeof(ZProgramGraphNode));
+  graph.node_len = 6;
+  graph.node_cap = 6;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_LET, "value", NULL);
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_CHECK, NULL, NULL);
+  set_node(&graph.nodes[5], "#000006", Z_PROGRAM_GRAPH_NODE_LITERAL, NULL, NULL);
+  graph.nodes[5].value = z_strdup("true");
+  graph.edges = z_checked_calloc(5, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 5;
+  graph.edge_cap = 5;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000004", "#000005", "expr", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[4], "#000005", "#000006", "expr", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF016", "expression check with expr edge validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(7, sizeof(ZProgramGraphNode));
+  graph.node_len = 7;
+  graph.node_cap = 7;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_CHECK, NULL, NULL);
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_INDEX_ACCESS, NULL, NULL);
+  set_node(&graph.nodes[5], "#000006", Z_PROGRAM_GRAPH_NODE_IDENTIFIER, "world", NULL);
+  set_node(&graph.nodes[6], "#000007", Z_PROGRAM_GRAPH_NODE_LITERAL, NULL, NULL);
+  graph.nodes[6].value = z_strdup("0");
+  graph.edges = z_checked_calloc(6, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 6;
+  graph.edge_cap = 6;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000004", "#000005", "expr", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[4], "#000005", "#000006", "left", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[5], "#000005", "#000007", "right", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF016", "right edge at order zero validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(5, sizeof(ZProgramGraphNode));
+  graph.node_len = 5;
+  graph.node_cap = 5;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "u8");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_RETURN, NULL, NULL);
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_RESCUE, NULL, "u8");
+  graph.edges = z_checked_calloc(3, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 3;
+  graph.edge_cap = 3;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF014", "rescue without binding name validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(5, sizeof(ZProgramGraphNode));
+  graph.node_len = 5;
+  graph.node_cap = 5;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "u8");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_RETURN, NULL, NULL);
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_CAST, NULL, NULL);
+  graph.edges = z_checked_calloc(3, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 3;
+  graph.edge_cap = 3;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  expect_validation_code(&graph, "GRF014", "cast without target type validated");
+  z_program_graph_free(&graph);
+
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(7, sizeof(ZProgramGraphNode));
+  graph.node_len = 7;
+  graph.node_cap = 7;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  set_node(&graph.nodes[3], "#000004", Z_PROGRAM_GRAPH_NODE_RETURN, NULL, NULL);
+  set_node(&graph.nodes[4], "#000005", Z_PROGRAM_GRAPH_NODE_SLICE, NULL, NULL);
+  set_node(&graph.nodes[5], "#000006", Z_PROGRAM_GRAPH_NODE_IDENTIFIER, "bytes", NULL);
+  set_node(&graph.nodes[6], "#000007", Z_PROGRAM_GRAPH_NODE_LITERAL, NULL, NULL);
+  graph.nodes[6].value = z_strdup("1");
+  graph.edges = z_checked_calloc(6, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 6;
+  graph.edge_cap = 6;
+  set_edge(&graph.edges[0], "#000001", "#000002", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[2], "#000003", "#000004", "statement", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[3], "#000004", "#000005", "expr", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[4], "#000005", "#000006", "left", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
+  set_edge(&graph.edges[5], "#000005", "#000007", "arg", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 2);
+  expect_validation_code(&graph, "GRF016", "slice arg outside supported order range validated");
+  z_program_graph_free(&graph);
+}
+
+int main(void) {
+  expect_lowered_program();
+  expect_lower_rejects_bad_imports();
+  expect_lower_rejects_reserved_function_name();
+  expect_lower_rejects_internal_function_name();
+  expect_lower_allows_embedded_std_internal_function_name();
+  expect_lower_rejects_reserved_call_name();
+  expect_validation_allows_unconstrained_type_params();
+  expect_validation_rejects_malformed_graphs();
+
+  ZProgramGraph graph;
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(3, sizeof(ZProgramGraphNode));
+  graph.node_len = 3;
+  graph.node_cap = 3;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "smoke", NULL);
+  set_node(&graph.nodes[1], "#000002", Z_PROGRAM_GRAPH_NODE_FUNCTION, "main", "Void");
+  set_node(&graph.nodes[2], "#000003", Z_PROGRAM_GRAPH_NODE_BLOCK, "body", NULL);
+  graph.edges = z_checked_calloc(2, sizeof(ZProgramGraphEdge));
+  graph.edge_len = 2;
+  graph.edge_cap = 2;
   set_edge(&graph.edges[0], "#000001", "symbol:missing", "function", Z_PROGRAM_GRAPH_EDGE_TARGET_SYMBOL, 0);
+  set_edge(&graph.edges[1], "#000002", "#000003", "body", Z_PROGRAM_GRAPH_EDGE_TARGET_NODE, 0);
   z_program_graph_finalize_identities(&graph);
 
   ZProgramGraphValidation validation = {0};

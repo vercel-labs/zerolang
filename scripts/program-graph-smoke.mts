@@ -23,6 +23,7 @@ try {
     "native/zero-c/src/program_graph_lower.c",
     "native/zero-c/src/program_graph_node_id.c",
     "native/zero-c/src/program_graph_format.c",
+    "native/zero-c/src/program_graph_validate.c",
     "native/zero-c/src/std_source.c",
     "native/zero-c/src/ast.c",
     "native/zero-c/tests/program_graph_smoke.c",

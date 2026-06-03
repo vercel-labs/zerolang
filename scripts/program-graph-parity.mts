@@ -104,6 +104,12 @@ async function assertCommandStateContracts() {
   assert.equal(validate.validation.state, "shape-valid", "graph validate should promise shape-valid state");
   assert.equal(validate.validation.ok, true, "graph validate state should be ok");
 
+  const emptyLiteralArtifact = await dumpGraphArtifact("benchmarks/rosetta/empty-string.0", "empty-string-literal");
+  const emptyLiteralDump = await readFile(emptyLiteralArtifact, "utf8");
+  assert.match(emptyLiteralDump, /node #[^ ]+ Literal[^\n]* value:""/, "graph dump should preserve empty literal values");
+  const emptyLiteralValidate = await zeroJson(["graph", "validate", "--json", emptyLiteralArtifact]);
+  assert.equal(emptyLiteralValidate.ok, true, "graph validate should accept stored empty string literal artifacts");
+
   const view = await zeroJson(["graph", "view", "--json", artifact]);
   assert.equal(view.ok, true, "graph view should render a valid source projection");
   assert.equal(view.canonicalSource, false, "graph view should report artifact input");
@@ -127,6 +133,35 @@ async function assertCommandStateContracts() {
   assert.equal(roundtrip.canonicalSource, false, "graph roundtrip should report artifact input");
   assert.equal(roundtrip.semanticStable, true, "graph roundtrip should promise semantic stability");
   assert.equal(roundtrip.lowering, "direct-program-graph", "graph roundtrip should lower through ProgramGraph");
+}
+
+async function assertUnconstrainedGenericTypeParams() {
+  const fixture = `${outDir}/generic-no-constraint.0`;
+  await writeFile(fixture, [
+    "type Box<T> {",
+    "    value: T,",
+    "}",
+    "",
+    "fn id<T>(value: T) -> T {",
+    "    return value",
+    "}",
+    "",
+    "pub fn main(world: World) -> Void raises {",
+    "    let box: Box<i32> = Box { value: id<i32>(1) }",
+    "    if box.value == 1 {",
+    "        check world.out.write(\"generic no constraint ok\\n\")",
+    "    }",
+    "}",
+    "",
+  ].join("\n"));
+  const check = await zeroJson(["check", "--json", fixture]);
+  assert.equal(check.ok, true, "source check should accept unconstrained generic parameters");
+  const dump = await zeroJson(["graph", "dump", "--json", fixture]);
+  assert.equal(dump.validation.ok, true, "graph dump should validate unconstrained generic parameters");
+  assert(dump.nodes.some((node) => node.kind === "Param" && node.name === "T" && node.type === ""), "graph dump should preserve an unconstrained type parameter");
+  const artifact = await dumpGraphArtifact(fixture, "generic-no-constraint");
+  const validate = await zeroJson(["graph", "validate", "--json", artifact]);
+  assert.equal(validate.ok, true, "graph validate should accept unconstrained generic parameter artifacts");
 }
 
 async function assertBuildParity(fixture, name) {
@@ -432,10 +467,18 @@ try {
 
   for (const fixture of [
     "examples/hello.0",
+    "examples/type-alias.0",
+    "examples/static-interface.0",
+    "examples/direct-rescue-basic.0",
     "examples/std-math.0",
     "examples/systems-package",
+    "examples/readall-cli",
     "examples/direct-package-arrays/src/main.0",
     "conformance/check/pass/c-header-import.0",
+    "conformance/native/pass/borrow-field-independent-assignment.0",
+    "conformance/native/pass/open-ended-slices.0",
+    "conformance/native/pass/allocator-primitives.0",
+    "conformance/native/pass/std-fs-fallible.0",
     "benchmarks/rosetta/fibonacci-sequence.0",
   ]) {
     await assertCheckParity(fixture);
@@ -443,15 +486,24 @@ try {
 
   for (const fixture of [
     "examples/hello.0",
+    "examples/type-alias.0",
+    "examples/static-interface.0",
+    "examples/direct-rescue-basic.0",
     "examples/std-math.0",
     "examples/systems-package",
+    "examples/readall-cli",
     "conformance/check/pass/c-header-import.0",
+    "conformance/native/pass/borrow-field-independent-assignment.0",
+    "conformance/native/pass/open-ended-slices.0",
+    "conformance/native/pass/allocator-primitives.0",
+    "conformance/native/pass/std-fs-fallible.0",
     "benchmarks/rosetta/fibonacci-sequence.0",
   ]) {
     await assertRoundtripStable(fixture);
   }
 
   await assertCommandStateContracts();
+  await assertUnconstrainedGenericTypeParams();
   await assertBuildParity("examples/hello.0", "hello");
   await assertRunParity("examples/hello.0", "hello");
   await assertRunParity("conformance/native/pass/std-args.0", "std-args", ["alpha", "beta"]);

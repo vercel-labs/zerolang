@@ -724,8 +724,8 @@ void z_program_graph_append_json(ZBuf *buf, const ZProgramGraph *graph, const ZP
   zbuf_append(buf, "]}");
 }
 
-static void graph_format_append_text_field(ZBuf *buf, const char *name, const char *value) {
-  if (!graph_format_text_present(value)) return;
+static void graph_format_append_text_field(ZBuf *buf, const char *name, const char *value, bool include_empty) {
+  if (!value || (!include_empty && !value[0])) return;
   zbuf_append_char(buf, ' ');
   zbuf_append(buf, name);
   zbuf_append_char(buf, ':');
@@ -788,11 +788,11 @@ void z_program_graph_append_dump(ZBuf *buf, const ZProgramGraph *graph, const ZP
     zbuf_append(buf, node->id ? node->id : "");
     zbuf_append_char(buf, ' ');
     zbuf_append(buf, z_program_graph_node_kind_name(node->kind));
-    graph_format_append_text_field(buf, "name", node->name);
-    graph_format_append_text_field(buf, "type", node->type);
-    graph_format_append_text_field(buf, "value", node->value);
+    graph_format_append_text_field(buf, "name", node->name, false);
+    graph_format_append_text_field(buf, "type", node->type, false);
+    graph_format_append_text_field(buf, "value", node->value, node->kind == Z_PROGRAM_GRAPH_NODE_LITERAL || node->kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT);
     if (node->kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT) {
-      graph_format_append_text_field(buf, "path", node->path);
+      graph_format_append_text_field(buf, "path", node->path, false);
       graph_format_append_int_field(buf, "line", node->line);
       graph_format_append_int_field(buf, "column", node->column);
     }
