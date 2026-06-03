@@ -63,6 +63,14 @@ function buildSummary(result) {
   };
 }
 
+function assertSourceGraphRoute(result, fixture, lowering = "typed-program-graph-mir") {
+  assert(result.graph, `${fixture}: source command should report graph compiler input`);
+  assert.equal(result.graph.artifact, fixture, `${fixture}: source graph artifact should be the source input`);
+  assert.equal(result.graph.canonicalSource, true, `${fixture}: source graph should report canonical source`);
+  assert.match(result.graph.graphHash, /^graph:[0-9a-f]{16}$/, `${fixture}: source graph hash`);
+  assert.equal(result.graph.lowering, lowering, `${fixture}: source graph lowering`);
+}
+
 function testSummary(result) {
   return {
     ok: result.ok,
@@ -672,6 +680,45 @@ async function assertTestParity(fixture, name) {
   assert.deepEqual(testSummary(graph), testSummary(source), `${fixture}: source and graph test summaries should agree`);
 }
 
+async function assertSourceCommandGraphCompilerPath() {
+  const helloCheck = await zeroJson(["check", "--json", "examples/hello.0"]);
+  assertSourceGraphRoute(helloCheck, "examples/hello.0");
+  assert.equal(helloCheck.compilerCaches[0].sourceKind, "program-graph", "source check should use graph cache identity");
+  assert.deepEqual(targetReadinessSummary(helloCheck.targetReadiness), {
+    languageOk: true,
+    buildable: true,
+    stage: "ready",
+    code: null,
+  }, "source check target readiness");
+
+  const helloBuildOut = `${outDir}/source-command-graph-build`;
+  const helloBuild = await zeroJson(["build", "--json", "--target", "linux-musl-x64", "--out", helloBuildOut, "examples/hello.0"]);
+  assertSourceGraphRoute(helloBuild, "examples/hello.0");
+  assert.equal(helloBuild.generatedCBytes, 0, "source build should stay on direct backend");
+  assert.equal(helloBuild.compilerCaches[0].sourceKind, "program-graph", "source build should use graph cache identity");
+  assert.equal(helloBuild.incrementalInvalidation.sourceKind, "program-graph", "source build invalidation source kind");
+  assert.equal(helloBuild.incrementalInvalidation.graphInput.artifact, "examples/hello.0", "source build graph input");
+  assert(helloBuild.artifactBytes > 0, "source build should write an artifact");
+
+  const helloSize = await zeroJson(["size", "--json", "--target", "linux-musl-x64", "examples/hello.0"]);
+  assertSourceGraphRoute(helloSize, "examples/hello.0");
+  assert.equal(helloSize.generatedCBytes, 0, "source size should stay on direct backend");
+  assert.equal(helloSize.cBridgeFallback, false, "source size should not use C bridge fallback");
+  assert.equal(helloSize.compilerCaches[0].sourceKind, "program-graph", "source size should use graph cache identity");
+
+  const packageCheck = await zeroJson(["check", "--json", "conformance/packages/test-app"]);
+  assertSourceGraphRoute(packageCheck, "conformance/packages/test-app/src/main.0");
+  assert.equal(packageCheck.graph.moduleIdentity, "package:test-app@0.1.0", "source package graph identity");
+  assert.equal(packageCheck.package.name, "test-app", "source package metadata");
+
+  const packageTest = await zeroJson(["test", "--json", "conformance/packages/test-app"]);
+  assertSourceGraphRoute(packageTest, "conformance/packages/test-app/src/main.0");
+  assert.equal(packageTest.testBackend, "direct-frontend", "source graph test backend");
+  assert.equal(packageTest.testDiscovery.mode, "package-graph", "source package tests should report graph discovery");
+  assert.equal(packageTest.generatedCBytes, 0, "source graph tests should not use generated C");
+  assert.equal(packageTest.cBridgeFallback, false, "source graph tests should not use C bridge fallback");
+}
+
 async function assertSourceBackedPatchParity() {
   const fixture = `${outDir}/source-backed-patch.0`;
   const original = await readFile("examples/hello.0", "utf8");
@@ -1019,6 +1066,7 @@ try {
   await assertResolutionFacts();
   await assertSemanticFacts();
   await assertUnconstrainedGenericTypeParams();
+  await assertSourceCommandGraphCompilerPath();
   await assertBuildParity("examples/hello.0", "hello");
   await assertRunParity("examples/hello.0", "hello");
   await assertRunParity("conformance/native/pass/std-args.0", "std-args", ["alpha", "beta"]);

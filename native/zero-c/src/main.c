@@ -12425,7 +12425,32 @@ int main(int argc, char **argv) {
     free_loaded_command_state(&input, &program, &graph_prepared_ir);
     return 1;
   }
-
+  if (!is_graph_command &&
+      !direct_graph_manifest_command &&
+      !direct_graph_source_command &&
+      !graph_build_command &&
+      !graph_run_command &&
+      !graph_test_command &&
+      z_program_graph_source_command_uses_graph_mir(command.command)) {
+    long long graph_lower_started = now_ms();
+    bool graph_prepared = z_program_graph_prepare_source_mir_input(
+      command.input,
+      target,
+      &program,
+      &input,
+      &graph_prepared_ir,
+      &command.graph_source,
+      &diag
+    );
+    if (!graph_prepared) {
+      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      else print_diag(diag.path ? diag.path : command.input, &diag);
+      free_loaded_command_state(&input, &program, &graph_prepared_ir);
+      return 1;
+    }
+    input.lower_ms = now_ms() - graph_lower_started;
+    apply_ir_metrics_to_input(&input, &graph_prepared_ir, target);
+  }
   if (strcmp(command.command, "fix") == 0) {
     if (command.apply || command.patch) print_or_apply_fix_json(input.source_file, &input, NULL, command.apply);
     else print_fix_plan_json(input.source_file, NULL);
@@ -12436,7 +12461,7 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "check") == 0) {
     if (command.json) print_check_json_success(input.source_file, &input, &program, target, &command);
     else printf("ok\n");
-    free_loaded_command_state(&input, &program, NULL);
+    free_loaded_command_state(&input, &program, &graph_prepared_ir);
     return 0;
   }
 
@@ -12508,7 +12533,7 @@ int main(int argc, char **argv) {
       return rc;
     }
     int rc = run_tests_direct(&command, &input, &program, target);
-    free_loaded_command_state(&input, &program, NULL);
+    free_loaded_command_state(&input, &program, &graph_prepared_ir);
     return rc;
   }
 
