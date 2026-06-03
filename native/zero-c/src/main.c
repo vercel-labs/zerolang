@@ -9727,21 +9727,23 @@ static void apply_ir_metrics_to_input(SourceInput *input, const IrProgram *ir, c
 
 static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, const ZTargetInfo *target, const Command *command, const IrProgram *ir) {
   const char *emit_kind = emit_kind_name(command ? command->emit : EMIT_EXE);
-  bool llvm_ir_request = command && command->emit == EMIT_LLVM_IR && z_backend_request_is_llvm(command->backend, emit_kind);
+  bool llvm_request = command &&
+                      ((command->emit == EMIT_LLVM_IR && z_backend_request_is_llvm(command->backend, emit_kind)) ||
+                       command_uses_llvm_native_exe(command, emit_kind));
   memset(diag, 0, sizeof(*diag));
-  diag->code = llvm_ir_request || !ir || strcmp(ir->mir_expected, "direct backend MIR contract") != 0 ? 2004 : 4004;
+  diag->code = llvm_request || !ir || strcmp(ir->mir_expected, "direct backend MIR contract") != 0 ? 2004 : 4004;
   diag->path = input ? input->source_file : NULL;
   diag->line = ir && ir->mir_line > 0 ? ir->mir_line : 1;
   diag->column = ir && ir->mir_column > 0 ? ir->mir_column : 1;
   diag->length = 1;
   snprintf(diag->message, sizeof(diag->message), "%s",
-           llvm_ir_request ? "LLVM IR backend cannot lower this MIR program yet" :
+           llvm_request ? "LLVM IR backend cannot lower this MIR program yet" :
            (ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed"));
   snprintf(diag->expected, sizeof(diag->expected), "%s",
-           llvm_ir_request ? "LLVM IR scalar MIR subset" : z_direct_backend_expected(target));
+           llvm_request ? "LLVM IR scalar MIR subset" : z_direct_backend_expected(target));
   snprintf(diag->actual, sizeof(diag->actual), "%s", ir && ir->mir_actual[0] ? ir->mir_actual : "unsupported construct");
   snprintf(diag->help, sizeof(diag->help), "%s",
-           llvm_ir_request
+           llvm_request
              ? "use --backend llvm --emit llvm-ir only for scalar functions, direct calls, branches, loops, and readonly string writes"
              : z_direct_backend_help(target));
   if (ir) z_diag_set_backend_blocker(diag, &ir->backend_blocker);

@@ -3784,6 +3784,14 @@ assert.deepEqual(llvmIrLoweringBlockedReadiness.targetReadiness.diagnostics[0].b
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
+const llvmNativeLoweringBlockedReadiness = json(["check", "--json", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0"]).body;
+assert.equal(llvmNativeLoweringBlockedReadiness.ok, true);
+assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.ok, false);
+assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.backend, "llvm");
+assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.stage, "lower");
+assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].code, "BLD004");
+assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].expected, "LLVM IR scalar MIR subset");
+assert.doesNotMatch(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].message, /direct backend/);
 const llvmBuild = json(["build", "--json", "--backend", "llvm", "examples/add.0", "--out", join(outDir, "add-llvm")], { allowFailure: !llvmHostReady });
 if (llvmHostReady) {
   assert.equal(llvmBuild.code, 0);
@@ -3818,6 +3826,13 @@ assert.notEqual(llvmMissingToolBuild.code, 0);
 assert.equal(llvmMissingToolBuild.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmMissingToolBuild.body.diagnostics[0].backendBlocker.stage, "toolchain");
 assert.equal(llvmMissingToolBuild.body.diagnostics[0].backendBlocker.unsupportedFeature, "clang");
+const llvmNativeLoweringBlockedBuild = json(["build", "--json", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0", "--out", join(outDir, "owned-drop-llvm")], { allowFailure: true });
+assert.notEqual(llvmNativeLoweringBlockedBuild.code, 0);
+assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].code, "BLD004");
+assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].expected, "LLVM IR scalar MIR subset");
+assert.doesNotMatch(llvmNativeLoweringBlockedBuild.body.diagnostics[0].message, /direct backend/);
+assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].backendBlocker.backend, "llvm");
+assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].backendBlocker.stage, "lower");
 const llvmFailingToolPath = join(outDir, "failing-clang");
 writeFileSync(llvmFailingToolPath, "#!/bin/sh\nexit 1\n");
 chmodSync(llvmFailingToolPath, 0o755);
@@ -3839,6 +3854,7 @@ const llvmNoOutputToolPath = join(outDir, "no-output-clang");
 const llvmNoOutputArtifactPath = join(outDir, "return-llvm-no-output-tool");
 writeFileSync(llvmNoOutputToolPath, "#!/bin/sh\nexit 0\n");
 chmodSync(llvmNoOutputToolPath, 0o755);
+writeFileSync(llvmNoOutputArtifactPath, "stale executable\n");
 const llvmNoOutputToolBuild = json(["build", "--json", "--backend", "llvm", "examples/direct-exe-return.0", "--out", llvmNoOutputArtifactPath], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmNoOutputToolPath } });
 assert.notEqual(llvmNoOutputToolBuild.code, 0);
 assert.equal(llvmNoOutputToolBuild.body.diagnostics[0].code, "BLD004");

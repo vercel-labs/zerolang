@@ -1093,6 +1093,12 @@ static bool path_exists_for_cc(const char *path, bool directory) {
   return path && path[0] && stat(path, &st) == 0 && (directory ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode));
 }
 
+static bool remove_existing_tool_output(const char *path) {
+  if (!path || !path[0]) return false;
+  if (remove(path) == 0) return true;
+  return errno == ENOENT;
+}
+
 static bool profile_should_strip_artifact(const char *profile);
 
 static const char *sysroot_status_for(const ZTargetInfo *target, const char *env_name, const char *sysroot) {
@@ -1207,6 +1213,8 @@ static void append_toolchain_driver_command(ZBuf *cmd, const ZToolchainPlan *pla
 
 bool z_toolchain_compile_c_object(const ZToolchainPlan *plan, const char *profile, const ZTargetInfo *target, const char *c_file, const char *object_file, const char *include_dir, const char *extra_c_flags) {
   if (!validate_toolchain_plan(plan, target)) return false;
+  if (!c_file || !object_file || strcmp(c_file, object_file) == 0) return false;
+  if (!remove_existing_tool_output(object_file)) return false;
 
   ZBuf cmd;
   zbuf_init(&cmd);
@@ -1228,6 +1236,11 @@ bool z_toolchain_compile_c_object(const ZToolchainPlan *plan, const char *profil
 
 bool z_toolchain_link_objects(const ZToolchainPlan *plan, const ZTargetInfo *target, const char *const *object_files, size_t object_count, const char *exe_file, const char *pre_link_flags, const char *post_object_flags) {
   if (!validate_toolchain_plan(plan, target)) return false;
+  if (!exe_file || !exe_file[0]) return false;
+  for (size_t i = 0; i < object_count; i++) {
+    if (object_files[i] && strcmp(object_files[i], exe_file) == 0) return false;
+  }
+  if (!remove_existing_tool_output(exe_file)) return false;
 
   ZBuf cmd;
   zbuf_init(&cmd);
@@ -1250,6 +1263,8 @@ bool z_toolchain_link_objects(const ZToolchainPlan *plan, const ZTargetInfo *tar
 bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const char *profile, const ZTargetInfo *target) {
   ZToolchainPlan plan = z_plan_toolchain(cc, profile, target);
   if (!validate_toolchain_plan(&plan, target)) return false;
+  if (!c_file || !exe_file || strcmp(c_file, exe_file) == 0) return false;
+  if (!remove_existing_tool_output(exe_file)) return false;
 
   ZBuf cmd;
   zbuf_init(&cmd);
@@ -1258,7 +1273,7 @@ bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const ch
   append_shell_quoted_arg(&cmd, c_file);
   zbuf_append(&cmd, " -o ");
   append_shell_quoted_arg(&cmd, exe_file);
-  bool ok = system(cmd.data) == 0;
+  bool ok = system(cmd.data) == 0 && path_exists_for_cc(exe_file, false);
   zbuf_free(&cmd);
   if (!ok) {
     fprintf(
