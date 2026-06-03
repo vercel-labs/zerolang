@@ -237,6 +237,14 @@ static bool graph_has_node_edge_order(const ZProgramGraph *graph, const char *fr
   return false;
 }
 
+static bool graph_node_has_incoming_node_edge(const ZProgramGraph *graph, const char *to, const char *kind) {
+  for (size_t i = 0; graph && to && kind && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE && graph_text_eq(edge->to, to) && graph_text_eq(edge->kind, kind)) return true;
+  }
+  return false;
+}
+
 static bool graph_validation_fail(ZProgramGraphValidation *validation, const char *code, const char *message, const char *node_id, const char *edge_from, const char *edge_to, const char *edge_target) {
   if (validation) {
     validation->ok = false;
@@ -331,6 +339,24 @@ static bool graph_validate_optional_edge_count(const ZProgramGraph *graph, const
   return graph_validate_required_edge_count(graph, node, kind, 0, max, validation);
 }
 
+static bool graph_validate_edge_order(const ZProgramGraph *graph, const ZProgramGraphNode *node, const char *kind, size_t order, ZProgramGraphValidation *validation) {
+  if (graph_count_node_edges(graph, node ? node->id : NULL, kind) == 0) return true;
+  if (graph_has_node_edge_order(graph, node ? node->id : NULL, kind, order)) return true;
+  char message[160];
+  snprintf(message, sizeof(message), "node has invalid %s edge order", kind ? kind : "child");
+  return graph_validation_fail(validation, "GRF016", message, node ? node->id : NULL, node ? node->id : NULL, NULL, "node");
+}
+
+static bool graph_validate_required_edge_at_order(const ZProgramGraph *graph, const ZProgramGraphNode *node, const char *kind, size_t order, ZProgramGraphValidation *validation) {
+  return graph_validate_required_edge_count(graph, node, kind, 1, 1, validation) &&
+         graph_validate_edge_order(graph, node, kind, order, validation);
+}
+
+static bool graph_validate_optional_edge_at_order(const ZProgramGraph *graph, const ZProgramGraphNode *node, const char *kind, size_t order, ZProgramGraphValidation *validation) {
+  return graph_validate_optional_edge_count(graph, node, kind, 1, validation) &&
+         graph_validate_edge_order(graph, node, kind, order, validation);
+}
+
 static bool graph_validate_required_edges(const ZProgramGraph *graph, const ZProgramGraphNode *node, ZProgramGraphValidation *validation) {
   if (!node) return true;
   switch (node->kind) {
@@ -338,65 +364,73 @@ static bool graph_validate_required_edges(const ZProgramGraph *graph, const ZPro
     case Z_PROGRAM_GRAPH_NODE_FIELD:
     case Z_PROGRAM_GRAPH_NODE_ENUM_CASE:
     case Z_PROGRAM_GRAPH_NODE_CHOICE_CASE:
-      return graph_validate_optional_edge_count(graph, node, "type", 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "default", 1, validation);
+      return graph_validate_optional_edge_at_order(graph, node, "type", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "default", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_CONST:
-      return graph_validate_required_edge_count(graph, node, "value", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "value", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_TYPE_ALIAS:
-      return graph_validate_required_edge_count(graph, node, "target", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "target", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_FUNCTION:
-      return graph_validate_optional_edge_count(graph, node, "returnType", 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "effect", 1, validation) &&
-             graph_validate_required_edge_count(graph, node, "body", 1, 1, validation);
+      return graph_validate_optional_edge_at_order(graph, node, "returnType", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "effect", 0, validation) &&
+             graph_validate_required_edge_at_order(graph, node, "body", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_LET:
-      return graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "declaredType", 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "declaredType", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_ASSIGNMENT:
-      return graph_validate_required_edge_count(graph, node, "target", 1, 1, validation) &&
-             graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "target", 0, validation) &&
+             graph_validate_required_edge_at_order(graph, node, "expr", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_DEFER:
     case Z_PROGRAM_GRAPH_NODE_EXPRESSION_STATEMENT:
-      return graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_CHECK: {
-      size_t expr_count = graph_count_node_edges(graph, node->id, "expr");
-      size_t left_count = graph_count_node_edges(graph, node->id, "left");
-      if ((expr_count == 1 && left_count == 0) || (expr_count == 0 && left_count == 1)) return true;
+      bool is_statement = graph_node_has_incoming_node_edge(graph, node->id, "statement");
+      if (is_statement) {
+        if (graph_count_node_edges(graph, node->id, "left") != 0) {
+          return graph_validation_fail(validation, "GRF016", "statement check node must use expr edge", node->id, node->id, NULL, "node");
+        }
+        return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation);
+      }
+      if (graph_count_node_edges(graph, node->id, "expr") != 0) {
+        return graph_validation_fail(validation, "GRF016", "expression check node must use left edge", node->id, node->id, NULL, "node");
+      }
+      if (graph_validate_required_edge_at_order(graph, node, "left", 0, validation)) return true;
       return graph_validation_fail(validation, "GRF016", "check node requires exactly one checked expression edge", node->id, node->id, NULL, "node");
     }
     case Z_PROGRAM_GRAPH_NODE_RETURN:
-      return graph_validate_optional_edge_count(graph, node, "expr", 1, validation);
+      return graph_validate_optional_edge_at_order(graph, node, "expr", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_IF:
-      return graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "then", 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "else", 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "then", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "else", 1, validation);
     case Z_PROGRAM_GRAPH_NODE_WHILE:
-      return graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "then", 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "then", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_FOR:
-      return graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation) &&
-             graph_validate_required_edge_count(graph, node, "rangeEnd", 1, 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "then", 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation) &&
+             graph_validate_required_edge_at_order(graph, node, "rangeEnd", 1, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "then", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_MATCH:
-      return graph_validate_required_edge_count(graph, node, "expr", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "expr", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_MATCH_ARM:
-      return graph_validate_optional_edge_count(graph, node, "rangeEnd", 1, validation) &&
-             graph_validate_optional_edge_count(graph, node, "guard", 1, validation) &&
-             graph_validate_required_edge_count(graph, node, "body", 1, 1, validation);
+      return graph_validate_optional_edge_at_order(graph, node, "rangeEnd", 0, validation) &&
+             graph_validate_optional_edge_at_order(graph, node, "guard", 0, validation) &&
+             graph_validate_required_edge_at_order(graph, node, "body", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_FIELD_ACCESS:
     case Z_PROGRAM_GRAPH_NODE_CAST:
     case Z_PROGRAM_GRAPH_NODE_BORROW:
     case Z_PROGRAM_GRAPH_NODE_META:
-      return graph_validate_required_edge_count(graph, node, "left", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "left", 0, validation);
     case Z_PROGRAM_GRAPH_NODE_INDEX_ACCESS:
-      return graph_validate_required_edge_count(graph, node, "left", 1, 1, validation) &&
-             graph_validate_required_edge_count(graph, node, "right", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "left", 0, validation) &&
+             graph_validate_required_edge_at_order(graph, node, "right", 1, validation);
     case Z_PROGRAM_GRAPH_NODE_SLICE:
-      return graph_validate_required_edge_count(graph, node, "left", 1, 1, validation) &&
+      return graph_validate_required_edge_at_order(graph, node, "left", 0, validation) &&
              graph_validate_optional_edge_count(graph, node, "arg", 2, validation);
     case Z_PROGRAM_GRAPH_NODE_CALL:
     case Z_PROGRAM_GRAPH_NODE_METHOD_CALL:
-      if (!graph_validate_optional_edge_count(graph, node, "left", 1, validation) ||
-          !graph_validate_optional_edge_count(graph, node, "right", 1, validation)) {
+      if (!graph_validate_optional_edge_at_order(graph, node, "left", 0, validation) ||
+          !graph_validate_optional_edge_at_order(graph, node, "right", 1, validation)) {
         return false;
       }
       if (graph_count_node_edges(graph, node->id, "right") > 0 && graph_count_node_edges(graph, node->id, "left") == 0) {
@@ -405,10 +439,10 @@ static bool graph_validate_required_edges(const ZProgramGraph *graph, const ZPro
       if (graph_required_text_present(node->name) || graph_count_node_edges(graph, node->id, "left") == 1) return true;
       return graph_validation_fail(validation, "GRF016", "call node is missing callee", node->id, node->id, NULL, "node");
     case Z_PROGRAM_GRAPH_NODE_RESCUE:
-      return graph_validate_required_edge_count(graph, node, "left", 1, 1, validation) &&
-             graph_validate_required_edge_count(graph, node, "right", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "left", 0, validation) &&
+             graph_validate_required_edge_at_order(graph, node, "right", 1, validation);
     case Z_PROGRAM_GRAPH_NODE_FIELD_INIT:
-      return graph_validate_required_edge_count(graph, node, "value", 1, 1, validation);
+      return graph_validate_required_edge_at_order(graph, node, "value", 0, validation);
     default:
       return true;
   }
