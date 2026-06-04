@@ -93,6 +93,24 @@ static size_t compare_owned_edge_kind_order(const char *kind) {
   return compare_missing_index();
 }
 
+static bool compare_edge_kind_is_commutative_list(const char *kind) {
+  static const char *const commutative_kinds[] = {
+    "import",
+    "cImport",
+    "param",
+    "field",
+    "arg",
+    NULL,
+  };
+  for (size_t i = 0; commutative_kinds[i]; i++) {
+    if (compare_text_eq(kind, commutative_kinds[i])) return true;
+  }
+  return false;
+}
+
+static bool node_id_is_ancestor_of(const ZProgramGraph *graph, const char *ancestor_id, const char *descendant_id);
+static void merge_append_conflict(ZProgramGraphMergeReport *report, ZProgramGraphMergeConflictEntry entry);
+
 typedef struct {
   const char *id;
   size_t index;
@@ -605,6 +623,205 @@ static void diff_emit_removed(ZProgramGraphDiff *diff, const char *node_id, cons
   diff_append_entry(diff, entry);
 }
 
+typedef struct {
+  const char *node_id;
+  const char *base_symbol_id;
+  const char *new_symbol_id;
+  const char *base_name;
+  const char *new_name;
+} MoveInfo;
+
+typedef struct {
+  MoveInfo *moves;
+  size_t move_len;
+  size_t move_cap;
+} MoveTracker;
+
+static bool node_id_is_ancestor_of(const ZProgramGraph *graph, const char *ancestor_id, const char *descendant_id);
+static void merge_append_conflict(ZProgramGraphMergeReport *report, ZProgramGraphMergeConflictEntry entry);
+
+static void move_tracker_init(MoveTracker *tracker) {
+  if (!tracker) return;
+  tracker->moves = NULL;
+  tracker->move_len = 0;
+  tracker->move_cap = 0;
+}
+
+static void move_tracker_free(MoveTracker *tracker) {
+  if (!tracker) return;
+  free(tracker->moves);
+  tracker->moves = NULL;
+  tracker->move_len = 0;
+  tracker->move_cap = 0;
+}
+
+static void move_tracker_append(MoveTracker *tracker, const MoveInfo *info) {
+  if (!tracker || !info) return;
+  if (tracker->move_len >= tracker->move_cap) {
+    size_t new_cap = tracker->move_cap ? tracker->move_cap * 2 : 4;
+    MoveInfo *new_moves = z_checked_reallocarray(tracker->moves, new_cap, sizeof(MoveInfo));
+    tracker->moves = new_moves;
+    tracker->move_cap = new_cap;
+  }
+  tracker->moves[tracker->move_len++] = *info;
+}
+
+static const MoveInfo *move_tracker_find_by_base_symbol_id(const MoveTracker *tracker, const char *base_symbol_id) {
+  if (!tracker || !base_symbol_id) return NULL;
+  for (size_t i = 0; i < tracker->move_len; i++) {
+    if (compare_text_eq(tracker->moves[i].base_symbol_id, base_symbol_id)) {
+      return &tracker->moves[i];
+    }
+  }
+  return NULL;
+}
+
+static const MoveInfo *move_tracker_find_by_new_symbol_id(const MoveTracker *tracker, const char *new_symbol_id) {
+  if (!tracker || !new_symbol_id) return NULL;
+  for (size_t i = 0; i < tracker->move_len; i++) {
+    if (compare_text_eq(tracker->moves[i].new_symbol_id, new_symbol_id)) {
+      return &tracker->moves[i];
+    }
+  }
+  return NULL;
+}
+
+static void move_tracker_build(MoveTracker *tracker, const ZProgramGraph *base, const ZProgramGraph *derived) {
+  if (!tracker || !base || !derived) return;
+  move_tracker_init(tracker);
+
+  for (size_t i = 0; i < derived->node_len; i++) {
+    const ZProgramGraphNode *derived_node = &derived->nodes[i];
+    if (!derived_node->id || !derived_node->symbol_id) continue;
+
+    size_t base_idx = compare_missing_index();
+    for (size_t j = 0; j < base->node_len; j++) {
+      if (compare_text_eq(base->nodes[j].id, derived_node->id)) {
+        base_idx = j;
+        break;
+      }
+    }
+
+    if (base_idx == compare_missing_index()) continue;
+
+    const ZProgramGraphNode *base_node = &base->nodes[base_idx];
+    if (!compare_text_eq(base_node->symbol_id, derived_node->symbol_id)) {
+      MoveInfo info = {
+        .node_id = derived_node->id,
+        .base_symbol_id = base_node->symbol_id,
+        .new_symbol_id = derived_node->symbol_id,
+        .base_name = base_node->name,
+        .new_name = derived_node->name,
+      };
+      move_tracker_append(tracker, &info);
+    }
+  }
+}
+
+static const char *graph_get_symbol_id_at_node(const ZProgramGraph *graph, const char *node_id) {
+  if (!graph || !node_id) return NULL;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    if (compare_text_eq(graph->nodes[i].id, node_id)) {
+      return graph->nodes[i].symbol_id;
+    }
+  }
+  return NULL;
+}
+
+static bool check_parent_moved_child_edited(
+  const ZProgramGraph *base,
+  const ZProgramGraph *ours,
+  const ZProgramGraph *theirs,
+  const ZProgramGraphDiffEntry *our_entry,
+  const ZProgramGraphDiffEntry *their_entry,
+  MoveTracker *our_moves,
+  MoveTracker *their_moves
+) {
+  if (!base || !ours || !theirs || !our_entry || !their_entry) return false;
+
+  if (our_entry->kind != Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED || their_entry->kind != Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) {
+    return false;
+  }
+
+  if (compare_text_eq(our_entry->node_id, their_entry->node_id)) {
+    return false;
+  }
+
+  for (size_t i = 0; i < theirs->node_len; i++) {
+    const ZProgramGraphNode *theirs_node = &theirs->nodes[i];
+    if (!compare_text_eq(theirs_node->id, our_entry->node_id)) continue;
+
+    const char *theirs_base_symbol_id = graph_get_symbol_id_at_node(base, our_entry->node_id);
+    if (!theirs_base_symbol_id) continue;
+
+    const MoveInfo *their_move = move_tracker_find_by_base_symbol_id(their_moves, theirs_base_symbol_id);
+    if (!their_move) continue;
+
+    if (node_id_is_ancestor_of(ours, their_move->node_id, our_entry->node_id)) {
+      return true;
+    }
+  }
+
+  for (size_t i = 0; i < ours->node_len; i++) {
+    const ZProgramGraphNode *ours_node = &ours->nodes[i];
+    if (!compare_text_eq(ours_node->id, their_entry->node_id)) continue;
+
+    const char *ours_base_symbol_id = graph_get_symbol_id_at_node(base, their_entry->node_id);
+    if (!ours_base_symbol_id) continue;
+
+    const MoveInfo *our_move = move_tracker_find_by_base_symbol_id(our_moves, ours_base_symbol_id);
+    if (!our_move) continue;
+
+    if (node_id_is_ancestor_of(theirs, our_move->node_id, their_entry->node_id)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static void check_move_move_cycle_and_add_conflicts(
+  const ZProgramGraph *base,
+  const ZProgramGraph *ours,
+  const ZProgramGraph *theirs,
+  MoveTracker *our_moves,
+  MoveTracker *their_moves,
+  ZProgramGraphMergeReport *report
+) {
+  if (!base || !ours || !theirs || !our_moves || !their_moves) return;
+
+  for (size_t i = 0; i < our_moves->move_len; i++) {
+    const MoveInfo *our_move = &our_moves->moves[i];
+
+    const MoveInfo *their_move = move_tracker_find_by_base_symbol_id(their_moves, our_move->base_symbol_id);
+    if (!their_move) continue;
+
+    const MoveInfo *reverse_our_move = move_tracker_find_by_new_symbol_id(our_moves, their_move->new_symbol_id);
+    const MoveInfo *reverse_their_move = move_tracker_find_by_new_symbol_id(their_moves, our_move->new_symbol_id);
+
+    if (reverse_our_move && reverse_their_move) {
+      ZProgramGraphMergeConflictEntry conflict = {
+        .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_MOVE_MOVE_CYCLE,
+      };
+      snprintf(conflict.code, sizeof(conflict.code), "GMG006");
+      snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_move->node_id);
+      snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", "");
+      snprintf(conflict.name, sizeof(conflict.name), "%s", our_move->new_name ? our_move->new_name : "");
+      snprintf(conflict.field, sizeof(conflict.field), "%s", "symbol_id");
+      snprintf(conflict.our_move, sizeof(conflict.our_move), "%s->%s",
+               our_move->base_symbol_id ? our_move->base_symbol_id : "",
+               our_move->new_symbol_id ? our_move->new_symbol_id : "");
+      snprintf(conflict.their_move, sizeof(conflict.their_move), "%s->%s",
+               their_move->base_symbol_id ? their_move->base_symbol_id : "",
+               their_move->new_symbol_id ? their_move->new_symbol_id : "");
+      snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", our_move->new_symbol_id ? our_move->new_symbol_id : "");
+      snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", their_move->new_symbol_id ? their_move->new_symbol_id : "");
+      snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_move->base_symbol_id ? our_move->base_symbol_id : "");
+      merge_append_conflict(report, conflict);
+    }
+  }
+}
+
 static void diff_compare_node_fields(
   ZProgramGraphDiff *diff,
   const ZProgramGraphNode *left_node,
@@ -745,7 +962,11 @@ static void merge_append_conflict(ZProgramGraphMergeReport *report, ZProgramGrap
     report->conflict_cap = new_cap;
   }
   report->conflicts[report->conflict_len++] = entry;
-  report->has_conflicts = true;
+  if (entry.kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_AUTO_RESOLVED) {
+    report->auto_resolved_count++;
+  } else {
+    report->has_conflicts = true;
+  }
 }
 
 static ZProgramGraphDiffEntry *diff_find_by_node_id(const ZProgramGraphDiff *diff, const char *node_id) {
@@ -802,6 +1023,13 @@ bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph
     out->right_changes = theirs_diff.diff_len;
   }
 
+  MoveTracker our_moves = {0};
+  MoveTracker their_moves = {0};
+  move_tracker_build(&our_moves, base, ours);
+  move_tracker_build(&their_moves, base, theirs);
+
+  check_move_move_cycle_and_add_conflicts(base, ours, theirs, &our_moves, &their_moves, out);
+
   for (size_t i = 0; i < ours_diff.diff_len; i++) {
     ZProgramGraphDiffEntry *our_entry = &ours_diff.diffs[i];
     ZProgramGraphDiffEntry *their_entry = diff_find_by_node_id(&theirs_diff, our_entry->node_id);
@@ -812,7 +1040,21 @@ bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph
 
     if (our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED && their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) {
       if (compare_text_eq(our_entry->field, their_entry->field)) {
-        if (!compare_text_eq(our_entry->right_value, their_entry->right_value)) {
+        if (compare_text_eq(our_entry->right_value, their_entry->right_value)) {
+          // Identical edits - both changed same field to same value -> auto-resolved
+          ZProgramGraphMergeConflictEntry conflict = {
+            .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_AUTO_RESOLVED,
+          };
+          snprintf(conflict.code, sizeof(conflict.code), "GMG101");
+          snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+          snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+          snprintf(conflict.name, sizeof(conflict.name), "%s", "");
+          snprintf(conflict.field, sizeof(conflict.field), "%s", our_entry->field);
+          snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", our_entry->left_value);
+          snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+          snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_entry->left_value);
+          merge_append_conflict(out, conflict);
+        } else {
           ZProgramGraphMergeConflictEntry conflict = {
             .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_EDIT,
           };
@@ -827,8 +1069,25 @@ bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph
           merge_append_conflict(out, conflict);
         }
       } else {
-        if (node_id_is_ancestor_of(ours, our_entry->node_id, their_entry->node_id) ||
-            node_id_is_ancestor_of(theirs, their_entry->node_id, our_entry->node_id)) {
+        /* Different fields on same node - not a conflict, apply both changes.
+         * Only check for ancestor coupling when nodes are actually different. */
+        if (compare_text_eq(our_entry->node_id, their_entry->node_id)) {
+          /* Same node, different fields - field-level disjointness applies, no conflict */
+        } else if (check_parent_moved_child_edited(base, ours, theirs, our_entry, their_entry, &our_moves, &their_moves)) {
+          ZProgramGraphMergeConflictEntry conflict = {
+            .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_PARENT_MOVED_CHILD_EDITED,
+          };
+          snprintf(conflict.code, sizeof(conflict.code), "GMG005");
+          snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+          snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+          snprintf(conflict.name, sizeof(conflict.name), "%s", "");
+          snprintf(conflict.field, sizeof(conflict.field), "%s", our_entry->field);
+          snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", our_entry->left_value);
+          snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+          snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_entry->left_value);
+          merge_append_conflict(out, conflict);
+        } else if (node_id_is_ancestor_of(ours, our_entry->node_id, their_entry->node_id) ||
+                   node_id_is_ancestor_of(theirs, their_entry->node_id, our_entry->node_id)) {
           ZProgramGraphMergeConflictEntry conflict = {
             .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ANCESTOR_COUPLING,
           };
@@ -871,18 +1130,34 @@ bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph
       merge_append_conflict(out, conflict);
     } else if (our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED && their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) {
       if (compare_text_eq(our_entry->node_id, their_entry->node_id)) {
-        ZProgramGraphMergeConflictEntry conflict = {
-          .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD,
-        };
-        snprintf(conflict.code, sizeof(conflict.code), "GMG003");
-        snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
-        snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
-        snprintf(conflict.name, sizeof(conflict.name), "%s", our_entry->right_value);
-        snprintf(conflict.field, sizeof(conflict.field), "%s", "name");
-        snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", "");
-        snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
-        snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", "");
-        merge_append_conflict(out, conflict);
+        if (compare_text_eq(our_entry->right_value, their_entry->right_value)) {
+          // Identical add/add: both added same node with same name -> auto-resolved
+          ZProgramGraphMergeConflictEntry conflict = {
+            .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_AUTO_RESOLVED,
+          };
+          snprintf(conflict.code, sizeof(conflict.code), "GMG103");
+          snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+          snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+          snprintf(conflict.name, sizeof(conflict.name), "%s", our_entry->right_value);
+          snprintf(conflict.field, sizeof(conflict.field), "%s", "name");
+          snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", "");
+          snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+          snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", "");
+          merge_append_conflict(out, conflict);
+        } else {
+          ZProgramGraphMergeConflictEntry conflict = {
+            .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD,
+          };
+          snprintf(conflict.code, sizeof(conflict.code), "GMG003");
+          snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+          snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+          snprintf(conflict.name, sizeof(conflict.name), "%s", our_entry->right_value);
+          snprintf(conflict.field, sizeof(conflict.field), "%s", "name");
+          snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", "");
+          snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+          snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", "");
+          merge_append_conflict(out, conflict);
+        }
       }
     }
   }
@@ -890,11 +1165,30 @@ bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph
   for (size_t i = 0; i < theirs_diff.diff_len; i++) {
     ZProgramGraphDiffEntry *their_entry = &theirs_diff.diffs[i];
     ZProgramGraphDiffEntry *our_entry = diff_find_by_node_id(&ours_diff, their_entry->node_id);
-    (void)our_entry;
+
+    // Detect delete/delete: both deleted the same node -> auto-resolved
+    if (our_entry &&
+        our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED &&
+        their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) {
+      ZProgramGraphMergeConflictEntry conflict = {
+        .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_AUTO_RESOLVED,
+      };
+      snprintf(conflict.code, sizeof(conflict.code), "GMG102");
+      snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", their_entry->node_id);
+      snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", their_entry->node_kind);
+      snprintf(conflict.name, sizeof(conflict.name), "%s", their_entry->left_value);
+      snprintf(conflict.field, sizeof(conflict.field), "%s", "name");
+      snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", their_entry->left_value);
+      snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", "");
+      snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", their_entry->left_value);
+      merge_append_conflict(out, conflict);
+    }
   }
 
   z_program_graph_diff_free(&ours_diff);
   z_program_graph_diff_free(&theirs_diff);
+  move_tracker_free(&our_moves);
+  move_tracker_free(&their_moves);
 
   if (out) out->ok = true;
   return true;

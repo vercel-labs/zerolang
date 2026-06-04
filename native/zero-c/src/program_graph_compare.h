@@ -47,6 +47,9 @@ typedef enum {
   Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_DELETE,
   Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD,
   Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ANCESTOR_COUPLING,
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_MOVE_MOVE_CYCLE,
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_PARENT_MOVED_CHILD_EDITED,
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_AUTO_RESOLVED,
 } ZProgramGraphMergeConflictKind;
 
 typedef struct {
@@ -59,6 +62,8 @@ typedef struct {
   char left_value[128];
   char right_value[128];
   char ancestor_value[128];
+  char our_move[128];
+  char their_move[128];
 } ZProgramGraphMergeConflictEntry;
 
 typedef struct {
@@ -69,6 +74,7 @@ typedef struct {
   size_t conflict_cap;
   size_t left_changes;
   size_t right_changes;
+  size_t auto_resolved_count;
 } ZProgramGraphMergeReport;
 
 typedef struct {

@@ -11708,11 +11708,26 @@ static int run_graph_merge_command(const Command *command, const ZTargetInfo *ta
 
   if (command->out && merge_result.merged && merge_result.graph) {
     ZProgramGraphValidation validation = {0};
-    if (!z_program_graph_validate(merge_result.graph, &validation)) {
+    bool validation_ok = z_program_graph_validate(merge_result.graph, &validation);
+    if (!validation_ok) {
       if (command->json) {
-        printf("{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu}\n}\n", added_count, removed_count, modified_count);
+        ZBuf json;
+        zbuf_init(&json);
+        zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"merged\": true,\n  \"mergedFile\": ");
+        append_json_string(&json, command->out);
+        zbuf_appendf(&json, ",\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu},\n  \"semanticIssues\": [{\"code\": \"%s\", \"message\": ", added_count, removed_count, modified_count);
+        append_json_string(&json, validation.code[0] ? validation.code : "GRF000");
+        append_json_string(&json, validation.message[0] ? validation.message : "validation failed");
+        zbuf_appendf(&json, ", \"nodeId\": ");
+        append_json_string(&json, validation.node_id[0] ? validation.node_id : "");
+        zbuf_appendf(&json, ", \"path\": ");
+        append_json_string(&json, command->out);
+        zbuf_append(&json, "}],\n  \"hasConflicts\": false,\n  \"leftChanges\": ");
+        zbuf_appendf(&json, "%zu,\n  \"rightChanges\": %zu\n}\n", merge_result.report.left_changes, merge_result.report.right_changes);
+        fputs(json.data, stdout);
+        zbuf_free(&json);
       } else {
-        printf("program graph merge validation failed\n");
+        printf("program graph merge: shape validation issues detected\n");
       }
       z_program_graph_merge_result_free(&merge_result);
       z_free_program(&theirs_program);
@@ -11724,8 +11739,51 @@ static int run_graph_merge_command(const Command *command, const ZTargetInfo *ta
       z_free_program(&base_program);
       z_free_source(&base_input);
       z_program_graph_free(&base_graph);
-      return 1;
+      return 0;
     }
+
+    bool typecheck_ok = true;
+    ZDiag typecheck_diag = {0};
+    Program checked_program = {0};
+    SourceInput checked_input = {0};
+    if (!z_program_graph_lower_to_program_with_source(merge_result.graph, command->out, &checked_program, &checked_input, &typecheck_diag)) {
+      typecheck_ok = false;
+    } else {
+      z_set_check_target(target);
+      if (!z_check_program(&checked_program, &typecheck_diag)) {
+        typecheck_ok = false;
+      }
+    }
+    if (!typecheck_ok) {
+      ZBuf json;
+      zbuf_init(&json);
+      zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": true,\n  \"mergedFile\": ");
+      append_json_string(&json, command->out);
+      zbuf_appendf(&json, ",\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu},\n  \"semanticIssues\": [{\"code\": \"%d\", \"message\": ", added_count, removed_count, modified_count, typecheck_diag.code);
+      append_json_string(&json, typecheck_diag.message[0] ? typecheck_diag.message : "type check failed");
+      zbuf_appendf(&json, ", \"path\": ");
+      append_json_string(&json, typecheck_diag.path ? typecheck_diag.path : command->out);
+      zbuf_append(&json, "}],\n  \"hasConflicts\": false,\n  \"leftChanges\": ");
+      zbuf_appendf(&json, "%zu,\n  \"rightChanges\": %zu\n}\n", merge_result.report.left_changes, merge_result.report.right_changes);
+      fputs(json.data, stdout);
+      zbuf_free(&json);
+      z_free_program(&checked_program);
+      z_free_source(&checked_input);
+      z_program_graph_merge_result_free(&merge_result);
+      z_free_program(&theirs_program);
+      z_free_source(&theirs_input);
+      z_program_graph_free(&theirs_graph);
+      z_free_program(&ours_program);
+      z_free_source(&ours_input);
+      z_program_graph_free(&ours_graph);
+      z_free_program(&base_program);
+      z_free_source(&base_input);
+      z_program_graph_free(&base_graph);
+      return 0;
+    }
+    z_free_program(&checked_program);
+    z_free_source(&checked_input);
+
     if (!z_program_graph_save(command->out, merge_result.graph, diag)) {
       if (command->json) {
         printf("{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu}\n}\n", added_count, removed_count, modified_count);
