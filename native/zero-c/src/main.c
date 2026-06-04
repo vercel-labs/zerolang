@@ -3715,7 +3715,7 @@ static void print_help(void) {
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
   printf("  zero parse --json <file.0|project|zero.json>\n");
-  printf("  zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n");
+  printf("  zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip|diff|merge] [--json] [--target <target>] <input> [patch]\n");
   printf("  zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
   printf("  zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
   printf("  zero graph source-map --json <program-graph-or-source>\n");
@@ -3724,6 +3724,8 @@ static void print_help(void) {
   printf("  zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>\n");
   printf("  zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>\n");
   printf("  zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n");
+  printf("  zero graph diff --base <program-graph> <program-graph>\n");
+  printf("  zero graph merge --base <base> <ours> <theirs> [--out <file.0>] [--json]\n");
   printf("  zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
   printf("  zero doc [--json] <file.0|project|zero.json>\n");
   printf("  zero size [--json] [--out <artifact>] <file.0|project|zero.json>\n");
