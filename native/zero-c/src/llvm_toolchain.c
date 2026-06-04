@@ -235,6 +235,7 @@ void z_append_llvm_toolchain_plan_json(ZBuf *buf, const ZTargetInfo *target) {
   llvm_append_json_string(buf, plan.status);
   zbuf_append(buf, ",\"reason\":");
   llvm_append_json_string(buf, plan.reason);
+  z_append_llvm_backend_lifecycle_field_json(buf);
   zbuf_append(buf, "}");
 }
 
@@ -254,6 +255,7 @@ void z_append_llvm_target_backend_json(ZBuf *buf, const ZTargetInfo *target) {
   zbuf_append(buf, llvm.tool_available ? "true" : "false");
   zbuf_append(buf, "},\"reason\":");
   llvm_append_json_string(buf, llvm.reason);
+  z_append_llvm_backend_lifecycle_field_json(buf);
   zbuf_append(buf, "}");
 }
 
@@ -280,6 +282,7 @@ void z_append_llvm_ir_backend_json(ZBuf *buf, const SourceInput *input, const ZT
   zbuf_append(buf, ",\"fallbackPolicy\":\"none\",\"reason\":\"LLVM textual IR emission is available; native host executable output requires --backend llvm --emit exe on a supported host with clang\"}");
   zbuf_appendf(buf, ",\"moduleCount\":%zu,\"emitKind\":", input ? input->module_count : 0);
   llvm_append_json_string(buf, emit_kind ? emit_kind : "llvm-ir");
+  z_append_llvm_backend_lifecycle_field_json(buf);
   zbuf_append(buf, ",\"backendFamily\":\"llvm\"}");
 }
 
@@ -327,5 +330,6 @@ void z_append_llvm_native_backend_json(ZBuf *buf, const SourceInput *input, cons
   zbuf_append(buf, "}");
   zbuf_appendf(buf, ",\"moduleCount\":%zu,\"emitKind\":", input ? input->module_count : 0);
   llvm_append_json_string(buf, emit_kind ? emit_kind : "exe");
+  z_append_llvm_backend_lifecycle_field_json(buf);
   zbuf_append(buf, ",\"backendFamily\":\"llvm\"}");
 }
