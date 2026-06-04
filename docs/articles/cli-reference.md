@@ -93,7 +93,6 @@ another tool needs stable fields.
 | `zero graph patch --json` | Checked graph edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and the saved source or artifact path. |
 | `zero graph roundtrip --json` | Source or ProgramGraph artifact stability through direct graph lowering with `semanticStable`, lowering mode, original and roundtripped graph hashes, raw counts, normalized semantic counts, and optional ProgramGraph output. |
 | `zero graph diff --json` | Compare two ProgramGraph artifacts and report node-level changes with field values, kinds, and change counts. |
-| `zero graph merge --json` | 3-way merge of base, ours, and theirs graphs with conflict detection, semantic issue reporting, and optional merged graph output. |
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
 | `zero dev --json --trace` | Adds phase timing, cache hit/miss facts, diagnostics passthrough, and `interfaceFingerprints`. |
 | `zero time --json` | Compiler phase timing plus `interfaceFingerprints` and incremental invalidation facts. |
@@ -274,7 +273,7 @@ zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip|diff|merge] [--json] [--target <target>] <input> [patch]
+zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip|diff] [--json] [--target <target>] <input> [patch]
 zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
 zero graph view [--json] [--out <file.0>] <program-graph-or-source>
 zero graph source-map --json <program-graph-or-source>
@@ -284,7 +283,6 @@ zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
 zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
 zero graph diff --base <base-program-graph> <program-graph>
-zero graph merge --base <base> <ours> <theirs> [--out <file.0>] [--json]
 zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
 zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
 zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>
