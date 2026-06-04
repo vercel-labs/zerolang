@@ -1,0 +1,4 @@
+pub fn main(world: World) -> Void raises {
+    let bad: char = '\xFF'
+    check world.out.write("high hex\n")
+}

@@ -1,0 +1,4 @@
+pub fn main(world: World) -> Void raises {
+    let bad: f64 = 1.0_
+    check world.out.write("malformed underscore float\n")
+}
