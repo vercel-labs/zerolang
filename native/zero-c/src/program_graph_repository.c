@@ -161,6 +161,15 @@ static void repo_append_state_json(ZBuf *buf, const RepositoryGraphState *state,
   repo_append_contract_json(buf, state);
 }
 
+static void repo_append_changed_paths_json(ZBuf *buf, const char *const *changed_paths, size_t changed_len) {
+  zbuf_append(buf, "[");
+  for (size_t i = 0; changed_paths && i < changed_len; i++) {
+    if (i > 0) zbuf_append(buf, ", ");
+    repo_append_json_string(buf, changed_paths[i]);
+  }
+  zbuf_append(buf, "]");
+}
+
 static void repo_append_diagnostic_json(ZBuf *buf, const RepositoryGraphState *state, const char *code, const char *message, const char *expected, const char *actual, const char *help, bool include_repairs) {
   char *from_source = repo_command_text("zero graph sync --from-source", state->input);
   char *from_graph = repo_command_text("zero graph sync --from-graph", state->input);
@@ -191,11 +200,15 @@ static void repo_append_diagnostic_json(ZBuf *buf, const RepositoryGraphState *s
   free(from_graph);
 }
 
-static int repo_graph_error(const RepositoryGraphState *state, bool json, const char *mode, const char *code, const char *message, const char *expected, const char *actual, const char *help, bool include_repairs) {
+static int repo_graph_error_paths(const RepositoryGraphState *state, bool json, const char *mode, const char *code, const char *message, const char *expected, const char *actual, const char *help, bool writes, const char *const *changed_paths, size_t changed_len, bool include_repairs) {
   if (json) {
     ZBuf buf;
     zbuf_init(&buf);
-    repo_append_state_json(&buf, state, false, mode, false);
+    repo_append_state_json(&buf, state, false, mode, writes);
+    if (writes || changed_len > 0) {
+      zbuf_append(&buf, ",\n  \"changedPaths\": ");
+      repo_append_changed_paths_json(&buf, changed_paths, changed_len);
+    }
     repo_append_diagnostic_json(&buf, state, code, message, expected, actual, help, include_repairs);
     fputs(buf.data, stdout);
     zbuf_free(&buf);
@@ -206,6 +219,10 @@ static int repo_graph_error(const RepositoryGraphState *state, bool json, const 
     fprintf(stderr, "  help: %s\n", help);
   }
   return 1;
+}
+
+static int repo_graph_error(const RepositoryGraphState *state, bool json, const char *mode, const char *code, const char *message, const char *expected, const char *actual, const char *help, bool include_repairs) {
+  return repo_graph_error_paths(state, json, mode, code, message, expected, actual, help, false, NULL, 0, include_repairs);
 }
 
 static int repo_missing_or_invalid_store_error(const RepositoryGraphState *state, bool json, const char *mode) {
@@ -238,15 +255,6 @@ static int repo_graph_direction_error(const RepositoryGraphState *state, bool js
     fprintf(stderr, "  help: choose whether source text or zero.graph is authoritative for this sync\n");
   }
   return 1;
-}
-
-static void repo_append_changed_paths_json(ZBuf *buf, const char *const *changed_paths, size_t changed_len) {
-  zbuf_append(buf, "[");
-  for (size_t i = 0; changed_paths && i < changed_len; i++) {
-    if (i > 0) zbuf_append(buf, ", ");
-    repo_append_json_string(buf, changed_paths[i]);
-  }
-  zbuf_append(buf, "]");
 }
 
 static int repo_graph_success_paths(const RepositoryGraphState *state, bool json, const char *mode, bool writes, const char *const *changed_paths, size_t changed_len) {
@@ -382,7 +390,7 @@ int z_repository_graph_sync_command(const char *input, bool json, bool from_grap
     bool post_clean = state.store_present && state.store_valid && state.projection_checked && state.projection_current;
     post_clean = post_clean && (!state.graph_checked || state.graph_current) && !state.graph_error && !state.projection_error;
     if (post_checked && (!post_ok || !post_clean)) {
-      rc = repo_graph_error(&state, json, "sync-from-graph", "RGP006", "repository graph store is not clean after sync from graph", "clean repository graph state", repo_sync_state(&state), "run zero graph status to inspect repository graph state before choosing a repair", true);
+      rc = repo_graph_error_paths(&state, json, "sync-from-graph", "RGP006", "repository graph store is not clean after sync from graph", "clean repository graph state", repo_sync_state(&state), "run zero graph status to inspect repository graph state before choosing a repair", projection.changed_len > 0, (const char *const *)projection.changed_paths, projection.changed_len, true);
       z_program_graph_free(&post_graph);
       z_program_graph_projection_free(&projection);
       z_program_graph_store_free(&store);
@@ -411,7 +419,8 @@ int z_repository_graph_sync_command(const char *input, bool json, bool from_grap
   repo_graph_state_free(&state);
   state = repo_graph_state(input, source_graph, NULL);
   if (strcmp(repo_sync_state(&state), "clean") != 0) {
-    int rc = repo_graph_error(&state, json, "sync-from-source", "RGP006", "repository graph store is not clean after sync from source", "clean repository graph state", repo_sync_state(&state), "run zero graph status to inspect repository graph state before choosing a repair", true);
+    const char *paths[1] = {saved.path};
+    int rc = repo_graph_error_paths(&state, json, "sync-from-source", "RGP006", "repository graph store is not clean after sync from source", "clean repository graph state", repo_sync_state(&state), "run zero graph status to inspect repository graph state before choosing a repair", saved.path && saved.path[0], saved.path && saved.path[0] ? paths : NULL, saved.path && saved.path[0] ? 1 : 0, true);
     z_program_graph_store_free(&saved);
     repo_graph_state_free(&state);
     return rc;

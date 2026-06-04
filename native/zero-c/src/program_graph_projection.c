@@ -1,3 +1,10 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "program_graph_projection.h"
 
 #include "zero.h"
@@ -43,6 +50,13 @@ static char *projection_join_path(const char *left, const char *right) {
   return buf.data;
 }
 
+static char *projection_dirname(const char *path) {
+  const char *slash = path ? strrchr(path, '/') : NULL;
+  if (!slash) return z_strdup(".");
+  if (slash == path) return z_strdup("/");
+  return z_strndup(path, (size_t)(slash - path));
+}
+
 static void projection_set_io_diag(ZDiag *diag, const char *path, const char *action) {
   if (!diag) return;
   diag->code = 1;
@@ -85,26 +99,88 @@ static char *projection_temp_path(const char *path, size_t index, size_t attempt
 
 static bool projection_path_exists(const char *path) {
   struct stat st;
+#if defined(_WIN32)
   return path && stat(path, &st) == 0;
+#else
+  return path && lstat(path, &st) == 0;
+#endif
 }
 
-static bool projection_target_can_replace(const ZProgramGraphStore *store, const char *path, const char *current, const ZDiag *read_diag, bool *before_exists, ZDiag *diag) {
+static bool projection_real_path_inside_root(const char *root, const char *path) {
+  if (!root || !path) return false;
+  if (projection_text_eq(root, path)) return true;
+  size_t root_len = strlen(root);
+  if (root_len == 1 && root[0] == '/') return path[0] == '/';
+  return strncmp(path, root, root_len) == 0 && path[root_len] == '/';
+}
+
+static bool projection_target_parent_inside_root(const ZProgramGraphStore *store, const char *path, ZDiag *diag) {
+#if defined(_WIN32)
+  (void)store;
+  (void)path;
+  (void)diag;
+  return true;
+#else
+  char *root_real = realpath(store && store->root && store->root[0] ? store->root : ".", NULL);
+  if (!root_real) {
+    projection_set_io_diag(diag, store && store->root ? store->root : ".", "inspect");
+    return false;
+  }
+  char *parent = projection_dirname(path);
+  char *parent_real = realpath(parent, NULL);
+  if (!parent_real) {
+    projection_set_path_diag(diag, store, "repository graph source projection parent is missing", parent);
+    free(parent);
+    free(root_real);
+    return false;
+  }
+  bool ok = projection_real_path_inside_root(root_real, parent_real);
+  if (!ok) {
+    projection_set_path_diag(diag, store, "repository graph source projection target escapes repository graph root", path);
+  }
+  free(parent_real);
+  free(parent);
+  free(root_real);
+  return ok;
+#endif
+}
+
+static bool projection_target_path_safe(const ZProgramGraphStore *store, const char *path, bool *before_exists, ZDiag *diag) {
   if (before_exists) *before_exists = false;
+  if (!projection_target_parent_inside_root(store, path, diag)) return false;
   struct stat st;
+#if defined(_WIN32)
   if (stat(path, &st) != 0) {
+#else
+  if (lstat(path, &st) != 0) {
+#endif
     if (errno == ENOENT) return true;
     projection_set_io_diag(diag, path, "inspect");
     return false;
   }
   if (before_exists) *before_exists = true;
+#if !defined(_WIN32)
+  if (S_ISLNK(st.st_mode)) {
+    return projection_set_path_diag(diag, store, "repository graph source projection target is a symlink", path);
+  }
+#endif
   if (S_ISDIR(st.st_mode)) {
     return projection_set_path_diag(diag, store, "repository graph source projection target is a directory", path);
   }
-  if (!current) {
-    if (diag && read_diag && read_diag->message[0]) *diag = *read_diag;
+  return true;
+}
+
+static bool projection_current_text_for_target(const ZProgramGraphStore *store, const char *path, bool before_exists, char **current, ZDiag *diag) {
+  *current = NULL;
+  if (!before_exists) return true;
+  ZDiag read_diag = {0};
+  *current = z_read_file(path, &read_diag);
+  if (!*current) {
+    if (diag && read_diag.message[0]) *diag = read_diag;
     else projection_set_io_diag(diag, path, "read");
     return false;
   }
+  (void)store;
   return true;
 }
 
@@ -245,8 +321,16 @@ static bool projection_source_text_matches(const ZProgramGraphStore *store, cons
   const char *projection = NULL;
   if (!projection_source_text(store, source_path, &projection, diag)) return false;
   char *path = projection_join_path(store->root, source_path);
-  ZDiag read_diag = {0};
-  char *current = z_read_file(path, &read_diag);
+  bool before_exists = false;
+  if (!projection_target_path_safe(store, path, &before_exists, diag)) {
+    free(path);
+    return false;
+  }
+  char *current = NULL;
+  if (!projection_current_text_for_target(store, path, before_exists, &current, diag)) {
+    free(path);
+    return false;
+  }
   if (current) *matches = projection_text_eq(current, projection);
   free(current);
   free(path);
@@ -303,11 +387,14 @@ bool z_program_graph_projection_write_sources(const ZProgramGraphStore *store, Z
       return false;
     }
     char *path = projection_join_path(store->root, source_path);
-    ZDiag read_diag = {0};
-    char *current = z_read_file(path, &read_diag);
     bool before_exists = false;
-    if (!projection_target_can_replace(store, path, current, &read_diag, &before_exists, diag)) {
-      free(current);
+    if (!projection_target_path_safe(store, path, &before_exists, diag)) {
+      free(path);
+      projection_write_plan_free(&plan);
+      return false;
+    }
+    char *current = NULL;
+    if (!projection_current_text_for_target(store, path, before_exists, &current, diag)) {
       free(path);
       projection_write_plan_free(&plan);
       return false;

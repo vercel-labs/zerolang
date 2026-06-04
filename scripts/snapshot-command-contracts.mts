@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -868,6 +868,23 @@ assert.equal(relativePackageBrokenManifestStatus.body.repositoryGraph.syncState,
 assert.deepEqual(relativePackageBrokenManifestStatus.body.diagnostics, []);
 const relativePackageBrokenManifestVerify = json(["graph", "verify-sync", "--json", relativePackageRoot], { allowFailure: true });
 assert.notEqual(relativePackageBrokenManifestVerify.code, 0);
+const postCheckWriteFailureRoot = join("/tmp", `zero-repo-graph-post-check-write-${process.pid}`);
+const postCheckWriteFailureHelper = join(postCheckWriteFailureRoot, "src", "helper.0");
+rmSync(postCheckWriteFailureRoot, { force: true, recursive: true });
+mkdirSync(join(postCheckWriteFailureRoot, "src"), { recursive: true });
+writeFileSync(join(postCheckWriteFailureRoot, "zero.json"), readFileSync("conformance/packages/test-app/zero.json", "utf8"));
+writeFileSync(join(postCheckWriteFailureRoot, "src", "main.0"), readFileSync("conformance/packages/test-app/src/main.0", "utf8"));
+writeFileSync(postCheckWriteFailureHelper, readFileSync("conformance/packages/test-app/src/helper.0", "utf8"));
+json(["graph", "sync", "--from-source", "--json", postCheckWriteFailureRoot]);
+const postCheckWriteFailureOriginalHelper = readFileSync(postCheckWriteFailureHelper, "utf8");
+writeFileSync(postCheckWriteFailureHelper, postCheckWriteFailureOriginalHelper.replace("return value + value", "return value + value + 0"));
+writeFileSync(join(postCheckWriteFailureRoot, "zero.json"), JSON.stringify({ package: { name: "tests", version: "0.1.0" }, targets: { cli: { kind: "exe", main: "src/missing.0" } } }, null, 2));
+const postCheckWriteFailure = json(["graph", "sync", "--from-graph", "--json", postCheckWriteFailureRoot], { allowFailure: true });
+assert.notEqual(postCheckWriteFailure.code, 0);
+assert.equal(postCheckWriteFailure.body.diagnostics[0].code, "RGP006");
+assert.equal(postCheckWriteFailure.body.writes, true);
+assert.deepEqual(postCheckWriteFailure.body.changedPaths, [postCheckWriteFailureHelper]);
+assert.equal(readFileSync(postCheckWriteFailureHelper, "utf8"), postCheckWriteFailureOriginalHelper);
 const typeInvalidRepoGraphRoot = join("/tmp", `zero-repo-graph-type-invalid-${process.pid}`);
 const typeInvalidRepoGraphSource = join(typeInvalidRepoGraphRoot, "main.0");
 const typeInvalidRepoGraphStore = join(typeInvalidRepoGraphRoot, "zero.graph");
@@ -998,6 +1015,31 @@ assert.match(unsafeProjectionStatus.body.diagnostics[0].actual, /invalid reposit
 const unsafeProjectionSync = json(["graph", "sync", "--from-graph", "--json", unsafeProjectionStoreRoot], { allowFailure: true });
 assert.notEqual(unsafeProjectionSync.code, 0);
 assert.notEqual(readFileSync(unsafeProjectionSource, "utf8"), unsafeProjectionText);
+if (process.platform !== "win32") {
+  const symlinkProjectionParent = join("/tmp", `zero-repo-graph-symlink-projection-${process.pid}`);
+  const symlinkProjectionRoot = join(symlinkProjectionParent, "repo");
+  const symlinkProjectionOutside = join(symlinkProjectionParent, "outside");
+  const symlinkProjectionRootSourceDir = join(symlinkProjectionRoot, "src");
+  const symlinkProjectionRootSource = join(symlinkProjectionRootSourceDir, "main.0");
+  const symlinkProjectionOutsideSource = join(symlinkProjectionOutside, "main.0");
+  rmSync(symlinkProjectionParent, { force: true, recursive: true });
+  mkdirSync(symlinkProjectionRoot, { recursive: true });
+  mkdirSync(symlinkProjectionRootSourceDir, { recursive: true });
+  mkdirSync(symlinkProjectionOutside, { recursive: true });
+  writeFileSync(join(symlinkProjectionRoot, "zero.json"), JSON.stringify({ package: { name: "symlink-projection", version: "0.1.0" }, targets: { cli: { kind: "exe", main: "src/main.0" } } }, null, 2));
+  writeFileSync(symlinkProjectionRootSource, readFileSync("examples/hello.0", "utf8"));
+  json(["graph", "sync", "--from-source", "--json", symlinkProjectionRoot]);
+  rmSync(symlinkProjectionRootSourceDir, { force: true, recursive: true });
+  symlinkSync(symlinkProjectionOutside, symlinkProjectionRootSourceDir, "dir");
+  writeFileSync(symlinkProjectionOutsideSource, readFileSync("examples/hello.0", "utf8"));
+  const symlinkProjectionDriftedSource = readFileSync(symlinkProjectionOutsideSource, "utf8").replace("hello from zero", "changed outside projection root");
+  writeFileSync(symlinkProjectionOutsideSource, symlinkProjectionDriftedSource);
+  const symlinkProjectionSync = json(["graph", "sync", "--from-graph", "--json", symlinkProjectionRoot], { allowFailure: true });
+  assert.notEqual(symlinkProjectionSync.code, 0);
+  assert.equal(symlinkProjectionSync.body.diagnostics[0].code, "RGP004");
+  assert.equal(symlinkProjectionSync.body.writes, false);
+  assert.equal(readFileSync(symlinkProjectionOutsideSource, "utf8"), symlinkProjectionDriftedSource);
+}
 const repoGraphArtifactInputRoot = join("/tmp", `zero-repo-graph-artifact-input-${process.pid}`);
 const repoGraphArtifactInputPath = join(repoGraphArtifactInputRoot, "hello.program-graph");
 rmSync(repoGraphArtifactInputRoot, { force: true, recursive: true });
