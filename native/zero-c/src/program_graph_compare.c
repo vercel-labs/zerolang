@@ -735,3 +735,469 @@ void z_program_graph_diff_free(ZProgramGraphDiff *diff) {
   free(diff->diffs);
   *diff = (ZProgramGraphDiff){0};
 }
+
+static void merge_append_conflict(ZProgramGraphMergeReport *report, ZProgramGraphMergeConflictEntry entry) {
+  if (!report) return;
+  if (report->conflict_len >= report->conflict_cap) {
+    size_t new_cap = report->conflict_cap ? report->conflict_cap * 2 : 4;
+    ZProgramGraphMergeConflictEntry *new_entries = z_checked_reallocarray(report->conflicts, new_cap, sizeof(ZProgramGraphMergeConflictEntry));
+    report->conflicts = new_entries;
+    report->conflict_cap = new_cap;
+  }
+  report->conflicts[report->conflict_len++] = entry;
+  report->has_conflicts = true;
+}
+
+static ZProgramGraphDiffEntry *diff_find_by_node_id(const ZProgramGraphDiff *diff, const char *node_id) {
+  if (!diff || !node_id) return NULL;
+  for (size_t i = 0; i < diff->diff_len; i++) {
+    if (compare_text_eq(diff->diffs[i].node_id, node_id)) {
+      return &diff->diffs[i];
+    }
+  }
+  return NULL;
+}
+
+static bool node_id_is_ancestor_of(const ZProgramGraph *graph, const char *ancestor_id, const char *descendant_id) {
+  if (!graph || !ancestor_id || !descendant_id || compare_text_eq(ancestor_id, descendant_id)) return false;
+
+  for (size_t i = 0; i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) continue;
+    if (compare_text_eq(edge->from, ancestor_id)) {
+      if (compare_text_eq(edge->to, descendant_id)) return true;
+      if (node_id_is_ancestor_of(graph, edge->to, descendant_id)) return true;
+    }
+  }
+  return false;
+}
+
+bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph *ours, const ZProgramGraph *theirs, ZProgramGraphMergeReport *out) {
+  if (out) *out = (ZProgramGraphMergeReport){.ok = true};
+
+  if (!base || !ours || !theirs) {
+    if (out) out->ok = false;
+    return false;
+  }
+
+  ZProgramGraphDiff ours_diff = {0};
+  ZProgramGraphDiff theirs_diff = {0};
+
+  if (!z_program_graph_diff(base, ours, &ours_diff) || !ours_diff.ok) {
+    if (out) out->ok = false;
+    z_program_graph_diff_free(&ours_diff);
+    z_program_graph_diff_free(&theirs_diff);
+    return false;
+  }
+
+  if (!z_program_graph_diff(base, theirs, &theirs_diff) || !theirs_diff.ok) {
+    if (out) out->ok = false;
+    z_program_graph_diff_free(&ours_diff);
+    z_program_graph_diff_free(&theirs_diff);
+    return false;
+  }
+
+  if (out) {
+    out->left_changes = ours_diff.diff_len;
+    out->right_changes = theirs_diff.diff_len;
+  }
+
+  for (size_t i = 0; i < ours_diff.diff_len; i++) {
+    ZProgramGraphDiffEntry *our_entry = &ours_diff.diffs[i];
+    ZProgramGraphDiffEntry *their_entry = diff_find_by_node_id(&theirs_diff, our_entry->node_id);
+
+    if (!their_entry) {
+      continue;
+    }
+
+    if (our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED && their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) {
+      if (compare_text_eq(our_entry->field, their_entry->field)) {
+        if (!compare_text_eq(our_entry->right_value, their_entry->right_value)) {
+          ZProgramGraphMergeConflictEntry conflict = {
+            .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_EDIT,
+          };
+          snprintf(conflict.code, sizeof(conflict.code), "GMG001");
+          snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+          snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+          snprintf(conflict.name, sizeof(conflict.name), "%s", "");
+          snprintf(conflict.field, sizeof(conflict.field), "%s", our_entry->field);
+          snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", our_entry->left_value);
+          snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+          snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_entry->left_value);
+          merge_append_conflict(out, conflict);
+        }
+      } else {
+        if (node_id_is_ancestor_of(ours, our_entry->node_id, their_entry->node_id) ||
+            node_id_is_ancestor_of(theirs, their_entry->node_id, our_entry->node_id)) {
+          ZProgramGraphMergeConflictEntry conflict = {
+            .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ANCESTOR_COUPLING,
+          };
+          snprintf(conflict.code, sizeof(conflict.code), "GMG004");
+          snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+          snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+          snprintf(conflict.name, sizeof(conflict.name), "%s", "");
+          snprintf(conflict.field, sizeof(conflict.field), "%s", "");
+          snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", our_entry->left_value);
+          snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+          snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_entry->left_value);
+          merge_append_conflict(out, conflict);
+        }
+      }
+    } else if (our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED && their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) {
+      ZProgramGraphMergeConflictEntry conflict = {
+        .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_DELETE,
+      };
+      snprintf(conflict.code, sizeof(conflict.code), "GMG002");
+      snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+      snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+      snprintf(conflict.name, sizeof(conflict.name), "%s", "");
+      snprintf(conflict.field, sizeof(conflict.field), "%s", our_entry->field);
+      snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", our_entry->left_value);
+      snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", "[deleted]");
+      snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_entry->left_value);
+      merge_append_conflict(out, conflict);
+    } else if (our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED && their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) {
+      ZProgramGraphMergeConflictEntry conflict = {
+        .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_DELETE,
+      };
+      snprintf(conflict.code, sizeof(conflict.code), "GMG002");
+      snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+      snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+      snprintf(conflict.name, sizeof(conflict.name), "%s", "");
+      snprintf(conflict.field, sizeof(conflict.field), "%s", their_entry->field);
+      snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", "[deleted]");
+      snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", their_entry->right_value);
+      snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", our_entry->left_value);
+      merge_append_conflict(out, conflict);
+    } else if (our_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED && their_entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) {
+      if (compare_text_eq(our_entry->node_id, their_entry->node_id)) {
+        ZProgramGraphMergeConflictEntry conflict = {
+          .kind = Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD,
+        };
+        snprintf(conflict.code, sizeof(conflict.code), "GMG003");
+        snprintf(conflict.node_id, sizeof(conflict.node_id), "%s", our_entry->node_id);
+        snprintf(conflict.node_kind, sizeof(conflict.node_kind), "%s", our_entry->node_kind);
+        snprintf(conflict.name, sizeof(conflict.name), "%s", our_entry->right_value);
+        snprintf(conflict.field, sizeof(conflict.field), "%s", "name");
+        snprintf(conflict.left_value, sizeof(conflict.left_value), "%s", "");
+        snprintf(conflict.right_value, sizeof(conflict.right_value), "%s", our_entry->right_value);
+        snprintf(conflict.ancestor_value, sizeof(conflict.ancestor_value), "%s", "");
+        merge_append_conflict(out, conflict);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < theirs_diff.diff_len; i++) {
+    ZProgramGraphDiffEntry *their_entry = &theirs_diff.diffs[i];
+    ZProgramGraphDiffEntry *our_entry = diff_find_by_node_id(&ours_diff, their_entry->node_id);
+    (void)our_entry;
+  }
+
+  z_program_graph_diff_free(&ours_diff);
+  z_program_graph_diff_free(&theirs_diff);
+
+  if (out) out->ok = true;
+  return true;
+}
+
+void z_program_graph_merge_report_free(ZProgramGraphMergeReport *report) {
+  if (!report) return;
+  free(report->conflicts);
+  *report = (ZProgramGraphMergeReport){0};
+}
+
+static ZProgramGraphNode *merge_copy_node(const ZProgramGraphNode *src) {
+  if (!src) return NULL;
+  ZProgramGraphNode *node = z_checked_calloc(1, sizeof(ZProgramGraphNode));
+  node->id = z_strdup(src->id);
+  node->kind = src->kind;
+  node->name = z_strdup(src->name);
+  node->type = z_strdup(src->type);
+  node->value = z_strdup(src->value);
+  node->path = z_strdup(src->path);
+  node->symbol_id = z_strdup(src->symbol_id);
+  node->type_id = z_strdup(src->type_id);
+  node->effect_id = z_strdup(src->effect_id);
+  node->node_hash = z_strdup(src->node_hash);
+  node->line = src->line;
+  node->column = src->column;
+  node->is_public = src->is_public;
+  node->is_mutable = src->is_mutable;
+  node->is_static = src->is_static;
+  node->fallible = src->fallible;
+  node->export_c = src->export_c;
+  return node;
+}
+
+static ZProgramGraphEdge *merge_copy_edge(const ZProgramGraphEdge *src) {
+  if (!src) return NULL;
+  ZProgramGraphEdge *edge = z_checked_calloc(1, sizeof(ZProgramGraphEdge));
+  edge->from = z_strdup(src->from);
+  edge->to = z_strdup(src->to);
+  edge->kind = z_strdup(src->kind);
+  edge->target = src->target;
+  edge->order = src->order;
+  return edge;
+}
+
+static void merge_init_graph(ZProgramGraph *graph, const ZProgramGraph *src) {
+  if (!graph || !src) return;
+  graph->schema_version = src->schema_version;
+  graph->validation_state = src->validation_state;
+  graph->module_identity = z_strdup(src->module_identity);
+  graph->graph_hash = z_strdup(src->graph_hash);
+  graph->canonical_source = src->canonical_source;
+  graph->next_id = src->next_id;
+}
+
+static ZProgramGraphNode *merge_find_node_by_id(const ZProgramGraph *graph, const char *id) {
+  if (!graph || !id) return NULL;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    if (graph->nodes[i].id && strcmp(graph->nodes[i].id, id) == 0) {
+      return &graph->nodes[i];
+    }
+  }
+  return NULL;
+}
+
+static bool merge_node_set_field(ZProgramGraphNode *node, const char *field, const char *value) {
+  if (!node || !field) return false;
+  if (strcmp(field, "name") == 0) {
+    free(node->name);
+    node->name = z_strdup(value ? value : "");
+  } else if (strcmp(field, "type") == 0) {
+    free(node->type);
+    node->type = z_strdup(value ? value : "");
+  } else if (strcmp(field, "value") == 0) {
+    free(node->value);
+    node->value = z_strdup(value ? value : "");
+  } else if (strcmp(field, "public") == 0) {
+    node->is_public = (value && strcmp(value, "true") == 0);
+  } else if (strcmp(field, "mutable") == 0) {
+    node->is_mutable = (value && strcmp(value, "true") == 0);
+  } else if (strcmp(field, "static") == 0) {
+    node->is_static = (value && strcmp(value, "true") == 0);
+  } else if (strcmp(field, "fallible") == 0) {
+    node->fallible = (value && strcmp(value, "true") == 0);
+  } else if (strcmp(field, "exportC") == 0) {
+    node->export_c = (value && strcmp(value, "true") == 0);
+  } else {
+    return false;
+  }
+  return true;
+}
+
+static bool merge_graph_add_node(ZProgramGraph *graph, const ZProgramGraphNode *src_node) {
+  if (!graph || !src_node) return false;
+  if (graph->node_len >= graph->node_cap) {
+    size_t new_cap = graph->node_cap ? graph->node_cap * 2 : 4;
+    ZProgramGraphNode *new_nodes = z_checked_reallocarray(graph->nodes, new_cap, sizeof(ZProgramGraphNode));
+    graph->nodes = new_nodes;
+    graph->node_cap = new_cap;
+  }
+  ZProgramGraphNode *node = &graph->nodes[graph->node_len++];
+  node->id = z_strdup(src_node->id);
+  node->kind = src_node->kind;
+  node->name = z_strdup(src_node->name);
+  node->type = z_strdup(src_node->type);
+  node->value = z_strdup(src_node->value);
+  node->path = z_strdup(src_node->path);
+  node->symbol_id = z_strdup(src_node->symbol_id);
+  node->type_id = z_strdup(src_node->type_id);
+  node->effect_id = z_strdup(src_node->effect_id);
+  node->node_hash = z_strdup(src_node->node_hash);
+  node->line = src_node->line;
+  node->column = src_node->column;
+  node->is_public = src_node->is_public;
+  node->is_mutable = src_node->is_mutable;
+  node->is_static = src_node->is_static;
+  node->fallible = src_node->fallible;
+  node->export_c = src_node->export_c;
+  return true;
+}
+
+static bool merge_graph_remove_node(ZProgramGraph *graph, const char *node_id) {
+  if (!graph || !node_id) return false;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    if (graph->nodes[i].id && strcmp(graph->nodes[i].id, node_id) == 0) {
+      free(graph->nodes[i].id);
+      free(graph->nodes[i].name);
+      free(graph->nodes[i].type);
+      free(graph->nodes[i].value);
+      free(graph->nodes[i].path);
+      free(graph->nodes[i].symbol_id);
+      free(graph->nodes[i].type_id);
+      free(graph->nodes[i].effect_id);
+      free(graph->nodes[i].node_hash);
+      for (size_t j = i; j < graph->node_len - 1; j++) {
+        graph->nodes[j] = graph->nodes[j + 1];
+      }
+      graph->node_len--;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool merge_graph_modify_node(ZProgramGraph *graph, const char *node_id, const char *field, const char *value) {
+  if (!graph || !node_id || !field) return false;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    if (graph->nodes[i].id && strcmp(graph->nodes[i].id, node_id) == 0) {
+      return merge_node_set_field(&graph->nodes[i], field, value);
+    }
+  }
+  return false;
+}
+
+static bool merge_apply_diffs(ZProgramGraph *graph, const ZProgramGraph *base, const ZProgramGraph *diff_source, bool *added_count, bool *removed_count, bool *modified_count) {
+  if (!graph || !base || !diff_source) return false;
+  if (added_count) *added_count = false;
+  if (removed_count) *removed_count = false;
+  if (modified_count) *modified_count = false;
+
+  ZProgramGraphDiff diff = {0};
+  if (!z_program_graph_diff(base, diff_source, &diff) || !diff.ok) {
+    return false;
+  }
+
+  for (size_t i = 0; i < diff.diff_len; i++) {
+    ZProgramGraphDiffEntry *entry = &diff.diffs[i];
+    if (entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) {
+      const ZProgramGraphNode *src_node = merge_find_node_by_id(diff_source, entry->node_id);
+      if (src_node) {
+        if (merge_graph_add_node(graph, src_node)) {
+          if (added_count) (*added_count)++;
+        }
+      }
+    } else if (entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) {
+      if (merge_graph_remove_node(graph, entry->node_id)) {
+        if (removed_count) (*removed_count)++;
+      }
+    } else if (entry->kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) {
+      if (merge_graph_modify_node(graph, entry->node_id, entry->field, entry->right_value)) {
+        if (modified_count) (*modified_count)++;
+      }
+    }
+  }
+
+  z_program_graph_diff_free(&diff);
+  return true;
+}
+
+static ZProgramGraph *merge_copy_graph(const ZProgramGraph *src) {
+  if (!src) return NULL;
+  ZProgramGraph *graph = z_checked_calloc(1, sizeof(ZProgramGraph));
+  graph->schema_version = src->schema_version;
+  graph->validation_state = src->validation_state;
+  graph->module_identity = z_strdup(src->module_identity);
+  graph->graph_hash = z_strdup(src->graph_hash);
+  graph->canonical_source = src->canonical_source;
+  graph->next_id = src->next_id;
+
+  if (src->node_len > 0) {
+    graph->nodes = z_checked_calloc(src->node_len, sizeof(ZProgramGraphNode));
+    graph->node_cap = src->node_len;
+    graph->node_len = src->node_len;
+    for (size_t i = 0; i < src->node_len; i++) {
+      graph->nodes[i].id = z_strdup(src->nodes[i].id);
+      graph->nodes[i].kind = src->nodes[i].kind;
+      graph->nodes[i].name = z_strdup(src->nodes[i].name);
+      graph->nodes[i].type = z_strdup(src->nodes[i].type);
+      graph->nodes[i].value = z_strdup(src->nodes[i].value);
+      graph->nodes[i].path = z_strdup(src->nodes[i].path);
+      graph->nodes[i].symbol_id = z_strdup(src->nodes[i].symbol_id);
+      graph->nodes[i].type_id = z_strdup(src->nodes[i].type_id);
+      graph->nodes[i].effect_id = z_strdup(src->nodes[i].effect_id);
+      graph->nodes[i].node_hash = z_strdup(src->nodes[i].node_hash);
+      graph->nodes[i].line = src->nodes[i].line;
+      graph->nodes[i].column = src->nodes[i].column;
+      graph->nodes[i].is_public = src->nodes[i].is_public;
+      graph->nodes[i].is_mutable = src->nodes[i].is_mutable;
+      graph->nodes[i].is_static = src->nodes[i].is_static;
+      graph->nodes[i].fallible = src->nodes[i].fallible;
+      graph->nodes[i].export_c = src->nodes[i].export_c;
+    }
+  }
+
+  if (src->edge_len > 0) {
+    graph->edges = z_checked_calloc(src->edge_len, sizeof(ZProgramGraphEdge));
+    graph->edge_cap = src->edge_len;
+    graph->edge_len = src->edge_len;
+    for (size_t i = 0; i < src->edge_len; i++) {
+      graph->edges[i].from = z_strdup(src->edges[i].from);
+      graph->edges[i].to = z_strdup(src->edges[i].to);
+      graph->edges[i].kind = z_strdup(src->edges[i].kind);
+      graph->edges[i].target = src->edges[i].target;
+      graph->edges[i].order = src->edges[i].order;
+    }
+  }
+
+  return graph;
+}
+
+bool z_program_graph_merge(
+  const ZProgramGraph *base,
+  const ZProgramGraph *ours,
+  const ZProgramGraph *theirs,
+  ZProgramGraphMergeResult *out
+) {
+  if (out) *out = (ZProgramGraphMergeResult){.ok = true, .merged = false, .graph = NULL};
+  if (!base || !ours || !theirs) {
+    if (out) out->ok = false;
+    return false;
+  }
+
+  ZProgramGraphMergeReport report = {0};
+  if (!z_program_graph_merge_detect(base, ours, theirs, &report)) {
+    if (out) out->ok = false;
+    return false;
+  }
+
+  if (out) {
+    out->report = report;
+  } else {
+    z_program_graph_merge_report_free(&report);
+  }
+
+  if (report.has_conflicts) {
+    out->ok = true;
+    out->merged = false;
+    out->graph = NULL;
+    return true;
+  }
+
+  ZProgramGraph *merged = merge_copy_graph(base);
+  if (!merged) {
+    if (out) out->ok = false;
+    return false;
+  }
+
+  bool added = false, removed = false, modified = false;
+  if (!merge_apply_diffs(merged, base, ours, &added, &removed, &modified)) {
+    free(merged);
+    if (out) out->ok = false;
+    return false;
+  }
+
+  if (!merge_apply_diffs(merged, base, theirs, &added, &removed, &modified)) {
+    free(merged);
+    if (out) out->ok = false;
+    return false;
+  }
+
+  out->ok = true;
+  out->merged = true;
+  out->graph = merged;
+  return true;
+}
+
+void z_program_graph_merge_result_free(ZProgramGraphMergeResult *result) {
+  if (!result) return;
+  if (result->graph) {
+    z_program_graph_free(result->graph);
+    free(result->graph);
+    result->graph = NULL;
+  }
+  z_program_graph_merge_report_free(&result->report);
+  *result = (ZProgramGraphMergeResult){0};
+}

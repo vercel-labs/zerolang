@@ -42,8 +42,48 @@ typedef struct {
   size_t diff_cap;
 } ZProgramGraphDiff;
 
+typedef enum {
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_EDIT,
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_DELETE,
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD,
+  Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ANCESTOR_COUPLING,
+} ZProgramGraphMergeConflictKind;
+
+typedef struct {
+  char code[16];
+  ZProgramGraphMergeConflictKind kind;
+  char node_id[64];
+  char node_kind[32];
+  char name[64];
+  char field[32];
+  char left_value[128];
+  char right_value[128];
+  char ancestor_value[128];
+} ZProgramGraphMergeConflictEntry;
+
+typedef struct {
+  bool ok;
+  bool has_conflicts;
+  ZProgramGraphMergeConflictEntry *conflicts;
+  size_t conflict_len;
+  size_t conflict_cap;
+  size_t left_changes;
+  size_t right_changes;
+} ZProgramGraphMergeReport;
+
+typedef struct {
+  bool ok;
+  bool merged;
+  ZProgramGraph *graph;
+  ZProgramGraphMergeReport report;
+} ZProgramGraphMergeResult;
+
 bool z_program_graph_semantic_compare(const ZProgramGraph *left, const ZProgramGraph *right, ZProgramGraphCompare *out);
 bool z_program_graph_diff(const ZProgramGraph *left, const ZProgramGraph *right, ZProgramGraphDiff *out);
 void z_program_graph_diff_free(ZProgramGraphDiff *diff);
+bool z_program_graph_merge_detect(const ZProgramGraph *base, const ZProgramGraph *ours, const ZProgramGraph *theirs, ZProgramGraphMergeReport *out);
+void z_program_graph_merge_report_free(ZProgramGraphMergeReport *report);
+bool z_program_graph_merge(const ZProgramGraph *base, const ZProgramGraph *ours, const ZProgramGraph *theirs, ZProgramGraphMergeResult *out);
+void z_program_graph_merge_result_free(ZProgramGraphMergeResult *result);
 
 #endif

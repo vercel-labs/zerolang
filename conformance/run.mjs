@@ -3603,6 +3603,24 @@ const modifiedDiffs = graphDiffModified.diffs.filter(d => d.kind === "modified")
 assert(modifiedDiffs.length > 0, "expected at least one modified diff entry");
 assert(modifiedDiffs.some(d => d.field === "value"), "expected modified field to be 'value'");
 
+// Graph merge test - identical graph artifacts have no conflicts
+const graphMergeIdenticalOut = await execFileAsync(zero, ["graph", "merge", "--json", "--base", programGraphDumpPath, programGraphDumpPath, programGraphDumpPath]);
+const graphMergeIdentical = JSON.parse(graphMergeIdenticalOut.stdout);
+assert.equal(graphMergeIdentical.schemaVersion, 1);
+assert.equal(graphMergeIdentical.hasConflicts, false);
+assert.equal(graphMergeIdentical.conflicts.length, 0);
+assert.equal(graphMergeIdentical.leftChanges, 0);
+assert.equal(graphMergeIdentical.rightChanges, 0);
+
+// Graph merge test - different artifacts produce conflicts
+const graphMergeOut = await execFileAsync(zero, ["graph", "merge", "--json", "--base", programGraphDumpPath, graphDiffModifiedPath, graphDiffModifiedPath]);
+const graphMerge = JSON.parse(graphMergeOut.stdout);
+assert.equal(graphMerge.schemaVersion, 1);
+assert.equal(graphMerge.hasConflicts, true);
+assert(graphMerge.conflicts.length > 0, "expected at least one conflict");
+assert(graphMerge.leftChanges > 0);
+assert(graphMerge.rightChanges > 0);
+
 assert.equal(programGraphSourceFixtureText, await readFile("examples/hello.0", "utf8"));
 assert.equal(programGraphSourceFixturePackageCheckJson.ok, true);
 assert.equal(programGraphSourceFixturePackageCheckJson.sourceFile, programGraphSourceFixturePath);
