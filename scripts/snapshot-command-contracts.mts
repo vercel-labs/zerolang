@@ -1180,6 +1180,37 @@ assert.notEqual(ambiguousRepoGraphSync.code, 0);
 assert.equal(ambiguousRepoGraphSync.body.diagnostics[0].code, "RGP007");
 assert.equal(ambiguousRepoGraphSync.body.diagnostics[0].message, "repository graph source identity is ambiguous");
 assert.equal(readFileSync(ambiguousRepoGraphStore, "utf8"), ambiguousRepoGraphStoreBefore);
+const ambiguousSiblingRepoGraphRoot = join("/tmp", `zero-repo-graph-ambiguous-sibling-${process.pid}`);
+const ambiguousSiblingRepoGraphSource = join(ambiguousSiblingRepoGraphRoot, "main.0");
+const ambiguousSiblingRepoGraphStore = join(ambiguousSiblingRepoGraphRoot, "zero.graph");
+rmSync(ambiguousSiblingRepoGraphRoot, { force: true, recursive: true });
+mkdirSync(ambiguousSiblingRepoGraphRoot, { recursive: true });
+const ambiguousSiblingRepoGraphOriginal = `fn helper() -> i32 {
+    return 1
+}
+
+pub fn main(world: World) -> Void raises {
+    check world.out.write("sibling ok\\n")
+}
+`;
+writeFileSync(ambiguousSiblingRepoGraphSource, ambiguousSiblingRepoGraphOriginal);
+json(["graph", "sync", "--from-source", "--json", ambiguousSiblingRepoGraphSource]);
+const ambiguousSiblingRepoGraphStoreBefore = readFileSync(ambiguousSiblingRepoGraphStore, "utf8");
+const ambiguousSiblingRepoGraphHelperId = ambiguousSiblingRepoGraphStoreBefore.match(/^node (#[^ ]+) Function name:"helper"/m)?.[1];
+assert(ambiguousSiblingRepoGraphHelperId);
+writeFileSync(
+  ambiguousSiblingRepoGraphSource,
+  ambiguousSiblingRepoGraphOriginal.replace(
+    "\npub fn main",
+    "\nfn appendedHelper() -> i32 {\n    return 2\n}\n\npub fn main",
+  ),
+);
+const ambiguousSiblingRepoGraphSync = json(["graph", "sync", "--from-source", "--json", ambiguousSiblingRepoGraphSource], { allowFailure: true });
+assert.notEqual(ambiguousSiblingRepoGraphSync.code, 0);
+assert.equal(ambiguousSiblingRepoGraphSync.body.diagnostics[0].code, "RGP007");
+assert.equal(ambiguousSiblingRepoGraphSync.body.diagnostics[0].message, "repository graph source identity is ambiguous");
+assert.equal(ambiguousSiblingRepoGraphSync.body.diagnostics[0].actual, ambiguousSiblingRepoGraphHelperId);
+assert.equal(readFileSync(ambiguousSiblingRepoGraphStore, "utf8"), ambiguousSiblingRepoGraphStoreBefore);
 writeFileSync(standaloneRepoGraphSource, readFileSync(standaloneRepoGraphSource, "utf8").replace("hello from zero", "hello from graph store"));
 const standaloneRepoGraphVerifyDrift = json(["graph", "verify-sync", "--json", resolve(standaloneRepoGraphSource)], { allowFailure: true });
 assert.notEqual(standaloneRepoGraphVerifyDrift.code, 0);

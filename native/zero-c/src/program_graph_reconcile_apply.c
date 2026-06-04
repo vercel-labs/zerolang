@@ -214,6 +214,43 @@ static bool identity_base_id_candidate(IdentityContext *context, size_t base_ind
          identity_text_eq(base_id, edited_id);
 }
 
+static size_t identity_count_edited_base_id_candidates(IdentityContext *context, const char *base_id, size_t *first) {
+  char base[80];
+  if (first) *first = identity_missing();
+  if (!identity_id_base(base_id, base, sizeof(base))) return 0;
+  size_t count = 0;
+  for (size_t i = 0; context && i < context->edited->node_len; i++) {
+    char edited_base[80];
+    if (!identity_id_base(context->edited->nodes[i].id, edited_base, sizeof(edited_base))) continue;
+    if (!identity_text_eq(base, edited_base)) continue;
+    if (first && count == 0) *first = i;
+    count++;
+  }
+  return count;
+}
+
+static bool identity_allows_import_name_disambiguated_base_collision(const ZProgramGraphNode *node) {
+  return node &&
+         identity_text_present(node->name) &&
+         (node->kind == Z_PROGRAM_GRAPH_NODE_IMPORT || node->kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT);
+}
+
+static void identity_reject_ambiguous_missing_base_ids(IdentityContext *context) {
+  for (size_t i = 0; context && context->result.ok && i < context->base->node_len; i++) {
+    if (context->base_to_edited[i] != identity_missing()) continue;
+    if (identity_allows_import_name_disambiguated_base_collision(&context->base->nodes[i])) continue;
+    size_t first = identity_missing();
+    size_t count = identity_count_edited_base_id_candidates(context, context->base->nodes[i].id, &first);
+    if (count <= 1) continue;
+    identity_fail(context,
+                  "GRC001",
+                  "source edit has ambiguous graph identity",
+                  context->base->nodes[i].id,
+                  first == identity_missing() ? "" : context->edited->nodes[first].id);
+    return;
+  }
+}
+
 static size_t identity_count_base_candidates(IdentityContext *context, IdentityCandidateFn candidate, size_t edited_index, size_t *first) {
   size_t count = 0;
   if (first) *first = identity_missing();
@@ -355,6 +392,7 @@ bool z_program_graph_preserve_source_node_ids(const ZProgramGraph *base, ZProgra
     identity_fail(&context, "GRC003", "edited source has a different module identity", base->module_identity, edited->module_identity);
   }
   identity_match_exact_ids(&context);
+  identity_reject_ambiguous_missing_base_ids(&context);
   identity_apply_unique_pass(&context, identity_source_anchor_candidate);
   identity_apply_unique_pass(&context, identity_symbol_candidate);
   identity_apply_unique_pass(&context, identity_owner_child_candidate);
