@@ -5501,14 +5501,15 @@ static bool validate_integer_literal_for_type(const Expr *expr, const char *expe
 
 static bool parse_float_literal(const char *text, double *out, bool *out_of_range) {
   if (!text || !text[0]) return false;
-  char stripped[64];
+  size_t text_len = strlen(text);
+  char *stripped = z_checked_malloc(text_len + 1);
   size_t write = 0;
   bool previous_underscore = false;
   bool saw_any_digit = false;
-  for (size_t read = 0; text[read] != 0 && write + 1 < sizeof(stripped); read++) {
+  for (size_t read = 0; text[read] != 0; read++) {
     char ch = text[read];
     if (ch == '_') {
-      if (!saw_any_digit || previous_underscore) return false;
+      if (!saw_any_digit || previous_underscore) { free(stripped); return false; }
       previous_underscore = true;
       continue;
     }
@@ -5516,27 +5517,28 @@ static bool parse_float_literal(const char *text, double *out, bool *out_of_rang
     previous_underscore = false;
     if (ch >= '0' && ch <= '9') saw_any_digit = true;
   }
-  if (previous_underscore || !saw_any_digit || write == 0 || write + 1 >= sizeof(stripped)) return false;
+  if (previous_underscore || !saw_any_digit || write == 0) { free(stripped); return false; }
   stripped[write] = 0;
 
   size_t index = 0;
-  if (!isdigit((unsigned char)stripped[index])) return false;
+  if (!isdigit((unsigned char)stripped[index])) { free(stripped); return false; }
   while (isdigit((unsigned char)stripped[index])) index++;
-  if (stripped[index] != '.') return false;
+  if (stripped[index] != '.') { free(stripped); return false; }
   index++;
-  if (!isdigit((unsigned char)stripped[index])) return false;
+  if (!isdigit((unsigned char)stripped[index])) { free(stripped); return false; }
   while (isdigit((unsigned char)stripped[index])) index++;
   if (stripped[index] == 'e' || stripped[index] == 'E') {
     index++;
     if (stripped[index] == '+' || stripped[index] == '-') index++;
-    if (!isdigit((unsigned char)stripped[index])) return false;
+    if (!isdigit((unsigned char)stripped[index])) { free(stripped); return false; }
     while (isdigit((unsigned char)stripped[index])) index++;
   }
-  if (stripped[index] != 0) return false;
+  if (stripped[index] != 0) { free(stripped); return false; }
 
   errno = 0;
   char *end = NULL;
   double value = strtod(stripped, &end);
+  free(stripped);
   if (!end || *end != 0) return false;
   *out = value;
   *out_of_range = errno == ERANGE;
