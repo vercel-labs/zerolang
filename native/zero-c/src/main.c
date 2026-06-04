@@ -61,6 +61,10 @@ typedef struct {
   const char *patch_text;
   const char *patch_expect_graph_hash;
   const char *reconcile_source;
+  const char *diff_base;
+  const char *merge_base;
+  const char *merge_ours;
+  const char *merge_theirs;
   const char **patch_ops;
   size_t patch_op_len;
   size_t patch_op_cap;
@@ -84,6 +88,8 @@ typedef struct {
   bool trace;
   bool graph_patch_command;
   bool graph_reconcile_command;
+  bool graph_diff_command;
+  bool graph_merge_command;
   bool graph_sync_from_graph;
   bool graph_sync_from_source;
   EmitKind emit;
@@ -3800,7 +3806,32 @@ static void print_command_help(const char *command) {
     printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Check ABI-safe declarations or dump target-aware source layout facts.\n");
   } else if (strcmp(command, "graph") == 0) {
-    z_program_graph_print_command_help();
+    printf("Usage: zero graph [dump|import|inspect|validate|view|source-map|reconcile|check|size|build|run|test|patch|roundtrip|diff|merge] [--json] [--target <target>] <input> [patch]\n\n");
+    printf("Output usage: zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
+    printf("View output usage: zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
+    printf("Source map usage: zero graph source-map --json <program-graph-or-source>\n");
+    printf("Reconcile usage: zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>\n");
+    printf("Size output usage: zero graph size [--json] [--target <target>] --out <artifact> <input>\n");
+    printf("Patch output usage: zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n\n");
+    printf("Build usage: zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n\nRun usage: zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n\nTest usage: zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n\nDiff usage: zero graph diff --base <base-graph> <graph>\n\nMerge usage: zero graph merge --base <base> <ours> <theirs> [--out <file.0>] [--json]\n\n");
+    printf("Inspect modules, symbols, capabilities, static metadata, stdlib helpers, or deterministic ProgramGraph inputs.\n\n");
+    printf("Subcommands:\n");
+    printf("  dump      print or write only the deterministic ProgramGraph\n");
+    printf("  import    convert current Zero source into deterministic ProgramGraph input\n");
+    printf("  inspect   report semantic graph and compiler facts as JSON\n");
+    printf("  validate  read ProgramGraph input and optionally write its normalized artifact form\n");
+    printf("  view      render ProgramGraph input as a generated Zero view\n");
+    printf("  source-map map graph nodes to source ranges and semantic identity facts\n");
+    printf("  reconcile compare a prior graph with edited source and report identity decisions\n");
+    printf("  check     typecheck ProgramGraph input through direct graph lowering\n");
+    printf("  size      report size, helper, runtime, and backend facts for ProgramGraph input\n");
+    printf("  build     build ProgramGraph input through direct graph lowering\n");
+    printf("  run       build and run ProgramGraph input through direct graph lowering\n");
+    printf("  test      run test blocks from ProgramGraph input through direct graph lowering\n");
+    printf("  patch     apply checked edits to ProgramGraph input\n");
+    printf("  roundtrip compare graph semantics after direct ProgramGraph lowering\n");
+    printf("  diff      compare two graphs and report changes\n");
+    printf("  merge     detect 3-way merge conflicts between base, ours, and theirs; write merged graph with --out\n");
   } else if (strcmp(command, "doc") == 0) {
     printf("Usage: zero doc [--json] [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Emit package API documentation facts without emitting artifacts.\n");
@@ -3924,12 +3955,39 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     if (*index + 1 >= argc) command->unknown_flag = arg;
     else command->reconcile_source = argv[++(*index)];
     return true;
+  } else if (cli_arg_is(arg, "--base")) {
+    if (!command || (!command->graph_diff_command && !command->graph_merge_command)) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else {
+      if (command->graph_merge_command) command->merge_base = argv[++(*index)];
+      else command->diff_base = argv[++(*index)];
+    }
+    return true;
+  } else if (cli_arg_is(arg, "--ours")) {
+    if (!command || !command->graph_merge_command) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->merge_ours = argv[++(*index)];
+    return true;
+  } else if (cli_arg_is(arg, "--theirs")) {
+    if (!command || !command->graph_merge_command) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->merge_theirs = argv[++(*index)];
+    return true;
   } else if (cli_arg_is(arg, "--from-graph")) {
-    if (!command || !command->kind || !cli_arg_is(command->kind, "sync")) command->unknown_flag = arg;
+    if (!command || !command->kind || !cli_arg_is(command->kind, "graph")) command->unknown_flag = arg;
     else command->graph_sync_from_graph = true;
     return true;
   } else if (cli_arg_is(arg, "--from-source")) {
-    if (!command || !command->kind || !cli_arg_is(command->kind, "sync")) command->unknown_flag = arg;
+    if (!command || !command->kind || !cli_arg_is(command->kind, "graph")) command->unknown_flag = arg;
     else command->graph_sync_from_source = true;
     return true;
   } else if (strcmp(arg, "--all") == 0) {
@@ -3999,6 +4057,8 @@ static bool parse_command(int argc, char **argv, Command *command) {
   }
   command->graph_patch_command = is_graph_command && command->kind && cli_arg_is(command->kind, "patch");
   command->graph_reconcile_command = is_graph_command && command->kind && cli_arg_is(command->kind, "reconcile");
+  command->graph_diff_command = is_graph_command && command->kind && cli_arg_is(command->kind, "diff");
+  command->graph_merge_command = is_graph_command && command->kind && cli_arg_is(command->kind, "merge");
   bool graph_run_command = is_graph_command && command->kind && strcmp(command->kind, "run") == 0;
   if (strcmp(command->command, "run") == 0 || graph_run_command) {
     for (int i = arg_start; i < argc; i++) {
@@ -4023,6 +4083,10 @@ static bool parse_command(int argc, char **argv, Command *command) {
     } else if (command->graph_patch_command && command->input) {
       if (command->patch_file) return false;
       command->patch_file = argv[i];
+    } else if (command->graph_merge_command) {
+      if (!command->input) command->input = argv[i];
+      else if (!command->merge_theirs) command->merge_theirs = argv[i];
+      else return false;
     } else {
       command->input = argv[i];
     }
@@ -9911,9 +9975,17 @@ static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, co
   diag->line = ir && ir->mir_line > 0 ? ir->mir_line : 1;
   diag->column = ir && ir->mir_column > 0 ? ir->mir_column : 1;
   diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "%s",
-           llvm_request ? "LLVM IR backend cannot lower this MIR program yet" :
-           (ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed"));
+  const char *ir_message = ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed";
+  if (llvm_request) {
+    snprintf(diag->message, sizeof(diag->message), "%s", "LLVM IR backend cannot lower this MIR program yet");
+  } else {
+    const char *label = z_direct_backend_target_label(target);
+    if (label && strncmp(ir_message, "direct backend ", 15) == 0) {
+      snprintf(diag->message, sizeof(diag->message), "direct %s %s", label, ir_message + 15);
+    } else {
+      snprintf(diag->message, sizeof(diag->message), "%s", ir_message);
+    }
+  }
   snprintf(diag->expected, sizeof(diag->expected), "%s",
            llvm_request ? "LLVM IR scalar, fixed-array, and byte-view MIR subset" : z_direct_backend_expected(target));
   snprintf(diag->actual, sizeof(diag->actual), "%s", ir && ir->mir_actual[0] ? ir->mir_actual : "unsupported construct");
@@ -11403,6 +11475,437 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
   return summary.ok ? 0 : 1;
 }
 
+static int run_graph_diff_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  if (!command->diff_base) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph diff requires --base <program-graph>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph diff --base <program-graph> <program-graph>");
+    snprintf(diag->actual, sizeof(diag->actual), "missing --base");
+    snprintf(diag->help, sizeof(diag->help), "pass the base graph to compare against");
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
+
+  ZProgramGraph base_graph = {0};
+  SourceInput base_input = {0};
+  Program base_program = {0};
+  GraphInputKind base_kind = GRAPH_INPUT_ARTIFACT;
+  Command base_cmd = *command;
+  base_cmd.input = command->diff_base;
+  base_cmd.out = NULL;
+  if (!load_graph_input_for_checked_read(&base_cmd, target, &base_input, &base_program, &base_graph, &base_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->diff_base, diag);
+    else print_diag(diag->path ? diag->path : command->diff_base, diag);
+    return 1;
+  }
+
+  ZProgramGraph right_graph = {0};
+  SourceInput right_input = {0};
+  Program right_program = {0};
+  GraphInputKind right_kind = GRAPH_INPUT_ARTIFACT;
+  if (!load_graph_input_for_checked_read(command, target, &right_input, &right_program, &right_graph, &right_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    z_free_program(&base_program);
+    z_free_source(&base_input);
+    z_program_graph_free(&base_graph);
+    return 1;
+  }
+
+  ZProgramGraphDiff diff_result = {0};
+  z_program_graph_diff(&base_graph, &right_graph, &diff_result);
+
+  if (command->json) {
+    ZBuf json;
+    zbuf_init(&json);
+    zbuf_append(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
+    zbuf_append(&json, diff_result.ok ? "true" : "false");
+    zbuf_appendf(&json, ",\n  \"leftNodeCount\": %zu,\n  \"rightNodeCount\": %zu,\n  \"diffs\": [\n", diff_result.left_node_count, diff_result.right_node_count);
+    for (size_t i = 0; i < diff_result.diff_len; i++) {
+      if (i > 0) zbuf_append(&json, ", ");
+      zbuf_append(&json, "\n    {");
+      const char *kind_name = "modified";
+      if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) kind_name = "added";
+      else if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) kind_name = "removed";
+      zbuf_appendf(&json, "\"kind\": \"%s\", ", kind_name);
+      zbuf_appendf(&json, "\"nodeId\": ");
+      append_json_string(&json, diff_result.diffs[i].node_id);
+      zbuf_appendf(&json, ", \"nodeKind\": ");
+      append_json_string(&json, diff_result.diffs[i].node_kind);
+      if (diff_result.diffs[i].field[0]) {
+        zbuf_appendf(&json, ", \"field\": ");
+        append_json_string(&json, diff_result.diffs[i].field);
+      }
+      if (diff_result.diffs[i].left_value[0] || diff_result.diffs[i].right_value[0]) {
+        zbuf_appendf(&json, ", \"leftValue\": ");
+        append_json_string(&json, diff_result.diffs[i].left_value);
+        zbuf_appendf(&json, ", \"rightValue\": ");
+        append_json_string(&json, diff_result.diffs[i].right_value);
+      }
+      if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED || diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) {
+        zbuf_appendf(&json, ", \"name\": ");
+        if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED)
+          append_json_string(&json, diff_result.diffs[i].right_value);
+        else
+          append_json_string(&json, diff_result.diffs[i].left_value);
+      }
+      zbuf_append(&json, "}");
+    }
+    zbuf_append(&json, "\n  ]\n}\n");
+    fputs(json.data, stdout);
+    zbuf_free(&json);
+  } else {
+    if (diff_result.diff_len == 0) {
+      printf("program graph diff ok (no changes)\n");
+    } else {
+      printf("program graph diff: %zu change(s)\n", diff_result.diff_len);
+      for (size_t i = 0; i < diff_result.diff_len; i++) {
+        const char *kind_name = "modified";
+        if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) kind_name = "added";
+        else if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) kind_name = "removed";
+        if (diff_result.diffs[i].field[0]) {
+          printf("  %s: %s (%s) %s -> %s\n", kind_name, diff_result.diffs[i].node_id, diff_result.diffs[i].field, diff_result.diffs[i].left_value, diff_result.diffs[i].right_value);
+        } else {
+          printf("  %s: %s (%s) name=%s\n", kind_name, diff_result.diffs[i].node_id, diff_result.diffs[i].node_kind, diff_result.diffs[i].left_value[0] ? diff_result.diffs[i].left_value : diff_result.diffs[i].right_value);
+        }
+      }
+    }
+  }
+
+  z_program_graph_diff_free(&diff_result);
+  z_free_program(&right_program);
+  z_free_source(&right_input);
+  z_program_graph_free(&right_graph);
+  z_free_program(&base_program);
+  z_free_source(&base_input);
+  z_program_graph_free(&base_graph);
+  return 0;
+}
+
+static int run_graph_merge_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  if (!command->merge_base) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph merge requires --base <program-graph>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph merge --base <base> <ours> <theirs>");
+    snprintf(diag->actual, sizeof(diag->actual), "missing --base");
+    snprintf(diag->help, sizeof(diag->help), "pass the base graph to compare against");
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
+
+  if (!command->input) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph merge requires <ours> program-graph");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph merge --base <base> <ours> <theirs>");
+    snprintf(diag->actual, sizeof(diag->actual), "missing ours");
+    snprintf(diag->help, sizeof(diag->help), "pass the ours (left) graph");
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
+
+  if (!command->merge_theirs) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph merge requires <theirs> program-graph");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph merge --base <base> <ours> <theirs>");
+    snprintf(diag->actual, sizeof(diag->actual), "missing theirs");
+    snprintf(diag->help, sizeof(diag->help), "pass the theirs (right) graph");
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
+
+  ZProgramGraph base_graph = {0};
+  SourceInput base_input = {0};
+  Program base_program = {0};
+  GraphInputKind base_kind = GRAPH_INPUT_ARTIFACT;
+  Command base_cmd = *command;
+  base_cmd.input = command->merge_base;
+  base_cmd.out = NULL;
+  if (!load_graph_input_for_checked_read(&base_cmd, target, &base_input, &base_program, &base_graph, &base_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->merge_base, diag);
+    else print_diag(diag->path ? diag->path : command->merge_base, diag);
+    return 1;
+  }
+
+  ZProgramGraph ours_graph = {0};
+  SourceInput ours_input = {0};
+  Program ours_program = {0};
+  GraphInputKind ours_kind = GRAPH_INPUT_ARTIFACT;
+  Command ours_cmd = *command;
+  ours_cmd.input = command->input;
+  ours_cmd.out = NULL;
+  if (!load_graph_input_for_checked_read(&ours_cmd, target, &ours_input, &ours_program, &ours_graph, &ours_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    z_free_program(&base_program);
+    z_free_source(&base_input);
+    z_program_graph_free(&base_graph);
+    return 1;
+  }
+
+  ZProgramGraph theirs_graph = {0};
+  SourceInput theirs_input = {0};
+  Program theirs_program = {0};
+  GraphInputKind theirs_kind = GRAPH_INPUT_ARTIFACT;
+  Command theirs_cmd = *command;
+  theirs_cmd.input = command->merge_theirs;
+  theirs_cmd.out = NULL;
+  if (!load_graph_input_for_checked_read(&theirs_cmd, target, &theirs_input, &theirs_program, &theirs_graph, &theirs_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->merge_theirs, diag);
+    else print_diag(diag->path ? diag->path : command->merge_theirs, diag);
+    z_free_program(&ours_program);
+    z_free_source(&ours_input);
+    z_program_graph_free(&ours_graph);
+    z_free_program(&base_program);
+    z_free_source(&base_input);
+    z_program_graph_free(&base_graph);
+    return 1;
+  }
+
+  ZProgramGraphMergeResult merge_result = {0};
+  if (!z_program_graph_merge(&base_graph, &ours_graph, &theirs_graph, &merge_result)) {
+    if (command->json) {
+      printf("{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": 0, \"removed\": 0, \"modified\": 0}\n}\n");
+    } else {
+      printf("program graph merge failed\n");
+    }
+    z_free_program(&theirs_program);
+    z_free_source(&theirs_input);
+    z_program_graph_free(&theirs_graph);
+    z_free_program(&ours_program);
+    z_free_source(&ours_input);
+    z_program_graph_free(&ours_graph);
+    z_free_program(&base_program);
+    z_free_source(&base_input);
+    z_program_graph_free(&base_graph);
+    return 1;
+  }
+
+  size_t added_count = 0;
+  size_t removed_count = 0;
+  size_t modified_count = 0;
+  ZProgramGraphDiff ours_diff = {0};
+  ZProgramGraphDiff theirs_diff = {0};
+  z_program_graph_diff(&base_graph, &ours_graph, &ours_diff);
+  z_program_graph_diff(&base_graph, &theirs_graph, &theirs_diff);
+  for (size_t i = 0; i < ours_diff.diff_len; i++) {
+    if (ours_diff.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) added_count++;
+    else if (ours_diff.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) removed_count++;
+    else if (ours_diff.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) modified_count++;
+  }
+  for (size_t i = 0; i < theirs_diff.diff_len; i++) {
+    if (theirs_diff.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) added_count++;
+    else if (theirs_diff.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) removed_count++;
+    else if (theirs_diff.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED) modified_count++;
+  }
+  z_program_graph_diff_free(&ours_diff);
+  z_program_graph_diff_free(&theirs_diff);
+
+  if (command->out && merge_result.merged && merge_result.graph) {
+    ZProgramGraphValidation validation = {0};
+    bool validation_ok = z_program_graph_validate(merge_result.graph, &validation);
+    if (!validation_ok) {
+      if (command->json) {
+        ZBuf json;
+        zbuf_init(&json);
+        zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu},\n  \"semanticIssues\": [{\"code\": \"%s\", \"message\": ", added_count, removed_count, modified_count);
+        append_json_string(&json, validation.code[0] ? validation.code : "GRF000");
+        append_json_string(&json, validation.message[0] ? validation.message : "validation failed");
+        zbuf_appendf(&json, ", \"nodeId\": ");
+        append_json_string(&json, validation.node_id[0] ? validation.node_id : "");
+        zbuf_appendf(&json, ", \"path\": ");
+        append_json_string(&json, command->out);
+        zbuf_append(&json, "}],\n  \"hasConflicts\": false,\n  \"leftChanges\": ");
+        zbuf_appendf(&json, "%zu,\n  \"rightChanges\": %zu\n}\n", merge_result.report.left_changes, merge_result.report.right_changes);
+        fputs(json.data, stdout);
+        zbuf_free(&json);
+      } else {
+        printf("program graph merge: shape validation issues detected\n");
+      }
+      z_program_graph_merge_result_free(&merge_result);
+      z_free_program(&theirs_program);
+      z_free_source(&theirs_input);
+      z_program_graph_free(&theirs_graph);
+      z_free_program(&ours_program);
+      z_free_source(&ours_input);
+      z_program_graph_free(&ours_graph);
+      z_free_program(&base_program);
+      z_free_source(&base_input);
+      z_program_graph_free(&base_graph);
+      return 0;
+    }
+
+    bool typecheck_ok = true;
+    ZDiag typecheck_diag = {0};
+    Program checked_program = {0};
+    SourceInput checked_input = {0};
+    if (!z_program_graph_lower_to_program_with_source(merge_result.graph, command->out, &checked_program, &checked_input, &typecheck_diag)) {
+      typecheck_ok = false;
+    } else {
+      z_set_check_target(target);
+      if (!z_check_program(&checked_program, &typecheck_diag)) {
+        typecheck_ok = false;
+      }
+    }
+    if (!typecheck_ok) {
+      ZBuf json;
+      zbuf_init(&json);
+      zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu},\n  \"semanticIssues\": [{\"code\": \"%d\", \"message\": ", added_count, removed_count, modified_count, typecheck_diag.code);
+      append_json_string(&json, typecheck_diag.message[0] ? typecheck_diag.message : "type check failed");
+      zbuf_appendf(&json, ", \"path\": ");
+      append_json_string(&json, typecheck_diag.path ? typecheck_diag.path : command->out);
+      zbuf_append(&json, "}],\n  \"hasConflicts\": false,\n  \"leftChanges\": ");
+      zbuf_appendf(&json, "%zu,\n  \"rightChanges\": %zu\n}\n", merge_result.report.left_changes, merge_result.report.right_changes);
+      fputs(json.data, stdout);
+      zbuf_free(&json);
+      z_free_program(&checked_program);
+      z_free_source(&checked_input);
+      z_program_graph_merge_result_free(&merge_result);
+      z_free_program(&theirs_program);
+      z_free_source(&theirs_input);
+      z_program_graph_free(&theirs_graph);
+      z_free_program(&ours_program);
+      z_free_source(&ours_input);
+      z_program_graph_free(&ours_graph);
+      z_free_program(&base_program);
+      z_free_source(&base_input);
+      z_program_graph_free(&base_graph);
+      return 0;
+    }
+    z_free_program(&checked_program);
+    z_free_source(&checked_input);
+
+    if (!z_program_graph_save(command->out, merge_result.graph, diag)) {
+      if (command->json) {
+        printf("{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu}\n}\n", added_count, removed_count, modified_count);
+      } else {
+        printf("program graph merge: failed to write %s\n", command->out);
+      }
+      z_program_graph_merge_result_free(&merge_result);
+      z_free_program(&theirs_program);
+      z_free_source(&theirs_input);
+      z_program_graph_free(&theirs_graph);
+      z_free_program(&ours_program);
+      z_free_source(&ours_input);
+      z_program_graph_free(&ours_graph);
+      z_free_program(&base_program);
+      z_free_source(&base_input);
+      z_program_graph_free(&base_graph);
+      return 1;
+    }
+  }
+
+  if (command->json) {
+    ZBuf json;
+    zbuf_init(&json);
+    zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"merged\": %s,\n  \"mergedFile\": ", merge_result.merged && !merge_result.report.has_conflicts ? "true" : "false");
+    if (merge_result.merged && !merge_result.report.has_conflicts && command->out) {
+      append_json_string(&json, command->out);
+    } else {
+      zbuf_append(&json, "null");
+    }
+    zbuf_append(&json, ",\n  \"conflicts\": [\n");
+    for (size_t i = 0; i < merge_result.report.conflict_len; i++) {
+      if (i > 0) zbuf_append(&json, ", ");
+      zbuf_append(&json, "\n    {");
+      const char *kind_name = "unknown";
+      if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_EDIT) kind_name = "edit_edit";
+      else if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_DELETE) kind_name = "edit_delete";
+      else if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD) kind_name = "add_add";
+      else if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ANCESTOR_COUPLING) kind_name = "ancestor_coupling";
+      zbuf_appendf(&json, "\"code\": \"%s\", ", merge_result.report.conflicts[i].code);
+      zbuf_appendf(&json, "\"kind\": \"%s\", ", kind_name);
+      zbuf_appendf(&json, "\"nodeId\": ");
+      append_json_string(&json, merge_result.report.conflicts[i].node_id);
+      zbuf_appendf(&json, ", \"nodeKind\": ");
+      append_json_string(&json, merge_result.report.conflicts[i].node_kind);
+      if (merge_result.report.conflicts[i].name[0]) {
+        zbuf_appendf(&json, ", \"name\": ");
+        append_json_string(&json, merge_result.report.conflicts[i].name);
+      }
+      if (merge_result.report.conflicts[i].field[0]) {
+        zbuf_appendf(&json, ", \"field\": ");
+        append_json_string(&json, merge_result.report.conflicts[i].field);
+      }
+      if (merge_result.report.conflicts[i].left_value[0]) {
+        zbuf_appendf(&json, ", \"leftValue\": ");
+        append_json_string(&json, merge_result.report.conflicts[i].left_value);
+      }
+      if (merge_result.report.conflicts[i].right_value[0]) {
+        zbuf_appendf(&json, ", \"rightValue\": ");
+        append_json_string(&json, merge_result.report.conflicts[i].right_value);
+      }
+      if (merge_result.report.conflicts[i].ancestor_value[0]) {
+        zbuf_appendf(&json, ", \"ancestorValue\": ");
+        append_json_string(&json, merge_result.report.conflicts[i].ancestor_value);
+      }
+      zbuf_append(&json, "}");
+    }
+    zbuf_append(&json, "\n  ],\n");
+    zbuf_appendf(&json, "  \"hasConflicts\": %s,\n", merge_result.report.has_conflicts ? "true" : "false");
+    zbuf_appendf(&json, "  \"leftChanges\": %zu,\n", merge_result.report.left_changes);
+    zbuf_appendf(&json, "  \"rightChanges\": %zu,\n", merge_result.report.right_changes);
+    zbuf_appendf(&json, "  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu}\n", added_count, removed_count, modified_count);
+    zbuf_append(&json, "}\n");
+    fputs(json.data, stdout);
+    zbuf_free(&json);
+  } else {
+    if (merge_result.merged && !merge_result.report.has_conflicts) {
+      if (command->out) {
+        printf("program graph merge ok (no conflicts), wrote %s\n", command->out);
+      } else {
+        printf("program graph merge ok (no conflicts)\n");
+      }
+    } else if (merge_result.report.has_conflicts) {
+      printf("program graph merge: %zu conflict(s)\n", merge_result.report.conflict_len);
+      for (size_t i = 0; i < merge_result.report.conflict_len; i++) {
+        const char *kind_name = "unknown";
+        if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_EDIT) kind_name = "edit_edit";
+        else if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_EDIT_DELETE) kind_name = "edit_delete";
+        else if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ADD_ADD) kind_name = "add_add";
+        else if (merge_result.report.conflicts[i].kind == Z_PROGRAM_GRAPH_MERGE_CONFLICT_KIND_ANCESTOR_COUPLING) kind_name = "ancestor_coupling";
+        printf("  %s: %s %s", merge_result.report.conflicts[i].code, kind_name, merge_result.report.conflicts[i].node_id);
+        if (merge_result.report.conflicts[i].field[0]) {
+          printf(" (%s)", merge_result.report.conflicts[i].field);
+        }
+        printf("\n");
+      }
+    }
+    printf("%zu left change(s), %zu right change(s)\n", merge_result.report.left_changes, merge_result.report.right_changes);
+  }
+
+  z_program_graph_merge_result_free(&merge_result);
+  z_free_program(&theirs_program);
+  z_free_source(&theirs_input);
+  z_program_graph_free(&theirs_graph);
+  z_free_program(&ours_program);
+  z_free_source(&ours_input);
+  z_program_graph_free(&ours_graph);
+  z_free_program(&base_program);
+  z_free_source(&base_input);
+  z_program_graph_free(&base_graph);
+  return 0;
+}
+
 static bool validate_graph_patch_sources(const Command *command, bool *has_file, bool *has_patch_text, bool *has_ops, ZDiag *diag) {
   *has_file = command->patch_file != NULL;
   *has_patch_text = command->patch_text != NULL;
@@ -12262,6 +12765,8 @@ int main(int argc, char **argv) {
     if (strcmp(command.kind, "size") == 0) return run_graph_size_command(&command, target, &diag);
     if (strcmp(command.kind, "patch") == 0) return run_graph_patch_command(&command, &diag);
     if (strcmp(command.kind, "roundtrip") == 0 && graph_command_artifact_input) return run_graph_artifact_roundtrip_command(&command, &diag);
+    if (strcmp(command.kind, "diff") == 0) return run_graph_diff_command(&command, target, &diag);
+    if (strcmp(command.kind, "merge") == 0) return run_graph_merge_command(&command, target, &diag);
   }
 
   if (strcmp(command.command, "fmt") == 0) {

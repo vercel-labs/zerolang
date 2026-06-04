@@ -1,0 +1,4 @@
+pub fn main(world: World) -> Void raises {
+    let bad: String = "\q"
+    check world.out.write("unknown escape\n")
+}

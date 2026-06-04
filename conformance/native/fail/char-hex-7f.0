@@ -1,0 +1,4 @@
+pub fn main(world: World) -> Void raises {
+    let bad: char = '\x80'
+    check world.out.write("boundary hex\n")
+}

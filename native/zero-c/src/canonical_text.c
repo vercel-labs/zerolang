@@ -211,8 +211,13 @@ static bool canon_scan_char(const char *source, size_t *offset, int *column, ZCa
     if (escaped == 'x') {
       char high_ch = source[*offset + 1];
       char low_ch = high_ch ? source[*offset + 2] : 0;
-      if (canon_hex_digit(high_ch) < 0 || canon_hex_digit(low_ch) < 0) {
+      int high = canon_hex_digit(high_ch);
+      int low = canon_hex_digit(low_ch);
+      if (high < 0 || low < 0) {
         return canon_fail(diag, &at_start, "malformed hex character escape", "two hex digits", "invalid escape");
+      }
+      if (((high << 4) | low) >= 0x80) {
+        return canon_fail(diag, &at_start, "character literal must be one byte", "ASCII byte", "non-ASCII");
       }
       *offset += 3;
       *column += 3;

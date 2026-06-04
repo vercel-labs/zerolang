@@ -1,0 +1,9 @@
+pub fn main(world: World) -> Void raises {
+    let grouped: f64 = 1_000.5
+    let tiny: f64 = 0.0_5
+    let exponent: f64 = 1.0e1_0
+    let default_width: f64 = 1_000.0
+    if grouped == 1000.5 && tiny == 0.05 && exponent == 1.0e10 && default_width == 1000.0 {
+        check world.out.write("float literal underscores ok\n")
+    }
+}

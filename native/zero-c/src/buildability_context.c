@@ -121,7 +121,12 @@ bool z_build_diag(const ZBuildability *ctx, ZDiag *diag, const char *message, in
   diag->line = line > 0 ? line : 1;
   diag->column = column > 0 ? column : 1;
   diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "%s", message ? message : "direct backend buildability check failed");
+  const char *label = ctx ? z_direct_backend_target_label(ctx->target) : NULL;
+  if (label && message && strncmp(message, "direct backend ", 15) == 0) {
+    snprintf(diag->message, sizeof(diag->message), "direct %s %s", label, message + 15);
+  } else {
+    snprintf(diag->message, sizeof(diag->message), "%s", message ? message : "direct backend buildability check failed");
+  }
   snprintf(diag->expected, sizeof(diag->expected), "%s", ctx && ctx->expected ? ctx->expected : "direct backend buildability subset");
   snprintf(diag->actual, sizeof(diag->actual), "%s", actual && actual[0] ? actual : "unsupported construct");
   snprintf(diag->help, sizeof(diag->help), "%s", ctx && ctx->help ? ctx->help : "choose a supported direct target or simplify the program for this backend");
