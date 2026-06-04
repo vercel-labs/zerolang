@@ -9911,9 +9911,17 @@ static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, co
   diag->line = ir && ir->mir_line > 0 ? ir->mir_line : 1;
   diag->column = ir && ir->mir_column > 0 ? ir->mir_column : 1;
   diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "%s",
-           llvm_request ? "LLVM IR backend cannot lower this MIR program yet" :
-           (ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed"));
+  const char *ir_message = ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed";
+  if (llvm_request) {
+    snprintf(diag->message, sizeof(diag->message), "%s", "LLVM IR backend cannot lower this MIR program yet");
+  } else {
+    const char *label = z_direct_backend_target_label(target);
+    if (label && strncmp(ir_message, "direct backend ", 15) == 0) {
+      snprintf(diag->message, sizeof(diag->message), "direct %s %s", label, ir_message + 15);
+    } else {
+      snprintf(diag->message, sizeof(diag->message), "%s", ir_message);
+    }
+  }
   snprintf(diag->expected, sizeof(diag->expected), "%s",
            llvm_request ? "LLVM IR scalar, fixed-array, and byte-view MIR subset" : z_direct_backend_expected(target));
   snprintf(diag->actual, sizeof(diag->actual), "%s", ir && ir->mir_actual[0] ? ir->mir_actual : "unsupported construct");

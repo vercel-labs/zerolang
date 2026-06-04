@@ -916,6 +916,7 @@ assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.ok, false);
 assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.buildable, false);
 assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.languageOk, true);
 assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[0].code, "BLD004");
+assert.match(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[0].message, /direct ELF64 local type is unsupported/);
 assert.deepEqual(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[0].backendBlocker, {
   target: "linux-musl-x64",
   objectFormat: "elf",
@@ -923,6 +924,32 @@ assert.deepEqual(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
+
+const agentSurfaceOwnedDropCoffReadiness = await execFileAsync(zero, [
+  "check",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "win32-x64.exe",
+  "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0",
+]);
+const agentSurfaceOwnedDropCoffReadinessBody = JSON.parse(agentSurfaceOwnedDropCoffReadiness.stdout);
+assert.equal(agentSurfaceOwnedDropCoffReadinessBody.targetReadiness.diagnostics[0].code, "BLD004");
+assert.match(agentSurfaceOwnedDropCoffReadinessBody.targetReadiness.diagnostics[0].message, /direct COFF x64 local type is unsupported/);
+
+const agentSurfaceOwnedDropMachoReadiness = await execFileAsync(zero, [
+  "check",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "darwin-x64",
+  "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0",
+]);
+const agentSurfaceOwnedDropMachoReadinessBody = JSON.parse(agentSurfaceOwnedDropMachoReadiness.stdout);
+assert.equal(agentSurfaceOwnedDropMachoReadinessBody.targetReadiness.diagnostics[0].code, "BLD004");
+assert.match(agentSurfaceOwnedDropMachoReadinessBody.targetReadiness.diagnostics[0].message, /direct x86_64 Mach-O local type is unsupported/);
 
 const directCallExeReadiness = await execFileAsync(zero, [
   "check",
