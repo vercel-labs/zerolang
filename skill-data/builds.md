@@ -35,8 +35,12 @@ zero build --emit exe examples/hello.0 --out .zero/out/hello
 zero build --emit obj examples/hello.0 --out .zero/out/hello.o
 ```
 
-Use LLVM only when the request is explicit. Textual IR is inspectable with
-`--emit llvm-ir`; host executable builds require a ready clang toolchain:
+Use LLVM only when the request is explicit. LLVM is experimental: it is not the
+default backend, not release eligible, and not accepted by `zero ship`. Textual
+IR is inspectable with `--emit llvm-ir`; host executable builds require a ready
+clang toolchain. LLVM currently lowers scalar code, direct calls, branches,
+loops, primitive fixed arrays, byte views, readonly strings, and primitive
+`std.mem` helpers:
 
 ```sh
 zero build --backend llvm --emit llvm-ir examples/hello.0 --out .zero/out/hello.ll
@@ -102,7 +106,8 @@ The preview includes artifact names, sizes, hashes, checksum file metadata, size
 
 - `zero doctor` checks host and target readiness.
 - `zero doctor --json` reports `llvmToolchain` readiness for explicit LLVM host builds.
+- LLVM JSON facts include `backendLifecycle` so tools can distinguish explicit experimental readiness from release support.
 - `BLD003` means an old backend flag was requested; remove it.
-- `BLD004` with `backendBlocker.backend: "llvm"` means the selected LLVM artifact, target, MIR subset, or clang toolchain is not ready.
+- `BLD004` with `backendBlocker.backend: "llvm"` means the selected LLVM artifact, target, command, MIR subset, or clang toolchain is not ready.
 - Missing sysroot facts identify the required `ZERO_SYSROOT_*` variable.
 - Unsupported targets fail explicitly instead of silently choosing another backend.

@@ -29,6 +29,7 @@ Inside the Zero repository checkout, prefer `bin/zero` over a global `zero`. For
 ```sh
 zero graph view <file-or-package>
 zero graph check <file-or-package>
+zero graph status <file-or-package>
 ```
 
 3. Use JSON when you need exact node IDs or graph hashes:
@@ -46,13 +47,14 @@ zero check <file.0>
 ```
 
 5. When a graph artifact is necessary, write it under `.zero/`, patch the artifact, validate it, and then make the accepted source change. Do not commit derived `.program-graph` files unless the user explicitly asks.
-6. Run a focused source check:
+6. If `zero graph status <input>` reports repository graph sync as enabled, run `zero graph verify-sync <input>` before build/test gates. Use `zero graph sync --from-source <input>` to refresh `zero.graph` from reviewed source changes. `sync --from-graph` source projection is not enabled yet.
+7. Run a focused source check:
 
 ```sh
 zero check <file-or-package>
 ```
 
-7. When the compiler reports a diagnostic, explain the code first. If you need stable fields or a repair plan, rerun with JSON:
+8. When the compiler reports a diagnostic, explain the code first. If you need stable fields or a repair plan, rerun with JSON:
 
 ```sh
 zero explain <diagnostic-code>
@@ -60,8 +62,8 @@ zero check --json <file-or-package>
 zero fix --plan --json <file-or-package>
 ```
 
-8. If behavior changes, add or update a `test` block or conformance fixture.
-9. Validate with the narrowest command that covers the changed surface.
+9. If behavior changes, add or update a `test` block or conformance fixture.
+10. Validate with the narrowest command that covers the changed surface.
 
 ## Agent Rules
 
@@ -80,6 +82,7 @@ zero check <input>
 zero graph <input>
 zero graph view <input>
 zero graph check <input>
+zero graph status <input>
 zero graph dump --json <input>
 zero test <input>
 zero size <input>
