@@ -367,6 +367,7 @@ int z_repository_graph_sync_command(const char *input, bool json, bool from_grap
     ZProgramGraphProjection projection;
     if (!z_program_graph_projection_write_sources(&store, &projection, &diag)) {
       rc = repo_graph_error(&state, json, "sync-from-graph", "RGP004", "repository graph projection could not be written", "canonical .0 source projection", diag.message[0] ? diag.message : "projection failed", "run zero graph check on zero.graph before syncing from graph", false);
+      z_program_graph_projection_free(&projection);
       z_program_graph_store_free(&store);
       repo_graph_state_free(&state);
       return rc;

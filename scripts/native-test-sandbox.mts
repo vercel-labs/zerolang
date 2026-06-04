@@ -174,9 +174,17 @@ function createSourceArchive() {
 
 async function runSandboxCommand(sandbox, params, label) {
   const result = await sandbox.runCommand(params);
-  const [stdout, stderr] = await Promise.all([result.stdout(), result.stderr()]);
-  if (stdout) process.stdout.write(stdout);
-  if (stderr) process.stderr.write(stderr);
+  let stdout = "";
+  let stderr = "";
+  for await (const log of result.logs()) {
+    if (log.stream === "stdout") {
+      stdout += log.data;
+      process.stdout.write(log.data);
+    } else {
+      stderr += log.data;
+      process.stderr.write(log.data);
+    }
+  }
   if (result.exitCode !== 0) {
     throw new Error(`${label} failed with exit code ${result.exitCode}`);
   }
