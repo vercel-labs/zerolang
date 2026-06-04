@@ -459,6 +459,7 @@ for (const fixture of [
   "conformance/native/pass/explicit-casts.0",
   "conformance/native/pass/float-char-casts.0",
   "conformance/native/pass/radix-suffix-literals.0",
+  "conformance/native/pass/float-literal-underscores.0",
   "conformance/native/pass/char-literals.0",
   "conformance/native/pass/float-primitives.0",
   "conformance/native/pass/wrapping-saturating-arithmetic.0",
@@ -916,6 +917,7 @@ assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.ok, false);
 assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.buildable, false);
 assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.languageOk, true);
 assert.equal(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[0].code, "BLD004");
+assert.match(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[0].message, /direct ELF64 local type is unsupported/);
 assert.deepEqual(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[0].backendBlocker, {
   target: "linux-musl-x64",
   objectFormat: "elf",
@@ -923,6 +925,32 @@ assert.deepEqual(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
+
+const agentSurfaceOwnedDropCoffReadiness = await execFileAsync(zero, [
+  "check",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "win32-x64.exe",
+  "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0",
+]);
+const agentSurfaceOwnedDropCoffReadinessBody = JSON.parse(agentSurfaceOwnedDropCoffReadiness.stdout);
+assert.equal(agentSurfaceOwnedDropCoffReadinessBody.targetReadiness.diagnostics[0].code, "BLD004");
+assert.match(agentSurfaceOwnedDropCoffReadinessBody.targetReadiness.diagnostics[0].message, /direct COFF x64 local type is unsupported/);
+
+const agentSurfaceOwnedDropMachoReadiness = await execFileAsync(zero, [
+  "check",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "darwin-x64",
+  "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0",
+]);
+const agentSurfaceOwnedDropMachoReadinessBody = JSON.parse(agentSurfaceOwnedDropMachoReadiness.stdout);
+assert.equal(agentSurfaceOwnedDropMachoReadinessBody.targetReadiness.diagnostics[0].code, "BLD004");
+assert.match(agentSurfaceOwnedDropMachoReadinessBody.targetReadiness.diagnostics[0].message, /direct x86_64 Mach-O local type is unsupported/);
 
 const directCallExeReadiness = await execFileAsync(zero, [
   "check",
@@ -5040,6 +5068,10 @@ assert.match(charIntegerArithmetic.stderr, /TYP002/);
 const malformedFloatLiteral = await execFileAsync(zero, ["check", "conformance/native/fail/malformed-float-literal.0"]).catch((error) => error);
 assert.notEqual(malformedFloatLiteral.code, 0);
 assert.match(malformedFloatLiteral.stderr, /TYP019/);
+
+const malformedFloatUnderscores = await execFileAsync(zero, ["check", "conformance/native/fail/malformed-float-underscores.0"]).catch((error) => error);
+assert.notEqual(malformedFloatUnderscores.code, 0);
+assert.match(malformedFloatUnderscores.stderr, /TYP019/);
 
 const floatF32Overflow = await execFileAsync(zero, ["check", "conformance/native/fail/float-f32-overflow.0"]).catch((error) => error);
 assert.notEqual(floatF32Overflow.code, 0);
