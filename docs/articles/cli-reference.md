@@ -43,6 +43,7 @@ zero graph view examples/hello.0
 zero graph view --out .zero/out/hello.view.0 .zero/out/hello.program-graph
 zero graph source-map --json examples/hello.0
 zero graph reconcile --json .zero/out/hello.program-graph --source examples/hello.0
+zero graph status --json .
 zero graph check --json .zero/out/hello.program-graph
 zero graph size --json .zero/out/hello.program-graph
 zero graph build --json --emit obj --target linux-musl-x64 --out .zero/out/hello.o .zero/out/hello.program-graph
@@ -84,6 +85,8 @@ another tool needs stable fields.
 | `zero graph view --json` | Canonical source text rendered from source or a ProgramGraph artifact with `moduleIdentity`, `graphHash`, and optional output path. |
 | `zero graph source-map --json` | Graph node IDs mapped to source ranges with node hashes, symbol/type/effect IDs, and file hash facts. |
 | `zero graph reconcile --json` | Identity decisions when edited source is compared with a prior graph, including ambiguous-match diagnostics and simple graph patch text when available. |
+| `zero graph status --json` | Repository graph sync contract facts, the expected `zero.graph` path, no-write status, and whether graph/source sync is enabled. |
+| `zero graph verify-sync --json` | A no-write graph/source sync check. Until the repository graph loader is enabled, it fails with repair commands and leaves source files untouched, even when `zero.graph` is present. |
 | `zero graph check --json` | Typecheck source or a ProgramGraph artifact through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, safety facts, and graph-mapped diagnostics. |
 | `zero graph size --json` | Size, helper, runtime, profile, safety, and backend facts for a ProgramGraph artifact lowered through typed graph MIR, with graph identity. |
 | `zero graph build --json` | Build a ProgramGraph artifact through typed graph MIR when supported, including graph identity, selected `emit` kind, target, artifact path and size, safety facts, compiler cache facts, and graph-aware incremental invalidation. |
@@ -131,6 +134,13 @@ must use a non-source output path, such as `.zero/out/app.program-graph`.
 Agents can inspect source through ProgramGraph commands and can patch canonical
 `.0` source through `zero graph patch`. ProgramGraph artifacts remain optional
 debug and interchange files.
+
+`zero graph status`, `zero graph verify-sync`, and `zero graph sync
+--from-source|--from-graph` define the repository graph sync surface. Today
+this surface is contract-only: `status` reports `syncState: "not-enabled"` and
+the sync/verify commands do not write files until the repository graph loader is
+enabled. A checked-in `zero.graph` changes `storePresent`, but does not enable
+sync by itself.
 
 ## ProgramGraph Patches
 
@@ -260,11 +270,13 @@ zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|import|inspect|validate|view|source-map|reconcile|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
+zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
 zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
 zero graph view [--json] [--out <file.0>] <program-graph-or-source>
 zero graph source-map --json <program-graph-or-source>
 zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>
+zero graph status|verify-sync [--json] <project|zero.json|file.0>
+zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
 zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
 zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>

@@ -14,6 +14,7 @@
 #include "program_graph_lower.h"
 #include "program_graph_patch.h"
 #include "program_graph_reconcile.h"
+#include "program_graph_repository.h"
 #include "program_graph_roundtrip.h"
 #include "program_graph_size.h"
 #include "program_graph_source_map.h"
@@ -83,6 +84,8 @@ typedef struct {
   bool trace;
   bool graph_patch_command;
   bool graph_reconcile_command;
+  bool graph_sync_from_graph;
+  bool graph_sync_from_source;
   EmitKind emit;
 } Command;
 
@@ -3710,11 +3713,13 @@ static void print_help(void) {
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
   printf("  zero parse --json <file.0|project|zero.json>\n");
-  printf("  zero graph [dump|import|inspect|validate|view|source-map|reconcile|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n");
+  printf("  zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n");
   printf("  zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
   printf("  zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
   printf("  zero graph source-map --json <program-graph-or-source>\n");
   printf("  zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>\n");
+  printf("  zero graph status|verify-sync [--json] <project|zero.json|file.0>\n");
+  printf("  zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>\n");
   printf("  zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>\n");
   printf("  zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n");
   printf("  zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
@@ -3795,28 +3800,7 @@ static void print_command_help(const char *command) {
     printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Check ABI-safe declarations or dump target-aware source layout facts.\n");
   } else if (strcmp(command, "graph") == 0) {
-    printf("Usage: zero graph [dump|import|inspect|validate|view|source-map|reconcile|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n\n");
-    printf("Output usage: zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
-    printf("View output usage: zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
-    printf("Source map usage: zero graph source-map --json <program-graph-or-source>\n");
-    printf("Reconcile usage: zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>\n");
-    printf("Size output usage: zero graph size [--json] [--target <target>] --out <artifact> <input>\n");
-    printf("Patch output usage: zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n\n");
-    printf("Build usage: zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n\nRun usage: zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n\nTest usage: zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n\n");
-    printf("Inspect modules, symbols, capabilities, static metadata, stdlib helpers, or deterministic ProgramGraph inputs.\n\n");
-    printf("Subcommands:\n");
-    printf("  dump      print or write only the deterministic ProgramGraph\n");
-    printf("  import    convert current Zero source into deterministic ProgramGraph input\n");
-    printf("  inspect   report semantic graph and compiler facts as JSON\n");
-    printf("  validate  read ProgramGraph input and optionally write its normalized artifact form\n");
-    printf("  view      render ProgramGraph input as a generated Zero view\n");
-    printf("  source-map map graph nodes to source ranges and semantic identity facts\n");
-    printf("  reconcile compare a prior graph with edited source and report identity decisions\n");
-    printf("  check     typecheck ProgramGraph input through direct graph lowering\n");
-    printf("  size      report size, helper, runtime, and backend facts for ProgramGraph input\n");
-    printf("  build     build ProgramGraph input through direct graph lowering\n  run       build and run ProgramGraph input through direct graph lowering\n  test      run test blocks from ProgramGraph input through direct graph lowering\n");
-    printf("  patch     apply checked edits to ProgramGraph input\n");
-    printf("  roundtrip compare graph semantics after direct ProgramGraph lowering\n");
+    z_program_graph_print_command_help();
   } else if (strcmp(command, "doc") == 0) {
     printf("Usage: zero doc [--json] [--target <target>] <file.0|project|zero.json>\n\n");
     printf("Emit package API documentation facts without emitting artifacts.\n");
@@ -3939,6 +3923,14 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     }
     if (*index + 1 >= argc) command->unknown_flag = arg;
     else command->reconcile_source = argv[++(*index)];
+    return true;
+  } else if (cli_arg_is(arg, "--from-graph")) {
+    if (!command || !command->kind || !cli_arg_is(command->kind, "sync")) command->unknown_flag = arg;
+    else command->graph_sync_from_graph = true;
+    return true;
+  } else if (cli_arg_is(arg, "--from-source")) {
+    if (!command || !command->kind || !cli_arg_is(command->kind, "sync")) command->unknown_flag = arg;
+    else command->graph_sync_from_source = true;
     return true;
   } else if (strcmp(arg, "--all") == 0) {
     command->all = true;
@@ -12234,6 +12226,9 @@ int main(int argc, char **argv) {
   }
 
   if (strcmp(command.command, "graph") == 0 && command.kind) {
+    bool repo_graph_command = false;
+    int repo_graph_rc = z_repository_graph_maybe_command(command.kind, command.input, command.json, command.graph_sync_from_graph, command.graph_sync_from_source, &repo_graph_command);
+    if (repo_graph_command) return repo_graph_rc;
     if (strcmp(command.kind, "validate") == 0) return run_graph_validate_command(&command, &diag);
     if (strcmp(command.kind, "view") == 0) return run_graph_view_command(&command, &diag);
     if (strcmp(command.kind, "source-map") == 0) return run_graph_source_map_command(&command, target, &diag);
