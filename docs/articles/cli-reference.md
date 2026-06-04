@@ -43,6 +43,7 @@ zero graph view examples/hello.0
 zero graph view --out .zero/out/hello.view.0 .zero/out/hello.program-graph
 zero graph source-map --json examples/hello.0
 zero graph reconcile --json .zero/out/hello.program-graph --source examples/hello.0
+zero graph status --json .
 zero graph check --json .zero/out/hello.program-graph
 zero graph size --json .zero/out/hello.program-graph
 zero graph build --json --emit obj --target linux-musl-x64 --out .zero/out/hello.o .zero/out/hello.program-graph
@@ -84,6 +85,8 @@ another tool needs stable fields.
 | `zero graph view --json` | Canonical source text rendered from source or a ProgramGraph artifact with `moduleIdentity`, `graphHash`, and optional output path. |
 | `zero graph source-map --json` | Graph node IDs mapped to source ranges with node hashes, symbol/type/effect IDs, and file hash facts. |
 | `zero graph reconcile --json` | Identity decisions when edited source is compared with a prior graph, including ambiguous-match diagnostics and simple graph patch text when available. |
+| `zero graph status --json` | Repository graph sync facts, the expected `zero.graph` path, no-write status, store validity, and whether graph/source sync is enabled. |
+| `zero graph verify-sync --json` | A no-write graph/source sync check that compares a valid repository graph store with the current source graph and reports repair commands on drift. |
 | `zero graph check --json` | Typecheck source or a ProgramGraph artifact through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, safety facts, and graph-mapped diagnostics. |
 | `zero graph size --json` | Size, helper, runtime, profile, safety, and backend facts for a ProgramGraph artifact lowered through typed graph MIR, with graph identity. |
 | `zero graph build --json` | Build a ProgramGraph artifact through typed graph MIR when supported, including graph identity, selected `emit` kind, target, artifact path and size, safety facts, compiler cache facts, and graph-aware incremental invalidation. |
@@ -131,6 +134,15 @@ must use a non-source output path, such as `.zero/out/app.program-graph`.
 Agents can inspect source through ProgramGraph commands and can patch canonical
 `.0` source through `zero graph patch`. ProgramGraph artifacts remain optional
 debug and interchange files.
+
+`zero graph status`, `zero graph verify-sync`, and `zero graph sync
+--from-source|--from-graph` define the repository graph sync surface. Today
+`zero graph sync --from-source` writes a deterministic `zero.graph` repository
+store from current `.0` source, and `zero graph verify-sync` checks that store
+against the current source graph without writing files. `zero graph sync
+--from-graph` source projection is not enabled yet, and normal build, check,
+run, and test commands still use checked-in `.0` source text as their compiler
+input.
 
 ## ProgramGraph Patches
 
@@ -192,11 +204,16 @@ valid ProgramGraph patch text.
 Removed backend flags report `BLD003`. Use direct emitters; the removed C
 backend is not a compatibility path.
 
-`direct` is the default backend family. `llvm` is an explicit backend family.
-Use `--backend llvm --emit llvm-ir` to write a `.ll` artifact. On a supported
-host with `clang`, `zero build --backend llvm --emit exe` and
+`direct` is the default backend family. `llvm` is an explicit experimental
+backend family. It is not default eligible, release eligible, or accepted by
+`zero ship`; direct emitters remain the supported release path. Use
+`--backend llvm --emit llvm-ir` to write a `.ll` artifact. On a supported host
+with `clang`, `zero build --backend llvm --emit exe` and
 `zero run --backend llvm` compile that IR into a native executable through an
-external LLVM toolchain plan. Native LLVM object output and unsupported targets
+external LLVM toolchain plan. LLVM lowering currently supports scalar code,
+direct calls, branches, loops, primitive fixed arrays, byte views, readonly
+strings, and primitive `std.mem` helpers. Native LLVM object output,
+unsupported targets, unsupported MIR constructs, and `zero ship --backend llvm`
 report `BLD004` with `backendBlocker.backend: "llvm"` and do not fall back to
 direct emitters. If the LLVM artifact references Zero runtime helpers, the JSON
 build report lists the required runtime object in `objectBackend`.
@@ -255,11 +272,13 @@ zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|import|inspect|validate|view|source-map|reconcile|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
+zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
 zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
 zero graph view [--json] [--out <file.0>] <program-graph-or-source>
 zero graph source-map --json <program-graph-or-source>
 zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>
+zero graph status|verify-sync [--json] <project|zero.json|file.0>
+zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
 zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
 zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
