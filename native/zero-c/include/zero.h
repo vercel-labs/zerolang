@@ -967,6 +967,7 @@ ZDirectRuntimeObjectFacts z_direct_runtime_object_facts(const ZTargetInfo *targe
 ZDirectExecutableTargetFacts z_direct_executable_target_facts(const ZTargetInfo *target, const char *requested_backend);
 const char *z_direct_backend_expected(const ZTargetInfo *target);
 const char *z_direct_backend_help(const ZTargetInfo *target);
+const char *z_direct_backend_target_label(const ZTargetInfo *target);
 void z_append_http_runtime_json(ZBuf *buf, const ZTargetInfo *target);
 void z_append_targets_json(ZBuf *buf);
 void z_append_target_names_json(ZBuf *buf);
