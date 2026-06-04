@@ -11727,9 +11727,7 @@ static int run_graph_merge_command(const Command *command, const ZTargetInfo *ta
       if (command->json) {
         ZBuf json;
         zbuf_init(&json);
-        zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"merged\": true,\n  \"mergedFile\": ");
-        append_json_string(&json, command->out);
-        zbuf_appendf(&json, ",\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu},\n  \"semanticIssues\": [{\"code\": \"%s\", \"message\": ", added_count, removed_count, modified_count);
+        zbuf_appendf(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": false,\n  \"merged\": false,\n  \"mergedFile\": null,\n  \"conflicts\": [],\n  \"changes\": {\"added\": %zu, \"removed\": %zu, \"modified\": %zu},\n  \"semanticIssues\": [{\"code\": \"%s\", \"message\": ", added_count, removed_count, modified_count);
         append_json_string(&json, validation.code[0] ? validation.code : "GRF000");
         append_json_string(&json, validation.message[0] ? validation.message : "validation failed");
         zbuf_appendf(&json, ", \"nodeId\": ");
