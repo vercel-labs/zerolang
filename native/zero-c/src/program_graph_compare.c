@@ -554,3 +554,184 @@ bool z_program_graph_semantic_compare(const ZProgramGraph *left, const ZProgramG
   if (ok && out) out->ok = true;
   return ok;
 }
+
+static void diff_append_entry(ZProgramGraphDiff *diff, ZProgramGraphDiffEntry entry) {
+  if (!diff) return;
+  if (diff->diff_len >= diff->diff_cap) {
+    size_t new_cap = diff->diff_cap ? diff->diff_cap * 2 : 4;
+    ZProgramGraphDiffEntry *new_entries = z_checked_reallocarray(diff->diffs, new_cap, sizeof(ZProgramGraphDiffEntry));
+    diff->diffs = new_entries;
+    diff->diff_cap = new_cap;
+  }
+  diff->diffs[diff->diff_len++] = entry;
+}
+
+static void diff_emit_modified(ZProgramGraphDiff *diff, const char *node_id, const char *node_kind, const char *field, const char *left_value, const char *right_value) {
+  if (!diff) return;
+  ZProgramGraphDiffEntry entry = {
+    .kind = Z_PROGRAM_GRAPH_DIFF_KIND_MODIFIED,
+  };
+  if (node_id) snprintf(entry.node_id, sizeof(entry.node_id), "%s", node_id);
+  if (node_kind) snprintf(entry.node_kind, sizeof(entry.node_kind), "%s", node_kind);
+  if (field) snprintf(entry.field, sizeof(entry.field), "%s", field);
+  if (left_value) snprintf(entry.left_value, sizeof(entry.left_value), "%s", left_value);
+  if (right_value) snprintf(entry.right_value, sizeof(entry.right_value), "%s", right_value);
+  diff_append_entry(diff, entry);
+}
+
+static void diff_emit_added(ZProgramGraphDiff *diff, const char *node_id, const char *node_kind, const char *name) {
+  if (!diff) return;
+  ZProgramGraphDiffEntry entry = {
+    .kind = Z_PROGRAM_GRAPH_DIFF_KIND_ADDED,
+  };
+  if (node_id) snprintf(entry.node_id, sizeof(entry.node_id), "%s", node_id);
+  if (node_kind) snprintf(entry.node_kind, sizeof(entry.node_kind), "%s", node_kind);
+  if (name) snprintf(entry.field, sizeof(entry.field), "%s", "name");
+  if (name) snprintf(entry.left_value, sizeof(entry.left_value), "%s", "");
+  if (name) snprintf(entry.right_value, sizeof(entry.right_value), "%s", name);
+  diff_append_entry(diff, entry);
+}
+
+static void diff_emit_removed(ZProgramGraphDiff *diff, const char *node_id, const char *node_kind, const char *name) {
+  if (!diff) return;
+  ZProgramGraphDiffEntry entry = {
+    .kind = Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED,
+  };
+  if (node_id) snprintf(entry.node_id, sizeof(entry.node_id), "%s", node_id);
+  if (node_kind) snprintf(entry.node_kind, sizeof(entry.node_kind), "%s", node_kind);
+  if (name) snprintf(entry.field, sizeof(entry.field), "%s", "name");
+  if (name) snprintf(entry.left_value, sizeof(entry.left_value), "%s", name);
+  if (name) snprintf(entry.right_value, sizeof(entry.right_value), "%s", "");
+  diff_append_entry(diff, entry);
+}
+
+static void diff_compare_node_fields(
+  ZProgramGraphDiff *diff,
+  const ZProgramGraphNode *left_node,
+  const ZProgramGraphNode *right_node,
+  const char *node_id,
+  const char *node_kind
+) {
+  if (!left_node || !right_node) return;
+  if (!compare_text_eq(left_node->name, right_node->name))
+    diff_emit_modified(diff, node_id, node_kind, "name", left_node->name, right_node->name);
+  if (!compare_text_eq(left_node->type, right_node->type))
+    diff_emit_modified(diff, node_id, node_kind, "type", left_node->type, right_node->type);
+  if (!compare_text_eq(left_node->value, right_node->value))
+    diff_emit_modified(diff, node_id, node_kind, "value", left_node->value, right_node->value);
+  if (left_node->is_public != right_node->is_public)
+    diff_emit_modified(diff, node_id, node_kind, "public", left_node->is_public ? "true" : "false", right_node->is_public ? "true" : "false");
+  if (left_node->is_mutable != right_node->is_mutable)
+    diff_emit_modified(diff, node_id, node_kind, "mutable", left_node->is_mutable ? "true" : "false", right_node->is_mutable ? "true" : "false");
+  if (left_node->is_static != right_node->is_static)
+    diff_emit_modified(diff, node_id, node_kind, "static", left_node->is_static ? "true" : "false", right_node->is_static ? "true" : "false");
+  if (left_node->fallible != right_node->fallible)
+    diff_emit_modified(diff, node_id, node_kind, "fallible", left_node->fallible ? "true" : "false", right_node->fallible ? "true" : "false");
+  if (left_node->export_c != right_node->export_c)
+    diff_emit_modified(diff, node_id, node_kind, "exportC", left_node->export_c ? "true" : "false", right_node->export_c ? "true" : "false");
+}
+
+static void diff_build_from_indices(
+  ZProgramGraphDiff *diff,
+  const CompareIndex *left_index,
+  const CompareIndex *right_index
+) {
+  const ZProgramGraph *left_graph = left_index ? left_index->graph : NULL;
+  const ZProgramGraph *right_graph = right_index ? right_index->graph : NULL;
+
+  diff->left_node_count = left_index ? left_index->node_order_len : 0;
+  diff->right_node_count = right_index ? right_index->node_order_len : 0;
+
+  if (!left_graph || !right_graph) return;
+
+  typedef struct {
+    size_t left_raw;
+    size_t right_raw;
+    bool matched;
+  } NodePair;
+
+  NodePair *pairs = z_checked_calloc(left_graph->node_len + right_graph->node_len + 1, sizeof(NodePair));
+  size_t pair_count = 0;
+
+  for (size_t li = 0; left_index && li < left_index->node_order_len; li++) {
+    size_t left_raw = left_index->node_order[li];
+    if (compare_index_skip_node(left_index, left_raw)) continue;
+
+    size_t right_raw = compare_index_node_by_id(right_index, left_graph->nodes[left_raw].id);
+    if (right_raw != compare_missing_index()) {
+      pairs[pair_count].left_raw = left_raw;
+      pairs[pair_count].right_raw = right_raw;
+      pairs[pair_count].matched = true;
+      pair_count++;
+    }
+  }
+
+  for (size_t ri = 0; right_index && ri < right_index->node_order_len; ri++) {
+    size_t right_raw = right_index->node_order[ri];
+    if (compare_index_skip_node(right_index, right_raw)) continue;
+
+    bool found = false;
+    for (size_t p = 0; p < pair_count; p++) {
+      if (pairs[p].matched && pairs[p].right_raw == right_raw) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      const ZProgramGraphNode *rnode = &right_graph->nodes[right_raw];
+      diff_emit_added(diff, rnode->id, z_program_graph_node_kind_name(rnode->kind), rnode->name);
+    }
+  }
+
+  for (size_t li = 0; left_index && li < left_index->node_order_len; li++) {
+    size_t left_raw = left_index->node_order[li];
+    if (compare_index_skip_node(left_index, left_raw)) continue;
+
+    bool found = false;
+    size_t right_raw = compare_missing_index();
+    for (size_t p = 0; p < pair_count; p++) {
+      if (pairs[p].matched && pairs[p].left_raw == left_raw) {
+        found = true;
+        right_raw = pairs[p].right_raw;
+        break;
+      }
+    }
+    if (!found) {
+      const ZProgramGraphNode *lnode = &left_graph->nodes[left_raw];
+      diff_emit_removed(diff, lnode->id, z_program_graph_node_kind_name(lnode->kind), lnode->name);
+    } else {
+      const ZProgramGraphNode *lnode = &left_graph->nodes[left_raw];
+      const ZProgramGraphNode *rnode = &right_graph->nodes[right_raw];
+      diff_compare_node_fields(diff, lnode, rnode, lnode->id, z_program_graph_node_kind_name(lnode->kind));
+    }
+  }
+
+  free(pairs);
+}
+
+bool z_program_graph_diff(const ZProgramGraph *left, const ZProgramGraph *right, ZProgramGraphDiff *out) {
+  if (out) *out = (ZProgramGraphDiff){.ok = true};
+  if (!left || !right) {
+    if (out) out->ok = false;
+    return false;
+  }
+
+  CompareIndex left_index;
+  CompareIndex right_index;
+  compare_index_init(&left_index, left);
+  compare_index_init(&right_index, right);
+
+  diff_build_from_indices(out, &left_index, &right_index);
+
+  compare_index_free(&left_index);
+  compare_index_free(&right_index);
+
+  if (out) out->ok = true;
+  return true;
+}
+
+void z_program_graph_diff_free(ZProgramGraphDiff *diff) {
+  if (!diff) return;
+  free(diff->diffs);
+  *diff = (ZProgramGraphDiff){0};
+}

@@ -3583,6 +3583,26 @@ assert.equal(programGraphArtifactRoundtripJson.saved.path, programGraphArtifactR
 assert.equal(programGraphArtifactRoundtripJson.saved.kind, "program-graph");
 assert.equal(programGraphArtifactRoundtripJson.view, null);
 assert.equal(await readFile(programGraphArtifactRoundtripPath, "utf8"), programGraphDump);
+
+// Graph diff test - identical graph artifacts have no diffs
+const graphDiffIdenticalOut = await execFileAsync(zero, ["graph", "diff", "--json", "--base", programGraphDumpPath, programGraphDumpPath]);
+const graphDiffIdentical = JSON.parse(graphDiffIdenticalOut.stdout);
+assert.equal(graphDiffIdentical.ok, true);
+assert.equal(graphDiffIdentical.leftNodeCount, graphDiffIdentical.rightNodeCount);
+assert.equal(graphDiffIdentical.diffs.length, 0);
+
+// Graph diff test - modified source produces modified node
+const graphDiffModifiedPath = `${outDir}/hello-modified.program-graph`;
+await writeFile(`${outDir}/hello-modified.0`, `pub fn main(world: World) -> Void raises { check world.out.write("modified output\\n") }\n`);
+await execFileAsync(zero, ["graph", "dump", "--out", graphDiffModifiedPath, `${outDir}/hello-modified.0`]);
+const graphDiffModifiedOut = await execFileAsync(zero, ["graph", "diff", "--json", "--base", programGraphDumpPath, graphDiffModifiedPath]);
+const graphDiffModified = JSON.parse(graphDiffModifiedOut.stdout);
+assert.equal(graphDiffModified.ok, true);
+assert(graphDiffModified.diffs.length > 0);
+const modifiedDiffs = graphDiffModified.diffs.filter(d => d.kind === "modified");
+assert(modifiedDiffs.length > 0, "expected at least one modified diff entry");
+assert(modifiedDiffs.some(d => d.field === "value"), "expected modified field to be 'value'");
+
 assert.equal(programGraphSourceFixtureText, await readFile("examples/hello.0", "utf8"));
 assert.equal(programGraphSourceFixturePackageCheckJson.ok, true);
 assert.equal(programGraphSourceFixturePackageCheckJson.sourceFile, programGraphSourceFixturePath);

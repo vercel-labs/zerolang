@@ -60,6 +60,7 @@ typedef struct {
   const char *patch_text;
   const char *patch_expect_graph_hash;
   const char *reconcile_source;
+  const char *diff_base;
   const char **patch_ops;
   size_t patch_op_len;
   size_t patch_op_cap;
@@ -83,6 +84,7 @@ typedef struct {
   bool trace;
   bool graph_patch_command;
   bool graph_reconcile_command;
+  bool graph_diff_command;
   EmitKind emit;
 } Command;
 
@@ -3940,6 +3942,14 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     if (*index + 1 >= argc) command->unknown_flag = arg;
     else command->reconcile_source = argv[++(*index)];
     return true;
+  } else if (cli_arg_is(arg, "--base")) {
+    if (!command || !command->graph_diff_command) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->diff_base = argv[++(*index)];
+    return true;
   } else if (strcmp(arg, "--all") == 0) {
     command->all = true;
     return true;
@@ -4007,6 +4017,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
   }
   command->graph_patch_command = is_graph_command && command->kind && cli_arg_is(command->kind, "patch");
   command->graph_reconcile_command = is_graph_command && command->kind && cli_arg_is(command->kind, "reconcile");
+  command->graph_diff_command = is_graph_command && command->kind && cli_arg_is(command->kind, "diff");
   bool graph_run_command = is_graph_command && command->kind && strcmp(command->kind, "run") == 0;
   if (strcmp(command->command, "run") == 0 || graph_run_command) {
     for (int i = arg_start; i < argc; i++) {
@@ -11418,6 +11429,118 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
   return summary.ok ? 0 : 1;
 }
 
+static int run_graph_diff_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  if (!command->diff_base) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph diff requires --base <program-graph>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph diff --base <program-graph> <program-graph>");
+    snprintf(diag->actual, sizeof(diag->actual), "missing --base");
+    snprintf(diag->help, sizeof(diag->help), "pass the base graph to compare against");
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
+
+  ZProgramGraph base_graph = {0};
+  SourceInput base_input = {0};
+  Program base_program = {0};
+  GraphInputKind base_kind = GRAPH_INPUT_ARTIFACT;
+  Command base_cmd = *command;
+  base_cmd.input = command->diff_base;
+  base_cmd.out = NULL;
+  if (!load_graph_input_for_checked_read(&base_cmd, target, &base_input, &base_program, &base_graph, &base_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->diff_base, diag);
+    else print_diag(diag->path ? diag->path : command->diff_base, diag);
+    return 1;
+  }
+
+  ZProgramGraph right_graph = {0};
+  SourceInput right_input = {0};
+  Program right_program = {0};
+  GraphInputKind right_kind = GRAPH_INPUT_ARTIFACT;
+  if (!load_graph_input_for_checked_read(command, target, &right_input, &right_program, &right_graph, &right_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    z_free_program(&base_program);
+    z_free_source(&base_input);
+    z_program_graph_free(&base_graph);
+    return 1;
+  }
+
+  ZProgramGraphDiff diff_result = {0};
+  z_program_graph_diff(&base_graph, &right_graph, &diff_result);
+
+  if (command->json) {
+    ZBuf json;
+    zbuf_init(&json);
+    zbuf_append(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
+    zbuf_append(&json, diff_result.ok ? "true" : "false");
+    zbuf_appendf(&json, ",\n  \"leftNodeCount\": %zu,\n  \"rightNodeCount\": %zu,\n  \"diffs\": [\n", diff_result.left_node_count, diff_result.right_node_count);
+    for (size_t i = 0; i < diff_result.diff_len; i++) {
+      if (i > 0) zbuf_append(&json, ", ");
+      zbuf_append(&json, "\n    {");
+      const char *kind_name = "modified";
+      if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) kind_name = "added";
+      else if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) kind_name = "removed";
+      zbuf_appendf(&json, "\"kind\": \"%s\", ", kind_name);
+      zbuf_appendf(&json, "\"nodeId\": ");
+      append_json_string(&json, diff_result.diffs[i].node_id);
+      zbuf_appendf(&json, ", \"nodeKind\": ");
+      append_json_string(&json, diff_result.diffs[i].node_kind);
+      if (diff_result.diffs[i].field[0]) {
+        zbuf_appendf(&json, ", \"field\": ");
+        append_json_string(&json, diff_result.diffs[i].field);
+      }
+      if (diff_result.diffs[i].left_value[0] || diff_result.diffs[i].right_value[0]) {
+        zbuf_appendf(&json, ", \"leftValue\": ");
+        append_json_string(&json, diff_result.diffs[i].left_value);
+        zbuf_appendf(&json, ", \"rightValue\": ");
+        append_json_string(&json, diff_result.diffs[i].right_value);
+      }
+      if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED || diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) {
+        zbuf_appendf(&json, ", \"name\": ");
+        if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED)
+          append_json_string(&json, diff_result.diffs[i].right_value);
+        else
+          append_json_string(&json, diff_result.diffs[i].left_value);
+      }
+      zbuf_append(&json, "}");
+    }
+    zbuf_append(&json, "\n  ]\n}\n");
+    fputs(json.data, stdout);
+    zbuf_free(&json);
+  } else {
+    if (diff_result.diff_len == 0) {
+      printf("program graph diff ok (no changes)\n");
+    } else {
+      printf("program graph diff: %zu change(s)\n", diff_result.diff_len);
+      for (size_t i = 0; i < diff_result.diff_len; i++) {
+        const char *kind_name = "modified";
+        if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) kind_name = "added";
+        else if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) kind_name = "removed";
+        if (diff_result.diffs[i].field[0]) {
+          printf("  %s: %s (%s) %s -> %s\n", kind_name, diff_result.diffs[i].node_id, diff_result.diffs[i].field, diff_result.diffs[i].left_value, diff_result.diffs[i].right_value);
+        } else {
+          printf("  %s: %s (%s) name=%s\n", kind_name, diff_result.diffs[i].node_id, diff_result.diffs[i].node_kind, diff_result.diffs[i].left_value[0] ? diff_result.diffs[i].left_value : diff_result.diffs[i].right_value);
+        }
+      }
+    }
+  }
+
+  z_program_graph_diff_free(&diff_result);
+  z_free_program(&right_program);
+  z_free_source(&right_input);
+  z_program_graph_free(&right_graph);
+  z_free_program(&base_program);
+  z_free_source(&base_input);
+  z_program_graph_free(&base_graph);
+  return 0;
+}
+
 static bool validate_graph_patch_sources(const Command *command, bool *has_file, bool *has_patch_text, bool *has_ops, ZDiag *diag) {
   *has_file = command->patch_file != NULL;
   *has_patch_text = command->patch_text != NULL;
@@ -12254,6 +12377,7 @@ int main(int argc, char **argv) {
     if (strcmp(command.kind, "size") == 0) return run_graph_size_command(&command, target, &diag);
     if (strcmp(command.kind, "patch") == 0) return run_graph_patch_command(&command, &diag);
     if (strcmp(command.kind, "roundtrip") == 0 && graph_command_artifact_input) return run_graph_artifact_roundtrip_command(&command, &diag);
+    if (strcmp(command.kind, "diff") == 0) return run_graph_diff_command(&command, target, &diag);
   }
 
   if (strcmp(command.command, "fmt") == 0) {
