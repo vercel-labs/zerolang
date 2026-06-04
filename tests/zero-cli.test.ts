@@ -20,7 +20,7 @@ const supportedTargets = [
   "win32-x64.exe",
   "win32-arm64.exe",
 ];
-const artifactSummaryPattern = /\((?:\d+ B|\d+\.\d KiB|\d+\.\d MiB|\d+\.\d GiB), (?:\d+ ms|\d+\.\d s)\)/;
+const artifactSummaryPattern = /\((\d+ B|\d+\.\d KiB|\d+\.\d MiB|\d+\.\d GiB), (\d+ ms|\d+\.\d s)\)/;
 const runnableDirectTarget =
   process.platform === "darwin" && process.arch === "arm64" ? "darwin-arm64" :
   process.platform === "linux" && process.arch === "x64" ? "linux-musl-x64" :
@@ -274,5 +274,29 @@ describe("native zero CLI", () => {
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /FLD001/);
     assert.match(result.stderr, /explain: zero explain FLD001/);
+  });
+
+  it("covers fix-plan repair safety metadata and agent-facing TYP009 contract", async () => {
+    const plan = JSON.parse((await runZero(["fix", "--plan", "--json", "examples/agent-repair-demo/broken.0"])).stdout);
+    assert.equal(plan.ok, false);
+    assert.equal(plan.mode, "plan");
+    assert.equal(plan.appliesEdits, false);
+    assert.equal(plan.schemaVersion, 1);
+
+    // Verify diagnostics array has the expected error
+    assert.equal(plan.diagnostics.length, 1);
+    assert.equal(plan.diagnostics[0].code, "TYP009");
+    assert.equal(plan.diagnostics[0].fixSafety, "behavior-preserving");
+    assert.equal(plan.diagnostics[0].repair.id, "make-binding-mutable");
+
+    // Verify fixes array preserves repair metadata
+    assert.equal(plan.fixes.length, 1);
+    assert.equal(plan.fixes[0].id, "make-binding-mutable");
+    assert.equal(plan.fixes[0].diagnosticCode, "TYP009");
+    assert.equal(plan.fixes[0].safety, "behavior-preserving");
+    assert.equal(plan.fixes[0].appliesEdits, false);
+
+    // Verify the plan remains non-applying
+    assert.equal(plan.appliesEdits, false);
   });
 });
