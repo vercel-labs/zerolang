@@ -18,10 +18,15 @@ Backend selection has these dimensions:
 direct emitter. Direct emitter names such as `zero-elf64` remain exact direct
 backend requests.
 
-`llvm` is a known backend family. It can emit deterministic textual LLVM IR
-when selected with `--backend llvm --emit llvm-ir`. Native LLVM executable
-artifacts are buildable only for supported host targets with a ready clang
-toolchain. Native LLVM object output and unsupported targets must report a
+`llvm` is a known experimental backend family. It is explicit-only: it is not
+the default backend, not release eligible, and not accepted by `zero ship`.
+Direct emitters remain the supported release path. LLVM can emit deterministic
+textual LLVM IR when selected with `--backend llvm --emit llvm-ir`. Native LLVM
+executable artifacts are buildable only for supported host targets with a ready
+clang toolchain. LLVM lowering currently supports scalar code, direct calls,
+branches, loops, primitive fixed arrays, byte views, readonly strings, and
+primitive `std.mem` helpers. Native LLVM object output, unsupported targets,
+unsupported MIR constructs, and `zero ship --backend llvm` must report a
 structured backend blocker; they must not fall back to direct emitters.
 
 Textual LLVM IR artifacts that reference Zero runtime helpers must report that
@@ -95,6 +100,8 @@ the no-fallback policy.
 
 LLVM facts may claim textual IR emission and host executable output only when
 Zero can build the selected artifact through the LLVM path for that target.
+LLVM facts must also carry `backendLifecycle` so tools can distinguish explicit
+experimental readiness from supported release eligibility.
 
 ## Fallback Policy
 
