@@ -979,15 +979,34 @@ static ZProgramGraphDiffEntry *diff_find_by_node_id(const ZProgramGraphDiff *dif
   return NULL;
 }
 
+static bool node_id_is_ancestor_of_with_visited(const ZProgramGraph *graph, const char *ancestor_id, const char *descendant_id, const char **visited_ids, size_t visited_cap, size_t visited_len);
+
 static bool node_id_is_ancestor_of(const ZProgramGraph *graph, const char *ancestor_id, const char *descendant_id) {
   if (!graph || !ancestor_id || !descendant_id || compare_text_eq(ancestor_id, descendant_id)) return false;
+
+  const size_t max_depth = graph->node_len > 0 ? graph->node_len : 1;
+  const char **visited_ids = z_checked_calloc(max_depth, sizeof(const char *));
+  bool result = node_id_is_ancestor_of_with_visited(graph, ancestor_id, descendant_id, visited_ids, max_depth, 0);
+  free(visited_ids);
+  return result;
+}
+
+static bool node_id_is_ancestor_of_with_visited(const ZProgramGraph *graph, const char *ancestor_id, const char *descendant_id, const char **visited_ids, size_t visited_cap, size_t visited_len) {
+  if (!graph || !ancestor_id || !descendant_id || compare_text_eq(ancestor_id, descendant_id)) return false;
+
+  for (size_t v = 0; v < visited_len; v++) {
+    if (compare_text_eq(visited_ids[v], ancestor_id)) return false;
+  }
+
+  if (visited_len >= visited_cap) return false;
+  visited_ids[visited_len++] = ancestor_id;
 
   for (size_t i = 0; i < graph->edge_len; i++) {
     const ZProgramGraphEdge *edge = &graph->edges[i];
     if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) continue;
     if (compare_text_eq(edge->from, ancestor_id)) {
       if (compare_text_eq(edge->to, descendant_id)) return true;
-      if (node_id_is_ancestor_of(graph, edge->to, descendant_id)) return true;
+      if (node_id_is_ancestor_of_with_visited(graph, edge->to, descendant_id, visited_ids, visited_cap, visited_len)) return true;
     }
   }
   return false;
