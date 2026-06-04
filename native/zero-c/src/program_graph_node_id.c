@@ -139,18 +139,25 @@ static bool graph_id_is_used(char **ids, size_t len, const char *id) {
 }
 
 static size_t graph_find_old_id(char **old_ids, size_t len, const char *id) {
+  if (id && id[0] == 'n' && id[1] == 'o' && id[2] == 'd' && id[3] == 'e' && id[4] == ':') {
+    size_t value = 0;
+    const char *cursor = id + 5;
+    bool numeric = *cursor != '\0';
+    while (*cursor && numeric) {
+      unsigned char ch = (unsigned char)*cursor++;
+      if (ch < '0' || ch > '9') {
+        numeric = false;
+        break;
+      }
+      value = value * 10 + (size_t)(ch - '0');
+      if (value > len) break;
+    }
+    if (numeric && value > 0 && value <= len && old_ids[value - 1] && graph_text_eq(old_ids[value - 1], id)) return value - 1;
+  }
   for (size_t i = 0; old_ids && id && i < len; i++) {
     if (old_ids[i] && graph_text_eq(old_ids[i], id)) return i;
   }
   return SIZE_MAX;
-}
-
-static const ZProgramGraphEdge *graph_owner_edge_for_node(const ZProgramGraph *graph, const char *node_id) {
-  for (size_t i = 0; graph && node_id && i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE && graph_text_eq(edge->to, node_id)) return edge;
-  }
-  return NULL;
 }
 
 static char *graph_source_node_base_id(const ZProgramGraph *graph, const ZProgramGraphNode *node, const ZProgramGraphEdge *owner_edge, const char *owner_new_id) {
@@ -198,11 +205,6 @@ static char *graph_source_node_collision_id(const ZProgramGraphNode *node, const
   }
 }
 
-static const char *graph_remapped_id(const char *old_id, char **old_ids, char **new_ids, size_t len) {
-  size_t index = graph_find_old_id(old_ids, len, old_id);
-  return index == SIZE_MAX ? old_id : new_ids[index];
-}
-
 static int graph_collision_node_cmp(const ZProgramGraphNode *left, const ZProgramGraphNode *right) {
   int cmp = graph_text_cmp(left ? left->path : NULL, right ? right->path : NULL);
   if (cmp != 0) return cmp;
@@ -237,19 +239,28 @@ void z_program_graph_assign_source_node_ids(ZProgramGraph *graph) {
   if (!graph || graph->node_len == 0) return;
   char **old_ids = z_checked_calloc(graph->node_len, sizeof(char *));
   char **new_ids = z_checked_calloc(graph->node_len, sizeof(char *));
+  char **assigned_ids = z_checked_calloc(graph->node_len, sizeof(char *));
   char **base_ids = z_checked_calloc(graph->node_len, sizeof(char *));
   bool *assigned = z_checked_calloc(graph->node_len, sizeof(bool));
+  size_t *owner_edge_by_node = z_checked_calloc(graph->node_len, sizeof(size_t));
   size_t *ready = z_checked_calloc(graph->node_len, sizeof(size_t));
   bool *ready_used = z_checked_calloc(graph->node_len, sizeof(bool));
   size_t *group = z_checked_calloc(graph->node_len, sizeof(size_t));
   for (size_t i = 0; i < graph->node_len; i++) old_ids[i] = z_strdup(graph->nodes[i].id ? graph->nodes[i].id : "");
+  for (size_t i = 0; i < graph->node_len; i++) owner_edge_by_node[i] = SIZE_MAX;
+  for (size_t i = 0; i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) continue;
+    size_t target_index = graph_find_old_id(old_ids, graph->node_len, edge->to);
+    if (target_index != SIZE_MAX && owner_edge_by_node[target_index] == SIZE_MAX) owner_edge_by_node[target_index] = i;
+  }
 
   size_t assigned_count = 0;
   while (assigned_count < graph->node_len) {
     size_t ready_len = 0;
     for (size_t i = 0; i < graph->node_len; i++) {
       if (assigned[i]) continue;
-      const ZProgramGraphEdge *owner_edge = graph_owner_edge_for_node(graph, old_ids[i]);
+      const ZProgramGraphEdge *owner_edge = owner_edge_by_node[i] == SIZE_MAX ? NULL : &graph->edges[owner_edge_by_node[i]];
       const char *owner_new_id = NULL;
       if (owner_edge) {
         size_t owner_index = graph_find_old_id(old_ids, graph->node_len, owner_edge->from);
@@ -283,7 +294,8 @@ void z_program_graph_assign_source_node_ids(ZProgramGraph *graph) {
       graph_sort_collision_group(graph, group, group_len);
       for (size_t j = 0; j < group_len; j++) {
         size_t index = group[j];
-        new_ids[index] = graph_source_node_collision_id(&graph->nodes[index], base_ids[index], new_ids, graph->node_len, group_len > 1);
+        new_ids[index] = graph_source_node_collision_id(&graph->nodes[index], base_ids[index], assigned_ids, assigned_count, group_len > 1);
+        assigned_ids[assigned_count] = new_ids[index];
         assigned[index] = true;
         assigned_count++;
       }
@@ -295,11 +307,13 @@ void z_program_graph_assign_source_node_ids(ZProgramGraph *graph) {
     graph->nodes[i].id = z_strdup(new_ids[i]);
   }
   for (size_t i = 0; i < graph->edge_len; i++) {
-    const char *from = graph_remapped_id(graph->edges[i].from, old_ids, new_ids, graph->node_len);
+    size_t from_index = graph_find_old_id(old_ids, graph->node_len, graph->edges[i].from);
+    const char *from = from_index == SIZE_MAX ? graph->edges[i].from : new_ids[from_index];
     free(graph->edges[i].from);
     graph->edges[i].from = z_strdup(from);
     if (graph->edges[i].target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) {
-      const char *to = graph_remapped_id(graph->edges[i].to, old_ids, new_ids, graph->node_len);
+      size_t to_index = graph_find_old_id(old_ids, graph->node_len, graph->edges[i].to);
+      const char *to = to_index == SIZE_MAX ? graph->edges[i].to : new_ids[to_index];
       free(graph->edges[i].to);
       graph->edges[i].to = z_strdup(to);
     }
@@ -312,8 +326,10 @@ void z_program_graph_assign_source_node_ids(ZProgramGraph *graph) {
   free(group);
   free(ready_used);
   free(ready);
+  free(owner_edge_by_node);
   free(assigned);
   free(base_ids);
+  free(assigned_ids);
   free(old_ids);
   free(new_ids);
 }

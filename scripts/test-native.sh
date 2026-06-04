@@ -364,6 +364,9 @@ grep -q '"name":"std.io.bufferedWriter"' .zero/native-test/std-io-direct-size.js
 grep -q '"name":"std.io.copy"' .zero/native-test/std-io-direct-size.json
 grep -q '"name":"stdio-world"' .zero/native-test/std-io-direct-size.json
 bin/zero mem --json conformance/native/pass/std-io-direct.0 > .zero/native-test/std-io-direct-mem.json
+grep -q '"artifact":"conformance/native/pass/std-io-direct.0"' .zero/native-test/std-io-direct-mem.json
+grep -q '"sourceKind":"program-graph"' .zero/native-test/std-io-direct-mem.json
+grep -q '"graphArtifact":"conformance/native/pass/std-io-direct.0"' .zero/native-test/std-io-direct-mem.json
 grep -q '"generatedCBytes": 0' .zero/native-test/std-io-direct-mem.json
 grep -q '"cBridgeFallback": false' .zero/native-test/std-io-direct-mem.json
 grep -q '"stackBytes":' .zero/native-test/std-io-direct-mem.json
@@ -475,9 +478,9 @@ node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/
 [[ "$(bin/zero test conformance/native/pass/std-testing-helpers-test.0)" == "1 test(s) ok" ]]
 [[ "$(bin/zero run --out .zero/native-test/run-add examples/add.0)" == "math works" ]]
 bin/zero test --json conformance/packages/test-app > .zero/native-test/test-package.json
-node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-package.json","utf8")); if (!j.ok || j.testDiscovery.mode!=="package" || j.discoveredTests!==3 || j.selectedTests!==3 || j.expectedFailures!==1 || !j.fixtures.sourceFiles.some((p)=>p.endsWith("helper.0")) || !j.targetFacts.capabilitySupport) process.exit(1);'
+node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-package.json","utf8")); if (!j.ok || j.graph?.artifact!=="conformance/packages/test-app/src/main.0" || j.graph?.moduleIdentity!=="package:test-app@0.1.0" || j.testDiscovery.mode!=="package-graph" || j.discoveredTests!==3 || j.selectedTests!==3 || j.expectedFailures!==1 || !j.fixtures.sourceFiles.some((p)=>p.endsWith("helper.0")) || !j.targetFacts.capabilitySupport) process.exit(1);'
 bin/zero test --json --filter helper conformance/packages/test-app > .zero/native-test/test-package-filter.json
-node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-package-filter.json","utf8")); if (!j.ok || j.discoveredTests!==3 || j.selectedTests!==2 || j.testDiscovery.filter!=="helper") process.exit(1);'
+node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-package-filter.json","utf8")); if (!j.ok || j.graph?.artifact!=="conformance/packages/test-app/src/main.0" || j.testDiscovery.mode!=="package-graph" || j.discoveredTests!==3 || j.selectedTests!==2 || j.testDiscovery.filter!=="helper") process.exit(1);'
 bin/zero test --json conformance/native/pass/test-expected-fail.0 > .zero/native-test/test-expected-fail.json
 node -e 'const fs=require("node:fs"); const j=JSON.parse(fs.readFileSync(".zero/native-test/test-expected-fail.json","utf8")); if (!j.ok || j.expectedFailures!==1 || j.failedTests!==0 || j.results[0].status!=="expected-fail") process.exit(1);'
 if bin/zero test --json conformance/native/fail/test-unexpected-pass.0 > .zero/native-test/test-unexpected-pass.json; then

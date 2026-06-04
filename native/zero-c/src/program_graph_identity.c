@@ -234,38 +234,103 @@ static bool graph_owner_edge_kind(const char *kind) {
   return false;
 }
 
-static size_t graph_find_node_index(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (graph_text_eq(graph->nodes[i].id, id)) return i;
+typedef struct {
+  const char *key;
+  size_t index;
+  bool used;
+} GraphNodeIndexEntry;
+
+typedef struct {
+  const ZProgramGraph *graph;
+  GraphNodeIndexEntry *node_index;
+  size_t node_index_cap;
+  size_t *owner_edge_by_node;
+  size_t *owner_index_by_node;
+  size_t *symbol_owner_index;
+  bool *symbol_owner_resolved;
+} GraphIdentityContext;
+
+static size_t graph_identity_index_capacity(size_t len) {
+  size_t cap = 1;
+  while (cap < len * 2 + 1) cap *= 2;
+  return cap;
+}
+
+static void graph_identity_index_put(GraphIdentityContext *context, const char *key, size_t index) {
+  if (!context || !context->node_index || !key) return;
+  size_t mask = context->node_index_cap - 1;
+  size_t slot = (size_t)graph_hash_text(1469598103934665603ull, key) & mask;
+  while (context->node_index[slot].used) slot = (slot + 1) & mask;
+  context->node_index[slot] = (GraphNodeIndexEntry){.key = key, .index = index, .used = true};
+}
+
+static size_t graph_identity_index_find(const GraphIdentityContext *context, const char *key) {
+  if (!context || !context->node_index || !key) return SIZE_MAX;
+  size_t mask = context->node_index_cap - 1;
+  size_t slot = (size_t)graph_hash_text(1469598103934665603ull, key) & mask;
+  for (size_t probe = 0; probe < context->node_index_cap; probe++) {
+    GraphNodeIndexEntry *entry = &context->node_index[slot];
+    if (!entry->used) return SIZE_MAX;
+    if (graph_text_eq(entry->key, key)) return entry->index;
+    slot = (slot + 1) & mask;
   }
   return SIZE_MAX;
 }
 
-static const ZProgramGraphEdge *graph_owner_edge_for_node(const ZProgramGraph *graph, const char *node_id) {
-  for (size_t i = 0; graph && node_id && i < graph->edge_len; i++) {
+static void graph_identity_context_init(GraphIdentityContext *context, const ZProgramGraph *graph) {
+  *context = (GraphIdentityContext){.graph = graph};
+  size_t len = graph ? graph->node_len : 0;
+  context->node_index_cap = graph_identity_index_capacity(len);
+  context->node_index = z_checked_calloc(context->node_index_cap, sizeof(GraphNodeIndexEntry));
+  context->owner_edge_by_node = z_checked_calloc(len ? len : 1, sizeof(size_t));
+  context->owner_index_by_node = z_checked_calloc(len ? len : 1, sizeof(size_t));
+  context->symbol_owner_index = z_checked_calloc(len ? len : 1, sizeof(size_t));
+  context->symbol_owner_resolved = z_checked_calloc(len ? len : 1, sizeof(bool));
+  for (size_t i = 0; i < len; i++) {
+    context->owner_edge_by_node[i] = SIZE_MAX;
+    context->owner_index_by_node[i] = SIZE_MAX;
+    context->symbol_owner_index[i] = SIZE_MAX;
+    graph_identity_index_put(context, graph->nodes[i].id, i);
+  }
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
     const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE &&
-        graph_text_eq(edge->to, node_id) &&
-        graph_owner_edge_kind(edge->kind)) {
-      return edge;
-    }
+    if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE || !graph_owner_edge_kind(edge->kind)) continue;
+    size_t target = graph_identity_index_find(context, edge->to);
+    if (target == SIZE_MAX || context->owner_edge_by_node[target] != SIZE_MAX) continue;
+    context->owner_edge_by_node[target] = i;
+    context->owner_index_by_node[target] = graph_identity_index_find(context, edge->from);
   }
-  return NULL;
 }
 
-static size_t graph_symbol_owner_index(const ZProgramGraph *graph, size_t node_index) {
+static void graph_identity_context_free(GraphIdentityContext *context) {
+  if (!context) return;
+  free(context->symbol_owner_resolved);
+  free(context->symbol_owner_index);
+  free(context->owner_index_by_node);
+  free(context->owner_edge_by_node);
+  free(context->node_index);
+  *context = (GraphIdentityContext){0};
+}
+
+static size_t graph_symbol_owner_index(GraphIdentityContext *context, size_t node_index) {
+  const ZProgramGraph *graph = context ? context->graph : NULL;
   if (!graph || node_index >= graph->node_len) return SIZE_MAX;
-  const char *current = graph->nodes[node_index].id;
-  for (size_t depth = 0; current && depth < graph->node_len; depth++) {
-    const ZProgramGraphEdge *edge = graph_owner_edge_for_node(graph, current);
-    if (!edge) return SIZE_MAX;
-    size_t owner_index = graph_find_node_index(graph, edge->from);
-    if (owner_index == SIZE_MAX) return SIZE_MAX;
+  if (context->symbol_owner_resolved[node_index]) return context->symbol_owner_index[node_index];
+  size_t current = node_index;
+  size_t result = SIZE_MAX;
+  for (size_t depth = 0; depth < graph->node_len; depth++) {
+    size_t owner_index = context->owner_index_by_node[current];
+    if (owner_index == SIZE_MAX || owner_index >= graph->node_len) break;
     const ZProgramGraphNode *owner = &graph->nodes[owner_index];
-    if (owner->kind == Z_PROGRAM_GRAPH_NODE_MODULE || graph_node_declares_symbol(owner)) return owner_index;
-    current = owner->id;
+    if (owner->kind == Z_PROGRAM_GRAPH_NODE_MODULE || graph_node_declares_symbol(owner)) {
+      result = owner_index;
+      break;
+    }
+    current = owner_index;
   }
-  return SIZE_MAX;
+  context->symbol_owner_resolved[node_index] = true;
+  context->symbol_owner_index[node_index] = result;
+  return result;
 }
 
 static const char *graph_node_symbol_namespace(const ZProgramGraphNode *node, const ZProgramGraphEdge *owner_edge) {
@@ -302,7 +367,8 @@ static void graph_append_local_symbol_suffix(ZBuf *buf, const ZProgramGraphNode 
   graph_append_symbol_component(buf, suffix);
 }
 
-static char *graph_node_symbol_id_in_graph(const ZProgramGraph *graph, size_t node_index, size_t depth) {
+static char *graph_node_symbol_id_in_graph(GraphIdentityContext *context, size_t node_index, size_t depth) {
+  const ZProgramGraph *graph = context ? context->graph : NULL;
   if (!graph || node_index >= graph->node_len || depth > graph->node_len) return NULL;
   const ZProgramGraphNode *node = &graph->nodes[node_index];
   if (!graph_node_declares_symbol(node)) return NULL;
@@ -320,8 +386,8 @@ static char *graph_node_symbol_id_in_graph(const ZProgramGraph *graph, size_t no
     return out.data ? out.data : z_strdup("symbol:main::module");
   }
 
-  const ZProgramGraphEdge *owner_edge = graph_owner_edge_for_node(graph, node->id);
-  size_t owner_index = graph_symbol_owner_index(graph, node_index);
+  const ZProgramGraphEdge *owner_edge = context->owner_edge_by_node[node_index] == SIZE_MAX ? NULL : &graph->edges[context->owner_edge_by_node[node_index]];
+  size_t owner_index = graph_symbol_owner_index(context, node_index);
   const ZProgramGraphNode *owner = owner_index != SIZE_MAX ? &graph->nodes[owner_index] : NULL;
   const char *symbol_namespace = graph_node_symbol_namespace(node, owner_edge);
   if (!symbol_namespace) return NULL;
@@ -335,7 +401,7 @@ static char *graph_node_symbol_id_in_graph(const ZProgramGraph *graph, size_t no
     zbuf_append(&out, "::");
     free(scope);
   } else if (owner) {
-    char *owner_symbol = graph_node_symbol_id_in_graph(graph, owner_index, depth + 1);
+    char *owner_symbol = owner->symbol_id && owner->symbol_id[0] ? z_strdup(owner->symbol_id) : graph_node_symbol_id_in_graph(context, owner_index, depth + 1);
     if (owner_symbol && owner_symbol[0]) {
       zbuf_append(&out, owner_symbol);
       zbuf_append_char(&out, '/');
@@ -384,16 +450,25 @@ static char *graph_node_effect_id(const ZProgramGraphNode *node) {
 
 void z_program_graph_finalize_identities(ZProgramGraph *graph) {
   if (!graph) return;
-  uint64_t graph_hash = 1469598103934665603ull;
-  graph_hash = graph_hash_u64(graph_hash, graph->schema_version);
-  graph_hash = graph_hash_text(graph_hash, graph->module_identity);
+  GraphIdentityContext identity;
+  graph_identity_context_init(&identity, graph);
   for (size_t i = 0; i < graph->node_len; i++) {
     ZProgramGraphNode *node = &graph->nodes[i];
     free(node->symbol_id);
     free(node->type_id);
     free(node->effect_id);
     free(node->node_hash);
-    node->symbol_id = graph_node_symbol_id_in_graph(graph, i, 0);
+    node->symbol_id = NULL;
+    node->type_id = NULL;
+    node->effect_id = NULL;
+    node->node_hash = NULL;
+  }
+  uint64_t graph_hash = 1469598103934665603ull;
+  graph_hash = graph_hash_u64(graph_hash, graph->schema_version);
+  graph_hash = graph_hash_text(graph_hash, graph->module_identity);
+  for (size_t i = 0; i < graph->node_len; i++) {
+    ZProgramGraphNode *node = &graph->nodes[i];
+    node->symbol_id = graph_node_symbol_id_in_graph(&identity, i, 0);
     node->type_id = graph_node_type_id(node);
     node->effect_id = graph_node_effect_id(node);
     node->node_hash = graph_format_domain_id("nodehash", graph_node_hash_value(node));
@@ -413,4 +488,5 @@ void z_program_graph_finalize_identities(ZProgramGraph *graph) {
   }
   free(graph->graph_hash);
   graph->graph_hash = graph_format_domain_id("graph", graph_hash);
+  graph_identity_context_free(&identity);
 }

@@ -1188,10 +1188,14 @@ bool z_program_graph_prepare_artifact_mir_input(const char *artifact_path, const
     z_free_ir_program(&graph_ir);
     *ir = z_lower_program_with_source(program, input, target);
   }
+  if (input) {
+    input->program_graph_hash = z_strdup(graph.graph_hash ? graph.graph_hash : "");
+    input->program_graph_module_identity = z_strdup(graph.module_identity ? graph.module_identity : "");
+  }
   if (source) {
     source->artifact = artifact_path;
-    source->graph_hash = z_strdup(graph.graph_hash ? graph.graph_hash : "");
-    source->module_identity = z_strdup(graph.module_identity ? graph.module_identity : "");
+    source->graph_hash = input ? input->program_graph_hash : "";
+    source->module_identity = input ? input->program_graph_module_identity : "";
     source->lowering = graph_mir_valid ? "typed-program-graph-mir" : "program-graph-ast-mir";
     source->canonical_source = graph.canonical_source;
   }

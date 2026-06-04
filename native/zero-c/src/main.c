@@ -2118,6 +2118,23 @@ static uint64_t compile_cache_key(const SourceInput *input, const ZTargetInfo *t
   return hash;
 }
 
+static uint64_t graph_compile_cache_key(const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *kind, const char *graph_hash) {
+  uint64_t hash = fnv1a_text(kind);
+  hash = mix_hash_text(hash, ZERO_VERSION);
+  hash = mix_hash_text(hash, graph_hash ? graph_hash : "");
+  hash = mix_hash_text(hash, target ? target->name : z_host_target());
+  hash = mix_hash_text(hash, profile ? profile : "release");
+  hash ^= source_dependency_hash(input);
+  return hash;
+}
+
+static uint64_t command_compile_cache_key(const Command *command, const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *kind) {
+  if (command && z_program_graph_artifact_source_present(&command->graph_source)) {
+    return graph_compile_cache_key(input, target, profile, kind, command->graph_source.graph_hash);
+  }
+  return compile_cache_key(input, target, profile, kind);
+}
+
 static bool json_array_contains_string_literal(const char *json, const char *value) {
   if (!json || !value || !value[0]) return false;
   ZBuf needle;
@@ -2153,6 +2170,14 @@ static bool compiler_cache_touch(const char *kind, uint64_t key) {
   return hit;
 }
 
+static void touch_program_graph_compiler_caches(SourceInput *input, const ZTargetInfo *target, const char *profile, const char *graph_hash) {
+  if (!input || !graph_hash || !graph_hash[0]) return;
+  input->parse_cache_hit = compiler_cache_touch("parse-tree", graph_compile_cache_key(input, NULL, NULL, "parse-tree", graph_hash));
+  input->interface_cache_hit = compiler_cache_touch("interface", graph_interface_cache_key(input, graph_hash));
+  input->check_cache_hit = compiler_cache_touch("checked-body", graph_compile_cache_key(input, target, NULL, "checked-body", graph_hash));
+  input->specialization_cache_hit = compiler_cache_touch("specialization", graph_compile_cache_key(input, target, profile ? profile : "release", "specialization", graph_hash));
+}
+
 static void append_compiler_phases_json(ZBuf *buf, const SourceInput *input) {
   zbuf_append(buf, "[");
 #define APPEND_PHASE(name, field, cacheable) do { \
@@ -2174,12 +2199,20 @@ static void append_compiler_phases_json(ZBuf *buf, const SourceInput *input) {
 }
 
 static void append_compiler_caches_json_ex(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *source_kind, const char *graph_hash) {
-  uint64_t parse_key = compile_cache_key(input, NULL, NULL, "parse-tree");
   bool graph_input = source_kind && strcmp(source_kind, "program-graph") == 0;
+  uint64_t parse_key = graph_input
+    ? graph_compile_cache_key(input, NULL, NULL, "parse-tree", graph_hash)
+    : compile_cache_key(input, NULL, NULL, "parse-tree");
   uint64_t interface_key = graph_input ? graph_interface_cache_key(input, graph_hash) : source_interface_hash(input);
-  uint64_t check_key = compile_cache_key(input, target, NULL, "checked-body");
-  uint64_t specialization_key = compile_cache_key(input, target, profile, "specialization");
-  uint64_t object_key = compile_cache_key(input, target, profile, "emitted-object");
+  uint64_t check_key = graph_input
+    ? graph_compile_cache_key(input, target, NULL, "checked-body", graph_hash)
+    : compile_cache_key(input, target, NULL, "checked-body");
+  uint64_t specialization_key = graph_input
+    ? graph_compile_cache_key(input, target, profile, "specialization", graph_hash)
+    : compile_cache_key(input, target, profile, "specialization");
+  uint64_t object_key = graph_input
+    ? graph_compile_cache_key(input, target, profile, "emitted-object", graph_hash)
+    : compile_cache_key(input, target, profile, "emitted-object");
   zbuf_append(buf, "[");
 #define APPEND_CACHE(label, key, hit, invalidates) do { \
     if (wrote) zbuf_append(buf, ", "); \
@@ -6233,6 +6266,7 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
   CapabilitySummary caps = program_capabilities(program);
   HelperUseSummary used_helpers = program_used_helpers(program);
   MemoryModelSummary memory_summary = memory_model_summary_from_program(program, target);
+  bool graph_input = command && z_program_graph_artifact_source_present(&command->graph_source);
   bool uses_allocator = (input && input->direct_allocator_helper_count > 0) || memory_summary_uses_allocator(&memory_summary);
   bool uses_buffers = (input && input->direct_buffer_helper_count > 0) || memory_summary_uses_collections(&memory_summary);
   bool linear_memory = input && (input->direct_stack_bytes > 0 ||
@@ -6245,6 +6279,7 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
                   uses_buffers;
   zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
   append_json_string(buf, input ? input->source_file : NULL);
+  if (command) append_program_graph_artifact_source_json(buf, &command->graph_source);
   zbuf_append(buf, ",\n  \"target\": ");
   append_json_string(buf, target ? target->name : "host");
   zbuf_append(buf, ",\n  \"hostTarget\": ");
@@ -6306,9 +6341,11 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
   zbuf_append(buf, "},\n  \"compilerPhases\": ");
   append_compiler_phases_json(buf, input);
   zbuf_append(buf, ",\n  \"compilerCaches\": ");
-  append_compiler_caches_json(buf, input, target, command ? command->profile : "release");
+  if (graph_input) append_compiler_caches_json_ex(buf, input, target, command ? command->profile : "release", "program-graph", command->graph_source.graph_hash);
+  else append_compiler_caches_json(buf, input, target, command ? command->profile : "release");
   zbuf_append(buf, ",\n  \"incrementalInvalidation\": ");
-  append_incremental_invalidations_json(buf, input, target, command ? command->profile : "release");
+  if (graph_input) append_incremental_invalidations_json_ex(buf, input, target, command ? command->profile : "release", command->graph_source.artifact, command->graph_source.graph_hash, command->graph_source.lowering);
+  else append_incremental_invalidations_json(buf, input, target, command ? command->profile : "release");
   zbuf_append(buf, "\n}\n");
   helper_summary_free(&used_helpers);
 }
@@ -9150,7 +9187,7 @@ static bool write_size_metadata_artifact(const Command *command, SourceInput *in
   zbuf_appendf(&artifact, ",\n  \"generatedCBytes\": 0,\n  \"loweredIrBytes\": %zu\n}\n", input ? input->lowered_ir_bytes : 0);
 
   long long phase_started = now_ms();
-  if (input) input->emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(input, target, command->profile, llvm_report ? "llvm-size-metadata" : "direct-size-metadata"));
+  if (input) input->emitted_object_cache_hit = compiler_cache_touch("emitted-object", command_compile_cache_key(command, input, target, command ? command->profile : "release", llvm_report ? "llvm-size-metadata" : "direct-size-metadata"));
   bool wrote = z_write_file(path, artifact.data, diag);
   if (input) { input->object_ms = now_ms() - phase_started; input->link_ms = 0; }
   if (wrote && artifact_bytes) *artifact_bytes = file_size_or_negative(path);
@@ -12001,7 +12038,7 @@ static int run_llvm_native_artifact_command(const Command *command, SourceInput 
   ZToolchainPlan llvm_toolchain = z_llvm_c_toolchain_plan(target);
 
   phase_started = now_ms();
-  input->emitted_object_cache_hit = compiler_cache_touch("emitted-llvm-native", compile_cache_key(input, target, command->profile, "llvm-clang-exe"));
+  input->emitted_object_cache_hit = compiler_cache_touch("emitted-llvm-native", command_compile_cache_key(command, input, target, command->profile, "llvm-clang-exe"));
   bool wrote_llvm_ir = z_write_file(llvm_file, llvm_ir.data ? llvm_ir.data : "", &diag);
   if (wrote_llvm_ir && links_zero_runtime) wrote_llvm_ir = compile_zero_runtime_object(runtime_object_file, &llvm_toolchain, command, target, true, &diag);
   input->object_ms = now_ms() - phase_started;
@@ -12380,10 +12417,7 @@ int main(int argc, char **argv) {
       free_loaded_command_state(&input, &program, &graph_prepared_ir);
       return 1;
     }
-    input.parse_cache_hit = compiler_cache_touch("parse-tree", compile_cache_key(&input, NULL, NULL, "parse-tree"));
-    input.interface_cache_hit = compiler_cache_touch("interface", graph_interface_cache_key(&input, graph_source.graph_hash));
-    input.check_cache_hit = compiler_cache_touch("checked-body", compile_cache_key(&input, target, NULL, "checked-body"));
-    input.specialization_cache_hit = compiler_cache_touch("specialization", compile_cache_key(&input, target, command.profile, "specialization"));
+    touch_program_graph_compiler_caches(&input, target, command.profile, graph_source.graph_hash);
     command.graph_source = graph_source;
     if (!direct_graph_manifest_command && !direct_graph_source_command) {
       command.command = graph_run_command ? "run" : (graph_test_command ? "test" : "build");
@@ -12433,7 +12467,33 @@ int main(int argc, char **argv) {
     free_loaded_command_state(&input, &program, &graph_prepared_ir);
     return 1;
   }
-
+  if (!is_graph_command &&
+      !direct_graph_manifest_command &&
+      !direct_graph_source_command &&
+      !graph_build_command &&
+      !graph_run_command &&
+      !graph_test_command &&
+      z_program_graph_source_command_uses_graph_mir(command.command)) {
+    long long graph_lower_started = now_ms();
+    bool graph_prepared = z_program_graph_prepare_source_mir_input(
+      command.input,
+      target,
+      &program,
+      &input,
+      &graph_prepared_ir,
+      &command.graph_source,
+      &diag
+    );
+    if (!graph_prepared) {
+      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      else print_diag(diag.path ? diag.path : command.input, &diag);
+      free_loaded_command_state(&input, &program, &graph_prepared_ir);
+      return 1;
+    }
+    input.lower_ms = now_ms() - graph_lower_started;
+    apply_ir_metrics_to_input(&input, &graph_prepared_ir, target);
+    touch_program_graph_compiler_caches(&input, target, command.profile, command.graph_source.graph_hash);
+  }
   if (strcmp(command.command, "fix") == 0) {
     if (command.apply || command.patch) print_or_apply_fix_json(input.source_file, &input, NULL, command.apply);
     else print_fix_plan_json(input.source_file, NULL);
@@ -12444,7 +12504,7 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "check") == 0) {
     if (command.json) print_check_json_success(input.source_file, &input, &program, target, &command);
     else printf("ok\n");
-    free_loaded_command_state(&input, &program, NULL);
+    free_loaded_command_state(&input, &program, &graph_prepared_ir);
     return 0;
   }
 
@@ -12516,7 +12576,7 @@ int main(int argc, char **argv) {
       return rc;
     }
     int rc = run_tests_direct(&command, &input, &program, target);
-    free_loaded_command_state(&input, &program, NULL);
+    free_loaded_command_state(&input, &program, &graph_prepared_ir);
     return rc;
   }
 
@@ -12588,7 +12648,7 @@ int main(int argc, char **argv) {
     char *llvm_file = command.out ? base_llvm_file : path_with_suffix(base_llvm_file, ".ll");
     if (!command.out) free(base_llvm_file);
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-llvm-ir", compile_cache_key(&input, target, command.profile, "llvm-ir"));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-llvm-ir", command_compile_cache_key(&command, &input, target, command.profile, "llvm-ir"));
     bool wrote_llvm_ir = z_write_file(llvm_file, llvm_ir.data ? llvm_ir.data : "", &diag);
     input.object_ms = now_ms() - phase_started;
     input.link_ms = 0;
@@ -12655,7 +12715,7 @@ int main(int argc, char **argv) {
     char *base_object_file = command.out ? z_strdup(command.out) : z_default_out_path(input.source_file);
     char *object_file = base_object_file;
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, direct_obj.artifact_path));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", command_compile_cache_key(&command, &input, target, command.profile, direct_obj.artifact_path));
     bool wrote_object = z_write_binary_file(object_file, (const unsigned char *)object.data, object.len, &diag);
     input.object_ms = now_ms() - phase_started;
     input.link_ms = 0;
@@ -12734,7 +12794,7 @@ int main(int argc, char **argv) {
     ZToolchainPlan runtime_toolchain = z_plan_toolchain(command.cc, command.profile, target);
 
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, needs_zero_runtime ? runtime_object.cache_key : direct_obj.artifact_path));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", command_compile_cache_key(&command, &input, target, command.profile, needs_zero_runtime ? runtime_object.cache_key : direct_obj.artifact_path));
     bool wrote_object = z_write_binary_file(object_file, (const unsigned char *)object.data, object.len, &diag);
     if (wrote_object && needs_zero_runtime) wrote_object = compile_zero_runtime_object(runtime_object_file, &runtime_toolchain, &command, target, false, &diag);
     if (wrote_object && needs_http_runtime) wrote_object = compile_zero_http_curl_object(http_object_file, &runtime_toolchain, &command, target, &diag);
@@ -12839,7 +12899,7 @@ int main(int argc, char **argv) {
     char *exe_file = apply_target_suffix(base_exe_file, target);
     free(base_exe_file);
     phase_started = now_ms();
-    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", compile_cache_key(&input, target, command.profile, direct_exe.artifact_path));
+    input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", command_compile_cache_key(&command, &input, target, command.profile, direct_exe.artifact_path));
     bool wrote_exe = z_write_binary_file(exe_file, (const unsigned char *)exe.data, exe.len, &diag);
     if (wrote_exe) chmod(exe_file, 0755);
     input.object_ms = now_ms() - phase_started;

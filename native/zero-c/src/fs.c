@@ -998,6 +998,8 @@ void z_free_source(SourceInput *input) {
   free(input->package_name);
   free(input->package_version);
   free(input->lockfile_path);
+  free(input->program_graph_hash);
+  free(input->program_graph_module_identity);
   for (size_t i = 0; i < input->source_file_count; i++) free(input->source_files[i]);
   for (size_t i = 0; i < input->source_line_count; i++) free(input->source_line_paths[i]);
   for (size_t i = 0; i < input->import_count; i++) free(input->imports[i]);

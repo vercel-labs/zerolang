@@ -25,10 +25,14 @@ bool z_program_graph_prepare_artifact_input(const char *artifact_path, const ZTa
   }
 
   z_program_graph_seed_source_metadata(input, &graph);
+  if (input) {
+    input->program_graph_hash = z_strdup(graph.graph_hash ? graph.graph_hash : "");
+    input->program_graph_module_identity = z_strdup(graph.module_identity ? graph.module_identity : "");
+  }
   if (source) {
     source->artifact = artifact_path;
-    source->graph_hash = z_strdup(graph.graph_hash ? graph.graph_hash : "");
-    source->module_identity = z_strdup(graph.module_identity ? graph.module_identity : "");
+    source->graph_hash = input ? input->program_graph_hash : "";
+    source->module_identity = input ? input->program_graph_module_identity : "";
     source->lowering = "direct-program-graph";
     source->canonical_source = graph.canonical_source;
   }

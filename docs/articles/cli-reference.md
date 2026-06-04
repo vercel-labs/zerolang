@@ -76,7 +76,7 @@ another tool needs stable fields.
 
 | Command | Useful JSON fields |
 | --- | --- |
-| `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, `targetReadiness`, and `safetyFacts` for the selected target/emit kind. |
+| `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, `graph` identity for canonical source, `targetReadiness`, and `safetyFacts` for the selected target/emit kind. |
 | `zero graph --json` | Modules, public symbols, capabilities, static facts, safety facts, helper use, and nested `programGraph`. |
 | `zero graph dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <program-graph-artifact>` to also write a derived graph artifact. |
 | `zero graph import --json` | Source-to-ProgramGraph import with graph identity and validation. With `--out <program-graph-artifact>`, writes a derived graph artifact and reports `saved.path`. |
@@ -92,10 +92,21 @@ another tool needs stable fields.
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
 | `zero dev --json --trace` | Adds phase timing, cache hit/miss facts, diagnostics passthrough, and `interfaceFingerprints`. |
 | `zero time --json` | Compiler phase timing plus `interfaceFingerprints` and incremental invalidation facts. |
-| `zero build --json` | Artifact path, size, selected `toolchain`, target triple, linker flavor, sysroot status, `safetyFacts`, and runtime provider facts when a helper such as hosted HTTP is linked. |
-| `zero size --json` | `profileSemantics`, `profileCatalog`, `profileBudget`, `safetyFacts`, `backendProfile`, `backendComparison`, `sizeBreakdown`, `retentionReasons`, and `optimizationHints`. |
-| `zero ship --json` | A release preview with artifact names, hashes, safety facts, a checksum file, debug-symbol metadata, size report, and SBOM placeholder. |
+| `zero build --json` | Artifact path, size, selected `toolchain`, target triple, linker flavor, sysroot status, `graph` identity, `safetyFacts`, and runtime provider facts when a helper such as hosted HTTP is linked. |
+| `zero size --json` | `graph` identity, `profileSemantics`, `profileCatalog`, `profileBudget`, `safetyFacts`, `backendProfile`, `backendComparison`, `sizeBreakdown`, `retentionReasons`, and `optimizationHints`. |
+| `zero ship --json` | A release preview with artifact names, hashes, graph identity, safety facts, a checksum file, debug-symbol metadata, size report, and SBOM placeholder. |
+| `zero test --json` | Graph identity for canonical source, test discovery mode, selected fixtures, result counts, output, and per-test locations/failures. |
 | `zero doctor --json` | Host checks plus `targetToolchains`, the per-target readiness matrix. |
+
+Canonical `.0` source JSON for `zero check`, `zero build`, `zero size`,
+`zero ship`, `zero mem`, and `zero test` reports a top-level `graph` object
+with `artifact`, `canonicalSource`, `moduleIdentity`, `graphHash`, and
+`lowering`. Their compiler cache and incremental invalidation facts use
+`sourceKind: "program-graph"` and include the graph input that keyed the
+compile. Planning and introspection commands such as `zero dev`, `zero time`,
+`zero doc`, and `zero abi` continue to report canonical source cache facts.
+Derived ProgramGraph artifact commands report the same identity fields for the
+artifact being inspected or built.
 
 `zero check --json` and `zero graph --json` also include `compileTime`.
 That object records bounded `meta` evaluation, sandbox denials, cache key

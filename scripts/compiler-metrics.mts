@@ -18,7 +18,7 @@ const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 990, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 11710, maxStrcmpCalls: 287 },
-  "native/zero-c/src/main.c": { maxLines: 12920, maxStrcmpCalls: 473 },
+  "native/zero-c/src/main.c": { maxLines: 12970, maxStrcmpCalls: 473 },
   "native/zero-c/src/ir.c": { maxLines: 4212, maxStrcmpCalls: 229 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
@@ -69,21 +69,22 @@ const fileBudgets = {
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_build.c": { maxLines: 60, maxStrcmpCalls: 8 },
-  "native/zero-c/src/program_graph_build.h": { maxLines: 19, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_build.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_command.c": { maxLines: 120, maxStrcmpCalls: 2 },
   "native/zero-c/src/program_graph_command.h": { maxLines: 25, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_compile.c": { maxLines: 95, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_compare.c": { maxLines: 560, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_compare.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_format.c": { maxLines: 850, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_format.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.h": { maxLines: 135, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_identity.c": { maxLines: 416, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_identity.c": { maxLines: 500, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_import.c": { maxLines: 496, maxStrcmpCalls: 4 },
   "native/zero-c/src/program_graph_import.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_lower.c": { maxLines: 1170, maxStrcmpCalls: 4 },
   "native/zero-c/src/program_graph_lower.h": { maxLines: 10, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 1200, maxStrcmpCalls: 3 },
-  "native/zero-c/src/program_graph_node_id.c": { maxLines: 320, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 1204, maxStrcmpCalls: 3 },
+  "native/zero-c/src/program_graph_node_id.c": { maxLines: 350, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_validate.c": { maxLines: 537, maxStrcmpCalls: 5 },
   "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 715, maxStrcmpCalls: 11 },
   "native/zero-c/src/program_graph_patch.c": { maxLines: 591, maxStrcmpCalls: 28 },
@@ -849,6 +850,15 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       programGraph,
     });
   }
+  if (!programGraph.sourceCommandGraphMirPrep ||
+      !programGraph.sourceCommandGraphAvoidsProgramPrep ||
+      !programGraph.sourceCommandGraphBoundedMirProbe ||
+      !programGraph.sourceCommandGraphMirPredicate) {
+    violations.push({
+      kind: "program-graph-source-command-compiler-path",
+      programGraph,
+    });
+  }
   if (!backendFormats.directTarget.ruleMatrix ||
       !backendFormats.directTarget.executableUsesRuleMatrix ||
       !backendFormats.directTarget.descriptorTable ||
@@ -1141,6 +1151,7 @@ const coffX64Source = cCodeText(texts.get("native/zero-c/src/emit_coff.c") ?? ""
 const coffAarch64Source = cCodeText(texts.get("native/zero-c/src/emit_coff_aarch64.c") ?? "");
 const machoArm64Source = cCodeText(texts.get("native/zero-c/src/emit_macho64.c") ?? "");
 const machoX64Source = cCodeText(texts.get("native/zero-c/src/emit_macho_x64.c") ?? "");
+const programGraphCompileSource = cCodeText(texts.get("native/zero-c/src/program_graph_compile.c") ?? "");
 const rawX64RegisterImmediateOpcode = /\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0xb[8-9a-f]\s*\)/i;
 const rawX64RegisterImmediateC7 = /(?:\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x4[0-9a-f]\s*\)\s*;\s*)?\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0xc7\s*\)\s*;\s*\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0xc[0-7]\s*\)\s*;\s*\bz_x64_append_u32\s*\(/is;
 const rawX64RegisterImmediateHelperPrefix = /\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0x4[0-9a-f]\s*\)\s*;\s*\bz_x64_emit_mov_eax_u32\s*\(/is;
@@ -1521,6 +1532,11 @@ const programGraph = {
     cCodeText(main),
     /\bz_write_file\s*\(\s*command->out\s*,\s*graph\.data/g,
   ),
+  sourceCommandGraphMirPrep: /z_program_graph_prepare_source_mir_input\s*\(/.test(cCodeText(cBlock(main, "int main(int argc, char **argv)"))),
+  sourceCommandGraphAvoidsProgramPrep: !/z_program_graph_lower_to_program_with_source\s*\(/.test(programGraphCompileSource) &&
+    !/\*\s*program\s*=\s*graph_program\s*;/.test(programGraphCompileSource),
+  sourceCommandGraphBoundedMirProbe: /graph_compile_should_try_typed_mir\s*\(/.test(programGraphCompileSource),
+  sourceCommandGraphMirPredicate: /z_program_graph_source_command_uses_graph_mir\s*\(/.test(programGraphCompileSource),
 };
 const violations = budgetViolations(files, allLargeFunctions, stdlib, backendFormats, programGraph);
 

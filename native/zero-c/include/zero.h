@@ -649,6 +649,8 @@ typedef struct {
   char *package_name;
   char *package_version;
   char *lockfile_path;
+  char *program_graph_hash;
+  char *program_graph_module_identity;
   unsigned long long manifest_hash;
   unsigned long long dependency_graph_hash;
   unsigned long long lockfile_hash;

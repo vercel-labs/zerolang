@@ -9,6 +9,8 @@ const execMaxBuffer = 16 * 1024 * 1024;
 const zero = "bin/zero";
 const outDir = `/tmp/zero-program-graph-parity-${process.pid}`;
 const requireStableNodeIds = process.argv.includes("--require-stable-node-ids");
+const graphHashPrime = 1099511628211n;
+const graphHashMask = (1n << 64n) - 1n;
 
 function firstDiagnosticCode(diagnostics) {
   return Array.isArray(diagnostics) && diagnostics.length > 0 ? diagnostics[0].code ?? null : null;
@@ -63,6 +65,20 @@ function buildSummary(result) {
   };
 }
 
+function assertSourceGraphRoute(result, fixture, lowering = "typed-program-graph-mir") {
+  assert(result.graph, `${fixture}: source command should report graph compiler input`);
+  assert.equal(result.graph.artifact, fixture, `${fixture}: source graph artifact should be the source input`);
+  assert.equal(result.graph.canonicalSource, true, `${fixture}: source graph should report canonical source`);
+  assert.match(result.graph.graphHash, /^graph:[0-9a-f]{16}$/, `${fixture}: source graph hash`);
+  assert.equal(result.graph.lowering, lowering, `${fixture}: source graph lowering`);
+}
+
+function compilerCacheKey(result, name) {
+  const cache = result.compilerCaches?.find((item) => item.name === name);
+  assert(cache, `missing compiler cache ${name}`);
+  return cache.key;
+}
+
 function testSummary(result) {
   return {
     ok: result.ok,
@@ -104,6 +120,234 @@ function resolutionBindings(graph) {
 
 function hasIncomingGraphEdge(graph, nodeId, kind, order = null) {
   return graph.edges.some((edge) => edge.target === "node" && edge.to === nodeId && edge.kind === kind && (order === null || edge.order === order));
+}
+
+function graphHashText(hash, text = "") {
+  for (const byte of Buffer.from(text ?? "")) {
+    hash ^= BigInt(byte);
+    hash = (hash * graphHashPrime) & graphHashMask;
+  }
+  hash ^= 0xffn;
+  return (hash * graphHashPrime) & graphHashMask;
+}
+
+function graphHashU64(hash, value) {
+  let item = BigInt(value ?? 0);
+  for (let i = 0n; i < 8n; i++) {
+    hash ^= (item >> (i * 8n)) & 0xffn;
+    hash = (hash * graphHashPrime) & graphHashMask;
+  }
+  return hash;
+}
+
+function graphDomainId(domain, hash) {
+  return `${domain}:${hash.toString(16).padStart(16, "0")}`;
+}
+
+function graphSymbolComponent(text) {
+  let out = "";
+  for (const ch of text ?? "") {
+    const code = ch.charCodeAt(0);
+    const allowed = (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      ch === "." || ch === "_" || ch === "-" || ch === "@" || ch === "/";
+    out += allowed ? ch : "_";
+  }
+  return out || "main";
+}
+
+function graphIdentityName(identity) {
+  if (!identity) return "main";
+  if (identity.startsWith("module:")) return identity.slice("module:".length);
+  if (identity.startsWith("package:")) return identity.slice("package:".length);
+  return identity;
+}
+
+function graphStorageModuleName(identity) {
+  if (!identity) return "main";
+  return identity.startsWith("module:") ? identity.slice("module:".length) : identity;
+}
+
+function graphModuleScopeName(graph, module) {
+  const identity = graph.moduleIdentity ?? "module:main";
+  const moduleName = module?.name || graphIdentityName(identity);
+  if (identity.startsWith("package:")) return `${graphSymbolComponent(graphIdentityName(identity))}/${graphSymbolComponent(moduleName)}`;
+  return graphSymbolComponent(moduleName);
+}
+
+const graphSymbolNodeKinds = new Set([
+  "Module",
+  "Const",
+  "CImport",
+  "TypeAlias",
+  "Shape",
+  "Interface",
+  "Enum",
+  "Choice",
+  "Function",
+  "Param",
+  "Field",
+  "EnumCase",
+  "ChoiceCase",
+  "Let",
+  "ErrorVariant",
+]);
+
+const graphOwnerEdgeKinds = new Set([
+  "alias", "arg", "arm", "body", "cImport", "case", "choice", "const", "constraint", "declaredType", "default",
+  "effect", "else", "enum", "error", "expr", "field", "function", "guard", "import", "interface", "left",
+  "method", "param", "rangeEnd", "returnType", "right", "shape", "statement", "target", "then", "type",
+  "typeArg", "typeParam", "value", "variant",
+]);
+
+function graphNodeDeclaresSymbol(node) {
+  return Boolean(node?.name) && graphSymbolNodeKinds.has(node.kind);
+}
+
+function graphNodeSymbolNamespace(node, ownerEdge) {
+  if (node.kind === "Module") return "module";
+  if (node.kind === "Import") return "import";
+  if (node.kind === "CImport") return "c-import";
+  if (node.kind === "Const") return "value";
+  if (node.kind === "Function") return ownerEdge?.kind === "method" ? "method" : "value";
+  if (["TypeAlias", "Shape", "Interface", "Enum", "Choice"].includes(node.kind)) return "type";
+  if (node.kind === "Param") return "param";
+  if (node.kind === "Field") return "field";
+  if (["EnumCase", "ChoiceCase", "ErrorVariant"].includes(node.kind)) return "variant";
+  if (node.kind === "Let") return "local";
+  return null;
+}
+
+function graphSymbolName(node) {
+  if (!node) return "";
+  if (node.kind !== "Import") return node.name ?? "";
+  if (node.value) return node.value;
+  const lastDot = (node.name ?? "").lastIndexOf(".");
+  return lastDot >= 0 ? node.name.slice(lastDot + 1) : node.name ?? "";
+}
+
+function graphOwnerEdgeByNode(graph) {
+  const nodeIndex = new Map<string, number>(graph.nodes.map((node, index) => [node.id, index] as [string, number]));
+  const ownerEdges = Array(graph.nodes.length).fill(null);
+  for (const edge of graph.edges) {
+    if ((edge.target ?? "node") !== "node" || !graphOwnerEdgeKinds.has(edge.kind)) continue;
+    const target = nodeIndex.get(edge.to);
+    if (target !== undefined && !ownerEdges[target]) ownerEdges[target] = edge;
+  }
+  return ownerEdges;
+}
+
+function graphSymbolOwnerIndex(graph, ownerEdges, nodeIndex) {
+  const ids = new Map<string, number>(graph.nodes.map((node, index) => [node.id, index] as [string, number]));
+  let current = nodeIndex;
+  for (let depth = 0; depth < graph.nodes.length; depth++) {
+    const edge = ownerEdges[current];
+    if (!edge) break;
+    const ownerIndex = ids.get(edge.from);
+    if (ownerIndex === undefined) break;
+    const owner = graph.nodes[ownerIndex];
+    if (owner.kind === "Module" || graphNodeDeclaresSymbol(owner)) return ownerIndex;
+    current = ownerIndex;
+  }
+  return null;
+}
+
+function graphNodeSymbolId(graph, ownerEdges, nodeIndex, memo = new Map(), depth = 0) {
+  if (memo.has(nodeIndex)) return memo.get(nodeIndex);
+  if (depth > graph.nodes.length) return "";
+  const node = graph.nodes[nodeIndex];
+  if (!graphNodeDeclaresSymbol(node)) return "";
+  const name = graphSymbolName(node);
+  if (!name) return "";
+  if (node.kind === "Module") {
+    const symbol = `symbol:${graphModuleScopeName(graph, node)}::module`;
+    memo.set(nodeIndex, symbol);
+    return symbol;
+  }
+  const ownerEdge = ownerEdges[nodeIndex];
+  const ownerIndex = graphSymbolOwnerIndex(graph, ownerEdges, nodeIndex);
+  const namespace = graphNodeSymbolNamespace(node, ownerEdge);
+  if (!namespace) return "";
+  let prefix = "";
+  if (ownerIndex !== null && graph.nodes[ownerIndex].kind === "Module") {
+    prefix = `symbol:${graphModuleScopeName(graph, graph.nodes[ownerIndex])}::`;
+  } else if (ownerIndex !== null) {
+    prefix = `${graphNodeSymbolId(graph, ownerEdges, ownerIndex, memo, depth + 1)}/`;
+  } else {
+    prefix = `symbol:${graphSymbolComponent(graphIdentityName(graph.moduleIdentity))}::`;
+  }
+  let symbol = `${prefix}${graphSymbolComponent(namespace)}.${graphSymbolComponent(name)}`;
+  if (node.kind === "Let") symbol += `@${graphSymbolComponent(node.id.split(".").at(-1) ?? node.id)}`;
+  memo.set(nodeIndex, symbol);
+  return symbol;
+}
+
+function graphNodeHash(node) {
+  let hash = 1469598103934665603n;
+  for (const item of [node.kind, node.name, node.type, node.value]) hash = graphHashText(hash, item ?? "");
+  for (const item of [node.public, node.mutable, node.static, node.fallible, node.exportC]) hash = graphHashU64(hash, item ? 1 : 0);
+  return graphDomainId("nodehash", hash);
+}
+
+function graphTypeId(node) {
+  return node.type ? graphDomainId("type", graphHashText(1469598103934665603n, node.type)) : "";
+}
+
+function graphEffectId(node) {
+  return node.kind === "EffectRef" && node.name ? graphDomainId("effect", graphHashText(1469598103934665603n, node.name)) : "";
+}
+
+function finalizeGraphIdentities(graph) {
+  const ownerEdges = graphOwnerEdgeByNode(graph);
+  const symbolMemo = new Map();
+  let graphHash = graphHashU64(1469598103934665603n, graph.schemaVersion ?? 1);
+  graphHash = graphHashText(graphHash, graph.moduleIdentity ?? "");
+  for (let index = 0; index < graph.nodes.length; index++) {
+    const node = graph.nodes[index];
+    node.symbolId = graphNodeSymbolId(graph, ownerEdges, index, symbolMemo);
+    node.typeId = graphTypeId(node);
+    node.effectId = graphEffectId(node);
+    node.nodeHash = graphNodeHash(node);
+    for (const item of [node.id, node.nodeHash, node.symbolId, node.typeId, node.effectId]) graphHash = graphHashText(graphHash, item ?? "");
+  }
+  for (const edge of graph.edges) {
+    for (const item of [edge.from, edge.to, edge.kind, edge.target ?? "node"]) graphHash = graphHashText(graphHash, item ?? "");
+    graphHash = graphHashU64(graphHash, edge.order ?? 0);
+  }
+  graph.graphHash = graphDomainId("graph", graphHash);
+  return graph;
+}
+
+function graphDumpQuote(text) {
+  return JSON.stringify(text ?? "");
+}
+
+function graphNodeDumpLine(node) {
+  const parts = [`node ${node.id} ${node.kind}`];
+  for (const field of ["name", "type", "value", "path"]) {
+    if (node[field]) parts.push(`${field}:${graphDumpQuote(node[field])}`);
+  }
+  if (node.line > 0) parts.push(`line:${node.line}`);
+  if (node.column > 0) parts.push(`column:${node.column}`);
+  for (const [field, label] of [["public", "public"], ["mutable", "mutable"], ["static", "static"], ["fallible", "fallible"], ["exportC", "exportC"]]) {
+    if (node[field]) parts.push(`${label}:true`);
+  }
+  return parts.join(" ");
+}
+
+function graphDumpText(graph) {
+  const lines = [
+    "zero-graph v1",
+    "origin source-text",
+    `module ${graphDumpQuote(graphStorageModuleName(graph.moduleIdentity))}`,
+    `hash ${graphDumpQuote(graph.graphHash)}`,
+    "",
+    ...graph.nodes.map(graphNodeDumpLine),
+    ...graph.edges.map((edge) => `edge ${edge.from} ${edge.kind} ${edge.to} target:${edge.target ?? "node"} order:${edge.order ?? 0}`),
+    "",
+  ];
+  return lines.join("\n");
 }
 
 async function assertCheckParity(fixture) {
@@ -672,6 +916,114 @@ async function assertTestParity(fixture, name) {
   assert.deepEqual(testSummary(graph), testSummary(source), `${fixture}: source and graph test summaries should agree`);
 }
 
+async function assertSourceCommandGraphCompilerPath() {
+  const helloCheck = await zeroJson(["check", "--json", "examples/hello.0"]);
+  assertSourceGraphRoute(helloCheck, "examples/hello.0");
+  assert.equal(helloCheck.compilerCaches[0].sourceKind, "program-graph", "source check should use graph cache identity");
+  assert.deepEqual(targetReadinessSummary(helloCheck.targetReadiness), {
+    languageOk: true,
+    buildable: true,
+    stage: "ready",
+    code: null,
+  }, "source check target readiness");
+
+  const stdPathCheck = await zeroJson(["check", "--json", "std/path.0"]);
+  assertSourceGraphRoute(stdPathCheck, "std/path.0", "program-graph-ast-mir");
+  assert.equal(stdPathCheck.ok, true, "stdlib source check should preserve library entrypoint rules");
+  assert.equal(stdPathCheck.compilerCaches[0].sourceKind, "program-graph", "stdlib source check should use graph cache identity");
+
+  const helloBuildOut = `${outDir}/source-command-graph-build`;
+  const helloBuild = await zeroJson(["build", "--json", "--target", "linux-musl-x64", "--out", helloBuildOut, "examples/hello.0"]);
+  assertSourceGraphRoute(helloBuild, "examples/hello.0");
+  assert.equal(helloBuild.generatedCBytes, 0, "source build should stay on direct backend");
+  assert.equal(helloBuild.compilerCaches[0].sourceKind, "program-graph", "source build should use graph cache identity");
+  assert.equal(helloBuild.incrementalInvalidation.sourceKind, "program-graph", "source build invalidation source kind");
+  assert.equal(helloBuild.incrementalInvalidation.graphInput.artifact, "examples/hello.0", "source build graph input");
+  assert(helloBuild.artifactBytes > 0, "source build should write an artifact");
+
+  const helloSize = await zeroJson(["size", "--json", "--target", "linux-musl-x64", "examples/hello.0"]);
+  assertSourceGraphRoute(helloSize, "examples/hello.0");
+  assert.equal(helloSize.generatedCBytes, 0, "source size should stay on direct backend");
+  assert.equal(helloSize.cBridgeFallback, false, "source size should not use C bridge fallback");
+  assert.equal(helloSize.compilerCaches[0].sourceKind, "program-graph", "source size should use graph cache identity");
+
+  const helloArtifact = await dumpGraphArtifact("examples/hello.0", "source-command-cache-key");
+  const helloGraphSize = await zeroJson(["graph", "size", "--json", "--target", "linux-musl-x64", helloArtifact]);
+  assert.equal(compilerCacheKey(helloSize, "parseTree"), compilerCacheKey(helloGraphSize, "parseTree"), "source size and graph artifact size should share graph parse cache key");
+  assert.equal(compilerCacheKey(helloSize, "checkedBody"), compilerCacheKey(helloGraphSize, "checkedBody"), "source size and graph artifact size should share graph check cache key");
+
+  const helloMem = await zeroJson(["mem", "--json", "examples/hello.0"]);
+  assertSourceGraphRoute(helloMem, "examples/hello.0");
+  assert.equal(helloMem.compilerCaches[0].sourceKind, "program-graph", "source mem should use graph cache identity");
+  assert.equal(helloMem.incrementalInvalidation.sourceKind, "program-graph", "source mem invalidation source kind");
+
+  const packageCheck = await zeroJson(["check", "--json", "conformance/packages/test-app"]);
+  assertSourceGraphRoute(packageCheck, "conformance/packages/test-app/src/main.0");
+  assert.equal(packageCheck.graph.moduleIdentity, "package:test-app@0.1.0", "source package graph identity");
+  assert.equal(packageCheck.package.name, "test-app", "source package metadata");
+
+  const packageTest = await zeroJson(["test", "--json", "conformance/packages/test-app"]);
+  assertSourceGraphRoute(packageTest, "conformance/packages/test-app/src/main.0");
+  assert.equal(packageTest.testBackend, "direct-frontend", "source graph test backend");
+  assert.equal(packageTest.testDiscovery.mode, "package-graph", "source package tests should report graph discovery");
+  assert.equal(packageTest.generatedCBytes, 0, "source graph tests should not use generated C");
+  assert.equal(packageTest.cBridgeFallback, false, "source graph tests should not use C bridge fallback");
+}
+
+async function assertPatchRecomputesNestedSymbolOwners() {
+  const graphPath = `${outDir}/reordered-owner.program-graph`;
+  const patchPath = `${outDir}/reordered-owner.patch`;
+  const patchedPath = `${outDir}/reordered-owner.patched.program-graph`;
+  const baseNode = {
+    value: "",
+    path: `${outDir}/reordered-owner.0`,
+    line: 1,
+    column: 1,
+    public: false,
+    mutable: false,
+    static: false,
+    fallible: false,
+    exportC: false,
+  };
+  const graph = finalizeGraphIdentities({
+    schemaVersion: 1,
+    moduleIdentity: "module:hello",
+    nodes: [
+      { ...baseNode, id: "#param_p", kind: "Param", name: "world", type: "World", column: 13 },
+      { ...baseNode, id: "#type_w", kind: "TypeRef", name: "", type: "World", column: 20 },
+      { ...baseNode, id: "#type_v", kind: "TypeRef", name: "", type: "Void", column: 30 },
+      { ...baseNode, id: "#block_b", kind: "Block", name: "body", type: "" },
+      { ...baseNode, id: "#mod_m", kind: "Module", name: "hello", type: "" },
+      { ...baseNode, id: "#decl_f", kind: "Function", name: "main", type: "Void", public: true },
+    ],
+    edges: [
+      { from: "#decl_f", kind: "param", to: "#param_p", target: "node", order: 0 },
+      { from: "#param_p", kind: "type", to: "#type_w", target: "node", order: 0 },
+      { from: "#decl_f", kind: "returnType", to: "#type_v", target: "node", order: 0 },
+      { from: "#decl_f", kind: "body", to: "#block_b", target: "node", order: 0 },
+      { from: "#mod_m", kind: "function", to: "#decl_f", target: "node", order: 0 },
+    ],
+  });
+  await writeFile(graphPath, graphDumpText(graph));
+  const before = await zeroJson(["graph", "source-map", "--json", graphPath]);
+  const beforeParam = before.mappings.find((item) => item.nodeId === "#param_p");
+  assert.equal(beforeParam?.symbolId, "symbol:hello::value.main/param.world", "reordered graph starts with nested owner symbol");
+  await writeFile(patchPath, [
+    "zero-program-graph-patch v1",
+    `expect graphHash "${graph.graphHash}"`,
+    'set node="#decl_f" field="name" expect="main" value="entry"',
+    "",
+  ].join("\n"));
+
+  const patch = await zeroJson(["graph", "patch", "--json", "--out", patchedPath, graphPath, patchPath]);
+  assert.equal(patch.ok, true, "patch should save a reordered graph after owner rename");
+  const validate = await zeroJson(["graph", "validate", "--json", patchedPath]);
+  assert.equal(validate.ok, true, "patched reordered graph should read back with matching identities");
+  const after = await zeroJson(["graph", "source-map", "--json", patchedPath]);
+  const afterParam = after.mappings.find((item) => item.nodeId === "#param_p");
+  assert.equal(afterParam?.symbolId, "symbol:hello::value.entry/param.world", "nested symbol owner should be recomputed after owner rename");
+}
+
 async function assertSourceBackedPatchParity() {
   const fixture = `${outDir}/source-backed-patch.0`;
   const original = await readFile("examples/hello.0", "utf8");
@@ -1019,6 +1371,8 @@ try {
   await assertResolutionFacts();
   await assertSemanticFacts();
   await assertUnconstrainedGenericTypeParams();
+  await assertSourceCommandGraphCompilerPath();
+  await assertPatchRecomputesNestedSymbolOwners();
   await assertBuildParity("examples/hello.0", "hello");
   await assertRunParity("examples/hello.0", "hello");
   await assertRunParity("conformance/native/pass/std-args.0", "std-args", ["alpha", "beta"]);
