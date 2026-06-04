@@ -1,0 +1,22 @@
+pub fn main(world: World) -> Void raises {
+    let newline: String = "a\nb"
+    if std.mem.eqlBytes(std.mem.span(newline), std.mem.span("a\nb")) {
+        check world.out.write("newline ok\n")
+    }
+    let tab: String = "x\ty"
+    if std.mem.eqlBytes(std.mem.span(tab), std.mem.span("x\ty")) {
+        check world.out.write("tab ok\n")
+    }
+    let quote: String = "say \"hi\""
+    if std.mem.eqlBytes(std.mem.span(quote), std.mem.span("say \"hi\"")) {
+        check world.out.write("quote ok\n")
+    }
+    let backslash: String = "path\\to\\file"
+    if std.mem.eqlBytes(std.mem.span(backslash), std.mem.span("path\\to\\file")) {
+        check world.out.write("backslash ok\n")
+    }
+    let hex: String = "byte \x41 here"
+    if std.mem.eqlBytes(std.mem.span(hex), std.mem.span("byte \x41 here")) {
+        check world.out.write("hex ok\n")
+    }
+}

@@ -455,6 +455,7 @@ for (const fixture of [
   "conformance/native/pass/byte-view-call-single-eval.0",
   "conformance/native/pass/generic-spans.0",
   "conformance/native/pass/open-ended-slices.0",
+  "conformance/native/pass/string-escape-canonical.0",
   "conformance/native/pass/string-slices.0",
   "conformance/native/pass/string-param-span-slice.0",
   "conformance/native/pass/coff-dynamic-byte-slice.0",
@@ -4968,6 +4969,14 @@ assert.match(charMultiple.stderr, /PAR100/);
 const charBadEscape = await execFileAsync(zero, ["check", "conformance/native/fail/char-bad-escape.0"]).catch((error) => error);
 assert.notEqual(charBadEscape.code, 0);
 assert.match(charBadEscape.stderr, /PAR100/);
+
+const stringUnknownEscape = await execFileAsync(zero, ["check", "conformance/native/fail/string-unknown-escape.0"]).catch((error) => error);
+assert.notEqual(stringUnknownEscape.code, 0);
+assert.match(stringUnknownEscape.stderr, /PAR100/);
+
+const stringNullEscape = await execFileAsync(zero, ["check", "conformance/native/fail/string-null-escape.0"]).catch((error) => error);
+assert.notEqual(stringNullEscape.code, 0);
+assert.match(stringNullEscape.stderr, /PAR100/);
 
 const charToString = await execFileAsync(zero, ["check", "conformance/native/fail/char-to-string.0"]).catch((error) => error);
 assert.notEqual(charToString.code, 0);
