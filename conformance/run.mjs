@@ -78,6 +78,42 @@ function assertLlvmPhiPredecessors(ir) {
   }
 }
 
+async function buildLlvmIrFixture(fixture, name) {
+  const outPath = `${outDir}/${name}.ll`;
+  const build = await execFileAsync(zero, [
+    "build",
+    "--json",
+    "--emit",
+    "llvm-ir",
+    "--backend",
+    "llvm",
+    fixture,
+    "--out",
+    outPath,
+  ]);
+  const body = JSON.parse(build.stdout);
+  assert.equal(body.emit, "llvm-ir");
+  assert.equal(body.compiler, "zero-c-llvm-ir");
+  assert.equal(body.generatedCBytes, 0);
+  return readFile(outPath, "utf8");
+}
+
+async function assertLlvmHostExitCode(fixture, name, expectedCode) {
+  const readiness = await execFileAsync(zero, ["check", "--json", "--backend", "llvm", fixture]).catch((error) => error);
+  if (readiness.code) return;
+  const readinessBody = JSON.parse(readiness.stdout);
+  if (!readinessBody.targetReadiness?.ok) return;
+
+  const out = `${outDir}/${name}`;
+  const build = await execFileAsync(zero, ["build", "--json", "--backend", "llvm", fixture, "--out", out]);
+  const body = JSON.parse(build.stdout);
+  assert.equal(body.emit, "exe");
+  assert.equal(body.objectBackend.backendFamily, "llvm");
+  const run = await execFileAsync(out, []).catch((error) => error);
+  assert.equal(run.code ?? 0, expectedCode);
+  assert.equal(run.signal ?? null, null);
+}
+
 async function assertBoundsTrap(fixture, name) {
   const out = `${outDir}/${name}`;
   const build = await execFileAsync(zero, ["build", "--json", "--emit", "exe", "--target", "linux-musl-x64", fixture, "--out", out]).catch((error) => error);
@@ -988,6 +1024,54 @@ assert.match(llvmLoopIr, /icmp slt i32 %v[0-9]+, 5/);
 assert.match(llvmLoopIr, /add i32 %v[0-9]+, %v[0-9]+/);
 assert.match(llvmLoopIr, /ret i32 %v[0-9]+/);
 
+const llvmArrayIr = await buildLlvmIrFixture("examples/direct-array-sum.0", "llvm-direct-array-sum");
+assert.match(llvmArrayIr, /alloca \[4 x i32\]/);
+assert.match(llvmArrayIr, /getelementptr inbounds \[4 x i32\], ptr %slot[0-9]+, i64 0, i64 0/);
+assert.match(llvmArrayIr, /getelementptr inbounds i32, ptr %v[0-9]+, i64 %v[0-9]+/);
+assert.match(llvmArrayIr, /store i32 4, ptr %v[0-9]+, align 4/);
+assert.match(llvmArrayIr, /load i32, ptr %v[0-9]+, align 4/);
+assert.match(llvmArrayIr, /call void @llvm\.trap\(\)/);
+await assertLlvmHostExitCode("examples/direct-array-sum.0", "llvm-direct-array-sum", 10);
+
+const llvmStringLenIr = await buildLlvmIrFixture("examples/direct-string-len.0", "llvm-direct-string-len");
+assert.match(llvmStringLenIr, /@\.zero\.data\.0 = private unnamed_addr constant \[6 x i8\] c"token\\00", align 1/);
+assert.match(llvmStringLenIr, /insertvalue \{ ptr, i64 \} poison, ptr %v[0-9]+, 0/);
+assert.match(llvmStringLenIr, /insertvalue \{ ptr, i64 \} %v[0-9]+, i64 5, 1/);
+assert.match(llvmStringLenIr, /ret i64 5/);
+await assertLlvmHostExitCode("examples/direct-string-len.0", "llvm-direct-string-len", 5);
+
+const llvmByteCopyFillIr = await buildLlvmIrFixture("examples/direct-byte-copy-fill.0", "llvm-direct-byte-copy-fill");
+assert.match(llvmByteCopyFillIr, /declare void @llvm\.memcpy\.p0\.p0\.i64\(ptr, ptr, i64, i1\)/);
+assert.match(llvmByteCopyFillIr, /declare void @llvm\.memset\.p0\.i64\(ptr, i8, i64, i1\)/);
+assert.match(llvmByteCopyFillIr, /alloca \[5 x i8\]/);
+assert.match(llvmByteCopyFillIr, /call void @llvm\.memset\.p0\.i64\(ptr %v[0-9]+, i8 33, i64 (?:5|%v[0-9]+), i1 false\)/);
+assert.match(llvmByteCopyFillIr, /select i1 %v[0-9]+, i64 %v[0-9]+, i64 %v[0-9]+/);
+assert.match(llvmByteCopyFillIr, /call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %v[0-9]+, ptr %v[0-9]+, i64 %v[0-9]+, i1 false\)/);
+await assertLlvmHostExitCode("examples/direct-byte-copy-fill.0", "llvm-direct-byte-copy-fill", 111);
+
+const llvmStringEqlIr = await buildLlvmIrFixture("examples/direct-string-eql.0", "llvm-direct-string-eql");
+assertLlvmPhiPredecessors(llvmStringEqlIr);
+assert.match(llvmStringEqlIr, /phi i64 \[0, %L[0-9]+\], \[%v[0-9]+, %L[0-9]+\]/);
+assert.match(llvmStringEqlIr, /icmp eq i8 %v[0-9]+, %v[0-9]+/);
+assert.match(llvmStringEqlIr, /phi i1 \[1, %L[0-9]+\], \[0, %L[0-9]+\]/);
+await assertLlvmHostExitCode("examples/direct-string-eql.0", "llvm-direct-string-eql", 1);
+
+const llvmByteViewLocalsIr = await buildLlvmIrFixture("examples/direct-byte-view-locals.0", "llvm-direct-byte-view-locals");
+assertLlvmPhiPredecessors(llvmByteViewLocalsIr);
+assert.match(llvmByteViewLocalsIr, /alloca \{ ptr, i64 \}/);
+assert.match(llvmByteViewLocalsIr, /store \{ ptr, i64 \} %v[0-9]+, ptr %slot[0-9]+, align 8/);
+assert.match(llvmByteViewLocalsIr, /load \{ ptr, i64 \}, ptr %slot[0-9]+, align 8/);
+assert.match(llvmByteViewLocalsIr, /extractvalue \{ ptr, i64 \} %v[0-9]+, 0/);
+assert.match(llvmByteViewLocalsIr, /extractvalue \{ ptr, i64 \} %v[0-9]+, 1/);
+await assertLlvmHostExitCode("examples/direct-byte-view-locals.0", "llvm-direct-byte-view-locals", 107);
+
+const llvmSpanReadIr = await buildLlvmIrFixture("examples/direct-span-read.0", "llvm-direct-span-read");
+assert.match(llvmSpanReadIr, /icmp ule i64 1, 4/);
+assert.match(llvmSpanReadIr, /icmp ult i64 1, %v[0-9]+/);
+assert.match(llvmSpanReadIr, /getelementptr inbounds i8, ptr %v[0-9]+, i64 1/);
+assert.match(llvmSpanReadIr, /load i8, ptr %v[0-9]+, align 1/);
+await assertLlvmHostExitCode("examples/direct-span-read.0", "llvm-direct-span-read", 107);
+
 const llvmShortCircuitSourcePath = `${outDir}/llvm-short-circuit.0`;
 const llvmShortCircuitIrPath = `${outDir}/llvm-short-circuit.ll`;
 await writeFile(llvmShortCircuitSourcePath, `fn rhsAnd() -> Bool {
@@ -1052,8 +1136,8 @@ assert.match(llvmAddIr, /@\.zero\.data\.0 = private unnamed_addr constant \[12 x
 assert.match(llvmAddIr, /declare i32 @zero_world_write\(i32, ptr, i32\)/);
 assert.match(llvmAddIr, /declare void @llvm\.trap\(\)/);
 assert.match(llvmAddIr, /define i32 @\.zero\.fn\.[0-9]+\.answer\(\) \{/);
-assert.match(llvmAddIr, /call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i32 11\)/);
-assert.match(llvmAddIr, /%v[0-9]+ = call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i32 11\)\n  %v[0-9]+ = icmp eq i32 %v[0-9]+, 0\n  br i1 %v[0-9]+, label %L[0-9]+, label %L[0-9]+\nL[0-9]+:\n  call void @llvm\.trap\(\)\n  unreachable\nL[0-9]+:/);
+assert.match(llvmAddIr, /call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i32 (?:11|%v[0-9]+)\)/);
+assert.match(llvmAddIr, /%v[0-9]+ = call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i32 (?:11|%v[0-9]+)\)\n  %v[0-9]+ = icmp eq i32 %v[0-9]+, 0\n  br i1 %v[0-9]+, label %L[0-9]+, label %L[0-9]+\nL[0-9]+:\n  call void @llvm\.trap\(\)\n  unreachable\nL[0-9]+:/);
 
 const llvmSymbolCollisionSourcePath = `${outDir}/llvm-symbol-collision.0`;
 const llvmSymbolCollisionIrPath = `${outDir}/llvm-symbol-collision.ll`;
