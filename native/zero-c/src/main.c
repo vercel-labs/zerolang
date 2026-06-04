@@ -10791,6 +10791,20 @@ static bool load_graph_from_current_source(const Command *command, const ZTarget
   return true;
 }
 
+static bool load_graph_from_checked_current_source(const Command *command, const ZTargetInfo *target, SourceInput *input, Program *program, ZProgramGraph *graph, GraphInputKind *kind, ZDiag *diag) {
+  if (!compile_input(command->input, target, "release", input, program, diag)) return false;
+  if (!graph_build_from_source_program(input, program, input->canonical_text_source, graph, diag)) return false;
+  if (kind) *kind = input->canonical_text_source ? GRAPH_INPUT_CANONICAL_SOURCE : GRAPH_INPUT_CURRENT_SOURCE;
+  return true;
+}
+
+static bool repository_graph_command_loads_checked_source(const Command *command) {
+  if (!command || !command->kind) return false;
+  if (command->graph_sync_from_graph) return false;
+  if (strcmp(command->kind, "status") == 0 || strcmp(command->kind, "verify-sync") == 0) return !command->graph_sync_from_source;
+  return strcmp(command->kind, "sync") == 0 && command->graph_sync_from_source;
+}
+
 static bool load_graph_input_for_read(const Command *command, const ZTargetInfo *target, SourceInput *input, Program *program, ZProgramGraph *graph, GraphInputKind *kind, ZDiag *diag) {
   memset(input, 0, sizeof(*input));
   memset(program, 0, sizeof(*program));
@@ -12245,13 +12259,19 @@ int main(int argc, char **argv) {
     bool repo_graph_command = false;
     SourceInput repo_graph_input = {0}; Program repo_graph_program = {0}; ZProgramGraph repo_source_graph = {0};
     bool repo_wants_source_graph = z_repository_graph_needs_source_graph(command.kind, command.input, command.graph_sync_from_graph, command.graph_sync_from_source);
-    bool repo_has_source_graph = repo_wants_source_graph && load_graph_from_current_source(&command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &diag);
+    ZDiag repo_source_graph_diag = {0};
+    bool repo_has_source_graph = false;
+    if (repo_wants_source_graph) {
+      repo_has_source_graph = repository_graph_command_loads_checked_source(&command)
+        ? load_graph_from_checked_current_source(&command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &repo_source_graph_diag)
+        : load_graph_from_current_source(&command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &repo_source_graph_diag);
+    }
     if (repo_wants_source_graph && !repo_has_source_graph && !z_repository_graph_source_graph_optional(command.kind, command.graph_sync_from_graph, command.graph_sync_from_source)) {
-      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag); else print_diag(diag.path ? diag.path : command.input, &diag);
+      if (command.json) print_command_diag_json(&command, repo_source_graph_diag.path ? repo_source_graph_diag.path : command.input, &repo_source_graph_diag); else print_diag(repo_source_graph_diag.path ? repo_source_graph_diag.path : command.input, &repo_source_graph_diag);
       z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
       return 1;
     }
-    int repo_graph_rc = z_repository_graph_maybe_command(command.kind, command.input, command.json, command.graph_sync_from_graph, command.graph_sync_from_source, repo_has_source_graph ? &repo_source_graph : NULL, &repo_graph_command);
+    int repo_graph_rc = z_repository_graph_maybe_command(command.kind, command.input, command.json, command.graph_sync_from_graph, command.graph_sync_from_source, repo_has_source_graph ? &repo_source_graph : NULL, repo_wants_source_graph && !repo_has_source_graph ? &repo_source_graph_diag : NULL, &repo_graph_command);
     z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
     if (repo_graph_command) return repo_graph_rc;
     if (strcmp(command.kind, "validate") == 0) return run_graph_validate_command(&command, &diag);

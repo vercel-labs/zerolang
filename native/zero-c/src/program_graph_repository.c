@@ -15,6 +15,7 @@ typedef struct {
   bool store_present;
   bool store_valid;
   char *store_error;
+  char *graph_error;
   char *projection_error;
   char *graph_hash;
   size_t node_count;
@@ -26,7 +27,7 @@ typedef struct {
   bool projection_current;
 } RepositoryGraphState;
 
-static RepositoryGraphState repo_graph_state(const char *input, const ZProgramGraph *source_graph) {
+static RepositoryGraphState repo_graph_state(const char *input, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag) {
   RepositoryGraphState state = {.input = input && input[0] ? input : "."};
   state.root = z_program_graph_store_root_for_input(state.input);
   state.store_path = z_program_graph_store_path_for_root(state.root);
@@ -43,6 +44,9 @@ static RepositoryGraphState repo_graph_state(const char *input, const ZProgramGr
       if (source_graph) {
         state.graph_checked = true;
         state.graph_current = z_program_graph_store_graph_matches_source(&store, source_graph);
+      } else if (source_graph_diag && (source_graph_diag->code != 0 || source_graph_diag->message[0])) {
+        state.graph_checked = true;
+        state.graph_error = z_strdup(source_graph_diag->message[0] ? source_graph_diag->message : "source graph could not be built");
       }
       ZDiag projection_diag = {0};
       state.projection_checked = z_program_graph_projection_sources_match(&store, &state.projection_current, &projection_diag);
@@ -60,6 +64,7 @@ static void repo_graph_state_free(RepositoryGraphState *state) {
   free(state->root);
   free(state->store_path);
   free(state->store_error);
+  free(state->graph_error);
   free(state->projection_error);
   free(state->graph_hash);
   memset(state, 0, sizeof(*state));
@@ -93,10 +98,11 @@ static char *repo_command_text(const char *command, const char *input) {
 }
 
 static const char *repo_sync_state(const RepositoryGraphState *state) {
+  if (state && state->store_present && state->store_valid && state->graph_error) return "conflict";
+  if (state && state->store_present && state->store_valid && state->projection_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->projection_checked && !state->projection_current) return "source-stale";
   if (state && state->store_present && state->store_valid && state->graph_checked && !state->graph_current) return "graph-stale";
   if (state && state->store_present && state->store_valid && state->projection_checked) return state->projection_current ? "clean" : "source-stale";
-  if (state && state->store_present && state->store_valid && state->projection_error) return "conflict";
   if (state && state->store_present && state->store_valid) return "store-valid";
   if (state && state->store_present) return "store-invalid";
   return "not-enabled";
@@ -267,8 +273,8 @@ static int repo_graph_success(const RepositoryGraphState *state, bool json, cons
   return repo_graph_success_paths(state, json, mode, writes, changed_path && changed_path[0] ? paths : NULL, changed_path && changed_path[0] ? 1 : 0);
 }
 
-int z_repository_graph_status_command(const char *input, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph) {
-  RepositoryGraphState state = repo_graph_state(input, source_graph);
+int z_repository_graph_status_command(const char *input, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag) {
+  RepositoryGraphState state = repo_graph_state(input, source_graph, source_graph_diag);
   if (from_graph || from_source) {
     int rc = repo_graph_direction_error(&state, json, from_graph, from_source);
     repo_graph_state_free(&state);
@@ -299,7 +305,7 @@ int z_repository_graph_status_command(const char *input, bool json, bool from_gr
 }
 
 int z_repository_graph_verify_sync_command(const char *input, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph) {
-  RepositoryGraphState state = repo_graph_state(input, source_graph);
+  RepositoryGraphState state = repo_graph_state(input, source_graph, NULL);
   if (from_graph || from_source) {
     int rc = repo_graph_direction_error(&state, json, from_graph, from_source);
     repo_graph_state_free(&state);
@@ -339,7 +345,7 @@ int z_repository_graph_verify_sync_command(const char *input, bool json, bool fr
 }
 
 int z_repository_graph_sync_command(const char *input, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph) {
-  RepositoryGraphState state = repo_graph_state(input, from_source ? source_graph : NULL);
+  RepositoryGraphState state = repo_graph_state(input, from_source ? source_graph : NULL, NULL);
   if (from_graph == from_source) {
     int rc = repo_graph_direction_error(&state, json, from_graph, from_source);
     repo_graph_state_free(&state);
@@ -366,7 +372,7 @@ int z_repository_graph_sync_command(const char *input, bool json, bool from_grap
       return rc;
     }
     repo_graph_state_free(&state);
-    state = repo_graph_state(input, NULL);
+    state = repo_graph_state(input, NULL, NULL);
     rc = repo_graph_success_paths(&state, json, "sync-from-graph", true, (const char *const *)projection.changed_paths, projection.changed_len);
     z_program_graph_projection_free(&projection);
     z_program_graph_store_free(&store);
@@ -386,7 +392,13 @@ int z_repository_graph_sync_command(const char *input, bool json, bool from_grap
     return rc;
   }
   repo_graph_state_free(&state);
-  state = repo_graph_state(input, source_graph);
+  state = repo_graph_state(input, source_graph, NULL);
+  if (strcmp(repo_sync_state(&state), "clean") != 0) {
+    int rc = repo_graph_error(&state, json, "sync-from-source", "RGP006", "repository graph store is not clean after sync from source", "clean repository graph state", repo_sync_state(&state), "run zero graph status to inspect repository graph state before choosing a repair", true);
+    z_program_graph_store_free(&saved);
+    repo_graph_state_free(&state);
+    return rc;
+  }
   int rc = repo_graph_success(&state, json, "sync-from-source", true, saved.path);
   z_program_graph_store_free(&saved);
   repo_graph_state_free(&state);
@@ -396,13 +408,13 @@ int z_repository_graph_sync_command(const char *input, bool json, bool from_grap
 bool z_repository_graph_needs_source_graph(const char *kind, const char *input, bool from_graph, bool from_source) {
   if (kind && strcmp(kind, "sync") == 0) return from_source && !from_graph;
   if (kind && strcmp(kind, "status") == 0 && !from_graph && !from_source) {
-    RepositoryGraphState state = repo_graph_state(input, NULL);
+    RepositoryGraphState state = repo_graph_state(input, NULL, NULL);
     bool needs_source = state.store_valid && state.projection_checked && state.projection_current;
     repo_graph_state_free(&state);
     return needs_source;
   }
   if (!kind || strcmp(kind, "verify-sync") != 0 || from_graph || from_source) return false;
-  RepositoryGraphState state = repo_graph_state(input, NULL);
+  RepositoryGraphState state = repo_graph_state(input, NULL, NULL);
   bool needs_source = state.store_valid;
   repo_graph_state_free(&state);
   return needs_source;
@@ -410,9 +422,9 @@ bool z_repository_graph_needs_source_graph(const char *kind, const char *input, 
 
 bool z_repository_graph_source_graph_optional(const char *kind, bool from_graph, bool from_source) { return kind && strcmp(kind, "status") == 0 && !from_graph && !from_source; }
 
-int z_repository_graph_maybe_command(const char *kind, const char *input, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph, bool *handled) {
+int z_repository_graph_maybe_command(const char *kind, const char *input, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, bool *handled) {
   if (handled) *handled = true;
-  if (kind && strcmp(kind, "status") == 0) return z_repository_graph_status_command(input, json, from_graph, from_source, source_graph);
+  if (kind && strcmp(kind, "status") == 0) return z_repository_graph_status_command(input, json, from_graph, from_source, source_graph, source_graph_diag);
   if (kind && strcmp(kind, "verify-sync") == 0) return z_repository_graph_verify_sync_command(input, json, from_graph, from_source, source_graph);
   if (kind && strcmp(kind, "sync") == 0) return z_repository_graph_sync_command(input, json, from_graph, from_source, source_graph);
   if (handled) *handled = false;
