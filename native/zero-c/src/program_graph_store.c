@@ -720,10 +720,25 @@ static void store_append_text(ZBuf *buf, const ZProgramGraph *graph) {
   z_program_graph_store_free(&metadata);
 }
 
+static bool store_byte_stability_fail(const char *path, ZDiag *diag) {
+  return store_diag(diag, path, 1, "repository graph store is not byte-stable after reload", "different canonical bytes");
+}
+
 bool z_program_graph_store_load_path(const char *path, ZProgramGraphStore *out, ZDiag *diag) {
   char *text = z_read_file(path, diag);
   if (!text) return false;
   bool ok = store_parse_text(path, text, out, diag);
+  if (ok) {
+    ZBuf canonical;
+    zbuf_init(&canonical);
+    store_append_text(&canonical, &out->graph);
+    ok = store_text_eq(text, canonical.data ? canonical.data : "");
+    zbuf_free(&canonical);
+    if (!ok) {
+      z_program_graph_store_free(out);
+      store_byte_stability_fail(path, diag);
+    }
+  }
   free(text);
   return ok;
 }
@@ -735,10 +750,6 @@ bool z_program_graph_store_load_for_input(const char *input, ZProgramGraphStore 
   free(root);
   free(path);
   return ok;
-}
-
-static bool store_byte_stability_fail(const char *path, ZDiag *diag) {
-  return store_diag(diag, path, 1, "repository graph store is not byte-stable after reload", "different canonical bytes");
 }
 
 bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *graph, ZDiag *diag) {

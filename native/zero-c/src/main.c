@@ -4075,6 +4075,11 @@ static bool is_zero_source_path(const char *path) {
   return path && has_suffix(path, ".0");
 }
 
+static bool is_existing_directory_path(const char *path) {
+  struct stat st;
+  return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
 static bool path_has_program_graph_storage_header(const char *path) {
   static const char header[] = "zero-graph v";
   if (!path || !path[0]) return false;
@@ -11725,7 +11730,18 @@ static bool resolve_graph_command_manifest_input(Command *command, bool *artifac
   if (artifact_input) *artifact_input = false;
   if (!command || !command->command || !command->input || strcmp(command->command, "graph") != 0 || !command->kind) return true;
   ZProgramGraphInputMode input_mode = z_program_graph_command_input_mode(command->kind);
-  if (input_mode == Z_PROGRAM_GRAPH_INPUT_SOURCE || input_mode == Z_PROGRAM_GRAPH_INPUT_UNKNOWN) return true;
+  if (input_mode == Z_PROGRAM_GRAPH_INPUT_UNKNOWN) return true;
+  if (input_mode == Z_PROGRAM_GRAPH_INPUT_SOURCE) {
+    if (is_zero_source_path(command->input)) return true;
+    if (is_existing_directory_path(command->input)) return true;
+    char *manifest_path = z_manifest_path_for_input(command->input);
+    if (manifest_path) {
+      free(manifest_path);
+      return true;
+    }
+    set_source_input_diag(command->input, diag);
+    return false;
+  }
   if (input_mode == Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT && is_zero_source_path(command->input)) return true;
   if (input_mode == Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT && path_has_program_graph_storage_header(command->input)) {
     if (artifact_input) *artifact_input = true;
