@@ -4970,6 +4970,14 @@ const charBadEscape = await execFileAsync(zero, ["check", "conformance/native/fa
 assert.notEqual(charBadEscape.code, 0);
 assert.match(charBadEscape.stderr, /PAR100/);
 
+const charHexHigh = await execFileAsync(zero, ["check", "conformance/native/fail/char-hex-high.0"]).catch((error) => error);
+assert.notEqual(charHexHigh.code, 0);
+assert.match(charHexHigh.stderr, /PAR100/);
+
+const charHex7f = await execFileAsync(zero, ["check", "conformance/native/fail/char-hex-7f.0"]).catch((error) => error);
+assert.notEqual(charHex7f.code, 0);
+assert.match(charHex7f.stderr, /PAR100/);
+
 const stringUnknownEscape = await execFileAsync(zero, ["check", "conformance/native/fail/string-unknown-escape.0"]).catch((error) => error);
 assert.notEqual(stringUnknownEscape.code, 0);
 assert.match(stringUnknownEscape.stderr, /PAR100/);
