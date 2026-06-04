@@ -1,0 +1,4 @@
+pub fn main(world: World) -> Void raises {
+    let bad: String = "\0"
+    check world.out.write("null escape\n")
+}

@@ -61,6 +61,7 @@ typedef struct {
   const char *patch_text;
   const char *patch_expect_graph_hash;
   const char *reconcile_source;
+  const char *diff_base;
   const char **patch_ops;
   size_t patch_op_len;
   size_t patch_op_cap;
@@ -84,6 +85,7 @@ typedef struct {
   bool trace;
   bool graph_patch_command;
   bool graph_reconcile_command;
+  bool graph_diff_command;
   bool graph_sync_from_graph;
   bool graph_sync_from_source;
   EmitKind emit;
@@ -3713,7 +3715,7 @@ static void print_help(void) {
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
   printf("  zero parse --json <file.0|project|zero.json>\n");
-  printf("  zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n");
+  printf("  zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip|diff] [--json] [--target <target>] <input> [patch]\n");
   printf("  zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
   printf("  zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
   printf("  zero graph source-map --json <program-graph-or-source>\n");
@@ -3722,6 +3724,7 @@ static void print_help(void) {
   printf("  zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>\n");
   printf("  zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>\n");
   printf("  zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n");
+  printf("  zero graph diff --base <program-graph> <program-graph>\n");
   printf("  zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
   printf("  zero doc [--json] <file.0|project|zero.json>\n");
   printf("  zero size [--json] [--out <artifact>] <file.0|project|zero.json>\n");
@@ -3924,12 +3927,20 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     if (*index + 1 >= argc) command->unknown_flag = arg;
     else command->reconcile_source = argv[++(*index)];
     return true;
+  } else if (cli_arg_is(arg, "--base")) {
+    if (!command || !command->graph_diff_command) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    if (*index + 1 >= argc) command->unknown_flag = arg;
+    else command->diff_base = argv[++(*index)];
+    return true;
   } else if (cli_arg_is(arg, "--from-graph")) {
-    if (!command || !command->kind || !cli_arg_is(command->kind, "sync")) command->unknown_flag = arg;
+    if (!command || !command->kind || !cli_arg_is(command->kind, "graph")) command->unknown_flag = arg;
     else command->graph_sync_from_graph = true;
     return true;
   } else if (cli_arg_is(arg, "--from-source")) {
-    if (!command || !command->kind || !cli_arg_is(command->kind, "sync")) command->unknown_flag = arg;
+    if (!command || !command->kind || !cli_arg_is(command->kind, "graph")) command->unknown_flag = arg;
     else command->graph_sync_from_source = true;
     return true;
   } else if (strcmp(arg, "--all") == 0) {
@@ -3999,6 +4010,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
   }
   command->graph_patch_command = is_graph_command && command->kind && cli_arg_is(command->kind, "patch");
   command->graph_reconcile_command = is_graph_command && command->kind && cli_arg_is(command->kind, "reconcile");
+  command->graph_diff_command = is_graph_command && command->kind && cli_arg_is(command->kind, "diff");
   bool graph_run_command = is_graph_command && command->kind && strcmp(command->kind, "run") == 0;
   if (strcmp(command->command, "run") == 0 || graph_run_command) {
     for (int i = arg_start; i < argc; i++) {
@@ -9911,9 +9923,17 @@ static void init_lowering_backend_diag(ZDiag *diag, const SourceInput *input, co
   diag->line = ir && ir->mir_line > 0 ? ir->mir_line : 1;
   diag->column = ir && ir->mir_column > 0 ? ir->mir_column : 1;
   diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "%s",
-           llvm_request ? "LLVM IR backend cannot lower this MIR program yet" :
-           (ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed"));
+  const char *ir_message = ir && ir->mir_message[0] ? ir->mir_message : "direct backend lowering failed";
+  if (llvm_request) {
+    snprintf(diag->message, sizeof(diag->message), "%s", "LLVM IR backend cannot lower this MIR program yet");
+  } else {
+    const char *label = z_direct_backend_target_label(target);
+    if (label && strncmp(ir_message, "direct backend ", 15) == 0) {
+      snprintf(diag->message, sizeof(diag->message), "direct %s %s", label, ir_message + 15);
+    } else {
+      snprintf(diag->message, sizeof(diag->message), "%s", ir_message);
+    }
+  }
   snprintf(diag->expected, sizeof(diag->expected), "%s",
            llvm_request ? "LLVM IR scalar, fixed-array, and byte-view MIR subset" : z_direct_backend_expected(target));
   snprintf(diag->actual, sizeof(diag->actual), "%s", ir && ir->mir_actual[0] ? ir->mir_actual : "unsupported construct");
@@ -11403,6 +11423,118 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
   return summary.ok ? 0 : 1;
 }
 
+static int run_graph_diff_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  if (!command->diff_base) {
+    diag->code = 2002;
+    diag->path = command->input;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "graph diff requires --base <program-graph>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero graph diff --base <program-graph> <program-graph>");
+    snprintf(diag->actual, sizeof(diag->actual), "missing --base");
+    snprintf(diag->help, sizeof(diag->help), "pass the base graph to compare against");
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
+
+  ZProgramGraph base_graph = {0};
+  SourceInput base_input = {0};
+  Program base_program = {0};
+  GraphInputKind base_kind = GRAPH_INPUT_ARTIFACT;
+  Command base_cmd = *command;
+  base_cmd.input = command->diff_base;
+  base_cmd.out = NULL;
+  if (!load_graph_input_for_checked_read(&base_cmd, target, &base_input, &base_program, &base_graph, &base_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->diff_base, diag);
+    else print_diag(diag->path ? diag->path : command->diff_base, diag);
+    return 1;
+  }
+
+  ZProgramGraph right_graph = {0};
+  SourceInput right_input = {0};
+  Program right_program = {0};
+  GraphInputKind right_kind = GRAPH_INPUT_ARTIFACT;
+  if (!load_graph_input_for_checked_read(command, target, &right_input, &right_program, &right_graph, &right_kind, diag)) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    z_free_program(&base_program);
+    z_free_source(&base_input);
+    z_program_graph_free(&base_graph);
+    return 1;
+  }
+
+  ZProgramGraphDiff diff_result = {0};
+  z_program_graph_diff(&base_graph, &right_graph, &diff_result);
+
+  if (command->json) {
+    ZBuf json;
+    zbuf_init(&json);
+    zbuf_append(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": ");
+    zbuf_append(&json, diff_result.ok ? "true" : "false");
+    zbuf_appendf(&json, ",\n  \"leftNodeCount\": %zu,\n  \"rightNodeCount\": %zu,\n  \"diffs\": [\n", diff_result.left_node_count, diff_result.right_node_count);
+    for (size_t i = 0; i < diff_result.diff_len; i++) {
+      if (i > 0) zbuf_append(&json, ", ");
+      zbuf_append(&json, "\n    {");
+      const char *kind_name = "modified";
+      if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) kind_name = "added";
+      else if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) kind_name = "removed";
+      zbuf_appendf(&json, "\"kind\": \"%s\", ", kind_name);
+      zbuf_appendf(&json, "\"nodeId\": ");
+      append_json_string(&json, diff_result.diffs[i].node_id);
+      zbuf_appendf(&json, ", \"nodeKind\": ");
+      append_json_string(&json, diff_result.diffs[i].node_kind);
+      if (diff_result.diffs[i].field[0]) {
+        zbuf_appendf(&json, ", \"field\": ");
+        append_json_string(&json, diff_result.diffs[i].field);
+      }
+      if (diff_result.diffs[i].left_value[0] || diff_result.diffs[i].right_value[0]) {
+        zbuf_appendf(&json, ", \"leftValue\": ");
+        append_json_string(&json, diff_result.diffs[i].left_value);
+        zbuf_appendf(&json, ", \"rightValue\": ");
+        append_json_string(&json, diff_result.diffs[i].right_value);
+      }
+      if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED || diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) {
+        zbuf_appendf(&json, ", \"name\": ");
+        if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED)
+          append_json_string(&json, diff_result.diffs[i].right_value);
+        else
+          append_json_string(&json, diff_result.diffs[i].left_value);
+      }
+      zbuf_append(&json, "}");
+    }
+    zbuf_append(&json, "\n  ]\n}\n");
+    fputs(json.data, stdout);
+    zbuf_free(&json);
+  } else {
+    if (diff_result.diff_len == 0) {
+      printf("program graph diff ok (no changes)\n");
+    } else {
+      printf("program graph diff: %zu change(s)\n", diff_result.diff_len);
+      for (size_t i = 0; i < diff_result.diff_len; i++) {
+        const char *kind_name = "modified";
+        if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_ADDED) kind_name = "added";
+        else if (diff_result.diffs[i].kind == Z_PROGRAM_GRAPH_DIFF_KIND_REMOVED) kind_name = "removed";
+        if (diff_result.diffs[i].field[0]) {
+          printf("  %s: %s (%s) %s -> %s\n", kind_name, diff_result.diffs[i].node_id, diff_result.diffs[i].field, diff_result.diffs[i].left_value, diff_result.diffs[i].right_value);
+        } else {
+          printf("  %s: %s (%s) name=%s\n", kind_name, diff_result.diffs[i].node_id, diff_result.diffs[i].node_kind, diff_result.diffs[i].left_value[0] ? diff_result.diffs[i].left_value : diff_result.diffs[i].right_value);
+        }
+      }
+    }
+  }
+
+  z_program_graph_diff_free(&diff_result);
+  z_free_program(&right_program);
+  z_free_source(&right_input);
+  z_program_graph_free(&right_graph);
+  z_free_program(&base_program);
+  z_free_source(&base_input);
+  z_program_graph_free(&base_graph);
+  return 0;
+}
+
 static bool validate_graph_patch_sources(const Command *command, bool *has_file, bool *has_patch_text, bool *has_ops, ZDiag *diag) {
   *has_file = command->patch_file != NULL;
   *has_patch_text = command->patch_text != NULL;
@@ -12262,6 +12394,7 @@ int main(int argc, char **argv) {
     if (strcmp(command.kind, "size") == 0) return run_graph_size_command(&command, target, &diag);
     if (strcmp(command.kind, "patch") == 0) return run_graph_patch_command(&command, &diag);
     if (strcmp(command.kind, "roundtrip") == 0 && graph_command_artifact_input) return run_graph_artifact_roundtrip_command(&command, &diag);
+    if (strcmp(command.kind, "diff") == 0) return run_graph_diff_command(&command, target, &diag);
   }
 
   if (strcmp(command.command, "fmt") == 0) {

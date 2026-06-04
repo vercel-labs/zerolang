@@ -69,6 +69,7 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
   ),
   GRAPH_OUT("patch", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
   GRAPH_OUT("roundtrip", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
+  GRAPH_OUT("diff", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
 };
 
 #undef GRAPH_OUT
