@@ -228,7 +228,7 @@ function graphSymbolName(node) {
 }
 
 function graphOwnerEdgeByNode(graph) {
-  const nodeIndex = new Map(graph.nodes.map((node, index) => [node.id, index]));
+  const nodeIndex = new Map<string, number>(graph.nodes.map((node, index) => [node.id, index] as [string, number]));
   const ownerEdges = Array(graph.nodes.length).fill(null);
   for (const edge of graph.edges) {
     if ((edge.target ?? "node") !== "node" || !graphOwnerEdgeKinds.has(edge.kind)) continue;
@@ -239,7 +239,7 @@ function graphOwnerEdgeByNode(graph) {
 }
 
 function graphSymbolOwnerIndex(graph, ownerEdges, nodeIndex) {
-  const ids = new Map(graph.nodes.map((node, index) => [node.id, index]));
+  const ids = new Map<string, number>(graph.nodes.map((node, index) => [node.id, index] as [string, number]));
   let current = nodeIndex;
   for (let depth = 0; depth < graph.nodes.length; depth++) {
     const edge = ownerEdges[current];
