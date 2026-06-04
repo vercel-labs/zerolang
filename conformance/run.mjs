@@ -423,6 +423,7 @@ for (const fixture of [
   "conformance/native/pass/explicit-casts.0",
   "conformance/native/pass/float-char-casts.0",
   "conformance/native/pass/radix-suffix-literals.0",
+  "conformance/native/pass/float-literal-underscores.0",
   "conformance/native/pass/char-literals.0",
   "conformance/native/pass/float-primitives.0",
   "conformance/native/pass/wrapping-saturating-arithmetic.0",
@@ -4983,6 +4984,10 @@ assert.match(charIntegerArithmetic.stderr, /TYP002/);
 const malformedFloatLiteral = await execFileAsync(zero, ["check", "conformance/native/fail/malformed-float-literal.0"]).catch((error) => error);
 assert.notEqual(malformedFloatLiteral.code, 0);
 assert.match(malformedFloatLiteral.stderr, /TYP019/);
+
+const malformedFloatUnderscores = await execFileAsync(zero, ["check", "conformance/native/fail/malformed-float-underscores.0"]).catch((error) => error);
+assert.notEqual(malformedFloatUnderscores.code, 0);
+assert.match(malformedFloatUnderscores.stderr, /TYP019/);
 
 const floatF32Overflow = await execFileAsync(zero, ["check", "conformance/native/fail/float-f32-overflow.0"]).catch((error) => error);
 assert.notEqual(floatF32Overflow.code, 0);
