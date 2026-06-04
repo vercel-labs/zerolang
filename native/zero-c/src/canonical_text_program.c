@@ -148,8 +148,12 @@ static char *canon_ast_decode_string_literal(const ZCanonicalToken *token, ZDiag
       }
       zbuf_append_char(&buf, (char)value);
       i += 2;
-    } else {
+    } else if (escaped == '\\' || escaped == '\'' || escaped == '"') {
       zbuf_append_char(&buf, escaped);
+    } else {
+      canon_ast_fail(diag, token, "invalid string escape", "escaped byte", text);
+      free(buf.data);
+      return z_strdup("");
     }
   }
   if (canon_ast_has_diag(diag)) {

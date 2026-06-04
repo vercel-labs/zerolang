@@ -367,3 +367,16 @@ const char *z_direct_backend_help(const ZTargetInfo *target) {
   if (backend == Z_DIRECT_BACKEND_COFF_X64 || strcmp(format, "coff") == 0) return "reduce the program to primitive direct-backend constructs or choose a supported direct target";
   return "choose a supported direct target or restrict this program to exported primitive integer arithmetic functions";
 }
+
+const char *z_direct_backend_target_label(const ZTargetInfo *target) {
+  ZDirectBackend backend = target ? z_direct_object_backend(target) : Z_DIRECT_BACKEND_NONE;
+  switch (backend) {
+    case Z_DIRECT_BACKEND_ELF64: return "ELF64";
+    case Z_DIRECT_BACKEND_ELF_AARCH64: return "AArch64 ELF";
+    case Z_DIRECT_BACKEND_MACHO64: return "AArch64 Mach-O";
+    case Z_DIRECT_BACKEND_MACHO_X64: return "x86_64 Mach-O";
+    case Z_DIRECT_BACKEND_COFF_X64: return "COFF x64";
+    case Z_DIRECT_BACKEND_COFF_AARCH64: return "COFF AArch64";
+    default: return NULL;
+  }
+}
