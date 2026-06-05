@@ -15,10 +15,13 @@ Most build commands accept one of these:
 - a package directory containing `zero.json`
 - a direct path to `zero.json`
 
-For packages with `repositoryGraph.compilerInput: true`, normal build and run
-commands verify `zero.graph` is in sync with the checked-in `.0` projection and
-then compile from the repository graph store. Other packages compile from `.0`
-source text.
+For packages with `repositoryGraph.compilerInput: true`, normal check, build,
+run, test, size, ship, and mem commands compile from the checked-in
+`zero.graph` store. Source projections may be clean, missing, stale, or in
+conflict; commands report that state and do not rewrite `.0` files. Use
+`zero graph verify-sync` when CI or review needs graph/source drift to fail, and
+`zero graph sync --from-graph` to regenerate projections from the store. Other
+packages compile from `.0` source text.
 
 ## Run
 

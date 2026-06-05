@@ -539,21 +539,6 @@ static bool store_source_paths_match_graph(const ZProgramGraphStore *store, cons
   return ok;
 }
 
-static bool store_source_locations_match_graph(const ZProgramGraphStore *store, const ZProgramGraph *source_graph) {
-  if (!store || !source_graph || store->graph.node_len != source_graph->node_len) return false;
-  for (size_t i = 0; i < source_graph->node_len; i++) {
-    const ZProgramGraphNode *stored = &store->graph.nodes[i];
-    const ZProgramGraphNode *current = &source_graph->nodes[i];
-    if (!store_text_eq(stored->id, current->id) ||
-        !store_text_eq(stored->path, current->path) ||
-        stored->line != current->line ||
-        stored->column != current->column) {
-      return false;
-    }
-  }
-  return true;
-}
-
 static char *store_nullable_strdup(const char *text) {
   return text ? z_strdup(text) : NULL;
 }
@@ -1087,8 +1072,7 @@ bool z_program_graph_store_graph_matches_source(const ZProgramGraphStore *store,
             store->graph.node_len == normalized.node_len &&
             store->graph.edge_len == normalized.edge_len &&
             preserved &&
-            store_source_paths_match_graph(store, &normalized) &&
-            store_source_locations_match_graph(store, &normalized);
+            store_source_paths_match_graph(store, &normalized);
   z_program_graph_free(&normalized);
   return ok;
 }

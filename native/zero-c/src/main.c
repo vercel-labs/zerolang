@@ -14,6 +14,7 @@
 #include "program_graph_lower.h"
 #include "program_graph_manifest.h"
 #include "program_graph_patch.h"
+#include "program_graph_projection.h"
 #include "program_graph_reconcile.h"
 #include "program_graph_resolve.h"
 #include "program_graph_repository.h"
@@ -2591,22 +2592,7 @@ static bool graph_check_target_capabilities_ok(const ZProgramGraph *graph, const
   return true;
 }
 
-static const char *repository_graph_projection_state(const ZProgramGraphStore *store) {
-  if (!store || store->projection_len == 0) return "missing";
-  for (size_t i = 0; i < store->projection_len; i++) {
-    ZBuf path;
-    zbuf_init(&path);
-    zbuf_append(&path, store->root && store->root[0] ? store->root : ".");
-    if (path.len > 0 && path.data[path.len - 1] != '/') zbuf_append_char(&path, '/');
-    zbuf_append(&path, store->projection_paths[i] ? store->projection_paths[i] : "");
-    bool exists = z_program_graph_store_file_exists(path.data);
-    zbuf_free(&path);
-    if (!exists) return "missing";
-  }
-  return "available";
-}
-
-static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long resolve_ms, long long check_ms, long long lower_ms, bool graph_mir_used) {
+static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZTargetInfo *target, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long resolve_ms, long long check_ms, long long lower_ms, bool graph_mir_used) {
   ZProgramGraphStoreTableCounts tables;
   z_program_graph_store_table_counts_for_graph(store ? &store->graph : NULL,
                                                store ? store->source_path_len : 0,
@@ -2614,7 +2600,7 @@ static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZProgram
                                                &tables);
   zbuf_append(buf, "{\"schemaVersion\":1,\"input\":\"repository-graph-store\",\"graphStoreLoaded\":true");
   zbuf_append(buf, ",\"sourceProjectionRequiredForCompilerInput\":false,\"sourceProjectionState\":");
-  append_json_string(buf, repository_graph_projection_state(store));
+  append_json_string(buf, z_program_graph_projection_state_label(store, target, NULL, NULL, NULL));
   zbuf_append(buf, ",\"legacyProgramAstReconstructed\":false,\"graphToProgramLoweringUsed\":false,\"graphNativeCheckerUsed\":true,\"graphHirToMirUsed\":");
   zbuf_append(buf, graph_mir_used ? "true" : "false");
   zbuf_append(buf, ",\"astToMirFallbackUsed\":false");
@@ -2648,6 +2634,7 @@ static void print_repository_graph_check_json_success(const Command *command, co
     .graph_hash = store && store->graph.graph_hash ? store->graph.graph_hash : "",
     .module_identity = store && store->graph.module_identity ? store->graph.module_identity : "",
     .lowering = "graph-native-check",
+    .source_projection_state = z_program_graph_projection_state_label(store, target, NULL, NULL, NULL),
     .canonical_source = false,
   };
   append_program_graph_artifact_source_json(&buf, &graph_source);
@@ -2663,7 +2650,7 @@ static void print_repository_graph_check_json_success(const Command *command, co
   zbuf_append(&buf, ",\n  \"safetyFacts\": ");
   append_safety_facts_json(&buf, profile);
   zbuf_append(&buf, ",\n  \"graphCompiler\": ");
-  append_repository_graph_compiler_path_json(&buf, store, resolution, load_ms, resolve_ms, check_ms, lower_ms, graph_mir_used);
+  append_repository_graph_compiler_path_json(&buf, target, store, resolution, load_ms, resolve_ms, check_ms, lower_ms, graph_mir_used);
   zbuf_append(&buf, ",\n  \"compilerPhases\": ");
   append_compiler_phases_json(&buf, input);
   zbuf_append(&buf, ",\n  \"compilerCaches\": ");
@@ -2806,6 +2793,10 @@ static void append_program_graph_artifact_source_json(ZBuf *buf, const ZProgramG
   append_json_string(buf, source->graph_hash ? source->graph_hash : "");
   zbuf_append(buf, ",\"lowering\":");
   append_json_string(buf, source->lowering ? source->lowering : "direct-program-graph");
+  if (source->source_projection_state) {
+    zbuf_append(buf, ",\"sourceProjectionState\":");
+    append_json_string(buf, source->source_projection_state);
+  }
   zbuf_append(buf, "}");
 }
 
@@ -6560,22 +6551,29 @@ static void append_direct_memory_json(ZBuf *buf, const SourceInput *input, const
   helper_summary_free(&used_helpers);
 }
 
+static void print_build_graph_source_json(const Command *command, const SourceInput *input) {
+  if (!command || !z_program_graph_artifact_source_present(&command->graph_source)) return;
+  printf(",\n  \"graph\": {\"artifact\": ");
+  print_json_string(command->graph_source.artifact ? command->graph_source.artifact : input->source_file);
+  printf(", \"canonicalSource\": %s, \"moduleIdentity\": ", command->graph_source.canonical_source ? "true" : "false");
+  print_json_string(command->graph_source.module_identity ? command->graph_source.module_identity : "");
+  printf(", \"graphHash\": ");
+  print_json_string(command->graph_source.graph_hash);
+  printf(", \"lowering\": ");
+  print_json_string(command->graph_source.lowering ? command->graph_source.lowering : "direct-program-graph");
+  if (command->graph_source.source_projection_state) {
+    printf(", \"sourceProjectionState\": ");
+    print_json_string(command->graph_source.source_projection_state);
+  }
+  printf("}");
+}
+
 static void print_build_json(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target, const char *emit_kind, const char *artifact_path, long long artifact_bytes, long long generated_c_bytes, long long elapsed_ms) {
   bool llvm_ir_output = command && command->emit == EMIT_LLVM_IR && z_backend_request_is_llvm(command->backend, emit_kind);
   bool llvm_native_output = command_uses_llvm_native_exe(command, emit_kind);
   printf("{\n  \"schemaVersion\": 1,\n  \"sourceFile\": ");
   print_json_string(input->source_file);
-  if (command && z_program_graph_artifact_source_present(&command->graph_source)) {
-    printf(",\n  \"graph\": {\"artifact\": ");
-    print_json_string(command->graph_source.artifact ? command->graph_source.artifact : input->source_file);
-    printf(", \"canonicalSource\": %s, \"moduleIdentity\": ", command->graph_source.canonical_source ? "true" : "false");
-    print_json_string(command->graph_source.module_identity ? command->graph_source.module_identity : "");
-    printf(", \"graphHash\": ");
-    print_json_string(command->graph_source.graph_hash);
-    printf(", \"lowering\": ");
-    print_json_string(command->graph_source.lowering ? command->graph_source.lowering : "direct-program-graph");
-    printf("}");
-  }
+  print_build_graph_source_json(command, input);
   printf(",\n  \"emit\": ");
   print_json_string(emit_kind);
   printf(",\n  \"hostTarget\": ");
@@ -9447,6 +9445,10 @@ static void append_size_graph_source_json(ZBuf *buf, const GraphSizeSource *grap
   zbuf_appendf(buf, ", \"canonicalSource\": %s, \"moduleIdentity\": ", canonical_source ? "true" : "false"); append_json_string(buf, module_identity ? module_identity : "");
   zbuf_append(buf, ", \"graphHash\": "); append_json_string(buf, graph_hash ? graph_hash : "");
   zbuf_append(buf, ", \"lowering\": "); append_json_string(buf, lowering ? lowering : "direct-program-graph");
+  if (graph_source->artifact_source && graph_source->artifact_source->source_projection_state) {
+    zbuf_append(buf, ", \"sourceProjectionState\": ");
+    append_json_string(buf, graph_source->artifact_source->source_projection_state);
+  }
   zbuf_append(buf, "}");
 }
 
@@ -12184,22 +12186,8 @@ static int resolve_direct_command_manifest_graph_input(Command *command, const Z
   }
   if (!enabled) return 0;
 
-  SourceInput source_input = {0};
-  Program source_program = {0};
-  ZProgramGraph source_graph = {0};
-  ZDiag source_diag = {0};
-  bool source_ok = load_graph_from_checked_current_source(command, target, &source_input, &source_program, &source_graph, NULL, &source_diag);
-
   char *store_path = NULL;
-  int rc = z_repository_graph_verify_compiler_input(command->input,
-                                                    target,
-                                                    command->json,
-                                                    source_ok ? &source_graph : NULL,
-                                                    source_ok ? NULL : &source_diag,
-                                                    &store_path);
-  z_program_graph_free(&source_graph);
-  z_free_program(&source_program);
-  z_free_source(&source_input);
+  int rc = z_repository_graph_verify_compiler_input(command->input, target, command->json, &store_path);
   if (rc != 0) {
     free(store_path);
     return rc;

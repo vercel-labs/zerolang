@@ -291,12 +291,18 @@ static char *lower_find_manifest_for_source_path(const char *path) {
   return NULL;
 }
 
-static void lower_source_seed_package_manifest(SourceInput *source, const ZProgramGraph *graph) {
+static void lower_source_seed_package_manifest(SourceInput *source, const ZProgramGraph *graph, const char *artifact_path) {
   if (!source || source->manifest_path || !graph || !lower_starts_with(graph->module_identity, "package:")) return;
+  char *manifest = lower_find_manifest_for_source_path(artifact_path);
+  if (manifest) {
+    source->manifest_path = manifest;
+    source->package_root = lower_dirname_of(manifest);
+    return;
+  }
   for (size_t i = 0; i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
     if (!node->path || !node->path[0]) continue;
-    char *manifest = lower_find_manifest_for_source_path(node->path);
+    manifest = lower_find_manifest_for_source_path(node->path);
     if (!manifest) continue;
     source->manifest_path = manifest;
     source->package_root = lower_dirname_of(manifest);
@@ -1095,7 +1101,7 @@ static void lower_init_source_from_graph(SourceInput *source, const ZProgramGrap
   source->source_file = z_strdup(artifact_path && artifact_path[0] ? artifact_path : "<program-graph>");
   source->source = z_strdup("");
   lower_source_set_package_identity(source, graph ? graph->module_identity : NULL);
-  lower_source_seed_package_manifest(source, graph);
+  lower_source_seed_package_manifest(source, graph, artifact_path);
   size_t module_count = 0;
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_MODULE) module_count++;

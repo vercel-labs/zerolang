@@ -64,12 +64,13 @@ function sha256File(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function assertSourceGraph(body, artifact, moduleIdentity, lowering = "typed-program-graph-mir", canonicalSource = true) {
+function assertSourceGraph(body, artifact, moduleIdentity, lowering = "typed-program-graph-mir", canonicalSource = true, sourceProjectionState = undefined) {
   assert.equal(body.graph.artifact, artifact);
   assert.equal(body.graph.canonicalSource, canonicalSource);
   assert.equal(body.graph.moduleIdentity, moduleIdentity);
   assert.match(body.graph.graphHash, /^graph:[0-9a-f]{16}$/);
   assert.equal(body.graph.lowering, lowering);
+  if (sourceProjectionState !== undefined) assert.equal(body.graph.sourceProjectionState, sourceProjectionState);
 }
 
 function assertProgramGraphCompilerInput(body, artifact) {
@@ -83,7 +84,7 @@ function assertProgramGraphCompilerInput(body, artifact) {
   assert.equal(body.incrementalInvalidation.interfaceFingerprints.graphHash, body.graph.graphHash);
 }
 
-function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "available") {
+function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean") {
   assert.equal(body.graphCompiler.input, "repository-graph-store");
   assert.equal(body.graphCompiler.graphStoreLoaded, true);
   assert.equal(body.graphCompiler.sourceProjectionRequiredForCompilerInput, false);
@@ -2352,6 +2353,151 @@ assert.equal(checkedInGraphPackageCheckJson.package.manifestPath, join(checkedIn
 assertSourceGraph(checkedInGraphPackageCheckJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "graph-native-check", false);
 assertProgramGraphCompilerInput(checkedInGraphPackageCheckJson, checkedInRepositoryGraphStorePath);
 assertRepositoryGraphNativeCheck(checkedInGraphPackageCheckJson);
+const sourceFreeCopiedGraphRoot = join(outDir, "source-free-program-graph");
+const sourceFreeCopiedGraphStorePath = join(sourceFreeCopiedGraphRoot, "zero.graph");
+const sourceFreeCopiedGraphBuildPath = join(outDir, "source-free-program-graph-build");
+const sourceFreeCopiedGraphRunPath = join(outDir, "source-free-program-graph-run");
+const sourceFreeCopiedGraphShipPath = join(outDir, "source-free-program-graph-ship");
+const sourceFreeCImportRoot = join(outDir, "source-free-c-import");
+const sourceFreeCImportStorePath = join(sourceFreeCImportRoot, "zero.graph");
+const sourceFreeCImportRunPath = join(outDir, "source-free-c-import-run");
+const sourceFreeCImportCwdRoot = join(outDir, "source-free-c-import-unrelated-cwd");
+const sourceFreeCImportCwdBuildPath = join(outDir, "source-free-c-import-cwd-build");
+const sourceFreeIdentityMismatchRoot = join(outDir, "source-free-identity-mismatch");
+const sourceFreeMissingPackageNameRoot = join(outDir, "source-free-missing-package-name");
+const sourceFreeBadProjectionRoot = join(outDir, "source-free-bad-projection");
+rmSync(sourceFreeCopiedGraphRoot, { recursive: true, force: true });
+rmSync(sourceFreeCImportRoot, { recursive: true, force: true });
+rmSync(sourceFreeCImportRunPath, { recursive: true, force: true });
+rmSync(sourceFreeCImportCwdRoot, { recursive: true, force: true });
+rmSync(sourceFreeCImportCwdBuildPath, { recursive: true, force: true });
+rmSync(sourceFreeIdentityMismatchRoot, { recursive: true, force: true });
+rmSync(sourceFreeMissingPackageNameRoot, { recursive: true, force: true });
+rmSync(sourceFreeBadProjectionRoot, { recursive: true, force: true });
+mkdirSync(sourceFreeCopiedGraphRoot, { recursive: true });
+writeFileSync(join(sourceFreeCopiedGraphRoot, "zero.json"), readFileSync(join(checkedInGraphPackageDir, "zero.json"), "utf8"));
+writeFileSync(sourceFreeCopiedGraphStorePath, readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+const sourceFreeCopiedGraphCheckJson = json(["check", "--json", sourceFreeCopiedGraphRoot]).body;
+assert.equal(sourceFreeCopiedGraphCheckJson.ok, true);
+assert.equal(sourceFreeCopiedGraphCheckJson.sourceFile, sourceFreeCopiedGraphStorePath);
+assertSourceGraph(sourceFreeCopiedGraphCheckJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "graph-native-check", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCopiedGraphCheckJson, sourceFreeCopiedGraphStorePath);
+assertRepositoryGraphNativeCheck(sourceFreeCopiedGraphCheckJson, "missing");
+const sourceFreeCopiedGraphSizeJson = json(["size", "--json", "--target", "linux-musl-x64", sourceFreeCopiedGraphRoot]).body;
+assertSourceGraph(sourceFreeCopiedGraphSizeJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCopiedGraphSizeJson, sourceFreeCopiedGraphStorePath);
+const sourceFreeCopiedGraphBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", sourceFreeCopiedGraphBuildPath, sourceFreeCopiedGraphRoot]).body;
+assert.equal(sourceFreeCopiedGraphBuildJson.sourceFile, sourceFreeCopiedGraphStorePath);
+assertSourceGraph(sourceFreeCopiedGraphBuildJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCopiedGraphBuildJson, sourceFreeCopiedGraphStorePath);
+assert.equal(zero(["run", "--out", sourceFreeCopiedGraphRunPath, sourceFreeCopiedGraphRoot]).stdout, "hello from zero\n");
+const sourceFreeCopiedGraphTestJson = json(["test", "--json", sourceFreeCopiedGraphRoot]).body;
+assert.equal(sourceFreeCopiedGraphTestJson.ok, true);
+assertSourceGraph(sourceFreeCopiedGraphTestJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assert.equal(sourceFreeCopiedGraphTestJson.testDiscovery.mode, "package-graph");
+const sourceFreeCopiedGraphShipJson = json(["ship", "--json", "--target", "linux-musl-x64", "--out", sourceFreeCopiedGraphShipPath, sourceFreeCopiedGraphRoot]).body;
+assert.equal(sourceFreeCopiedGraphShipJson.ok, true);
+assertSourceGraph(sourceFreeCopiedGraphShipJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCopiedGraphShipJson, sourceFreeCopiedGraphStorePath);
+const sourceFreeCopiedGraphMemJson = json(["mem", "--json", sourceFreeCopiedGraphRoot]).body;
+assertSourceGraph(sourceFreeCopiedGraphMemJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCopiedGraphMemJson, sourceFreeCopiedGraphStorePath);
+const sourceFreeCopiedGraphVerify = json(["graph", "verify-sync", "--json", sourceFreeCopiedGraphRoot], { allowFailure: true });
+assert.notEqual(sourceFreeCopiedGraphVerify.code, 0);
+assert.equal(sourceFreeCopiedGraphVerify.body.diagnostics[0].actual, "missing source file");
+const sourceFreeCopiedGraphSyncFromGraph = json(["graph", "sync", "--from-graph", "--json", sourceFreeCopiedGraphRoot]).body;
+assert.equal(sourceFreeCopiedGraphSyncFromGraph.ok, true);
+assert.deepEqual(sourceFreeCopiedGraphSyncFromGraph.changedPaths, [join(sourceFreeCopiedGraphRoot, "hello.0")]);
+assert.equal(readFileSync(join(sourceFreeCopiedGraphRoot, "hello.0"), "utf8"), readFileSync(checkedInGraphSourcePath, "utf8"));
+const sourceFreeCopiedGraphVerifyAfter = json(["graph", "verify-sync", "--json", sourceFreeCopiedGraphRoot]).body;
+assert.equal(sourceFreeCopiedGraphVerifyAfter.ok, true);
+assert.equal(sourceFreeCopiedGraphVerifyAfter.repositoryGraph.projectionValidity, "clean");
+assert.deepEqual(json(["graph", "sync", "--from-graph", "--json", sourceFreeCopiedGraphRoot]).body.changedPaths, []);
+mkdirSync(join(sourceFreeCImportRoot, "src"), { recursive: true });
+mkdirSync(join(sourceFreeCImportRoot, "vendor/include"), { recursive: true });
+writeFileSync(join(sourceFreeCImportRoot, "zero.json"), JSON.stringify({
+  package: { name: "source-free-c-import", version: "0.1.0" },
+  targets: { cli: { kind: "exe", main: "src/main.0" } },
+  repositoryGraph: { compilerInput: true },
+  c: {
+    libs: {
+      ext: { headers: ["vendor/include/zero_ext.h"], include: ["vendor/include"], lib: [], link: [], mode: "static" },
+    },
+  },
+}, null, 2));
+writeFileSync(join(sourceFreeCImportRoot, "vendor/include/zero_ext.h"), "int zero_ext_add(int a, int b);\n");
+writeFileSync(join(sourceFreeCImportRoot, "src/main.0"), `extern c "vendor/include/zero_ext.h" as c
+
+pub fn main(world: World) -> Void raises {
+    check world.out.write("source-free c import ok\\n")
+}
+`);
+const sourceFreeCImportSync = json(["graph", "sync", "--from-source", "--json", sourceFreeCImportRoot]).body;
+assert.equal(sourceFreeCImportSync.ok, true);
+assert.equal(sourceFreeCImportSync.repositoryGraph.projectionValidity, "clean");
+rmSync(join(sourceFreeCImportRoot, "src"), { recursive: true, force: true });
+const sourceFreeCImportCheck = json(["check", "--json", sourceFreeCImportRoot]).body;
+assert.equal(sourceFreeCImportCheck.ok, true);
+assertSourceGraph(sourceFreeCImportCheck, sourceFreeCImportStorePath, "package:source-free-c-import@0.1.0", "graph-native-check", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCImportCheck, sourceFreeCImportStorePath);
+assertRepositoryGraphNativeCheck(sourceFreeCImportCheck, "missing");
+assert.equal(zero(["run", "--out", sourceFreeCImportRunPath, sourceFreeCImportRoot]).stdout, "source-free c import ok\n");
+mkdirSync(sourceFreeCImportCwdRoot, { recursive: true });
+writeFileSync(join(sourceFreeCImportCwdRoot, "zero.json"), JSON.stringify({
+  package: { name: "unrelated-cwd-package", version: "0.1.0" },
+  targets: { cli: { kind: "exe", main: "src/main.0" } },
+}, null, 2));
+const sourceFreeCImportCwdBuild = JSON.parse(execFileSync(resolve("bin/zero"), [
+  "build",
+  "--json",
+  "--out",
+  resolve(sourceFreeCImportCwdBuildPath),
+  resolve(sourceFreeCImportRoot),
+], { cwd: sourceFreeCImportCwdRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
+assertSourceGraph(sourceFreeCImportCwdBuild, resolve(sourceFreeCImportStorePath), "package:source-free-c-import@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeCImportCwdBuild, resolve(sourceFreeCImportStorePath));
+mkdirSync(sourceFreeIdentityMismatchRoot, { recursive: true });
+writeFileSync(join(sourceFreeIdentityMismatchRoot, "zero.json"), JSON.stringify({
+  package: { name: "wrong-program-graph-fixture", version: "9.9.9" },
+  targets: { cli: { kind: "exe", main: "hello.0" } },
+  repositoryGraph: { compilerInput: true },
+}, null, 2));
+writeFileSync(join(sourceFreeIdentityMismatchRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+const sourceFreeIdentityMismatchCheck = json(["check", "--json", sourceFreeIdentityMismatchRoot], { allowFailure: true });
+assert.notEqual(sourceFreeIdentityMismatchCheck.code, 0);
+assert.equal(sourceFreeIdentityMismatchCheck.body.diagnostics[0].code, "RGP007");
+assert.equal(sourceFreeIdentityMismatchCheck.body.diagnostics[0].expected, "package:wrong-program-graph-fixture@9.9.9");
+assert.equal(sourceFreeIdentityMismatchCheck.body.diagnostics[0].actual, "package:program-graph-fixture@0.1.0");
+const sourceFreeIdentityMismatchSize = json(["size", "--json", sourceFreeIdentityMismatchRoot], { allowFailure: true });
+assert.notEqual(sourceFreeIdentityMismatchSize.code, 0);
+assert.equal(sourceFreeIdentityMismatchSize.body.diagnostics[0].code, "RGP007");
+mkdirSync(sourceFreeMissingPackageNameRoot, { recursive: true });
+writeFileSync(join(sourceFreeMissingPackageNameRoot, "zero.json"), JSON.stringify({
+  targets: { cli: { kind: "exe", main: "hello.0" } },
+  repositoryGraph: { compilerInput: true },
+}, null, 2));
+writeFileSync(join(sourceFreeMissingPackageNameRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+const sourceFreeMissingPackageNameCheck = json(["check", "--json", sourceFreeMissingPackageNameRoot], { allowFailure: true });
+assert.notEqual(sourceFreeMissingPackageNameCheck.code, 0);
+assert.equal(sourceFreeMissingPackageNameCheck.body.diagnostics[0].code, "RGP007");
+assert.equal(sourceFreeMissingPackageNameCheck.body.diagnostics[0].message, "repository graph compiler input requires package.name");
+assert.match(sourceFreeMissingPackageNameCheck.body.diagnostics[0].actual, /package:program-graph-fixture@0\.1\.0/);
+mkdirSync(sourceFreeBadProjectionRoot, { recursive: true });
+writeFileSync(join(sourceFreeBadProjectionRoot, "zero.json"), readFileSync(join(checkedInGraphPackageDir, "zero.json"), "utf8"));
+writeFileSync(join(sourceFreeBadProjectionRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8").replace(
+  /^projection path:"hello\.0" text:.*$/m,
+  `projection path:"hello.0" text:${JSON.stringify("pub fn broken( {\n")}`,
+));
+const sourceFreeBadProjectionStatus = json(["graph", "status", "--json", sourceFreeBadProjectionRoot]).body;
+assert.equal(sourceFreeBadProjectionStatus.repositoryGraph.syncState, "conflict");
+assert.equal(sourceFreeBadProjectionStatus.repositoryGraph.projectionValidity, "conflict");
+const sourceFreeBadProjectionCheck = json(["check", "--json", sourceFreeBadProjectionRoot]).body;
+assert.equal(sourceFreeBadProjectionCheck.ok, true);
+assertSourceGraph(sourceFreeBadProjectionCheck, join(sourceFreeBadProjectionRoot, "zero.graph"), "package:program-graph-fixture@0.1.0", "graph-native-check", false, "conflict");
+assertRepositoryGraphNativeCheck(sourceFreeBadProjectionCheck, "conflict");
+const sourceFreeBadProjectionSync = json(["graph", "sync", "--from-graph", "--json", sourceFreeBadProjectionRoot], { allowFailure: true });
+assert.notEqual(sourceFreeBadProjectionSync.code, 0);
+assert.equal(sourceFreeBadProjectionSync.body.diagnostics[0].code, "RGP004");
 const missingRepoGraphStoreRoot = join(outDir, "repository-graph-missing-store");
 rmSync(missingRepoGraphStoreRoot, { recursive: true, force: true });
 mkdirSync(missingRepoGraphStoreRoot, { recursive: true });
@@ -2401,18 +2547,56 @@ writeFileSync(join(sourceFreeGraphPackageRoot, "src", "helper.0"), readFileSync(
 const sourceFreeGraphPackageSync = json(["graph", "sync", "--from-source", "--json", sourceFreeGraphPackageRoot]);
 assert.equal(sourceFreeGraphPackageSync.body.ok, true);
 rmSync(join(sourceFreeGraphPackageRoot, "src"), { recursive: true, force: true });
+const sourceFreeGraphPackageStorePath = join(sourceFreeGraphPackageRoot, "zero.graph");
 const sourceFreeGraphPackageCheckJson = json(["check", "--json", sourceFreeGraphPackageRoot]).body;
 assert.equal(sourceFreeGraphPackageCheckJson.ok, true);
-assertSourceGraph(sourceFreeGraphPackageCheckJson, join(sourceFreeGraphPackageRoot, "zero.graph"), "package:source-free-graph-package@0.1.0", "graph-native-check", false);
-assertProgramGraphCompilerInput(sourceFreeGraphPackageCheckJson, join(sourceFreeGraphPackageRoot, "zero.graph"));
+assertSourceGraph(sourceFreeGraphPackageCheckJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "graph-native-check", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeGraphPackageCheckJson, sourceFreeGraphPackageStorePath);
 assertRepositoryGraphNativeCheck(sourceFreeGraphPackageCheckJson, "missing");
 assert(sourceFreeGraphPackageCheckJson.interfaceFingerprints.modules.some((module) => module.name === "main"));
 assert(sourceFreeGraphPackageCheckJson.interfaceFingerprints.modules.some((module) => module.name === "main" && module.imports.some((entry) => entry.module === "helper")));
+const sourceFreeGraphPackageSizeJson = json(["size", "--json", "--target", "linux-musl-x64", sourceFreeGraphPackageRoot]).body;
+assertSourceGraph(sourceFreeGraphPackageSizeJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeGraphPackageSizeJson, sourceFreeGraphPackageStorePath);
+const sourceFreeGraphPackageBuildPath = join(outDir, "source-free-graph-package-build");
+const sourceFreeGraphPackageBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", sourceFreeGraphPackageBuildPath, sourceFreeGraphPackageRoot]).body;
+assert.equal(sourceFreeGraphPackageBuildJson.sourceFile, sourceFreeGraphPackageStorePath);
+assertSourceGraph(sourceFreeGraphPackageBuildJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeGraphPackageBuildJson, sourceFreeGraphPackageStorePath);
+const sourceFreeGraphPackageRunPath = join(outDir, "source-free-graph-package-run");
+assert.equal(zero(["run", "--out", sourceFreeGraphPackageRunPath, sourceFreeGraphPackageRoot]).stdout, "package tests\n");
+const sourceFreeGraphPackageTestJson = json(["test", "--json", sourceFreeGraphPackageRoot]).body;
+assert.equal(sourceFreeGraphPackageTestJson.ok, true);
+assertSourceGraph(sourceFreeGraphPackageTestJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "typed-program-graph-mir", false, "missing");
+assert.equal(sourceFreeGraphPackageTestJson.selectedTests, 3);
+const sourceFreeGraphPackageShipPath = join(outDir, "source-free-graph-package-ship");
+const sourceFreeGraphPackageShipJson = json(["ship", "--json", "--target", "linux-musl-x64", "--out", sourceFreeGraphPackageShipPath, sourceFreeGraphPackageRoot]).body;
+assert.equal(sourceFreeGraphPackageShipJson.ok, true);
+assertSourceGraph(sourceFreeGraphPackageShipJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeGraphPackageShipJson, sourceFreeGraphPackageStorePath);
+const sourceFreeGraphPackageMemJson = json(["mem", "--json", sourceFreeGraphPackageRoot]).body;
+assertSourceGraph(sourceFreeGraphPackageMemJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "typed-program-graph-mir", false, "missing");
+assertProgramGraphCompilerInput(sourceFreeGraphPackageMemJson, sourceFreeGraphPackageStorePath);
+const sourceFreeGraphPackageStatus = json(["graph", "status", "--json", sourceFreeGraphPackageRoot]).body;
+assert.equal(sourceFreeGraphPackageStatus.repositoryGraph.semanticValidity, "shape-valid");
+assert.equal(sourceFreeGraphPackageStatus.repositoryGraph.projectionValidity, "missing");
 const sourceFreeGraphPackageVerify = json(["graph", "verify-sync", "--json", sourceFreeGraphPackageRoot], { allowFailure: true });
 assert.notEqual(sourceFreeGraphPackageVerify.code, 0);
 assert.equal(sourceFreeGraphPackageVerify.body.ok, false);
 assert.equal(sourceFreeGraphPackageVerify.body.diagnostics[0].code, "BLD002");
 assert.equal(sourceFreeGraphPackageVerify.body.diagnostics[0].actual, "missing source file");
+const sourceFreeGraphPackageSyncFromGraph = json(["graph", "sync", "--from-graph", "--json", sourceFreeGraphPackageRoot]).body;
+assert.equal(sourceFreeGraphPackageSyncFromGraph.ok, true);
+assert.deepEqual(sourceFreeGraphPackageSyncFromGraph.changedPaths, [
+  join(sourceFreeGraphPackageRoot, "src", "helper.0"),
+  join(sourceFreeGraphPackageRoot, "src", "main.0"),
+]);
+assert.equal(readFileSync(join(sourceFreeGraphPackageRoot, "src", "main.0"), "utf8"), readFileSync("conformance/packages/test-app/src/main.0", "utf8"));
+assert.equal(readFileSync(join(sourceFreeGraphPackageRoot, "src", "helper.0"), "utf8"), readFileSync("conformance/packages/test-app/src/helper.0", "utf8"));
+const sourceFreeGraphPackageVerifyAfter = json(["graph", "verify-sync", "--json", sourceFreeGraphPackageRoot]).body;
+assert.equal(sourceFreeGraphPackageVerifyAfter.ok, true);
+assert.equal(sourceFreeGraphPackageVerifyAfter.repositoryGraph.projectionValidity, "clean");
+assert.deepEqual(json(["graph", "sync", "--from-graph", "--json", sourceFreeGraphPackageRoot]).body.changedPaths, []);
 const graphTargetWebbitsRoot = join(outDir, "repo-graph-target-webbits");
 const graphTargetIncompatibleRoot = join(outDir, "repo-graph-target-incompatible-app");
 rmSync(graphTargetWebbitsRoot, { recursive: true, force: true });
@@ -2471,7 +2655,7 @@ assert.equal(sourceFreeStdGraphSync.body.ok, true);
 rmSync(join(sourceFreeStdGraphRoot, "main.0"), { force: true });
 const sourceFreeStdGraphCheckJson = json(["check", "--json", sourceFreeStdGraphRoot]).body;
 assert.equal(sourceFreeStdGraphCheckJson.ok, true);
-assertSourceGraph(sourceFreeStdGraphCheckJson, join(sourceFreeStdGraphRoot, "zero.graph"), "package:source-free-std-str-graph-package@0.1.0", "graph-native-check", false);
+assertSourceGraph(sourceFreeStdGraphCheckJson, join(sourceFreeStdGraphRoot, "zero.graph"), "package:source-free-std-str-graph-package@0.1.0", "graph-native-check", false, "missing");
 assertProgramGraphCompilerInput(sourceFreeStdGraphCheckJson, join(sourceFreeStdGraphRoot, "zero.graph"));
 assertRepositoryGraphNativeCheck(sourceFreeStdGraphCheckJson, "missing");
 assert(sourceFreeStdGraphCheckJson.graphCompiler.semanticFacts.calls.some((call) => call.qualifiedName === "std.str.reverse" && call.contract.kind === "sourceBackedStdlib" && call.returnType === "Maybe<Span<u8>>"));
@@ -2568,6 +2752,15 @@ assert.match(checkedInRepositoryGraphStoreText, /^zero-repository-graph v1\n/);
 assert.match(checkedInRepositoryGraphStoreText, /^moduleIdentity "package:program-graph-fixture@0\.1\.0"$/m);
 assert.match(checkedInRepositoryGraphStoreText, /^source path:"hello\.0"$/m);
 assert.match(checkedInRepositoryGraphStoreText, /^projection path:"hello\.0" text:/m);
+const sourceLocationOnlyGraphRoot = join(outDir, "repository-graph-source-location-only");
+rmSync(sourceLocationOnlyGraphRoot, { recursive: true, force: true });
+mkdirSync(sourceLocationOnlyGraphRoot, { recursive: true });
+writeFileSync(join(sourceLocationOnlyGraphRoot, "zero.json"), readFileSync(join(checkedInGraphPackageDir, "zero.json"), "utf8"));
+writeFileSync(join(sourceLocationOnlyGraphRoot, "hello.0"), checkedInGraphSource);
+writeFileSync(join(sourceLocationOnlyGraphRoot, "zero.graph"), checkedInRepositoryGraphStoreText.replace("line:1 column:1", "line:99 column:77"));
+const sourceLocationOnlyVerify = json(["graph", "verify-sync", "--json", sourceLocationOnlyGraphRoot]).body;
+assert.equal(sourceLocationOnlyVerify.ok, true);
+assert.equal(sourceLocationOnlyVerify.repositoryGraph.syncState, "clean");
 const checkedInRepositoryGraphStatus = json(["graph", "status", "--json", "--target", "linux-musl-x64", checkedInGraphPackageDir]).body;
 assert.equal(checkedInRepositoryGraphStatus.repositoryGraph.storePresent, true);
 assert.equal(checkedInRepositoryGraphStatus.repositoryGraph.storeValid, true);
@@ -2592,9 +2785,9 @@ writeFileSync(join(checkedInGraphDriftRoot, "zero.graph"), checkedInRepositoryGr
 writeFileSync(join(checkedInGraphDriftRoot, "hello.0"), checkedInGraphSource.replace("hello from zero", "hello from drift"));
 const checkedInGraphDriftCheck = json(["check", "--json", checkedInGraphDriftRoot]);
 assert.equal(checkedInGraphDriftCheck.body.ok, true);
-assertSourceGraph(checkedInGraphDriftCheck.body, join(checkedInGraphDriftRoot, "zero.graph"), "package:program-graph-fixture@0.1.0", "graph-native-check", false);
+assertSourceGraph(checkedInGraphDriftCheck.body, join(checkedInGraphDriftRoot, "zero.graph"), "package:program-graph-fixture@0.1.0", "graph-native-check", false, "stale");
 assertProgramGraphCompilerInput(checkedInGraphDriftCheck.body, join(checkedInGraphDriftRoot, "zero.graph"));
-assertRepositoryGraphNativeCheck(checkedInGraphDriftCheck.body);
+assertRepositoryGraphNativeCheck(checkedInGraphDriftCheck.body, "stale");
 const checkedInGraphDriftVerify = json(["graph", "verify-sync", "--json", checkedInGraphDriftRoot], { allowFailure: true });
 assert.notEqual(checkedInGraphDriftVerify.code, 0);
 assert.equal(checkedInGraphDriftVerify.body.ok, false);

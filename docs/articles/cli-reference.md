@@ -146,13 +146,13 @@ for tracked local files. Ambiguous identity changes fail instead of guessing.
 store, and `zero graph verify-sync` checks the store against the current source
 graph and source projection without writing files. Packages can opt normal
 check, build, run, test, size, ship, and mem commands into the checked-in store
-with `repositoryGraph.compilerInput: true` in `zero.json`. `zero check` validates
-the graph store directly, including target and package metadata, so source-free
-graph packages can still be checked; run `zero graph verify-sync` when graph and
-source projection drift must fail the workflow. The build-oriented commands
-still verify graph/source sync before compiling from `zero.graph`. Packages
-without that marker still use checked-in `.0` source text as their compiler
-input.
+with `repositoryGraph.compilerInput: true` in `zero.json`. Normal compiler
+commands validate and compile from the graph store, including target and package
+metadata, so source-free graph packages can still be checked, built, run,
+tested, sized, shipped, and inspected. Commands report source projection state
+and do not rewrite `.0` files; run `zero graph verify-sync` when graph and
+source projection drift must fail the workflow. Packages without that marker
+still use checked-in `.0` source text as their compiler input.
 `zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right
 <right-zero.graph> <input>` combines independent repository graph store edits by
 durable node ID and node hash, writes the target `zero.graph` on success, and

@@ -74,11 +74,12 @@ Current packages support local path dependencies and registry metadata. Local de
 The resolver is declarative; it records deterministic lock facts under `.zero/package-locks/` and does not fetch remote package code.
 
 Set `repositoryGraph.compilerInput` to `true` only for packages that check in a
-clean `zero.graph` store. `zero check` validates the store directly, including
-target and package metadata, and can check source-free graph packages. Build,
-run, test, size, ship, and mem still require the checked-in graph and `.0`
-source projection to be in sync before compiling from that store. Leave it
-unset or `false` for source-text packages.
+valid `zero.graph` store. Normal compiler commands validate and compile from
+that store, including target and package metadata, and can operate when `.0`
+source projections are missing. Commands report projection state and never
+rewrite `.0` files. Use `zero graph verify-sync` when drift must fail the
+workflow, and `zero graph sync --from-graph` to regenerate projections. Leave
+the field unset or `false` for source-text packages.
 
 ## Inspect
 

@@ -97,7 +97,7 @@ zero check <file.0>
 ```
 
 When `zero graph status <input>` reports repository graph sync as enabled,
-verify graph/source sync before build/test gates:
+verify graph/source sync when drift must fail the workflow:
 
 ```sh
 zero graph verify-sync <file-or-package>
@@ -113,12 +113,13 @@ files. Ambiguous identity changes fail instead of guessing. `sync --from-graph`
 updates stale checked-in `.0` projections from `zero.graph`, and `verify-sync`
 compares the store with the current source graph and source projection.
 When a package manifest sets `repositoryGraph.compilerInput` to `true`,
-`zero check` validates the graph store directly, including target and package
-metadata, so source-free graph packages can still be checked. Use
-`zero graph verify-sync` when graph/source drift must fail the workflow. Build,
-run, test, size, ship, and mem still verify sync before compiling from
-`zero.graph`. Without that marker, normal commands use checked-in `.0` source
-text.
+normal compiler commands validate and compile from the graph store, including
+target and package metadata, so source-free graph packages can still be checked,
+built, run, tested, sized, shipped, and inspected. Commands report whether the
+source projection is clean, missing, stale, conflicting, or unavailable, but do
+not rewrite `.0` files. Use `zero graph verify-sync` when graph/source drift
+must fail the workflow. Without that marker, normal commands use checked-in
+`.0` source text.
 `merge` writes only the target `zero.graph` when independent node-hash edits can
 be combined; it does not rewrite `.0` projections, so run `sync --from-graph`
 after a successful merge when source projections should be refreshed.
@@ -145,8 +146,7 @@ zero graph check <package-dir>
 zero graph import --out .zero/agent/package.program-graph <package-dir>
 ```
 
-Normal build, run, test, and ship commands use canonical source unless the command is explicitly `zero graph ...`.
 If `zero.json` sets `repositoryGraph.compilerInput` to `true`, those commands
-use the checked-in `zero.graph` store after a no-write sync check. `zero check`
-validates the store directly and reports target/package facts without requiring
-the checked-in source projection.
+use the checked-in `zero.graph` store and report source projection state without
+rewriting `.0` files. Otherwise, normal build, run, test, and ship commands use
+canonical source unless the command is explicitly `zero graph ...`.

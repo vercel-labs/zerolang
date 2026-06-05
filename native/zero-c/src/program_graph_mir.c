@@ -4,6 +4,7 @@
 #include "program_graph_format.h"
 #include "program_graph.h"
 #include "program_graph_lower.h"
+#include "program_graph_projection.h"
 #include "program_graph_size.h"
 #include "program_graph_store.h"
 
@@ -1271,6 +1272,7 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
     source->graph_hash = input ? input->program_graph_hash : "";
     source->module_identity = input ? input->program_graph_module_identity : "";
     source->lowering = "typed-program-graph-mir";
+    source->source_projection_state = z_program_graph_projection_state_label(&store, target, NULL, NULL, NULL);
     source->canonical_source = store.graph.canonical_source;
   }
   z_program_graph_store_free(&store);

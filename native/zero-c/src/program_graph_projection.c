@@ -129,10 +129,24 @@ static bool projection_target_parent_inside_root(const ZProgramGraphStore *store
   char *parent = projection_dirname(path);
   char *parent_real = realpath(parent, NULL);
   if (!parent_real) {
-    projection_set_path_diag(diag, store, "repository graph source projection parent is missing", parent);
+    char *ancestor = z_strdup(parent);
+    while (ancestor && !projection_path_exists(ancestor)) {
+      char *next = projection_dirname(ancestor);
+      if (!next || projection_text_eq(next, ancestor)) {
+        free(next);
+        break;
+      }
+      free(ancestor);
+      ancestor = next;
+    }
+    char *ancestor_real = ancestor ? realpath(ancestor, NULL) : NULL;
+    bool ok = ancestor_real && projection_real_path_inside_root(root_real, ancestor_real);
+    if (!ok) projection_set_path_diag(diag, store, "repository graph source projection target escapes repository graph root", path);
+    free(ancestor_real);
+    free(ancestor);
     free(parent);
     free(root_real);
-    return false;
+    return ok;
   }
   bool ok = projection_real_path_inside_root(root_real, parent_real);
   if (!ok) {
@@ -372,6 +386,30 @@ bool z_program_graph_projection_sources_match(const ZProgramGraphStore *store, c
   }
   if (matches) *matches = all_match;
   return true;
+}
+
+bool z_program_graph_projection_sources_missing(const ZProgramGraphStore *store) {
+  if (!store || store->projection_len == 0) return true;
+  for (size_t i = 0; i < store->projection_len; i++) {
+    char *path = projection_join_path(store->root, store->projection_paths[i]);
+    bool missing = !projection_path_exists(path);
+    free(path);
+    if (missing) return true;
+  }
+  return false;
+}
+
+const char *z_program_graph_projection_state_label(const ZProgramGraphStore *store, const ZTargetInfo *target, bool *checked, bool *current, ZDiag *diag) {
+  if (checked) *checked = false;
+  if (current) *current = false;
+  if (!store || store->projection_len == 0) return "unavailable";
+  bool matches = false;
+  bool ok = z_program_graph_projection_sources_match(store, target, &matches, diag);
+  if (checked) *checked = ok;
+  if (current) *current = ok && matches;
+  if (!ok) return "conflict";
+  if (z_program_graph_projection_sources_missing(store)) return "missing";
+  return matches ? "clean" : "stale";
 }
 
 bool z_program_graph_projection_write_sources(const ZProgramGraphStore *store, const ZTargetInfo *target, ZProgramGraphProjection *projection, ZDiag *diag) {

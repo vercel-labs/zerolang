@@ -121,7 +121,7 @@ static void pgm_bool_diag(ZDiag *diag, const char *path) {
   snprintf(diag->message, sizeof(diag->message), "repositoryGraph.compilerInput must be a boolean");
   snprintf(diag->expected, sizeof(diag->expected), "true or false");
   snprintf(diag->actual, sizeof(diag->actual), "non-boolean repositoryGraph.compilerInput");
-  snprintf(diag->help, sizeof(diag->help), "set repositoryGraph.compilerInput to true only when zero.graph is checked in and kept in sync");
+  snprintf(diag->help, sizeof(diag->help), "set repositoryGraph.compilerInput to true only when a valid zero.graph store is checked in");
 }
 
 bool z_program_graph_manifest_compiler_input_enabled(const char *input_path, bool *enabled, ZDiag *diag) {

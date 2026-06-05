@@ -19,6 +19,82 @@ static bool projection_starts_with(const char *text, const char *prefix) {
   return text && prefix && strncmp(text, prefix, len) == 0;
 }
 
+static char *projection_join_path(const char *left, const char *right) {
+  ZBuf buf;
+  zbuf_init(&buf);
+  zbuf_append(&buf, left && left[0] ? left : ".");
+  if (buf.len > 0 && buf.data[buf.len - 1] != '/') zbuf_append_char(&buf, '/');
+  zbuf_append(&buf, right && right[0] ? right : "");
+  return buf.data;
+}
+
+static char *projection_dirname_of(const char *path) {
+  const char *slash = path ? strrchr(path, '/') : NULL;
+  if (!slash) return z_strdup(".");
+  if (slash == path) return z_strdup("/");
+  return z_strndup(path, (size_t)(slash - path));
+}
+
+static bool projection_path_is_absolute(const char *path) {
+  if (!path || !path[0]) return false;
+  if (path[0] == '/') return true;
+  return ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':';
+}
+
+static void projection_source_set_package_identity(SourceInput *input, const char *identity) {
+  const char *prefix = "package:";
+  size_t prefix_len = strlen(prefix);
+  if (!input || !identity || strncmp(identity, prefix, prefix_len) != 0) return;
+  const char *name = identity + prefix_len;
+  const char *version = strrchr(name, '@');
+  if (version && version > name) {
+    input->package_name = z_strndup(name, (size_t)(version - name));
+    input->package_version = z_strdup(version + 1);
+  } else {
+    input->package_name = z_strdup(name);
+  }
+}
+
+static void projection_seed_package_metadata(SourceInput *input, const ZProgramGraphStore *store) {
+  if (!input || !store || !projection_starts_with(store->graph.module_identity, "package:")) return;
+  projection_source_set_package_identity(input, store->graph.module_identity);
+  input->package_root = z_strdup(store->root && store->root[0] ? store->root : ".");
+  char *manifest_path = projection_join_path(input->package_root, "zero.json");
+  if (z_program_graph_store_file_exists(manifest_path)) {
+    input->manifest_path = manifest_path;
+  } else {
+    free(manifest_path);
+  }
+}
+
+static char *projection_resolve_c_import_header_path(const SourceInput *input, const char *header) {
+  if (!header || !header[0]) return z_strdup(header ? header : "");
+  if (projection_path_is_absolute(header)) return z_strdup(header);
+  if (input && input->package_root && input->package_root[0]) {
+    char *package_path = projection_join_path(input->package_root, header);
+    if (z_program_graph_store_file_exists(package_path)) return package_path;
+    free(package_path);
+  }
+  if (input && input->source_file && input->source_file[0]) {
+    char *dir = projection_dirname_of(input->source_file);
+    char *source_path = projection_join_path(dir, header);
+    free(dir);
+    if (z_program_graph_store_file_exists(source_path)) return source_path;
+    free(source_path);
+  }
+  if (z_program_graph_store_file_exists(header)) return z_strdup(header);
+  return z_strdup(header);
+}
+
+static void projection_resolve_program_c_import_header_paths(const SourceInput *input, Program *program) {
+  for (size_t i = 0; program && i < program->c_imports.len; i++) {
+    CImport *item = &program->c_imports.items[i];
+    char *resolved = projection_resolve_c_import_header_path(input, item->header);
+    free(item->resolved_header);
+    item->resolved_header = resolved;
+  }
+}
+
 static bool projection_diag(const ZProgramGraphStore *store, ZDiag *diag, const char *message, const char *actual) {
   if (diag) {
     *diag = (ZDiag){0};
@@ -128,8 +204,6 @@ static bool projection_node_in_store_projection(const ZProgramGraphStore *store,
 static bool projection_node_matches(const ZProgramGraphNode *expected, const ZProgramGraphNode *actual) {
   if (!expected || !actual ||
       expected->kind != actual->kind ||
-      expected->line != actual->line ||
-      expected->column != actual->column ||
       expected->is_public != actual->is_public ||
       expected->is_mutable != actual->is_mutable ||
       expected->is_static != actual->is_static ||
@@ -147,8 +221,6 @@ static bool projection_node_matches(const ZProgramGraphNode *expected, const ZPr
 static bool projection_node_actual_used(const ZProgramGraphNode *actual, const ZProgramGraphNode *expected) {
   return actual && expected &&
          projection_text_eq(actual->path, expected->path) &&
-         actual->line == expected->line &&
-         actual->column == expected->column &&
          actual->kind == expected->kind;
 }
 
@@ -310,7 +382,7 @@ static bool projection_source_input_from_store(const ZProgramGraphStore *store, 
   *input = (SourceInput){0};
   input->canonical_text_source = true;
   input->source_file = z_strdup(store->projection_paths[0]);
-  if (projection_starts_with(store->graph.module_identity, "package:")) input->package_name = z_strdup(store->graph.module_identity + strlen("package:"));
+  projection_seed_package_metadata(input, store);
 
   ZBuf combined;
   zbuf_init(&combined);
@@ -347,6 +419,7 @@ bool z_program_graph_projection_graph_from_store(const ZProgramGraphStore *store
     return projection_diag(store, diag, "repository graph source projection does not parse", actual);
   }
   if (target) z_set_check_target(target);
+  projection_resolve_program_c_import_header_paths(&input, &program);
   ZDiag check_diag = {0};
   ok = projection_store_is_embedded_std_library(store) ? z_check_program_library(&program, &check_diag) : z_check_program(&program, &check_diag);
   if (!ok) {
