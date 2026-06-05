@@ -145,9 +145,8 @@ for tracked local files. Ambiguous identity changes fail instead of guessing.
 store, and `zero graph verify-sync` checks the store against the current source
 graph and source projection without writing files. Normal build, check, run, and
 test commands still use checked-in `.0` source text as their compiler input.
-In this repository, `pnpm run repository-graph:verify-sync` scans checked-in
-`zero.graph` stores and runs the no-write verifier for CI with the pinned
-`linux-musl-x64` graph target.
+In this repository, `pnpm run repository-graph:check` verifies checked-in
+`zero.graph` stores for CI with the pinned `linux-musl-x64` graph target.
 
 ## ProgramGraph Patches
 

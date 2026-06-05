@@ -3648,6 +3648,13 @@ assert.equal(programGraphSourceFixturePackageCheckJson.graph.moduleIdentity, "pa
 assert.match(programGraphSourceFixturePackageCheckJson.graph.graphHash, /^graph:[0-9a-f]{16}$/);
 assert.equal(programGraphSourceFixturePackageCheckJson.graph.lowering, "typed-program-graph-mir");
 assert.equal(programGraphSourceFixturePackageRun.stdout, "hello from zero\n");
+const programGraphRepositoryStatus = JSON.parse((await execFileAsync(zero, ["graph", "status", "--json", "--target", "linux-musl-x64", programGraphSourceFixturePackage])).stdout);
+assert.equal(programGraphRepositoryStatus.repositoryGraph.storePresent, true);
+assert.equal(programGraphRepositoryStatus.repositoryGraph.storeValid, true);
+assert.equal(programGraphRepositoryStatus.repositoryGraph.syncState, "clean");
+const programGraphRepositoryVerify = JSON.parse((await execFileAsync(zero, ["graph", "verify-sync", "--json", "--target", "linux-musl-x64", programGraphSourceFixturePackage])).stdout);
+assert.equal(programGraphRepositoryVerify.ok, true);
+assert.equal(programGraphRepositoryVerify.writes, false);
 assert.deepEqual(programGraphDumpJson, programGraphBody);
 assert.match(programGraphDump, /^zero-graph v1\n/);
 assert.match(programGraphDump, /origin source-text/);

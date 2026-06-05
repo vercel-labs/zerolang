@@ -111,9 +111,8 @@ unambiguous, and stores exact checked-in `.0` projection bytes for tracked local
 files. Ambiguous identity changes fail instead of guessing. `sync --from-graph`
 updates stale checked-in `.0` projections from `zero.graph`, and `verify-sync`
 compares the store with the current source graph and source projection.
-In the Zero repository, `pnpm run repository-graph:verify-sync` scans checked-in
-`zero.graph` stores and runs the no-write verifier for CI with the pinned
-`linux-musl-x64` graph target.
+In the Zero repository, `pnpm run repository-graph:check` verifies checked-in
+`zero.graph` stores for CI with the pinned `linux-musl-x64` graph target.
 
 For derived graph artifacts, validate the artifact before applying the accepted change to source:
 

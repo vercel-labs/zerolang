@@ -20,6 +20,8 @@
     "mir-verifier:test": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/mir-verifier-smoke.mts",
     "program-graph:test": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/program-graph-smoke.mts && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/program-graph-parity.mts",
     "program-graph:parity": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/program-graph-parity.mts",
+    "repository-graph:check": "pnpm run repository-graph:verify-sync && pnpm run repository-graph:fixture",
+    "repository-graph:fixture": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/repository-graph-fixture-check.mts",
     "repository-graph:verify-sync": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/repository-graph-verify-sync.mts --target linux-musl-x64",
     "canonical-text:test": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/canonical-text-smoke.mts",
     "conformance:sandbox": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/native-test-sandbox.mts -- pnpm run conformance:local",

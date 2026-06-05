@@ -1,0 +1,52 @@
+zero-repository-graph v1
+sourceProjection ".0"
+moduleIdentity "package:program-graph-fixture@0.1.0"
+graphHash "graph:73de23c87ea678c6"
+moduleHash "graph:73de23c87ea678c6"
+source path:"hello.0"
+projection path:"hello.0" text:"pub fn main(world: World) -> Void raises {\n    check world.out.write(\"hello from zero\\n\")\n}\n"
+nodeHash node:"#mod_7e2c86e8" hash:"nodehash:56852171c8099893"
+nodeHash node:"#decl_f334597f" hash:"nodehash:974df069ea5ea1ca"
+nodeHash node:"#param_7852621d" hash:"nodehash:487ef8ecf9ce8b3e"
+nodeHash node:"#type_032bb290" hash:"nodehash:9d4f262305f2d0ac"
+nodeHash node:"#type_52a529e1" hash:"nodehash:4861242e6ec1517a"
+nodeHash node:"#effect_5baea87c" hash:"nodehash:55ede9fe255a8451"
+nodeHash node:"#block_12e61a84" hash:"nodehash:1de8eb7e6c48dda8"
+nodeHash node:"#stmt_a0a43d65" hash:"nodehash:a680be28703690f1"
+nodeHash node:"#expr_534d9976" hash:"nodehash:f478b29c421a4d4b"
+nodeHash node:"#expr_23d2708b" hash:"nodehash:8d429c2642986dea"
+nodeHash node:"#expr_2c706838" hash:"nodehash:306fff6d75febe43"
+nodeHash node:"#expr_389dabe8" hash:"nodehash:66c8343433e5c17a"
+nodeHash node:"#expr_55ea5918" hash:"nodehash:f8ad03b7610c78bf"
+
+graph
+zero-graph v1
+origin source-text
+module "package:program-graph-fixture@0.1.0"
+hash "graph:73de23c87ea678c6"
+
+node #mod_7e2c86e8 Module name:"hello" path:"hello.0" line:1 column:1
+node #decl_f334597f Function name:"main" type:"Void" path:"hello.0" line:1 column:1 public:true fallible:true
+node #param_7852621d Param name:"world" type:"World" path:"hello.0" line:1 column:13
+node #type_032bb290 TypeRef type:"World" path:"hello.0" line:1 column:13
+node #type_52a529e1 TypeRef type:"Void" path:"hello.0" line:1 column:1
+node #effect_5baea87c EffectRef name:"error" path:"hello.0" line:1 column:1
+node #block_12e61a84 Block name:"body" path:"hello.0" line:1 column:1
+node #stmt_a0a43d65 Check path:"hello.0" line:2 column:5
+node #expr_534d9976 MethodCall name:"write" type:"Void" path:"hello.0" line:2 column:26
+node #expr_23d2708b FieldAccess name:"write" path:"hello.0" line:2 column:21
+node #expr_2c706838 FieldAccess name:"out" path:"hello.0" line:2 column:17
+node #expr_389dabe8 Identifier name:"world" path:"hello.0" line:2 column:11
+node #expr_55ea5918 Literal type:"String" value:"hello from zero\n" path:"hello.0" line:2 column:27
+edge #mod_7e2c86e8 function #decl_f334597f order:0
+edge #decl_f334597f param #param_7852621d order:0
+edge #param_7852621d type #type_032bb290
+edge #decl_f334597f returnType #type_52a529e1
+edge #decl_f334597f effect #effect_5baea87c
+edge #expr_2c706838 left #expr_389dabe8
+edge #expr_23d2708b left #expr_2c706838
+edge #expr_534d9976 left #expr_23d2708b
+edge #expr_534d9976 arg #expr_55ea5918 order:0
+edge #stmt_a0a43d65 expr #expr_534d9976
+edge #block_12e61a84 statement #stmt_a0a43d65 order:0
+edge #decl_f334597f body #block_12e61a84
