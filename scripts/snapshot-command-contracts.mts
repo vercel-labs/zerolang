@@ -1471,6 +1471,89 @@ const mergeRepoGraphSyncProjection = json(["graph", "sync", "--from-graph", "--j
 assert.equal(mergeRepoGraphSyncProjection.body.repositoryGraph.syncState, "clean");
 assert(readFileSync(mergeRepoGraphSource, "utf8").includes("return 10"));
 assert(readFileSync(mergeRepoGraphSource, "utf8").includes("return 20"));
+const mergeNoopProjectionRoot = join("/tmp", `zero-repo-graph-merge-noop-projection-${process.pid}`);
+const mergeNoopProjectionSource = join(mergeNoopProjectionRoot, "main.0");
+const mergeNoopProjectionStore = join(mergeNoopProjectionRoot, "zero.graph");
+rmSync(mergeNoopProjectionRoot, { force: true, recursive: true });
+mkdirSync(mergeNoopProjectionRoot, { recursive: true });
+writeFileSync(
+  mergeNoopProjectionSource,
+  `// keep projection comment
+fn alpha() -> i32 {
+    return 1
+}
+
+pub fn main(world: World) -> Void raises {
+    check world.out.write("merge no-op projection ok\\n")
+}
+`,
+);
+json(["graph", "sync", "--from-source", "--json", mergeNoopProjectionSource]);
+writeFileSync(join(mergeNoopProjectionRoot, "base.graph"), readFileSync(mergeNoopProjectionStore, "utf8"));
+writeFileSync(join(mergeNoopProjectionRoot, "left.graph"), readFileSync(mergeNoopProjectionStore, "utf8"));
+writeFileSync(join(mergeNoopProjectionRoot, "right.graph"), readFileSync(mergeNoopProjectionStore, "utf8"));
+const mergeNoopProjection = json([
+  "graph",
+  "merge",
+  "--json",
+  "--base",
+  join(mergeNoopProjectionRoot, "base.graph"),
+  "--left",
+  join(mergeNoopProjectionRoot, "left.graph"),
+  "--right",
+  join(mergeNoopProjectionRoot, "right.graph"),
+  mergeNoopProjectionRoot,
+]);
+assert.equal(mergeNoopProjection.code, 0);
+assert.equal(mergeNoopProjection.body.repositoryGraph.syncState, "clean");
+assert(readFileSync(mergeNoopProjectionStore, "utf8").includes("keep projection comment"));
+const mergeNoopProjectionVerify = json(["graph", "verify-sync", "--json", mergeNoopProjectionSource]);
+assert.equal(mergeNoopProjectionVerify.body.ok, true);
+const mergePathMoveRoot = join("/tmp", `zero-repo-graph-merge-path-move-${process.pid}`);
+const mergePathMoveSource = join(mergePathMoveRoot, "main.0");
+const mergePathMoveRenamedSource = join(mergePathMoveRoot, "renamed.0");
+const mergePathMoveStore = join(mergePathMoveRoot, "zero.graph");
+rmSync(mergePathMoveRoot, { force: true, recursive: true });
+mkdirSync(mergePathMoveRoot, { recursive: true });
+writeFileSync(join(mergePathMoveRoot, "zero.json"), JSON.stringify({ package: { name: "merge-path-move", version: "0.1.0" }, targets: { cli: { kind: "exe", main: "main.0" } } }, null, 2));
+writeFileSync(
+  mergePathMoveSource,
+  `fn alpha() -> i32 {
+    return 1
+}
+
+pub fn main(world: World) -> Void raises {
+    check world.out.write("merge path move ok\\n")
+}
+`,
+);
+json(["graph", "sync", "--from-source", "--json", mergePathMoveRoot]);
+writeFileSync(join(mergePathMoveRoot, "base.graph"), readFileSync(mergePathMoveStore, "utf8"));
+writeFileSync(join(mergePathMoveRoot, "right.graph"), readFileSync(mergePathMoveStore, "utf8"));
+renameSync(mergePathMoveSource, mergePathMoveRenamedSource);
+writeFileSync(join(mergePathMoveRoot, "zero.json"), JSON.stringify({ package: { name: "merge-path-move", version: "0.1.0" }, targets: { cli: { kind: "exe", main: "renamed.0" } } }, null, 2));
+json(["graph", "sync", "--from-source", "--json", mergePathMoveRoot]);
+writeFileSync(join(mergePathMoveRoot, "left.graph"), readFileSync(mergePathMoveStore, "utf8"));
+const mergePathMove = json([
+  "graph",
+  "merge",
+  "--json",
+  "--base",
+  join(mergePathMoveRoot, "base.graph"),
+  "--left",
+  join(mergePathMoveRoot, "left.graph"),
+  "--right",
+  join(mergePathMoveRoot, "right.graph"),
+  mergePathMoveRoot,
+]);
+assert.equal(mergePathMove.code, 0);
+const mergePathMoveText = readFileSync(mergePathMoveStore, "utf8");
+assert(mergePathMoveText.includes('source path:"renamed.0"'));
+assert(mergePathMoveText.includes('projection path:"renamed.0"'));
+assert(!mergePathMoveText.includes('source path:"main.0"'));
+assert(!mergePathMoveText.includes('projection path:"main.0"'));
+const mergePathMoveVerify = json(["graph", "verify-sync", "--json", mergePathMoveRoot]);
+assert.equal(mergePathMoveVerify.body.ok, true);
 const mergeMissingInput = json(["graph", "merge", "--json", "--base", join(mergeRepoGraphRoot, "base.graph"), "--left", join(mergeRepoGraphRoot, "left.graph"), mergeRepoGraphRoot], { allowFailure: true });
 assert.notEqual(mergeMissingInput.code, 0);
 assert.equal(mergeMissingInput.body.diagnostics[0].code, "RGM001");
