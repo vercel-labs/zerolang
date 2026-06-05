@@ -2213,6 +2213,13 @@ static void append_compiler_phases_json(ZBuf *buf, const SourceInput *input) {
   zbuf_append(buf, "]");
 }
 
+static const char *GRAPH_CACHE_INPUTS_PARSE = "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"sourceFiles\",\"importPaths\",\"compilerVersion\",\"packageDependencies\"]";
+static const char *GRAPH_CACHE_INPUTS_INTERFACE = "[\"graphHash\",\"moduleHash\",\"modulePaths\",\"symbolFacts\",\"importGraph\"]";
+static const char *GRAPH_CACHE_INPUTS_CHECK = "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"sourceFiles\",\"importPaths\",\"targetFacts\",\"compilerVersion\",\"packageDependencies\"]";
+static const char *GRAPH_CACHE_INPUTS_SPECIALIZATION = "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"sourceFiles\",\"importPaths\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]";
+static const char *GRAPH_CACHE_INPUTS_OBJECT = "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"sourceFiles\",\"importPaths\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]";
+static const char *GRAPH_CACHE_INPUTS_AGGREGATE = "[\"graphHash\",\"moduleHash\",\"modulePaths\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"sourceFiles\",\"importPaths\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]";
+
 static void append_compiler_caches_json_ex(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *source_kind, const char *graph_hash) {
   bool graph_input = source_kind && strcmp(source_kind, "program-graph") == 0;
   uint64_t parse_key = graph_input
@@ -2252,11 +2259,11 @@ static void append_compiler_caches_json_ex(ZBuf *buf, const SourceInput *input, 
     wrote = true; \
   } while (0)
   bool wrote = false;
-  APPEND_CACHE("parseTree", parse_key, input && input->parse_cache_hit, graph_input ? "ProgramGraph input" : "source", "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"compilerVersion\",\"packageDependencies\"]");
-  APPEND_CACHE("interface", interface_key, input && input->interface_cache_hit, graph_input ? "graph public symbols/import graph" : "public symbols/import graph", "[\"graphHash\",\"moduleHash\",\"symbolFacts\",\"importGraph\"]");
-  APPEND_CACHE("checkedBody", check_key, input && input->check_cache_hit, graph_input ? "ProgramGraph input or target" : "source or target", "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"targetFacts\",\"compilerVersion\",\"packageDependencies\"]");
-  APPEND_CACHE("specialization", specialization_key, input && input->specialization_cache_hit, graph_input ? "ProgramGraph input, target, or profile" : "source, target, or profile", "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]");
-  APPEND_CACHE("emittedObject", object_key, input && input->emitted_object_cache_hit, graph_input ? "ProgramGraph input, target, profile, or backend" : "source, target, profile, or backend", "[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]");
+  APPEND_CACHE("parseTree", parse_key, input && input->parse_cache_hit, graph_input ? "ProgramGraph input" : "source", GRAPH_CACHE_INPUTS_PARSE);
+  APPEND_CACHE("interface", interface_key, input && input->interface_cache_hit, graph_input ? "graph public symbols/import graph" : "public symbols/import graph", GRAPH_CACHE_INPUTS_INTERFACE);
+  APPEND_CACHE("checkedBody", check_key, input && input->check_cache_hit, graph_input ? "ProgramGraph input or target" : "source or target", GRAPH_CACHE_INPUTS_CHECK);
+  APPEND_CACHE("specialization", specialization_key, input && input->specialization_cache_hit, graph_input ? "ProgramGraph input, target, or profile" : "source, target, or profile", GRAPH_CACHE_INPUTS_SPECIALIZATION);
+  APPEND_CACHE("emittedObject", object_key, input && input->emitted_object_cache_hit, graph_input ? "ProgramGraph input, target, profile, or backend" : "source, target, profile, or backend", GRAPH_CACHE_INPUTS_OBJECT);
 #undef APPEND_CACHE
   zbuf_append(buf, "]");
 }
@@ -2302,7 +2309,8 @@ static void append_incremental_invalidations_json_ex(ZBuf *buf, const SourceInpu
     append_json_string(buf, graph_hash);
     zbuf_append(buf, ",\"lowering\":");
     append_json_string(buf, graph_lowering && graph_lowering[0] ? graph_lowering : "direct-program-graph");
-    zbuf_append(buf, ",\"parserArtifactsInKey\":false,\"keyedBy\":[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]");
+    zbuf_append(buf, ",\"parserArtifactsInKey\":false,\"keyedBy\":");
+    zbuf_append(buf, GRAPH_CACHE_INPUTS_AGGREGATE);
     zbuf_append(buf, "}");
   }
   zbuf_appendf(buf, ",\"affectedModules\":%zu,\"recheckStrategy\":\"fingerprint changed modules and dependent bodies\"", input ? input->module_count : 0);
@@ -2624,7 +2632,9 @@ static void append_repository_graph_default_readiness_json(ZBuf *buf, const char
   zbuf_append(buf, ",\"budgets\":{\"loadMs\":50,\"validateMs\":50,\"resolveMs\":50,\"checkMs\":50,\"lowerMs\":100,\"cacheMs\":25},\"timings\":{\"loadMs\":");
   zbuf_appendf(buf, "%lld,\"validateMs\":%lld,\"resolveMs\":%lld,\"checkMs\":%lld,\"lowerMs\":%lld,\"cacheMs\":%lld}", load_ms, validate_ms, resolve_ms, check_ms, lower_ms, cache_ms);
   zbuf_append(buf, "}");
-  zbuf_append(buf, ",\"cacheInvalidation\":{\"sourceKind\":\"program-graph\",\"parserArtifactsInKey\":false,\"keyedBy\":[\"graphHash\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"targetFacts\",\"profile\",\"compilerVersion\",\"packageDependencies\"]}");
+  zbuf_append(buf, ",\"cacheInvalidation\":{\"sourceKind\":\"program-graph\",\"parserArtifactsInKey\":false,\"keyedBy\":");
+  zbuf_append(buf, GRAPH_CACHE_INPUTS_AGGREGATE);
+  zbuf_append(buf, "}");
   zbuf_append(buf, "}");
 }
 

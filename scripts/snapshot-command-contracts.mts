@@ -83,11 +83,11 @@ function assertProgramGraphCompilerInput(body, artifact) {
     for (const key of includes) assert(cache.graphKeyInputs.includes(key), `${name} cache key inputs should include ${key}`);
     for (const key of excludes) assert(!cache.graphKeyInputs.includes(key), `${name} cache key inputs should not include ${key}`);
   };
-  assertCacheInputs("parseTree", ["graphHash", "nodeHashes", "compilerVersion", "packageDependencies"], ["targetFacts", "profile"]);
-  assertCacheInputs("interface", ["graphHash", "symbolFacts", "importGraph"], ["targetFacts", "profile", "compilerVersion", "packageDependencies"]);
-  assertCacheInputs("checkedBody", ["graphHash", "targetFacts", "compilerVersion", "packageDependencies"], ["profile"]);
-  assertCacheInputs("specialization", ["graphHash", "targetFacts", "profile", "compilerVersion", "packageDependencies"]);
-  assertCacheInputs("emittedObject", ["graphHash", "targetFacts", "profile", "compilerVersion", "packageDependencies"]);
+  assertCacheInputs("parseTree", ["graphHash", "nodeHashes", "sourceFiles", "importPaths", "compilerVersion", "packageDependencies"], ["targetFacts", "profile"]);
+  assertCacheInputs("interface", ["graphHash", "modulePaths", "symbolFacts", "importGraph"], ["targetFacts", "profile", "compilerVersion", "packageDependencies"]);
+  assertCacheInputs("checkedBody", ["graphHash", "sourceFiles", "importPaths", "targetFacts", "compilerVersion", "packageDependencies"], ["profile"]);
+  assertCacheInputs("specialization", ["graphHash", "sourceFiles", "importPaths", "targetFacts", "profile", "compilerVersion", "packageDependencies"]);
+  assertCacheInputs("emittedObject", ["graphHash", "sourceFiles", "importPaths", "targetFacts", "profile", "compilerVersion", "packageDependencies"]);
   assert.equal(body.compilerCaches.find((cache) => cache.name === "parseTree").invalidatesOn, "ProgramGraph input");
   assert.equal(body.incrementalInvalidation.sourceKind, "program-graph");
   assert.equal(body.incrementalInvalidation.graphInput.artifact, artifact);
@@ -97,6 +97,9 @@ function assertProgramGraphCompilerInput(body, artifact) {
   assert(body.incrementalInvalidation.graphInput.keyedBy.includes("nodeHashes"));
   assert(body.incrementalInvalidation.graphInput.keyedBy.includes("typeFacts"));
   assert(body.incrementalInvalidation.graphInput.keyedBy.includes("symbolFacts"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("sourceFiles"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("modulePaths"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("importPaths"));
   assert.equal(body.incrementalInvalidation.changedInputs.graphArtifact, artifact);
   assert.equal(body.incrementalInvalidation.interfaceFingerprints.sourceKind, "program-graph");
   assert.equal(body.incrementalInvalidation.interfaceFingerprints.graphHash, body.graph.graphHash);
@@ -134,6 +137,9 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean")
   assert.equal(body.graphCompiler.defaultReadiness.cacheInvalidation.parserArtifactsInKey, false);
   assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("nodeHashes"));
   assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("symbolFacts"));
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("sourceFiles"));
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("modulePaths"));
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("importPaths"));
   assert.equal(body.graphCompiler.defaultReadiness.targetReadinessOk, targetReady);
   assert.equal(body.compileTime.deterministic, true);
   assert.equal(body.targetReadiness.languageOk, true);

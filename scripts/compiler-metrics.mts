@@ -18,7 +18,7 @@ const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 990, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 11710, maxStrcmpCalls: 287 },
-  "native/zero-c/src/main.c": { maxLines: 13460, maxStrcmpCalls: 476 },
+  "native/zero-c/src/main.c": { maxLines: 13468, maxStrcmpCalls: 476 },
   "native/zero-c/src/ir.c": { maxLines: 4213, maxStrcmpCalls: 229 },
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -1652,7 +1652,10 @@ const programGraph = {
     /parserArtifactsInKey/.test(main) &&
     /nodeHashes/.test(main) &&
     /typeFacts/.test(main) &&
-    /symbolFacts/.test(main),
+    /symbolFacts/.test(main) &&
+    /sourceFiles/.test(main) &&
+    /modulePaths/.test(main) &&
+    /importPaths/.test(main),
   repositoryGraphMirPrepTypedLowering: /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
     /source\s*->\s*lowering\s*=\s*"typed-program-graph-mir"/.test(repositoryGraphMirPrepRawBody),
   repositoryGraphMirPrepNoAstFallback: !/z_lower_program_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
