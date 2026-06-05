@@ -25,19 +25,19 @@ pub fn main(world: World) -> Void raises {
     var result: CmdResult = CmdResult.ok
 
     if std.mem.eql(sub, "init") {
-        result = runInit(world)
+        result = check runInit(world)
     } else if std.mem.eql(sub, "install") {
-        result = runInstall(world)
+        result = check runInstall(world)
     } else if std.mem.eql(sub, "add") {
-        result = runAdd(world)
+        result = check runAdd(world)
     } else if std.mem.eql(sub, "remove") {
-        result = runRemove(world)
+        result = check runRemove(world)
     } else if std.mem.eql(sub, "list") {
-        result = runList(world)
+        result = check runList(world)
     } else if std.mem.eql(sub, "info") {
-        result = runInfo(world)
+        result = check runInfo(world)
     } else if std.mem.eql(sub, "update") {
-        result = runUpdate(world)
+        result = check runUpdate(world)
     } else if std.mem.eql(sub, "--help") || std.mem.eql(sub, "-h") || std.mem.eql(sub, "help") {
         check printUsage(world)
         return

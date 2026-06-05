@@ -54,7 +54,8 @@ fn verifyCrc32(data: Span<u8>, expected: Span<u8>) -> Bool {
         i = i + 1
     }
     let expected_hex: Span<u8> = expected[6..14]
-    return std.mem.eql(out_hex, expected_hex)
+    let out_span: Span<u8> = out_hex[..]
+    return std.mem.eqlBytes(out_span, expected_hex)
 }
 
 // Verify SHA-256 checksum of `data` against `expected` ("sha256:<64hex>").
@@ -82,7 +83,8 @@ fn verifySha256(data: Span<u8>, expected: Span<u8>) -> Bool {
         computed[j] = zpm.read_output(j as i32)
         j = j + 1
     }
-    return std.mem.eql(computed, hex_part)
+    let computed_span: Span<u8> = computed[..]
+    return std.mem.eqlBytes(computed_span, hex_part)
 }
 
 // Verify checksum of `data` against `expected`.

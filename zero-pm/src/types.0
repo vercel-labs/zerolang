@@ -52,6 +52,13 @@ type SemVer {
     patch: u32,
 }
 
+// Hand-rolled optional for SemVer. The language only auto-wraps byte-span-like
+// values into Maybe<T>, so a struct payload needs an explicit presence flag.
+type SemVerOpt {
+    has:   Bool,
+    value: SemVer,
+}
+
 // Registry package-level metadata
 type RegPackageInfo {
     name:       [64]u8,

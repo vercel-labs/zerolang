@@ -100,7 +100,7 @@ pub fn resolve( client: HttpClient, registry_url: Span<u8>, m: ref<Manifest>, re
 
             // Verify constraint
             if ver_info.ver_len > 0 {
-                let pinned: Maybe<SemVer> = semverParse(ver_info.version[..ver_info.ver_len])
+                let pinned: SemVerOpt = semverParse(ver_info.version[..ver_info.ver_len])
                 if pinned.has {
                     if !std.mem.eql(qver, "") && !semverSatisfies(pinned.value, qver) {
                         return sentinel

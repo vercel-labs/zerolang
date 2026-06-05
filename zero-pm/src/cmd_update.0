@@ -37,7 +37,7 @@ pub fn runUpdate(world: World) -> CmdResult raises {
         registry_url = registry_buf[..rn]
     }
 
-    let client: HttpClient = std.http.newClient(std.net.defaultStack())
+    let client: HttpClient = std.http.client(std.net.host())
     var req_buf:  [512]u8  = [0_u8; 512]
     var resp_buf: [8192]u8 = [0_u8; 8192]
 
@@ -79,8 +79,8 @@ pub fn runUpdate(world: World) -> CmdResult raises {
         }
 
         // Compare current vs latest
-        let cur_sv_m: Maybe<SemVer>  = semverParse(dep.version[..dep.ver_len])
-        let lat_sv_m: Maybe<SemVer>  = semverParse(info.latest[..info.latest_len])
+        let cur_sv_m: SemVerOpt  = semverParse(dep.version[..dep.ver_len])
+        let lat_sv_m: SemVerOpt  = semverParse(info.latest[..info.latest_len])
         if cur_sv_m.has && lat_sv_m.has {
             if semverCompare(lat_sv_m.value, cur_sv_m.value) > 0 {
                 let vc: usize = std.mem.copy(dep.version, info.latest[..info.latest_len])

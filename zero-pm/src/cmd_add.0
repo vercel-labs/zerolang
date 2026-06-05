@@ -55,7 +55,6 @@ pub fn runAdd(world: World) -> CmdResult raises {
     if !splitNameVersion(arg_span, name_buf, ver_buf) {
         return CmdResult.err("invalid package argument")
     }
-    let name_span: Span<u8> = name_buf[..std.mem.len(std.mem.span(name_buf))]
 
     var m: Manifest = Manifest { pkg_name:        [0_u8; 64], name_len:        0, pkg_version:     [0_u8; 32], ver_len:         0, raw_targets:     [0_u8; 512], raw_targets_len: 0, raw_deps:        [0_u8; 2048], raw_deps_len:    0, dep_count:       0 }
     if !readManifest(fs, "zero.json", &mut m) {
@@ -70,7 +69,7 @@ pub fn runAdd(world: World) -> CmdResult raises {
         registry_url = registry_buf[..rn]
     }
 
-    let client: HttpClient = std.http.newClient(std.net.defaultStack())
+    let client: HttpClient = std.http.client(std.net.host())
     var req_buf:  [512]u8  = [0_u8; 512]
     var resp_buf: [8192]u8 = [0_u8; 8192]
 
