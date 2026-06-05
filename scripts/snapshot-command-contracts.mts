@@ -637,6 +637,7 @@ assert.match(graphHelp, /zero graph source-map --json <program-graph-or-source>/
 assert.match(graphHelp, /zero graph reconcile \[--json\] <base-program-graph-or-source> --source <edited-file\.0\|project\|zero\.json>/);
 assert.match(graphHelp, /zero graph status\|verify-sync \[--json\] <project\|zero\.json\|file\.0>/);
 assert.match(graphHelp, /zero graph sync \(--from-source\|--from-graph\) \[--json\] <project\|zero\.json\|file\.0>/);
+assert.match(graphHelp, /zero graph merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] <project\|zero\.json\|file\.0>/);
 assert.match(graphHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <input>/);
 assert.match(graphHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
 assert.match(graphHelp, /zero graph build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<program-graph-or-package>/);
@@ -654,6 +655,7 @@ assert.match(rootHelp, /zero graph source-map --json <program-graph-or-source>/)
 assert.match(rootHelp, /zero graph reconcile \[--json\] <base-program-graph-or-source> --source <edited-file\.0\|project\|zero\.json>/);
 assert.match(rootHelp, /zero graph status\|verify-sync \[--json\] <project\|zero\.json\|file\.0>/);
 assert.match(rootHelp, /zero graph sync \(--from-source\|--from-graph\) \[--json\] <project\|zero\.json\|file\.0>/);
+assert.match(rootHelp, /zero graph merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] <project\|zero\.json\|file\.0>/);
 assert.match(rootHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <program-graph-or-package>/);
 assert.match(rootHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
 assert.match(rootHelp, /zero graph build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<program-graph-or-package>/);
@@ -698,6 +700,14 @@ assert.equal(repoGraphStatus.contract.commands.syncFromSource.writes, true);
 assert.equal(repoGraphStatus.contract.commands.syncFromSource.available, true);
 assert.equal(repoGraphStatus.contract.commands.syncFromGraph.writes, true);
 assert.equal(repoGraphStatus.contract.commands.syncFromGraph.available, false);
+assert.equal(repoGraphStatus.contract.commands.merge.writes, true);
+assert.equal(repoGraphStatus.contract.commands.merge.available, true);
+assert.deepEqual(repoGraphStatus.contract.commands.merge.requires, ["--base", "--left", "--right"]);
+assert.equal(repoGraphStatus.storage.encoding, "single-file-text");
+assert.equal(repoGraphStatus.storage.interface, "ProgramGraphStore");
+assert.equal(repoGraphStatus.storage.evolvable, true);
+assert.equal(repoGraphStatus.scale.nodes, 0);
+assert.equal(repoGraphStatus.scale.edges, 0);
 assert.deepEqual(repoGraphStatus.repairCommands, []);
 const invalidRepoGraphCompilerInputRoot = join("/tmp", `zero-repo-graph-invalid-compiler-input-${process.pid}`);
 rmSync(invalidRepoGraphCompilerInputRoot, { force: true, recursive: true });
@@ -1406,6 +1416,110 @@ assert.equal(ambiguousSiblingRepoGraphSync.body.diagnostics[0].code, "RGP007");
 assert.equal(ambiguousSiblingRepoGraphSync.body.diagnostics[0].message, "repository graph source identity is ambiguous");
 assert.equal(ambiguousSiblingRepoGraphSync.body.diagnostics[0].actual, ambiguousSiblingRepoGraphHelperId);
 assert.equal(readFileSync(ambiguousSiblingRepoGraphStore, "utf8"), ambiguousSiblingRepoGraphStoreBefore);
+const mergeRepoGraphRoot = join("/tmp", `zero-repo-graph-merge-${process.pid}`);
+const mergeRepoGraphSource = join(mergeRepoGraphRoot, "main.0");
+const mergeRepoGraphStore = join(mergeRepoGraphRoot, "zero.graph");
+rmSync(mergeRepoGraphRoot, { force: true, recursive: true });
+mkdirSync(mergeRepoGraphRoot, { recursive: true });
+const mergeRepoGraphOriginal = `fn alpha() -> i32 {
+    return 1
+}
+
+fn beta() -> i32 {
+    return 2
+}
+
+pub fn main(world: World) -> Void raises {
+    check world.out.write("merge ok\\n")
+}
+`;
+writeFileSync(mergeRepoGraphSource, mergeRepoGraphOriginal);
+json(["graph", "sync", "--from-source", "--json", mergeRepoGraphSource]);
+writeFileSync(join(mergeRepoGraphRoot, "base.graph"), readFileSync(mergeRepoGraphStore, "utf8"));
+writeFileSync(mergeRepoGraphSource, mergeRepoGraphOriginal.replace("return 1", "return 10"));
+json(["graph", "sync", "--from-source", "--json", mergeRepoGraphSource]);
+writeFileSync(join(mergeRepoGraphRoot, "left.graph"), readFileSync(mergeRepoGraphStore, "utf8"));
+writeFileSync(mergeRepoGraphStore, readFileSync(join(mergeRepoGraphRoot, "base.graph"), "utf8"));
+writeFileSync(mergeRepoGraphSource, mergeRepoGraphOriginal.replace("return 2", "return 20"));
+json(["graph", "sync", "--from-source", "--json", mergeRepoGraphSource]);
+writeFileSync(join(mergeRepoGraphRoot, "right.graph"), readFileSync(mergeRepoGraphStore, "utf8"));
+const mergeRepoGraphResult = json([
+  "graph",
+  "merge",
+  "--json",
+  "--base",
+  join(mergeRepoGraphRoot, "base.graph"),
+  "--left",
+  join(mergeRepoGraphRoot, "left.graph"),
+  "--right",
+  join(mergeRepoGraphRoot, "right.graph"),
+  mergeRepoGraphRoot,
+]);
+assert.equal(mergeRepoGraphResult.code, 0);
+assert.equal(mergeRepoGraphResult.body.mode, "merge");
+assert.equal(mergeRepoGraphResult.body.writes, true);
+assert.equal(mergeRepoGraphResult.body.repositoryGraph.syncState, "source-stale");
+assert.equal(mergeRepoGraphResult.body.merge.conflicts, 0);
+assert.equal(mergeRepoGraphResult.body.merge.leftChanges, 1);
+assert.equal(mergeRepoGraphResult.body.merge.rightChanges, 1);
+assert.equal(mergeRepoGraphResult.body.merge.target, mergeRepoGraphStore);
+assert.deepEqual(mergeRepoGraphResult.body.changedPaths, [mergeRepoGraphStore]);
+const mergeRepoGraphText = readFileSync(mergeRepoGraphStore, "utf8");
+assert(mergeRepoGraphText.includes('value:"10"'));
+assert(mergeRepoGraphText.includes('value:"20"'));
+const mergeRepoGraphSyncProjection = json(["graph", "sync", "--from-graph", "--json", mergeRepoGraphSource]);
+assert.equal(mergeRepoGraphSyncProjection.body.repositoryGraph.syncState, "clean");
+assert(readFileSync(mergeRepoGraphSource, "utf8").includes("return 10"));
+assert(readFileSync(mergeRepoGraphSource, "utf8").includes("return 20"));
+const mergeMissingInput = json(["graph", "merge", "--json", "--base", join(mergeRepoGraphRoot, "base.graph"), "--left", join(mergeRepoGraphRoot, "left.graph"), mergeRepoGraphRoot], { allowFailure: true });
+assert.notEqual(mergeMissingInput.code, 0);
+assert.equal(mergeMissingInput.body.diagnostics[0].code, "RGM001");
+assert.equal(mergeMissingInput.body.diagnostics[0].actual, "missing --right");
+const mergeConflictRepoGraphRoot = join("/tmp", `zero-repo-graph-merge-conflict-${process.pid}`);
+const mergeConflictRepoGraphSource = join(mergeConflictRepoGraphRoot, "main.0");
+const mergeConflictRepoGraphStore = join(mergeConflictRepoGraphRoot, "zero.graph");
+rmSync(mergeConflictRepoGraphRoot, { force: true, recursive: true });
+mkdirSync(mergeConflictRepoGraphRoot, { recursive: true });
+const mergeConflictOriginal = `fn alpha() -> i32 {
+    return 1
+}
+
+pub fn main(world: World) -> Void raises {
+    check world.out.write("merge conflict ok\\n")
+}
+`;
+writeFileSync(mergeConflictRepoGraphSource, mergeConflictOriginal);
+json(["graph", "sync", "--from-source", "--json", mergeConflictRepoGraphSource]);
+writeFileSync(join(mergeConflictRepoGraphRoot, "base.graph"), readFileSync(mergeConflictRepoGraphStore, "utf8"));
+writeFileSync(mergeConflictRepoGraphSource, mergeConflictOriginal.replace("return 1", "return 10"));
+json(["graph", "sync", "--from-source", "--json", mergeConflictRepoGraphSource]);
+writeFileSync(join(mergeConflictRepoGraphRoot, "left.graph"), readFileSync(mergeConflictRepoGraphStore, "utf8"));
+writeFileSync(mergeConflictRepoGraphStore, readFileSync(join(mergeConflictRepoGraphRoot, "base.graph"), "utf8"));
+writeFileSync(mergeConflictRepoGraphSource, mergeConflictOriginal.replace("return 1", "return 20"));
+json(["graph", "sync", "--from-source", "--json", mergeConflictRepoGraphSource]);
+writeFileSync(join(mergeConflictRepoGraphRoot, "right.graph"), readFileSync(mergeConflictRepoGraphStore, "utf8"));
+const mergeConflict = json([
+  "graph",
+  "merge",
+  "--json",
+  "--base",
+  join(mergeConflictRepoGraphRoot, "base.graph"),
+  "--left",
+  join(mergeConflictRepoGraphRoot, "left.graph"),
+  "--right",
+  join(mergeConflictRepoGraphRoot, "right.graph"),
+  mergeConflictRepoGraphRoot,
+], { allowFailure: true });
+assert.notEqual(mergeConflict.code, 0);
+assert.equal(mergeConflict.body.mode, "merge");
+assert.equal(mergeConflict.body.writes, false);
+assert.equal(mergeConflict.body.diagnostics[0].code, "RGM002");
+assert.equal(mergeConflict.body.diagnostics[0].message, "repository graph node was changed on both sides");
+assert.equal(mergeConflict.body.diagnostics[0].related[0].kind, "graphNode");
+assert.equal(mergeConflict.body.diagnostics[0].related[1].kind, "semanticObject");
+assert.equal(mergeConflict.body.diagnostics[0].related[2].kind, "field");
+assert.equal(mergeConflict.body.merge.conflicts, 1);
+assert(readFileSync(mergeConflictRepoGraphStore, "utf8").includes('value:"20"'));
 writeFileSync(standaloneRepoGraphSource, readFileSync(standaloneRepoGraphSource, "utf8").replace("hello from zero", "hello from graph store"));
 const standaloneRepoGraphVerifyDrift = json(["graph", "verify-sync", "--json", resolve(standaloneRepoGraphSource)], { allowFailure: true });
 assert.notEqual(standaloneRepoGraphVerifyDrift.code, 0);

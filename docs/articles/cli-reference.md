@@ -87,6 +87,7 @@ another tool needs stable fields.
 | `zero graph reconcile --json` | Identity decisions when edited source is compared with a prior graph, including ambiguous-match diagnostics and simple graph patch text when available. |
 | `zero graph status --json` | Repository graph sync facts, the expected `zero.graph` path, no-write status, store validity, and whether graph/source sync is enabled. |
 | `zero graph verify-sync --json` | A no-write graph/source sync check that compares a valid repository graph store with the current source graph and reports repair commands on drift. |
+| `zero graph merge --json` | Three-way repository graph store merge with base/left/right stores, durable-node conflict diagnostics, changed-path reporting, storage facts, and scale counts. |
 | `zero graph check --json` | Typecheck source or a ProgramGraph artifact through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, safety facts, and graph-mapped diagnostics. |
 | `zero graph size --json` | Size, helper, runtime, profile, safety, and backend facts for a ProgramGraph artifact lowered through typed graph MIR, with graph identity. |
 | `zero graph build --json` | Build a ProgramGraph artifact through typed graph MIR when supported, including graph identity, selected `emit` kind, target, artifact path and size, safety facts, compiler cache facts, and graph-aware incremental invalidation. |
@@ -148,6 +149,12 @@ check, build, run, test, size, ship, and mem commands into the checked-in store
 with `repositoryGraph.compilerInput: true` in `zero.json`; those commands first
 verify graph/source sync and then compile from `zero.graph`. Packages without
 that marker still use checked-in `.0` source text as their compiler input.
+`zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right
+<right-zero.graph> <input>` combines independent repository graph store edits by
+durable node ID and node hash, writes the target `zero.graph` on success, and
+reports conflicts by graph node, source projection, semantic object, and field.
+It does not rewrite `.0` projections; run `zero graph sync --from-graph` after a
+successful merge when the checked-in source projection should be refreshed.
 In this repository, `pnpm run repository-graph:check` verifies checked-in
 `zero.graph` stores for CI with the pinned `linux-musl-x64` graph target.
 
@@ -279,13 +286,14 @@ zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
+zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
 zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
 zero graph view [--json] [--out <file.0>] <program-graph-or-source>
 zero graph source-map --json <program-graph-or-source>
 zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>
 zero graph status|verify-sync [--json] <project|zero.json|file.0>
 zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>
+zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.json|file.0>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
 zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)
 zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>

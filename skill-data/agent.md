@@ -47,7 +47,7 @@ zero check <file.0>
 ```
 
 5. When a graph artifact is necessary, write it under `.zero/`, patch the artifact, validate it, and then make the accepted source change. Do not commit derived `.program-graph` files unless the user explicitly asks.
-6. If `zero graph status <input>` reports repository graph sync as enabled, run `zero graph verify-sync <input>` before build/test gates. Use `zero graph sync --from-source <input>` to refresh `zero.graph` from reviewed source changes while preserving unambiguous graph node handles and exact local `.0` projection bytes, or `zero graph sync --from-graph <input>` to refresh stale `.0` source projections from `zero.graph`. When `zero.json` sets `repositoryGraph.compilerInput` to `true`, normal check/build/run/test commands compile from `zero.graph` after this sync check.
+6. If `zero graph status <input>` reports repository graph sync as enabled, run `zero graph verify-sync <input>` before build/test gates. Use `zero graph sync --from-source <input>` to refresh `zero.graph` from reviewed source changes while preserving unambiguous graph node handles and exact local `.0` projection bytes, or `zero graph sync --from-graph <input>` to refresh stale `.0` source projections from `zero.graph`. When `zero.json` sets `repositoryGraph.compilerInput` to `true`, normal check/build/run/test commands compile from `zero.graph` after this sync check. When combining repository graph stores, use `zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <input>` and then refresh projections explicitly if the merge succeeds.
 7. Run a focused source check:
 
 ```sh

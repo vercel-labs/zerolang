@@ -64,6 +64,9 @@ typedef struct {
   const char *patch_text;
   const char *patch_expect_graph_hash;
   const char *reconcile_source;
+  const char *merge_base;
+  const char *merge_left;
+  const char *merge_right;
   const char **patch_ops;
   size_t patch_op_len;
   size_t patch_op_cap;
@@ -3724,6 +3727,7 @@ static void print_help(void) {
   printf("  zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>\n");
   printf("  zero graph status|verify-sync [--json] <project|zero.json|file.0>\n");
   printf("  zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>\n");
+  printf("  zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.json|file.0>\n");
   printf("  zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>\n");
   printf("  zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n");
   printf("  zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
@@ -3958,6 +3962,18 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
   return false;
 }
 
+static bool parse_graph_merge_option(int argc, char **argv, int *index, Command *command) {
+  const char *arg = argv[*index];
+  const char **slot = NULL;
+  if (cli_arg_is(arg, "--base")) slot = &command->merge_base;
+  else if (cli_arg_is(arg, "--left")) slot = &command->merge_left;
+  else if (cli_arg_is(arg, "--right")) slot = &command->merge_right;
+  else return false;
+  if (*index + 1 >= argc) command->unknown_flag = arg;
+  else *slot = argv[++(*index)];
+  return true;
+}
+
 static bool parse_command(int argc, char **argv, Command *command) {
   if (argc < 2) return false;
   command->command = argv[1];
@@ -4003,6 +4019,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
   }
   command->graph_patch_command = is_graph_command && command->kind && cli_arg_is(command->kind, "patch");
   command->graph_reconcile_command = is_graph_command && command->kind && cli_arg_is(command->kind, "reconcile");
+  bool graph_merge_command = is_graph_command && command->kind && cli_arg_is(command->kind, "merge");
   bool graph_run_command = is_graph_command && command->kind && strcmp(command->kind, "run") == 0;
   if (strcmp(command->command, "run") == 0 || graph_run_command) {
     for (int i = arg_start; i < argc; i++) {
@@ -4022,7 +4039,9 @@ static bool parse_command(int argc, char **argv, Command *command) {
     return true;
   }
   for (int i = arg_start; i < argc; i++) {
-    if (parse_common_option(argc, argv, &i, command)) {
+    if (graph_merge_command && parse_graph_merge_option(argc, argv, &i, command)) {
+      continue;
+    } else if (parse_common_option(argc, argv, &i, command)) {
       continue;
     } else if (command->graph_patch_command && command->input) {
       if (command->patch_file) return false;
@@ -12289,7 +12308,7 @@ int main(int argc, char **argv) {
       return 1;
     }
     RepositoryGraphSourceGraphLoader repo_graph_loader = {.command = &command, .target = target};
-    int repo_graph_rc = z_repository_graph_maybe_command(command.kind, command.input, target, command.json, command.graph_sync_from_graph, command.graph_sync_from_source, repo_has_source_graph ? &repo_source_graph : NULL, repo_wants_source_graph && !repo_has_source_graph ? &repo_source_graph_diag : NULL, command.graph_sync_from_graph ? load_repository_graph_checked_source_graph : NULL, &repo_graph_loader, &repo_graph_command);
+    int repo_graph_rc = z_repository_graph_maybe_command(command.kind, command.input, target, command.json, command.graph_sync_from_graph, command.graph_sync_from_source, command.merge_base, command.merge_left, command.merge_right, repo_has_source_graph ? &repo_source_graph : NULL, repo_wants_source_graph && !repo_has_source_graph ? &repo_source_graph_diag : NULL, command.graph_sync_from_graph ? load_repository_graph_checked_source_graph : NULL, &repo_graph_loader, &repo_graph_command);
     z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
     if (repo_graph_command) return repo_graph_rc;
     if (strcmp(command.kind, "validate") == 0) return run_graph_validate_command(&command, &diag);

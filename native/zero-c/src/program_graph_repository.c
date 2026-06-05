@@ -3,6 +3,7 @@
 #include "program_graph_manifest.h"
 #include "program_graph_projection.h"
 #include "program_graph_repository_repair.h"
+#include "program_graph_repository_merge.h"
 #include "program_graph_store.h"
 #include "zero.h"
 
@@ -150,7 +151,8 @@ static void repo_append_contract_json(ZBuf *buf, const RepositoryGraphState *sta
   zbuf_append(buf, "\"syncFromSource\":{\"writes\":true,\"available\":true},");
   zbuf_append(buf, "\"syncFromGraph\":{\"writes\":true,\"available\":");
   zbuf_append(buf, state && state->store_valid ? "true" : "false");
-  zbuf_append(buf, "}");
+  zbuf_append(buf, "},");
+  zbuf_append(buf, "\"merge\":{\"writes\":true,\"available\":true,\"requires\":[\"--base\",\"--left\",\"--right\"]}");
   zbuf_append(buf, "}}");
   free(from_source);
   free(from_graph);
@@ -183,6 +185,8 @@ static void repo_append_state_json(ZBuf *buf, const RepositoryGraphState *state,
     repo_append_json_string(buf, state->graph_hash);
     zbuf_appendf(buf, ",\"nodes\":%zu,\"edges\":%zu,\"sources\":%zu}", state->node_count, state->edge_count, state->source_count);
   }
+  zbuf_append(buf, ",\n  \"storage\": {\"encoding\":\"single-file-text\",\"artifact\":\"zero.graph\",\"interface\":\"ProgramGraphStore\",\"schemaVersion\":1,\"evolvable\":true}");
+  zbuf_appendf(buf, ",\n  \"scale\": {\"nodes\":%zu,\"edges\":%zu,\"sources\":%zu}", state->node_count, state->edge_count, state->source_count);
   zbuf_append(buf, ",\n  \"contract\": ");
   repo_append_contract_json(buf, state);
 }
@@ -491,6 +495,175 @@ int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target
   return rc;
 }
 
+static int repo_graph_merge_direction_error(const RepositoryGraphState *state, bool json, const char *actual) {
+  if (json) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    repo_append_state_json(&buf, state, false, "merge", false);
+    zbuf_append(&buf, ",\n  \"diagnostics\": [{\"severity\":\"error\",\"code\":\"RGM001\",\"message\":\"graph merge requires base, left, and right stores\",\"path\":");
+    repo_append_json_string(&buf, state->input);
+    zbuf_append(&buf, ",\"line\":1,\"column\":1,\"length\":1,\"expected\":\"zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.json|file.0>\",\"actual\":");
+    repo_append_json_string(&buf, actual ? actual : "missing merge input");
+    zbuf_append(&buf, ",\"help\":\"pass the common ancestor store and both side stores\",\"fixSafety\":\"requires-human-review\",\"repair\":{\"id\":\"choose-repository-graph-merge-inputs\",\"summary\":\"Choose the three repository graph stores to merge.\"},\"related\":[]}],\n  \"repairCommands\": []\n}\n");
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else {
+    fprintf(stderr, "%s:1:1 RGM001: graph merge requires base, left, and right stores\n", state->input);
+    fprintf(stderr, "  expected: zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.json|file.0>\n");
+    fprintf(stderr, "  actual: %s\n", actual ? actual : "missing merge input");
+    fprintf(stderr, "  help: pass the common ancestor store and both side stores\n");
+  }
+  return 1;
+}
+
+static void repo_graph_merge_copy(char *out, size_t out_len, const char *text) {
+  if (!out || out_len == 0) return;
+  const char *value = text ? text : "";
+  size_t len = strlen(value);
+  if (len >= out_len) len = out_len - 1;
+  memcpy(out, value, len);
+  out[len] = '\0';
+}
+
+static int repo_graph_merge_load_error(const RepositoryGraphState *state, bool json, const char *label, const char *path, const ZDiag *diag) {
+  char message[160];
+  snprintf(message, sizeof(message), "repository graph merge %s store is invalid", label ? label : "input");
+  ZBuf actual;
+  zbuf_init(&actual);
+  zbuf_append(&actual, path ? path : "");
+  zbuf_append(&actual, ": ");
+  zbuf_append(&actual, diag && diag->message[0] ? diag->message : "invalid store");
+  int rc = repo_graph_error(state, json, "merge", "RGM001", message, "valid zero.graph repository graph store", actual.data ? actual.data : "", "check the merge input path and rerun zero graph merge", REPO_GRAPH_REPAIR_NONE);
+  zbuf_free(&actual);
+  return rc;
+}
+
+static void repo_append_merge_json(ZBuf *buf, const RepositoryGraphState *state, const ZRepositoryGraphMergeResult *merge, bool ok) {
+  repo_append_state_json(buf, state, ok, "merge", ok);
+  zbuf_append(buf, ",\n  \"merge\": {\"target\": ");
+  repo_append_json_string(buf, merge ? merge->target_path : "");
+  zbuf_appendf(buf,
+               ", \"mergedNodes\": %zu, \"mergedEdges\": %zu, \"leftChanges\": %zu, \"rightChanges\": %zu, \"conflicts\": %zu}",
+               merge ? merge->merged_nodes : 0,
+               merge ? merge->merged_edges : 0,
+               merge ? merge->left_changes : 0,
+               merge ? merge->right_changes : 0,
+               merge ? merge->conflicts : 0);
+}
+
+static int repo_graph_merge_conflict(const RepositoryGraphState *state, bool json, const ZRepositoryGraphMergeResult *merge) {
+  if (json) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    repo_append_merge_json(&buf, state, merge, false);
+    zbuf_append(&buf, ",\n  \"diagnostics\": [{\"severity\":\"error\",\"code\":");
+    repo_append_json_string(&buf, merge && merge->code[0] ? merge->code : "RGM002");
+    zbuf_append(&buf, ",\"message\":");
+    repo_append_json_string(&buf, merge && merge->message[0] ? merge->message : "repository graph merge conflict");
+    zbuf_append(&buf, ",\"path\":");
+    repo_append_json_string(&buf, merge && merge->source_path[0] ? merge->source_path : state->input);
+    zbuf_append(&buf, ",\"line\":1,\"column\":1,\"length\":1,\"expected\":\"independent repository graph edits\",\"actual\":");
+    repo_append_json_string(&buf, merge && merge->node_id[0] ? merge->node_id : "conflicting graph facts");
+    zbuf_append(&buf, ",\"help\":\"resolve the graph conflict by editing one side, then rerun zero graph merge\",\"fixSafety\":\"requires-human-review\",\"repair\":{\"id\":\"resolve-repository-graph-merge-conflict\",\"summary\":\"Resolve the conflicting graph node or edge before merging.\"},\"related\":[{\"kind\":\"graphNode\",\"id\":");
+    repo_append_json_string(&buf, merge ? merge->node_id : "");
+    zbuf_append(&buf, "},{\"kind\":\"semanticObject\",\"id\":");
+    repo_append_json_string(&buf, merge ? merge->semantic_object : "");
+    zbuf_append(&buf, "},{\"kind\":\"field\",\"id\":");
+    repo_append_json_string(&buf, merge ? merge->field : "");
+    zbuf_append(&buf, "}]}],\n  \"repairCommands\": []\n}\n");
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else {
+    fprintf(stderr, "%s:1:1 %s: %s\n",
+            merge && merge->source_path[0] ? merge->source_path : state->input,
+            merge && merge->code[0] ? merge->code : "RGM002",
+            merge && merge->message[0] ? merge->message : "repository graph merge conflict");
+    fprintf(stderr, "  node: %s\n", merge && merge->node_id[0] ? merge->node_id : "unknown");
+    fprintf(stderr, "  semantic object: %s\n", merge && merge->semantic_object[0] ? merge->semantic_object : "unknown");
+    fprintf(stderr, "  field: %s\n", merge && merge->field[0] ? merge->field : "unknown");
+    fprintf(stderr, "  help: resolve the graph conflict by editing one side, then rerun zero graph merge\n");
+  }
+  return 1;
+}
+
+int z_repository_graph_merge_command(const char *input, const char *base_path, const char *left_path, const char *right_path, bool json) {
+  RepositoryGraphState state = repo_graph_state(input, NULL, NULL, NULL);
+  if (!base_path || !left_path || !right_path) {
+    const char *actual = !base_path ? "missing --base" : (!left_path ? "missing --left" : "missing --right");
+    int rc = repo_graph_merge_direction_error(&state, json, actual);
+    repo_graph_state_free(&state);
+    return rc;
+  }
+
+  ZProgramGraphStore base;
+  ZProgramGraphStore left;
+  ZProgramGraphStore right;
+  ZProgramGraphStore merged;
+  ZDiag diag = {0};
+  if (!z_program_graph_store_load_path(base_path, &base, &diag)) {
+    int rc = repo_graph_merge_load_error(&state, json, "base", base_path, &diag);
+    repo_graph_state_free(&state);
+    return rc;
+  }
+  if (!z_program_graph_store_load_path(left_path, &left, &diag)) {
+    int rc = repo_graph_merge_load_error(&state, json, "left", left_path, &diag);
+    z_program_graph_store_free(&base);
+    repo_graph_state_free(&state);
+    return rc;
+  }
+  if (!z_program_graph_store_load_path(right_path, &right, &diag)) {
+    int rc = repo_graph_merge_load_error(&state, json, "right", right_path, &diag);
+    z_program_graph_store_free(&base);
+    z_program_graph_store_free(&left);
+    repo_graph_state_free(&state);
+    return rc;
+  }
+  char *root = z_program_graph_store_root_for_input(input && input[0] ? input : ".");
+  char *target_path = z_program_graph_store_path_for_root(root);
+  ZRepositoryGraphMergeResult merge = {0};
+  bool ok = z_repository_graph_merge_stores(&base, &left, &right, target_path, &merged, &merge, &diag);
+  if (ok) {
+    ok = z_program_graph_store_write_path(target_path, &merged, &diag);
+    merge.wrote = ok;
+    if (!ok) {
+      snprintf(merge.code, sizeof(merge.code), "RGM007");
+      repo_graph_merge_copy(merge.message, sizeof(merge.message), diag.message[0] ? diag.message : "repository graph merge could not write target store");
+    }
+  }
+  repo_graph_state_free(&state);
+  state = repo_graph_state(input, NULL, NULL, NULL);
+  int rc = 0;
+  if (!ok) {
+    if (!merge.code[0]) {
+      snprintf(merge.code, sizeof(merge.code), "RGM002");
+      repo_graph_merge_copy(merge.message, sizeof(merge.message), diag.message[0] ? diag.message : "repository graph merge conflict");
+    }
+    rc = repo_graph_merge_conflict(&state, json, &merge);
+  } else if (json) {
+    ZBuf buf;
+    zbuf_init(&buf);
+    repo_append_merge_json(&buf, &state, &merge, true);
+    zbuf_append(&buf, ",\n  \"changedPaths\": [");
+    repo_append_json_string(&buf, target_path);
+    zbuf_append(&buf, "],\n  \"diagnostics\": [],\n  \"repairCommands\": []\n}\n");
+    fputs(buf.data, stdout);
+    zbuf_free(&buf);
+  } else {
+    printf("repository graph merge ok\n");
+    printf("wrote: %s\n", target_path);
+    printf("merged nodes: %zu\n", merge.merged_nodes);
+    printf("merged edges: %zu\n", merge.merged_edges);
+  }
+  z_program_graph_store_free(&base);
+  z_program_graph_store_free(&left);
+  z_program_graph_store_free(&right);
+  z_program_graph_store_free(&merged);
+  free(root);
+  free(target_path);
+  repo_graph_state_free(&state);
+  return rc;
+}
+
 bool z_repository_graph_needs_source_graph(const char *kind, const char *input, const ZTargetInfo *target, bool from_graph, bool from_source) {
   if (kind && strcmp(kind, "sync") == 0) return from_source && !from_graph;
   if (kind && strcmp(kind, "status") == 0 && !from_graph && !from_source) {
@@ -508,11 +681,12 @@ bool z_repository_graph_needs_source_graph(const char *kind, const char *input, 
 
 bool z_repository_graph_source_graph_optional(const char *kind, bool from_graph, bool from_source) { return kind && strcmp(kind, "status") == 0 && !from_graph && !from_source; }
 
-int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
+int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *merge_base, const char *merge_left, const char *merge_right, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
   if (handled) *handled = true;
   if (kind && strcmp(kind, "status") == 0) return z_repository_graph_status_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag);
   if (kind && strcmp(kind, "verify-sync") == 0) return z_repository_graph_verify_sync_command(input, target, json, from_graph, from_source, source_graph);
   if (kind && strcmp(kind, "sync") == 0) return z_repository_graph_sync_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag, load_source_graph, load_source_graph_ctx);
+  if (kind && strcmp(kind, "merge") == 0) return z_repository_graph_merge_command(input, merge_base, merge_left, merge_right, json);
   if (handled) *handled = false;
   return 0;
 }

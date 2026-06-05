@@ -939,6 +939,36 @@ bool z_program_graph_store_load_for_input(const char *input, ZProgramGraphStore 
   return ok;
 }
 
+bool z_program_graph_store_write_path(const char *path, const ZProgramGraphStore *store, ZDiag *diag) {
+  if (!store) return store_diag(diag, path, 1, "repository graph store write requires a store", "missing store");
+  ZProgramGraphValidation validation = {0};
+  if (!z_program_graph_validate(&store->graph, &validation)) {
+    return store_diag(diag, path, 1, "repository graph store failed graph validation", validation.code);
+  }
+  ZBuf first;
+  zbuf_init(&first);
+  store_append_text(&first, &store->graph, store);
+  ZProgramGraphStore parsed;
+  if (!store_parse_text(path, first.data ? first.data : "", &parsed, diag)) {
+    zbuf_free(&first);
+    return false;
+  }
+  ZBuf second;
+  zbuf_init(&second);
+  store_append_text(&second, &parsed.graph, &parsed);
+  bool stable = store_text_eq(first.data, second.data);
+  z_program_graph_store_free(&parsed);
+  if (!stable) {
+    zbuf_free(&first);
+    zbuf_free(&second);
+    return store_byte_stability_fail(path, diag);
+  }
+  zbuf_free(&second);
+  bool wrote = z_write_file(path, first.data ? first.data : "", diag);
+  zbuf_free(&first);
+  return wrote;
+}
+
 bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
   char *root = store_dirname(path ? path : "zero.graph");
   ZProgramGraph normalized;
