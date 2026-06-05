@@ -24,6 +24,7 @@ bool z_repository_graph_merge_stores(
   const ZProgramGraphStore *base,
   const ZProgramGraphStore *left,
   const ZProgramGraphStore *right,
+  const ZTargetInfo *target,
   const char *target_path,
   ZProgramGraphStore *merged,
   ZRepositoryGraphMergeResult *result,

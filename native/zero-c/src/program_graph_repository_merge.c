@@ -176,6 +176,11 @@ static bool merge_nodes(
     bool left_changed = left_payload_changed || left_path_changed;
     bool right_changed = right_payload_changed || right_path_changed;
     const ZProgramGraphNode *chosen = base_node;
+    if (left_deleted && right_deleted) {
+      result->left_changes++;
+      result->right_changes++;
+      continue;
+    }
     if ((left_deleted && right_changed) || (right_deleted && left_changed)) {
       char object[160];
       merge_semantic_object(left_node ? left_node : (right_node ? right_node : base_node), object, sizeof(object));
@@ -187,11 +192,6 @@ static bool merge_nodes(
                         base_node->path,
                         object,
                         "node");
-    }
-    if (left_deleted && right_deleted) {
-      result->left_changes++;
-      result->right_changes++;
-      continue;
     }
     if (left_deleted || right_deleted) {
       if (left_deleted) result->left_changes++;
@@ -572,15 +572,15 @@ static bool merge_projection_has_source_only_change(
          !merge_projection_text_is_graph_view(side, path, side_text);
 }
 
-static bool merge_store_projections_match_graph(const ZProgramGraphStore *store) {
-  return store && store->projection_len > 0 && z_program_graph_projection_store_matches_graph(store, NULL, NULL);
+static bool merge_store_projections_match_graph(const ZProgramGraphStore *store, const ZTargetInfo *target) {
+  return store && store->projection_len > 0 && z_program_graph_projection_store_matches_graph(store, target, NULL);
 }
 
-static bool merge_refresh_graph_from_projections(ZProgramGraphStore *store, ZRepositoryGraphMergeResult *result, ZDiag *diag) {
+static bool merge_refresh_graph_from_projections(ZProgramGraphStore *store, const ZTargetInfo *target, ZRepositoryGraphMergeResult *result, ZDiag *diag) {
   ZProgramGraph refreshed;
   z_program_graph_init(&refreshed);
   ZDiag projection_diag = {0};
-  bool ok = z_program_graph_projection_graph_from_store(store, NULL, &refreshed, &projection_diag);
+  bool ok = z_program_graph_projection_graph_from_store(store, target, &refreshed, &projection_diag);
   if (!ok) {
     z_program_graph_free(&refreshed);
     return merge_fail(result,
@@ -699,13 +699,14 @@ static bool merge_build_projections(
   const ZProgramGraphStore *base,
   const ZProgramGraphStore *left,
   const ZProgramGraphStore *right,
+  const ZTargetInfo *target,
   ZProgramGraphStore *store,
   ZRepositoryGraphMergeResult *result,
   ZDiag *diag
 ) {
-  bool base_projections_match_graph = merge_store_projections_match_graph(base);
-  bool left_projections_match_graph = merge_store_projections_match_graph(left);
-  bool right_projections_match_graph = merge_store_projections_match_graph(right);
+  bool base_projections_match_graph = merge_store_projections_match_graph(base, target);
+  bool left_projections_match_graph = merge_store_projections_match_graph(left, target);
+  bool right_projections_match_graph = merge_store_projections_match_graph(right, target);
   for (size_t i = 0; store && i < store->graph.node_len; i++) {
     const char *path = store->graph.nodes[i].path;
     if (!path || !path[0] || merge_projection_path_seen(store->projection_paths, store->projection_len, path)) continue;
@@ -739,8 +740,8 @@ static bool merge_build_projections(
     }
   }
   merge_sort_projections(store);
-  if (store && store->projection_len > 0 && !merge_refresh_graph_from_projections(store, result, diag)) return false;
-  if (store && store->projection_len > 0 && !z_program_graph_projection_store_matches_graph(store, NULL, diag)) {
+  if (store && store->projection_len > 0 && !merge_refresh_graph_from_projections(store, target, result, diag)) return false;
+  if (store && store->projection_len > 0 && !z_program_graph_projection_store_matches_graph(store, target, diag)) {
     return merge_fail(result,
                       diag,
                       "RGM005",
@@ -775,6 +776,7 @@ bool z_repository_graph_merge_stores(
   const ZProgramGraphStore *base,
   const ZProgramGraphStore *left,
   const ZProgramGraphStore *right,
+  const ZTargetInfo *target,
   const char *target_path,
   ZProgramGraphStore *merged,
   ZRepositoryGraphMergeResult *result,
@@ -802,7 +804,7 @@ bool z_repository_graph_merge_stores(
   if (!merge_edges(&base->graph, &left->graph, &right->graph, out, result, diag)) return false;
 
   z_program_graph_finalize_identities(out);
-  if (!merge_build_projections(base, left, right, merged, result, diag)) return false;
+  if (!merge_build_projections(base, left, right, target, merged, result, diag)) return false;
 
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(out, &validation)) {

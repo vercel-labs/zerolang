@@ -586,8 +586,8 @@ static int repo_graph_merge_conflict(const RepositoryGraphState *state, bool jso
   return 1;
 }
 
-int z_repository_graph_merge_command(const char *input, const char *base_path, const char *left_path, const char *right_path, bool json) {
-  RepositoryGraphState state = repo_graph_state(input, NULL, NULL, NULL);
+int z_repository_graph_merge_command(const char *input, const ZTargetInfo *target, const char *base_path, const char *left_path, const char *right_path, bool json) {
+  RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
   if (!base_path || !left_path || !right_path) {
     const char *actual = !base_path ? "missing --base" : (!left_path ? "missing --left" : "missing --right");
     int rc = repo_graph_merge_direction_error(&state, json, actual);
@@ -621,7 +621,7 @@ int z_repository_graph_merge_command(const char *input, const char *base_path, c
   char *root = z_program_graph_store_root_for_input(input && input[0] ? input : ".");
   char *target_path = z_program_graph_store_path_for_root(root);
   ZRepositoryGraphMergeResult merge = {0};
-  bool ok = z_repository_graph_merge_stores(&base, &left, &right, target_path, &merged, &merge, &diag);
+  bool ok = z_repository_graph_merge_stores(&base, &left, &right, target, target_path, &merged, &merge, &diag);
   if (ok) {
     ok = z_program_graph_store_write_path(target_path, &merged, &diag);
     merge.wrote = ok;
@@ -631,7 +631,7 @@ int z_repository_graph_merge_command(const char *input, const char *base_path, c
     }
   }
   repo_graph_state_free(&state);
-  state = repo_graph_state(input, NULL, NULL, NULL);
+  state = repo_graph_state(input, target, NULL, NULL);
   int rc = 0;
   if (!ok) {
     if (!merge.code[0]) {
@@ -686,7 +686,7 @@ int z_repository_graph_maybe_command(const char *kind, const char *input, const 
   if (kind && strcmp(kind, "status") == 0) return z_repository_graph_status_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag);
   if (kind && strcmp(kind, "verify-sync") == 0) return z_repository_graph_verify_sync_command(input, target, json, from_graph, from_source, source_graph);
   if (kind && strcmp(kind, "sync") == 0) return z_repository_graph_sync_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag, load_source_graph, load_source_graph_ctx);
-  if (kind && strcmp(kind, "merge") == 0) return z_repository_graph_merge_command(input, merge_base, merge_left, merge_right, json);
+  if (kind && strcmp(kind, "merge") == 0) return z_repository_graph_merge_command(input, target, merge_base, merge_left, merge_right, json);
   if (handled) *handled = false;
   return 0;
 }
