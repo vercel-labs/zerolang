@@ -2506,6 +2506,15 @@ assert.equal(json(["graph", "sync", "--from-source", "--json", graphMirUnsupport
 const graphMirUnsupportedCheckJson = json(["check", "--json", graphMirUnsupportedRoot]).body;
 assert.equal(graphMirUnsupportedCheckJson.ok, true);
 assertRepositoryGraphNativeCheck(graphMirUnsupportedCheckJson);
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.ok, false);
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].code, "BLD004");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].message, "typed graph MIR local type is unsupported");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].path, "main.0");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].expected, "typed program graph MIR subset");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].actual, "Point");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].help, "use graph check to inspect unsupported graph constructs or choose another supported target");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].backendBlocker.stage, "lower");
+assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].backendBlocker.unsupportedFeature, "Point");
 const graphMirUnsupportedBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", graphMirUnsupportedBuildPath, graphMirUnsupportedRoot], { allowFailure: true });
 assert.notEqual(graphMirUnsupportedBuildJson.code, 0);
 assert.equal(graphMirUnsupportedBuildJson.body.diagnostics[0].code, "BLD004");
