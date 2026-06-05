@@ -210,7 +210,7 @@ async def ui_search(q: str = "") -> str:
         <tr><th>Name</th><th>Latest</th><th>Description</th></tr>
         {rows or '<tr><td colspan="3"><em>no results</em></td></tr>'}
       </table>"""
-    return _html_page(f"Search "{q}" — {REGISTRY_TITLE}", body)
+    return _html_page(f'Search "{q}" — {REGISTRY_TITLE}', body)
 
 
 # ── Agent-friendly JSON API (/v1) ─────────────────────────────────────────────
