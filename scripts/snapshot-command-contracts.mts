@@ -73,12 +73,38 @@ function assertSourceGraph(body, artifact, moduleIdentity, lowering = "typed-pro
   if (sourceProjectionState !== undefined) assert.equal(body.graph.sourceProjectionState, sourceProjectionState);
 }
 
+const programGraphParseTreeKeys = new Map();
+
 function assertProgramGraphCompilerInput(body, artifact) {
   assert(body.compilerCaches.every((cache) => cache.sourceKind === "program-graph" && cache.graphHash === body.graph.graphHash));
-  assert.equal(body.compilerCaches.find((cache) => cache.name === "parseTree").invalidatesOn, "ProgramGraph input");
+  assert(body.compilerCaches.every((cache) => cache.parserArtifactsInKey === false));
+  const caches = new Map<string, any>();
+  for (const cache of body.compilerCaches) caches.set(cache.name, cache);
+  const assertCacheInputs = (name, includes, excludes = []) => {
+    const cache = caches.get(name);
+    assert(cache, `missing compiler cache ${name}`);
+    for (const key of includes) assert(cache.graphKeyInputs.includes(key), `${name} cache key inputs should include ${key}`);
+    for (const key of excludes) assert(!cache.graphKeyInputs.includes(key), `${name} cache key inputs should not include ${key}`);
+  };
+  assertCacheInputs("parseTree", ["graphHash", "nodeHashes", "importPaths", "compilerVersion", "packageDependencies"], ["sourceFiles", "targetFacts", "profile"]);
+  assertCacheInputs("interface", ["graphHash", "modulePaths", "symbolFacts", "importGraph"], ["targetFacts", "profile", "compilerVersion", "packageDependencies"]);
+  assertCacheInputs("checkedBody", ["graphHash", "importPaths", "targetFacts", "compilerVersion", "packageDependencies"], ["sourceFiles", "profile"]);
+  assertCacheInputs("specialization", ["graphHash", "importPaths", "targetFacts", "profile", "compilerVersion", "packageDependencies"], ["sourceFiles"]);
+  assertCacheInputs("emittedObject", ["graphHash", "importPaths", "targetFacts", "profile", "compilerVersion", "packageDependencies"], ["sourceFiles"]);
+  const parseTreeCache = caches.get("parseTree");
+  assert.equal(parseTreeCache.invalidatesOn, "ProgramGraph input");
+  if (programGraphParseTreeKeys.has(artifact)) assert.equal(parseTreeCache.key, programGraphParseTreeKeys.get(artifact));
+  else programGraphParseTreeKeys.set(artifact, parseTreeCache.key);
   assert.equal(body.incrementalInvalidation.sourceKind, "program-graph");
   assert.equal(body.incrementalInvalidation.graphInput.artifact, artifact);
   assert.equal(body.incrementalInvalidation.graphInput.graphHash, body.graph.graphHash);
+  assert.equal(body.incrementalInvalidation.graphInput.parserArtifactsInKey, false);
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("graphHash"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("nodeHashes"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("typeFacts"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("symbolFacts"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("modulePaths"));
+  assert(body.incrementalInvalidation.graphInput.keyedBy.includes("importPaths"));
   assert.equal(body.incrementalInvalidation.changedInputs.graphArtifact, artifact);
   assert.equal(body.incrementalInvalidation.interfaceFingerprints.sourceKind, "program-graph");
   assert.equal(body.incrementalInvalidation.interfaceFingerprints.graphHash, body.graph.graphHash);
@@ -105,6 +131,20 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean")
   assert.equal(body.graphCompiler.checking.sourceTextAuthority, false);
   assert.equal(body.graphCompiler.semanticFacts.state, "typed-facts");
   assert.equal(body.graphCompiler.semanticFacts.ok, true);
+  const targetReady = body.targetReadiness?.ok === true;
+  assert.equal(body.graphCompiler.defaultReadiness.compilerInputReady, targetReady);
+  assert.equal(body.graphCompiler.defaultReadiness.claim, targetReady ? "ready-for-opted-in-repository-graph-input" : "blocked");
+  assert.equal(body.graphCompiler.defaultReadiness.sourceFreeCompile, targetReady);
+  assert.equal(body.graphCompiler.defaultReadiness.sourceProjectionRequired, false);
+  assert.equal(body.graphCompiler.defaultReadiness.sourceProjectionState, sourceProjectionState);
+  assert.equal(body.graphCompiler.defaultReadiness.fallback.astToMirFallbackUsed, false);
+  assert.equal(body.graphCompiler.defaultReadiness.performance.validationInLoad, true);
+  assert.equal(body.graphCompiler.defaultReadiness.cacheInvalidation.parserArtifactsInKey, false);
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("nodeHashes"));
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("symbolFacts"));
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("modulePaths"));
+  assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("importPaths"));
+  assert.equal(body.graphCompiler.defaultReadiness.targetReadinessOk, targetReady);
   assert.equal(body.compileTime.deterministic, true);
   assert.equal(body.targetReadiness.languageOk, true);
   assert.equal(body.safetyFacts.schemaVersion, 1);
@@ -2693,6 +2733,8 @@ const graphMirUnsupportedCheckJson = json(["check", "--json", graphMirUnsupporte
 assert.equal(graphMirUnsupportedCheckJson.ok, true);
 assertRepositoryGraphNativeCheck(graphMirUnsupportedCheckJson);
 assert.equal(graphMirUnsupportedCheckJson.targetReadiness.ok, false);
+assert.equal(graphMirUnsupportedCheckJson.graphCompiler.defaultReadiness.compilerInputReady, false);
+assert.equal(graphMirUnsupportedCheckJson.graphCompiler.defaultReadiness.claim, "blocked");
 assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].code, "BLD004");
 assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].message, "typed graph MIR local type is unsupported");
 assert.equal(graphMirUnsupportedCheckJson.targetReadiness.diagnostics[0].path, "main.0");

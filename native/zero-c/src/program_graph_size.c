@@ -87,6 +87,10 @@ static const char *graph_size_owned_symbol_kind(const ZProgramGraphEdge *edge, c
 }
 
 static void graph_size_seed_from_graph(SourceInput *input, const ZProgramGraph *graph) {
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE) graph_size_record_module(input, node->name && node->name[0] ? node->name : "main", node->path);
+  }
   for (size_t i = 0; graph && i < graph->edge_len; i++) {
     const ZProgramGraphEdge *edge = &graph->edges[i];
     const ZProgramGraphNode *module = graph_size_find_node(graph, edge->from);
@@ -94,20 +98,12 @@ static void graph_size_seed_from_graph(SourceInput *input, const ZProgramGraph *
     const ZProgramGraphNode *node = graph_size_find_node(graph, edge->to);
     if (!node) continue;
     const char *module_name = module->name && module->name[0] ? module->name : "main";
-    graph_size_record_module(input, module_name, module->path);
 
     if (node->kind == Z_PROGRAM_GRAPH_NODE_IMPORT && graph_size_text_eq(edge->kind, "import")) {
       const char *name = node->name ? node->name : "";
       if (strncmp(name, "std.", 4) == 0) continue;
       int line = node->line > 0 ? node->line : 1;
-      graph_size_record_import(input,
-                               module_name,
-                               name,
-                               graph_size_module_path_for_name(input, name),
-                               node->path,
-                               line,
-                               node->column,
-                               (int)strlen(name));
+      graph_size_record_import(input, module_name, name, graph_size_module_path_for_name(input, name), node->path, line, node->column, (int)strlen(name));
       continue;
     }
 

@@ -18,7 +18,7 @@ const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 990, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 11710, maxStrcmpCalls: 287 },
-  "native/zero-c/src/main.c": { maxLines: 13428, maxStrcmpCalls: 476 },
+  "native/zero-c/src/main.c": { maxLines: 13468, maxStrcmpCalls: 476 },
   "native/zero-c/src/ir.c": { maxLines: 4213, maxStrcmpCalls: 229 },
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -894,7 +894,10 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       !programGraph.repositoryGraphCheckNoProgramLowering ||
       !programGraph.repositoryGraphCheckNoLegacyChecker ||
       !programGraph.repositoryGraphCheckReportsSemanticFacts ||
-      !programGraph.repositoryGraphCheckReportsNoFallback) {
+      !programGraph.repositoryGraphCheckReportsNoFallback ||
+      !programGraph.repositoryGraphCheckDefaultReadiness ||
+      !programGraph.repositoryGraphCheckPerformanceBudget ||
+      !programGraph.repositoryGraphCacheKeyFacts) {
     violations.push({
       kind: "program-graph-repository-native-check-path",
       programGraph,
@@ -1224,6 +1227,7 @@ const programGraphRepositoryInputSource = cCodeText(programGraphRepositoryInputR
 const programGraphProjectionValidateSource = cCodeText(programGraphProjectionValidateRaw);
 const repositoryGraphCheckBody = cCodeText(cBlock(main, "static int run_repository_graph_check_command"));
 const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_repository_graph_compiler_path_json"));
+const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
 const directManifestGraphInputBody = cCodeText(cBlock(main, "static int resolve_direct_command_manifest_graph_input"));
 const repositoryGraphMirPrepRawBody = cTextWithoutComments(cBlock(programGraphMirRaw, "bool z_program_graph_prepare_repository_store_mir_input"));
 const repositoryGraphMirPrepBody = cCodeText(cBlock(programGraphMirRaw, "bool z_program_graph_prepare_repository_store_mir_input"));
@@ -1636,6 +1640,22 @@ const programGraph = {
     /graphToProgramLoweringUsed\\":false/.test(main) &&
     /graphNativeCheckerUsed\\":true/.test(main) &&
     /astToMirFallbackUsed\\":false/.test(main),
+  repositoryGraphCheckDefaultReadiness: /defaultReadiness/.test(main) &&
+    /compilerInputReady/.test(repositoryGraphDefaultReadinessRawBody) &&
+    /sourceFreeCompile/.test(repositoryGraphDefaultReadinessRawBody) &&
+    /targetReadinessOk/.test(repositoryGraphDefaultReadinessRawBody),
+  repositoryGraphCheckPerformanceBudget: /cacheMs/.test(repositoryGraphDefaultReadinessRawBody) &&
+    /validateMs/.test(repositoryGraphDefaultReadinessRawBody) &&
+    /validationInLoad/.test(repositoryGraphDefaultReadinessRawBody) &&
+    /withinBudget/.test(repositoryGraphDefaultReadinessRawBody),
+  repositoryGraphCacheKeyFacts: /graphKeyInputs/.test(main) &&
+    /parserArtifactsInKey/.test(main) &&
+    /nodeHashes/.test(main) &&
+    /typeFacts/.test(main) &&
+    /symbolFacts/.test(main) &&
+    /modulePaths/.test(main) &&
+    /importPaths/.test(main) &&
+    !/GRAPH_CACHE_INPUTS_(?:PARSE|CHECK|SPECIALIZATION|OBJECT|AGGREGATE)\s*=\s*"\[[^\]]*sourceFiles/.test(main),
   repositoryGraphMirPrepTypedLowering: /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
     /source\s*->\s*lowering\s*=\s*"typed-program-graph-mir"/.test(repositoryGraphMirPrepRawBody),
   repositoryGraphMirPrepNoAstFallback: !/z_lower_program_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
