@@ -47,7 +47,7 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "availab
   assert.equal(body.graphCompiler.legacyProgramAstReconstructed, false);
   assert.equal(body.graphCompiler.graphToProgramLoweringUsed, false);
   assert.equal(body.graphCompiler.graphNativeCheckerUsed, true);
-  assert.equal(body.graphCompiler.graphHirToMirUsed, false);
+  assert.equal(body.graphCompiler.graphHirToMirUsed, true);
   assert.equal(body.graphCompiler.astToMirFallbackUsed, false);
   assert.equal(body.graphCompiler.unsupportedGraphFacts.count, 0);
   assert.equal(body.graphCompiler.resolution.ok, true);
@@ -57,6 +57,9 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "availab
   assert.equal(body.graphCompiler.checking.sourceTextAuthority, false);
   assert.equal(body.graphCompiler.semanticFacts.state, "typed-facts");
   assert.equal(body.graphCompiler.semanticFacts.ok, true);
+  assert.equal(body.compileTime.deterministic, true);
+  assert.equal(body.targetReadiness.languageOk, true);
+  assert.equal(body.safetyFacts.schemaVersion, 1);
 }
 
 function assertLlvmPhiPredecessors(ir) {
@@ -3734,6 +3737,11 @@ const programGraphTargetCapabilityBody = JSON.parse(programGraphTargetCapability
 assert.equal(programGraphTargetCapabilityBody.ok, false);
 assert.equal(programGraphTargetCapabilityBody.diagnostics[0].code, "TAR002");
 assert.match(programGraphTargetCapabilityBody.diagnostics[0].actual, /lacks Fs/);
+const programGraphBackendMismatchCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", "--backend", "zero-coff-x64", "--target", "linux-musl-x64", programGraphSourceFixturePackage])).stdout);
+assert.equal(programGraphBackendMismatchCheck.ok, true);
+assert.equal(programGraphBackendMismatchCheck.targetReadiness.ok, false);
+assert.equal(programGraphBackendMismatchCheck.targetReadiness.diagnostics[0].code, "BLD004");
+assert.equal(programGraphBackendMismatchCheck.targetReadiness.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
 const programGraphRepositoryStatus = JSON.parse((await execFileAsync(zero, ["graph", "status", "--json", "--target", "linux-musl-x64", programGraphSourceFixturePackage])).stdout);
 assert.equal(programGraphRepositoryStatus.repositoryGraph.storePresent, true);
 assert.equal(programGraphRepositoryStatus.repositoryGraph.storeValid, true);

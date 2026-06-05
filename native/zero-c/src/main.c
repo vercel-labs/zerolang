@@ -2495,6 +2495,7 @@ static void append_compile_time_json(ZBuf *buf, const Program *program, const So
 
 static void append_program_graph_artifact_source_json(ZBuf *buf, const ZProgramGraphArtifactSource *source);
 static void append_safety_facts_json(ZBuf *buf, const char *profile);
+static void append_repository_graph_target_readiness_json(ZBuf *buf, SourceInput *input, const ZProgramGraph *graph, const ZTargetInfo *target, const Command *command, long long *lower_ms_out, bool *graph_mir_used_out);
 
 static bool graph_check_text_eq(const char *left, const char *right) {
   const unsigned char *a = (const unsigned char *)(left ? left : "");
@@ -2605,7 +2606,7 @@ static const char *repository_graph_projection_state(const ZProgramGraphStore *s
   return "available";
 }
 
-static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long resolve_ms, long long check_ms) {
+static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long resolve_ms, long long check_ms, long long lower_ms, bool graph_mir_used) {
   ZProgramGraphStoreTableCounts tables;
   z_program_graph_store_table_counts_for_graph(store ? &store->graph : NULL,
                                                store ? store->source_path_len : 0,
@@ -2614,9 +2615,11 @@ static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZProgram
   zbuf_append(buf, "{\"schemaVersion\":1,\"input\":\"repository-graph-store\",\"graphStoreLoaded\":true");
   zbuf_append(buf, ",\"sourceProjectionRequiredForCompilerInput\":false,\"sourceProjectionState\":");
   append_json_string(buf, repository_graph_projection_state(store));
-  zbuf_append(buf, ",\"legacyProgramAstReconstructed\":false,\"graphToProgramLoweringUsed\":false,\"graphNativeCheckerUsed\":true,\"graphHirToMirUsed\":false,\"astToMirFallbackUsed\":false");
+  zbuf_append(buf, ",\"legacyProgramAstReconstructed\":false,\"graphToProgramLoweringUsed\":false,\"graphNativeCheckerUsed\":true,\"graphHirToMirUsed\":");
+  zbuf_append(buf, graph_mir_used ? "true" : "false");
+  zbuf_append(buf, ",\"astToMirFallbackUsed\":false");
   zbuf_append(buf, ",\"unsupportedGraphFacts\":{\"count\":0,\"facts\":[]}");
-  zbuf_appendf(buf, ",\"timings\":{\"loadMs\":%lld,\"resolveMs\":%lld,\"checkMs\":%lld,\"lowerMs\":0}", load_ms, resolve_ms, check_ms);
+  zbuf_appendf(buf, ",\"timings\":{\"loadMs\":%lld,\"resolveMs\":%lld,\"checkMs\":%lld,\"lowerMs\":%lld}", load_ms, resolve_ms, check_ms, lower_ms);
   zbuf_append(buf, ",\"tables\":");
   z_program_graph_store_append_table_counts_json(buf, &tables);
   zbuf_append(buf, ",\"resolution\":{\"state\":\"resolved-graph-facts\",\"ok\":");
@@ -2631,6 +2634,11 @@ static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZProgram
 }
 
 static void print_repository_graph_check_json_success(const Command *command, const ZTargetInfo *target, SourceInput *input, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long resolve_ms, long long check_ms) {
+  ZBuf target_readiness;
+  zbuf_init(&target_readiness);
+  long long lower_ms = 0;
+  bool graph_mir_used = false;
+  append_repository_graph_target_readiness_json(&target_readiness, input, store ? &store->graph : NULL, target, command, &lower_ms, &graph_mir_used);
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"sourceFile\": ");
@@ -2648,8 +2656,14 @@ static void print_repository_graph_check_json_success(const Command *command, co
   append_package_metadata_json(&buf, input, target);
   zbuf_append(&buf, ",\n  \"packageCache\": ");
   append_package_cache_audit_json(&buf, input, target, profile);
-  zbuf_append(&buf, ",\n  \"diagnostics\": [],\n  \"graphCompiler\": ");
-  append_repository_graph_compiler_path_json(&buf, store, resolution, load_ms, resolve_ms, check_ms);
+  zbuf_append(&buf, ",\n  \"diagnostics\": [],\n  \"compileTime\": ");
+  append_compile_time_json(&buf, NULL, input, target);
+  zbuf_append(&buf, ",\n  \"targetReadiness\": ");
+  zbuf_append(&buf, target_readiness.data ? target_readiness.data : "{\"schemaVersion\":1,\"ok\":false,\"languageOk\":true,\"buildable\":false,\"target\":\"unknown\",\"emit\":\"exe\",\"objectFormat\":\"unknown\",\"backend\":\"none\",\"stage\":\"select\",\"diagnostics\":[]}");
+  zbuf_append(&buf, ",\n  \"safetyFacts\": ");
+  append_safety_facts_json(&buf, profile);
+  zbuf_append(&buf, ",\n  \"graphCompiler\": ");
+  append_repository_graph_compiler_path_json(&buf, store, resolution, load_ms, resolve_ms, check_ms, lower_ms, graph_mir_used);
   zbuf_append(&buf, ",\n  \"compilerPhases\": ");
   append_compiler_phases_json(&buf, input);
   zbuf_append(&buf, ",\n  \"compilerCaches\": ");
@@ -2661,6 +2675,7 @@ static void print_repository_graph_check_json_success(const Command *command, co
   zbuf_append(&buf, "\n}\n");
   fputs(buf.data, stdout);
   zbuf_free(&buf);
+  zbuf_free(&target_readiness);
 }
 
 static void print_check_json_success(const char *path, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command) {
@@ -10297,6 +10312,128 @@ static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Pr
   }
   if (!ready && input) {
     /* C library validation points at zero.json; source mapping would erase that. */
+    if (diag.code != 8003 && diag.code != 8005) z_map_source_diag(input, &diag);
+    if (!diag.path) diag.path = input->source_file;
+  }
+
+  const char *emit_kind = emit_kind_name(command ? command->emit : EMIT_EXE);
+  zbuf_append(buf, "{\"schemaVersion\":1,\"ok\":");
+  zbuf_append(buf, ready ? "true" : "false");
+  zbuf_append(buf, ",\"languageOk\":true,\"buildable\":");
+  zbuf_append(buf, ready ? "true" : "false");
+  zbuf_append(buf, ",\"target\":");
+  append_json_string(buf, target && target->name ? target->name : z_host_target());
+  zbuf_append(buf, ",\"emit\":");
+  append_json_string(buf, emit_kind);
+  zbuf_append(buf, ",\"objectFormat\":");
+  append_json_string(buf, target && target->object_format ? target->object_format : "unknown");
+  zbuf_append(buf, ",\"backend\":");
+  bool requested_llvm_backend = z_backend_request_is_llvm(command ? command->backend : NULL, emit_kind);
+  const char *ready_backend = requested_llvm_backend
+    ? "llvm"
+    : z_direct_backend_name_for_emit_kind(target, emit_kind, z_backend_direct_request_name(command ? command->backend : NULL));
+  append_json_string(buf, ready || !diag.backend_blocker.present ? ready_backend : diag.backend_blocker.backend);
+  if (requested_llvm_backend) {
+    z_append_llvm_backend_lifecycle_field_json(buf);
+  }
+  zbuf_append(buf, ",\"stage\":");
+  append_json_string(buf, ready ? "ready" : (diag.backend_blocker.present && diag.backend_blocker.stage[0] ? diag.backend_blocker.stage : "select"));
+  zbuf_append(buf, ",\"diagnostics\":[");
+  if (!ready) append_target_readiness_diagnostic_json(buf, input ? input->source_file : NULL, &diag);
+  zbuf_append(buf, "]}");
+  z_free_ir_program(&ir);
+}
+
+static bool repository_graph_target_readiness_select_diag(const Command *command, const SourceInput *input, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag) {
+  EmitKind emit = command ? command->emit : EMIT_EXE;
+  const char *emit_kind = emit_kind_name(emit);
+  if (emit == EMIT_LLVM_IR && z_backend_request_is_llvm(command ? command->backend : NULL, emit_kind)) {
+    ZBuf scratch;
+    bool ok = z_emit_llvm_ir_from_ir(ir, &scratch, diag);
+    if (ok) zbuf_free(&scratch);
+    return ok;
+  }
+  if (command_uses_llvm_native_exe(command, emit_kind)) {
+    if (!z_llvm_native_executable_ready(target, input ? input->source_file : NULL, diag)) return false;
+    ZBuf scratch;
+    bool ok = z_emit_llvm_ir_from_ir(ir, &scratch, diag);
+    if (ok) zbuf_free(&scratch);
+    return ok;
+  }
+  if (emit == EMIT_OBJ) return target_readiness_buildability_check(command, target, ir, diag);
+  if (emit == EMIT_C) {
+    init_direct_backend_diag(diag, command, input, target, emit_kind, "use --emit exe or --emit obj for target readiness");
+    return false;
+  }
+
+  bool needs_zero_runtime = ir && ir_linked_executable_needs_zero_runtime_object(ir);
+  bool needs_linked_executable = ir && ir_needs_linked_executable_object(ir);
+  if (needs_linked_executable) {
+    RuntimeImportAudit audit = runtime_import_audit_from_ir(ir);
+    bool needs_http_runtime = runtime_import_audit_uses_http_provider(&audit);
+    ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, needs_http_runtime);
+    if (needs_zero_runtime && !runtime_object.supported) {
+      init_direct_backend_diag(diag, command, input, target, emit_kind, runtime_object.blocker);
+      return false;
+    }
+    return target_readiness_buildability_check(command, target, ir, diag);
+  }
+
+  const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
+  ZDirectExecutableTargetFacts direct_exe = z_direct_executable_target_facts(target, direct_request);
+  if (direct_request && !direct_exe.request_supported) {
+    init_direct_backend_request_mismatch_diag(diag, command, input, target, emit_kind);
+    return false;
+  }
+  if (direct_exe.request_supported) return target_readiness_buildability_check(command, target, ir, diag);
+  init_direct_backend_diag(diag, command, input, target, emit_kind, "direct executable backend is not implemented for this target/backend pair; use --emit obj for direct target objects or choose a supported direct executable target");
+  return false;
+}
+
+static void append_repository_graph_target_readiness_json(ZBuf *buf, SourceInput *input, const ZProgramGraph *graph, const ZTargetInfo *target, const Command *command, long long *lower_ms_out, bool *graph_mir_used_out) {
+  ZDiag diag = {0};
+  IrProgram ir = {0};
+  bool ready = true;
+  if (lower_ms_out) *lower_ms_out = 0;
+  if (graph_mir_used_out) *graph_mir_used_out = false;
+
+  if (!graph) {
+    ready = false;
+    diag.code = 2002;
+    diag.path = input ? input->source_file : NULL;
+    diag.line = 1;
+    diag.column = 1;
+    diag.length = 1;
+    snprintf(diag.message, sizeof(diag.message), "repository graph target readiness requires a graph store");
+    snprintf(diag.expected, sizeof(diag.expected), "loaded repository ProgramGraph");
+    snprintf(diag.actual, sizeof(diag.actual), "missing graph");
+    snprintf(diag.help, sizeof(diag.help), "run zero graph status to inspect the repository graph store");
+  } else {
+    long long phase_started = now_ms();
+    ir = z_lower_program_graph_with_source(graph, input, target);
+    long long lower_ms = now_ms() - phase_started;
+    if (lower_ms_out) *lower_ms_out = lower_ms;
+    if (graph_mir_used_out) *graph_mir_used_out = true;
+    if (input) input->lower_ms = lower_ms;
+    apply_ir_metrics_to_input(input, &ir, target);
+
+    if (!validate_c_libraries_for_target(input, target, command, &diag)) {
+      ready = false;
+    }
+
+    if (ready) {
+      if (!target_readiness_select_emit_target(command, input, target, &diag)) {
+        ready = false;
+      } else if (!ir.mir_valid) {
+        init_lowering_backend_diag(&diag, input, target, command, &ir);
+        ready = false;
+      } else if (!repository_graph_target_readiness_select_diag(command, input, target, &ir, &diag)) {
+        ready = false;
+      }
+    }
+  }
+
+  if (!ready && input) {
     if (diag.code != 8003 && diag.code != 8005) z_map_source_diag(input, &diag);
     if (!diag.path) diag.path = input->source_file;
   }

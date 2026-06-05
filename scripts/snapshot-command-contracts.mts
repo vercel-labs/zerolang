@@ -91,7 +91,7 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "availab
   assert.equal(body.graphCompiler.legacyProgramAstReconstructed, false);
   assert.equal(body.graphCompiler.graphToProgramLoweringUsed, false);
   assert.equal(body.graphCompiler.graphNativeCheckerUsed, true);
-  assert.equal(body.graphCompiler.graphHirToMirUsed, false);
+  assert.equal(body.graphCompiler.graphHirToMirUsed, true);
   assert.equal(body.graphCompiler.astToMirFallbackUsed, false);
   assert.equal(body.graphCompiler.unsupportedGraphFacts.count, 0);
   assert.equal(body.graphCompiler.resolution.ok, true);
@@ -101,6 +101,9 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "availab
   assert.equal(body.graphCompiler.checking.sourceTextAuthority, false);
   assert.equal(body.graphCompiler.semanticFacts.state, "typed-facts");
   assert.equal(body.graphCompiler.semanticFacts.ok, true);
+  assert.equal(body.compileTime.deterministic, true);
+  assert.equal(body.targetReadiness.languageOk, true);
+  assert.equal(body.safetyFacts.schemaVersion, 1);
 }
 
 const graphHashPrime = 1099511628211n;
@@ -2400,6 +2403,11 @@ const graphTargetCapabilityCheck = json(["check", "--json", "--target", "linux-a
 assert.notEqual(graphTargetCapabilityCheck.code, 0);
 assert.equal(graphTargetCapabilityCheck.body.diagnostics[0].code, "TAR002");
 assert.match(graphTargetCapabilityCheck.body.diagnostics[0].actual, /lacks Fs/);
+const graphTargetBackendMismatchCheck = json(["check", "--json", "--backend", "zero-coff-x64", "--target", "linux-musl-x64", checkedInGraphPackageDir]);
+assert.equal(graphTargetBackendMismatchCheck.body.ok, true);
+assert.equal(graphTargetBackendMismatchCheck.body.targetReadiness.ok, false);
+assert.equal(graphTargetBackendMismatchCheck.body.targetReadiness.diagnostics[0].code, "BLD004");
+assert.equal(graphTargetBackendMismatchCheck.body.targetReadiness.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
 const sourceFreeStdGraphRoot = join(outDir, "source-free-std-str-graph-package");
 rmSync(sourceFreeStdGraphRoot, { recursive: true, force: true });
 mkdirSync(sourceFreeStdGraphRoot, { recursive: true });
