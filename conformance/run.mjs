@@ -17,6 +17,18 @@ const runnableDirectTarget =
   process.platform === "linux" && process.arch === "x64" ? "linux-musl-x64" :
   null;
 const checkTimeoutMs = Number(process.env.ZERO_CHECK_TIMEOUT_MS ?? 2000);
+const sectionNames = [
+  "fixture-checks",
+  "agent-surface",
+  "direct-backends",
+  "command-surface",
+  "program-graph",
+  "c-interop",
+  "cli-runtime",
+  "failure-diagnostics",
+];
+const selectedSections = parseSelectedSections(process.argv.slice(2));
+let ranSections = 0;
 
 function runnableExeArgs(input, out) {
   if (!runnableDirectTarget) return null;
@@ -24,6 +36,99 @@ function runnableExeArgs(input, out) {
 }
 
 await mkdir(outDir, { recursive: true });
+
+function parseSelectedSections(args) {
+  const sectionValues = [];
+  let shardSpec = process.env.ZERO_CONFORMANCE_SHARD ?? null;
+  if (process.env.ZERO_CONFORMANCE_SECTION) sectionValues.push(process.env.ZERO_CONFORMANCE_SECTION);
+  if (process.env.ZERO_CONFORMANCE_SECTIONS) sectionValues.push(process.env.ZERO_CONFORMANCE_SECTIONS);
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") continue;
+    if (arg === "--list-sections") {
+      console.log(sectionNames.join("\n"));
+      process.exit(0);
+    }
+    if (arg === "--section" || arg === "--sections") {
+      const value = args[++i];
+      if (!value) {
+        console.error(`${arg} requires a comma-separated section list`);
+        process.exit(1);
+      }
+      sectionValues.push(value);
+      continue;
+    }
+    if (arg.startsWith("--section=")) {
+      sectionValues.push(arg.slice("--section=".length));
+      continue;
+    }
+    if (arg.startsWith("--sections=")) {
+      sectionValues.push(arg.slice("--sections=".length));
+      continue;
+    }
+    if (arg === "--shard") {
+      shardSpec = args[++i];
+      if (!shardSpec) {
+        console.error("--shard requires a value like 1/4");
+        process.exit(1);
+      }
+      continue;
+    }
+    if (arg.startsWith("--shard=")) {
+      shardSpec = arg.slice("--shard=".length);
+      continue;
+    }
+    console.error(`unknown conformance runner argument: ${arg}`);
+    process.exit(1);
+  }
+
+  if (sectionValues.length > 0 && shardSpec) {
+    console.error("use either --section/--sections or --shard, not both");
+    process.exit(1);
+  }
+  if (sectionValues.length > 0) {
+    const sections = sectionValues.flatMap((value) => value.split(",").map((item) => item.trim()).filter(Boolean));
+    if (sections.includes("all")) return null;
+    return validateSections(sections);
+  }
+  if (shardSpec) {
+    const match = shardSpec.match(/^([1-9][0-9]*)\/([1-9][0-9]*)$/);
+    if (!match) {
+      console.error("--shard must use a 1-based value like 1/4");
+      process.exit(1);
+    }
+    const shardIndex = Number(match[1]);
+    const shardTotal = Number(match[2]);
+    if (shardIndex > shardTotal) {
+      console.error(`invalid shard ${shardSpec}: index must be <= total`);
+      process.exit(1);
+    }
+    return new Set(sectionNames.filter((_, index) => index % shardTotal === shardIndex - 1));
+  }
+  return null;
+}
+
+function validateSections(sections) {
+  const selected = new Set(sections);
+  const unknown = [...selected].filter((section) => !sectionNames.includes(section));
+  if (unknown.length > 0) {
+    console.error(`unknown conformance section(s): ${unknown.join(", ")}`);
+    console.error(`available sections: ${sectionNames.join(", ")}`);
+    process.exit(1);
+  }
+  return selected;
+}
+
+async function runSection(name, body) {
+  if (selectedSections && !selectedSections.has(name)) return;
+  ranSections++;
+  const start = Date.now();
+  console.log(`conformance section ${name} start`);
+  await body();
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.log(`conformance section ${name} ok (${elapsed}s)`);
+}
 
 function execFileAsync(file, args = [], options = {}) {
   return new Promise((resolve, reject) => {
@@ -420,6 +525,7 @@ async function assertPeCoffX64Executable(path) {
   return bytes;
 }
 
+await runSection("fixture-checks", async () => {
 for (const fixture of [
   "conformance/run/pass/hello.0",
   "conformance/native/pass/params.0",
@@ -690,7 +796,9 @@ assert.equal(checkJsonSuccessBody.incrementalInvalidation.profileDependency, "re
 assert.equal(checkJsonSuccessBody.incrementalInvalidation.sourceKind, "program-graph");
 assert.equal(checkJsonSuccessBody.incrementalInvalidation.changedInputs.graphArtifact, "conformance/native/pass/explicit-casts.0");
 assert.equal(checkJsonSuccessBody.incrementalInvalidation.recheckStrategy, "fingerprint changed modules and dependent bodies");
+});
 
+await runSection("agent-surface", async () => {
 const agentSurfaceClassification = JSON.parse(await readFile("conformance/agent-surface/classification.json", "utf8"));
 assert.equal(agentSurfaceClassification.schema, 1);
 assert.deepEqual(agentSurfaceClassification.fixtures.map((item) => item.id), [
@@ -949,7 +1057,9 @@ assert.deepEqual(agentSurfaceOwnedDropReadinessBody.targetReadiness.diagnostics[
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
+});
 
+await runSection("direct-backends", async () => {
 const directCallExeReadiness = await execFileAsync(zero, [
   "check",
   "--json",
@@ -1991,7 +2101,9 @@ for (const [fixture, code] of [
 const commonUnsupportedTarget = await execFileAsync(zero, ["check", "--json", "--target", "linux-musl-x64", "conformance/common/fail/unsupported-target-feature.0"]).catch((error) => error);
 assert.notEqual(commonUnsupportedTarget.code, 0);
 assert.equal(JSON.parse(commonUnsupportedTarget.stdout).diagnostics[0].code, "TAR002");
+});
 
+await runSection("command-surface", async () => {
 const compileTimeJson = await execFileAsync(zero, ["check", "--json", "conformance/native/pass/compile-time-v1.0"]);
 const compileTimeBody = JSON.parse(compileTimeJson.stdout);
 assert.equal(compileTimeBody.ok, true);
@@ -3473,7 +3585,9 @@ const callResolutionEdgeGraph = await execFileAsync(zero, ["graph", "--json", "c
 const callResolutionEdgeFacts = JSON.parse(callResolutionEdgeGraph.stdout).callResolution;
 assert(callResolutionEdgeFacts.calls.some((item) => item.kind === "function" && item.calleeName === "add" && item.owner === "constTotal" && item.returnType === "i32"));
 assert(callResolutionEdgeFacts.calls.some((item) => item.kind === "stdlib" && item.calleeName === "std.mem.len" && item.owner === "main" && item.args.some((arg) => arg.paramIndex === 0 && arg.actualType === "String")));
+});
 
+await runSection("program-graph", async () => {
 const programGraphBody = JSON.parse((await execFileAsync(zero, ["graph", "--json", "examples/hello.0"])).stdout).programGraph;
 const programGraphBodyAgain = JSON.parse((await execFileAsync(zero, ["graph", "--json", "examples/hello.0"])).stdout).programGraph;
 const programGraphDump = (await execFileAsync(zero, ["graph", "dump", "examples/hello.0"])).stdout;
@@ -3983,7 +4097,9 @@ assert.notEqual(targetProcUnsupportedJson.code, 0);
 const targetProcUnsupportedBody = JSON.parse(targetProcUnsupportedJson.stdout);
 assert.equal(targetProcUnsupportedBody.diagnostics[0].code, "TAR002");
 assert.match(targetProcUnsupportedBody.diagnostics[0].actual, /lacks Proc/);
+});
 
+await runSection("c-interop", async () => {
 const cHeaderGraph = await execFileAsync(zero, ["graph", "--json", "conformance/check/pass/c-header-import.0"]);
 const cHeaderGraphBody = JSON.parse(cHeaderGraph.stdout);
 assert(cHeaderGraphBody.cImports.some((item) => item.header === "conformance/c/simple.h" && item.imports.functions >= 1 && item.cacheKey));
@@ -4465,7 +4581,9 @@ assert.notEqual(readAllInvalidAllocJson.code, 0);
 const readAllInvalidAllocBody = JSON.parse(readAllInvalidAllocJson.stdout);
 assert.equal(readAllInvalidAllocBody.diagnostics[0].code, "STD003");
 assert.match(readAllInvalidAllocBody.diagnostics[0].message, /readAll expects an allocator/);
+});
 
+await runSection("cli-runtime", async () => {
 const zeroTestRun = await execFileAsync(zero, ["test", "conformance/native/pass/test-blocks.0"]);
 assert.equal(zeroTestRun.stdout, "1 test(s) ok\n");
 
@@ -4694,7 +4812,9 @@ await assertBoundsTrap("conformance/native/fail/bounds-open-slice-len-start.0", 
 await assertBoundsTrap("conformance/native/fail/index-string.0", "index-string");
 await assertBoundsTrap("conformance/native/fail/slice-string.0", "slice-string");
 await assertBoundsTrap("conformance/native/fail/indexed-mutation-oob.0", "indexed-mutation-oob");
+});
 
+await runSection("failure-diagnostics", async () => {
 const failed = await execFileAsync(zero, ["check", "conformance/check/fail/unknown-name.0"]).catch((error) => error);
 assert.notEqual(failed.code, 0);
 assert.match(failed.stderr, /NAM003/);
@@ -5417,4 +5537,10 @@ for (const [fixture, code] of [
   assert.match(result.stderr, code);
 }
 
-console.log("conformance ok");
+});
+
+if (ranSections === 0) {
+  console.error("no conformance sections selected");
+  process.exit(1);
+}
+console.log(selectedSections ? `conformance ok (${ranSections}/${sectionNames.length} section(s))` : "conformance ok");

@@ -45,8 +45,8 @@ jobs:
       - name: Repository graph check
         run: pnpm run repository-graph:check
 
-      - name: Conformance suite
-        run: pnpm run conformance:local
+      - name: Conformance preflight
+        run: pnpm run conformance:checks
 
       - name: Native tests
         run: pnpm run native:test:local
@@ -96,3 +96,42 @@ jobs:
           ZIG_GLOBAL_CACHE_DIR=.zero/zig-global-cache ZIG_LOCAL_CACHE_DIR=.zero/zig-local-cache zig cc -target x86_64-linux-musl -std=c11 -D_POSIX_C_SOURCE=200809L -Os -Inative/zero-c/include native/zero-c/src/*.c -o .zero/ci-release/zero-linux-musl-x64
           ./.zero/ci-release/zero-linux-musl-x64 --version
           ./.zero/ci-release/zero-linux-musl-x64 skills list --json
+
+  conformance:
+    name: Conformance (${{ matrix.section }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        section:
+          - fixture-checks
+          - agent-surface
+          - direct-backends
+          - command-surface
+          - program-graph
+          - c-interop
+          - cli-runtime
+          - failure-diagnostics
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.3 --activate
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build native compiler
+        run: make -C native/zero-c
+
+      - name: Run conformance section
+        run: pnpm run conformance:run -- --section=${{ matrix.section }}
