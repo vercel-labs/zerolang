@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const skippedDirs = new Set([
   ".git",
@@ -116,11 +116,25 @@ function sourceInputForStore(store: string) {
   if (existsSync(join(root, "zero.json"))) return root;
 
   const text = readFileSync(store, "utf8");
-  const projection = text.match(/^projection path:"((?:\\.|[^"])*)" text:/m)?.[1];
-  if (projection) {
-    const path = JSON.parse(`"${projection}"`);
-    const source = resolve(root, path);
-    if (existsSync(source)) return source;
+  const projections = text.matchAll(/^projection path:"((?:\\.|[^"])*)" text:/gm);
+  for (const projection of projections) {
+    const source = sourceInputForProjection(root, projection[1]);
+    if (source) return source;
   }
   return root;
+}
+
+function sourceInputForProjection(root: string, projection: string) {
+  let path = "";
+  try {
+    path = JSON.parse(`"${projection}"`);
+  } catch {
+    return "";
+  }
+  if (!path) return "";
+  const source = resolve(root, path);
+  const local = relative(root, source);
+  if (!local || local === ".." || local.startsWith(`..${sep}`) || isAbsolute(local)) return "";
+  if (dirname(source) !== root) return "";
+  return existsSync(source) ? source : "";
 }
