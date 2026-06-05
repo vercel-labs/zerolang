@@ -26,114 +26,34 @@ fn alreadyResolved(resolved: Span<ResolvedPkg>, count: usize, name: Span<u8>) ->
     return count
 }
 
-// Enqueue a dep entry into the work queue if not already present.
-fn enqueue(
-    queue: MutSpan<ResolvedPkg>,
-    q_count: mutref<usize>,
-    name: Span<u8>,
-    constraint: Span<u8>
-) -> Bool {
-    if q_count.value >= RESOLVE_MAX {
-        return false
+// Enqueue a dep entry into the work queue if not already present. Returns new count.
+fn enqueue(queue: MutSpan<ResolvedPkg>, q_count: usize, name: Span<u8>, constraint: Span<u8>) -> usize {
+    if q_count >= RESOLVE_MAX {
+        return q_count
     }
-    // Check for duplicate in queue
     var i: usize = 0
-    while i < q_count.value {
+    while i < q_count {
         let qn: Span<u8> = queue[i].name[..queue[i].name_len]
         if std.mem.eql(qn, name) {
-            return true
+            return q_count
         }
         i = i + 1
     }
-    let idx: usize = q_count.value
+    let idx: usize = q_count
     let n: usize = std.mem.copy(queue[idx].name, name)
     queue[idx].name_len = n
     let cv: usize = std.mem.copy(queue[idx].version, constraint)
     queue[idx].ver_len = cv
     queue[idx].url_len = 0
     queue[idx].cs_len = 0
-    q_count.value = q_count.value + 1
-    return true
+    return q_count + 1
 }
 
 // Resolve all dependencies declared in `m`.
 // On success, writes up to RESOLVE_MAX resolved packages into `out` and returns count.
 // Returns 0 on success with no deps, MAX_USIZE on conflict/cycle.
-pub fn resolve(
-    client: HttpClient,
-    registry_url: Span<u8>,
-    m: ref<Manifest>,
-    req_buf: MutSpan<u8>,
-    resp_buf: MutSpan<u8>,
-    out: MutSpan<ResolvedPkg>
-) -> usize {
-    var queue: [64]ResolvedPkg = [
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-        ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 },
-    ]
+pub fn resolve( client: HttpClient, registry_url: Span<u8>, m: ref<Manifest>, req_buf: MutSpan<u8>, resp_buf: MutSpan<u8>, out: MutSpan<ResolvedPkg> ) -> usize {
+    var queue: [64]ResolvedPkg = [ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 }; 64]
     var q_count: usize = 0
     var resolved_count: usize = 0
     let sentinel: usize = 18446744073709551615_usize
@@ -141,16 +61,11 @@ pub fn resolve(
     // Seed the queue with direct deps from the manifest
     var di: usize = 0
     while di < m.dep_count {
-        var dep: DepEntry = DepEntry {
-            name: [0_u8; 64], name_len: 0,
-            version: [0_u8; 32], ver_len: 0,
-            path: [0_u8; 128], path_len: 0,
-            is_local: false,
-        }
-        if manifest.getDep(m, di, &mut dep) {
+        var dep: DepEntry = DepEntry { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, path: [0_u8; 128], path_len: 0, is_local: false }
+        if getDep(m, di, &mut dep) {
             let nm: Span<u8> = dep.name[..dep.name_len]
             let cv: Span<u8> = dep.version[..dep.ver_len]
-            enqueue(queue, &mut q_count, nm, cv)
+            q_count = enqueue(queue, q_count, nm, cv)
         }
         di = di + 1
     }
@@ -174,15 +89,10 @@ pub fn resolve(
             qi = qi + 1
         } else {
             // New package — fetch version info from registry
-            var ver_info: RegVersionInfo = RegVersionInfo {
-                name: [0_u8; 64], name_len: 0,
-                version: [0_u8; 32], ver_len: 0,
-                url: [0_u8; 256], url_len: 0,
-                checksum: [0_u8; 80], cs_len: 0,
-            }
+            var ver_info: RegVersionInfo = RegVersionInfo { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 }
             let net: Net = std.net.host()
             let client2: HttpClient = std.http.client(net)
-            let ok: Bool = registry.fetchVersionInfo(client2, registry_url, qname, qver, req_buf, resp_buf, &mut ver_info)
+            let ok: Bool = fetchVersionInfo(client2, registry_url, qname, qver, req_buf, resp_buf, &mut ver_info)
             if !ok {
                 // Cannot resolve — treat as error
                 return sentinel
@@ -190,9 +100,9 @@ pub fn resolve(
 
             // Verify constraint
             if ver_info.ver_len > 0 {
-                let pinned: Maybe<SemVer> = semver.parse(ver_info.version[..ver_info.ver_len])
+                let pinned: Maybe<SemVer> = semverParse(ver_info.version[..ver_info.ver_len])
                 if pinned.has {
-                    if !std.mem.eql(qver, "") && !semver.satisfies(pinned.value, qver) {
+                    if !std.mem.eql(qver, "") && !semverSatisfies(pinned.value, qver) {
                         return sentinel
                     }
                 }

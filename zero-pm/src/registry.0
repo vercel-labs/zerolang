@@ -31,14 +31,7 @@ fn buildGetRequest(req_buf: MutSpan<u8>, registry_url: Span<u8>, api_path: Span<
 
 // Fetch package metadata from the registry.
 // Returns true on success, populates `out`.
-pub fn fetchPackageInfo(
-    client: HttpClient,
-    registry_url: Span<u8>,
-    name: Span<u8>,
-    req_buf: MutSpan<u8>,
-    resp_buf: MutSpan<u8>,
-    out: mutref<RegPackageInfo>
-) -> Bool {
+pub fn fetchPackageInfo( client: HttpClient, registry_url: Span<u8>, name: Span<u8>, req_buf: MutSpan<u8>, resp_buf: MutSpan<u8>, out: mutref<RegPackageInfo> ) -> Bool {
     var path_buf: [128]u8 = [0_u8; 128]
     var pc: usize = 0
     let p1: Maybe<usize> = std.io.writeSpan(path_buf, pc, "/v1/packages/")
@@ -61,7 +54,7 @@ pub fn fetchPackageInfo(
     var dec64: [64]u8 = [0_u8; 64]
     let name_raw: Maybe<Span<u8>> = std.json.field(body.value, "name")
     if name_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec64, name_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec64, name_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.name, d.value)
             out.name_len = n
@@ -72,7 +65,7 @@ pub fn fetchPackageInfo(
     var dec32: [32]u8 = [0_u8; 32]
     let latest_raw: Maybe<Span<u8>> = std.json.field(body.value, "latest")
     if latest_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec32, latest_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec32, latest_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.latest, d.value)
             out.latest_len = n
@@ -83,7 +76,7 @@ pub fn fetchPackageInfo(
     var dec256: [256]u8 = [0_u8; 256]
     let desc_raw: Maybe<Span<u8>> = std.json.field(body.value, "description")
     if desc_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec256, desc_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec256, desc_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.desc, d.value)
             out.desc_len = n
@@ -95,15 +88,7 @@ pub fn fetchPackageInfo(
 
 // Fetch version-specific metadata from the registry.
 // Returns true on success, populates `out`.
-pub fn fetchVersionInfo(
-    client: HttpClient,
-    registry_url: Span<u8>,
-    name: Span<u8>,
-    version: Span<u8>,
-    req_buf: MutSpan<u8>,
-    resp_buf: MutSpan<u8>,
-    out: mutref<RegVersionInfo>
-) -> Bool {
+pub fn fetchVersionInfo( client: HttpClient, registry_url: Span<u8>, name: Span<u8>, version: Span<u8>, req_buf: MutSpan<u8>, resp_buf: MutSpan<u8>, out: mutref<RegVersionInfo> ) -> Bool {
     var path_buf: [160]u8 = [0_u8; 160]
     var pc: usize = 0
     let p1: Maybe<usize> = std.io.writeSpan(path_buf, pc, "/v1/packages/")
@@ -133,7 +118,7 @@ pub fn fetchVersionInfo(
 
     let name_raw: Maybe<Span<u8>> = std.json.field(body.value, "name")
     if name_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec64, name_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec64, name_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.name, d.value)
             out.name_len = n
@@ -142,7 +127,7 @@ pub fn fetchVersionInfo(
 
     let ver_raw: Maybe<Span<u8>> = std.json.field(body.value, "version")
     if ver_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec32, ver_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec32, ver_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.version, d.value)
             out.ver_len = n
@@ -151,7 +136,7 @@ pub fn fetchVersionInfo(
 
     let url_raw: Maybe<Span<u8>> = std.json.field(body.value, "download_url")
     if url_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec256, url_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec256, url_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.url, d.value)
             out.url_len = n
@@ -160,7 +145,7 @@ pub fn fetchVersionInfo(
 
     let cs_raw: Maybe<Span<u8>> = std.json.field(body.value, "checksum")
     if cs_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec80, cs_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec80, cs_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.checksum, d.value)
             out.cs_len = n

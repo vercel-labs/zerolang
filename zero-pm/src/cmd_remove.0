@@ -10,7 +10,7 @@ use manifest
 use lockfile
 use output
 
-pub fn run(world: World) -> CmdResult raises {
+pub fn runRemove(world: World) -> CmdResult raises {
     let fs: Fs = std.fs.host()
 
     let name_arg: Maybe<String> = std.args.get(2)
@@ -19,44 +19,29 @@ pub fn run(world: World) -> CmdResult raises {
     }
     let name_span: Span<u8> = std.mem.span(name_arg.value)
 
-    var m: Manifest = Manifest {
-        pkg_name:        [0_u8; 64],
-        name_len:        0,
-        pkg_version:     [0_u8; 32],
-        ver_len:         0,
-        raw_targets:     [0_u8; 512],
-        raw_targets_len: 0,
-        raw_deps:        [0_u8; 2048],
-        raw_deps_len:    0,
-        dep_count:       0,
-    }
-    if !manifest.read(fs, "zero.json", &mut m) {
+    var m: Manifest = Manifest { pkg_name:        [0_u8; 64], name_len:        0, pkg_version:     [0_u8; 32], ver_len:         0, raw_targets:     [0_u8; 512], raw_targets_len: 0, raw_deps:        [0_u8; 2048], raw_deps_len:    0, dep_count:       0 }
+    if !readManifest(fs, "zero.json", &mut m) {
         return CmdResult.err("zero.json not found")
     }
 
-    let idx: usize = manifest.findDep(&m, name_span)
+    let idx: usize = findDep(&m, name_span)
     if idx == m.dep_count {
         return CmdResult.err("package not found in dependencies")
     }
 
-    if !manifest.removeDep(&mut m, name_span) {
+    if !removeDep(&mut m, name_span) {
         return CmdResult.err("failed to remove dependency")
     }
 
-    if !manifest.write(fs, "zero.json", &m) {
+    if !writeManifest(fs, "zero.json", &m) {
         return CmdResult.err("failed to write zero.json")
     }
 
     // Remove from lockfile if present
-    var lk: Lockfile = Lockfile {
-        schema_version: 1_u32,
-        raw_pkgs:       [0_u8; 4096],
-        raw_len:        0,
-        count:          0,
-    }
-    if lockfile.read(fs, ".zero/zero.lock.json", &mut lk) {
-        if lockfile.removeEntry(&mut lk, name_span) {
-            lockfile.write(fs, ".zero/zero.lock.json", &lk)
+    var lk: Lockfile = Lockfile { schema_version: 1_u32, raw_pkgs:       [0_u8; 4096], raw_len:        0, count:          0 }
+    if readLockfile(fs, ".zero/zero.lock.json", &mut lk) {
+        if removeEntry(&mut lk, name_span) {
+            writeLockfile(fs, ".zero/zero.lock.json", &lk)
         }
     }
 
@@ -66,6 +51,6 @@ pub fn run(world: World) -> CmdResult raises {
     if m1.has { mc = m1.value }
     let m2: Maybe<usize> = std.io.writeSpan(msg_buf, mc, name_span)
     if m2.has { mc = m2.value }
-    check output.printLine(world, std.io.written(msg_buf, mc))
+    check printLine(world, std.io.written(msg_buf, mc))
     return CmdResult.ok
 }

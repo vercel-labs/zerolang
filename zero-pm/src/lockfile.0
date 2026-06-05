@@ -16,7 +16,7 @@ fn parseLockEntry(json: Span<u8>, out: mutref<LockEntry>) -> Bool {
     // name
     let name_raw: Maybe<Span<u8>> = std.json.field(json, "name")
     if name_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(dec, name_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(dec, name_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.name, d.value)
             out.name_len = n
@@ -27,7 +27,7 @@ fn parseLockEntry(json: Span<u8>, out: mutref<LockEntry>) -> Bool {
     var vbuf: [32]u8 = [0_u8; 32]
     let ver_raw: Maybe<Span<u8>> = std.json.field(json, "version")
     if ver_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(vbuf, ver_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(vbuf, ver_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.version, d.value)
             out.ver_len = n
@@ -38,7 +38,7 @@ fn parseLockEntry(json: Span<u8>, out: mutref<LockEntry>) -> Bool {
     var ubuf: [256]u8 = [0_u8; 256]
     let url_raw: Maybe<Span<u8>> = std.json.field(json, "url")
     if url_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(ubuf, url_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(ubuf, url_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.url, d.value)
             out.url_len = n
@@ -49,7 +49,7 @@ fn parseLockEntry(json: Span<u8>, out: mutref<LockEntry>) -> Bool {
     var cbuf: [80]u8 = [0_u8; 80]
     let cs_raw: Maybe<Span<u8>> = std.json.field(json, "checksum")
     if cs_raw.has {
-        let d: Maybe<Span<u8>> = manifest.decodeStr(cbuf, cs_raw.value)
+        let d: Maybe<Span<u8>> = decodeStr(cbuf, cs_raw.value)
         if d.has {
             let n: usize = std.mem.copy(out.checksum, d.value)
             out.cs_len = n
@@ -60,7 +60,7 @@ fn parseLockEntry(json: Span<u8>, out: mutref<LockEntry>) -> Bool {
 }
 
 // Read .zero/zero.lock.json into `lk`. Returns true on success.
-pub fn read(fs: Fs, path: String, lk: mutref<Lockfile>) -> Bool {
+pub fn readLockfile(fs: Fs, path: String, lk: mutref<Lockfile>) -> Bool {
     var read_buf: [8192]u8 = [0_u8; 8192]
     let n_m: Maybe<usize> = std.fs.readFile(fs, path, read_buf)
     if !n_m.has {
@@ -84,7 +84,7 @@ pub fn read(fs: Fs, path: String, lk: mutref<Lockfile>) -> Bool {
     let pkgs_json: Span<u8> = pkgs_m.value
     let n: usize = std.mem.copy(lk.raw_pkgs, pkgs_json)
     lk.raw_len = n
-    lk.count = manifest.countObjEntries(pkgs_json)
+    lk.count = countObjEntries(pkgs_json)
     return true
 }
 
@@ -99,37 +99,35 @@ pub fn getEntry(lk: ref<Lockfile>, index: usize, out: mutref<LockEntry>) -> Bool
         return false
     }
 
-    var cur: usize = manifest.skipWsAt(pkgs, 1)
+    var cur: usize = skipWsAt(pkgs, 1)
     var found: usize = 0
     var key_buf: [64]u8 = [0_u8; 64]
 
     while cur < plen && pkgs[cur] != 125_u8 {
         if pkgs[cur] == 44_u8 {
-            cur = manifest.skipWsAt(pkgs, cur + 1)
+            cur = skipWsAt(pkgs, cur + 1)
         }
         if cur >= plen || pkgs[cur] == 125_u8 {
             return false
         }
-        var key_len: usize = 0
-        var val_s: usize = 0
-        var val_e: usize = 0
-        let next: usize = manifest.nextEntry(pkgs, cur, key_buf, &mut key_len, &mut val_s, &mut val_e)
+        var eo: EntryOut = EntryOut { key_len: 0, val_start: 0, val_end: 0 }
+        let next: usize = nextEntry(pkgs, cur, key_buf, &mut eo)
         if next == 0 {
             return false
         }
         if found == index {
             // the key is the package name, the value is the entry object
-            let n: usize = std.mem.copy(out.name, key_buf[..key_len])
+            let n: usize = std.mem.copy(out.name, key_buf[..eo.key_len])
             out.name_len = n
-            let val: Span<u8> = pkgs[val_s..val_e]
+            let val: Span<u8> = pkgs[eo.val_start..eo.val_end]
             parseLockEntry(val, out)
             // override name from key
-            let n2: usize = std.mem.copy(out.name, key_buf[..key_len])
+            let n2: usize = std.mem.copy(out.name, key_buf[..eo.key_len])
             out.name_len = n2
             return true
         }
         found = found + 1
-        cur = manifest.skipWsAt(pkgs, val_e)
+        cur = skipWsAt(pkgs, eo.val_end)
     }
     return false
 }
@@ -138,12 +136,7 @@ pub fn getEntry(lk: ref<Lockfile>, index: usize, out: mutref<LockEntry>) -> Bool
 pub fn findEntry(lk: ref<Lockfile>, name: Span<u8>) -> usize {
     var i: usize = 0
     while i < lk.count {
-        var entry: LockEntry = LockEntry {
-            name: [0_u8; 64], name_len: 0,
-            version: [0_u8; 32], ver_len: 0,
-            url: [0_u8; 256], url_len: 0,
-            checksum: [0_u8; 80], cs_len: 0,
-        }
+        var entry: LockEntry = LockEntry { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 }
         if getEntry(lk, i, &mut entry) {
             if std.mem.eql(entry.name[..entry.name_len], name) {
                 return i
@@ -155,7 +148,7 @@ pub fn findEntry(lk: ref<Lockfile>, name: Span<u8>) -> usize {
 }
 
 // Serialize the lock file to JSON in `buf`. Returns written span or null.
-fn serialize(lk: ref<Lockfile>, buf: MutSpan<u8>) -> Maybe<Span<u8>> {
+fn serializeLockfile(lk: ref<Lockfile>, buf: MutSpan<u8>) -> Maybe<Span<u8>> {
     var cursor: usize = 0
     var ver_buf: [8]u8 = [0_u8; 8]
     let ver_s: Maybe<Span<u8>> = std.fmt.u32(ver_buf, lk.schema_version)
@@ -210,12 +203,7 @@ pub fn setEntry(lk: mutref<Lockfile>, entry: ref<LockEntry>) -> Bool {
     var first: Bool = true
     var i: usize = 0
     while i < lk.count {
-        var e: LockEntry = LockEntry {
-            name: [0_u8; 64], name_len: 0,
-            version: [0_u8; 32], ver_len: 0,
-            url: [0_u8; 256], url_len: 0,
-            checksum: [0_u8; 80], cs_len: 0,
-        }
+        var e: LockEntry = LockEntry { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 }
         if getEntry(lk, i, &mut e) {
             if !first {
                 let cx: Maybe<usize> = std.io.writeSpan(new_pkgs, nc, ", ")
@@ -299,12 +287,7 @@ pub fn removeEntry(lk: mutref<Lockfile>, name: Span<u8>) -> Bool {
     var i: usize = 0
     while i < lk.count {
         if i != idx {
-            var e: LockEntry = LockEntry {
-                name: [0_u8; 64], name_len: 0,
-                version: [0_u8; 32], ver_len: 0,
-                url: [0_u8; 256], url_len: 0,
-                checksum: [0_u8; 80], cs_len: 0,
-            }
+            var e: LockEntry = LockEntry { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 }
             if getEntry(lk, i, &mut e) {
                 if !first {
                     let cx: Maybe<usize> = std.io.writeSpan(new_pkgs, nc, ", ")
@@ -334,9 +317,9 @@ pub fn removeEntry(lk: mutref<Lockfile>, name: Span<u8>) -> Bool {
 }
 
 // Write lockfile to `path`. Returns true on success.
-pub fn write(fs: Fs, path: String, lk: ref<Lockfile>) -> Bool {
+pub fn writeLockfile(fs: Fs, path: String, lk: ref<Lockfile>) -> Bool {
     var out_buf: [6144]u8 = [0_u8; 6144]
-    let written: Maybe<Span<u8>> = serialize(lk, out_buf)
+    let written: Maybe<Span<u8>> = serializeLockfile(lk, out_buf)
     if !written.has {
         return false
     }

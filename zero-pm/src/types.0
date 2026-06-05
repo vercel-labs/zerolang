@@ -86,6 +86,13 @@ type ResolvedPkg {
     cs_len:   usize,
 }
 
+// Output struct for nextEntry (avoids mutref<usize> which zerolang disallows on primitives)
+type EntryOut {
+    key_len:   usize,
+    val_start: usize,
+    val_end:   usize,
+}
+
 // Command result returned by every cmd_*.run()
 choice CmdResult {
     ok,

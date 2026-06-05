@@ -8,7 +8,7 @@ use std.io
 use types
 
 // Parse "major.minor.patch" from a Span<u8>. Returns null on malformed input.
-pub fn parse(text: Span<u8>) -> Maybe<SemVer> {
+pub fn semverParse(text: Span<u8>) -> Maybe<SemVer> {
     let len: usize = std.mem.len(text)
     if len == 0 {
         return null
@@ -55,7 +55,7 @@ pub fn parse(text: Span<u8>) -> Maybe<SemVer> {
 }
 
 // Compare two SemVer values. Returns -1, 0, or 1.
-pub fn compare(a: SemVer, b: SemVer) -> i32 {
+pub fn semverCompare(a: SemVer, b: SemVer) -> i32 {
     if a.major < b.major { return -1 }
     if a.major > b.major { return 1 }
     if a.minor < b.minor { return -1 }
@@ -70,7 +70,7 @@ pub fn compare(a: SemVer, b: SemVer) -> i32 {
 //   "1.2.3"   — exact match
 //   "^1.2.3"  — compatible: same major, >= minor.patch
 //   ">=1.2.3" — greater or equal
-pub fn satisfies(candidate: SemVer, constraint: Span<u8>) -> Bool {
+pub fn semverSatisfies(candidate: SemVer, constraint: Span<u8>) -> Bool {
     let clen: usize = std.mem.len(constraint)
     if clen == 0 {
         return false
@@ -104,7 +104,7 @@ pub fn satisfies(candidate: SemVer, constraint: Span<u8>) -> Bool {
 }
 
 // Format SemVer into buf as "major.minor.patch". Returns written span or null.
-pub fn format(buf: MutSpan<u8>, v: SemVer) -> Maybe<Span<u8>> {
+pub fn semverFormat(buf: MutSpan<u8>, v: SemVer) -> Maybe<Span<u8>> {
     var num_buf: [16]u8 = [0_u8; 16]
     var cursor: usize = 0
 
@@ -145,7 +145,7 @@ test "semver parse ok" {
 test "semver compare" {
     let a: SemVer = SemVer { major: 1_u32, minor: 0_u32, patch: 0_u32 }
     let b: SemVer = SemVer { major: 2_u32, minor: 0_u32, patch: 0_u32 }
-    expect compare(a, b) == -1 && compare(b, a) == 1 && compare(a, a) == 0
+    expect semverCompare(a, b) == -1 && compare(b, a) == 1 && semverCompare(a, a) == 0
 }
 
 test "semver satisfies caret" {

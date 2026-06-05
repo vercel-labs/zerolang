@@ -10,7 +10,7 @@ use types
 use manifest
 use output
 
-pub fn run(world: World) -> CmdResult raises {
+pub fn runInit(world: World) -> CmdResult raises {
     let fs: Fs = std.fs.host()
 
     // Refuse to overwrite existing zero.json
@@ -45,26 +45,16 @@ pub fn run(world: World) -> CmdResult raises {
     }
 
     // Build a minimal Manifest
-    var m: Manifest = Manifest {
-        pkg_name:        [0_u8; 64],
-        name_len:        0,
-        pkg_version:     [0_u8; 32],
-        ver_len:         0,
-        raw_targets:     [0_u8; 512],
-        raw_targets_len: 0,
-        raw_deps:        [0_u8; 2048],
-        raw_deps_len:    0,
-        dep_count:       0,
-    }
+    var m: Manifest = Manifest { pkg_name:        [0_u8; 64], name_len:        0, pkg_version:     [0_u8; 32], ver_len:         0, raw_targets:     [0_u8; 512], raw_targets_len: 0, raw_deps:        [0_u8; 2048], raw_deps_len:    0, dep_count:       0 }
     let cn: usize = std.mem.copy(m.pkg_name, name_buf[..name_len])
     m.name_len = cn
     let cv: usize = std.mem.copy(m.pkg_version, "0.1.0")
     m.ver_len = cv
 
-    if !manifest.write(fs, "zero.json", &m) {
+    if !writeManifest(fs, "zero.json", &m) {
         return CmdResult.err("failed to write zero.json")
     }
 
-    check output.printLine(world, "created zero.json")
+    check printLine(world, "created zero.json")
     return CmdResult.ok
 }

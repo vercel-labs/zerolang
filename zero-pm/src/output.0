@@ -18,7 +18,8 @@ pub fn printLine(world: World, text: Span<u8>) -> Void raises {
         return
     }
     let c2: Maybe<usize> = std.io.writeSpan(buf, c1.value, "\n")
-    let end: usize = if c2.has { c2.value } else { c1.value }
+    var end: usize = c1.value
+    if c2.has { end = c2.value }
     check world.out.write(std.io.written(buf, end))
 }
 
