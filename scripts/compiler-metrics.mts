@@ -101,6 +101,7 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_validate.c": { maxLines: 537, maxStrcmpCalls: 5 },
   "native/zero-c/src/program_graph_patch_builders.c": { maxLines: 375, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_patch_builders.h": { maxLines: 15, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_patch_examples.c": { maxLines: 35, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 1740, maxStrcmpCalls: 11 },
   "native/zero-c/src/program_graph_patch.c": { maxLines: 780, maxStrcmpCalls: 44 },
   "native/zero-c/src/program_graph_patch.h": { maxLines: 69, maxStrcmpCalls: 0 },

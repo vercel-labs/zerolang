@@ -1,5 +1,6 @@
 #include "program_graph_query.h"
 #include "program_graph_query_internal.h"
+#include "program_graph_patch.h"
 
 #include <string.h>
 
@@ -317,23 +318,7 @@ void z_program_graph_append_query_json(ZBuf *buf, const ZProgramGraph *graph, co
   zbuf_append(buf, ",\n  \"node\": ");
   query_append_node_neighborhood_json(buf, graph, query_node);
   zbuf_append(buf, ",\n  \"patchOperations\": [");
-  const char *ops[] = {
-    "addMain",
-    "addCheckWrite fn=\"main\" text=\"hello\\n\"",
-    "addFunction name=\"add\" ret=\"i32\"",
-    "addParam fn=\"add\" name=\"left\" type=\"i32\"",
-    "addReturnBinary fn=\"add\" name=\"+\" left=\"left\" right=\"right\" type=\"i32\"",
-    "addLetLiteral fn=\"main\" name=\"count\" type=\"u32\" value=\"0\"",
-    "addLetBinary fn=\"add\" name=\"sum\" type=\"i32\" operator=\"+\" left=\"left\" right=\"right\"",
-    "addReturnValue fn=\"identity\" value=\"input\" type=\"i32\"",
-    "addCheckWriteValue fn=\"main\" value=\"message\" type=\"String\"",
-    "addTest name=\"addition works\" call=\"add\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"i32\"",
-    "setMainArgsAddCli fn=\"add_u32\"",
-    "set node=\"#node_id\" field=\"value\" expect=\"old\" value=\"new\"",
-    "rename node=\"#node_id\" expect=\"old\" value=\"new\"",
-    "delete node=\"#node_id\"",
-    NULL,
-  };
+  const char *const *ops = z_program_graph_patch_operation_examples();
   for (size_t i = 0; ops[i]; i++) {
     if (i > 0) zbuf_append(buf, ", ");
     query_append_json_string(buf, ops[i]);

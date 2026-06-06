@@ -864,12 +864,19 @@ assert.match(rootHelp, /zero graph run \[--target <host-target>\].*<program-grap
 assert.match(rootHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
 const graphPatchHelp = zero(["graph", "patch", "--op", "help"]).stdout;
 assert.match(graphPatchHelp, /program graph patch operations/);
+assert.match(graphPatchHelp, /accepted by --op, --patch-text, and zero-program-graph-patch v1 files/);
+assert.match(graphPatchHelp, /insert node="#id" kind="Literal"/);
+assert.match(graphPatchHelp, /insertEdge from="#from" to="#to"/);
+assert.match(graphPatchHelp, /replace node="#id" expect="nodehash:abc123"/);
 assert.match(graphPatchHelp, /setMainArgsAddCli fn="add_u32"/);
 assert.match(graphPatchHelp, /addLetLiteral fn="main" name="count" type="u32" value="0"/);
 assert.match(graphPatchHelp, /addReturnValue fn="identity" value="input" type="i32"/);
 const graphPatchHelpJson = json(["graph", "patch", "--op", "help", "--json"]).body;
 assert.equal(graphPatchHelpJson.ok, true);
 assert.equal(graphPatchHelpJson.command, "zero graph patch");
+assert.equal(graphPatchHelpJson.operations.includes("insert node=\"#id\" kind=\"Literal\" parent=\"#parent\" edge=\"arg\" order=\"0\" type=\"String\" value=\"text\""), true);
+assert.equal(graphPatchHelpJson.operations.includes("insertEdge from=\"#from\" to=\"#to\" edge=\"arg\" target=\"node\" order=\"0\""), true);
+assert.equal(graphPatchHelpJson.operations.includes("replace node=\"#id\" expect=\"nodehash:abc123\" kind=\"Literal\" type=\"String\" value=\"text\""), true);
 assert.equal(graphPatchHelpJson.operations.includes("setMainArgsAddCli fn=\"add_u32\""), true);
 assert.equal(graphPatchHelpJson.operations.includes("addLetBinary fn=\"add\" name=\"sum\" type=\"i32\" operator=\"+\" left=\"left\" right=\"right\""), true);
 assert.equal(graphPatchHelpJson.operations.includes("addCheckWriteValue fn=\"main\" value=\"message\" type=\"String\""), true);
@@ -2413,6 +2420,8 @@ const checkedInGraphQueryJson = json(["graph", "query", "--json", checkedInGraph
 assert.equal(checkedInGraphQueryJson.ok, true);
 assert.equal(checkedInGraphQueryJson.inputKind, "repository-graph");
 assert.equal(checkedInGraphQueryJson.functions.some((fun) => fun.name === "main" && fun.public === true), true);
+assert.equal(checkedInGraphQueryJson.patchOperations.includes("insert node=\"#id\" kind=\"Literal\" parent=\"#parent\" edge=\"arg\" order=\"0\" type=\"String\" value=\"text\""), true);
+assert.equal(checkedInGraphQueryJson.patchOperations.includes("replace node=\"#id\" expect=\"nodehash:abc123\" kind=\"Literal\" type=\"String\" value=\"text\""), true);
 assert.equal(checkedInGraphQueryJson.patchOperations.includes("setMainArgsAddCli fn=\"add_u32\""), true);
 assert.equal(checkedInGraphQueryJson.patchOperations.includes("addLetLiteral fn=\"main\" name=\"count\" type=\"u32\" value=\"0\""), true);
 assert.equal(checkedInGraphQueryJson.patchOperations.includes("addReturnValue fn=\"identity\" value=\"input\" type=\"i32\""), true);

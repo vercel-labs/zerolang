@@ -102,10 +102,10 @@ facts. Use `zero graph query --fn <name>` when you know the function you need,
 `zero graph query --refs <name>` to find semantic references, and
 `zero graph query --find <text>` to search names, IDs, types, values, paths, and
 node kinds for patchable handles. Use those handles for checked edits such as
-`set`, `rename`, or `delete`; `zero graph query --node <id>` shows the selected
-node's parent and child edges without a full graph dump. Low-level delete
-compacts ordered graph groups so valid sibling order is preserved. Use full
-dumps only when a tool needs every node and edge:
+`set`, `insert`, `insertEdge`, `replace`, `rename`, or `delete`; `zero graph
+query --node <id>` shows the selected node's parent and child edges without a
+full graph dump. Low-level delete compacts ordered graph groups so valid sibling
+order is preserved. Use full dumps only when a tool needs every node and edge:
 
 ```sh
 zero graph query <file-or-package>
@@ -222,8 +222,11 @@ rename node="#decl_ad8d9028" expect="main" value="start"
 delete node="#patch001"
 ```
 
-Prefer structured operations over editing graph artifact text by hand. Always
-include `expect graphHash` when you are carrying a patch across tool calls.
+Prefer structured operations over editing graph artifact text by hand. Use
+`--patch-text` or write patch files under `/tmp` when an edit spans many lines.
+If the user requested graph authoring, do not hand-edit `.0` source or create a
+temporary `.0` program as a fallback. Always include `expect graphHash` when you
+are carrying a patch across tool calls.
 
 ## Validate And Sync
 

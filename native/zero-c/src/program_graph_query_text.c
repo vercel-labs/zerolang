@@ -1,5 +1,6 @@
 #include "program_graph_query.h"
 #include "program_graph_query_internal.h"
+#include "program_graph_patch.h"
 
 #include <stdio.h>
 
@@ -138,7 +139,12 @@ void z_program_graph_print_query_text(const ZProgramGraph *graph, const char *in
   printf("  zero graph patch --op help\n");
   printf("common checked edits:\n");
   printf("  zero graph patch --op 'set node=\"#node_id\" field=\"value\" expect=\"old\" value=\"new\"'\n");
+  printf("  zero graph patch --op 'insert node=\"#new_id\" kind=\"Literal\" parent=\"#parent\" edge=\"arg\" order=\"0\" type=\"String\" value=\"text\"'\n");
+  printf("  zero graph patch --op 'replace node=\"#node_id\" expect=\"nodehash:abc123\" kind=\"Literal\" type=\"String\" value=\"text\"'\n");
   printf("  zero graph patch --op 'rename node=\"#node_id\" expect=\"old\" value=\"new\"'\n");
   printf("  zero graph patch --op 'delete node=\"#node_id\"'\n");
+  printf("larger edits:\n  write zero-program-graph-patch v1 text under /tmp or pass --patch-text; all supported operations are:\n");
+  const char *const *ops = z_program_graph_patch_operation_examples();
+  for (size_t i = 0; ops[i]; i++) printf("  - %s\n", ops[i]);
   z_program_graph_resolution_facts_free(&resolution);
 }

@@ -60,10 +60,10 @@ automation tool needs stable fields or a debugging session needs exact machine
 facts. Use `zero graph query --fn <name>` for function-local context and
 `zero graph query --calls <name>` for resolved calls, `zero graph query --refs
 <name>` for semantic references, and `zero graph query --find <text>` to search
-patchable node handles for `set`, `rename`, or `delete` operations. Use
-`zero graph query --node <id>` for one node's parent and child edges. Delete
-patches preserve valid sibling order for ordered graph groups. Use full dumps
-only when a tool needs the complete node/edge table:
+patchable node handles for `set`, `insert`, `insertEdge`, `replace`, `rename`,
+or `delete` operations. Use `zero graph query --node <id>` for one node's parent
+and child edges. Delete patches preserve valid sibling order for ordered graph
+groups. Use full dumps only when a tool needs the complete node/edge table:
 
 ```sh
 zero graph query <file-or-package>
@@ -108,6 +108,12 @@ writing a graph:
 ```sh
 zero graph patch --op help
 ```
+
+If the user asks you to read or write through the graph, do not hand-edit `.0`
+source or create temporary `.0` programs as a fallback. Use `zero graph patch`
+with `--op`, `--patch-text`, or a `zero-program-graph-patch v1` file under
+`/tmp`. If the graph surface cannot express the change, say which graph
+operation is missing instead of silently switching to source text.
 
 6. When human review source is needed, write it explicitly:
 
@@ -162,6 +168,9 @@ zero fix --plan --json <file-or-package>
 - Use `Maybe<T>`, explicit `raises` / `raises [...]`, and `check` instead of hidden failure.
 - Prefer package-level graph inspection and graph-store patches for agent
   planning and mechanical edits.
+- Treat `.0` edits as human edits. Agents may sync `.0` from the graph for
+  review, but should not use source text as the implementation path when the
+  requested workflow is graph-first.
 - Do not invent syntax. Load `language` when unsure.
 - Do not invent CLI fields. If automation needs fields, run the command with `--json` and read the data.
 

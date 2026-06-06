@@ -12383,23 +12383,7 @@ static void print_graph_patch_help_json(void) {
   ZBuf json;
   zbuf_init(&json);
   zbuf_append(&json, "{\"schemaVersion\":1,\"ok\":true,\"command\":\"zero graph patch\",\"operations\":[");
-  const char *ops[] = {
-    "addMain",
-    "addCheckWrite fn=\"main\" text=\"hello\\n\"",
-    "addFunction name=\"add\" ret=\"i32\"",
-    "addParam fn=\"add\" name=\"left\" type=\"i32\"",
-    "addReturnBinary fn=\"add\" name=\"+\" left=\"left\" right=\"right\" type=\"i32\"",
-    "addLetLiteral fn=\"main\" name=\"count\" type=\"u32\" value=\"0\"",
-    "addLetBinary fn=\"add\" name=\"sum\" type=\"i32\" operator=\"+\" left=\"left\" right=\"right\"",
-    "addReturnValue fn=\"identity\" value=\"input\" type=\"i32\"",
-    "addCheckWriteValue fn=\"main\" value=\"message\" type=\"String\"",
-    "addTest name=\"addition works\" call=\"add\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"i32\"",
-    "setMainArgsAddCli fn=\"add_u32\"",
-    "set node=\"#id\" field=\"value\" expect=\"old\" value=\"new\"",
-    "rename node=\"#id\" expect=\"old\" value=\"new\"",
-    "delete node=\"#id\"",
-    NULL,
-  };
+  const char *const *ops = z_program_graph_patch_operation_examples();
   for (size_t i = 0; ops[i]; i++) {
     if (i > 0) zbuf_append(&json, ",");
     append_json_string(&json, ops[i]);
@@ -12411,20 +12395,10 @@ static void print_graph_patch_help_json(void) {
 
 static void print_graph_patch_help_text(void) {
   printf("program graph patch operations\n");
-  printf("  addMain\n");
-  printf("  addCheckWrite fn=\"main\" text=\"hello\\n\"\n");
-  printf("  addFunction name=\"add\" ret=\"i32\"\n");
-  printf("  addParam fn=\"add\" name=\"left\" type=\"i32\"\n");
-  printf("  addReturnBinary fn=\"add\" name=\"+\" left=\"left\" right=\"right\" type=\"i32\"\n");
-  printf("  addLetLiteral fn=\"main\" name=\"count\" type=\"u32\" value=\"0\"\n");
-  printf("  addLetBinary fn=\"add\" name=\"sum\" type=\"i32\" operator=\"+\" left=\"left\" right=\"right\"\n");
-  printf("  addReturnValue fn=\"identity\" value=\"input\" type=\"i32\"\n");
-  printf("  addCheckWriteValue fn=\"main\" value=\"message\" type=\"String\"\n");
-  printf("  addTest name=\"addition works\" call=\"add\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"i32\"\n");
-  printf("  setMainArgsAddCli fn=\"add_u32\"\n");
-  printf("  set node=\"#id\" field=\"value\" expect=\"old\" value=\"new\"\n");
-  printf("  rename node=\"#id\" expect=\"old\" value=\"new\"\n");
-  printf("  delete node=\"#id\"\n");
+  printf("accepted by --op, --patch-text, and zero-program-graph-patch v1 files\n");
+  const char *const *ops = z_program_graph_patch_operation_examples();
+  for (size_t i = 0; ops[i]; i++) printf("  %s\n", ops[i]);
+  printf("\nFor larger graph edits, put these lines in a patch file under /tmp or pass --patch-text.\n");
 }
 
 static bool save_graph_patch_output(const Command *command, const ZTargetInfo *target, ZProgramGraph *graph, GraphInputKind input_kind, const SourceInput *input, const char **saved_path, ZDiag *diag) {

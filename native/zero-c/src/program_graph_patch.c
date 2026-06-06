@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 static void patch_free_text(char **slot) {
   if (!slot) return;
   free(*slot);
