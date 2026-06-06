@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 static bool prune_text_eq(const char *left, const char *right) { return strcmp(left ? left : "", right ? right : "") == 0; }
 
@@ -32,14 +33,18 @@ static bool prune_path_is_embedded_std(const ZProgramGraph *graph, const char *p
   const ZStdSourceModule *module = prune_std_source_module_for_path(path);
   if (!graph || !module) return false;
   bool has_module_node = false;
-  bool has_internal_std_decl = false;
   for (size_t i = 0; i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
     if (!prune_text_eq(node->path, path)) continue;
     if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE && prune_text_eq(node->name, module->module)) has_module_node = true;
-    if (prune_starts_with(node->name, "__zero_std_")) has_internal_std_decl = true;
   }
-  return has_module_node && has_internal_std_decl;
+  return has_module_node;
+}
+
+static bool prune_node_is_appended_std_helper(const ZProgramGraphNode *node) {
+  return node &&
+         node->kind == Z_PROGRAM_GRAPH_NODE_FUNCTION &&
+         prune_starts_with(node->name, "__zero_std_");
 }
 
 static void prune_free_node_fields(ZProgramGraphNode *node) {
@@ -71,6 +76,37 @@ static bool prune_id_removed(char **removed_ids, size_t len, const char *id) {
   return false;
 }
 
+static ssize_t prune_node_index_for_id(const ZProgramGraph *graph, const char *id) {
+  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
+    if (prune_text_eq(graph->nodes[i].id, id)) return (ssize_t)i;
+  }
+  return -1;
+}
+
+static void prune_mark_removed(char **removed_ids, size_t *removed_len, const ZProgramGraphNode *node) {
+  if (!removed_ids || !removed_len || !node) return;
+  removed_ids[(*removed_len)++] = z_strdup(node->id ? node->id : "");
+}
+
+static void prune_expand_removed_subgraphs(ZProgramGraph *graph, bool *remove, char **removed_ids, size_t *removed_len) {
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (size_t i = 0; graph && i < graph->edge_len; i++) {
+      ZProgramGraphEdge *edge = &graph->edges[i];
+      if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) continue;
+      ssize_t from = prune_node_index_for_id(graph, edge->from);
+      ssize_t to = prune_node_index_for_id(graph, edge->to);
+      if (from < 0 || to < 0) continue;
+      if (remove[from] && !remove[to]) {
+        remove[to] = true;
+        prune_mark_removed(removed_ids, removed_len, &graph->nodes[to]);
+        changed = true;
+      }
+    }
+  }
+}
+
 static void prune_removed_edges(ZProgramGraph *graph, char **removed_ids, size_t removed_len) {
   size_t write = 0;
   for (size_t i = 0; graph && i < graph->edge_len; i++) {
@@ -98,13 +134,18 @@ void z_program_graph_prune_embedded_std_source_nodes(ZProgramGraph *graph) {
   size_t removed_len = 0;
   for (size_t i = 0; i < graph->node_len; i++) {
     bool embedded_std = prune_path_is_embedded_std(graph, graph->nodes[i].path);
+    bool appended_std_helper = prune_node_is_appended_std_helper(&graph->nodes[i]);
     if (embedded_std) {
       remove[i] = true;
-      removed_ids[removed_len++] = z_strdup(graph->nodes[i].id ? graph->nodes[i].id : "");
+      prune_mark_removed(removed_ids, &removed_len, &graph->nodes[i]);
+    } else if (appended_std_helper) {
+      remove[i] = true;
+      prune_mark_removed(removed_ids, &removed_len, &graph->nodes[i]);
     } else {
       has_local_source = true;
     }
   }
+  prune_expand_removed_subgraphs(graph, remove, removed_ids, &removed_len);
   if (has_local_source && removed_len > 0) {
     prune_removed_edges(graph, removed_ids, removed_len);
     size_t write = 0;

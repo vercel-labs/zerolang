@@ -2,6 +2,7 @@
 
 #include "canonical_text.h"
 #include "program_graph_import.h"
+#include "program_graph_mir_std.h"
 #include "program_graph_view.h"
 #include "std_source.h"
 #include "zero.h"
@@ -259,6 +260,15 @@ bool z_program_graph_projection_graph_from_store(const ZProgramGraphStore *store
   if (target) z_set_check_target(target);
   projection_resolve_program_c_import_header_paths(&input, &program);
   ZDiag check_diag = {0};
+  if (!projection_store_is_embedded_std_library(store)) {
+    size_t appended_std_functions = 0;
+    if (!z_program_graph_append_source_std_functions(&program, &appended_std_functions, &check_diag)) {
+      const char *actual = check_diag.message[0] ? check_diag.message : "projection std helper expansion failed";
+      z_free_program(&program);
+      z_free_source(&input);
+      return projection_diag(store, diag, "repository graph source projection does not check", actual);
+    }
+  }
   ok = projection_store_is_embedded_std_library(store) ? z_check_program_library(&program, &check_diag) : z_check_program(&program, &check_diag);
   if (!ok) {
     const char *actual = check_diag.message[0] ? check_diag.message : "projection source check failed";

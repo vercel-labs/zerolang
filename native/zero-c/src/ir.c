@@ -250,6 +250,24 @@ static int ir_std_http_error_code(const char *name) {
   return -1;
 }
 
+static int ir_std_json_error_code(const char *name) {
+  if (!name) return -1;
+  if (strcmp(name, "std.json.errorNone") == 0) return 0;
+  if (strcmp(name, "std.json.errorInvalid") == 0) return 1;
+  if (strcmp(name, "std.json.errorTrailing") == 0) return 2;
+  return -1;
+}
+
+static bool ir_std_http_status_class_bounds(const char *name, unsigned *lower, unsigned *upper) {
+  if (!name || !lower || !upper) return false;
+  if (strcmp(name, "std.http.statusIsInformational") == 0) { *lower = 100; *upper = 200; return true; }
+  if (strcmp(name, "std.http.statusIsSuccess") == 0) { *lower = 200; *upper = 300; return true; }
+  if (strcmp(name, "std.http.statusIsRedirect") == 0) { *lower = 300; *upper = 400; return true; }
+  if (strcmp(name, "std.http.statusIsClientError") == 0) { *lower = 400; *upper = 500; return true; }
+  if (strcmp(name, "std.http.statusIsServerError") == 0) { *lower = 500; *upper = 600; return true; }
+  return false;
+}
+
 static bool ir_type_is_value(IrTypeKind type) {
   return type == IR_TYPE_U8 || type == IR_TYPE_U16 || type == IR_TYPE_USIZE || type == IR_TYPE_I32 || type == IR_TYPE_U32 || type == IR_TYPE_I64 || type == IR_TYPE_U64;
 }
@@ -1408,6 +1426,518 @@ static bool ir_lower_call_arg(const Program *program, IrProgram *ir, const IrFun
   return expected == IR_TYPE_BYTE_VIEW ? ir_lower_byte_view(program, ir, fun, expr, out) : ir_lower_expr(program, ir, fun, expr, out);
 }
 
+static void ir_require_runtime_helper(IrProgram *ir) {
+  if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+  if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+}
+
+static bool ir_lower_std_str_arg(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, size_t index, IrTypeKind expected, IrValue **out) {
+  if (!call || index >= call->args.len) {
+    ir_mark_unsupported(ir, "direct backend std.str helper argument is missing", call ? call->line : 1, call ? call->column : 1, "missing std.str argument");
+    return false;
+  }
+  const Expr *arg_expr = call->args.items[index];
+  if (!ir_lower_call_arg(program, ir, fun, arg_expr, expected, out)) return false;
+  if (expected == IR_TYPE_BYTE_VIEW) {
+    if (!*out || (*out)->type != IR_TYPE_BYTE_VIEW) {
+      ir_free_value(*out);
+      *out = NULL;
+      ir_mark_unsupported(ir, "direct backend std.str argument must be a byte view", arg_expr ? arg_expr->line : call->line, arg_expr ? arg_expr->column : call->column, "non-byte-view argument");
+      return false;
+    }
+    return true;
+  }
+  if (*out && (*out)->type == expected) return true;
+  ir_free_value(*out);
+  *out = NULL;
+  ir_mark_unsupported(ir, "direct backend std.str argument type does not match helper", arg_expr ? arg_expr->line : call->line, arg_expr ? arg_expr->column : call->column, arg_expr && arg_expr->resolved_type ? arg_expr->resolved_type : "unknown argument type");
+  return false;
+}
+
+static bool ir_make_std_str_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrStrOp op, IrTypeKind return_type, const IrTypeKind *arg_types, size_t arg_count, bool first_arg_mutable_buffer, IrValue **out) {
+  if (!call || call->args.len != arg_count) {
+    ir_mark_unsupported(ir, "direct backend std.str helper argument count does not match signature", call ? call->line : 1, call ? call->column : 1, "wrong std.str arity");
+    return false;
+  }
+  if (first_arg_mutable_buffer && !ir_expr_is_mutable_byte_view_dest(program, fun, call->args.items[0])) {
+    ir_mark_unsupported(ir, "direct backend std.str helper expects a mutable byte destination", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, "non-mutable byte destination");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_STR_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_BYTE_VIEW || return_type == IR_TYPE_MAYBE_BYTE_VIEW) value->element_type = IR_TYPE_U8;
+  for (size_t i = 0; i < arg_count; i++) {
+    IrValue *arg = NULL;
+    if (!ir_lower_std_str_arg(program, ir, fun, call, i, arg_types[i], &arg)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_value_push_arg(ir, value, arg);
+  }
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_str_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = true;
+  const IrTypeKind one_view[] = {IR_TYPE_BYTE_VIEW};
+  const IrTypeKind two_views[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW};
+  const IrTypeKind view_byte[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_U8};
+  const IrTypeKind three_views[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW};
+  const IrTypeKind view_view_count[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW, IR_TYPE_USIZE};
+  if (strcmp(callee_name, "std.str.reverse") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_REVERSE, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, true, out);
+  if (strcmp(callee_name, "std.str.copy") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_COPY, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, true, out);
+  if (strcmp(callee_name, "std.str.concat") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_CONCAT, IR_TYPE_MAYBE_BYTE_VIEW, three_views, 3, true, out);
+  if (strcmp(callee_name, "std.str.repeat") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_REPEAT, IR_TYPE_MAYBE_BYTE_VIEW, view_view_count, 3, true, out);
+  if (strcmp(callee_name, "std.str.toLowerAscii") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_TO_LOWER_ASCII, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, true, out);
+  if (strcmp(callee_name, "std.str.toUpperAscii") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_TO_UPPER_ASCII, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, true, out);
+  if (strcmp(callee_name, "std.str.trimAscii") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_TRIM_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  if (strcmp(callee_name, "std.str.trimStartAscii") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_TRIM_START_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  if (strcmp(callee_name, "std.str.trimEndAscii") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_TRIM_END_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  if (strcmp(callee_name, "std.str.countByte") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_COUNT_BYTE, IR_TYPE_USIZE, view_byte, 2, false, out);
+  if (strcmp(callee_name, "std.str.startsWith") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_STARTS_WITH, IR_TYPE_BOOL, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.endsWith") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_ENDS_WITH, IR_TYPE_BOOL, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.contains") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_CONTAINS, IR_TYPE_BOOL, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.count") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_COUNT, IR_TYPE_USIZE, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.indexOf") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_INDEX_OF, IR_TYPE_USIZE, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.lastIndexOf") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_LAST_INDEX_OF, IR_TYPE_USIZE, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.eqlIgnoreAsciiCase") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_EQL_IGNORE_ASCII_CASE, IR_TYPE_BOOL, two_views, 2, false, out);
+  if (strcmp(callee_name, "std.str.wordCountAscii") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_WORD_COUNT_ASCII, IR_TYPE_USIZE, one_view, 1, false, out);
+  if (strcmp(callee_name, "std.path.basename") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_PATH_BASENAME, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  if (strcmp(callee_name, "std.path.dirname") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_PATH_DIRNAME, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  if (strcmp(callee_name, "std.path.extension") == 0) return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_PATH_EXTENSION, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_make_std_ascii_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrAsciiOp op, IrTypeKind return_type, IrValue **out) {
+  if (!call || call->args.len != 1) {
+    ir_mark_unsupported(ir, "direct backend std.ascii helper expects one byte argument", call ? call->line : 1, call ? call->column : 1, "wrong std.ascii arity");
+    return false;
+  }
+  IrValue *arg = NULL;
+  if (!ir_lower_call_arg(program, ir, fun, call->args.items[0], IR_TYPE_U8, &arg)) return false;
+  if (!arg || arg->type != IR_TYPE_U8) {
+    ir_free_value(arg);
+    ir_mark_unsupported(ir, "direct backend std.ascii helper argument must be u8", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "non-u8 argument");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_ASCII_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = IR_TYPE_U8;
+  ir_value_push_arg(ir, value, arg);
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_ascii_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = true;
+  if (strcmp(callee_name, "std.ascii.isDigit") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_DIGIT, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.isLower") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_LOWER, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.isUpper") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_UPPER, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.isAlpha") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_ALPHA, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.isAlnum") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_ALNUM, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.isWhitespace") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_WHITESPACE, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.isHexDigit") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_IS_HEX_DIGIT, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.ascii.toLower") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_TO_LOWER, IR_TYPE_U8, out);
+  if (strcmp(callee_name, "std.ascii.toUpper") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_TO_UPPER, IR_TYPE_U8, out);
+  if (strcmp(callee_name, "std.ascii.digitValue") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_DIGIT_VALUE, IR_TYPE_MAYBE_SCALAR, out);
+  if (strcmp(callee_name, "std.ascii.hexValue") == 0) return ir_make_std_ascii_runtime_value(program, ir, fun, call, IR_ASCII_OP_HEX_VALUE, IR_TYPE_MAYBE_SCALAR, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_make_std_text_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrTextOp op, IrTypeKind return_type, IrValue **out) {
+  if (!call || call->args.len != 1) {
+    ir_mark_unsupported(ir, "direct backend std.text helper expects one byte-view argument", call ? call->line : 1, call ? call->column : 1, "wrong std.text arity");
+    return false;
+  }
+  IrValue *arg = NULL;
+  if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &arg)) return false;
+  if (!arg || arg->type != IR_TYPE_BYTE_VIEW) {
+    ir_free_value(arg);
+    ir_mark_unsupported(ir, "direct backend std.text helper argument must be a byte view", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, "non-byte-view argument");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TEXT_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = IR_TYPE_USIZE;
+  ir_value_push_arg(ir, value, arg);
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_text_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = true;
+  if (strcmp(callee_name, "std.text.isAscii") == 0) return ir_make_std_text_runtime_value(program, ir, fun, call, IR_TEXT_OP_IS_ASCII, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.text.utf8Valid") == 0) return ir_make_std_text_runtime_value(program, ir, fun, call, IR_TEXT_OP_UTF8_VALID, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.codec.utf8Valid") == 0) return ir_make_std_text_runtime_value(program, ir, fun, call, IR_TEXT_OP_UTF8_VALID, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.text.utf8Len") == 0) return ir_make_std_text_runtime_value(program, ir, fun, call, IR_TEXT_OP_UTF8_LEN, IR_TYPE_MAYBE_SCALAR, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_make_std_parse_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrParseOp op, IrTypeKind return_type, IrTypeKind element_type, size_t expected_args, IrValue **out) {
+  if (!call || call->args.len != expected_args || expected_args < 1 || expected_args > 2) {
+    ir_mark_unsupported(ir, "direct backend std.parse helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.parse arity");
+    return false;
+  }
+  IrValue *input = NULL;
+  if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &input)) return false;
+  IrValue *value = ir_new_value(ir, IR_VALUE_PARSE_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = element_type;
+  ir_value_push_arg(ir, value, input);
+  if (expected_args == 2) {
+    IrValue *byte = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, call->args.items[1], IR_TYPE_U8, &byte)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!byte || byte->type != IR_TYPE_U8) {
+      ir_free_value(byte);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend std.parse byte argument must be u8", call->args.items[1] ? call->args.items[1]->line : call->line, call->args.items[1] ? call->args.items[1]->column : call->column, "non-u8 argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, byte);
+  }
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_parse_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = true;
+  if (strcmp(callee_name, "std.parse.isAsciiDigit") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_IS_ASCII_DIGIT, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.isAsciiAlpha") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_IS_ASCII_ALPHA, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.isIdentifierStart") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_IS_IDENTIFIER_START, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.isWhitespace") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_IS_WHITESPACE, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.scanDigits") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_SCAN_DIGITS, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.scanIdentifier") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_SCAN_IDENTIFIER, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.scanUntilByte") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_SCAN_UNTIL_BYTE, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 2, out);
+  if (strcmp(callee_name, "std.parse.scanWhitespace") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_SCAN_WHITESPACE, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
+  if (strcmp(callee_name, "std.parse.tokenAscii") == 0) {
+    const IrTypeKind one_view[] = {IR_TYPE_BYTE_VIEW};
+    return ir_make_std_str_runtime_value(program, ir, fun, call, IR_STR_OP_PARSE_TOKEN_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, false, out);
+  }
+  if (strcmp(callee_name, "std.parse.parseBool") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_PARSE_BOOL, IR_TYPE_MAYBE_SCALAR, IR_TYPE_BOOL, 1, out);
+  if (strcmp(callee_name, "std.parse.parseU8") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_PARSE_U8, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U8, 1, out);
+  if (strcmp(callee_name, "std.parse.parseU16") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_PARSE_U16, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U16, 1, out);
+  if (strcmp(callee_name, "std.parse.parseUsize") == 0) return ir_make_std_parse_runtime_value(program, ir, fun, call, IR_PARSE_OP_PARSE_USIZE, IR_TYPE_MAYBE_SCALAR, IR_TYPE_USIZE, 1, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_make_std_time_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrTimeOp op, IrTypeKind return_type, size_t expected_args, IrValue **out) {
+  if (!call || call->args.len != expected_args) {
+    ir_mark_unsupported(ir, "direct backend std.time helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.time arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TIME_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  for (size_t i = 0; i < expected_args; i++) {
+    IrValue *arg = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, call->args.items[i], IR_TYPE_I64, &arg)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!arg || !ir_type_is_value(arg->type)) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend std.time helper argument must be a Duration", call->args.items[i] ? call->args.items[i]->line : call->line, call->args.items[i] ? call->args.items[i]->column : call->column, "non-Duration argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, ir_new_cast_value(ir, arg, IR_TYPE_I64, call->line, call->column));
+  }
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_time_extra_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = true;
+  if (strcmp(callee_name, "std.time.zero") == 0 && call->args.len == 0) {
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_I64, 0, call->line, call->column);
+    return true;
+  }
+  if (strcmp(callee_name, "std.time.asUsFloor") == 0) return ir_make_std_time_runtime_value(program, ir, fun, call, IR_TIME_OP_AS_US_FLOOR, IR_TYPE_I64, 1, out);
+  if (strcmp(callee_name, "std.time.asMsFloor") == 0) return ir_make_std_time_runtime_value(program, ir, fun, call, IR_TIME_OP_AS_MS_FLOOR, IR_TYPE_I32, 1, out);
+  if (strcmp(callee_name, "std.time.asSecondsFloor") == 0) return ir_make_std_time_runtime_value(program, ir, fun, call, IR_TIME_OP_AS_SECONDS_FLOOR, IR_TYPE_I64, 1, out);
+  if (strcmp(callee_name, "std.time.min") == 0) return ir_make_std_time_runtime_value(program, ir, fun, call, IR_TIME_OP_MIN, IR_TYPE_I64, 2, out);
+  if (strcmp(callee_name, "std.time.max") == 0) return ir_make_std_time_runtime_value(program, ir, fun, call, IR_TIME_OP_MAX, IR_TYPE_I64, 2, out);
+  if (strcmp(callee_name, "std.time.clamp") == 0) return ir_make_std_time_runtime_value(program, ir, fun, call, IR_TIME_OP_CLAMP, IR_TYPE_I64, 3, out);
+  if (strcmp(callee_name, "std.time.isZero") == 0 && call->args.len == 1) {
+    IrValue *arg = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, call->args.items[0], IR_TYPE_I64, &arg)) return false;
+    arg = ir_new_cast_value(ir, arg, IR_TYPE_I64, call->line, call->column);
+    *out = ir_new_compare_value(ir, IR_CMP_EQ, arg, ir_new_integer_literal_value(ir, IR_TYPE_I64, 0, call->line, call->column), call->line, call->column);
+    return true;
+  }
+  *handled = false;
+  return true;
+}
+
+static bool ir_std_math_runtime_spec(const char *callee_name, size_t arg_count, IrMathOp *op, IrTypeKind *arg_type, IrTypeKind *return_type, IrTypeKind *return_element_type, size_t *expected_args) {
+  if (!callee_name || !op || !arg_type || !return_type || !return_element_type || !expected_args) return false;
+  *expected_args = 2;
+  *return_element_type = IR_TYPE_UNSUPPORTED;
+  if (strcmp(callee_name, "std.math.minI32") == 0) { *op = IR_MATH_OP_MIN_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.maxI32") == 0) { *op = IR_MATH_OP_MAX_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.clampI32") == 0) { *op = IR_MATH_OP_CLAMP_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; *expected_args = 3; }
+  else if (strcmp(callee_name, "std.math.minI64") == 0) { *op = IR_MATH_OP_MIN_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_I64; }
+  else if (strcmp(callee_name, "std.math.maxI64") == 0) { *op = IR_MATH_OP_MAX_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_I64; }
+  else if (strcmp(callee_name, "std.math.clampI64") == 0) { *op = IR_MATH_OP_CLAMP_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_I64; *expected_args = 3; }
+  else if (strcmp(callee_name, "std.math.minU32") == 0) { *op = IR_MATH_OP_MIN_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.maxU32") == 0) { *op = IR_MATH_OP_MAX_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.clampU32") == 0) { *op = IR_MATH_OP_CLAMP_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 3; }
+  else if (strcmp(callee_name, "std.math.minU64") == 0) { *op = IR_MATH_OP_MIN_U64; *arg_type = IR_TYPE_U64; *return_type = IR_TYPE_U64; }
+  else if (strcmp(callee_name, "std.math.maxU64") == 0) { *op = IR_MATH_OP_MAX_U64; *arg_type = IR_TYPE_U64; *return_type = IR_TYPE_U64; }
+  else if (strcmp(callee_name, "std.math.clampU64") == 0) { *op = IR_MATH_OP_CLAMP_U64; *arg_type = IR_TYPE_U64; *return_type = IR_TYPE_U64; *expected_args = 3; }
+  else if (strcmp(callee_name, "std.math.minUsize") == 0) { *op = IR_MATH_OP_MIN_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.maxUsize") == 0) { *op = IR_MATH_OP_MAX_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.clampUsize") == 0) { *op = IR_MATH_OP_CLAMP_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; *expected_args = 3; }
+  else if (strcmp(callee_name, "std.math.absI32") == 0) { *op = IR_MATH_OP_ABS_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.absI64") == 0) { *op = IR_MATH_OP_ABS_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_U64; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.checkedAddU32") == 0) { *op = IR_MATH_OP_CHECKED_ADD_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.checkedSubU32") == 0) { *op = IR_MATH_OP_CHECKED_SUB_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.checkedMulU32") == 0) { *op = IR_MATH_OP_CHECKED_MUL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.saturatingAddU32") == 0) { *op = IR_MATH_OP_SATURATING_ADD_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.saturatingSubU32") == 0) { *op = IR_MATH_OP_SATURATING_SUB_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.saturatingMulU32") == 0) { *op = IR_MATH_OP_SATURATING_MUL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.checkedAddI32") == 0) { *op = IR_MATH_OP_CHECKED_ADD_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.checkedSubI32") == 0) { *op = IR_MATH_OP_CHECKED_SUB_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.checkedMulI32") == 0) { *op = IR_MATH_OP_CHECKED_MUL_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.saturatingAddI32") == 0) { *op = IR_MATH_OP_SATURATING_ADD_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.saturatingSubI32") == 0) { *op = IR_MATH_OP_SATURATING_SUB_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.saturatingMulI32") == 0) { *op = IR_MATH_OP_SATURATING_MUL_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (strcmp(callee_name, "std.math.gcdU32") == 0) { *op = IR_MATH_OP_GCD_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.lcmU32") == 0) { *op = IR_MATH_OP_LCM_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.checkedLcmU32") == 0) { *op = IR_MATH_OP_CHECKED_LCM_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.powU32") == 0) { *op = IR_MATH_OP_POW_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.checkedPowU32") == 0) { *op = IR_MATH_OP_CHECKED_POW_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.modPowU32") == 0) { *op = IR_MATH_OP_MOD_POW_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 3; }
+  else if (strcmp(callee_name, "std.math.isPrimeU32") == 0) { *op = IR_MATH_OP_IS_PRIME_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_BOOL; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.sqrtFloorU32") == 0) { *op = IR_MATH_OP_SQRT_FLOOR_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.factorialU32") == 0) { *op = IR_MATH_OP_FACTORIAL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.binomialU32") == 0) { *op = IR_MATH_OP_BINOMIAL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (strcmp(callee_name, "std.math.divisorCountU32") == 0) { *op = IR_MATH_OP_DIVISOR_COUNT_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.properDivisorSumU32") == 0) { *op = IR_MATH_OP_PROPER_DIVISOR_SUM_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (strcmp(callee_name, "std.math.checkedAddUsize") == 0) { *op = IR_MATH_OP_CHECKED_ADD_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.checkedSubUsize") == 0) { *op = IR_MATH_OP_CHECKED_SUB_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.checkedMulUsize") == 0) { *op = IR_MATH_OP_CHECKED_MUL_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.saturatingAddUsize") == 0) { *op = IR_MATH_OP_SATURATING_ADD_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.saturatingSubUsize") == 0) { *op = IR_MATH_OP_SATURATING_SUB_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (strcmp(callee_name, "std.math.saturatingMulUsize") == 0) { *op = IR_MATH_OP_SATURATING_MUL_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else return false;
+  return arg_count == *expected_args;
+}
+
+static bool ir_make_std_math_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrMathOp op, IrTypeKind arg_type, IrTypeKind return_type, IrTypeKind return_element_type, size_t expected_args, IrValue **out) {
+  if (!call || call->args.len != expected_args) {
+    ir_mark_unsupported(ir, "direct backend std.math helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.math arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_MATH_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = return_element_type;
+  for (size_t i = 0; i < expected_args; i++) {
+    IrValue *arg = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, call->args.items[i], arg_type, &arg)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!arg || arg->type != arg_type) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend std.math helper argument has wrong type", call->args.items[i] ? call->args.items[i]->line : call->line, call->args.items[i] ? call->args.items[i]->column : call->column, "wrong std.math argument type");
+      return false;
+    }
+    ir_value_push_arg(ir, value, ir_new_cast_value(ir, arg, IR_TYPE_I64, call->line, call->column));
+  }
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_std_search_runtime_spec(const char *callee_name, IrSearchOp *op, IrTypeKind *element_type) {
+  if (!callee_name || !op || !element_type) return false;
+  if (strcmp(callee_name, "std.search.lowerBoundI32") == 0) { *op = IR_SEARCH_OP_LOWER_BOUND_I32; *element_type = IR_TYPE_I32; return true; }
+  if (strcmp(callee_name, "std.search.binaryI32") == 0) { *op = IR_SEARCH_OP_BINARY_I32; *element_type = IR_TYPE_I32; return true; }
+  if (strcmp(callee_name, "std.search.lowerBoundU32") == 0) { *op = IR_SEARCH_OP_LOWER_BOUND_U32; *element_type = IR_TYPE_U32; return true; }
+  if (strcmp(callee_name, "std.search.binaryU32") == 0) { *op = IR_SEARCH_OP_BINARY_U32; *element_type = IR_TYPE_U32; return true; }
+  if (strcmp(callee_name, "std.search.lowerBoundUsize") == 0) { *op = IR_SEARCH_OP_LOWER_BOUND_USIZE; *element_type = IR_TYPE_USIZE; return true; }
+  if (strcmp(callee_name, "std.search.binaryUsize") == 0) { *op = IR_SEARCH_OP_BINARY_USIZE; *element_type = IR_TYPE_USIZE; return true; }
+  return false;
+}
+
+static bool ir_lower_std_search_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = false;
+  IrSearchOp op = IR_SEARCH_OP_LOWER_BOUND_I32;
+  IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
+  if (!ir_std_search_runtime_spec(callee_name, &op, &element_type)) return true;
+  *handled = true;
+  if (!call || call->args.len != 2) {
+    ir_mark_unsupported(ir, "direct backend std.search helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.search arity");
+    return false;
+  }
+  IrValue *items = NULL;
+  if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &items)) return false;
+  IrTypeKind actual_element = items && items->element_type != IR_TYPE_UNSUPPORTED ? items->element_type : IR_TYPE_U8;
+  if (!items || items->type != IR_TYPE_BYTE_VIEW || actual_element != element_type) {
+    ir_free_value(items);
+    ir_mark_unsupported(ir, "direct backend std.search helper requires a typed span matching the helper width", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, "wrong std.search span type");
+    return false;
+  }
+  IrValue *needle = NULL;
+  if (!ir_lower_call_arg(program, ir, fun, call->args.items[1], element_type, &needle)) {
+    ir_free_value(items);
+    return false;
+  }
+  if (!needle || needle->type != element_type) {
+    ir_free_value(needle);
+    ir_free_value(items);
+    ir_mark_unsupported(ir, "direct backend std.search helper needle has wrong type", call->args.items[1] ? call->args.items[1]->line : call->line, call->args.items[1] ? call->args.items[1]->column : call->column, "wrong std.search needle type");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_SEARCH_RUNTIME, IR_TYPE_USIZE, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  value->left = items;
+  value->right = ir_new_cast_value(ir, needle, IR_TYPE_I64, call->line, call->column);
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_std_sort_runtime_spec(const char *callee_name, IrSortOp *op, IrTypeKind *element_type, IrTypeKind *return_type) {
+  if (!callee_name || !op || !element_type || !return_type) return false;
+  if (strcmp(callee_name, "std.sort.insertionI32") == 0) { *op = IR_SORT_OP_INSERTION_I32; *element_type = IR_TYPE_I32; *return_type = IR_TYPE_VOID; return true; }
+  if (strcmp(callee_name, "std.sort.isSortedI32") == 0) { *op = IR_SORT_OP_IS_SORTED_I32; *element_type = IR_TYPE_I32; *return_type = IR_TYPE_BOOL; return true; }
+  if (strcmp(callee_name, "std.sort.insertionU32") == 0) { *op = IR_SORT_OP_INSERTION_U32; *element_type = IR_TYPE_U32; *return_type = IR_TYPE_VOID; return true; }
+  if (strcmp(callee_name, "std.sort.isSortedU32") == 0) { *op = IR_SORT_OP_IS_SORTED_U32; *element_type = IR_TYPE_U32; *return_type = IR_TYPE_BOOL; return true; }
+  if (strcmp(callee_name, "std.sort.insertionUsize") == 0) { *op = IR_SORT_OP_INSERTION_USIZE; *element_type = IR_TYPE_USIZE; *return_type = IR_TYPE_VOID; return true; }
+  if (strcmp(callee_name, "std.sort.isSortedUsize") == 0) { *op = IR_SORT_OP_IS_SORTED_USIZE; *element_type = IR_TYPE_USIZE; *return_type = IR_TYPE_BOOL; return true; }
+  return false;
+}
+
+static bool ir_lower_std_sort_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = false;
+  IrSortOp op = IR_SORT_OP_INSERTION_I32;
+  IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
+  IrTypeKind return_type = IR_TYPE_UNSUPPORTED;
+  if (!ir_std_sort_runtime_spec(callee_name, &op, &element_type, &return_type)) return true;
+  *handled = true;
+  if (!call || call->args.len != 1) {
+    ir_mark_unsupported(ir, "direct backend std.sort helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.sort arity");
+    return false;
+  }
+  IrValue *items = NULL;
+  if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &items)) return false;
+  IrTypeKind actual_element = items && items->element_type != IR_TYPE_UNSUPPORTED ? items->element_type : IR_TYPE_U8;
+  if (!items || items->type != IR_TYPE_BYTE_VIEW || actual_element != element_type) {
+    ir_free_value(items);
+    ir_mark_unsupported(ir, "direct backend std.sort helper requires a typed span matching the helper width", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, "wrong std.sort span type");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_SORT_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  value->left = items;
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_testing_arg(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, size_t index, IrTypeKind expected, IrValue **out) {
+  if (!call || index >= call->args.len) {
+    ir_mark_unsupported(ir, "direct backend std.testing helper argument is missing", call ? call->line : 1, call ? call->column : 1, "missing std.testing argument");
+    return false;
+  }
+  const Expr *arg_expr = call->args.items[index];
+  if (!ir_lower_call_arg(program, ir, fun, arg_expr, expected, out)) return false;
+  if (*out && (*out)->type == expected) return true;
+  ir_free_value(*out);
+  *out = NULL;
+  ir_mark_unsupported(ir, "direct backend std.testing argument type does not match helper", arg_expr ? arg_expr->line : call->line, arg_expr ? arg_expr->column : call->column, arg_expr && arg_expr->resolved_type ? arg_expr->resolved_type : "unknown argument type");
+  return false;
+}
+
+static bool ir_lower_std_testing_equal_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrTypeKind type, IrValue **out) {
+  if (!call || call->args.len != 2) {
+    ir_mark_unsupported(ir, "direct backend std.testing equality helper expects two arguments", call ? call->line : 1, call ? call->column : 1, "wrong std.testing arity");
+    return false;
+  }
+  IrValue *left = NULL;
+  IrValue *right = NULL;
+  if (!ir_lower_std_testing_arg(program, ir, fun, call, 0, type, &left) ||
+      !ir_lower_std_testing_arg(program, ir, fun, call, 1, type, &right)) {
+    ir_free_value(left);
+    ir_free_value(right);
+    return false;
+  }
+  *out = ir_new_compare_value(ir, IR_CMP_EQ, left, right, call->line, call->column);
+  return true;
+}
+
+static bool ir_lower_std_testing_byte_pair_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrStrOp op, bool byte_equal, IrValue **out) {
+  if (!call || call->args.len != 2) {
+    ir_mark_unsupported(ir, "direct backend std.testing byte helper expects two arguments", call ? call->line : 1, call ? call->column : 1, "wrong std.testing arity");
+    return false;
+  }
+  if (byte_equal) {
+    IrValue *left = NULL;
+    IrValue *right = NULL;
+    if (!ir_lower_std_testing_arg(program, ir, fun, call, 0, IR_TYPE_BYTE_VIEW, &left) ||
+        !ir_lower_std_testing_arg(program, ir, fun, call, 1, IR_TYPE_BYTE_VIEW, &right)) {
+      ir_free_value(left);
+      ir_free_value(right);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_EQ, IR_TYPE_BOOL, call->line, call->column);
+    value->left = left;
+    value->right = right;
+    *out = value;
+    return true;
+  }
+  const IrTypeKind two_views[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW};
+  return ir_make_std_str_runtime_value(program, ir, fun, call, op, IR_TYPE_BOOL, two_views, 2, false, out);
+}
+
+static bool ir_lower_std_testing_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  *handled = true;
+  if (strcmp(callee_name, "std.testing.isTrue") == 0) {
+    if (!call || call->args.len != 1) {
+      ir_mark_unsupported(ir, "direct backend std.testing.isTrue expects one argument", call ? call->line : 1, call ? call->column : 1, "wrong std.testing arity");
+      return false;
+    }
+    return ir_lower_std_testing_arg(program, ir, fun, call, 0, IR_TYPE_BOOL, out);
+  }
+  if (strcmp(callee_name, "std.testing.isFalse") == 0) {
+    if (!call || call->args.len != 1) {
+      ir_mark_unsupported(ir, "direct backend std.testing.isFalse expects one argument", call ? call->line : 1, call ? call->column : 1, "wrong std.testing arity");
+      return false;
+    }
+    IrValue *arg = NULL;
+    if (!ir_lower_std_testing_arg(program, ir, fun, call, 0, IR_TYPE_BOOL, &arg)) return false;
+    IrValue *false_value = ir_new_value(ir, IR_VALUE_BOOL, IR_TYPE_BOOL, call->line, call->column);
+    false_value->int_value = 0;
+    *out = ir_new_compare_value(ir, IR_CMP_EQ, arg, false_value, call->line, call->column);
+    return true;
+  }
+  if (strcmp(callee_name, "std.testing.equalBool") == 0) return ir_lower_std_testing_equal_call(program, ir, fun, call, IR_TYPE_BOOL, out);
+  if (strcmp(callee_name, "std.testing.equalUsize") == 0) return ir_lower_std_testing_equal_call(program, ir, fun, call, IR_TYPE_USIZE, out);
+  if (strcmp(callee_name, "std.testing.equalU32") == 0) return ir_lower_std_testing_equal_call(program, ir, fun, call, IR_TYPE_U32, out);
+  if (strcmp(callee_name, "std.testing.equalI32") == 0) return ir_lower_std_testing_equal_call(program, ir, fun, call, IR_TYPE_I32, out);
+  if (strcmp(callee_name, "std.testing.equalBytes") == 0) return ir_lower_std_testing_byte_pair_call(program, ir, fun, call, IR_STR_OP_CONTAINS, true, out);
+  if (strcmp(callee_name, "std.testing.containsBytes") == 0) return ir_lower_std_testing_byte_pair_call(program, ir, fun, call, IR_STR_OP_CONTAINS, false, out);
+  if (strcmp(callee_name, "std.testing.startsWith") == 0) return ir_lower_std_testing_byte_pair_call(program, ir, fun, call, IR_STR_OP_STARTS_WITH, false, out);
+  if (strcmp(callee_name, "std.testing.endsWith") == 0) return ir_lower_std_testing_byte_pair_call(program, ir, fun, call, IR_STR_OP_ENDS_WITH, false, out);
+  *handled = false;
+  return true;
+}
+
 static void ir_instr_vec_push(IrProgram *ir, IrInstr **items, size_t *len, size_t *cap, IrInstr instr) {
   *items = ir_grow_tracked_items(ir, *items, *len, cap, 4, sizeof(IrInstr));
   (*items)[(*len)++] = instr;
@@ -1885,6 +2415,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
     }
     case EXPR_CALL: {
       char *callee_name = ir_expr_callee_name(expr->left);
+      bool handled = false;
       if (ir_lower_c_import_call(program, ir, fun, expr, out)) {
         free(callee_name);
         return *out != NULL;
@@ -2070,6 +2601,14 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         free(callee_name);
         return ok;
       }
+      if (!ir_lower_std_time_extra_call(program, ir, fun, expr, callee_name, &handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (handled) {
+        free(callee_name);
+        return true;
+      }
       if (strcmp(callee_name, "std.time.lessThan") == 0 && expr->args.len == 2) {
         IrValue *left = NULL;
         IrValue *right = NULL;
@@ -2155,6 +2694,53 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         }
         free(callee_name);
         *out = status;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.proc.succeeded") == 0 || strcmp(callee_name, "std.proc.failed") == 0) && expr->args.len == 1) {
+        IrValue *status = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &status)) {
+          free(callee_name);
+          return false;
+        }
+        if (!status || status->type != IR_TYPE_I32) {
+          ir_free_value(status);
+          ir_mark_unsupported(ir, "direct backend std.proc status helper expects ProcStatus", expr->args.items[0] ? expr->args.items[0]->line : expr->line, expr->args.items[0] ? expr->args.items[0]->column : expr->column, expr->args.items[0] && expr->args.items[0]->resolved_type ? expr->args.items[0]->resolved_type : "unknown status type");
+          free(callee_name);
+          return false;
+        }
+        IrCompareOp op = strcmp(callee_name, "std.proc.succeeded") == 0 ? IR_CMP_EQ : IR_CMP_NE;
+        *out = ir_new_compare_value(ir, op, status, ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, expr->line, expr->column), expr->line, expr->column);
+        free(callee_name);
+        return true;
+      }
+      {
+        IrMathOp math_op = IR_MATH_OP_MIN_I32;
+        IrTypeKind math_arg_type = IR_TYPE_UNSUPPORTED;
+        IrTypeKind math_return_type = IR_TYPE_UNSUPPORTED;
+        IrTypeKind math_return_element_type = IR_TYPE_UNSUPPORTED;
+        size_t math_expected_args = 0;
+        if (ir_std_math_runtime_spec(callee_name, expr->args.len, &math_op, &math_arg_type, &math_return_type, &math_return_element_type, &math_expected_args)) {
+          bool ok = ir_make_std_math_runtime_value(program, ir, fun, expr, math_op, math_arg_type, math_return_type, math_return_element_type, math_expected_args, out);
+          free(callee_name);
+          return ok;
+        }
+      }
+      if ((strcmp(callee_name, "std.math.isEvenU32") == 0 || strcmp(callee_name, "std.math.isOddU32") == 0) && expr->args.len == 1) {
+        IrValue *number = NULL;
+        if (!ir_lower_call_arg(program, ir, fun, expr->args.items[0], IR_TYPE_U32, &number)) {
+          free(callee_name);
+          return false;
+        }
+        if (!number || number->type != IR_TYPE_U32) {
+          ir_free_value(number);
+          ir_mark_unsupported(ir, "direct backend std.math parity helper expects u32", expr->args.items[0] ? expr->args.items[0]->line : expr->line, expr->args.items[0] ? expr->args.items[0]->column : expr->column, expr->args.items[0] && expr->args.items[0]->resolved_type ? expr->args.items[0]->resolved_type : "unknown parity argument");
+          free(callee_name);
+          return false;
+        }
+        IrValue *remainder = ir_new_binary_value(ir, IR_BIN_MOD, IR_TYPE_U32, number, ir_new_integer_literal_value(ir, IR_TYPE_U32, 2, expr->line, expr->column), expr->line, expr->column);
+        IrCompareOp op = strcmp(callee_name, "std.math.isEvenU32") == 0 ? IR_CMP_EQ : IR_CMP_NE;
+        *out = ir_new_compare_value(ir, op, remainder, ir_new_integer_literal_value(ir, IR_TYPE_U32, 0, expr->line, expr->column), expr->line, expr->column);
+        free(callee_name);
         return true;
       }
       if ((strcmp(callee_name, "std.codec.crc32") == 0 ||
@@ -2249,6 +2835,12 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      int json_error_code = ir_std_json_error_code(callee_name);
+      if (json_error_code >= 0 && expr->args.len == 0) {
+        free(callee_name);
+        *out = ir_new_integer_literal_value(ir, IR_TYPE_U32, (unsigned long long)json_error_code, expr->line, expr->column);
+        return true;
+      }
       if (strcmp(callee_name, "std.net.host") == 0 && expr->args.len == 0) {
         IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, expr->line, expr->column);
         value->int_value = 1;
@@ -2260,6 +2852,28 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       if (http_error_code >= 0 && expr->args.len == 0) {
         IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_U32, expr->line, expr->column);
         value->int_value = (unsigned long long)http_error_code;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      unsigned http_status_lower = 0;
+      unsigned http_status_upper = 0;
+      if (ir_std_http_status_class_bounds(callee_name, &http_status_lower, &http_status_upper) && expr->args.len == 1) {
+        IrValue *status = NULL;
+        if (!ir_lower_call_arg(program, ir, fun, expr->args.items[0], IR_TYPE_U16, &status)) {
+          free(callee_name);
+          return false;
+        }
+        if (!status || status->type != IR_TYPE_U16) {
+          ir_free_value(status);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.http status predicate expects a u16 status", expr->args.items[0] ? expr->args.items[0]->line : expr->line, expr->args.items[0] ? expr->args.items[0]->column : expr->column, "non-u16 status");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_STATUS_CLASS, IR_TYPE_BOOL, expr->line, expr->column);
+        value->left = status;
+        value->int_value = http_status_lower;
+        value->data_len = http_status_upper;
         free(callee_name);
         *out = value;
         return true;
@@ -2389,6 +3003,52 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if ((strcmp(callee_name, "std.http.requestMethodName") == 0 ||
+           strcmp(callee_name, "std.http.requestPath") == 0) && expr->args.len == 1) {
+        IrValue *request = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &request)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, strcmp(callee_name, "std.http.requestMethodName") == 0 ? IR_VALUE_HTTP_REQUEST_METHOD_NAME : IR_VALUE_HTTP_REQUEST_PATH, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = request;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.http.writeJsonResponse") == 0 && expr->args.len == 3) {
+        IrValue *buffer = NULL;
+        IrValue *status = NULL;
+        IrValue *body = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buffer) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[1], &status) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[2], &body)) {
+          ir_free_value(buffer);
+          ir_free_value(status);
+          ir_free_value(body);
+          free(callee_name);
+          return false;
+        }
+        if (status->type != IR_TYPE_U16) {
+          ir_free_value(buffer);
+          ir_free_value(status);
+          ir_free_value(body);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.http.writeJsonResponse status must be u16", expr->args.items[1]->line, expr->args.items[1]->column, "non-u16 status");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_WRITE_JSON_RESPONSE, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buffer;
+        value->index = status;
+        value->right = body;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if ((strcmp(callee_name, "std.http.headerFound") == 0 ||
            strcmp(callee_name, "std.http.headerOffset") == 0 ||
            strcmp(callee_name, "std.http.headerLen") == 0) && expr->args.len == 1) {
@@ -2439,6 +3099,246 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         }
         IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
         value->left = index;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.args.has") == 0 && expr->args.len == 1) {
+        IrValue *index = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &index)) {
+          free(callee_name);
+          return false;
+        }
+        if (!ir_type_is_value(index->type)) {
+          ir_free_value(index);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.args.has index must be an integer value", expr->args.items[0]->line, expr->args.items[0]->column, "non-integer index");
+          return false;
+        }
+        IrValue *len = ir_new_value(ir, IR_VALUE_ARGS_LEN, IR_TYPE_USIZE, expr->line, expr->column);
+        free(callee_name);
+        *out = ir_new_compare_value(ir, IR_CMP_LT, index, len, expr->line, expr->column);
+        return true;
+      }
+      if (strcmp(callee_name, "std.args.getOr") == 0 && expr->args.len == 2) {
+        IrValue *index = NULL;
+        IrValue *fallback = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &index) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &fallback)) {
+          ir_free_value(index);
+          ir_free_value(fallback);
+          free(callee_name);
+          return false;
+        }
+        if (!ir_type_is_value(index->type)) {
+          ir_free_value(index);
+          ir_free_value(fallback);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.args.getOr index must be an integer value", expr->args.items[0]->line, expr->args.items[0]->column, "non-integer index");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET_OR, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
+        value->left = index;
+        value->right = fallback;
+        value->element_type = IR_TYPE_U8;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.args.find") == 0 && expr->args.len == 1) {
+        IrValue *name = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &name)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_FIND, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->left = name;
+        value->element_type = IR_TYPE_USIZE;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.args.valueAfter") == 0 || strcmp(callee_name, "std.cli.optionValue") == 0) && expr->args.len == 1) {
+        IrValue *name = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &name)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_VALUE_AFTER, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = name;
+        value->element_type = IR_TYPE_U8;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.cli.optionValueOr") == 0 && expr->args.len == 2) {
+        IrValue *name = NULL;
+        IrValue *fallback = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &name) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &fallback)) {
+          ir_free_value(name);
+          ir_free_value(fallback);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_VALUE_AFTER_OR, IR_TYPE_BYTE_VIEW, expr->line, expr->column);
+        value->left = name;
+        value->right = fallback;
+        value->element_type = IR_TYPE_U8;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.cli.optionU32") == 0 && expr->args.len == 1) {
+        IrValue *name = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &name)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->left = name;
+        value->element_type = IR_TYPE_U32;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 2) ir->direct_host_runtime_import_count = 2;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.args.parseU32") == 0 && expr->args.len == 1) {
+        IrValue *index = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &index)) {
+          free(callee_name);
+          return false;
+        }
+        if (!ir_type_is_value(index->type)) {
+          ir_free_value(index);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.args.parseU32 index must be an integer value", expr->args.items[0]->line, expr->args.items[0]->column, "non-integer index");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_PARSE_U32, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->left = index;
+        value->element_type = IR_TYPE_U32;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.parse.parseI32") == 0 || strcmp(callee_name, "std.parse.parseU32") == 0) && expr->args.len == 1) {
+        IrValue *text = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &text)) {
+          free(callee_name);
+          return false;
+        }
+        bool signed_parse = strcmp(callee_name, "std.parse.parseI32") == 0;
+        IrValue *value = ir_new_value(ir, signed_parse ? IR_VALUE_PARSE_I32 : IR_VALUE_PARSE_U32, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->left = text;
+        value->element_type = signed_parse ? IR_TYPE_I32 : IR_TYPE_U32;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.fmt.bool") == 0 ||
+           strcmp(callee_name, "std.fmt.hexLowerU32") == 0 ||
+           strcmp(callee_name, "std.fmt.i32") == 0 ||
+           strcmp(callee_name, "std.fmt.u32") == 0 ||
+           strcmp(callee_name, "std.fmt.usize") == 0) &&
+          expr->args.len == 2) {
+        IrValue *buffer = NULL;
+        IrValue *number = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buffer) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[1], &number)) {
+          ir_free_value(buffer);
+          ir_free_value(number);
+          free(callee_name);
+          return false;
+        }
+        IrTypeKind number_type = IR_TYPE_U32;
+        IrValueKind kind = IR_VALUE_FMT_U32;
+        const char *actual = "non-u32 value";
+        if (strcmp(callee_name, "std.fmt.bool") == 0) {
+          number_type = IR_TYPE_BOOL;
+          kind = IR_VALUE_FMT_BOOL;
+          actual = "non-Bool value";
+        } else if (strcmp(callee_name, "std.fmt.hexLowerU32") == 0) {
+          kind = IR_VALUE_FMT_HEX_U32;
+        } else if (strcmp(callee_name, "std.fmt.i32") == 0) {
+          number_type = IR_TYPE_I32;
+          kind = IR_VALUE_FMT_I32;
+          actual = "non-i32 value";
+        } else if (strcmp(callee_name, "std.fmt.usize") == 0) {
+          number_type = IR_TYPE_USIZE;
+          kind = IR_VALUE_FMT_USIZE;
+          actual = "non-usize value";
+        }
+        if (!number || number->type != number_type) {
+          ir_free_value(buffer);
+          ir_free_value(number);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.fmt value has unsupported type", expr->args.items[1]->line, expr->args.items[1]->column, actual);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, kind, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buffer;
+        value->right = number;
+        value->element_type = IR_TYPE_U8;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.cli.hasFlag") == 0 && expr->args.len == 1) {
+        IrValue *name = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &name)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_CONTAINS, IR_TYPE_BOOL, expr->line, expr->column);
+        value->left = name;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.cli.successExitCode") == 0 && expr->args.len == 0) {
+        free(callee_name);
+        *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, expr->line, expr->column);
+        return true;
+      }
+      if (strcmp(callee_name, "std.cli.usageExitCode") == 0 && expr->args.len == 0) {
+        free(callee_name);
+        *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 2, expr->line, expr->column);
+        return true;
+      }
+      if (strcmp(callee_name, "std.cli.argEquals") == 0 && expr->args.len == 2) {
+        IrValue *index = NULL;
+        IrValue *expected = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &index) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &expected)) {
+          ir_free_value(index);
+          ir_free_value(expected);
+          free(callee_name);
+          return false;
+        }
+        if (!ir_type_is_value(index->type)) {
+          ir_free_value(index);
+          ir_free_value(expected);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.cli.argEquals index must be an integer value", expr->args.items[0]->line, expr->args.items[0]->column, "non-integer index");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_EQ, IR_TYPE_BOOL, expr->line, expr->column);
+        value->left = index;
+        value->right = expected;
         free(callee_name);
         *out = value;
         return true;
@@ -2944,6 +3844,88 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      bool std_str_handled = false;
+      if (!ir_lower_std_str_call(program, ir, fun, expr, callee_name, &std_str_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_str_handled) {
+        free(callee_name);
+        return true;
+      }
+      bool std_ascii_handled = false;
+      if (!ir_lower_std_ascii_call(program, ir, fun, expr, callee_name, &std_ascii_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_ascii_handled) {
+        free(callee_name);
+        return true;
+      }
+      bool std_text_handled = false;
+      if (!ir_lower_std_text_call(program, ir, fun, expr, callee_name, &std_text_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_text_handled) {
+        free(callee_name);
+        return true;
+      }
+      bool std_parse_handled = false;
+      if (!ir_lower_std_parse_call(program, ir, fun, expr, callee_name, &std_parse_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_parse_handled) {
+        free(callee_name);
+        return true;
+      }
+      bool std_search_handled = false;
+      if (!ir_lower_std_search_call(program, ir, fun, expr, callee_name, &std_search_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_search_handled) {
+        free(callee_name);
+        return true;
+      }
+      bool std_sort_handled = false;
+      if (!ir_lower_std_sort_call(program, ir, fun, expr, callee_name, &std_sort_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_sort_handled) {
+        free(callee_name);
+        return true;
+      }
+      bool std_testing_handled = false;
+      if (!ir_lower_std_testing_call(program, ir, fun, expr, callee_name, &std_testing_handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (std_testing_handled) {
+        free(callee_name);
+        return true;
+      }
+      if (strcmp(callee_name, "std.str.contains") == 0 && expr->args.len == 2) {
+        IrValue *left = NULL;
+        IrValue *right = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &left) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &right)) {
+          ir_free_value(left);
+          ir_free_value(right);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_STR_CONTAINS, IR_TYPE_BOOL, expr->line, expr->column);
+        value->left = left;
+        value->right = right;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (strcmp(callee_name, "std.mem.len") == 0 &&
           expr->args.len == 1 &&
           expr->args.items[0] &&
@@ -2983,6 +3965,48 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           *out = value;
           return true;
         }
+      }
+      if (strcmp(callee_name, "std.mem.isEmpty") == 0 && expr->args.len == 1) {
+        IrValue *view = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &view)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *len = ir_new_value(ir, IR_VALUE_BYTE_VIEW_LEN, IR_TYPE_USIZE, expr->line, expr->column);
+        len->left = view;
+        *out = ir_new_compare_value(
+            ir,
+            IR_CMP_EQ,
+            len,
+            ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, expr->line, expr->column),
+            expr->line,
+            expr->column);
+        free(callee_name);
+        return true;
+      }
+      if (strcmp(callee_name, "std.io.remaining") == 0 && expr->args.len == 2) {
+        IrValue *view = NULL;
+        IrValue *offset = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &view) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[1], &offset)) {
+          ir_free_value(view);
+          ir_free_value(offset);
+          free(callee_name);
+          return false;
+        }
+        if (!ir_type_is_value(offset->type)) {
+          ir_free_value(view);
+          ir_free_value(offset);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.io.remaining offset must be an integer value", expr->args.items[1]->line, expr->args.items[1]->column, "non-integer offset");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_REMAINING, IR_TYPE_USIZE, expr->line, expr->column);
+        value->left = view;
+        value->index = offset;
+        *out = value;
+        free(callee_name);
+        return true;
       }
       const char *source_backed_std = z_std_source_target_for_public_call(callee_name);
       if (source_backed_std) {

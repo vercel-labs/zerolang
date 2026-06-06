@@ -1,6 +1,8 @@
 #include "program_graph_mir_std.h"
 
 #include "canonical_text.h"
+#include "program_graph_format.h"
+#include "program_graph_lower.h"
 #include "std_source.h"
 
 #include <limits.h>
@@ -205,7 +207,7 @@ static void source_std_diag(ZDiag *diag, const ZStdSourceModule *module, const c
   diag->line = 1;
   diag->column = 1;
   diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "source-backed std helper '%s' is missing", target_name ? target_name : "");
+  snprintf(diag->message, sizeof(diag->message), "graph-backed std helper '%s' is missing", target_name ? target_name : "");
   snprintf(diag->expected, sizeof(diag->expected), "embedded std helper function");
   snprintf(diag->actual, sizeof(diag->actual), "missing helper implementation");
   snprintf(diag->help, sizeof(diag->help), "keep std_source.c target mappings aligned with embedded stdlib source");
@@ -276,31 +278,36 @@ static bool source_append_function_std_functions(Program *program, const Functio
 
 static bool source_append_std_function(Program *program, const ZStdSourceModule *module, const char *target_name, size_t *appended, ZDiag *diag) {
   if (!module || !target_name || !target_name[0] || source_program_has_function(program, target_name)) return true;
-  char *source = z_std_source_module_copy_source(module);
+  char *graph_text = z_std_source_module_copy_graph(module);
+  ZProgramGraph graph = {0};
   Program module_program = {0};
   ZDiag parse_diag = {0};
-  bool parsed = z_parse_canonical_text_program_source(source ? source : "", &module_program, &parse_diag);
+  bool parsed = z_program_graph_parse_dump(graph_text ? graph_text : "", &graph, &parse_diag) &&
+                z_program_graph_lower_to_program(&graph, &module_program, &parse_diag);
   if (!parsed) {
     if (diag) {
       *diag = parse_diag;
       if (!diag->path) diag->path = module->path;
     }
-    free(source);
+    z_program_graph_free(&graph);
+    free(graph_text);
     return false;
   }
   Function *fun = source_program_find_function(&module_program, target_name);
   if (!fun) {
     source_std_diag(diag, module, target_name);
+    z_program_graph_free(&graph);
     z_free_program(&module_program);
-    free(source);
+    free(graph_text);
     return false;
   }
   source_push_function(program, fun);
   if (appended) (*appended)++;
-  Function *moved = &program->functions.items[program->functions.len - 1];
-  bool ok = source_append_function_std_functions(program, moved, module, appended, diag);
+  Function moved = program->functions.items[program->functions.len - 1];
+  bool ok = source_append_function_std_functions(program, &moved, module, appended, diag);
+  z_program_graph_free(&graph);
   z_free_program(&module_program);
-  free(source);
+  free(graph_text);
   return ok && (!diag || diag->code == 0);
 }
 
@@ -309,7 +316,8 @@ bool z_program_graph_append_source_std_functions(Program *program, size_t *appen
     if (!source_append_expr_std_functions(program, program->consts.items[i].expr, NULL, appended, diag)) return false;
   }
   for (size_t i = 0; program && i < program->functions.len; i++) {
-    if (!source_append_function_std_functions(program, &program->functions.items[i], NULL, appended, diag)) return false;
+    Function current = program->functions.items[i];
+    if (!source_append_function_std_functions(program, &current, NULL, appended, diag)) return false;
   }
   for (size_t i = 0; program && i < program->shapes.len; i++) {
     for (size_t method = 0; method < program->shapes.items[i].methods.len; method++) {

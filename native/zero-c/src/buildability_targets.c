@@ -53,11 +53,16 @@ static bool build_array_byte_view_has_storage(const IrFunction *fun, const IrVal
   return (local->is_array && view->field_offset == 0) || local->is_record;
 }
 
+static bool build_runtime_byte_view_result(const IrValue *view) {
+  return view && (view->kind == IR_VALUE_STR_RUNTIME || view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) && view->type == IR_TYPE_BYTE_VIEW;
+}
+
 static bool build_check_coff_byte_view_ptr(const ZBuildability *ctx, const IrFunction *fun, const IrValue *view, ZDiag *diag) {
   if (!view) return z_build_diag(ctx, diag, "direct COFF byte view is missing", 1, 1, "missing byte view");
   if (view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (build_runtime_byte_view_result(view)) return true;
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && fun && view->array_index < fun->local_len) {
     if (!build_array_byte_view_has_storage(fun, view)) return z_build_diag(ctx, diag, "direct COFF byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
     return true;
@@ -75,6 +80,7 @@ bool z_build_check_coff_byte_view_len(const ZBuildability *ctx, const IrFunction
   if (view && view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
   if (view && view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (build_runtime_byte_view_result(view)) return true;
   if (view && view->kind == IR_VALUE_BYTE_SLICE) return true;
   return z_build_diag(ctx, diag, "direct COFF byte-view length currently requires a literal, constant slice, or byte-view local", view ? view->line : 1, view ? view->column : 1, "unsupported byte view length");
 }
@@ -88,6 +94,7 @@ static bool build_check_macho_x64_byte_view_ptr(const ZBuildability *ctx, const 
   if (view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (build_runtime_byte_view_result(view)) return true;
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && fun && view->array_index < fun->local_len) {
     if (!build_array_byte_view_has_storage(fun, view)) return z_build_diag(ctx, diag, "direct x86_64 Mach-O byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
     return true;
@@ -105,6 +112,7 @@ bool z_build_check_macho_x64_byte_view_len(const ZBuildability *ctx, const IrFun
   if (view && view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
   if (view && view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (build_runtime_byte_view_result(view)) return true;
   if (view && view->kind == IR_VALUE_BYTE_SLICE) return true;
   return z_build_diag(ctx, diag, "direct x86_64 Mach-O byte-view length currently requires a literal, constant slice, or byte-view local", view ? view->line : 1, view ? view->column : 1, "unsupported byte view length");
 }
@@ -118,6 +126,7 @@ static bool build_check_macho_byte_view_ptr(const ZBuildability *ctx, const IrFu
   if (view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (build_runtime_byte_view_result(view)) return true;
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && fun && view->array_index < fun->local_len) {
     if (!build_array_byte_view_has_storage(fun, view)) return z_build_diag(ctx, diag, "direct AArch64 Mach-O byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
     return true;
@@ -152,6 +161,7 @@ bool z_build_check_macho_byte_view_len(const ZBuildability *ctx, const IrFunctio
   if (view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (build_runtime_byte_view_result(view)) return true;
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     return z_build_check_macho_byte_view_len(ctx, fun, view->left, diag);
   }

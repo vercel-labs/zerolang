@@ -1052,7 +1052,7 @@ static void lower_module(GraphLower *lower, Program *program, const ZProgramGrap
       zbuf_append(&module_path, module && module->name && module->name[0] ? module->name : "main");
     }
   }
-  lower->allow_internal_symbols = lower_embedded_std_module(module);
+  lower->allow_internal_symbols = previous_allow_internal_symbols || lower_embedded_std_module(module);
   lower->current_module_path = module_path.data;
   lower_top_level_edges(lower, program, module, "cImport");
   lower_top_level_edges(lower, program, module, "import");
@@ -1171,6 +1171,6 @@ bool z_program_graph_lower_to_program_with_source(const ZProgramGraph *graph, co
 
 bool z_program_graph_lower_to_program_for_roundtrip(const ZProgramGraph *graph, const char *artifact_path, Program *out, SourceInput *source, ZDiag *diag) {
   lower_init_source_from_graph(source, graph, artifact_path);
-  GraphLower lower = {.graph = graph, .diag = diag, .source = source, .artifact_path = artifact_path, .preserve_graph_types = true};
+  GraphLower lower = {.graph = graph, .diag = diag, .source = source, .artifact_path = artifact_path, .preserve_graph_types = true, .allow_internal_symbols = true};
   return lower_to_program(&lower, out);
 }

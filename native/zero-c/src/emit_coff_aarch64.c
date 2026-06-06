@@ -33,9 +33,21 @@ typedef struct {
 } CoffA64CallPatches;
 
 typedef struct {
+  size_t patch_offset;
+} CoffA64RuntimePatch;
+
+typedef struct {
+  CoffA64RuntimePatch *items;
+  size_t len;
+  size_t cap;
+} CoffA64RuntimePatches;
+
+typedef struct {
   CoffA64DataPatches data;
   CoffA64CallPatches calls;
+  CoffA64RuntimePatches runtime[A64_DIRECT_RUNTIME_HELPER_COUNT];
   CoffA64BranchPatches world_write;
+  bool allow_runtime_patches;
 } CoffA64EmitState;
 
 static bool coff_a64_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {
@@ -98,10 +110,57 @@ static bool coff_a64_record_call_patch(void *user, size_t patch_offset, unsigned
   return true;
 }
 
+static bool coff_a64_runtime_helper_valid(ZAArch64DirectRuntimeHelper helper) {
+  return helper >= 0 && helper < A64_DIRECT_RUNTIME_HELPER_COUNT;
+}
+
+static const char *coff_a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper helper) {
+  switch (helper) {
+    case A64_DIRECT_RUNTIME_STR_BUFFER_OP: return "zero_str_buffer_op";
+    case A64_DIRECT_RUNTIME_STR_CONCAT: return "zero_str_concat";
+    case A64_DIRECT_RUNTIME_STR_REPEAT: return "zero_str_repeat";
+    case A64_DIRECT_RUNTIME_STR_TRIM_OP: return "zero_str_trim_op";
+    case A64_DIRECT_RUNTIME_STR_PAIR_OP: return "zero_str_pair_op";
+    case A64_DIRECT_RUNTIME_STR_COUNT_BYTE: return "zero_str_count_byte";
+    case A64_DIRECT_RUNTIME_STR_WORD_COUNT_ASCII: return "zero_str_word_count_ascii";
+    case A64_DIRECT_RUNTIME_ASCII_OP: return "zero_ascii_op";
+    case A64_DIRECT_RUNTIME_TEXT_OP: return "zero_text_op";
+    case A64_DIRECT_RUNTIME_PARSE_OP: return "zero_parse_op";
+    case A64_DIRECT_RUNTIME_PARSE_USIZE: return "zero_parse_usize";
+    case A64_DIRECT_RUNTIME_PARSE_I32: return "zero_parse_i32";
+    case A64_DIRECT_RUNTIME_PARSE_U32: return "zero_parse_u32";
+    case A64_DIRECT_RUNTIME_FMT_BOOL: return "zero_fmt_bool";
+    case A64_DIRECT_RUNTIME_FMT_HEX_U32: return "zero_fmt_hex_lower_u32";
+    case A64_DIRECT_RUNTIME_FMT_I32: return "zero_fmt_i32";
+    case A64_DIRECT_RUNTIME_FMT_U32: return "zero_fmt_u32";
+    case A64_DIRECT_RUNTIME_FMT_USIZE: return "zero_fmt_usize";
+    case A64_DIRECT_RUNTIME_TIME_OP: return "zero_time_op";
+    case A64_DIRECT_RUNTIME_MATH_OP: return "zero_math_op";
+    case A64_DIRECT_RUNTIME_MATH_USIZE_OP: return "zero_math_usize_op";
+    case A64_DIRECT_RUNTIME_HELPER_COUNT: break;
+  }
+  return "zero_runtime_helper";
+}
+
+static bool coff_a64_record_runtime_patch(void *user, size_t patch_offset, ZAArch64DirectRuntimeHelper helper, const IrValue *value, ZDiag *diag) {
+  CoffA64EmitState *state = user;
+  if (!state || !coff_a64_runtime_helper_valid(helper)) return coff_a64_diag(diag, "direct COFF AArch64 runtime patch requires an emit context", value ? value->line : 1, value ? value->column : 1, "missing context");
+  if (!state->allow_runtime_patches) return coff_a64_diag(diag, "direct COFF AArch64 executable runtime helpers require object emission and an explicit runtime link step", value ? value->line : 1, value ? value->column : 1, "use --emit obj and link zero_runtime.c");
+  CoffA64RuntimePatches *patches = &state->runtime[helper];
+  if (patches->len == patches->cap) {
+    patches->cap = z_grow_capacity(patches->cap, patches->len + 1, 4);
+    patches->items = z_checked_reallocarray(patches->items, patches->cap, sizeof(CoffA64RuntimePatch));
+  }
+  if (!patches->items) return coff_a64_diag(diag, "direct COFF AArch64 backend ran out of memory", value ? value->line : 1, value ? value->column : 1, "allocation failed");
+  patches->items[patches->len++] = (CoffA64RuntimePatch){.patch_offset = patch_offset};
+  return true;
+}
+
 static void coff_a64_emit_state_free(CoffA64EmitState *state) {
   if (!state) return;
   coff_a64_data_patches_free(&state->data);
   free(state->calls.items);
+  for (unsigned i = 0; i < A64_DIRECT_RUNTIME_HELPER_COUNT; i++) free(state->runtime[i].items);
   free(state->world_write.items);
 }
 
@@ -126,6 +185,21 @@ static size_t coff_a64_external_call_relocation_count(const CoffA64CallPatches *
   for (size_t i = 0; patches && i < patches->len; i++) {
     if (patches->items[i].external_call) count++;
   }
+  return count;
+}
+
+static void coff_a64_append_runtime_relocations(ZBuf *relocs, const CoffA64EmitState *state, uint32_t runtime_symbol_base) {
+  for (unsigned helper = 0; state && helper < A64_DIRECT_RUNTIME_HELPER_COUNT; helper++) {
+    const CoffA64RuntimePatches *patches = &state->runtime[helper];
+    for (size_t i = 0; i < patches->len; i++) {
+      z_coff_append_reloc(relocs, (uint32_t)patches->items[i].patch_offset, runtime_symbol_base + helper, Z_COFF_RELOC_ARM64_BRANCH26);
+    }
+  }
+}
+
+static size_t coff_a64_runtime_relocation_count(const CoffA64EmitState *state) {
+  size_t count = 0;
+  for (unsigned helper = 0; state && helper < A64_DIRECT_RUNTIME_HELPER_COUNT; helper++) count += state->runtime[helper].len;
   return count;
 }
 
@@ -221,7 +295,7 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
   if (has_rodata) z_aarch64_direct_append_rodata(&rodata, program, rodata_base_offset);
 
   size_t *offsets = z_checked_calloc(program->function_len, sizeof(size_t));
-  ZCoffSymbol *symbols = z_checked_calloc(program->function_len + program->external_function_len, sizeof(ZCoffSymbol));
+  ZCoffSymbol *symbols = z_checked_calloc(program->function_len + program->external_function_len + A64_DIRECT_RUNTIME_HELPER_COUNT, sizeof(ZCoffSymbol));
   if (!offsets || !symbols) {
     free(offsets);
     free(symbols);
@@ -231,7 +305,7 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
     return coff_a64_diag(diag, "out of memory while emitting COFF AArch64 object", 1, 1, "allocation failed");
   }
 
-  CoffA64EmitState state = {0};
+  CoffA64EmitState state = {.allow_runtime_patches = true};
   ZAArch64DirectContext ctx = {
     .program = program,
     .function_offsets = offsets,
@@ -239,7 +313,8 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
     .rodata_base_offset = rodata_base_offset,
     .patch_user = &state,
     .record_data_patch = coff_a64_record_data_patch,
-    .record_call_patch = coff_a64_record_call_patch
+    .record_call_patch = coff_a64_record_call_patch,
+    .record_runtime_patch = coff_a64_record_runtime_patch
   };
 
   bool has_export = false;
@@ -278,7 +353,17 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
   }
   coff_a64_patch_call_branches(&text, &state.calls, offsets, program->function_len);
   if (has_rodata) coff_a64_append_object_rodata_relocations(&text, &relocs, &state.data, rodata_base_offset);
-  uint32_t external_symbol_base = (has_rodata ? 2u : 1u) + (uint32_t)symbol_len;
+  uint32_t runtime_symbol_base = (has_rodata ? 2u : 1u) + (uint32_t)symbol_len;
+  for (unsigned helper = 0; helper < A64_DIRECT_RUNTIME_HELPER_COUNT; helper++) {
+    symbols[symbol_len++] = (ZCoffSymbol){
+      .name = coff_a64_runtime_helper_symbol((ZAArch64DirectRuntimeHelper)helper),
+      .section_number = 0,
+      .type = 0x20,
+      .storage_class = Z_COFF_SYMBOL_EXTERNAL
+    };
+  }
+  coff_a64_append_runtime_relocations(&relocs, &state, runtime_symbol_base);
+  uint32_t external_symbol_base = runtime_symbol_base + A64_DIRECT_RUNTIME_HELPER_COUNT;
   for (size_t i = 0; i < program->external_function_len; i++) {
     symbols[symbol_len++] = (ZCoffSymbol){
       .name = program->external_functions[i].symbol ? program->external_functions[i].symbol : "zero_external",
@@ -294,7 +379,7 @@ bool z_emit_coff_aarch64_object_from_ir(const IrProgram *program, ZBuf *out, ZDi
     .text = &text,
     .rodata = has_rodata ? &rodata : NULL,
     .text_relocs = &relocs,
-    .text_reloc_count = (uint16_t)(state.data.len + coff_a64_external_call_relocation_count(&state.calls)),
+    .text_reloc_count = (uint16_t)(state.data.len + coff_a64_runtime_relocation_count(&state) + coff_a64_external_call_relocation_count(&state.calls)),
     .symbols = symbols,
     .symbol_len = symbol_len
   };
@@ -346,6 +431,7 @@ bool z_emit_coff_aarch64_exe_from_ir(const IrProgram *program, ZBuf *out, ZDiag 
     .patch_user = &state,
     .record_data_patch = coff_a64_record_data_patch,
     .record_call_patch = coff_a64_record_call_patch,
+    .record_runtime_patch = coff_a64_record_runtime_patch,
     .emit_world_write = coff_a64_emit_world_write_call
   };
 

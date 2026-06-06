@@ -1,0 +1,628 @@
+zero-graph v1
+origin source-text
+module "io"
+hash "graph:83add8185d4fd384"
+
+node #mod_c750d898 Module name:"io" path:"std/io.0" line:1 column:1
+node #decl_9b42b1d9-9937 Function name:"__zero_std_io_write_byte" type:"Maybe<usize>" path:"std/io.0" line:1 column:1
+node #param_fb47c457 Param name:"buffer" type:"MutSpan<u8>" path:"std/io.0" line:1 column:29
+node #type_bdb9eb72 TypeRef type:"MutSpan<u8>" path:"std/io.0" line:1 column:29
+node #param_0f0cc371 Param name:"offset" type:"usize" path:"std/io.0" line:1 column:50
+node #type_f9517ea0 TypeRef type:"usize" path:"std/io.0" line:1 column:50
+node #param_6f1829ab Param name:"byte" type:"u8" path:"std/io.0" line:1 column:65
+node #type_932ec5b3 TypeRef type:"u8" path:"std/io.0" line:1 column:65
+node #type_f6257584 TypeRef type:"Maybe<usize>" path:"std/io.0" line:1 column:1
+node #block_1c263bc9 Block name:"body" path:"std/io.0" line:1 column:1
+node #stmt_2a622837 If path:"std/io.0" line:2 column:5
+node #expr_139fb4d8 Call name:">=" path:"std/io.0" line:2 column:15
+node #expr_df1d8f5e Identifier name:"offset" path:"std/io.0" line:2 column:8
+node #expr_571d80d8 MethodCall name:"len" path:"std/io.0" line:2 column:29
+node #expr_fac32ae7 FieldAccess name:"len" path:"std/io.0" line:2 column:26
+node #expr_69975b6c FieldAccess name:"mem" path:"std/io.0" line:2 column:22
+node #expr_b3fbad32 Identifier name:"std" path:"std/io.0" line:2 column:18
+node #expr_ff4bbbe9 Identifier name:"buffer" path:"std/io.0" line:2 column:30
+node #block_1d7715c7 Block name:"then" path:"std/io.0" line:2 column:5
+node #stmt_36fb4c04 Return path:"std/io.0" line:3 column:9
+node #expr_90c63476 Literal value:"null" path:"std/io.0" line:3 column:16
+node #stmt_2e8e7291 Assignment path:"std/io.0" line:5 column:5
+node #expr_4d064098 IndexAccess path:"std/io.0" line:5 column:11
+node #expr_ad54ed2c Identifier name:"buffer" path:"std/io.0" line:5 column:5
+node #expr_c74b6820 Identifier name:"offset" path:"std/io.0" line:5 column:12
+node #expr_21bf117f Identifier name:"byte" path:"std/io.0" line:5 column:22
+node #stmt_8132da0a Return path:"std/io.0" line:6 column:5
+node #expr_76ddc217 Call name:"+" path:"std/io.0" line:6 column:19
+node #expr_ca7fa7a7 Identifier name:"offset" path:"std/io.0" line:6 column:12
+node #expr_c56a531d Literal value:"1" path:"std/io.0" line:6 column:21
+node #decl_9b42b1d9-d9f1 Function name:"__zero_std_io_write_span" type:"Maybe<usize>" path:"std/io.0" line:9 column:1
+node #param_e36d687d Param name:"buffer" type:"MutSpan<u8>" path:"std/io.0" line:9 column:29
+node #type_07eb6387 TypeRef type:"MutSpan<u8>" path:"std/io.0" line:9 column:29
+node #param_6b944ba3 Param name:"offset" type:"usize" path:"std/io.0" line:9 column:50
+node #type_39b06f66 TypeRef type:"usize" path:"std/io.0" line:9 column:50
+node #param_38d505f1 Param name:"bytes" type:"Span<u8>" path:"std/io.0" line:9 column:65
+node #type_a737a3fa TypeRef type:"Span<u8>" path:"std/io.0" line:9 column:65
+node #type_e7b3b746 TypeRef type:"Maybe<usize>" path:"std/io.0" line:9 column:1
+node #block_a0e67187 Block name:"body" path:"std/io.0" line:9 column:1
+node #stmt_a44e2ed9-0e02 If path:"std/io.0" line:10 column:5
+node #expr_523c99c7 Call name:">" path:"std/io.0" line:10 column:15
+node #expr_75e7e7b2 Identifier name:"offset" path:"std/io.0" line:10 column:8
+node #expr_b853e974 MethodCall name:"len" path:"std/io.0" line:10 column:28
+node #expr_35596ee5 FieldAccess name:"len" path:"std/io.0" line:10 column:25
+node #expr_23f0783b FieldAccess name:"mem" path:"std/io.0" line:10 column:21
+node #expr_d9f3f598 Identifier name:"std" path:"std/io.0" line:10 column:17
+node #expr_2406632b Identifier name:"buffer" path:"std/io.0" line:10 column:29
+node #block_c0962a4a Block name:"then" path:"std/io.0" line:10 column:5
+node #stmt_7366ef1b Return path:"std/io.0" line:11 column:9
+node #expr_4e3dc7f8 Literal value:"null" path:"std/io.0" line:11 column:16
+node #stmt_a44e2ed9-0e02-1 If path:"std/io.0" line:13 column:5
+node #expr_b7a67415 Call name:">" path:"std/io.0" line:13 column:27
+node #expr_9c770b78 MethodCall name:"len" path:"std/io.0" line:13 column:19
+node #expr_836e95d5 FieldAccess name:"len" path:"std/io.0" line:13 column:16
+node #expr_7f20048b FieldAccess name:"mem" path:"std/io.0" line:13 column:12
+node #expr_63925362 Identifier name:"std" path:"std/io.0" line:13 column:8
+node #expr_2e4b973b Identifier name:"bytes" path:"std/io.0" line:13 column:20
+node #expr_28c5ab4f Call name:"-" path:"std/io.0" line:13 column:49
+node #expr_c9fe5306 MethodCall name:"len" path:"std/io.0" line:13 column:40
+node #expr_dfc01c91 FieldAccess name:"len" path:"std/io.0" line:13 column:37
+node #expr_368d6c51 FieldAccess name:"mem" path:"std/io.0" line:13 column:33
+node #expr_fe3f50df Identifier name:"std" path:"std/io.0" line:13 column:29
+node #expr_04943ed7 Identifier name:"buffer" path:"std/io.0" line:13 column:41
+node #expr_2f6e4558 Identifier name:"offset" path:"std/io.0" line:13 column:51
+node #block_15491b54 Block name:"then" path:"std/io.0" line:13 column:5
+node #stmt_78e175a4 Return path:"std/io.0" line:14 column:9
+node #expr_7c4ed12a Literal value:"null" path:"std/io.0" line:14 column:16
+node #stmt_96a82d34 Let name:"index" type:"usize" path:"std/io.0" line:16 column:5 mutable:true
+node #expr_9f105441 Literal value:"0" path:"std/io.0" line:16 column:24
+node #type_8b6786db TypeRef type:"usize" path:"std/io.0" line:16 column:5
+node #stmt_df4ebd85 While path:"std/io.0" line:17 column:5
+node #expr_857a1c29 Call name:"<" path:"std/io.0" line:17 column:17
+node #expr_e02ca77d Identifier name:"index" path:"std/io.0" line:17 column:11
+node #expr_89c71a55 MethodCall name:"len" path:"std/io.0" line:17 column:30
+node #expr_5c2758cf FieldAccess name:"len" path:"std/io.0" line:17 column:27
+node #expr_5b47f9c5 FieldAccess name:"mem" path:"std/io.0" line:17 column:23
+node #expr_3bd79c94 Identifier name:"std" path:"std/io.0" line:17 column:19
+node #expr_03f6e49d Identifier name:"bytes" path:"std/io.0" line:17 column:31
+node #block_0b5e868a Block name:"then" path:"std/io.0" line:17 column:5
+node #stmt_b9520e99-5074 Assignment path:"std/io.0" line:18 column:9
+node #expr_cfcc8ec9 IndexAccess path:"std/io.0" line:18 column:15
+node #expr_fb8ff9eb Identifier name:"buffer" path:"std/io.0" line:18 column:9
+node #expr_bf657e4c Call name:"+" path:"std/io.0" line:18 column:23
+node #expr_23cf4b2b Identifier name:"offset" path:"std/io.0" line:18 column:16
+node #expr_ae2c3bfd Identifier name:"index" path:"std/io.0" line:18 column:25
+node #expr_459eff4f IndexAccess path:"std/io.0" line:18 column:39
+node #expr_f5975010 Identifier name:"bytes" path:"std/io.0" line:18 column:34
+node #expr_c4873b8c Identifier name:"index" path:"std/io.0" line:18 column:40
+node #stmt_b9520e99-5074-1 Assignment path:"std/io.0" line:19 column:9
+node #expr_87f036b4 Identifier name:"index" path:"std/io.0" line:19 column:9
+node #expr_59101207 Call name:"+" path:"std/io.0" line:19 column:23
+node #expr_4b912a06 Identifier name:"index" path:"std/io.0" line:19 column:17
+node #expr_ef7b6b5e Literal value:"1" path:"std/io.0" line:19 column:25
+node #stmt_dc91db44 Return path:"std/io.0" line:21 column:5
+node #expr_48d127ec Call name:"+" path:"std/io.0" line:21 column:19
+node #expr_75a831cf Identifier name:"offset" path:"std/io.0" line:21 column:12
+node #expr_039ee91f MethodCall name:"len" path:"std/io.0" line:21 column:32
+node #expr_02f81c6c FieldAccess name:"len" path:"std/io.0" line:21 column:29
+node #expr_fe99c421 FieldAccess name:"mem" path:"std/io.0" line:21 column:25
+node #expr_7fce24fe Identifier name:"std" path:"std/io.0" line:21 column:21
+node #expr_8f9e1d40 Identifier name:"bytes" path:"std/io.0" line:21 column:33
+node #decl_b7e9eea0 Function name:"__zero_std_io_written" type:"Span<u8>" path:"std/io.0" line:24 column:1
+node #param_f32c7d31 Param name:"buffer" type:"Span<u8>" path:"std/io.0" line:24 column:26
+node #type_902c190f TypeRef type:"Span<u8>" path:"std/io.0" line:24 column:26
+node #param_02c1cf3b Param name:"len" type:"usize" path:"std/io.0" line:24 column:44
+node #type_e7bcc27b TypeRef type:"usize" path:"std/io.0" line:24 column:44
+node #type_524bfac3 TypeRef type:"Span<u8>" path:"std/io.0" line:24 column:1
+node #block_baa7c6eb Block name:"body" path:"std/io.0" line:24 column:1
+node #stmt_f21f52ed If path:"std/io.0" line:25 column:5
+node #expr_35dc52c0 Call name:">" path:"std/io.0" line:25 column:12
+node #expr_fac5a7de Identifier name:"len" path:"std/io.0" line:25 column:8
+node #expr_060dc004 MethodCall name:"len" path:"std/io.0" line:25 column:25
+node #expr_953b5807 FieldAccess name:"len" path:"std/io.0" line:25 column:22
+node #expr_19c936c1 FieldAccess name:"mem" path:"std/io.0" line:25 column:18
+node #expr_35470f80 Identifier name:"std" path:"std/io.0" line:25 column:14
+node #expr_329fd5f5 Identifier name:"buffer" path:"std/io.0" line:25 column:26
+node #block_f9378823 Block name:"then" path:"std/io.0" line:25 column:5
+node #stmt_067e35c1 Return path:"std/io.0" line:26 column:9
+node #expr_e9a0e800 Identifier name:"buffer" path:"std/io.0" line:26 column:16
+node #stmt_0b9431dc Return path:"std/io.0" line:28 column:5
+node #expr_75a63d29 Slice path:"std/io.0" line:28 column:18
+node #expr_87d41222 Identifier name:"buffer" path:"std/io.0" line:28 column:12
+node #expr_3a887780 Identifier name:"len" path:"std/io.0" line:28 column:21
+node #decl_883fd957-2fc5 Function name:"__zero_std_io_remaining" type:"usize" path:"std/io.0" line:31 column:1
+node #param_cccdf1d4 Param name:"buffer" type:"Span<u8>" path:"std/io.0" line:31 column:28
+node #type_3d3f2e00 TypeRef type:"Span<u8>" path:"std/io.0" line:31 column:28
+node #param_2aab2c94 Param name:"offset" type:"usize" path:"std/io.0" line:31 column:46
+node #type_307478b5 TypeRef type:"usize" path:"std/io.0" line:31 column:46
+node #type_1aba222b TypeRef type:"usize" path:"std/io.0" line:31 column:1
+node #block_0bf1f452 Block name:"body" path:"std/io.0" line:31 column:1
+node #stmt_89f1c4ba If path:"std/io.0" line:32 column:5
+node #expr_a1821f01 Call name:">=" path:"std/io.0" line:32 column:15
+node #expr_11a4d627 Identifier name:"offset" path:"std/io.0" line:32 column:8
+node #expr_c5c58c03 MethodCall name:"len" path:"std/io.0" line:32 column:29
+node #expr_db4d9006 FieldAccess name:"len" path:"std/io.0" line:32 column:26
+node #expr_51ba830f FieldAccess name:"mem" path:"std/io.0" line:32 column:22
+node #expr_240b4d23 Identifier name:"std" path:"std/io.0" line:32 column:18
+node #expr_43d63036 Identifier name:"buffer" path:"std/io.0" line:32 column:30
+node #block_7b6a6cde Block name:"then" path:"std/io.0" line:32 column:5
+node #stmt_c215a981 Return path:"std/io.0" line:33 column:9
+node #expr_7056a890 Literal value:"0" path:"std/io.0" line:33 column:16
+node #stmt_9b90f683 Return path:"std/io.0" line:35 column:5
+node #expr_8d231a6a Call name:"-" path:"std/io.0" line:35 column:32
+node #expr_57154235 MethodCall name:"len" path:"std/io.0" line:35 column:23
+node #expr_94cd5fba FieldAccess name:"len" path:"std/io.0" line:35 column:20
+node #expr_0527463a FieldAccess name:"mem" path:"std/io.0" line:35 column:16
+node #expr_59fe6661 Identifier name:"std" path:"std/io.0" line:35 column:12
+node #expr_3960a81e Identifier name:"buffer" path:"std/io.0" line:35 column:24
+node #expr_6bda7949 Identifier name:"offset" path:"std/io.0" line:35 column:34
+node #decl_63e4de40 Function name:"__zero_std_io_next_line" type:"Maybe<Span<u8>>" path:"std/io.0" line:38 column:1
+node #param_5e759bfc Param name:"bytes" type:"Span<u8>" path:"std/io.0" line:38 column:28
+node #type_44a0dd1e TypeRef type:"Span<u8>" path:"std/io.0" line:38 column:28
+node #param_ce8a089e Param name:"start" type:"usize" path:"std/io.0" line:38 column:45
+node #type_35d3ab24 TypeRef type:"usize" path:"std/io.0" line:38 column:45
+node #type_f00380f6 TypeRef type:"Maybe<Span<u8>>" path:"std/io.0" line:38 column:1
+node #block_c6f4e430 Block name:"body" path:"std/io.0" line:38 column:1
+node #stmt_3ec5bf17-0e02 If path:"std/io.0" line:39 column:5
+node #expr_4987d943 Call name:">=" path:"std/io.0" line:39 column:14
+node #expr_6bed7f23 Identifier name:"start" path:"std/io.0" line:39 column:8
+node #expr_24c899a7 MethodCall name:"len" path:"std/io.0" line:39 column:28
+node #expr_30322885 FieldAccess name:"len" path:"std/io.0" line:39 column:25
+node #expr_bc3ac249 FieldAccess name:"mem" path:"std/io.0" line:39 column:21
+node #expr_c020b4ca Identifier name:"std" path:"std/io.0" line:39 column:17
+node #expr_c402f3eb Identifier name:"bytes" path:"std/io.0" line:39 column:29
+node #block_1d63907e Block name:"then" path:"std/io.0" line:39 column:5
+node #stmt_f69e2bb4 Return path:"std/io.0" line:40 column:9
+node #expr_17cc4136 Literal value:"null" path:"std/io.0" line:40 column:16
+node #stmt_a6fb27ea Let name:"end" type:"usize" path:"std/io.0" line:42 column:5 mutable:true
+node #expr_81f0b780 Identifier name:"start" path:"std/io.0" line:42 column:22
+node #type_31e392b2 TypeRef type:"usize" path:"std/io.0" line:42 column:5
+node #stmt_499f8e8b While path:"std/io.0" line:43 column:5
+node #expr_27a8eef4 Call name:"&&" path:"std/io.0" line:43 column:36
+node #expr_2361fb72 Call name:"<" path:"std/io.0" line:43 column:15
+node #expr_c5905108 Identifier name:"end" path:"std/io.0" line:43 column:11
+node #expr_8affbdd2 MethodCall name:"len" path:"std/io.0" line:43 column:28
+node #expr_c083c9c5 FieldAccess name:"len" path:"std/io.0" line:43 column:25
+node #expr_f0fed66c FieldAccess name:"mem" path:"std/io.0" line:43 column:21
+node #expr_80e6fd31 Identifier name:"std" path:"std/io.0" line:43 column:17
+node #expr_c2d6f48b Identifier name:"bytes" path:"std/io.0" line:43 column:29
+node #expr_bdd94dde Call name:"!=" path:"std/io.0" line:43 column:50
+node #expr_e1575fc0 IndexAccess path:"std/io.0" line:43 column:44
+node #expr_1d890369 Identifier name:"bytes" path:"std/io.0" line:43 column:39
+node #expr_ac2d9e73 Identifier name:"end" path:"std/io.0" line:43 column:45
+node #expr_49516583 Literal value:"10_u8" path:"std/io.0" line:43 column:53
+node #block_d127531b Block name:"then" path:"std/io.0" line:43 column:5
+node #stmt_96ac9ff3 Assignment path:"std/io.0" line:44 column:9
+node #expr_bade5133 Identifier name:"end" path:"std/io.0" line:44 column:9
+node #expr_48ce86b6 Call name:"+" path:"std/io.0" line:44 column:19
+node #expr_bf3967a9 Identifier name:"end" path:"std/io.0" line:44 column:15
+node #expr_00893d57 Literal value:"1" path:"std/io.0" line:44 column:21
+node #stmt_3ec5bf17-0e02-1 If path:"std/io.0" line:46 column:5
+node #expr_81f07149 Call name:"&&" path:"std/io.0" line:46 column:20
+node #expr_1dbe870e Call name:">" path:"std/io.0" line:46 column:12
+node #expr_73d9c8f5 Identifier name:"end" path:"std/io.0" line:46 column:8
+node #expr_16c751e7 Identifier name:"start" path:"std/io.0" line:46 column:14
+node #expr_5d1e2592 Call name:"==" path:"std/io.0" line:46 column:38
+node #expr_e04b6ccb IndexAccess path:"std/io.0" line:46 column:28
+node #expr_03caa83e Identifier name:"bytes" path:"std/io.0" line:46 column:23
+node #expr_d61676eb Call name:"-" path:"std/io.0" line:46 column:33
+node #expr_e7869198 Identifier name:"end" path:"std/io.0" line:46 column:29
+node #expr_db409058 Literal value:"1" path:"std/io.0" line:46 column:35
+node #expr_c00e540a Literal value:"13_u8" path:"std/io.0" line:46 column:41
+node #block_6a207640 Block name:"then" path:"std/io.0" line:46 column:5
+node #stmt_06d878ab Return path:"std/io.0" line:47 column:9
+node #expr_f6050cd5 Slice path:"std/io.0" line:47 column:21
+node #expr_c869304a Identifier name:"bytes" path:"std/io.0" line:47 column:16
+node #expr_6093a929 Identifier name:"start" path:"std/io.0" line:47 column:22
+node #expr_d4b5e78d Call name:"-" path:"std/io.0" line:47 column:33
+node #expr_186700da Identifier name:"end" path:"std/io.0" line:47 column:29
+node #expr_df6d02fa Literal value:"1" path:"std/io.0" line:47 column:35
+node #stmt_c69c325a Return path:"std/io.0" line:49 column:5
+node #expr_5983a4a1 Slice path:"std/io.0" line:49 column:17
+node #expr_6cf15297 Identifier name:"bytes" path:"std/io.0" line:49 column:12
+node #expr_46281592 Identifier name:"start" path:"std/io.0" line:49 column:18
+node #expr_51175fb3 Identifier name:"end" path:"std/io.0" line:49 column:25
+node #decl_883fd957-c5ac Function name:"__zero_std_io_next_line_start" type:"usize" path:"std/io.0" line:52 column:1
+node #param_ffe51930 Param name:"bytes" type:"Span<u8>" path:"std/io.0" line:52 column:34
+node #type_07ec44db TypeRef type:"Span<u8>" path:"std/io.0" line:52 column:34
+node #param_dd8293a8 Param name:"start" type:"usize" path:"std/io.0" line:52 column:51
+node #type_32bd6b3e TypeRef type:"usize" path:"std/io.0" line:52 column:51
+node #type_f13493cb TypeRef type:"usize" path:"std/io.0" line:52 column:1
+node #block_d84c06d2 Block name:"body" path:"std/io.0" line:52 column:1
+node #stmt_e4eca16f-0e02 If path:"std/io.0" line:53 column:5
+node #expr_52c81e8a Call name:">=" path:"std/io.0" line:53 column:14
+node #expr_2a334676 Identifier name:"start" path:"std/io.0" line:53 column:8
+node #expr_d54a045c MethodCall name:"len" path:"std/io.0" line:53 column:28
+node #expr_a91afc26 FieldAccess name:"len" path:"std/io.0" line:53 column:25
+node #expr_088ef745 FieldAccess name:"mem" path:"std/io.0" line:53 column:21
+node #expr_ed529f40 Identifier name:"std" path:"std/io.0" line:53 column:17
+node #expr_d2959326 Identifier name:"bytes" path:"std/io.0" line:53 column:29
+node #block_674b6e3f Block name:"then" path:"std/io.0" line:53 column:5
+node #stmt_0bdecee2 Return path:"std/io.0" line:54 column:9
+node #expr_037a2716 MethodCall name:"len" path:"std/io.0" line:54 column:27
+node #expr_6395aef3 FieldAccess name:"len" path:"std/io.0" line:54 column:24
+node #expr_9d805d16 FieldAccess name:"mem" path:"std/io.0" line:54 column:20
+node #expr_c200e100 Identifier name:"std" path:"std/io.0" line:54 column:16
+node #expr_9404f75d Identifier name:"bytes" path:"std/io.0" line:54 column:28
+node #stmt_ba29d712 Let name:"end" type:"usize" path:"std/io.0" line:56 column:5 mutable:true
+node #expr_5a48733c Identifier name:"start" path:"std/io.0" line:56 column:22
+node #type_3856dd6e TypeRef type:"usize" path:"std/io.0" line:56 column:5
+node #stmt_e4eccf8b While path:"std/io.0" line:57 column:5
+node #expr_63405fa7 Call name:"&&" path:"std/io.0" line:57 column:36
+node #expr_b00f96e8 Call name:"<" path:"std/io.0" line:57 column:15
+node #expr_4ddbff25 Identifier name:"end" path:"std/io.0" line:57 column:11
+node #expr_4bf20055 MethodCall name:"len" path:"std/io.0" line:57 column:28
+node #expr_32a283a6 FieldAccess name:"len" path:"std/io.0" line:57 column:25
+node #expr_8478deb6 FieldAccess name:"mem" path:"std/io.0" line:57 column:21
+node #expr_db0c8997 Identifier name:"std" path:"std/io.0" line:57 column:17
+node #expr_fc9e48b2 Identifier name:"bytes" path:"std/io.0" line:57 column:29
+node #expr_e2c75a24 Call name:"!=" path:"std/io.0" line:57 column:50
+node #expr_1678f32b IndexAccess path:"std/io.0" line:57 column:44
+node #expr_1072b9bc Identifier name:"bytes" path:"std/io.0" line:57 column:39
+node #expr_967808f0 Identifier name:"end" path:"std/io.0" line:57 column:45
+node #expr_3311d8f6 Literal value:"10_u8" path:"std/io.0" line:57 column:53
+node #block_f79efaa4 Block name:"then" path:"std/io.0" line:57 column:5
+node #stmt_9a33fed1 Assignment path:"std/io.0" line:58 column:9
+node #expr_fd92191e Identifier name:"end" path:"std/io.0" line:58 column:9
+node #expr_1e21c713 Call name:"+" path:"std/io.0" line:58 column:19
+node #expr_bcbe284a Identifier name:"end" path:"std/io.0" line:58 column:15
+node #expr_39ce10ba Literal value:"1" path:"std/io.0" line:58 column:21
+node #stmt_e4eca16f-0e02-1 If path:"std/io.0" line:60 column:5
+node #expr_e3bcb524 Call name:"<" path:"std/io.0" line:60 column:12
+node #expr_139116e3 Identifier name:"end" path:"std/io.0" line:60 column:8
+node #expr_74532993 MethodCall name:"len" path:"std/io.0" line:60 column:25
+node #expr_fc249608 FieldAccess name:"len" path:"std/io.0" line:60 column:22
+node #expr_dfcc4494 FieldAccess name:"mem" path:"std/io.0" line:60 column:18
+node #expr_bcf64b9a Identifier name:"std" path:"std/io.0" line:60 column:14
+node #expr_5a879a5c Identifier name:"bytes" path:"std/io.0" line:60 column:26
+node #block_067a4f55 Block name:"then" path:"std/io.0" line:60 column:5
+node #stmt_6d9da967 Return path:"std/io.0" line:61 column:9
+node #expr_a20a0817 Call name:"+" path:"std/io.0" line:61 column:20
+node #expr_8f6c77b7 Identifier name:"end" path:"std/io.0" line:61 column:16
+node #expr_470da4ed Literal value:"1" path:"std/io.0" line:61 column:22
+node #stmt_9fe84b82 Return path:"std/io.0" line:63 column:5
+node #expr_86faa3f6 MethodCall name:"len" path:"std/io.0" line:63 column:23
+node #expr_d61aabd1 FieldAccess name:"len" path:"std/io.0" line:63 column:20
+node #expr_089e66c6 FieldAccess name:"mem" path:"std/io.0" line:63 column:16
+node #expr_0806d5cc Identifier name:"std" path:"std/io.0" line:63 column:12
+node #expr_8f52f537 Identifier name:"bytes" path:"std/io.0" line:63 column:24
+node #decl_883fd957-1600 Function name:"__zero_std_io_count_lines" type:"usize" path:"std/io.0" line:66 column:1
+node #param_426f7d35 Param name:"bytes" type:"Span<u8>" path:"std/io.0" line:66 column:30
+node #type_93633455 TypeRef type:"Span<u8>" path:"std/io.0" line:66 column:30
+node #type_d7929754 TypeRef type:"usize" path:"std/io.0" line:66 column:1
+node #block_5490cd49 Block name:"body" path:"std/io.0" line:66 column:1
+node #stmt_b2158649-3be9 Let name:"start" type:"usize" path:"std/io.0" line:67 column:5 mutable:true
+node #expr_2ce3ed79 Literal value:"0" path:"std/io.0" line:67 column:24
+node #type_373e9f8d TypeRef type:"usize" path:"std/io.0" line:67 column:5
+node #stmt_b2158649-c2fc Let name:"count" type:"usize" path:"std/io.0" line:68 column:5 mutable:true
+node #expr_7651ffec Literal value:"0" path:"std/io.0" line:68 column:24
+node #type_16341e20 TypeRef type:"usize" path:"std/io.0" line:68 column:5
+node #stmt_b9ca4b00 While path:"std/io.0" line:69 column:5
+node #expr_156967d2 Call name:"<" path:"std/io.0" line:69 column:17
+node #expr_58b575bd Identifier name:"start" path:"std/io.0" line:69 column:11
+node #expr_0c2af5b9 MethodCall name:"len" path:"std/io.0" line:69 column:30
+node #expr_9ff4bdb6 FieldAccess name:"len" path:"std/io.0" line:69 column:27
+node #expr_bd986559 FieldAccess name:"mem" path:"std/io.0" line:69 column:23
+node #expr_e040c5e7 Identifier name:"std" path:"std/io.0" line:69 column:19
+node #expr_e8a3379a Identifier name:"bytes" path:"std/io.0" line:69 column:31
+node #block_b12e91f1 Block name:"then" path:"std/io.0" line:69 column:5
+node #stmt_f8b17c73-5074 Assignment path:"std/io.0" line:70 column:9
+node #expr_aff54976 Identifier name:"count" path:"std/io.0" line:70 column:9
+node #expr_09e43975 Call name:"+" path:"std/io.0" line:70 column:23
+node #expr_c8affbc1 Identifier name:"count" path:"std/io.0" line:70 column:17
+node #expr_697fd97f Literal value:"1" path:"std/io.0" line:70 column:25
+node #stmt_f8b17c73-5074-1 Assignment path:"std/io.0" line:71 column:9
+node #expr_ac1b119c Identifier name:"start" path:"std/io.0" line:71 column:9
+node #expr_50f993e3 Call name:"__zero_std_io_next_line_start" path:"std/io.0" line:71 column:46
+node #expr_30cec9a3 Identifier name:"__zero_std_io_next_line_start" path:"std/io.0" line:71 column:17
+node #expr_1118746e Identifier name:"bytes" path:"std/io.0" line:71 column:47
+node #expr_1c07be8f Identifier name:"start" path:"std/io.0" line:71 column:54
+node #stmt_34c2f099 Return path:"std/io.0" line:73 column:5
+node #expr_90df5bf0 Identifier name:"count" path:"std/io.0" line:73 column:12
+edge #mod_c750d898 function #decl_9b42b1d9-9937 order:0
+edge #decl_9b42b1d9-9937 param #param_fb47c457 order:0
+edge #param_fb47c457 type #type_bdb9eb72
+edge #decl_9b42b1d9-9937 param #param_0f0cc371 order:1
+edge #param_0f0cc371 type #type_f9517ea0
+edge #decl_9b42b1d9-9937 param #param_6f1829ab order:2
+edge #param_6f1829ab type #type_932ec5b3
+edge #decl_9b42b1d9-9937 returnType #type_f6257584
+edge #expr_139fb4d8 left #expr_df1d8f5e
+edge #expr_69975b6c left #expr_b3fbad32
+edge #expr_fac32ae7 left #expr_69975b6c
+edge #expr_571d80d8 left #expr_fac32ae7
+edge #expr_571d80d8 arg #expr_ff4bbbe9 order:0
+edge #expr_139fb4d8 right #expr_571d80d8 order:1
+edge #stmt_2a622837 expr #expr_139fb4d8
+edge #stmt_36fb4c04 expr #expr_90c63476
+edge #block_1d7715c7 statement #stmt_36fb4c04 order:0
+edge #stmt_2a622837 then #block_1d7715c7
+edge #block_1c263bc9 statement #stmt_2a622837 order:0
+edge #expr_4d064098 left #expr_ad54ed2c
+edge #expr_4d064098 right #expr_c74b6820 order:1
+edge #stmt_2e8e7291 target #expr_4d064098
+edge #stmt_2e8e7291 expr #expr_21bf117f
+edge #block_1c263bc9 statement #stmt_2e8e7291 order:1
+edge #expr_76ddc217 left #expr_ca7fa7a7
+edge #expr_76ddc217 right #expr_c56a531d order:1
+edge #stmt_8132da0a expr #expr_76ddc217
+edge #block_1c263bc9 statement #stmt_8132da0a order:2
+edge #decl_9b42b1d9-9937 body #block_1c263bc9
+edge #mod_c750d898 function #decl_9b42b1d9-d9f1 order:1
+edge #decl_9b42b1d9-d9f1 param #param_e36d687d order:0
+edge #param_e36d687d type #type_07eb6387
+edge #decl_9b42b1d9-d9f1 param #param_6b944ba3 order:1
+edge #param_6b944ba3 type #type_39b06f66
+edge #decl_9b42b1d9-d9f1 param #param_38d505f1 order:2
+edge #param_38d505f1 type #type_a737a3fa
+edge #decl_9b42b1d9-d9f1 returnType #type_e7b3b746
+edge #expr_523c99c7 left #expr_75e7e7b2
+edge #expr_23f0783b left #expr_d9f3f598
+edge #expr_35596ee5 left #expr_23f0783b
+edge #expr_b853e974 left #expr_35596ee5
+edge #expr_b853e974 arg #expr_2406632b order:0
+edge #expr_523c99c7 right #expr_b853e974 order:1
+edge #stmt_a44e2ed9-0e02 expr #expr_523c99c7
+edge #stmt_7366ef1b expr #expr_4e3dc7f8
+edge #block_c0962a4a statement #stmt_7366ef1b order:0
+edge #stmt_a44e2ed9-0e02 then #block_c0962a4a
+edge #block_a0e67187 statement #stmt_a44e2ed9-0e02 order:0
+edge #expr_7f20048b left #expr_63925362
+edge #expr_836e95d5 left #expr_7f20048b
+edge #expr_9c770b78 left #expr_836e95d5
+edge #expr_9c770b78 arg #expr_2e4b973b order:0
+edge #expr_b7a67415 left #expr_9c770b78
+edge #expr_368d6c51 left #expr_fe3f50df
+edge #expr_dfc01c91 left #expr_368d6c51
+edge #expr_c9fe5306 left #expr_dfc01c91
+edge #expr_c9fe5306 arg #expr_04943ed7 order:0
+edge #expr_28c5ab4f left #expr_c9fe5306
+edge #expr_28c5ab4f right #expr_2f6e4558 order:1
+edge #expr_b7a67415 right #expr_28c5ab4f order:1
+edge #stmt_a44e2ed9-0e02-1 expr #expr_b7a67415
+edge #stmt_78e175a4 expr #expr_7c4ed12a
+edge #block_15491b54 statement #stmt_78e175a4 order:0
+edge #stmt_a44e2ed9-0e02-1 then #block_15491b54
+edge #block_a0e67187 statement #stmt_a44e2ed9-0e02-1 order:1
+edge #stmt_96a82d34 expr #expr_9f105441
+edge #stmt_96a82d34 declaredType #type_8b6786db
+edge #block_a0e67187 statement #stmt_96a82d34 order:2
+edge #expr_857a1c29 left #expr_e02ca77d
+edge #expr_5b47f9c5 left #expr_3bd79c94
+edge #expr_5c2758cf left #expr_5b47f9c5
+edge #expr_89c71a55 left #expr_5c2758cf
+edge #expr_89c71a55 arg #expr_03f6e49d order:0
+edge #expr_857a1c29 right #expr_89c71a55 order:1
+edge #stmt_df4ebd85 expr #expr_857a1c29
+edge #expr_cfcc8ec9 left #expr_fb8ff9eb
+edge #expr_bf657e4c left #expr_23cf4b2b
+edge #expr_bf657e4c right #expr_ae2c3bfd order:1
+edge #expr_cfcc8ec9 right #expr_bf657e4c order:1
+edge #stmt_b9520e99-5074 target #expr_cfcc8ec9
+edge #expr_459eff4f left #expr_f5975010
+edge #expr_459eff4f right #expr_c4873b8c order:1
+edge #stmt_b9520e99-5074 expr #expr_459eff4f
+edge #block_0b5e868a statement #stmt_b9520e99-5074 order:0
+edge #stmt_b9520e99-5074-1 target #expr_87f036b4
+edge #expr_59101207 left #expr_4b912a06
+edge #expr_59101207 right #expr_ef7b6b5e order:1
+edge #stmt_b9520e99-5074-1 expr #expr_59101207
+edge #block_0b5e868a statement #stmt_b9520e99-5074-1 order:1
+edge #stmt_df4ebd85 then #block_0b5e868a
+edge #block_a0e67187 statement #stmt_df4ebd85 order:3
+edge #expr_48d127ec left #expr_75a831cf
+edge #expr_fe99c421 left #expr_7fce24fe
+edge #expr_02f81c6c left #expr_fe99c421
+edge #expr_039ee91f left #expr_02f81c6c
+edge #expr_039ee91f arg #expr_8f9e1d40 order:0
+edge #expr_48d127ec right #expr_039ee91f order:1
+edge #stmt_dc91db44 expr #expr_48d127ec
+edge #block_a0e67187 statement #stmt_dc91db44 order:4
+edge #decl_9b42b1d9-d9f1 body #block_a0e67187
+edge #mod_c750d898 function #decl_b7e9eea0 order:2
+edge #decl_b7e9eea0 param #param_f32c7d31 order:0
+edge #param_f32c7d31 type #type_902c190f
+edge #decl_b7e9eea0 param #param_02c1cf3b order:1
+edge #param_02c1cf3b type #type_e7bcc27b
+edge #decl_b7e9eea0 returnType #type_524bfac3
+edge #expr_35dc52c0 left #expr_fac5a7de
+edge #expr_19c936c1 left #expr_35470f80
+edge #expr_953b5807 left #expr_19c936c1
+edge #expr_060dc004 left #expr_953b5807
+edge #expr_060dc004 arg #expr_329fd5f5 order:0
+edge #expr_35dc52c0 right #expr_060dc004 order:1
+edge #stmt_f21f52ed expr #expr_35dc52c0
+edge #stmt_067e35c1 expr #expr_e9a0e800
+edge #block_f9378823 statement #stmt_067e35c1 order:0
+edge #stmt_f21f52ed then #block_f9378823
+edge #block_baa7c6eb statement #stmt_f21f52ed order:0
+edge #expr_75a63d29 left #expr_87d41222
+edge #expr_75a63d29 arg #expr_3a887780 order:1
+edge #stmt_0b9431dc expr #expr_75a63d29
+edge #block_baa7c6eb statement #stmt_0b9431dc order:1
+edge #decl_b7e9eea0 body #block_baa7c6eb
+edge #mod_c750d898 function #decl_883fd957-2fc5 order:3
+edge #decl_883fd957-2fc5 param #param_cccdf1d4 order:0
+edge #param_cccdf1d4 type #type_3d3f2e00
+edge #decl_883fd957-2fc5 param #param_2aab2c94 order:1
+edge #param_2aab2c94 type #type_307478b5
+edge #decl_883fd957-2fc5 returnType #type_1aba222b
+edge #expr_a1821f01 left #expr_11a4d627
+edge #expr_51ba830f left #expr_240b4d23
+edge #expr_db4d9006 left #expr_51ba830f
+edge #expr_c5c58c03 left #expr_db4d9006
+edge #expr_c5c58c03 arg #expr_43d63036 order:0
+edge #expr_a1821f01 right #expr_c5c58c03 order:1
+edge #stmt_89f1c4ba expr #expr_a1821f01
+edge #stmt_c215a981 expr #expr_7056a890
+edge #block_7b6a6cde statement #stmt_c215a981 order:0
+edge #stmt_89f1c4ba then #block_7b6a6cde
+edge #block_0bf1f452 statement #stmt_89f1c4ba order:0
+edge #expr_0527463a left #expr_59fe6661
+edge #expr_94cd5fba left #expr_0527463a
+edge #expr_57154235 left #expr_94cd5fba
+edge #expr_57154235 arg #expr_3960a81e order:0
+edge #expr_8d231a6a left #expr_57154235
+edge #expr_8d231a6a right #expr_6bda7949 order:1
+edge #stmt_9b90f683 expr #expr_8d231a6a
+edge #block_0bf1f452 statement #stmt_9b90f683 order:1
+edge #decl_883fd957-2fc5 body #block_0bf1f452
+edge #mod_c750d898 function #decl_63e4de40 order:4
+edge #decl_63e4de40 param #param_5e759bfc order:0
+edge #param_5e759bfc type #type_44a0dd1e
+edge #decl_63e4de40 param #param_ce8a089e order:1
+edge #param_ce8a089e type #type_35d3ab24
+edge #decl_63e4de40 returnType #type_f00380f6
+edge #expr_4987d943 left #expr_6bed7f23
+edge #expr_bc3ac249 left #expr_c020b4ca
+edge #expr_30322885 left #expr_bc3ac249
+edge #expr_24c899a7 left #expr_30322885
+edge #expr_24c899a7 arg #expr_c402f3eb order:0
+edge #expr_4987d943 right #expr_24c899a7 order:1
+edge #stmt_3ec5bf17-0e02 expr #expr_4987d943
+edge #stmt_f69e2bb4 expr #expr_17cc4136
+edge #block_1d63907e statement #stmt_f69e2bb4 order:0
+edge #stmt_3ec5bf17-0e02 then #block_1d63907e
+edge #block_c6f4e430 statement #stmt_3ec5bf17-0e02 order:0
+edge #stmt_a6fb27ea expr #expr_81f0b780
+edge #stmt_a6fb27ea declaredType #type_31e392b2
+edge #block_c6f4e430 statement #stmt_a6fb27ea order:1
+edge #expr_2361fb72 left #expr_c5905108
+edge #expr_f0fed66c left #expr_80e6fd31
+edge #expr_c083c9c5 left #expr_f0fed66c
+edge #expr_8affbdd2 left #expr_c083c9c5
+edge #expr_8affbdd2 arg #expr_c2d6f48b order:0
+edge #expr_2361fb72 right #expr_8affbdd2 order:1
+edge #expr_27a8eef4 left #expr_2361fb72
+edge #expr_e1575fc0 left #expr_1d890369
+edge #expr_e1575fc0 right #expr_ac2d9e73 order:1
+edge #expr_bdd94dde left #expr_e1575fc0
+edge #expr_bdd94dde right #expr_49516583 order:1
+edge #expr_27a8eef4 right #expr_bdd94dde order:1
+edge #stmt_499f8e8b expr #expr_27a8eef4
+edge #stmt_96ac9ff3 target #expr_bade5133
+edge #expr_48ce86b6 left #expr_bf3967a9
+edge #expr_48ce86b6 right #expr_00893d57 order:1
+edge #stmt_96ac9ff3 expr #expr_48ce86b6
+edge #block_d127531b statement #stmt_96ac9ff3 order:0
+edge #stmt_499f8e8b then #block_d127531b
+edge #block_c6f4e430 statement #stmt_499f8e8b order:2
+edge #expr_1dbe870e left #expr_73d9c8f5
+edge #expr_1dbe870e right #expr_16c751e7 order:1
+edge #expr_81f07149 left #expr_1dbe870e
+edge #expr_e04b6ccb left #expr_03caa83e
+edge #expr_d61676eb left #expr_e7869198
+edge #expr_d61676eb right #expr_db409058 order:1
+edge #expr_e04b6ccb right #expr_d61676eb order:1
+edge #expr_5d1e2592 left #expr_e04b6ccb
+edge #expr_5d1e2592 right #expr_c00e540a order:1
+edge #expr_81f07149 right #expr_5d1e2592 order:1
+edge #stmt_3ec5bf17-0e02-1 expr #expr_81f07149
+edge #expr_f6050cd5 left #expr_c869304a
+edge #expr_f6050cd5 arg #expr_6093a929 order:0
+edge #expr_d4b5e78d left #expr_186700da
+edge #expr_d4b5e78d right #expr_df6d02fa order:1
+edge #expr_f6050cd5 arg #expr_d4b5e78d order:1
+edge #stmt_06d878ab expr #expr_f6050cd5
+edge #block_6a207640 statement #stmt_06d878ab order:0
+edge #stmt_3ec5bf17-0e02-1 then #block_6a207640
+edge #block_c6f4e430 statement #stmt_3ec5bf17-0e02-1 order:3
+edge #expr_5983a4a1 left #expr_6cf15297
+edge #expr_5983a4a1 arg #expr_46281592 order:0
+edge #expr_5983a4a1 arg #expr_51175fb3 order:1
+edge #stmt_c69c325a expr #expr_5983a4a1
+edge #block_c6f4e430 statement #stmt_c69c325a order:4
+edge #decl_63e4de40 body #block_c6f4e430
+edge #mod_c750d898 function #decl_883fd957-c5ac order:5
+edge #decl_883fd957-c5ac param #param_ffe51930 order:0
+edge #param_ffe51930 type #type_07ec44db
+edge #decl_883fd957-c5ac param #param_dd8293a8 order:1
+edge #param_dd8293a8 type #type_32bd6b3e
+edge #decl_883fd957-c5ac returnType #type_f13493cb
+edge #expr_52c81e8a left #expr_2a334676
+edge #expr_088ef745 left #expr_ed529f40
+edge #expr_a91afc26 left #expr_088ef745
+edge #expr_d54a045c left #expr_a91afc26
+edge #expr_d54a045c arg #expr_d2959326 order:0
+edge #expr_52c81e8a right #expr_d54a045c order:1
+edge #stmt_e4eca16f-0e02 expr #expr_52c81e8a
+edge #expr_9d805d16 left #expr_c200e100
+edge #expr_6395aef3 left #expr_9d805d16
+edge #expr_037a2716 left #expr_6395aef3
+edge #expr_037a2716 arg #expr_9404f75d order:0
+edge #stmt_0bdecee2 expr #expr_037a2716
+edge #block_674b6e3f statement #stmt_0bdecee2 order:0
+edge #stmt_e4eca16f-0e02 then #block_674b6e3f
+edge #block_d84c06d2 statement #stmt_e4eca16f-0e02 order:0
+edge #stmt_ba29d712 expr #expr_5a48733c
+edge #stmt_ba29d712 declaredType #type_3856dd6e
+edge #block_d84c06d2 statement #stmt_ba29d712 order:1
+edge #expr_b00f96e8 left #expr_4ddbff25
+edge #expr_8478deb6 left #expr_db0c8997
+edge #expr_32a283a6 left #expr_8478deb6
+edge #expr_4bf20055 left #expr_32a283a6
+edge #expr_4bf20055 arg #expr_fc9e48b2 order:0
+edge #expr_b00f96e8 right #expr_4bf20055 order:1
+edge #expr_63405fa7 left #expr_b00f96e8
+edge #expr_1678f32b left #expr_1072b9bc
+edge #expr_1678f32b right #expr_967808f0 order:1
+edge #expr_e2c75a24 left #expr_1678f32b
+edge #expr_e2c75a24 right #expr_3311d8f6 order:1
+edge #expr_63405fa7 right #expr_e2c75a24 order:1
+edge #stmt_e4eccf8b expr #expr_63405fa7
+edge #stmt_9a33fed1 target #expr_fd92191e
+edge #expr_1e21c713 left #expr_bcbe284a
+edge #expr_1e21c713 right #expr_39ce10ba order:1
+edge #stmt_9a33fed1 expr #expr_1e21c713
+edge #block_f79efaa4 statement #stmt_9a33fed1 order:0
+edge #stmt_e4eccf8b then #block_f79efaa4
+edge #block_d84c06d2 statement #stmt_e4eccf8b order:2
+edge #expr_e3bcb524 left #expr_139116e3
+edge #expr_dfcc4494 left #expr_bcf64b9a
+edge #expr_fc249608 left #expr_dfcc4494
+edge #expr_74532993 left #expr_fc249608
+edge #expr_74532993 arg #expr_5a879a5c order:0
+edge #expr_e3bcb524 right #expr_74532993 order:1
+edge #stmt_e4eca16f-0e02-1 expr #expr_e3bcb524
+edge #expr_a20a0817 left #expr_8f6c77b7
+edge #expr_a20a0817 right #expr_470da4ed order:1
+edge #stmt_6d9da967 expr #expr_a20a0817
+edge #block_067a4f55 statement #stmt_6d9da967 order:0
+edge #stmt_e4eca16f-0e02-1 then #block_067a4f55
+edge #block_d84c06d2 statement #stmt_e4eca16f-0e02-1 order:3
+edge #expr_089e66c6 left #expr_0806d5cc
+edge #expr_d61aabd1 left #expr_089e66c6
+edge #expr_86faa3f6 left #expr_d61aabd1
+edge #expr_86faa3f6 arg #expr_8f52f537 order:0
+edge #stmt_9fe84b82 expr #expr_86faa3f6
+edge #block_d84c06d2 statement #stmt_9fe84b82 order:4
+edge #decl_883fd957-c5ac body #block_d84c06d2
+edge #mod_c750d898 function #decl_883fd957-1600 order:6
+edge #decl_883fd957-1600 param #param_426f7d35 order:0
+edge #param_426f7d35 type #type_93633455
+edge #decl_883fd957-1600 returnType #type_d7929754
+edge #stmt_b2158649-3be9 expr #expr_2ce3ed79
+edge #stmt_b2158649-3be9 declaredType #type_373e9f8d
+edge #block_5490cd49 statement #stmt_b2158649-3be9 order:0
+edge #stmt_b2158649-c2fc expr #expr_7651ffec
+edge #stmt_b2158649-c2fc declaredType #type_16341e20
+edge #block_5490cd49 statement #stmt_b2158649-c2fc order:1
+edge #expr_156967d2 left #expr_58b575bd
+edge #expr_bd986559 left #expr_e040c5e7
+edge #expr_9ff4bdb6 left #expr_bd986559
+edge #expr_0c2af5b9 left #expr_9ff4bdb6
+edge #expr_0c2af5b9 arg #expr_e8a3379a order:0
+edge #expr_156967d2 right #expr_0c2af5b9 order:1
+edge #stmt_b9ca4b00 expr #expr_156967d2
+edge #stmt_f8b17c73-5074 target #expr_aff54976
+edge #expr_09e43975 left #expr_c8affbc1
+edge #expr_09e43975 right #expr_697fd97f order:1
+edge #stmt_f8b17c73-5074 expr #expr_09e43975
+edge #block_b12e91f1 statement #stmt_f8b17c73-5074 order:0
+edge #stmt_f8b17c73-5074-1 target #expr_ac1b119c
+edge #expr_50f993e3 left #expr_30cec9a3
+edge #expr_50f993e3 arg #expr_1118746e order:0
+edge #expr_50f993e3 arg #expr_1c07be8f order:1
+edge #stmt_f8b17c73-5074-1 expr #expr_50f993e3
+edge #block_b12e91f1 statement #stmt_f8b17c73-5074-1 order:1
+edge #stmt_b9ca4b00 then #block_b12e91f1
+edge #block_5490cd49 statement #stmt_b9ca4b00 order:2
+edge #stmt_34c2f099 expr #expr_90df5bf0
+edge #block_5490cd49 statement #stmt_34c2f099 order:3
+edge #decl_883fd957-1600 body #block_5490cd49

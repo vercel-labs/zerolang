@@ -961,10 +961,21 @@ static void graph_resolve_call_reference(ZGraphResolver *resolver, size_t node_i
   }
 
   if (strncmp(qualified, "std.", 4) == 0 && !first_is_shadowed) {
+    const char *std_source_target_name = z_std_source_target_for_public_call(qualified);
+    const ZStdSourceModule *std_source_module = z_std_source_module_for_public_call(qualified);
     const ZGraphBindingFact *source_binding = graph_resolve_std_source_binding(resolver, qualified);
     if (source_binding) {
-      const ZGraphBindingFact *via = graph_resolve_import_binding_for_module(resolver, scope, z_std_source_module_for_public_call(qualified)->module);
-      graph_resolve_reference_to_binding(ref, resolver, source_binding, "sourceBackedStdlib", via ? via->symbol_id : NULL);
+      const ZGraphBindingFact *via = graph_resolve_import_binding_for_module(resolver, scope, std_source_module->module);
+      graph_resolve_reference_to_binding(ref, resolver, source_binding, "graphBackedStdlib", via ? via->symbol_id : NULL);
+    } else if (std_source_target_name && std_source_module) {
+      ZBuf symbol;
+      zbuf_init(&symbol);
+      zbuf_append(&symbol, "symbol:");
+      zbuf_append(&symbol, std_source_module->module);
+      zbuf_append(&symbol, "::value.");
+      zbuf_append(&symbol, std_source_target_name);
+      graph_resolve_reference_builtin(ref, "graphBackedStdlib", symbol.data ? symbol.data : "");
+      zbuf_free(&symbol);
     } else if (z_std_helper_find(qualified)) {
       ZBuf symbol;
       zbuf_init(&symbol);

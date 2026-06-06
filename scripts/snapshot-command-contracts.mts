@@ -115,7 +115,7 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean",
     ? body.graphCompiler.astToMirFallbackUsed === true
     : options.astToMirFallbackUsed === true;
   const graphHirToMirUsed = options.graphHirToMirUsed === false ? false : true;
-  const sourceBackedStdHelpersUsed = options.sourceBackedStdHelpersUsed === true;
+  const stdHelperAstFallbackUsed = options.stdHelperAstFallbackUsed === true;
   assert.equal(body.graphCompiler.input, "repository-graph-store");
   assert.equal(body.graphCompiler.graphStoreLoaded, true);
   assert.equal(body.graphCompiler.sourceProjectionRequiredForCompilerInput, false);
@@ -125,7 +125,7 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean",
   assert.equal(body.graphCompiler.graphNativeCheckerUsed, true);
   assert.equal(body.graphCompiler.graphHirToMirUsed, graphHirToMirUsed);
   assert.equal(body.graphCompiler.astToMirFallbackUsed, astToMirFallbackUsed);
-  assert.equal(body.graphCompiler.sourceBackedStdHelpersUsed, sourceBackedStdHelpersUsed);
+  assert.equal(body.graphCompiler.stdHelperAstFallbackUsed, stdHelperAstFallbackUsed);
   assert.equal(body.graphCompiler.unsupportedGraphFacts.count, 0);
   assert.equal(body.graphCompiler.resolution.ok, true);
   assert.equal(body.graphCompiler.resolution.state, "resolved-graph-facts");
@@ -138,15 +138,16 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean",
   assert.equal(body.graphCompiler.semanticFacts.state, "typed-facts");
   assert.equal(body.graphCompiler.semanticFacts.ok, true);
   const targetReady = body.targetReadiness?.ok === true;
-  assert.equal(body.graphCompiler.defaultReadiness.compilerInputReady, targetReady);
-  assert.equal(body.graphCompiler.defaultReadiness.claim, targetReady ? "ready-for-opted-in-repository-graph-input" : "blocked");
-  assert.equal(body.graphCompiler.defaultReadiness.sourceFreeCompile, targetReady);
+  const compilerInputReady = targetReady && graphHirToMirUsed && !stdHelperAstFallbackUsed;
+  assert.equal(body.graphCompiler.defaultReadiness.compilerInputReady, compilerInputReady);
+  assert.equal(body.graphCompiler.defaultReadiness.claim, compilerInputReady ? "ready-for-opted-in-repository-graph-input" : "blocked");
+  assert.equal(body.graphCompiler.defaultReadiness.sourceFreeCompile, compilerInputReady);
   assert.equal(body.graphCompiler.defaultReadiness.sourceProjectionRequired, false);
   assert.equal(body.graphCompiler.defaultReadiness.sourceProjectionState, sourceProjectionState);
   assert.equal(body.graphCompiler.defaultReadiness.fallback.graphToProgramLoweringUsed, astToMirFallbackUsed);
   assert.equal(body.graphCompiler.defaultReadiness.fallback.graphHirToMirUsed, graphHirToMirUsed);
   assert.equal(body.graphCompiler.defaultReadiness.fallback.astToMirFallbackUsed, astToMirFallbackUsed);
-  assert.equal(body.graphCompiler.defaultReadiness.fallback.sourceBackedStdHelpersUsed, sourceBackedStdHelpersUsed);
+  assert.equal(body.graphCompiler.defaultReadiness.fallback.stdHelperAstFallbackUsed, stdHelperAstFallbackUsed);
   assert.equal(body.graphCompiler.defaultReadiness.performance.validationInLoad, true);
   assert.equal(body.graphCompiler.defaultReadiness.cacheInvalidation.parserArtifactsInKey, false);
   assert(body.graphCompiler.defaultReadiness.cacheInvalidation.keyedBy.includes("nodeHashes"));
@@ -2835,9 +2836,9 @@ const sourceFreeStdGraphCheckJson = json(["check", "--json", sourceFreeStdGraphR
 assert.equal(sourceFreeStdGraphCheckJson.ok, true);
 assertSourceGraph(sourceFreeStdGraphCheckJson, join(sourceFreeStdGraphRoot, "zero.graph"), "package:source-free-std-str@0.1.0", "graph-native-check", false, "missing");
 assertProgramGraphCompilerInput(sourceFreeStdGraphCheckJson, join(sourceFreeStdGraphRoot, "zero.graph"));
-assertRepositoryGraphNativeCheck(sourceFreeStdGraphCheckJson, "missing", { graphHirToMirUsed: false, sourceBackedStdHelpersUsed: true });
-assert.equal(sourceFreeStdGraphCheckJson.targetReadiness.diagnostics[0].actual, "source-backed-std-helpers");
-assert.equal(sourceFreeStdGraphCheckJson.targetReadiness.diagnostics[0].backendBlocker.unsupportedFeature, "source-backed-std-helpers");
+assertRepositoryGraphNativeCheck(sourceFreeStdGraphCheckJson, "missing");
+assert.equal(sourceFreeStdGraphCheckJson.targetReadiness.ok, true);
+assert.equal(sourceFreeStdGraphCheckJson.targetReadiness.diagnostics.length, 0);
 assert(sourceFreeStdGraphCheckJson.graphCompiler.semanticFacts.calls.some((call) => call.qualifiedName === "std.str.reverse" && call.contract.kind === "stdlib" && call.resolution.targetKind === "stdlib" && call.returnType === "Maybe<Span<u8>>"));
 assert(sourceFreeStdGraphCheckJson.graphCompiler.tables.capability > 0);
 const checkedInGraphPackageSizeJson = json(["size", "--json", "--target", "linux-musl-x64", checkedInGraphPackageDir]).body;
@@ -3026,7 +3027,7 @@ assert.equal(graphCheckJson.view, null);
 const graphDirectImportCheckJson = json(["check", "--json", "examples/direct-package-arrays/src/main.0"]).body;
 assert.equal(graphDirectImportCheckJson.ok, true);
 assert.equal(graphDirectImportCheckJson.graph.canonicalSource, true);
-assert.equal(graphDirectImportCheckJson.graph.lowering, "program-graph-ast-mir");
+assert.equal(graphDirectImportCheckJson.graph.lowering, "typed-program-graph-mir");
 assert.equal(graphDirectImportCheckJson.targetReadiness.ok, true);
 assert.equal(graphDirectImportCheckJson.safetyFacts.initialization.locals, "initializer-required");
 assert.deepEqual(graphDirectImportCheckJson.diagnostics, []);
@@ -3036,7 +3037,7 @@ assert.match(graphDirectImportView, /export c fn main\(\) -> i32/);
 const graphDirectStdCheckJson = json(["check", "--json", "examples/std-str.0"]).body;
 assert.equal(graphDirectStdCheckJson.ok, true);
 assert.equal(graphDirectStdCheckJson.graph.canonicalSource, true);
-assert.equal(graphDirectStdCheckJson.graph.lowering, "program-graph-ast-mir");
+assert.equal(graphDirectStdCheckJson.graph.lowering, "typed-program-graph-mir");
 assert.equal(graphDirectStdCheckJson.targetReadiness.ok, true);
 assert.deepEqual(graphDirectStdCheckJson.diagnostics, []);
 const graphCheckOutJson = json(["check", "--json", "--out", graphCheckViewPath, graphDumpPath], { allowFailure: true });
@@ -5357,10 +5358,8 @@ for (const { target, compiler, emissionPath, magic } of directByteCopyFillTarget
   assert.equal(directStdMathReport.objectBackend.objectEmission.path, emissionPath);
   assert(directStdMathBytes.subarray(0, magic.length).equals(magic));
   if (compiler === "zero-coff-x64") {
-    assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x92, 0xc0])));
-    assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x97, 0xc0])));
-    assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x9c, 0xc0])));
-    assert(directStdMathBytes.includes(Buffer.from([0x0f, 0x9f, 0xc0])));
+    assert(directStdMathBytes.includes(Buffer.from("zero_math_op")));
+    assert(directStdMathBytes.includes(Buffer.from("zero_math_usize_op")));
   }
 }
 const directStdTimeRandSource = join(outDir, "direct-std-time-rand-matrix.0");
@@ -6440,13 +6439,13 @@ writeFileSync(jsonStatusOnlySource, `export c fn main() -> i32 {
 }
 `);
 const jsonStatusOnlyGraph = json(["graph", "--json", jsonStatusOnlySource]).body;
-assert(jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/json.0")));
+assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/json.0")));
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/ascii.0")));
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/fmt.0")));
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/parse.0")));
-assert.equal(jsonStatusOnlyGraph.functions.filter((fun) => fun.name.startsWith("__zero_std_json_")).length, 1);
+assert(jsonStatusOnlyGraph.callResolution.calls.some((call) => call.kind === "stdlib" && call.calleeName === "std.json.errorNone"));
 const jsonStatusOnlySize = json(["size", "--json", jsonStatusOnlySource]).body;
-assert.equal(jsonStatusOnlySize.objectBackend.directFacts.functionCount, 2);
+assert.equal(jsonStatusOnlySize.objectBackend.directFacts.functionCount, 1);
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "__zero_std_json_validate_error"));
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "std.parse.parseU32"));
 

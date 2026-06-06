@@ -1,0 +1,290 @@
+zero-graph v1
+origin source-text
+module "args"
+hash "graph:87f19e6df355ea58"
+
+node #mod_cb8d825e Module name:"args" path:"std/args.0" line:1 column:1
+node #decl_149a9e2d Function name:"__zero_std_args_has" type:"Bool" path:"std/args.0" line:1 column:1
+node #param_2270ef48 Param name:"index" type:"usize" path:"std/args.0" line:1 column:24
+node #type_6f8500a2 TypeRef type:"usize" path:"std/args.0" line:1 column:24
+node #type_6e3c0a52 TypeRef type:"Bool" path:"std/args.0" line:1 column:1
+node #block_f231fb03 Block name:"body" path:"std/args.0" line:1 column:1
+node #stmt_047776d7 Let name:"value" type:"Maybe<String>" path:"std/args.0" line:2 column:5
+node #expr_2c17a76b MethodCall name:"get" path:"std/args.0" line:2 column:44
+node #expr_89577c4a FieldAccess name:"get" path:"std/args.0" line:2 column:41
+node #expr_c23d9727 FieldAccess name:"args" path:"std/args.0" line:2 column:36
+node #expr_2a59ffbb Identifier name:"std" path:"std/args.0" line:2 column:32
+node #expr_136d7b1c Identifier name:"index" path:"std/args.0" line:2 column:45
+node #type_845f53f2 TypeRef type:"Maybe<String>" path:"std/args.0" line:2 column:5
+node #stmt_4b22d467 Return path:"std/args.0" line:3 column:5
+node #expr_46b3dc3d FieldAccess name:"has" path:"std/args.0" line:3 column:18
+node #expr_63da4779 Identifier name:"value" path:"std/args.0" line:3 column:12
+node #decl_f39cf6c4 Function name:"__zero_std_args_get_or" type:"String" path:"std/args.0" line:6 column:1
+node #param_ddda9fe5 Param name:"index" type:"usize" path:"std/args.0" line:6 column:27
+node #type_950a839c TypeRef type:"usize" path:"std/args.0" line:6 column:27
+node #param_8af0aad9 Param name:"fallback" type:"String" path:"std/args.0" line:6 column:41
+node #type_662900e9 TypeRef type:"String" path:"std/args.0" line:6 column:41
+node #type_2db08d0e TypeRef type:"String" path:"std/args.0" line:6 column:1
+node #block_60f55d60 Block name:"body" path:"std/args.0" line:6 column:1
+node #stmt_d6e60f20 Let name:"value" type:"Maybe<String>" path:"std/args.0" line:7 column:5
+node #expr_36409d00 MethodCall name:"get" path:"std/args.0" line:7 column:44
+node #expr_38324a9d FieldAccess name:"get" path:"std/args.0" line:7 column:41
+node #expr_80851921 FieldAccess name:"args" path:"std/args.0" line:7 column:36
+node #expr_edcf5cb2 Identifier name:"std" path:"std/args.0" line:7 column:32
+node #expr_5610e0f9 Identifier name:"index" path:"std/args.0" line:7 column:45
+node #type_ac2741a5 TypeRef type:"Maybe<String>" path:"std/args.0" line:7 column:5
+node #stmt_fd932b85 If path:"std/args.0" line:8 column:5
+node #expr_070f664d FieldAccess name:"has" path:"std/args.0" line:8 column:14
+node #expr_e5741075 Identifier name:"value" path:"std/args.0" line:8 column:8
+node #block_eec8002e Block name:"then" path:"std/args.0" line:8 column:5
+node #stmt_cd66f7b4 Return path:"std/args.0" line:9 column:9
+node #expr_be6f1652 FieldAccess name:"value" path:"std/args.0" line:9 column:22
+node #expr_27046e07 Identifier name:"value" path:"std/args.0" line:9 column:16
+node #stmt_bf4a7a10 Return path:"std/args.0" line:11 column:5
+node #expr_73ec3581 Identifier name:"fallback" path:"std/args.0" line:11 column:12
+node #decl_449ec825 Function name:"__zero_std_args_find" type:"Maybe<usize>" path:"std/args.0" line:14 column:1
+node #param_096707a0 Param name:"name" type:"String" path:"std/args.0" line:14 column:25
+node #type_0e0bbded TypeRef type:"String" path:"std/args.0" line:14 column:25
+node #type_3ea335f5 TypeRef type:"Maybe<usize>" path:"std/args.0" line:14 column:1
+node #block_22947264 Block name:"body" path:"std/args.0" line:14 column:1
+node #stmt_9f0e7d5e Let name:"index" type:"usize" path:"std/args.0" line:15 column:5 mutable:true
+node #expr_3b673d70 Literal value:"1" path:"std/args.0" line:15 column:24
+node #type_7e59a4a4 TypeRef type:"usize" path:"std/args.0" line:15 column:5
+node #stmt_f744c881 While path:"std/args.0" line:16 column:5
+node #expr_ad05de03 Call name:"<" path:"std/args.0" line:16 column:17
+node #expr_a4607d6e Identifier name:"index" path:"std/args.0" line:16 column:11
+node #expr_8a5f92e8 MethodCall name:"len" path:"std/args.0" line:16 column:31
+node #expr_79cc95f7 FieldAccess name:"len" path:"std/args.0" line:16 column:28
+node #expr_8f51fe92 FieldAccess name:"args" path:"std/args.0" line:16 column:23
+node #expr_9212dca0 Identifier name:"std" path:"std/args.0" line:16 column:19
+node #block_06524ce8 Block name:"then" path:"std/args.0" line:16 column:5
+node #stmt_09d3528f Let name:"value" type:"Maybe<String>" path:"std/args.0" line:17 column:9
+node #expr_faa8176a MethodCall name:"get" path:"std/args.0" line:17 column:48
+node #expr_c32b2818 FieldAccess name:"get" path:"std/args.0" line:17 column:45
+node #expr_3c87c53c FieldAccess name:"args" path:"std/args.0" line:17 column:40
+node #expr_093a284b Identifier name:"std" path:"std/args.0" line:17 column:36
+node #expr_dc0c907a Identifier name:"index" path:"std/args.0" line:17 column:49
+node #type_0ec84c2f TypeRef type:"Maybe<String>" path:"std/args.0" line:17 column:9
+node #stmt_8986f41a If path:"std/args.0" line:18 column:9
+node #expr_7650d24d Call name:"&&" path:"std/args.0" line:18 column:22
+node #expr_e1dec17b FieldAccess name:"has" path:"std/args.0" line:18 column:18
+node #expr_86c28d2e Identifier name:"value" path:"std/args.0" line:18 column:12
+node #expr_d30c6dea MethodCall name:"eql" path:"std/args.0" line:18 column:36
+node #expr_04362c11 FieldAccess name:"eql" path:"std/args.0" line:18 column:33
+node #expr_39d5f035 FieldAccess name:"mem" path:"std/args.0" line:18 column:29
+node #expr_8b81bcdb Identifier name:"std" path:"std/args.0" line:18 column:25
+node #expr_a0770afc FieldAccess name:"value" path:"std/args.0" line:18 column:43
+node #expr_e867891d Identifier name:"value" path:"std/args.0" line:18 column:37
+node #expr_399a8778 Identifier name:"name" path:"std/args.0" line:18 column:50
+node #block_800ae75e Block name:"then" path:"std/args.0" line:18 column:9
+node #stmt_c08ce3b3 Return path:"std/args.0" line:19 column:13
+node #expr_02286f9a Identifier name:"index" path:"std/args.0" line:19 column:20
+node #stmt_ff23d698 Assignment path:"std/args.0" line:21 column:9
+node #expr_0df23ebd Identifier name:"index" path:"std/args.0" line:21 column:9
+node #expr_d52e1320 Call name:"+" path:"std/args.0" line:21 column:23
+node #expr_1dd672d2 Identifier name:"index" path:"std/args.0" line:21 column:17
+node #expr_db05c518 Literal value:"1" path:"std/args.0" line:21 column:25
+node #stmt_8a3e0222 Return path:"std/args.0" line:23 column:5
+node #expr_22806d18 Literal value:"null" path:"std/args.0" line:23 column:12
+node #decl_31a28ce6 Function name:"__zero_std_args_value_after" type:"Maybe<String>" path:"std/args.0" line:26 column:1
+node #param_623942ef Param name:"name" type:"String" path:"std/args.0" line:26 column:32
+node #type_b94966a4 TypeRef type:"String" path:"std/args.0" line:26 column:32
+node #type_5a2e6563 TypeRef type:"Maybe<String>" path:"std/args.0" line:26 column:1
+node #block_73b41c61 Block name:"body" path:"std/args.0" line:26 column:1
+node #stmt_13ba3744 Let name:"index" type:"Maybe<usize>" path:"std/args.0" line:27 column:5
+node #expr_4f2e526f Call name:"__zero_std_args_find" path:"std/args.0" line:27 column:51
+node #expr_8b503782 Identifier name:"__zero_std_args_find" path:"std/args.0" line:27 column:31
+node #expr_b229c581 Identifier name:"name" path:"std/args.0" line:27 column:52
+node #type_7f554208 TypeRef type:"Maybe<usize>" path:"std/args.0" line:27 column:5
+node #stmt_7b1512ba If path:"std/args.0" line:28 column:5
+node #expr_0c1a27bd FieldAccess name:"has" path:"std/args.0" line:28 column:14
+node #expr_cd3a0404 Identifier name:"index" path:"std/args.0" line:28 column:8
+node #block_2b73a63e Block name:"then" path:"std/args.0" line:28 column:5
+node #stmt_34ca7d7f Let name:"value" type:"Maybe<String>" path:"std/args.0" line:29 column:9
+node #expr_666cbd60 MethodCall name:"get" path:"std/args.0" line:29 column:48
+node #expr_a0af8cee FieldAccess name:"get" path:"std/args.0" line:29 column:45
+node #expr_c8cba62c FieldAccess name:"args" path:"std/args.0" line:29 column:40
+node #expr_34c2a654 Identifier name:"std" path:"std/args.0" line:29 column:36
+node #expr_f97789f9 Call name:"+" path:"std/args.0" line:29 column:61
+node #expr_af9e4610 FieldAccess name:"value" path:"std/args.0" line:29 column:55
+node #expr_73a4ae98 Identifier name:"index" path:"std/args.0" line:29 column:49
+node #expr_aa62cc07 Literal value:"1" path:"std/args.0" line:29 column:63
+node #type_153a25f1 TypeRef type:"Maybe<String>" path:"std/args.0" line:29 column:9
+node #stmt_56c6eb32 If path:"std/args.0" line:30 column:9
+node #expr_ba59c3a8 FieldAccess name:"has" path:"std/args.0" line:30 column:18
+node #expr_fba043a6 Identifier name:"value" path:"std/args.0" line:30 column:12
+node #block_62d1c373 Block name:"then" path:"std/args.0" line:30 column:9
+node #stmt_2814394d Return path:"std/args.0" line:31 column:13
+node #expr_4e59fa2b FieldAccess name:"value" path:"std/args.0" line:31 column:26
+node #expr_93482e46 Identifier name:"value" path:"std/args.0" line:31 column:20
+node #stmt_8bbf2c0f Return path:"std/args.0" line:33 column:9
+node #expr_7590ee72 Literal value:"null" path:"std/args.0" line:33 column:16
+node #stmt_4294557b Return path:"std/args.0" line:35 column:5
+node #expr_5fb15f5d Literal value:"null" path:"std/args.0" line:35 column:12
+node #decl_bd0ef1cd Function name:"__zero_std_args_parse_u32" type:"Maybe<u32>" path:"std/args.0" line:38 column:1
+node #param_a40da1dc Param name:"index" type:"usize" path:"std/args.0" line:38 column:30
+node #type_ae7d3ebc TypeRef type:"usize" path:"std/args.0" line:38 column:30
+node #type_91687716 TypeRef type:"Maybe<u32>" path:"std/args.0" line:38 column:1
+node #block_295dc54f Block name:"body" path:"std/args.0" line:38 column:1
+node #stmt_e23e6b62 Let name:"value" type:"Maybe<String>" path:"std/args.0" line:39 column:5
+node #expr_9ed20c76 MethodCall name:"get" path:"std/args.0" line:39 column:44
+node #expr_851e8a4d FieldAccess name:"get" path:"std/args.0" line:39 column:41
+node #expr_9d608bef FieldAccess name:"args" path:"std/args.0" line:39 column:36
+node #expr_aa5961e8 Identifier name:"std" path:"std/args.0" line:39 column:32
+node #expr_8f2eae29 Identifier name:"index" path:"std/args.0" line:39 column:45
+node #type_374dc25f TypeRef type:"Maybe<String>" path:"std/args.0" line:39 column:5
+node #stmt_5f39da7f If path:"std/args.0" line:40 column:5
+node #expr_3faebe51 FieldAccess name:"has" path:"std/args.0" line:40 column:14
+node #expr_5ed1c572 Identifier name:"value" path:"std/args.0" line:40 column:8
+node #block_904ed6c2 Block name:"then" path:"std/args.0" line:40 column:5
+node #stmt_be2c2ddf Return path:"std/args.0" line:41 column:9
+node #expr_b27f600b MethodCall name:"parseU32" path:"std/args.0" line:41 column:34
+node #expr_d7cb5a64 FieldAccess name:"parseU32" path:"std/args.0" line:41 column:26
+node #expr_7e8295bd FieldAccess name:"parse" path:"std/args.0" line:41 column:20
+node #expr_6a83c71c Identifier name:"std" path:"std/args.0" line:41 column:16
+node #expr_e2a6139b FieldAccess name:"value" path:"std/args.0" line:41 column:41
+node #expr_e131a855 Identifier name:"value" path:"std/args.0" line:41 column:35
+node #stmt_b9c369f2 Return path:"std/args.0" line:43 column:5
+node #expr_0e47411f Literal value:"null" path:"std/args.0" line:43 column:12
+edge #mod_cb8d825e function #decl_149a9e2d order:0
+edge #decl_149a9e2d param #param_2270ef48 order:0
+edge #param_2270ef48 type #type_6f8500a2
+edge #decl_149a9e2d returnType #type_6e3c0a52
+edge #expr_c23d9727 left #expr_2a59ffbb
+edge #expr_89577c4a left #expr_c23d9727
+edge #expr_2c17a76b left #expr_89577c4a
+edge #expr_2c17a76b arg #expr_136d7b1c order:0
+edge #stmt_047776d7 expr #expr_2c17a76b
+edge #stmt_047776d7 declaredType #type_845f53f2
+edge #block_f231fb03 statement #stmt_047776d7 order:0
+edge #expr_46b3dc3d left #expr_63da4779
+edge #stmt_4b22d467 expr #expr_46b3dc3d
+edge #block_f231fb03 statement #stmt_4b22d467 order:1
+edge #decl_149a9e2d body #block_f231fb03
+edge #mod_cb8d825e function #decl_f39cf6c4 order:1
+edge #decl_f39cf6c4 param #param_ddda9fe5 order:0
+edge #param_ddda9fe5 type #type_950a839c
+edge #decl_f39cf6c4 param #param_8af0aad9 order:1
+edge #param_8af0aad9 type #type_662900e9
+edge #decl_f39cf6c4 returnType #type_2db08d0e
+edge #expr_80851921 left #expr_edcf5cb2
+edge #expr_38324a9d left #expr_80851921
+edge #expr_36409d00 left #expr_38324a9d
+edge #expr_36409d00 arg #expr_5610e0f9 order:0
+edge #stmt_d6e60f20 expr #expr_36409d00
+edge #stmt_d6e60f20 declaredType #type_ac2741a5
+edge #block_60f55d60 statement #stmt_d6e60f20 order:0
+edge #expr_070f664d left #expr_e5741075
+edge #stmt_fd932b85 expr #expr_070f664d
+edge #expr_be6f1652 left #expr_27046e07
+edge #stmt_cd66f7b4 expr #expr_be6f1652
+edge #block_eec8002e statement #stmt_cd66f7b4 order:0
+edge #stmt_fd932b85 then #block_eec8002e
+edge #block_60f55d60 statement #stmt_fd932b85 order:1
+edge #stmt_bf4a7a10 expr #expr_73ec3581
+edge #block_60f55d60 statement #stmt_bf4a7a10 order:2
+edge #decl_f39cf6c4 body #block_60f55d60
+edge #mod_cb8d825e function #decl_449ec825 order:2
+edge #decl_449ec825 param #param_096707a0 order:0
+edge #param_096707a0 type #type_0e0bbded
+edge #decl_449ec825 returnType #type_3ea335f5
+edge #stmt_9f0e7d5e expr #expr_3b673d70
+edge #stmt_9f0e7d5e declaredType #type_7e59a4a4
+edge #block_22947264 statement #stmt_9f0e7d5e order:0
+edge #expr_ad05de03 left #expr_a4607d6e
+edge #expr_8f51fe92 left #expr_9212dca0
+edge #expr_79cc95f7 left #expr_8f51fe92
+edge #expr_8a5f92e8 left #expr_79cc95f7
+edge #expr_ad05de03 right #expr_8a5f92e8 order:1
+edge #stmt_f744c881 expr #expr_ad05de03
+edge #expr_3c87c53c left #expr_093a284b
+edge #expr_c32b2818 left #expr_3c87c53c
+edge #expr_faa8176a left #expr_c32b2818
+edge #expr_faa8176a arg #expr_dc0c907a order:0
+edge #stmt_09d3528f expr #expr_faa8176a
+edge #stmt_09d3528f declaredType #type_0ec84c2f
+edge #block_06524ce8 statement #stmt_09d3528f order:0
+edge #expr_e1dec17b left #expr_86c28d2e
+edge #expr_7650d24d left #expr_e1dec17b
+edge #expr_39d5f035 left #expr_8b81bcdb
+edge #expr_04362c11 left #expr_39d5f035
+edge #expr_d30c6dea left #expr_04362c11
+edge #expr_a0770afc left #expr_e867891d
+edge #expr_d30c6dea arg #expr_a0770afc order:0
+edge #expr_d30c6dea arg #expr_399a8778 order:1
+edge #expr_7650d24d right #expr_d30c6dea order:1
+edge #stmt_8986f41a expr #expr_7650d24d
+edge #stmt_c08ce3b3 expr #expr_02286f9a
+edge #block_800ae75e statement #stmt_c08ce3b3 order:0
+edge #stmt_8986f41a then #block_800ae75e
+edge #block_06524ce8 statement #stmt_8986f41a order:1
+edge #stmt_ff23d698 target #expr_0df23ebd
+edge #expr_d52e1320 left #expr_1dd672d2
+edge #expr_d52e1320 right #expr_db05c518 order:1
+edge #stmt_ff23d698 expr #expr_d52e1320
+edge #block_06524ce8 statement #stmt_ff23d698 order:2
+edge #stmt_f744c881 then #block_06524ce8
+edge #block_22947264 statement #stmt_f744c881 order:1
+edge #stmt_8a3e0222 expr #expr_22806d18
+edge #block_22947264 statement #stmt_8a3e0222 order:2
+edge #decl_449ec825 body #block_22947264
+edge #mod_cb8d825e function #decl_31a28ce6 order:3
+edge #decl_31a28ce6 param #param_623942ef order:0
+edge #param_623942ef type #type_b94966a4
+edge #decl_31a28ce6 returnType #type_5a2e6563
+edge #expr_4f2e526f left #expr_8b503782
+edge #expr_4f2e526f arg #expr_b229c581 order:0
+edge #stmt_13ba3744 expr #expr_4f2e526f
+edge #stmt_13ba3744 declaredType #type_7f554208
+edge #block_73b41c61 statement #stmt_13ba3744 order:0
+edge #expr_0c1a27bd left #expr_cd3a0404
+edge #stmt_7b1512ba expr #expr_0c1a27bd
+edge #expr_c8cba62c left #expr_34c2a654
+edge #expr_a0af8cee left #expr_c8cba62c
+edge #expr_666cbd60 left #expr_a0af8cee
+edge #expr_af9e4610 left #expr_73a4ae98
+edge #expr_f97789f9 left #expr_af9e4610
+edge #expr_f97789f9 right #expr_aa62cc07 order:1
+edge #expr_666cbd60 arg #expr_f97789f9 order:0
+edge #stmt_34ca7d7f expr #expr_666cbd60
+edge #stmt_34ca7d7f declaredType #type_153a25f1
+edge #block_2b73a63e statement #stmt_34ca7d7f order:0
+edge #expr_ba59c3a8 left #expr_fba043a6
+edge #stmt_56c6eb32 expr #expr_ba59c3a8
+edge #expr_4e59fa2b left #expr_93482e46
+edge #stmt_2814394d expr #expr_4e59fa2b
+edge #block_62d1c373 statement #stmt_2814394d order:0
+edge #stmt_56c6eb32 then #block_62d1c373
+edge #block_2b73a63e statement #stmt_56c6eb32 order:1
+edge #stmt_8bbf2c0f expr #expr_7590ee72
+edge #block_2b73a63e statement #stmt_8bbf2c0f order:2
+edge #stmt_7b1512ba then #block_2b73a63e
+edge #block_73b41c61 statement #stmt_7b1512ba order:1
+edge #stmt_4294557b expr #expr_5fb15f5d
+edge #block_73b41c61 statement #stmt_4294557b order:2
+edge #decl_31a28ce6 body #block_73b41c61
+edge #mod_cb8d825e function #decl_bd0ef1cd order:4
+edge #decl_bd0ef1cd param #param_a40da1dc order:0
+edge #param_a40da1dc type #type_ae7d3ebc
+edge #decl_bd0ef1cd returnType #type_91687716
+edge #expr_9d608bef left #expr_aa5961e8
+edge #expr_851e8a4d left #expr_9d608bef
+edge #expr_9ed20c76 left #expr_851e8a4d
+edge #expr_9ed20c76 arg #expr_8f2eae29 order:0
+edge #stmt_e23e6b62 expr #expr_9ed20c76
+edge #stmt_e23e6b62 declaredType #type_374dc25f
+edge #block_295dc54f statement #stmt_e23e6b62 order:0
+edge #expr_3faebe51 left #expr_5ed1c572
+edge #stmt_5f39da7f expr #expr_3faebe51
+edge #expr_7e8295bd left #expr_6a83c71c
+edge #expr_d7cb5a64 left #expr_7e8295bd
+edge #expr_b27f600b left #expr_d7cb5a64
+edge #expr_e2a6139b left #expr_e131a855
+edge #expr_b27f600b arg #expr_e2a6139b order:0
+edge #stmt_be2c2ddf expr #expr_b27f600b
+edge #block_904ed6c2 statement #stmt_be2c2ddf order:0
+edge #stmt_5f39da7f then #block_904ed6c2
+edge #block_295dc54f statement #stmt_5f39da7f order:1
+edge #stmt_b9c369f2 expr #expr_0e47411f
+edge #block_295dc54f statement #stmt_b9c369f2 order:2
+edge #decl_bd0ef1cd body #block_295dc54f

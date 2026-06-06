@@ -1,0 +1,54 @@
+zero-graph v1
+origin source-text
+module "net"
+hash "graph:b815e2ca6f0975fd"
+
+node #mod_fd0498ac Module name:"net" path:"std/net.0" line:1 column:1
+node #decl_48acccc9-7644 Function name:"__zero_std_net_localhost" type:"Address" path:"std/net.0" line:1 column:1
+node #param_c332deef Param name:"port" type:"u16" path:"std/net.0" line:1 column:29
+node #type_73ef1ff7 TypeRef type:"u16" path:"std/net.0" line:1 column:29
+node #type_81a0ce6f TypeRef type:"Address" path:"std/net.0" line:1 column:1
+node #block_85b61c60 Block name:"body" path:"std/net.0" line:1 column:1
+node #stmt_290cdae3 Return path:"std/net.0" line:2 column:5
+node #expr_c3db580a MethodCall name:"address" path:"std/net.0" line:2 column:27
+node #expr_9751be0b FieldAccess name:"address" path:"std/net.0" line:2 column:20
+node #expr_699a942c FieldAccess name:"net" path:"std/net.0" line:2 column:16
+node #expr_ffa0a657 Identifier name:"std" path:"std/net.0" line:2 column:12
+node #expr_16630a70 Literal type:"String" value:"localhost" path:"std/net.0" line:2 column:28
+node #expr_1110436e Identifier name:"port" path:"std/net.0" line:2 column:41
+node #decl_48acccc9-bdf4 Function name:"__zero_std_net_loopback" type:"Address" path:"std/net.0" line:5 column:1
+node #param_45efd0d4 Param name:"port" type:"u16" path:"std/net.0" line:5 column:28
+node #type_5ca2d0b0 TypeRef type:"u16" path:"std/net.0" line:5 column:28
+node #type_3f6b1eca TypeRef type:"Address" path:"std/net.0" line:5 column:1
+node #block_c33e77ed Block name:"body" path:"std/net.0" line:5 column:1
+node #stmt_d2ec531b Return path:"std/net.0" line:6 column:5
+node #expr_24651e48 MethodCall name:"address" path:"std/net.0" line:6 column:27
+node #expr_679fc6dc FieldAccess name:"address" path:"std/net.0" line:6 column:20
+node #expr_63edd515 FieldAccess name:"net" path:"std/net.0" line:6 column:16
+node #expr_ec981475 Identifier name:"std" path:"std/net.0" line:6 column:12
+node #expr_d0de9d29 Literal type:"String" value:"127.0.0.1" path:"std/net.0" line:6 column:28
+node #expr_a67ecb83 Identifier name:"port" path:"std/net.0" line:6 column:41
+edge #mod_fd0498ac function #decl_48acccc9-7644 order:0
+edge #decl_48acccc9-7644 param #param_c332deef order:0
+edge #param_c332deef type #type_73ef1ff7
+edge #decl_48acccc9-7644 returnType #type_81a0ce6f
+edge #expr_699a942c left #expr_ffa0a657
+edge #expr_9751be0b left #expr_699a942c
+edge #expr_c3db580a left #expr_9751be0b
+edge #expr_c3db580a arg #expr_16630a70 order:0
+edge #expr_c3db580a arg #expr_1110436e order:1
+edge #stmt_290cdae3 expr #expr_c3db580a
+edge #block_85b61c60 statement #stmt_290cdae3 order:0
+edge #decl_48acccc9-7644 body #block_85b61c60
+edge #mod_fd0498ac function #decl_48acccc9-bdf4 order:1
+edge #decl_48acccc9-bdf4 param #param_45efd0d4 order:0
+edge #param_45efd0d4 type #type_5ca2d0b0
+edge #decl_48acccc9-bdf4 returnType #type_3f6b1eca
+edge #expr_63edd515 left #expr_ec981475
+edge #expr_679fc6dc left #expr_63edd515
+edge #expr_24651e48 left #expr_679fc6dc
+edge #expr_24651e48 arg #expr_d0de9d29 order:0
+edge #expr_24651e48 arg #expr_a67ecb83 order:1
+edge #stmt_d2ec531b expr #expr_24651e48
+edge #block_c33e77ed statement #stmt_d2ec531b order:0
+edge #decl_48acccc9-bdf4 body #block_c33e77ed

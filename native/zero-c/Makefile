@@ -10,8 +10,10 @@ SRC := $(wildcard src/*.c)
 INCLUDES := $(wildcard include/*.h) $(wildcard src/*.h) $(wildcard src/*.inc)
 EMBEDDED_SKILLS := src/embedded_skills.inc
 EMBEDDED_STDLIB := src/embedded_stdlib.inc
+EMBEDDED_STDLIB_GRAPH := src/embedded_stdlib_graph.inc
 SKILL_INPUTS := $(ROOT)/skills/zero/SKILL.md $(wildcard $(ROOT)/skill-data/*.md)
 STDLIB_INPUTS := $(wildcard $(ROOT)/std/*.0)
+STDLIB_GRAPH_INPUTS := $(wildcard $(ROOT)/std/*.graph)
 
 .PHONY: all clean install-local FORCE
 
@@ -30,7 +32,10 @@ $(EMBEDDED_SKILLS): $(ROOT)/scripts/embed-skill-data.mts $(SKILL_INPUTS)
 $(EMBEDDED_STDLIB): $(ROOT)/scripts/embed-stdlib-sources.mts $(STDLIB_INPUTS)
 	cd $(ROOT) && $(NODE_TS) scripts/embed-stdlib-sources.mts
 
-$(OUT): $(BUILD_STAMP) $(SRC) $(INCLUDES) $(EMBEDDED_SKILLS) $(EMBEDDED_STDLIB)
+$(EMBEDDED_STDLIB_GRAPH): $(ROOT)/scripts/embed-stdlib-graphs.mts $(STDLIB_GRAPH_INPUTS)
+	cd $(ROOT) && $(NODE_TS) scripts/embed-stdlib-graphs.mts
+
+$(OUT): $(BUILD_STAMP) $(SRC) $(INCLUDES) $(EMBEDDED_SKILLS) $(EMBEDDED_STDLIB) $(EMBEDDED_STDLIB_GRAPH)
 	@mkdir -p $(dir $(OUT))
 	$(CC) $(CFLAGS) -Iinclude $(SRC) -o $(OUT)
 

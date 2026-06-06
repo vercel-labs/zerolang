@@ -432,6 +432,25 @@ static bool llvm_emit_byte_view_len_value(LlvmEmit *emit, const IrValue *value, 
   return llvm_cast_value(emit, value, len, value->type, out, diag);
 }
 
+static bool llvm_emit_byte_view_remaining_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag) {
+  LlvmValue view;
+  if (!llvm_emit_byte_view(emit, value->left, &view, diag) || !llvm_ensure_byte_view_pair(emit, &view, value->left, diag)) return false;
+  LlvmValue offset;
+  if (!llvm_emit_usize_value(emit, value->index, &offset, diag)) return false;
+  LlvmValue past_end, diff, remaining;
+  llvm_temp(emit, &past_end, IR_TYPE_BOOL);
+  zbuf_appendf(emit->out, "  %s = icmp uge i64 %s, %s\n", past_end.text, offset.text, view.len);
+  llvm_temp(emit, &diff, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = sub i64 %s, %s\n", diff.text, view.len, offset.text);
+  llvm_temp(emit, &remaining, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, i64 0, i64 %s\n", remaining.text, past_end.text, diff.text);
+  if (value->type == IR_TYPE_USIZE) {
+    *out = remaining;
+    return true;
+  }
+  return llvm_cast_value(emit, value, remaining, value->type, out, diag);
+}
+
 static bool llvm_emit_byte_view_index_load_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag) {
   LlvmValue view;
   if (!llvm_emit_byte_view(emit, value->left, &view, diag)) return false;
@@ -640,6 +659,22 @@ static bool llvm_emit_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out
       zbuf_appendf(emit->out, "  %s = icmp %s %s %s, %s\n", out->text, pred, llvm_type_name(left.type), left.text, right.text);
       return true;
     }
+    case IR_VALUE_HTTP_STATUS_CLASS: {
+      LlvmValue status;
+      if (!llvm_emit_value(emit, value->left, &status, diag)) return false;
+      if (status.type != IR_TYPE_U16) {
+        llvm_set_diag(diag, emit->program, value->line, value->column, "LLVM IR backend HTTP status predicate expects a u16 status", "invalid HTTP status predicate", "lower");
+        return false;
+      }
+      LlvmValue lower_ok, upper_ok;
+      llvm_temp(emit, &lower_ok, IR_TYPE_BOOL);
+      zbuf_appendf(emit->out, "  %s = icmp uge %s %s, %u\n", lower_ok.text, llvm_type_name(status.type), status.text, (unsigned)value->int_value);
+      llvm_temp(emit, &upper_ok, IR_TYPE_BOOL);
+      zbuf_appendf(emit->out, "  %s = icmp ult %s %s, %u\n", upper_ok.text, llvm_type_name(status.type), status.text, (unsigned)value->data_len);
+      llvm_temp(emit, out, IR_TYPE_BOOL);
+      zbuf_appendf(emit->out, "  %s = and i1 %s, %s\n", out->text, lower_ok.text, upper_ok.text);
+      return true;
+    }
     case IR_VALUE_CALL:
       return llvm_emit_call(emit, value, out, diag);
     case IR_VALUE_INDEX_LOAD: {
@@ -660,6 +695,8 @@ static bool llvm_emit_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out
       return llvm_emit_byte_view(emit, value, out, diag);
     case IR_VALUE_BYTE_VIEW_LEN:
       return llvm_emit_byte_view_len_value(emit, value, out, diag);
+    case IR_VALUE_BYTE_VIEW_REMAINING:
+      return llvm_emit_byte_view_remaining_value(emit, value, out, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD:
       return llvm_emit_byte_view_index_load_value(emit, value, out, diag);
     case IR_VALUE_BYTE_COPY:

@@ -268,6 +268,11 @@ static bool coff_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrV
     z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
     return true;
   }
+  if (view && view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) {
+    if (!coff_emit_value(text, fun, view, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
+    return true;
+  }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     return coff_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
   }
@@ -286,6 +291,7 @@ static bool coff_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrV
     return true;
   }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
+  if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
     if (!((local->is_array && view->field_offset == 0) || local->is_record)) return coff_diag_at(diag, "direct COFF byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
@@ -330,6 +336,11 @@ static void coff_emit_move_byte_view_pair(ZBuf *text, unsigned ptr_reg, unsigned
 static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, CoffEmitContext *ctx, ZDiag *diag) {
   if (ptr_reg == len_reg) return coff_diag_at(diag, "direct COFF byte-view pair requires distinct destination registers", view ? view->line : 1, view ? view->column : 1, "invalid byte-view registers");
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
+    if (!coff_emit_value(text, fun, view, ctx, diag)) return false;
+    coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
+    return true;
+  }
+  if (view && view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) {
     if (!coff_emit_value(text, fun, view, ctx, diag)) return false;
     coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
     return true;
@@ -619,6 +630,412 @@ static bool coff_emit_field_load_value(ZBuf *text, const IrFunction *fun, const 
   coff_emit_load_field_eax(text, fun, value->local_index, value->field_offset, value->type); return true;
 }
 
+static CoffRuntimeHelper coff_str_runtime_helper(IrStrOp op) {
+  switch (op) {
+    case IR_STR_OP_REVERSE:
+    case IR_STR_OP_COPY:
+    case IR_STR_OP_TO_LOWER_ASCII:
+    case IR_STR_OP_TO_UPPER_ASCII:
+      return COFF_RUNTIME_STR_BUFFER_OP;
+    case IR_STR_OP_CONCAT:
+      return COFF_RUNTIME_STR_CONCAT;
+    case IR_STR_OP_REPEAT:
+      return COFF_RUNTIME_STR_REPEAT;
+    case IR_STR_OP_TRIM_ASCII:
+    case IR_STR_OP_TRIM_START_ASCII:
+    case IR_STR_OP_TRIM_END_ASCII:
+    case IR_STR_OP_PATH_BASENAME:
+    case IR_STR_OP_PATH_DIRNAME:
+    case IR_STR_OP_PATH_EXTENSION:
+    case IR_STR_OP_PARSE_TOKEN_ASCII:
+      return COFF_RUNTIME_STR_TRIM_OP;
+    case IR_STR_OP_COUNT_BYTE:
+      return COFF_RUNTIME_STR_COUNT_BYTE;
+    case IR_STR_OP_STARTS_WITH:
+    case IR_STR_OP_ENDS_WITH:
+    case IR_STR_OP_CONTAINS:
+    case IR_STR_OP_COUNT:
+    case IR_STR_OP_INDEX_OF:
+    case IR_STR_OP_LAST_INDEX_OF:
+    case IR_STR_OP_EQL_IGNORE_ASCII_CASE:
+      return COFF_RUNTIME_STR_PAIR_OP;
+    case IR_STR_OP_WORD_COUNT_ASCII:
+      return COFF_RUNTIME_STR_WORD_COUNT_ASCII;
+  }
+  return COFF_RUNTIME_HELPER_COUNT;
+}
+
+static void coff_emit_runtime_call_begin_with_temps(ZBuf *text, unsigned abi_slots, unsigned temp_slots, unsigned *temp_base, unsigned *total_stack) {
+  unsigned stack_slots = abi_slots > 4u ? abi_slots - 4u : 0u;
+  unsigned call_frame = 32u + stack_slots * 8u;
+  *temp_base = call_frame;
+  *total_stack = (unsigned)z_coff_align(call_frame + temp_slots * 8u, 16);
+  z_x64_emit_sub_rsp(text, *total_stack);
+}
+
+static void coff_emit_runtime_call_begin(ZBuf *text, unsigned abi_slots, unsigned *temp_base, unsigned *total_stack) {
+  coff_emit_runtime_call_begin_with_temps(text, abi_slots, abi_slots, temp_base, total_stack);
+}
+
+static void coff_emit_runtime_temp_slot_store(ZBuf *text, unsigned temp_base, unsigned slot, unsigned reg) {
+  z_x64_emit_store_rsp_offset_reg(text, reg, temp_base + slot * 8u, true);
+}
+
+static void coff_emit_runtime_temp_slot_load(ZBuf *text, unsigned temp_base, unsigned slot, unsigned reg) {
+  z_x64_emit_load_rsp_offset_reg(text, reg, temp_base + slot * 8u, true);
+}
+
+static bool coff_emit_runtime_arg_byte_view(ZBuf *text, const IrFunction *fun, const IrValue *arg, unsigned temp_base, unsigned *slot, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!coff_emit_byte_view_pair(text, fun, arg, 0, 2, ctx, diag)) return false;
+  coff_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  coff_emit_runtime_temp_slot_store(text, temp_base, *slot + 1u, 2);
+  *slot += 2u;
+  return true;
+}
+
+static bool coff_emit_runtime_arg_value(ZBuf *text, const IrFunction *fun, const IrValue *arg, unsigned temp_base, unsigned *slot, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!coff_emit_value(text, fun, arg, ctx, diag)) return false;
+  coff_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  *slot += 1u;
+  return true;
+}
+
+static void coff_emit_runtime_arg_u32(ZBuf *text, uint32_t value, unsigned temp_base, unsigned *slot) {
+  z_x64_emit_mov_reg_u32(text, 0, value);
+  coff_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  *slot += 1u;
+}
+
+static void coff_emit_runtime_arg_stack_ptr(ZBuf *text, unsigned temp_base, unsigned pointer_slot, unsigned *slot) {
+  z_x64_emit_lea_rsp_offset_reg(text, 0, temp_base + pointer_slot * 8u);
+  coff_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  *slot += 1u;
+}
+
+static bool coff_emit_runtime_call(ZBuf *text, CoffEmitContext *ctx, CoffRuntimeHelper helper, unsigned abi_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
+  static const unsigned param_regs[] = {1, 2, 8, 9};
+  for (unsigned slot = 4; slot < abi_slots; slot++) {
+    coff_emit_runtime_temp_slot_load(text, temp_base, slot, 0);
+    z_x64_emit_store_rsp_offset_reg(text, 0, 32u + (slot - 4u) * 8u, true);
+  }
+  unsigned register_slots = abi_slots < 4u ? abi_slots : 4u;
+  for (unsigned slot = 0; slot < register_slots; slot++) {
+    coff_emit_runtime_temp_slot_load(text, temp_base, slot, param_regs[slot]);
+  }
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  return z_coff_record_value_runtime_patch(ctx, helper, patch, value, diag);
+}
+
+static void coff_emit_encoded_len_to_maybe_byte_view_regs(ZBuf *text) {
+  z_x64_emit_mov_rcx_from_rax(text, false);
+  z_x64_emit_test_rax_rax(text, true);
+  size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
+  z_x64_emit_add_reg_i8(text, 1, -1, true);
+  z_x64_patch_rel32(text, none, text->len);
+  z_x64_emit_test_rax_rax(text, true);
+  z_x64_emit_setcc_al_to_bool(text, 0x95);
+}
+
+static bool coff_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value) return coff_diag_at(diag, "direct COFF std.str helper requires an operation", 1, 1, "missing std.str helper");
+  IrStrOp op = (IrStrOp)value->int_value;
+  CoffRuntimeHelper helper = coff_str_runtime_helper(op);
+  if (helper == COFF_RUNTIME_HELPER_COUNT) return coff_diag_at(diag, "direct COFF std.str runtime helper is unsupported", value->line, value->column, "unsupported std.str op");
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  switch (op) {
+    case IR_STR_OP_REVERSE:
+    case IR_STR_OP_COPY:
+    case IR_STR_OP_TO_LOWER_ASCII:
+    case IR_STR_OP_TO_UPPER_ASCII:
+      if (value->arg_len != 2) return coff_diag_at(diag, "direct COFF std.str buffer helper requires two arguments", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 5, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+      coff_emit_runtime_arg_u32(text, (uint32_t)op, temp_base, &slot);
+      if (!coff_emit_runtime_call(text, ctx, helper, 5, temp_base, value, diag)) return false;
+      coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+      z_x64_emit_add_rsp(text, total_stack);
+      coff_emit_encoded_len_to_maybe_byte_view_regs(text);
+      return true;
+    case IR_STR_OP_CONCAT:
+      if (value->arg_len != 3) return coff_diag_at(diag, "direct COFF std.str.concat requires three arguments", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 6, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[2], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_call(text, ctx, helper, 6, temp_base, value, diag)) return false;
+      coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+      z_x64_emit_add_rsp(text, total_stack);
+      coff_emit_encoded_len_to_maybe_byte_view_regs(text);
+      return true;
+    case IR_STR_OP_REPEAT:
+      if (value->arg_len != 3) return coff_diag_at(diag, "direct COFF std.str.repeat requires three arguments", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 5, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_value(text, fun, value->args[2], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_call(text, ctx, helper, 5, temp_base, value, diag)) return false;
+      coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+      z_x64_emit_add_rsp(text, total_stack);
+      coff_emit_encoded_len_to_maybe_byte_view_regs(text);
+      return true;
+    case IR_STR_OP_TRIM_ASCII:
+    case IR_STR_OP_TRIM_START_ASCII:
+    case IR_STR_OP_TRIM_END_ASCII:
+    case IR_STR_OP_PATH_BASENAME:
+    case IR_STR_OP_PATH_DIRNAME:
+    case IR_STR_OP_PATH_EXTENSION:
+    case IR_STR_OP_PARSE_TOKEN_ASCII:
+      if (value->arg_len != 1) return coff_diag_at(diag, "direct COFF std.str borrowed-slice helper requires one argument", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 3, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      coff_emit_runtime_arg_u32(text, (uint32_t)op, temp_base, &slot);
+      if (!coff_emit_runtime_call(text, ctx, helper, 3, temp_base, value, diag)) return false;
+      z_x64_emit_mov_rcx_from_rax(text, true);
+      z_x64_emit_shr_reg_imm8(text, 1, 32, true);
+      z_x64_emit_mov_reg_from_reg(text, 2, 0, false);
+      coff_emit_runtime_temp_slot_load(text, temp_base, 0, 0);
+      z_x64_emit_add_rsp(text, total_stack);
+      z_x64_emit_add_reg_reg(text, 0, 1, true);
+      return true;
+    case IR_STR_OP_COUNT_BYTE:
+      if (value->arg_len != 2) return coff_diag_at(diag, "direct COFF std.str.countByte requires two arguments", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 3, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_value(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_call(text, ctx, helper, 3, temp_base, value, diag)) return false;
+      z_x64_emit_add_rsp(text, total_stack);
+      return true;
+    case IR_STR_OP_STARTS_WITH:
+    case IR_STR_OP_ENDS_WITH:
+    case IR_STR_OP_CONTAINS:
+    case IR_STR_OP_COUNT:
+    case IR_STR_OP_INDEX_OF:
+    case IR_STR_OP_LAST_INDEX_OF:
+    case IR_STR_OP_EQL_IGNORE_ASCII_CASE:
+      if (value->arg_len != 2) return coff_diag_at(diag, "direct COFF std.str pair helper requires two arguments", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 5, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+      coff_emit_runtime_arg_u32(text, (uint32_t)op, temp_base, &slot);
+      if (!coff_emit_runtime_call(text, ctx, helper, 5, temp_base, value, diag)) return false;
+      z_x64_emit_add_rsp(text, total_stack);
+      if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+      return true;
+    case IR_STR_OP_WORD_COUNT_ASCII:
+      if (value->arg_len != 1) return coff_diag_at(diag, "direct COFF std.str.wordCountAscii requires one argument", value->line, value->column, "invalid std.str arity");
+      coff_emit_runtime_call_begin(text, 2, &temp_base, &total_stack);
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_call(text, ctx, helper, 2, temp_base, value, diag)) return false;
+      z_x64_emit_add_rsp(text, total_stack);
+      return true;
+    default:
+      return coff_diag_at(diag, "direct COFF std.str runtime helper is unsupported", value->line, value->column, "unsupported std.str op");
+  }
+}
+
+static void coff_emit_normalize_u32_maybe_result(ZBuf *text) {
+  z_x64_emit_mov_reg_from_reg(text, 2, 0, true);
+  z_x64_emit_mov_reg_from_reg(text, 2, 2, false);
+  z_x64_emit_shr_reg_imm8(text, 0, 32, true);
+}
+
+static void coff_emit_normalize_ascii_maybe_result(ZBuf *text) {
+  z_x64_emit_mov_reg_from_reg(text, 8, 0, true);
+  z_x64_emit_mov_reg_from_reg(text, 2, 8, false);
+  z_x64_emit_and_reg_u32(text, 2, 0xffu, false);
+  z_x64_emit_test_rax_rax(text, false);
+  z_x64_emit_setcc_al_to_bool(text, 0x95);
+}
+
+static void coff_emit_normalize_len_plus_one_maybe_result(ZBuf *text) {
+  z_x64_emit_mov_reg_from_reg(text, 8, 0, true);
+  z_x64_emit_mov_reg_from_reg(text, 2, 8, true);
+  z_x64_emit_mov_reg_u32(text, 1, 1);
+  z_x64_emit_sub_reg_reg(text, 2, 1, true);
+  z_x64_emit_test_reg_reg(text, 8, true);
+  z_x64_emit_setcc_al_to_bool(text, 0x95);
+}
+
+static bool coff_emit_ascii_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len != 1) return coff_diag_at(diag, "direct COFF std.ascii helper requires one byte argument", value ? value->line : 1, value ? value->column : 1, "invalid std.ascii arity");
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 2, &temp_base, &total_stack);
+  if (!coff_emit_runtime_arg_value(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+  coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_ASCII_OP, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  if (value->type == IR_TYPE_MAYBE_SCALAR) coff_emit_normalize_ascii_maybe_result(text);
+  else if (value->type == IR_TYPE_BOOL || value->type == IR_TYPE_U8) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
+static bool coff_emit_text_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len != 1) return coff_diag_at(diag, "direct COFF std.text helper requires one byte-view argument", value ? value->line : 1, value ? value->column : 1, "invalid std.text arity");
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 3, &temp_base, &total_stack);
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+  coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_TEXT_OP, 3, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  if (value->type == IR_TYPE_MAYBE_SCALAR) coff_emit_normalize_len_plus_one_maybe_result(text);
+  else if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
+static bool coff_emit_parse_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len < 1 || value->arg_len > 2) return coff_diag_at(diag, "direct COFF std.parse helper requires one byte-view argument and optional byte argument", value ? value->line : 1, value ? value->column : 1, "invalid std.parse arity");
+  bool maybe_usize = value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE;
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  if (maybe_usize) {
+    const unsigned abi_slots = 3;
+    const unsigned result_slot = 3;
+    coff_emit_runtime_call_begin_with_temps(text, abi_slots, result_slot + 2u, &temp_base, &total_stack);
+    coff_emit_runtime_arg_stack_ptr(text, temp_base, result_slot, &slot);
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PARSE_USIZE, abi_slots, temp_base, value, diag)) return false;
+    coff_emit_runtime_temp_slot_load(text, temp_base, result_slot, 0);
+    coff_emit_runtime_temp_slot_load(text, temp_base, result_slot + 1u, 2);
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
+  coff_emit_runtime_call_begin(text, 4, &temp_base, &total_stack);
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+  if (value->arg_len == 2) {
+    if (!coff_emit_runtime_arg_value(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+  } else {
+    coff_emit_runtime_arg_u32(text, 0, temp_base, &slot);
+  }
+  coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PARSE_OP, 4, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  if (value->type == IR_TYPE_MAYBE_SCALAR) coff_emit_normalize_u32_maybe_result(text);
+  else if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
+static bool coff_emit_parse_u32_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value) return coff_diag_at(diag, "direct COFF parse value is missing", 1, 1, "missing parse value");
+  if (value->kind != IR_VALUE_PARSE_I32 && value->kind != IR_VALUE_PARSE_U32) {
+    return coff_diag_at(diag, "direct COFF parse value kind is invalid for this helper", value->line, value->column, "invalid parse value");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 2, &temp_base, &total_stack);
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!coff_emit_runtime_call(text, ctx, value->kind == IR_VALUE_PARSE_I32 ? COFF_RUNTIME_PARSE_I32 : COFF_RUNTIME_PARSE_U32, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  coff_emit_normalize_u32_maybe_result(text);
+  return true;
+}
+
+static CoffRuntimeHelper coff_fmt_runtime_helper(IrValueKind kind) {
+  switch (kind) {
+    case IR_VALUE_FMT_BOOL: return COFF_RUNTIME_FMT_BOOL;
+    case IR_VALUE_FMT_HEX_U32: return COFF_RUNTIME_FMT_HEX_U32;
+    case IR_VALUE_FMT_I32: return COFF_RUNTIME_FMT_I32;
+    case IR_VALUE_FMT_U32: return COFF_RUNTIME_FMT_U32;
+    case IR_VALUE_FMT_USIZE: return COFF_RUNTIME_FMT_USIZE;
+    default: return COFF_RUNTIME_HELPER_COUNT;
+  }
+}
+
+static bool coff_emit_fmt_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) return coff_diag_at(diag, "direct COFF std.fmt helper requires a buffer and value", value ? value->line : 1, value ? value->column : 1, "missing fmt input");
+  CoffRuntimeHelper helper = coff_fmt_runtime_helper(value->kind);
+  if (helper == COFF_RUNTIME_HELPER_COUNT) return coff_diag_at(diag, "direct COFF std.fmt helper is unsupported", value->line, value->column, "unsupported std.fmt helper");
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 3, &temp_base, &total_stack);
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!coff_emit_runtime_arg_value(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!coff_emit_runtime_call(text, ctx, helper, 3, temp_base, value, diag)) return false;
+  coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+  z_x64_emit_add_rsp(text, total_stack);
+  z_x64_emit_mov_rcx_from_rax(text, false);
+  z_x64_emit_test_rax_rax(text, true);
+  z_x64_emit_setcc_al_to_bool(text, 0x95);
+  return true;
+}
+
+static bool coff_emit_math_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 3) {
+    return coff_diag_at(diag, "direct COFF std.math helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.math arity");
+  }
+
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  bool maybe_usize = value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE;
+  if (maybe_usize) {
+    const unsigned abi_slots = 5;
+    const unsigned result_slot = 5;
+    coff_emit_runtime_call_begin_with_temps(text, abi_slots, result_slot + 2u, &temp_base, &total_stack);
+    coff_emit_runtime_arg_stack_ptr(text, temp_base, result_slot, &slot);
+    for (size_t i = 0; i < 3; i++) {
+      if (i < value->arg_len) {
+        if (!coff_emit_runtime_arg_value(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+      } else {
+        coff_emit_runtime_arg_u32(text, 0, temp_base, &slot);
+      }
+    }
+    coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+    if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_MATH_USIZE_OP, abi_slots, temp_base, value, diag)) return false;
+    coff_emit_runtime_temp_slot_load(text, temp_base, result_slot, 0);
+    coff_emit_runtime_temp_slot_load(text, temp_base, result_slot + 1u, 2);
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
+
+  coff_emit_runtime_call_begin(text, 4, &temp_base, &total_stack);
+  for (size_t i = 0; i < 3; i++) {
+    if (i < value->arg_len) {
+      if (!coff_emit_runtime_arg_value(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    } else {
+      coff_emit_runtime_arg_u32(text, 0, temp_base, &slot);
+    }
+  }
+  coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_MATH_OP, 4, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  if (value->type == IR_TYPE_MAYBE_SCALAR) coff_emit_normalize_u32_maybe_result(text);
+  else if (value->type == IR_TYPE_I32 || value->type == IR_TYPE_U32 || value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
+static bool coff_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 3) {
+    return coff_diag_at(diag, "direct COFF std.time helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.time arity");
+  }
+
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 4, &temp_base, &total_stack);
+  for (size_t i = 0; i < 3; i++) {
+    if (i < value->arg_len) {
+      if (!coff_emit_runtime_arg_value(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    } else {
+      coff_emit_runtime_arg_u32(text, 0, temp_base, &slot);
+    }
+  }
+  coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_TIME_OP, 4, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  if (value->type == IR_TYPE_I32 || value->type == IR_TYPE_U32 || value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
 static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value) return coff_diag_at(diag, "direct COFF expression is missing", 1, 1, "missing expression");
   switch (value->kind) {
@@ -668,6 +1085,21 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
     case IR_VALUE_BYTE_FILL: return coff_emit_byte_fill_value(text, fun, value, ctx, diag);
     case IR_VALUE_BYTE_VIEW_EQ: return coff_emit_byte_view_eq_value(text, fun, value, ctx, diag);
     case IR_VALUE_CRC32_BYTES: return coff_emit_crc32_bytes_value(text, fun, value, ctx, diag);
+    case IR_VALUE_ASCII_RUNTIME: return coff_emit_ascii_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_TEXT_RUNTIME: return coff_emit_text_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PARSE_RUNTIME: return coff_emit_parse_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PARSE_I32:
+    case IR_VALUE_PARSE_U32:
+      return coff_emit_parse_u32_value(text, fun, value, ctx, diag);
+    case IR_VALUE_FMT_BOOL:
+    case IR_VALUE_FMT_HEX_U32:
+    case IR_VALUE_FMT_I32:
+    case IR_VALUE_FMT_U32:
+    case IR_VALUE_FMT_USIZE:
+      return coff_emit_fmt_value(text, fun, value, ctx, diag);
+    case IR_VALUE_STR_RUNTIME: return coff_emit_str_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_TIME_RUNTIME: return coff_emit_time_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_MATH_RUNTIME: return coff_emit_math_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: return coff_emit_byte_view_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_INDEX_LOAD: return coff_emit_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_FIELD_LOAD: return coff_emit_field_load_value(text, fun, value, diag);
@@ -734,7 +1166,13 @@ static bool coff_emit_local_set_maybe_byte_view(ZBuf *text, const IrFunction *fu
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 2, 16, false);
     return true;
   }
-  if (instr->value && instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
+  if (instr->value && (instr->value->kind == IR_VALUE_CALL ||
+                       instr->value->kind == IR_VALUE_STR_RUNTIME ||
+                       instr->value->kind == IR_VALUE_FMT_BOOL ||
+                       instr->value->kind == IR_VALUE_FMT_HEX_U32 ||
+                       instr->value->kind == IR_VALUE_FMT_I32 ||
+                       instr->value->kind == IR_VALUE_FMT_U32 ||
+                       instr->value->kind == IR_VALUE_FMT_USIZE) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 2, 8, true);
@@ -779,7 +1217,13 @@ static bool coff_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun, 
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 8, true);
     return true;
   }
-  if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+  if ((instr->value->kind == IR_VALUE_CALL ||
+       instr->value->kind == IR_VALUE_ASCII_RUNTIME ||
+       instr->value->kind == IR_VALUE_TEXT_RUNTIME ||
+       instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
+       instr->value->kind == IR_VALUE_PARSE_I32 ||
+       instr->value->kind == IR_VALUE_PARSE_U32 ||
+       instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 2, 8, true);
@@ -904,7 +1348,7 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
     case IR_INSTR_EXPR: return !instr->value || coff_emit_value(text, fun, instr->value, ctx, diag);
     case IR_INSTR_RETURN:
       if (fun->return_type == IR_TYPE_BYTE_VIEW && instr->value) {
-        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_BYTE_VIEW) {
+        if ((instr->value->kind == IR_VALUE_CALL || instr->value->kind == IR_VALUE_STR_RUNTIME) && instr->value->type == IR_TYPE_BYTE_VIEW) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else {
           if (!coff_emit_byte_view_pair(text, fun, instr->value, 0, 2, ctx, diag)) return false;
@@ -913,7 +1357,13 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
         return true;
       }
       if (fun->return_type == IR_TYPE_MAYBE_BYTE_VIEW && instr->value) {
-        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
+        if ((instr->value->kind == IR_VALUE_CALL ||
+             instr->value->kind == IR_VALUE_STR_RUNTIME ||
+             instr->value->kind == IR_VALUE_FMT_BOOL ||
+             instr->value->kind == IR_VALUE_FMT_HEX_U32 ||
+             instr->value->kind == IR_VALUE_FMT_I32 ||
+             instr->value->kind == IR_VALUE_FMT_U32 ||
+             instr->value->kind == IR_VALUE_FMT_USIZE) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) {
           if (!instr->value->data_len) {
@@ -931,7 +1381,13 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
         return true;
       }
       if (fun->return_type == IR_TYPE_MAYBE_SCALAR && instr->value) {
-        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+        if ((instr->value->kind == IR_VALUE_CALL ||
+             instr->value->kind == IR_VALUE_ASCII_RUNTIME ||
+             instr->value->kind == IR_VALUE_TEXT_RUNTIME ||
+             instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
+             instr->value->kind == IR_VALUE_PARSE_I32 ||
+             instr->value->kind == IR_VALUE_PARSE_U32 ||
+             instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
           z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
@@ -1097,9 +1553,12 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
   }
 
   unsigned section_symbol_count = has_rodata ? 2u : 1u;
-  bool has_world_write = z_coff_runtime_patch_count(&ctx, COFF_RUNTIME_WORLD_WRITE) > 0;
-  size_t external_symbol_base = section_symbol_count + program->function_len + (has_world_write ? 1u : 0u);
-  size_t symbol_len = program->function_len + (has_world_write ? 1u : 0u) + program->external_function_len;
+  size_t runtime_symbol_count = 0;
+  for (unsigned helper = 0; helper < COFF_RUNTIME_HELPER_COUNT; helper++) {
+    if (z_coff_runtime_patch_count(&ctx, (CoffRuntimeHelper)helper) > 0) runtime_symbol_count++;
+  }
+  size_t external_symbol_base = section_symbol_count + program->function_len + runtime_symbol_count;
+  size_t symbol_len = program->function_len + runtime_symbol_count + program->external_function_len;
   ZCoffSymbol *symbols = z_checked_calloc(symbol_len, sizeof(ZCoffSymbol));
   if (!symbols) {
     z_coff_emit_context_free(&ctx);
@@ -1112,8 +1571,12 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
   z_coff_patch_call_patches(&text, &ctx);
   z_coff_append_call_relocations(&relocs, &ctx, section_symbol_count, (uint32_t)external_symbol_base);
   z_coff_append_rodata_relocations(&relocs, &ctx, 1u);
-  uint32_t world_write_symbol_index = section_symbol_count + (uint32_t)program->function_len;
-  z_coff_append_runtime_relocations(&relocs, &ctx, COFF_RUNTIME_WORLD_WRITE, world_write_symbol_index);
+  uint32_t runtime_symbol_index = section_symbol_count + (uint32_t)program->function_len;
+  for (unsigned helper = 0; helper < COFF_RUNTIME_HELPER_COUNT; helper++) {
+    CoffRuntimeHelper runtime_helper = (CoffRuntimeHelper)helper;
+    if (z_coff_runtime_patch_count(&ctx, runtime_helper) == 0) continue;
+    z_coff_append_runtime_relocations(&relocs, &ctx, runtime_helper, runtime_symbol_index++);
+  }
 
   for (size_t i = 0; i < program->function_len; i++) {
     symbols[i] = (ZCoffSymbol){
@@ -1124,16 +1587,19 @@ bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *
       .storage_class = program->functions[i].is_exported ? Z_COFF_SYMBOL_EXTERNAL : Z_COFF_SYMBOL_STATIC
     };
   }
-  if (has_world_write) {
-    symbols[program->function_len] = (ZCoffSymbol){
-      .name = z_coff_runtime_helper_symbol(COFF_RUNTIME_WORLD_WRITE),
+  size_t symbol_index = program->function_len;
+  for (unsigned helper = 0; helper < COFF_RUNTIME_HELPER_COUNT; helper++) {
+    CoffRuntimeHelper runtime_helper = (CoffRuntimeHelper)helper;
+    if (z_coff_runtime_patch_count(&ctx, runtime_helper) == 0) continue;
+    symbols[symbol_index++] = (ZCoffSymbol){
+      .name = z_coff_runtime_helper_symbol(runtime_helper),
       .section_number = 0,
       .type = 0x20,
       .storage_class = Z_COFF_SYMBOL_EXTERNAL
     };
   }
   for (size_t i = 0; i < program->external_function_len; i++) {
-    symbols[program->function_len + (has_world_write ? 1u : 0u) + i] = (ZCoffSymbol){
+    symbols[symbol_index + i] = (ZCoffSymbol){
       .name = program->external_functions[i].symbol ? program->external_functions[i].symbol : "zero_external",
       .section_number = 0,
       .type = 0x20,

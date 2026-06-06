@@ -481,9 +481,11 @@ async function assertCommandStateContracts() {
 async function assertResolutionFacts() {
   const stdStr = await zeroJson(["graph", "dump", "--json", "examples/std-str.0"]);
   assert.equal(stdStr.resolution.ok, true, "std-str graph resolution");
-  const reverse = findResolutionReference(stdStr, (item) => item.kind === "call" && item.qualifiedName === "std.str.reverse", "source-backed std call should resolve");
-  assert.equal(reverse.targetKind, "sourceBackedStdlib", "source-backed std call target kind");
-  assert.match(reverse.symbolId, /^symbol:std\.str::value\.__zero_std_str_reverse$/, "source-backed std call symbol");
+  const grepScan = await zeroJson(["graph", "dump", "--json", "examples/grep-scan.0"]);
+  assert.equal(grepScan.resolution.ok, true, "grep-scan graph resolution");
+  const nextLine = findResolutionReference(grepScan, (item) => item.kind === "call" && item.qualifiedName === "std.io.nextLine", "graph-backed std call should resolve");
+  assert.equal(nextLine.targetKind, "graphBackedStdlib", "graph-backed std call target kind");
+  assert.match(nextLine.symbolId, /^symbol:std\.io::value\.__zero_std_io_next_line$/, "graph-backed std call symbol");
   const memEql = findResolutionReference(stdStr, (item) => item.kind === "call" && item.qualifiedName === "std.mem.eql", "table std helper should resolve");
   assert.equal(memEql.targetKind, "stdlib", "table std helper target kind");
   assert.equal(memEql.symbolId, "stdlib:std.mem.eql", "table std helper symbol");
@@ -736,19 +738,19 @@ async function assertSemanticFacts() {
   assert(hello.semantics.targetRequirements.some((item) => item.qualifiedName === "world.out.write" && item.capability === "io" && item.targetSupport === "world-io"), "world write target requirement fact");
   assert(hello.semantics.repairs.some((item) => item.qualifiedName === "world.out.write" && item.requiresCheck === false && item.repair.id === "check-fallible-call"), "world write top-level repair fact");
 
-  const stdStr = await zeroJson(["graph", "dump", "--json", "examples/std-str.0"]);
-  const reverse = findSemanticCall(stdStr, (item) => item.qualifiedName === "std.str.reverse", "std str reverse semantic call fact");
-  assert.equal(reverse.contract.kind, "sourceBackedStdlib", "source-backed std contract kind");
-  assert.equal(reverse.contract.sourceModule, "std.str", "source-backed std module");
-  assert.equal(reverse.contract.returnType, "Maybe<Span<u8>>", "source-backed std return type");
-  assert.equal(reverse.contract.capability, "memory", "source-backed std capability");
-  assert.equal(reverse.contract.targetSupport, "target-neutral", "source-backed std target support");
-  assert.equal(reverse.contract.expectedArgCount, 2, "source-backed std arg count");
-  assert.deepEqual(reverse.contract.expectedArgTypes, ["MutSpan<u8>", "Span<u8>"], "source-backed std arg types");
-  assertSemanticCallResolutionMatches(stdStr, reverse, "source-backed std semantic resolution");
-  assert.equal(reverse.resolution.targetKind, "sourceBackedStdlib", "source-backed std semantic resolution kind");
-  assert.equal(reverse.resolution.symbolId, "symbol:std.str::value.__zero_std_str_reverse", "source-backed std semantic symbol");
-  assert.deepEqual(reverse.args.map((item) => item.type), ["MutSpan<u8>", "String"], "source-backed std actual arg types");
+  const grepScan = await zeroJson(["graph", "dump", "--json", "examples/grep-scan.0"]);
+  const nextLine = findSemanticCall(grepScan, (item) => item.qualifiedName === "std.io.nextLine", "std io nextLine semantic call fact");
+  assert.equal(nextLine.contract.kind, "graphBackedStdlib", "graph-backed std contract kind");
+  assert.equal(nextLine.contract.sourceModule, "std.io", "graph-backed std module");
+  assert.equal(nextLine.contract.returnType, "Maybe<Span<u8>>", "graph-backed std return type");
+  assert.equal(nextLine.contract.capability, "memory", "graph-backed std capability");
+  assert.equal(nextLine.contract.targetSupport, "target-neutral", "graph-backed std target support");
+  assert.equal(nextLine.contract.expectedArgCount, 2, "graph-backed std arg count");
+  assert.deepEqual(nextLine.contract.expectedArgTypes, ["Span<u8>", "usize"], "graph-backed std arg types");
+  assertSemanticCallResolutionMatches(grepScan, nextLine, "graph-backed std semantic resolution");
+  assert.equal(nextLine.resolution.targetKind, "graphBackedStdlib", "graph-backed std semantic resolution kind");
+  assert.equal(nextLine.resolution.symbolId, "symbol:std.io::value.__zero_std_io_next_line", "graph-backed std semantic symbol");
+  assert.deepEqual(nextLine.args.map((item) => item.type), ["Span<u8>", "usize"], "graph-backed std actual arg types");
 
   const stdFs = await zeroJson(["graph", "dump", "--json", "conformance/native/pass/std-fs-fallible.0"]);
   const stdFsMain = stdFs.semantics.functions.find((item) => item.name === "main");

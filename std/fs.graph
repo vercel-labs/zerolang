@@ -1,0 +1,688 @@
+zero-graph v1
+origin source-text
+module "fs"
+hash "graph:0e5e1003aa6dee7b"
+
+node #mod_9439ed96 Module name:"fs" path:"std/fs.0" line:1 column:1
+node #decl_0a59ffad Function name:"__zero_std_fs_read_file" type:"Maybe<usize>" path:"std/fs.0" line:1 column:1
+node #param_9e9819e0 Param name:"fs" type:"Fs" path:"std/fs.0" line:1 column:28
+node #type_920bb8d5 TypeRef type:"Fs" path:"std/fs.0" line:1 column:28
+node #param_b5a834af Param name:"path" type:"String" path:"std/fs.0" line:1 column:36
+node #type_0cd57ac7 TypeRef type:"String" path:"std/fs.0" line:1 column:36
+node #param_614c17fc Param name:"buffer" type:"MutSpan<u8>" path:"std/fs.0" line:1 column:50
+node #type_319964a2 TypeRef type:"MutSpan<u8>" path:"std/fs.0" line:1 column:50
+node #type_712fd0cb TypeRef type:"Maybe<usize>" path:"std/fs.0" line:1 column:1
+node #block_c4aef936 Block name:"body" path:"std/fs.0" line:1 column:1
+node #stmt_bed8b3a1 Let name:"opened" type:"Maybe<owned<File>>" path:"std/fs.0" line:2 column:5
+node #expr_b9dac637 MethodCall name:"open" path:"std/fs.0" line:2 column:49
+node #expr_0f9954ce FieldAccess name:"open" path:"std/fs.0" line:2 column:45
+node #expr_2cc9c73e FieldAccess name:"fs" path:"std/fs.0" line:2 column:42
+node #expr_a97c8045 Identifier name:"std" path:"std/fs.0" line:2 column:38
+node #expr_f470b500 Identifier name:"fs" path:"std/fs.0" line:2 column:50
+node #expr_ff5fff21 Identifier name:"path" path:"std/fs.0" line:2 column:54
+node #type_f34df9f6 TypeRef type:"Maybe<owned<File>>" path:"std/fs.0" line:2 column:5
+node #stmt_f4e733dc If path:"std/fs.0" line:3 column:5
+node #expr_f6a02df7 FieldAccess name:"has" path:"std/fs.0" line:3 column:15
+node #expr_c5bac4d4 Identifier name:"opened" path:"std/fs.0" line:3 column:8
+node #block_344a0470 Block name:"then" path:"std/fs.0" line:3 column:5
+node #stmt_38787936 Let name:"file" type:"owned<File>" path:"std/fs.0" line:4 column:9 mutable:true
+node #expr_5a55322b FieldAccess name:"value" path:"std/fs.0" line:4 column:40
+node #expr_765962f5 Identifier name:"opened" path:"std/fs.0" line:4 column:33
+node #type_6d2ca3e7 TypeRef type:"owned<File>" path:"std/fs.0" line:4 column:9
+node #stmt_c9cc141b Let name:"total" type:"usize" path:"std/fs.0" line:5 column:9 mutable:true
+node #expr_ab99d747 Literal value:"0" path:"std/fs.0" line:5 column:28
+node #type_3535f963 TypeRef type:"usize" path:"std/fs.0" line:5 column:9
+node #stmt_a3951edd-724e Let name:"ok" type:"Bool" path:"std/fs.0" line:6 column:9 mutable:true
+node #expr_79517352 Literal value:"true" path:"std/fs.0" line:6 column:24
+node #type_6bc4ad56 TypeRef type:"Bool" path:"std/fs.0" line:6 column:9
+node #stmt_a3951edd-d164 Let name:"done" type:"Bool" path:"std/fs.0" line:7 column:9 mutable:true
+node #expr_11fc19bd Literal value:"false" path:"std/fs.0" line:7 column:26
+node #type_f4d93739 TypeRef type:"Bool" path:"std/fs.0" line:7 column:9
+node #stmt_af25faa4 While path:"std/fs.0" line:8 column:9
+node #expr_6a2f3450 Call name:"&&" path:"std/fs.0" line:8 column:27
+node #expr_8a047a08 Call name:"&&" path:"std/fs.0" line:8 column:18
+node #expr_e5a5042b Identifier name:"ok" path:"std/fs.0" line:8 column:15
+node #expr_455692ac Call name:"==" path:"std/fs.0" line:8 column:21
+node #expr_6aaa875f Identifier name:"done" path:"std/fs.0" line:8 column:22
+node #expr_10b666c7 Literal value:"false" path:"std/fs.0" line:8 column:21
+node #expr_c7057bc4 Call name:"<" path:"std/fs.0" line:8 column:36
+node #expr_4d18c137 Identifier name:"total" path:"std/fs.0" line:8 column:30
+node #expr_60115aeb MethodCall name:"len" path:"std/fs.0" line:8 column:49
+node #expr_878768e6 FieldAccess name:"len" path:"std/fs.0" line:8 column:46
+node #expr_90b822a2 FieldAccess name:"mem" path:"std/fs.0" line:8 column:42
+node #expr_6fa1860c Identifier name:"std" path:"std/fs.0" line:8 column:38
+node #expr_70a2a60c Identifier name:"buffer" path:"std/fs.0" line:8 column:50
+node #block_d8b565cf Block name:"then" path:"std/fs.0" line:8 column:9
+node #stmt_7bf44626 Let name:"count" type:"Maybe<usize>" path:"std/fs.0" line:9 column:13
+node #expr_96cf99f2 MethodCall name:"read" path:"std/fs.0" line:9 column:50
+node #expr_55b9b613 FieldAccess name:"read" path:"std/fs.0" line:9 column:46
+node #expr_d66af038 FieldAccess name:"fs" path:"std/fs.0" line:9 column:43
+node #expr_2cda0a42 Identifier name:"std" path:"std/fs.0" line:9 column:39
+node #expr_7156243a Borrow path:"std/fs.0" line:9 column:51 mutable:true
+node #expr_9149af05 Identifier name:"file" path:"std/fs.0" line:9 column:56
+node #expr_96fe4247 Slice path:"std/fs.0" line:9 column:68
+node #expr_e7e01b91 Identifier name:"buffer" path:"std/fs.0" line:9 column:62
+node #expr_e4d6ab7c Identifier name:"total" path:"std/fs.0" line:9 column:69
+node #type_aa0a89e0 TypeRef type:"Maybe<usize>" path:"std/fs.0" line:9 column:13
+node #stmt_0b6d60c8 If path:"std/fs.0" line:10 column:13
+node #expr_be2dd383 Call name:"==" path:"std/fs.0" line:10 column:16
+node #expr_c24b375c FieldAccess name:"has" path:"std/fs.0" line:10 column:23
+node #expr_a7bdc999 Identifier name:"count" path:"std/fs.0" line:10 column:17
+node #expr_cf6531c3 Literal value:"false" path:"std/fs.0" line:10 column:16
+node #block_f2a9b66c Block name:"then" path:"std/fs.0" line:10 column:13
+node #stmt_449a5afa Assignment path:"std/fs.0" line:11 column:17
+node #expr_b9f8e34a Identifier name:"ok" path:"std/fs.0" line:11 column:17
+node #expr_7387aeb6 Literal value:"false" path:"std/fs.0" line:11 column:22
+node #block_e9f4b397 Block name:"else" path:"std/fs.0" line:10 column:13
+node #stmt_265afbaa If path:"std/fs.0" line:12 column:15
+node #expr_41e30ec2 Call name:"==" path:"std/fs.0" line:12 column:35
+node #expr_d97699b2 FieldAccess name:"value" path:"std/fs.0" line:12 column:29
+node #expr_8e19ec64 Identifier name:"count" path:"std/fs.0" line:12 column:23
+node #expr_2f419f31 Literal value:"0" path:"std/fs.0" line:12 column:38
+node #block_4a5077c1 Block name:"then" path:"std/fs.0" line:12 column:15
+node #stmt_ff20b765 Assignment path:"std/fs.0" line:13 column:17
+node #expr_f695f6f7 Identifier name:"done" path:"std/fs.0" line:13 column:17
+node #expr_8ab1ce83 Literal value:"true" path:"std/fs.0" line:13 column:24
+node #block_7daff1ea Block name:"else" path:"std/fs.0" line:12 column:15
+node #stmt_1585b2c0 Assignment path:"std/fs.0" line:15 column:17
+node #expr_e3dd4b45 Identifier name:"total" path:"std/fs.0" line:15 column:17
+node #expr_92f0ba64 Call name:"+" path:"std/fs.0" line:15 column:31
+node #expr_c703e23a Identifier name:"total" path:"std/fs.0" line:15 column:25
+node #expr_5b35908f FieldAccess name:"value" path:"std/fs.0" line:15 column:39
+node #expr_a1326e94 Identifier name:"count" path:"std/fs.0" line:15 column:33
+node #stmt_77659a7e-4e63 If path:"std/fs.0" line:18 column:9
+node #expr_c3e2575c Call name:"&&" path:"std/fs.0" line:18 column:15
+node #expr_4b47fadd Identifier name:"ok" path:"std/fs.0" line:18 column:12
+node #expr_26c5de1a Call name:"==" path:"std/fs.0" line:18 column:18
+node #expr_5ba59655 Identifier name:"done" path:"std/fs.0" line:18 column:19
+node #expr_8e0ff80d Literal value:"false" path:"std/fs.0" line:18 column:18
+node #block_7eec6771 Block name:"then" path:"std/fs.0" line:18 column:9
+node #stmt_bc5373b7 Let name:"extra" type:"[1]u8" path:"std/fs.0" line:19 column:13 mutable:true
+node #expr_2bba2c24 ArrayLiteral path:"std/fs.0" line:19 column:32
+node #expr_80acf291 Literal value:"0_u8" path:"std/fs.0" line:19 column:33
+node #type_c363cb49 TypeRef type:"[1]u8" path:"std/fs.0" line:19 column:13
+node #stmt_6f92d57c Let name:"count" type:"Maybe<usize>" path:"std/fs.0" line:20 column:13
+node #expr_ef5d6a19 MethodCall name:"read" path:"std/fs.0" line:20 column:50
+node #expr_842c1b76 FieldAccess name:"read" path:"std/fs.0" line:20 column:46
+node #expr_c4691c66 FieldAccess name:"fs" path:"std/fs.0" line:20 column:43
+node #expr_2c3e27ca Identifier name:"std" path:"std/fs.0" line:20 column:39
+node #expr_7f8db8f1 Borrow path:"std/fs.0" line:20 column:51 mutable:true
+node #expr_1b427d62 Identifier name:"file" path:"std/fs.0" line:20 column:56
+node #expr_ab40b7dd Identifier name:"extra" path:"std/fs.0" line:20 column:62
+node #type_239ce797 TypeRef type:"Maybe<usize>" path:"std/fs.0" line:20 column:13
+node #stmt_52ed8aba If path:"std/fs.0" line:21 column:13
+node #expr_c3082496 Call name:"==" path:"std/fs.0" line:21 column:16
+node #expr_e72e8048 FieldAccess name:"has" path:"std/fs.0" line:21 column:23
+node #expr_f15c0105 Identifier name:"count" path:"std/fs.0" line:21 column:17
+node #expr_edc89b07 Literal value:"false" path:"std/fs.0" line:21 column:16
+node #block_15f0c661 Block name:"then" path:"std/fs.0" line:21 column:13
+node #stmt_f959197d Assignment path:"std/fs.0" line:22 column:17
+node #expr_8c7da619 Identifier name:"ok" path:"std/fs.0" line:22 column:17
+node #expr_4ddd6209 Literal value:"false" path:"std/fs.0" line:22 column:22
+node #block_7b178f8a Block name:"else" path:"std/fs.0" line:21 column:13
+node #stmt_1471f6bb If path:"std/fs.0" line:23 column:15
+node #expr_2b9844a7 Call name:"==" path:"std/fs.0" line:23 column:35
+node #expr_574d7b9a FieldAccess name:"value" path:"std/fs.0" line:23 column:29
+node #expr_afd3cfbf Identifier name:"count" path:"std/fs.0" line:23 column:23
+node #expr_f92d0621 Literal value:"0" path:"std/fs.0" line:23 column:38
+node #block_0cd4936c Block name:"then" path:"std/fs.0" line:23 column:15
+node #stmt_4d52a1cf Assignment path:"std/fs.0" line:24 column:17
+node #expr_6e9e8793 Identifier name:"done" path:"std/fs.0" line:24 column:17
+node #expr_825a306b Literal value:"true" path:"std/fs.0" line:24 column:24
+node #block_041f9097 Block name:"else" path:"std/fs.0" line:23 column:15
+node #stmt_a21014ef Assignment path:"std/fs.0" line:26 column:17
+node #expr_72ec9d77 Identifier name:"ok" path:"std/fs.0" line:26 column:17
+node #expr_7fd1be6b Literal value:"false" path:"std/fs.0" line:26 column:22
+node #stmt_23436a6a ExpressionStatement path:"std/fs.0" line:29 column:9
+node #expr_cf9fa4ed MethodCall name:"close" path:"std/fs.0" line:29 column:21
+node #expr_fdc9462d FieldAccess name:"close" path:"std/fs.0" line:29 column:16
+node #expr_f3dca1f5 FieldAccess name:"fs" path:"std/fs.0" line:29 column:13
+node #expr_57d31ad9 Identifier name:"std" path:"std/fs.0" line:29 column:9
+node #expr_45348574 Borrow path:"std/fs.0" line:29 column:22 mutable:true
+node #expr_b5ca5218 Identifier name:"file" path:"std/fs.0" line:29 column:27
+node #stmt_77659a7e-4e63-1 If path:"std/fs.0" line:30 column:9
+node #expr_98c7d3f7 Identifier name:"ok" path:"std/fs.0" line:30 column:12
+node #block_a2afeedf Block name:"then" path:"std/fs.0" line:30 column:9
+node #stmt_5ea87c8e Return path:"std/fs.0" line:31 column:13
+node #expr_6a54e537 Identifier name:"total" path:"std/fs.0" line:31 column:20
+node #stmt_389e81d3 Return path:"std/fs.0" line:33 column:9
+node #expr_b75de340 Literal value:"null" path:"std/fs.0" line:33 column:16
+node #stmt_3afc8399 Return path:"std/fs.0" line:35 column:5
+node #expr_e67af367 Literal value:"null" path:"std/fs.0" line:35 column:12
+node #decl_a22c06a9-558f Function name:"__zero_std_fs_write_file" type:"Bool" path:"std/fs.0" line:38 column:1
+node #param_2de41b47 Param name:"fs" type:"Fs" path:"std/fs.0" line:38 column:29
+node #type_608a84b4 TypeRef type:"Fs" path:"std/fs.0" line:38 column:29
+node #param_9fea6a74 Param name:"path" type:"String" path:"std/fs.0" line:38 column:37
+node #type_33884d10 TypeRef type:"String" path:"std/fs.0" line:38 column:37
+node #param_2c1d89c3 Param name:"bytes" type:"Span<u8>" path:"std/fs.0" line:38 column:51
+node #type_70683cec TypeRef type:"Span<u8>" path:"std/fs.0" line:38 column:51
+node #type_e186e4f6 TypeRef type:"Bool" path:"std/fs.0" line:38 column:1
+node #block_eed9fc95 Block name:"body" path:"std/fs.0" line:38 column:1
+node #stmt_fb1abf4e Let name:"created" type:"Maybe<owned<File>>" path:"std/fs.0" line:39 column:5
+node #expr_d8b891c2 MethodCall name:"create" path:"std/fs.0" line:39 column:52
+node #expr_b763f336 FieldAccess name:"create" path:"std/fs.0" line:39 column:46
+node #expr_88c496ad FieldAccess name:"fs" path:"std/fs.0" line:39 column:43
+node #expr_be890809 Identifier name:"std" path:"std/fs.0" line:39 column:39
+node #expr_7501136c Identifier name:"fs" path:"std/fs.0" line:39 column:53
+node #expr_7ff05d8d Identifier name:"path" path:"std/fs.0" line:39 column:57
+node #type_46bb6183 TypeRef type:"Maybe<owned<File>>" path:"std/fs.0" line:39 column:5
+node #stmt_32007167 If path:"std/fs.0" line:40 column:5
+node #expr_a69855f4 FieldAccess name:"has" path:"std/fs.0" line:40 column:16
+node #expr_822b649a Identifier name:"created" path:"std/fs.0" line:40 column:8
+node #block_e6477ba7 Block name:"then" path:"std/fs.0" line:40 column:5
+node #stmt_84d301f6 Let name:"file" type:"owned<File>" path:"std/fs.0" line:41 column:9 mutable:true
+node #expr_621a3f08 FieldAccess name:"value" path:"std/fs.0" line:41 column:41
+node #expr_fbb65187 Identifier name:"created" path:"std/fs.0" line:41 column:33
+node #type_e5a3d06c TypeRef type:"owned<File>" path:"std/fs.0" line:41 column:9
+node #stmt_67cccab4 Let name:"ok" type:"Bool" path:"std/fs.0" line:42 column:9
+node #expr_3c423ecc MethodCall name:"writeAll" path:"std/fs.0" line:42 column:39
+node #expr_cb122d65 FieldAccess name:"writeAll" path:"std/fs.0" line:42 column:31
+node #expr_330b10f6 FieldAccess name:"fs" path:"std/fs.0" line:42 column:28
+node #expr_d1e51edd Identifier name:"std" path:"std/fs.0" line:42 column:24
+node #expr_c8905844 Borrow path:"std/fs.0" line:42 column:40 mutable:true
+node #expr_5a7adfa7 Identifier name:"file" path:"std/fs.0" line:42 column:45
+node #expr_2fa73348 Identifier name:"bytes" path:"std/fs.0" line:42 column:51
+node #type_d896ed0e TypeRef type:"Bool" path:"std/fs.0" line:42 column:9
+node #stmt_a237b8aa ExpressionStatement path:"std/fs.0" line:43 column:9
+node #expr_1c65ef92 MethodCall name:"close" path:"std/fs.0" line:43 column:21
+node #expr_4d520e8e FieldAccess name:"close" path:"std/fs.0" line:43 column:16
+node #expr_4a6e9a74 FieldAccess name:"fs" path:"std/fs.0" line:43 column:13
+node #expr_43bc740f Identifier name:"std" path:"std/fs.0" line:43 column:9
+node #expr_bfefbbb1 Borrow path:"std/fs.0" line:43 column:22 mutable:true
+node #expr_8f73965a Identifier name:"file" path:"std/fs.0" line:43 column:27
+node #stmt_b59cc7c3 Return path:"std/fs.0" line:44 column:9
+node #expr_48784c9c Identifier name:"ok" path:"std/fs.0" line:44 column:16
+node #stmt_db973756 Return path:"std/fs.0" line:46 column:5
+node #expr_022b0a38 Literal value:"false" path:"std/fs.0" line:46 column:12
+node #decl_a22c06a9-b769 Function name:"__zero_std_fs_copy_file" type:"Bool" path:"std/fs.0" line:49 column:1
+node #param_0abd4063 Param name:"from_path" type:"String" path:"std/fs.0" line:49 column:28
+node #type_7e214c89 TypeRef type:"String" path:"std/fs.0" line:49 column:28
+node #param_ffcdf642 Param name:"to_path" type:"String" path:"std/fs.0" line:49 column:47
+node #type_a4910b4a TypeRef type:"String" path:"std/fs.0" line:49 column:47
+node #param_3b143d91 Param name:"buffer" type:"MutSpan<u8>" path:"std/fs.0" line:49 column:64
+node #type_31a38110 TypeRef type:"MutSpan<u8>" path:"std/fs.0" line:49 column:64
+node #type_d8c37338 TypeRef type:"Bool" path:"std/fs.0" line:49 column:1
+node #block_0431610f Block name:"body" path:"std/fs.0" line:49 column:1
+node #stmt_c1110e36-4e63 If path:"std/fs.0" line:50 column:5
+node #expr_bf2b7c1b Call name:"==" path:"std/fs.0" line:50 column:28
+node #expr_1e8b420f MethodCall name:"len" path:"std/fs.0" line:50 column:19
+node #expr_46c64c9b FieldAccess name:"len" path:"std/fs.0" line:50 column:16
+node #expr_8ac295c2 FieldAccess name:"mem" path:"std/fs.0" line:50 column:12
+node #expr_ac7972f5 Identifier name:"std" path:"std/fs.0" line:50 column:8
+node #expr_548c983b Identifier name:"buffer" path:"std/fs.0" line:50 column:20
+node #expr_8a425efd Literal value:"0" path:"std/fs.0" line:50 column:31
+node #block_ecd9e7a2 Block name:"then" path:"std/fs.0" line:50 column:5
+node #stmt_1a9b64de Return path:"std/fs.0" line:51 column:9
+node #expr_c6b188ef Literal value:"false" path:"std/fs.0" line:51 column:16
+node #stmt_6c5466d1 Let name:"fs" type:"Fs" path:"std/fs.0" line:53 column:5
+node #expr_4a664ba6 MethodCall name:"host" path:"std/fs.0" line:53 column:29
+node #expr_8a775659 FieldAccess name:"host" path:"std/fs.0" line:53 column:25
+node #expr_601a42f7 FieldAccess name:"fs" path:"std/fs.0" line:53 column:22
+node #expr_5ee56cd1 Identifier name:"std" path:"std/fs.0" line:53 column:18
+node #type_a463b21d TypeRef type:"Fs" path:"std/fs.0" line:53 column:5
+node #stmt_3dd7c22f-df6b Let name:"opened" type:"Maybe<owned<File>>" path:"std/fs.0" line:54 column:5
+node #expr_47555407 MethodCall name:"open" path:"std/fs.0" line:54 column:49
+node #expr_13b804ec FieldAccess name:"open" path:"std/fs.0" line:54 column:45
+node #expr_c2373619 FieldAccess name:"fs" path:"std/fs.0" line:54 column:42
+node #expr_209a3104 Identifier name:"std" path:"std/fs.0" line:54 column:38
+node #expr_15e718b2 Identifier name:"fs" path:"std/fs.0" line:54 column:50
+node #expr_20d662d3 Identifier name:"from_path" path:"std/fs.0" line:54 column:54
+node #type_1a981182 TypeRef type:"Maybe<owned<File>>" path:"std/fs.0" line:54 column:5
+node #stmt_c1110e36-4e63-1 If path:"std/fs.0" line:55 column:5
+node #expr_a4c99db1 Call name:"==" path:"std/fs.0" line:55 column:8
+node #expr_040283b6 FieldAccess name:"has" path:"std/fs.0" line:55 column:16
+node #expr_14dbd09b Identifier name:"opened" path:"std/fs.0" line:55 column:9
+node #expr_45fb1d21 Literal value:"false" path:"std/fs.0" line:55 column:8
+node #block_da97cd5c Block name:"then" path:"std/fs.0" line:55 column:5
+node #stmt_a6769f16 Return path:"std/fs.0" line:56 column:9
+node #expr_0ccfbb1d Literal value:"false" path:"std/fs.0" line:56 column:16
+node #stmt_21e97f6e-1bc7 Let name:"src" type:"owned<File>" path:"std/fs.0" line:58 column:5 mutable:true
+node #expr_3aa265cf FieldAccess name:"value" path:"std/fs.0" line:58 column:35
+node #expr_132e5263 Identifier name:"opened" path:"std/fs.0" line:58 column:28
+node #type_1a253cfd TypeRef type:"owned<File>" path:"std/fs.0" line:58 column:5
+node #stmt_3dd7c22f-6a72 Let name:"created" type:"Maybe<owned<File>>" path:"std/fs.0" line:59 column:5
+node #expr_760a002d MethodCall name:"create" path:"std/fs.0" line:59 column:52
+node #expr_3e20487f FieldAccess name:"create" path:"std/fs.0" line:59 column:46
+node #expr_d8c046a4 FieldAccess name:"fs" path:"std/fs.0" line:59 column:43
+node #expr_d51c52ac Identifier name:"std" path:"std/fs.0" line:59 column:39
+node #expr_38c2552f Identifier name:"fs" path:"std/fs.0" line:59 column:53
+node #expr_2dd30b0e Identifier name:"to_path" path:"std/fs.0" line:59 column:57
+node #type_74c68e94 TypeRef type:"Maybe<owned<File>>" path:"std/fs.0" line:59 column:5
+node #stmt_c1110e36-4e63-2 If path:"std/fs.0" line:60 column:5
+node #expr_4e1e40a8 Call name:"==" path:"std/fs.0" line:60 column:8
+node #expr_fb8daa47 FieldAccess name:"has" path:"std/fs.0" line:60 column:17
+node #expr_5bde725f Identifier name:"created" path:"std/fs.0" line:60 column:9
+node #expr_bdfd88ea Literal value:"false" path:"std/fs.0" line:60 column:8
+node #block_7246f02d Block name:"then" path:"std/fs.0" line:60 column:5
+node #stmt_0e0e2626 ExpressionStatement path:"std/fs.0" line:61 column:9
+node #expr_ea69fdbf MethodCall name:"close" path:"std/fs.0" line:61 column:21
+node #expr_1608c5fe FieldAccess name:"close" path:"std/fs.0" line:61 column:16
+node #expr_73d7ab59 FieldAccess name:"fs" path:"std/fs.0" line:61 column:13
+node #expr_64163926 Identifier name:"std" path:"std/fs.0" line:61 column:9
+node #expr_7c7d6ce9 Borrow path:"std/fs.0" line:61 column:22 mutable:true
+node #expr_3a21f250 Identifier name:"src" path:"std/fs.0" line:61 column:27
+node #stmt_5254a9a7 Return path:"std/fs.0" line:62 column:9
+node #expr_fc71b883 Literal value:"false" path:"std/fs.0" line:62 column:16
+node #stmt_21e97f6e-b310 Let name:"dst" type:"owned<File>" path:"std/fs.0" line:64 column:5 mutable:true
+node #expr_2a575e44 FieldAccess name:"value" path:"std/fs.0" line:64 column:36
+node #expr_82572e4f Identifier name:"created" path:"std/fs.0" line:64 column:28
+node #type_e34bfa86 TypeRef type:"owned<File>" path:"std/fs.0" line:64 column:5
+node #stmt_735747f5-724e Let name:"ok" type:"Bool" path:"std/fs.0" line:65 column:5 mutable:true
+node #expr_364aba94 Literal value:"true" path:"std/fs.0" line:65 column:20
+node #type_79e1e980 TypeRef type:"Bool" path:"std/fs.0" line:65 column:5
+node #stmt_735747f5-d164 Let name:"done" type:"Bool" path:"std/fs.0" line:66 column:5 mutable:true
+node #expr_dfc60c63 Literal value:"false" path:"std/fs.0" line:66 column:22
+node #type_bd1964a7 TypeRef type:"Bool" path:"std/fs.0" line:66 column:5
+node #stmt_3e1a6fd0 While path:"std/fs.0" line:67 column:5
+node #expr_61891b0c Call name:"&&" path:"std/fs.0" line:67 column:14
+node #expr_1a156a38 Identifier name:"ok" path:"std/fs.0" line:67 column:11
+node #expr_974fcec5 Call name:"==" path:"std/fs.0" line:67 column:17
+node #expr_7e3e46c2 Identifier name:"done" path:"std/fs.0" line:67 column:18
+node #expr_31434538 Literal value:"false" path:"std/fs.0" line:67 column:17
+node #block_9bdf164b Block name:"then" path:"std/fs.0" line:67 column:5
+node #stmt_280cecf5 Let name:"count" type:"Maybe<usize>" path:"std/fs.0" line:68 column:9
+node #expr_ec82636d MethodCall name:"read" path:"std/fs.0" line:68 column:46
+node #expr_5b74771c FieldAccess name:"read" path:"std/fs.0" line:68 column:42
+node #expr_dc80bfd9 FieldAccess name:"fs" path:"std/fs.0" line:68 column:39
+node #expr_b6fa4a56 Identifier name:"std" path:"std/fs.0" line:68 column:35
+node #expr_c447b6d7 Borrow path:"std/fs.0" line:68 column:47 mutable:true
+node #expr_05e66ac3 Identifier name:"src" path:"std/fs.0" line:68 column:52
+node #expr_bfea61ff Identifier name:"buffer" path:"std/fs.0" line:68 column:57
+node #type_5a7a61a3 TypeRef type:"Maybe<usize>" path:"std/fs.0" line:68 column:9
+node #stmt_4bd9aadf If path:"std/fs.0" line:69 column:9
+node #expr_61fe053f Call name:"==" path:"std/fs.0" line:69 column:12
+node #expr_10b94e35 FieldAccess name:"has" path:"std/fs.0" line:69 column:19
+node #expr_90edddeb Identifier name:"count" path:"std/fs.0" line:69 column:13
+node #expr_64aac6d0 Literal value:"false" path:"std/fs.0" line:69 column:12
+node #block_e363ec4c Block name:"then" path:"std/fs.0" line:69 column:9
+node #stmt_1101feff Assignment path:"std/fs.0" line:70 column:13
+node #expr_68da46b7 Identifier name:"ok" path:"std/fs.0" line:70 column:13
+node #expr_2065f487 Literal value:"false" path:"std/fs.0" line:70 column:18
+node #block_2ad13277 Block name:"else" path:"std/fs.0" line:69 column:9
+node #stmt_1739c4ec If path:"std/fs.0" line:71 column:11
+node #expr_a9797441 Call name:"==" path:"std/fs.0" line:71 column:31
+node #expr_ac9246e5 FieldAccess name:"value" path:"std/fs.0" line:71 column:25
+node #expr_6d2da05f Identifier name:"count" path:"std/fs.0" line:71 column:19
+node #expr_83703e0c Literal value:"0" path:"std/fs.0" line:71 column:34
+node #block_5e412a9a Block name:"then" path:"std/fs.0" line:71 column:11
+node #stmt_712e4463 Assignment path:"std/fs.0" line:72 column:13
+node #expr_756c0e65 Identifier name:"done" path:"std/fs.0" line:72 column:13
+node #expr_9012160d Literal value:"true" path:"std/fs.0" line:72 column:20
+node #block_937e5b4d Block name:"else" path:"std/fs.0" line:71 column:11
+node #stmt_a5d77453 Let name:"chunk" type:"Span<u8>" path:"std/fs.0" line:74 column:13
+node #expr_83d49426 Slice path:"std/fs.0" line:74 column:41
+node #expr_48d95a68 Identifier name:"buffer" path:"std/fs.0" line:74 column:35
+node #expr_8de355ff FieldAccess name:"value" path:"std/fs.0" line:74 column:50
+node #expr_a6eb3c8e Identifier name:"count" path:"std/fs.0" line:74 column:44
+node #type_6b252c82 TypeRef type:"Span<u8>" path:"std/fs.0" line:74 column:13
+node #stmt_f3031f2a If path:"std/fs.0" line:75 column:13
+node #expr_993c3182 Call name:"==" path:"std/fs.0" line:75 column:16
+node #expr_6d3b8208 MethodCall name:"writeAll" path:"std/fs.0" line:75 column:32
+node #expr_204d2606 FieldAccess name:"writeAll" path:"std/fs.0" line:75 column:24
+node #expr_71bb41a3 FieldAccess name:"fs" path:"std/fs.0" line:75 column:21
+node #expr_eb1ac38f Identifier name:"std" path:"std/fs.0" line:75 column:17
+node #expr_2df1a859 Borrow path:"std/fs.0" line:75 column:33 mutable:true
+node #expr_11349f04 Identifier name:"dst" path:"std/fs.0" line:75 column:38
+node #expr_0a934491 Identifier name:"chunk" path:"std/fs.0" line:75 column:43
+node #expr_11ea5058 Literal value:"false" path:"std/fs.0" line:75 column:16
+node #block_fee91cf5 Block name:"then" path:"std/fs.0" line:75 column:13
+node #stmt_8862119b Assignment path:"std/fs.0" line:76 column:17
+node #expr_cf47c4b6 Identifier name:"ok" path:"std/fs.0" line:76 column:17
+node #expr_690ebaaa Literal value:"false" path:"std/fs.0" line:76 column:22
+node #stmt_922d190a-59a3 ExpressionStatement path:"std/fs.0" line:80 column:5
+node #expr_c5e282da MethodCall name:"close" path:"std/fs.0" line:80 column:17
+node #expr_ddd9ed2d FieldAccess name:"close" path:"std/fs.0" line:80 column:12
+node #expr_b88768d7 FieldAccess name:"fs" path:"std/fs.0" line:80 column:9
+node #expr_a33ca184 Identifier name:"std" path:"std/fs.0" line:80 column:5
+node #expr_ccf526b4 Borrow path:"std/fs.0" line:80 column:18 mutable:true
+node #expr_c567e579 Identifier name:"src" path:"std/fs.0" line:80 column:23
+node #stmt_922d190a-59a3-1 ExpressionStatement path:"std/fs.0" line:81 column:5
+node #expr_f4ba5314 MethodCall name:"close" path:"std/fs.0" line:81 column:17
+node #expr_cf0ca0b9 FieldAccess name:"close" path:"std/fs.0" line:81 column:12
+node #expr_375f8fe7 FieldAccess name:"fs" path:"std/fs.0" line:81 column:9
+node #expr_95cee463 Identifier name:"std" path:"std/fs.0" line:81 column:5
+node #expr_8d989808 Borrow path:"std/fs.0" line:81 column:18 mutable:true
+node #expr_9ab98fec Identifier name:"dst" path:"std/fs.0" line:81 column:23
+node #stmt_b891ebf7 Return path:"std/fs.0" line:82 column:5
+node #expr_c4a2cbe5 Identifier name:"ok" path:"std/fs.0" line:82 column:12
+edge #mod_9439ed96 function #decl_0a59ffad order:0
+edge #decl_0a59ffad param #param_9e9819e0 order:0
+edge #param_9e9819e0 type #type_920bb8d5
+edge #decl_0a59ffad param #param_b5a834af order:1
+edge #param_b5a834af type #type_0cd57ac7
+edge #decl_0a59ffad param #param_614c17fc order:2
+edge #param_614c17fc type #type_319964a2
+edge #decl_0a59ffad returnType #type_712fd0cb
+edge #expr_2cc9c73e left #expr_a97c8045
+edge #expr_0f9954ce left #expr_2cc9c73e
+edge #expr_b9dac637 left #expr_0f9954ce
+edge #expr_b9dac637 arg #expr_f470b500 order:0
+edge #expr_b9dac637 arg #expr_ff5fff21 order:1
+edge #stmt_bed8b3a1 expr #expr_b9dac637
+edge #stmt_bed8b3a1 declaredType #type_f34df9f6
+edge #block_c4aef936 statement #stmt_bed8b3a1 order:0
+edge #expr_f6a02df7 left #expr_c5bac4d4
+edge #stmt_f4e733dc expr #expr_f6a02df7
+edge #expr_5a55322b left #expr_765962f5
+edge #stmt_38787936 expr #expr_5a55322b
+edge #stmt_38787936 declaredType #type_6d2ca3e7
+edge #block_344a0470 statement #stmt_38787936 order:0
+edge #stmt_c9cc141b expr #expr_ab99d747
+edge #stmt_c9cc141b declaredType #type_3535f963
+edge #block_344a0470 statement #stmt_c9cc141b order:1
+edge #stmt_a3951edd-724e expr #expr_79517352
+edge #stmt_a3951edd-724e declaredType #type_6bc4ad56
+edge #block_344a0470 statement #stmt_a3951edd-724e order:2
+edge #stmt_a3951edd-d164 expr #expr_11fc19bd
+edge #stmt_a3951edd-d164 declaredType #type_f4d93739
+edge #block_344a0470 statement #stmt_a3951edd-d164 order:3
+edge #expr_8a047a08 left #expr_e5a5042b
+edge #expr_455692ac left #expr_6aaa875f
+edge #expr_455692ac right #expr_10b666c7 order:1
+edge #expr_8a047a08 right #expr_455692ac order:1
+edge #expr_6a2f3450 left #expr_8a047a08
+edge #expr_c7057bc4 left #expr_4d18c137
+edge #expr_90b822a2 left #expr_6fa1860c
+edge #expr_878768e6 left #expr_90b822a2
+edge #expr_60115aeb left #expr_878768e6
+edge #expr_60115aeb arg #expr_70a2a60c order:0
+edge #expr_c7057bc4 right #expr_60115aeb order:1
+edge #expr_6a2f3450 right #expr_c7057bc4 order:1
+edge #stmt_af25faa4 expr #expr_6a2f3450
+edge #expr_d66af038 left #expr_2cda0a42
+edge #expr_55b9b613 left #expr_d66af038
+edge #expr_96cf99f2 left #expr_55b9b613
+edge #expr_7156243a left #expr_9149af05
+edge #expr_96cf99f2 arg #expr_7156243a order:0
+edge #expr_96fe4247 left #expr_e7e01b91
+edge #expr_96fe4247 arg #expr_e4d6ab7c order:0
+edge #expr_96cf99f2 arg #expr_96fe4247 order:1
+edge #stmt_7bf44626 expr #expr_96cf99f2
+edge #stmt_7bf44626 declaredType #type_aa0a89e0
+edge #block_d8b565cf statement #stmt_7bf44626 order:0
+edge #expr_c24b375c left #expr_a7bdc999
+edge #expr_be2dd383 left #expr_c24b375c
+edge #expr_be2dd383 right #expr_cf6531c3 order:1
+edge #stmt_0b6d60c8 expr #expr_be2dd383
+edge #stmt_449a5afa target #expr_b9f8e34a
+edge #stmt_449a5afa expr #expr_7387aeb6
+edge #block_f2a9b66c statement #stmt_449a5afa order:0
+edge #stmt_0b6d60c8 then #block_f2a9b66c
+edge #expr_d97699b2 left #expr_8e19ec64
+edge #expr_41e30ec2 left #expr_d97699b2
+edge #expr_41e30ec2 right #expr_2f419f31 order:1
+edge #stmt_265afbaa expr #expr_41e30ec2
+edge #stmt_ff20b765 target #expr_f695f6f7
+edge #stmt_ff20b765 expr #expr_8ab1ce83
+edge #block_4a5077c1 statement #stmt_ff20b765 order:0
+edge #stmt_265afbaa then #block_4a5077c1
+edge #stmt_1585b2c0 target #expr_e3dd4b45
+edge #expr_92f0ba64 left #expr_c703e23a
+edge #expr_5b35908f left #expr_a1326e94
+edge #expr_92f0ba64 right #expr_5b35908f order:1
+edge #stmt_1585b2c0 expr #expr_92f0ba64
+edge #block_7daff1ea statement #stmt_1585b2c0 order:0
+edge #stmt_265afbaa else #block_7daff1ea order:1
+edge #block_e9f4b397 statement #stmt_265afbaa order:0
+edge #stmt_0b6d60c8 else #block_e9f4b397 order:1
+edge #block_d8b565cf statement #stmt_0b6d60c8 order:1
+edge #stmt_af25faa4 then #block_d8b565cf
+edge #block_344a0470 statement #stmt_af25faa4 order:4
+edge #expr_c3e2575c left #expr_4b47fadd
+edge #expr_26c5de1a left #expr_5ba59655
+edge #expr_26c5de1a right #expr_8e0ff80d order:1
+edge #expr_c3e2575c right #expr_26c5de1a order:1
+edge #stmt_77659a7e-4e63 expr #expr_c3e2575c
+edge #expr_2bba2c24 arg #expr_80acf291 order:0
+edge #stmt_bc5373b7 expr #expr_2bba2c24
+edge #stmt_bc5373b7 declaredType #type_c363cb49
+edge #block_7eec6771 statement #stmt_bc5373b7 order:0
+edge #expr_c4691c66 left #expr_2c3e27ca
+edge #expr_842c1b76 left #expr_c4691c66
+edge #expr_ef5d6a19 left #expr_842c1b76
+edge #expr_7f8db8f1 left #expr_1b427d62
+edge #expr_ef5d6a19 arg #expr_7f8db8f1 order:0
+edge #expr_ef5d6a19 arg #expr_ab40b7dd order:1
+edge #stmt_6f92d57c expr #expr_ef5d6a19
+edge #stmt_6f92d57c declaredType #type_239ce797
+edge #block_7eec6771 statement #stmt_6f92d57c order:1
+edge #expr_e72e8048 left #expr_f15c0105
+edge #expr_c3082496 left #expr_e72e8048
+edge #expr_c3082496 right #expr_edc89b07 order:1
+edge #stmt_52ed8aba expr #expr_c3082496
+edge #stmt_f959197d target #expr_8c7da619
+edge #stmt_f959197d expr #expr_4ddd6209
+edge #block_15f0c661 statement #stmt_f959197d order:0
+edge #stmt_52ed8aba then #block_15f0c661
+edge #expr_574d7b9a left #expr_afd3cfbf
+edge #expr_2b9844a7 left #expr_574d7b9a
+edge #expr_2b9844a7 right #expr_f92d0621 order:1
+edge #stmt_1471f6bb expr #expr_2b9844a7
+edge #stmt_4d52a1cf target #expr_6e9e8793
+edge #stmt_4d52a1cf expr #expr_825a306b
+edge #block_0cd4936c statement #stmt_4d52a1cf order:0
+edge #stmt_1471f6bb then #block_0cd4936c
+edge #stmt_a21014ef target #expr_72ec9d77
+edge #stmt_a21014ef expr #expr_7fd1be6b
+edge #block_041f9097 statement #stmt_a21014ef order:0
+edge #stmt_1471f6bb else #block_041f9097 order:1
+edge #block_7b178f8a statement #stmt_1471f6bb order:0
+edge #stmt_52ed8aba else #block_7b178f8a order:1
+edge #block_7eec6771 statement #stmt_52ed8aba order:2
+edge #stmt_77659a7e-4e63 then #block_7eec6771
+edge #block_344a0470 statement #stmt_77659a7e-4e63 order:5
+edge #expr_f3dca1f5 left #expr_57d31ad9
+edge #expr_fdc9462d left #expr_f3dca1f5
+edge #expr_cf9fa4ed left #expr_fdc9462d
+edge #expr_45348574 left #expr_b5ca5218
+edge #expr_cf9fa4ed arg #expr_45348574 order:0
+edge #stmt_23436a6a expr #expr_cf9fa4ed
+edge #block_344a0470 statement #stmt_23436a6a order:6
+edge #stmt_77659a7e-4e63-1 expr #expr_98c7d3f7
+edge #stmt_5ea87c8e expr #expr_6a54e537
+edge #block_a2afeedf statement #stmt_5ea87c8e order:0
+edge #stmt_77659a7e-4e63-1 then #block_a2afeedf
+edge #block_344a0470 statement #stmt_77659a7e-4e63-1 order:7
+edge #stmt_389e81d3 expr #expr_b75de340
+edge #block_344a0470 statement #stmt_389e81d3 order:8
+edge #stmt_f4e733dc then #block_344a0470
+edge #block_c4aef936 statement #stmt_f4e733dc order:1
+edge #stmt_3afc8399 expr #expr_e67af367
+edge #block_c4aef936 statement #stmt_3afc8399 order:2
+edge #decl_0a59ffad body #block_c4aef936
+edge #mod_9439ed96 function #decl_a22c06a9-558f order:1
+edge #decl_a22c06a9-558f param #param_2de41b47 order:0
+edge #param_2de41b47 type #type_608a84b4
+edge #decl_a22c06a9-558f param #param_9fea6a74 order:1
+edge #param_9fea6a74 type #type_33884d10
+edge #decl_a22c06a9-558f param #param_2c1d89c3 order:2
+edge #param_2c1d89c3 type #type_70683cec
+edge #decl_a22c06a9-558f returnType #type_e186e4f6
+edge #expr_88c496ad left #expr_be890809
+edge #expr_b763f336 left #expr_88c496ad
+edge #expr_d8b891c2 left #expr_b763f336
+edge #expr_d8b891c2 arg #expr_7501136c order:0
+edge #expr_d8b891c2 arg #expr_7ff05d8d order:1
+edge #stmt_fb1abf4e expr #expr_d8b891c2
+edge #stmt_fb1abf4e declaredType #type_46bb6183
+edge #block_eed9fc95 statement #stmt_fb1abf4e order:0
+edge #expr_a69855f4 left #expr_822b649a
+edge #stmt_32007167 expr #expr_a69855f4
+edge #expr_621a3f08 left #expr_fbb65187
+edge #stmt_84d301f6 expr #expr_621a3f08
+edge #stmt_84d301f6 declaredType #type_e5a3d06c
+edge #block_e6477ba7 statement #stmt_84d301f6 order:0
+edge #expr_330b10f6 left #expr_d1e51edd
+edge #expr_cb122d65 left #expr_330b10f6
+edge #expr_3c423ecc left #expr_cb122d65
+edge #expr_c8905844 left #expr_5a7adfa7
+edge #expr_3c423ecc arg #expr_c8905844 order:0
+edge #expr_3c423ecc arg #expr_2fa73348 order:1
+edge #stmt_67cccab4 expr #expr_3c423ecc
+edge #stmt_67cccab4 declaredType #type_d896ed0e
+edge #block_e6477ba7 statement #stmt_67cccab4 order:1
+edge #expr_4a6e9a74 left #expr_43bc740f
+edge #expr_4d520e8e left #expr_4a6e9a74
+edge #expr_1c65ef92 left #expr_4d520e8e
+edge #expr_bfefbbb1 left #expr_8f73965a
+edge #expr_1c65ef92 arg #expr_bfefbbb1 order:0
+edge #stmt_a237b8aa expr #expr_1c65ef92
+edge #block_e6477ba7 statement #stmt_a237b8aa order:2
+edge #stmt_b59cc7c3 expr #expr_48784c9c
+edge #block_e6477ba7 statement #stmt_b59cc7c3 order:3
+edge #stmt_32007167 then #block_e6477ba7
+edge #block_eed9fc95 statement #stmt_32007167 order:1
+edge #stmt_db973756 expr #expr_022b0a38
+edge #block_eed9fc95 statement #stmt_db973756 order:2
+edge #decl_a22c06a9-558f body #block_eed9fc95
+edge #mod_9439ed96 function #decl_a22c06a9-b769 order:2
+edge #decl_a22c06a9-b769 param #param_0abd4063 order:0
+edge #param_0abd4063 type #type_7e214c89
+edge #decl_a22c06a9-b769 param #param_ffcdf642 order:1
+edge #param_ffcdf642 type #type_a4910b4a
+edge #decl_a22c06a9-b769 param #param_3b143d91 order:2
+edge #param_3b143d91 type #type_31a38110
+edge #decl_a22c06a9-b769 returnType #type_d8c37338
+edge #expr_8ac295c2 left #expr_ac7972f5
+edge #expr_46c64c9b left #expr_8ac295c2
+edge #expr_1e8b420f left #expr_46c64c9b
+edge #expr_1e8b420f arg #expr_548c983b order:0
+edge #expr_bf2b7c1b left #expr_1e8b420f
+edge #expr_bf2b7c1b right #expr_8a425efd order:1
+edge #stmt_c1110e36-4e63 expr #expr_bf2b7c1b
+edge #stmt_1a9b64de expr #expr_c6b188ef
+edge #block_ecd9e7a2 statement #stmt_1a9b64de order:0
+edge #stmt_c1110e36-4e63 then #block_ecd9e7a2
+edge #block_0431610f statement #stmt_c1110e36-4e63 order:0
+edge #expr_601a42f7 left #expr_5ee56cd1
+edge #expr_8a775659 left #expr_601a42f7
+edge #expr_4a664ba6 left #expr_8a775659
+edge #stmt_6c5466d1 expr #expr_4a664ba6
+edge #stmt_6c5466d1 declaredType #type_a463b21d
+edge #block_0431610f statement #stmt_6c5466d1 order:1
+edge #expr_c2373619 left #expr_209a3104
+edge #expr_13b804ec left #expr_c2373619
+edge #expr_47555407 left #expr_13b804ec
+edge #expr_47555407 arg #expr_15e718b2 order:0
+edge #expr_47555407 arg #expr_20d662d3 order:1
+edge #stmt_3dd7c22f-df6b expr #expr_47555407
+edge #stmt_3dd7c22f-df6b declaredType #type_1a981182
+edge #block_0431610f statement #stmt_3dd7c22f-df6b order:2
+edge #expr_040283b6 left #expr_14dbd09b
+edge #expr_a4c99db1 left #expr_040283b6
+edge #expr_a4c99db1 right #expr_45fb1d21 order:1
+edge #stmt_c1110e36-4e63-1 expr #expr_a4c99db1
+edge #stmt_a6769f16 expr #expr_0ccfbb1d
+edge #block_da97cd5c statement #stmt_a6769f16 order:0
+edge #stmt_c1110e36-4e63-1 then #block_da97cd5c
+edge #block_0431610f statement #stmt_c1110e36-4e63-1 order:3
+edge #expr_3aa265cf left #expr_132e5263
+edge #stmt_21e97f6e-1bc7 expr #expr_3aa265cf
+edge #stmt_21e97f6e-1bc7 declaredType #type_1a253cfd
+edge #block_0431610f statement #stmt_21e97f6e-1bc7 order:4
+edge #expr_d8c046a4 left #expr_d51c52ac
+edge #expr_3e20487f left #expr_d8c046a4
+edge #expr_760a002d left #expr_3e20487f
+edge #expr_760a002d arg #expr_38c2552f order:0
+edge #expr_760a002d arg #expr_2dd30b0e order:1
+edge #stmt_3dd7c22f-6a72 expr #expr_760a002d
+edge #stmt_3dd7c22f-6a72 declaredType #type_74c68e94
+edge #block_0431610f statement #stmt_3dd7c22f-6a72 order:5
+edge #expr_fb8daa47 left #expr_5bde725f
+edge #expr_4e1e40a8 left #expr_fb8daa47
+edge #expr_4e1e40a8 right #expr_bdfd88ea order:1
+edge #stmt_c1110e36-4e63-2 expr #expr_4e1e40a8
+edge #expr_73d7ab59 left #expr_64163926
+edge #expr_1608c5fe left #expr_73d7ab59
+edge #expr_ea69fdbf left #expr_1608c5fe
+edge #expr_7c7d6ce9 left #expr_3a21f250
+edge #expr_ea69fdbf arg #expr_7c7d6ce9 order:0
+edge #stmt_0e0e2626 expr #expr_ea69fdbf
+edge #block_7246f02d statement #stmt_0e0e2626 order:0
+edge #stmt_5254a9a7 expr #expr_fc71b883
+edge #block_7246f02d statement #stmt_5254a9a7 order:1
+edge #stmt_c1110e36-4e63-2 then #block_7246f02d
+edge #block_0431610f statement #stmt_c1110e36-4e63-2 order:6
+edge #expr_2a575e44 left #expr_82572e4f
+edge #stmt_21e97f6e-b310 expr #expr_2a575e44
+edge #stmt_21e97f6e-b310 declaredType #type_e34bfa86
+edge #block_0431610f statement #stmt_21e97f6e-b310 order:7
+edge #stmt_735747f5-724e expr #expr_364aba94
+edge #stmt_735747f5-724e declaredType #type_79e1e980
+edge #block_0431610f statement #stmt_735747f5-724e order:8
+edge #stmt_735747f5-d164 expr #expr_dfc60c63
+edge #stmt_735747f5-d164 declaredType #type_bd1964a7
+edge #block_0431610f statement #stmt_735747f5-d164 order:9
+edge #expr_61891b0c left #expr_1a156a38
+edge #expr_974fcec5 left #expr_7e3e46c2
+edge #expr_974fcec5 right #expr_31434538 order:1
+edge #expr_61891b0c right #expr_974fcec5 order:1
+edge #stmt_3e1a6fd0 expr #expr_61891b0c
+edge #expr_dc80bfd9 left #expr_b6fa4a56
+edge #expr_5b74771c left #expr_dc80bfd9
+edge #expr_ec82636d left #expr_5b74771c
+edge #expr_c447b6d7 left #expr_05e66ac3
+edge #expr_ec82636d arg #expr_c447b6d7 order:0
+edge #expr_ec82636d arg #expr_bfea61ff order:1
+edge #stmt_280cecf5 expr #expr_ec82636d
+edge #stmt_280cecf5 declaredType #type_5a7a61a3
+edge #block_9bdf164b statement #stmt_280cecf5 order:0
+edge #expr_10b94e35 left #expr_90edddeb
+edge #expr_61fe053f left #expr_10b94e35
+edge #expr_61fe053f right #expr_64aac6d0 order:1
+edge #stmt_4bd9aadf expr #expr_61fe053f
+edge #stmt_1101feff target #expr_68da46b7
+edge #stmt_1101feff expr #expr_2065f487
+edge #block_e363ec4c statement #stmt_1101feff order:0
+edge #stmt_4bd9aadf then #block_e363ec4c
+edge #expr_ac9246e5 left #expr_6d2da05f
+edge #expr_a9797441 left #expr_ac9246e5
+edge #expr_a9797441 right #expr_83703e0c order:1
+edge #stmt_1739c4ec expr #expr_a9797441
+edge #stmt_712e4463 target #expr_756c0e65
+edge #stmt_712e4463 expr #expr_9012160d
+edge #block_5e412a9a statement #stmt_712e4463 order:0
+edge #stmt_1739c4ec then #block_5e412a9a
+edge #expr_83d49426 left #expr_48d95a68
+edge #expr_8de355ff left #expr_a6eb3c8e
+edge #expr_83d49426 arg #expr_8de355ff order:1
+edge #stmt_a5d77453 expr #expr_83d49426
+edge #stmt_a5d77453 declaredType #type_6b252c82
+edge #block_937e5b4d statement #stmt_a5d77453 order:0
+edge #expr_71bb41a3 left #expr_eb1ac38f
+edge #expr_204d2606 left #expr_71bb41a3
+edge #expr_6d3b8208 left #expr_204d2606
+edge #expr_2df1a859 left #expr_11349f04
+edge #expr_6d3b8208 arg #expr_2df1a859 order:0
+edge #expr_6d3b8208 arg #expr_0a934491 order:1
+edge #expr_993c3182 left #expr_6d3b8208
+edge #expr_993c3182 right #expr_11ea5058 order:1
+edge #stmt_f3031f2a expr #expr_993c3182
+edge #stmt_8862119b target #expr_cf47c4b6
+edge #stmt_8862119b expr #expr_690ebaaa
+edge #block_fee91cf5 statement #stmt_8862119b order:0
+edge #stmt_f3031f2a then #block_fee91cf5
+edge #block_937e5b4d statement #stmt_f3031f2a order:1
+edge #stmt_1739c4ec else #block_937e5b4d order:1
+edge #block_2ad13277 statement #stmt_1739c4ec order:0
+edge #stmt_4bd9aadf else #block_2ad13277 order:1
+edge #block_9bdf164b statement #stmt_4bd9aadf order:1
+edge #stmt_3e1a6fd0 then #block_9bdf164b
+edge #block_0431610f statement #stmt_3e1a6fd0 order:10
+edge #expr_b88768d7 left #expr_a33ca184
+edge #expr_ddd9ed2d left #expr_b88768d7
+edge #expr_c5e282da left #expr_ddd9ed2d
+edge #expr_ccf526b4 left #expr_c567e579
+edge #expr_c5e282da arg #expr_ccf526b4 order:0
+edge #stmt_922d190a-59a3 expr #expr_c5e282da
+edge #block_0431610f statement #stmt_922d190a-59a3 order:11
+edge #expr_375f8fe7 left #expr_95cee463
+edge #expr_cf0ca0b9 left #expr_375f8fe7
+edge #expr_f4ba5314 left #expr_cf0ca0b9
+edge #expr_8d989808 left #expr_9ab98fec
+edge #expr_f4ba5314 arg #expr_8d989808 order:0
+edge #stmt_922d190a-59a3-1 expr #expr_f4ba5314
+edge #block_0431610f statement #stmt_922d190a-59a3-1 order:12
+edge #stmt_b891ebf7 expr #expr_c4a2cbe5
+edge #block_0431610f statement #stmt_b891ebf7 order:13
+edge #decl_a22c06a9-b769 body #block_0431610f

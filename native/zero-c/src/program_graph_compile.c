@@ -1,6 +1,7 @@
 #include "program_graph_build.h"
 #include "program_graph_import.h"
 #include "program_graph_lower.h"
+#include "std_source.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,72 @@ bool z_program_graph_source_command_uses_graph_mir(const char *command) {
 
 static bool graph_compile_should_try_typed_mir(const ZProgramGraph *graph) {
   return graph && graph->node_len <= 1024 && graph->edge_len <= 1024;
+}
+
+static char *graph_compile_expr_callee_name(const Expr *expr) {
+  if (!expr) return z_strdup("");
+  if (expr->kind == EXPR_IDENT) return z_strdup(expr->text ? expr->text : "");
+  if (expr->kind == EXPR_MEMBER) {
+    char *left = graph_compile_expr_callee_name(expr->left);
+    size_t left_len = strlen(left);
+    size_t text_len = strlen(expr->text ? expr->text : "");
+    char *name = z_checked_malloc(left_len + text_len + 2);
+    snprintf(name, left_len + text_len + 2, "%s.%s", left, expr->text ? expr->text : "");
+    free(left);
+    return name;
+  }
+  return z_strdup("");
+}
+
+static bool graph_compile_expr_needs_source_std_ast_mir(const Expr *expr) {
+  if (!expr) return false;
+  if (expr->kind == EXPR_CALL) {
+    char *callee = graph_compile_expr_callee_name(expr->left);
+    bool needs_fallback = callee &&
+                          strncmp(callee, "std.path.", strlen("std.path.")) == 0 &&
+                          z_std_source_target_for_public_call(callee) != NULL;
+    free(callee);
+    if (needs_fallback) return true;
+  }
+  if (graph_compile_expr_needs_source_std_ast_mir(expr->left) ||
+      graph_compile_expr_needs_source_std_ast_mir(expr->right)) return true;
+  for (size_t i = 0; i < expr->args.len; i++) {
+    if (graph_compile_expr_needs_source_std_ast_mir(expr->args.items[i])) return true;
+  }
+  for (size_t i = 0; i < expr->fields.len; i++) {
+    if (graph_compile_expr_needs_source_std_ast_mir(expr->fields.items[i].value)) return true;
+  }
+  return false;
+}
+
+static bool graph_compile_stmt_vec_needs_source_std_ast_mir(const StmtVec *body);
+
+static bool graph_compile_stmt_needs_source_std_ast_mir(const Stmt *stmt) {
+  if (!stmt) return false;
+  if (graph_compile_expr_needs_source_std_ast_mir(stmt->target) ||
+      graph_compile_expr_needs_source_std_ast_mir(stmt->expr) ||
+      graph_compile_expr_needs_source_std_ast_mir(stmt->range_end) ||
+      graph_compile_stmt_vec_needs_source_std_ast_mir(&stmt->then_body) ||
+      graph_compile_stmt_vec_needs_source_std_ast_mir(&stmt->else_body)) return true;
+  for (size_t i = 0; i < stmt->match_arms.len; i++) {
+    if (graph_compile_expr_needs_source_std_ast_mir(stmt->match_arms.items[i].guard) ||
+        graph_compile_stmt_vec_needs_source_std_ast_mir(&stmt->match_arms.items[i].body)) return true;
+  }
+  return false;
+}
+
+static bool graph_compile_stmt_vec_needs_source_std_ast_mir(const StmtVec *body) {
+  for (size_t i = 0; body && i < body->len; i++) {
+    if (graph_compile_stmt_needs_source_std_ast_mir(body->items[i])) return true;
+  }
+  return false;
+}
+
+static bool graph_compile_program_needs_source_std_ast_mir(const Program *program) {
+  for (size_t i = 0; program && i < program->functions.len; i++) {
+    if (graph_compile_stmt_vec_needs_source_std_ast_mir(&program->functions.items[i].body)) return true;
+  }
+  return false;
 }
 
 static bool graph_compile_diag(ZDiag *diag, const char *path, const char *message, const char *actual) {
@@ -39,6 +106,7 @@ bool z_program_graph_prepare_source_mir_input(const char *source_path, const ZTa
   if (graph_compile_should_try_typed_mir(&graph)) {
     graph_ir = z_lower_program_graph_with_source(&graph, input, target);
     graph_mir_valid = graph_ir.mir_valid;
+    if (graph_mir_valid && graph_compile_program_needs_source_std_ast_mir(program)) graph_mir_valid = false;
   }
   if (graph_mir_valid) *ir = graph_ir;
   else { z_free_ir_program(&graph_ir); *ir = z_lower_program_with_source(program, input, target); }

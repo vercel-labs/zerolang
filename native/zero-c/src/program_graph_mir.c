@@ -253,6 +253,20 @@ static bool ir_parse_integer_literal(const char *text, unsigned long long *out) 
   return true;
 }
 
+static IrTypeKind ir_integer_literal_suffix_type(const char *text) {
+  const char *suffix = text ? strrchr(text, '_') : NULL;
+  if (!suffix || suffix == text) return IR_TYPE_UNSUPPORTED;
+  suffix++;
+  if (ir_text_eq(suffix, "u8")) return IR_TYPE_U8;
+  if (ir_text_eq(suffix, "u16")) return IR_TYPE_U16;
+  if (ir_text_eq(suffix, "usize")) return IR_TYPE_USIZE;
+  if (ir_text_eq(suffix, "i32")) return IR_TYPE_I32;
+  if (ir_text_eq(suffix, "u32")) return IR_TYPE_U32;
+  if (ir_text_eq(suffix, "i64")) return IR_TYPE_I64;
+  if (ir_text_eq(suffix, "u64")) return IR_TYPE_U64;
+  return IR_TYPE_UNSUPPORTED;
+}
+
 static IrValue *ir_new_value(IrProgram *ir, IrValueKind kind, IrTypeKind type, int line, int column) {
   IrValue *value = z_checked_calloc(1, sizeof(IrValue));
   value->kind = kind;
@@ -286,6 +300,20 @@ static IrValue *ir_new_maybe_byte_view_literal(IrProgram *ir, bool has, IrValue 
   value->data_len = has ? 1u : 0u;
   value->element_type = view && view->element_type != IR_TYPE_UNSUPPORTED ? view->element_type : IR_TYPE_U8;
   value->left = view;
+  return value;
+}
+
+static IrValue *ir_new_maybe_scalar_literal(IrProgram *ir, bool has, IrTypeKind element_type, unsigned long long number, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_MAYBE_SCALAR_LITERAL, IR_TYPE_MAYBE_SCALAR, line, column);
+  value->data_len = has ? 1u : 0u;
+  value->element_type = element_type;
+  value->int_value = number;
+  return value;
+}
+
+static IrValue *ir_new_cast_value(IrProgram *ir, IrValue *inner, IrTypeKind type, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_CAST, type, line, column);
+  value->left = inner;
   return value;
 }
 
@@ -667,6 +695,20 @@ static char *ir_graph_expr_qualified_name(const ZProgramGraph *graph, const ZPro
   return name.data;
 }
 
+static bool ir_graph_requires_source_std_ast_mir(const ZProgramGraph *graph) {
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (node->kind != Z_PROGRAM_GRAPH_NODE_CALL && node->kind != Z_PROGRAM_GRAPH_NODE_METHOD_CALL) continue;
+    char *qualified = ir_graph_expr_qualified_name(graph, node);
+    bool needs_fallback = qualified &&
+                          strncmp(qualified, "std.path.", strlen("std.path.")) == 0 &&
+                          z_std_source_target_for_public_call(qualified) != NULL;
+    free(qualified);
+    if (needs_fallback) return true;
+  }
+  return false;
+}
+
 static char *ir_graph_dirname_copy(const char *path) {
   if (!path || !path[0]) return z_strdup(".");
   const char *slash = strrchr(path, '/');
@@ -853,7 +895,7 @@ static bool ir_graph_collect_block_locals(IrProgram *ir, IrFunction *fun, const 
         return false;
       }
     } else if (stmt->kind == Z_PROGRAM_GRAPH_NODE_WHILE) {
-      if (!ir_graph_collect_block_locals(ir, fun, graph, ir_graph_ordered_node(graph, stmt->id, "body", 0))) return false;
+      if (!ir_graph_collect_block_locals(ir, fun, graph, ir_graph_ordered_node(graph, stmt->id, "then", 0))) return false;
     }
   }
   return true;
@@ -905,11 +947,78 @@ static bool ir_graph_lower_byte_view(const ZProgramGraph *graph, IrProgram *ir, 
   return true;
 }
 
+static bool ir_graph_lower_byte_slice(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  const ZProgramGraphNode *base_node = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "left", 0);
+  IrValue *base = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, base_node, &base)) return false;
+  IrValue *start = NULL;
+  IrValue *end = NULL;
+  const ZProgramGraphNode *start_node = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+  const ZProgramGraphNode *end_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
+  if (start_node && !ir_graph_lower_expr(graph, ir, fun, start_node, &start)) {
+    ir_free_value(base);
+    return false;
+  }
+  if (end_node && !ir_graph_lower_expr(graph, ir, fun, end_node, &end)) {
+    ir_free_value(base);
+    ir_free_value(start);
+    return false;
+  }
+  if ((start && !ir_type_is_value(start->type)) || (end && !ir_type_is_value(end->type))) {
+    ir_free_value(base);
+    ir_free_value(start);
+    ir_free_value(end);
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR slice bounds must be integer values", "non-integer slice bound");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_SLICE, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = base;
+  value->index = start;
+  value->right = end;
+  value->element_type = base->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : base->element_type;
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_expr_is_byte_view_source(const ZProgramGraph *graph, const IrFunction *fun, const ZProgramGraphNode *expr) {
+  if (!expr) return false;
+  if (ir_type_kind(ir_graph_node_type(graph, expr)) == IR_TYPE_BYTE_VIEW) return true;
+  switch (expr->kind) {
+    case Z_PROGRAM_GRAPH_NODE_LITERAL:
+      return ir_type_kind(expr->type) == IR_TYPE_BYTE_VIEW;
+    case Z_PROGRAM_GRAPH_NODE_IDENTIFIER: {
+      const IrLocal *local = ir_function_find_local(fun, expr->name);
+      return local && (local->type == IR_TYPE_BYTE_VIEW || local->type == IR_TYPE_MAYBE_BYTE_VIEW ||
+                       (local->is_array && (ir_type_is_value(local->element_type) || local->element_type == IR_TYPE_BOOL)));
+    }
+    case Z_PROGRAM_GRAPH_NODE_FIELD_ACCESS: {
+      const ZProgramGraphNode *left = ir_graph_ordered_node(graph, expr->id, "left", 0);
+      if (!left || left->kind != Z_PROGRAM_GRAPH_NODE_IDENTIFIER || !ir_text_eq(expr->name, "value")) return false;
+      const IrLocal *local = ir_function_find_local(fun, left->name);
+      return local && local->type == IR_TYPE_MAYBE_BYTE_VIEW;
+    }
+    case Z_PROGRAM_GRAPH_NODE_SLICE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static bool ir_graph_lower_expr_for_type(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTypeKind target_type, bool allow_i32_default, int line, int column, IrValue **out) {
   *out = NULL;
   if (!expr && allow_i32_default && target_type == IR_TYPE_I32) {
     *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, line, column);
     return true;
+  }
+  if (expr && expr->kind == Z_PROGRAM_GRAPH_NODE_LITERAL && ir_text_eq(expr->value, "null")) {
+    if (target_type == IR_TYPE_MAYBE_BYTE_VIEW) {
+      *out = ir_new_maybe_byte_view_literal(ir, false, NULL, line, column);
+      return true;
+    }
+    if (target_type == IR_TYPE_MAYBE_SCALAR) {
+      *out = ir_new_maybe_scalar_literal(ir, false, IR_TYPE_UNSUPPORTED, 0, line, column);
+      return true;
+    }
   }
   if (expr && expr->kind == Z_PROGRAM_GRAPH_NODE_LITERAL && ir_type_is_value(target_type) && ir_type_kind(expr->type) == IR_TYPE_UNSUPPORTED) {
     unsigned long long parsed = 0;
@@ -921,7 +1030,7 @@ static bool ir_graph_lower_expr_for_type(const ZProgramGraph *graph, IrProgram *
     return true;
   }
   if (target_type == IR_TYPE_BYTE_VIEW) return ir_graph_lower_byte_view(graph, ir, fun, expr, out);
-  if (target_type == IR_TYPE_MAYBE_BYTE_VIEW && expr && ir_type_kind(ir_graph_node_type(graph, expr)) == IR_TYPE_BYTE_VIEW) {
+  if (target_type == IR_TYPE_MAYBE_BYTE_VIEW && ir_graph_expr_is_byte_view_source(graph, fun, expr)) {
     IrValue *view = NULL;
     if (!ir_graph_lower_byte_view(graph, ir, fun, expr, &view)) return false;
     *out = ir_new_maybe_byte_view_literal(ir, true, view, line, column);
@@ -936,7 +1045,20 @@ static bool ir_graph_lower_literal(const ZProgramGraphNode *expr, IrProgram *ir,
     *out = ir_new_bool_literal(ir, ir_text_eq(value_text, "true"), ir_graph_line(expr), ir_graph_column(expr));
     return true;
   }
+  if (ir_text_eq(value_text, "null")) {
+    IrTypeKind type = ir_type_kind(expr ? expr->type : NULL);
+    if (type == IR_TYPE_MAYBE_BYTE_VIEW) {
+      *out = ir_new_maybe_byte_view_literal(ir, false, NULL, ir_graph_line(expr), ir_graph_column(expr));
+      return true;
+    }
+    if (type == IR_TYPE_MAYBE_SCALAR) {
+      *out = ir_new_maybe_scalar_literal(ir, false, IR_TYPE_UNSUPPORTED, 0, ir_graph_line(expr), ir_graph_column(expr));
+      return true;
+    }
+  }
   IrTypeKind type = ir_type_kind(expr ? expr->type : NULL);
+  if (!ir_type_is_value(type)) type = ir_integer_literal_suffix_type(value_text);
+  if (!ir_type_is_value(type) && ir_parse_integer_literal(value_text, NULL)) type = IR_TYPE_I32;
   if (type == IR_TYPE_BYTE_VIEW) return ir_make_string_literal_value(ir, value_text, ir_graph_line(expr), ir_graph_column(expr), out);
   if (!ir_type_is_value(type)) {
     ir_graph_mark_unsupported(ir, expr, "typed graph MIR literal type is unsupported", expr && expr->type ? expr->type : "unknown literal type");
@@ -1048,6 +1170,52 @@ static bool ir_graph_lower_field_access(const ZProgramGraph *graph, IrProgram *i
   }
   ir_graph_mark_unsupported(ir, expr, "typed graph MIR field access is unsupported", expr && expr->name ? expr->name : "unknown field");
   return false;
+}
+
+static bool ir_graph_lower_index_access(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  const ZProgramGraphNode *left = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "left", 0);
+  const ZProgramGraphNode *right = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "right", 1);
+  if (!left || !right) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR index access requires base and index", "missing index edge");
+    return false;
+  }
+  if (left->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER) {
+    const IrLocal *local = ir_function_find_local(fun, left->name);
+    if (local && local->is_array) {
+      IrValue *index = NULL;
+      if (!ir_graph_lower_expr(graph, ir, fun, right, &index)) return false;
+      if (!ir_type_is_value(index->type)) {
+        ir_free_value(index);
+        ir_graph_mark_unsupported(ir, right, "typed graph MIR fixed-array index must be an integer value", "non-integer index");
+        return false;
+      }
+      IrValue *value = ir_new_value(ir, IR_VALUE_INDEX_LOAD, local->element_type, ir_graph_line(expr), ir_graph_column(expr));
+      value->array_index = local->index;
+      value->index = index;
+      *out = value;
+      return true;
+    }
+  }
+  IrValue *view = NULL;
+  IrValue *index = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, left, &view) ||
+      !ir_graph_lower_expr(graph, ir, fun, right, &index)) {
+    ir_free_value(view);
+    ir_free_value(index);
+    return false;
+  }
+  if (!ir_type_is_value(index->type)) {
+    ir_free_value(view);
+    ir_free_value(index);
+    ir_graph_mark_unsupported(ir, right, "typed graph MIR byte-view index must be an integer value", "non-integer index");
+    return false;
+  }
+  IrTypeKind element_type = view->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : view->element_type;
+  IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_INDEX_LOAD, element_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = view;
+  value->index = index;
+  *out = value;
+  return true;
 }
 
 static bool ir_graph_lower_ordered_arg(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *call, size_t order, IrTypeKind expected, IrValue **out) {
@@ -1232,6 +1400,989 @@ static bool ir_graph_lower_c_import_call(const ZProgramGraph *graph, IrProgram *
   return true;
 }
 
+static void ir_graph_require_runtime_helper(IrProgram *ir) {
+  if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+  if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+}
+
+static bool ir_graph_http_status_class_bounds(const char *name, unsigned *lower, unsigned *upper) {
+  if (!name || !lower || !upper) return false;
+  if (ir_text_eq(name, "std.http.statusIsInformational")) { *lower = 100; *upper = 200; return true; }
+  if (ir_text_eq(name, "std.http.statusIsSuccess")) { *lower = 200; *upper = 300; return true; }
+  if (ir_text_eq(name, "std.http.statusIsRedirect")) { *lower = 300; *upper = 400; return true; }
+  if (ir_text_eq(name, "std.http.statusIsClientError")) { *lower = 400; *upper = 500; return true; }
+  if (ir_text_eq(name, "std.http.statusIsServerError")) { *lower = 500; *upper = 600; return true; }
+  return false;
+}
+
+static int ir_graph_json_error_code(const char *name) {
+  if (!name) return -1;
+  if (ir_text_eq(name, "std.json.errorNone")) return 0;
+  if (ir_text_eq(name, "std.json.errorInvalid")) return 1;
+  if (ir_text_eq(name, "std.json.errorTrailing")) return 2;
+  return -1;
+}
+
+static bool ir_graph_lower_http_std_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  unsigned status_lower = 0;
+  unsigned status_upper = 0;
+  if (ir_graph_http_status_class_bounds(callee_name, &status_lower, &status_upper) && arg_count == 1) {
+    IrValue *status = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_U16, &status)) return false;
+    if (!status || status->type != IR_TYPE_U16) {
+      ir_free_value(status);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 0), "typed graph MIR std.http status predicate expects a u16 status", "non-u16 status");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_STATUS_CLASS, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = status;
+    value->int_value = status_lower;
+    value->data_len = status_upper;
+    *out = value;
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.http.requestMethodName") || ir_text_eq(callee_name, "std.http.requestPath")) && arg_count == 1) {
+    IrValue *request = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &request)) return false;
+    IrValue *value = ir_new_value(ir, ir_text_eq(callee_name, "std.http.requestMethodName") ? IR_VALUE_HTTP_REQUEST_METHOD_NAME : IR_VALUE_HTTP_REQUEST_PATH, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = request;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.http.writeJsonResponse") && arg_count == 3) {
+    IrValue *buffer = NULL;
+    IrValue *status = NULL;
+    IrValue *body = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buffer) ||
+        !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_U16, &status) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &body)) {
+      ir_free_value(buffer);
+      ir_free_value(status);
+      ir_free_value(body);
+      return false;
+    }
+    if (status->type != IR_TYPE_U16) {
+      ir_free_value(buffer);
+      ir_free_value(status);
+      ir_free_value(body);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 1), "typed graph MIR std.http.writeJsonResponse status must be u16", "non-u16 status");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_WRITE_JSON_RESPONSE, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = buffer;
+    value->index = status;
+    value->right = body;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_lower_std_str_arg(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, size_t order, IrTypeKind expected, IrValue **out) {
+  const ZProgramGraphNode *arg = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", order);
+  if (expected == IR_TYPE_BYTE_VIEW) return ir_graph_lower_byte_view(graph, ir, fun, arg, out);
+  return ir_graph_lower_expr_for_type(graph, ir, fun, arg, expected, false, ir_graph_line(arg), ir_graph_column(arg), out);
+}
+
+static bool ir_graph_make_std_str_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrStrOp op, IrTypeKind return_type, const IrTypeKind *arg_types, size_t arg_count, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_STR_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_BYTE_VIEW || return_type == IR_TYPE_MAYBE_BYTE_VIEW) value->element_type = IR_TYPE_U8;
+  for (size_t i = 0; i < arg_count; i++) {
+    IrValue *arg = NULL;
+    if (!ir_graph_lower_std_str_arg(graph, ir, fun, expr, i, arg_types[i], &arg)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (arg_types[i] == IR_TYPE_BYTE_VIEW) {
+      if (!arg || arg->type != IR_TYPE_BYTE_VIEW) {
+        ir_free_value(arg);
+        ir_free_value(value);
+        ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", i), "typed graph MIR std.str argument must be a byte view", "non-byte-view argument");
+        return false;
+      }
+    } else if (arg && arg->type != arg_types[i]) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", i), "typed graph MIR std.str argument type does not match helper", ir_graph_node_type(graph, ir_graph_ordered_node(graph, expr->id, "arg", i)));
+      return false;
+    }
+    ir_value_push_arg(ir, value, arg);
+  }
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_str_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  const IrTypeKind one_view[] = {IR_TYPE_BYTE_VIEW};
+  const IrTypeKind two_views[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW};
+  const IrTypeKind view_byte[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_U8};
+  const IrTypeKind three_views[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW};
+  const IrTypeKind view_view_count[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW, IR_TYPE_USIZE};
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.reverse")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_REVERSE, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.copy")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_COPY, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, out);
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.str.concat")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_CONCAT, IR_TYPE_MAYBE_BYTE_VIEW, three_views, 3, out);
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.str.repeat")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_REPEAT, IR_TYPE_MAYBE_BYTE_VIEW, view_view_count, 3, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.toLowerAscii")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_TO_LOWER_ASCII, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.toUpperAscii")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_TO_UPPER_ASCII, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.str.trimAscii")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_TRIM_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.str.trimStartAscii")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_TRIM_START_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.str.trimEndAscii")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_TRIM_END_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.countByte")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_COUNT_BYTE, IR_TYPE_USIZE, view_byte, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.startsWith")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_STARTS_WITH, IR_TYPE_BOOL, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.endsWith")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_ENDS_WITH, IR_TYPE_BOOL, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.contains")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_CONTAINS, IR_TYPE_BOOL, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.count")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_COUNT, IR_TYPE_USIZE, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.indexOf")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_INDEX_OF, IR_TYPE_USIZE, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.lastIndexOf")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_LAST_INDEX_OF, IR_TYPE_USIZE, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.str.eqlIgnoreAsciiCase")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_EQL_IGNORE_ASCII_CASE, IR_TYPE_BOOL, two_views, 2, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.str.wordCountAscii")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_WORD_COUNT_ASCII, IR_TYPE_USIZE, one_view, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.path.basename")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PATH_BASENAME, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.path.dirname")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PATH_DIRNAME, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.path.extension")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PATH_EXTENSION, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_make_std_ascii_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrAsciiOp op, IrTypeKind return_type, IrValue **out) {
+  IrValue *arg = NULL;
+  if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_U8, &arg)) return false;
+  if (!arg || arg->type != IR_TYPE_U8) {
+    ir_free_value(arg);
+    ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), "typed graph MIR std.ascii helper argument must be u8", "non-u8 argument");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_ASCII_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = IR_TYPE_U8;
+  ir_value_push_arg(ir, value, arg);
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_ascii_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isDigit")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_DIGIT, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isLower")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_LOWER, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isUpper")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_UPPER, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isAlpha")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_ALPHA, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isAlnum")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_ALNUM, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isWhitespace")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_WHITESPACE, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.isHexDigit")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_IS_HEX_DIGIT, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.toLower")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_TO_LOWER, IR_TYPE_U8, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.toUpper")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_TO_UPPER, IR_TYPE_U8, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.digitValue")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_DIGIT_VALUE, IR_TYPE_MAYBE_SCALAR, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.ascii.hexValue")) return ir_graph_make_std_ascii_runtime_value(graph, ir, fun, expr, IR_ASCII_OP_HEX_VALUE, IR_TYPE_MAYBE_SCALAR, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_make_std_text_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTextOp op, IrTypeKind return_type, IrValue **out) {
+  IrValue *arg = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), &arg)) return false;
+  if (!arg || arg->type != IR_TYPE_BYTE_VIEW) {
+    ir_free_value(arg);
+    ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), "typed graph MIR std.text helper argument must be a byte view", "non-byte-view argument");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TEXT_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = IR_TYPE_USIZE;
+  ir_value_push_arg(ir, value, arg);
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_text_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.text.isAscii")) return ir_graph_make_std_text_runtime_value(graph, ir, fun, expr, IR_TEXT_OP_IS_ASCII, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.text.utf8Valid")) return ir_graph_make_std_text_runtime_value(graph, ir, fun, expr, IR_TEXT_OP_UTF8_VALID, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.codec.utf8Valid")) return ir_graph_make_std_text_runtime_value(graph, ir, fun, expr, IR_TEXT_OP_UTF8_VALID, IR_TYPE_BOOL, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.text.utf8Len")) return ir_graph_make_std_text_runtime_value(graph, ir, fun, expr, IR_TEXT_OP_UTF8_LEN, IR_TYPE_MAYBE_SCALAR, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_make_std_parse_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrParseOp op, IrTypeKind return_type, IrTypeKind element_type, size_t expected_args, IrValue **out) {
+  if (expected_args < 1 || expected_args > 2) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.parse helper has unsupported arity", "wrong std.parse arity");
+    return false;
+  }
+  IrValue *input = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), &input)) return false;
+  IrValue *value = ir_new_value(ir, IR_VALUE_PARSE_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = element_type;
+  ir_value_push_arg(ir, value, input);
+  if (expected_args == 2) {
+    IrValue *byte = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_U8, &byte)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!byte || byte->type != IR_TYPE_U8) {
+      ir_free_value(byte);
+      ir_free_value(value);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 1), "typed graph MIR std.parse byte argument must be u8", "non-u8 argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, byte);
+  }
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_parse_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.isAsciiDigit")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_IS_ASCII_DIGIT, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.isAsciiAlpha")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_IS_ASCII_ALPHA, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.isIdentifierStart")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_IS_IDENTIFIER_START, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.isWhitespace")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_IS_WHITESPACE, IR_TYPE_BOOL, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.scanDigits")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_SCAN_DIGITS, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.scanIdentifier")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_SCAN_IDENTIFIER, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.parse.scanUntilByte")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_SCAN_UNTIL_BYTE, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 2, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.scanWhitespace")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_SCAN_WHITESPACE, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.tokenAscii")) {
+    const IrTypeKind one_view[] = {IR_TYPE_BYTE_VIEW};
+    return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PARSE_TOKEN_ASCII, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseBool")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_BOOL, IR_TYPE_MAYBE_SCALAR, IR_TYPE_BOOL, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseU8")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_U8, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U8, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseU16")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_U16, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U16, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseUsize")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_USIZE, IR_TYPE_MAYBE_SCALAR, IR_TYPE_USIZE, 1, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_std_time_duration_scale(const char *callee_name, unsigned long long *out_scale) {
+  static const struct { const char *name; unsigned long long scale; } entries[] = {
+    {"std.time.ns", 1ull},
+    {"std.time.us", 1000ull},
+    {"std.time.ms", 1000000ull},
+    {"std.time.seconds", 1000000000ull},
+    {"std.time.minutes", 60000000000ull},
+    {"std.time.hours", 3600000000000ull},
+  };
+  for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
+    if (ir_text_eq(callee_name, entries[i].name)) {
+      *out_scale = entries[i].scale;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool ir_graph_make_std_time_constructor(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, unsigned long long scale, IrValue **out) {
+  IrValue *arg = NULL;
+  if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I64, &arg)) return false;
+  if (!arg || !ir_type_is_value(arg->type)) {
+    ir_free_value(arg);
+    ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), "typed graph MIR std.time duration argument must be integer", "non-integer duration");
+    return false;
+  }
+  IrValue *value = ir_new_cast_value(ir, arg, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+  if (scale != 1) {
+    value = ir_new_binary_value(ir, IR_BIN_MUL, IR_TYPE_I64, value, ir_new_integer_literal_value(ir, IR_TYPE_I64, scale, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+  }
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_make_std_time_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTimeOp op, IrTypeKind return_type, size_t expected_args, IrValue **out) {
+  if (ir_graph_edge_count(graph, expr ? expr->id : NULL, "arg") != expected_args) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.time helper has unsupported arity", "wrong std.time arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TIME_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  for (size_t i = 0; i < expected_args; i++) {
+    IrValue *arg = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, i, IR_TYPE_I64, &arg)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!arg || !ir_type_is_value(arg->type)) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", i), "typed graph MIR std.time helper argument must be Duration", "non-Duration argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, ir_new_cast_value(ir, arg, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr)));
+  }
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_time_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  unsigned long long scale = 0;
+  if (arg_count == 1 && ir_graph_std_time_duration_scale(callee_name, &scale)) {
+    return ir_graph_make_std_time_constructor(graph, ir, fun, expr, scale, out);
+  }
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.time.zero")) {
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_I64, 0, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 2 && (ir_text_eq(callee_name, "std.time.add") || ir_text_eq(callee_name, "std.time.sub"))) {
+    IrValue *left = NULL;
+    IrValue *right = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I64, &left) ||
+        !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_I64, &right)) {
+      ir_free_value(left);
+      ir_free_value(right);
+      return false;
+    }
+    left = ir_new_cast_value(ir, left, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+    right = ir_new_cast_value(ir, right, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+    *out = ir_new_binary_value(ir, ir_text_eq(callee_name, "std.time.add") ? IR_BIN_ADD : IR_BIN_SUB, IR_TYPE_I64, left, right, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.time.asNs")) {
+    IrValue *arg = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I64, &arg)) return false;
+    *out = ir_new_cast_value(ir, arg, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.time.asUsFloor")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_AS_US_FLOOR, IR_TYPE_I64, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.time.asMsFloor")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_AS_MS_FLOOR, IR_TYPE_I32, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.time.asSecondsFloor")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_AS_SECONDS_FLOOR, IR_TYPE_I64, 1, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.time.min")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_MIN, IR_TYPE_I64, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.time.max")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_MAX, IR_TYPE_I64, 2, out);
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.time.clamp")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_CLAMP, IR_TYPE_I64, 3, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.time.lessThan")) {
+    IrValue *left = NULL;
+    IrValue *right = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I64, &left) ||
+        !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_I64, &right)) {
+      ir_free_value(left);
+      ir_free_value(right);
+      return false;
+    }
+    *out = ir_new_compare_value(ir, IR_CMP_LT, ir_new_cast_value(ir, left, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr)), ir_new_cast_value(ir, right, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.time.isZero")) {
+    IrValue *arg = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I64, &arg)) return false;
+    *out = ir_new_compare_value(ir, IR_CMP_EQ, ir_new_cast_value(ir, arg, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr)), ir_new_integer_literal_value(ir, IR_TYPE_I64, 0, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.time.wallSeconds")) {
+    *out = ir_new_value(ir, IR_VALUE_TIME_WALL_SECONDS, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.time.monotonic")) {
+    *out = ir_new_value(ir, IR_VALUE_TIME_MONOTONIC, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_std_math_runtime_spec(const char *callee_name, size_t arg_count, IrMathOp *op, IrTypeKind *arg_type, IrTypeKind *return_type, IrTypeKind *return_element_type, size_t *expected_args) {
+  if (!callee_name || !op || !arg_type || !return_type || !return_element_type || !expected_args) return false;
+  *expected_args = 2;
+  *return_element_type = IR_TYPE_UNSUPPORTED;
+  if (ir_text_eq(callee_name, "std.math.minI32")) { *op = IR_MATH_OP_MIN_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.maxI32")) { *op = IR_MATH_OP_MAX_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.clampI32")) { *op = IR_MATH_OP_CLAMP_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; *expected_args = 3; }
+  else if (ir_text_eq(callee_name, "std.math.minI64")) { *op = IR_MATH_OP_MIN_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_I64; }
+  else if (ir_text_eq(callee_name, "std.math.maxI64")) { *op = IR_MATH_OP_MAX_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_I64; }
+  else if (ir_text_eq(callee_name, "std.math.clampI64")) { *op = IR_MATH_OP_CLAMP_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_I64; *expected_args = 3; }
+  else if (ir_text_eq(callee_name, "std.math.minU32")) { *op = IR_MATH_OP_MIN_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.maxU32")) { *op = IR_MATH_OP_MAX_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.clampU32")) { *op = IR_MATH_OP_CLAMP_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 3; }
+  else if (ir_text_eq(callee_name, "std.math.minU64")) { *op = IR_MATH_OP_MIN_U64; *arg_type = IR_TYPE_U64; *return_type = IR_TYPE_U64; }
+  else if (ir_text_eq(callee_name, "std.math.maxU64")) { *op = IR_MATH_OP_MAX_U64; *arg_type = IR_TYPE_U64; *return_type = IR_TYPE_U64; }
+  else if (ir_text_eq(callee_name, "std.math.clampU64")) { *op = IR_MATH_OP_CLAMP_U64; *arg_type = IR_TYPE_U64; *return_type = IR_TYPE_U64; *expected_args = 3; }
+  else if (ir_text_eq(callee_name, "std.math.minUsize")) { *op = IR_MATH_OP_MIN_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.maxUsize")) { *op = IR_MATH_OP_MAX_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.clampUsize")) { *op = IR_MATH_OP_CLAMP_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; *expected_args = 3; }
+  else if (ir_text_eq(callee_name, "std.math.absI32")) { *op = IR_MATH_OP_ABS_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.absI64")) { *op = IR_MATH_OP_ABS_I64; *arg_type = IR_TYPE_I64; *return_type = IR_TYPE_U64; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.checkedAddU32")) { *op = IR_MATH_OP_CHECKED_ADD_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedSubU32")) { *op = IR_MATH_OP_CHECKED_SUB_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedMulU32")) { *op = IR_MATH_OP_CHECKED_MUL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingAddU32")) { *op = IR_MATH_OP_SATURATING_ADD_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingSubU32")) { *op = IR_MATH_OP_SATURATING_SUB_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingMulU32")) { *op = IR_MATH_OP_SATURATING_MUL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedAddI32")) { *op = IR_MATH_OP_CHECKED_ADD_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedSubI32")) { *op = IR_MATH_OP_CHECKED_SUB_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedMulI32")) { *op = IR_MATH_OP_CHECKED_MUL_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingAddI32")) { *op = IR_MATH_OP_SATURATING_ADD_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingSubI32")) { *op = IR_MATH_OP_SATURATING_SUB_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingMulI32")) { *op = IR_MATH_OP_SATURATING_MUL_I32; *arg_type = IR_TYPE_I32; *return_type = IR_TYPE_I32; }
+  else if (ir_text_eq(callee_name, "std.math.gcdU32")) { *op = IR_MATH_OP_GCD_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.lcmU32")) { *op = IR_MATH_OP_LCM_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedLcmU32")) { *op = IR_MATH_OP_CHECKED_LCM_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.powU32")) { *op = IR_MATH_OP_POW_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.checkedPowU32")) { *op = IR_MATH_OP_CHECKED_POW_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.modPowU32")) { *op = IR_MATH_OP_MOD_POW_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 3; }
+  else if (ir_text_eq(callee_name, "std.math.isPrimeU32")) { *op = IR_MATH_OP_IS_PRIME_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_BOOL; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.sqrtFloorU32")) { *op = IR_MATH_OP_SQRT_FLOOR_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.factorialU32")) { *op = IR_MATH_OP_FACTORIAL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.binomialU32")) { *op = IR_MATH_OP_BINOMIAL_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_U32; }
+  else if (ir_text_eq(callee_name, "std.math.divisorCountU32")) { *op = IR_MATH_OP_DIVISOR_COUNT_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.properDivisorSumU32")) { *op = IR_MATH_OP_PROPER_DIVISOR_SUM_U32; *arg_type = IR_TYPE_U32; *return_type = IR_TYPE_U32; *expected_args = 1; }
+  else if (ir_text_eq(callee_name, "std.math.checkedAddUsize")) { *op = IR_MATH_OP_CHECKED_ADD_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.checkedSubUsize")) { *op = IR_MATH_OP_CHECKED_SUB_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.checkedMulUsize")) { *op = IR_MATH_OP_CHECKED_MUL_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_MAYBE_SCALAR; *return_element_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingAddUsize")) { *op = IR_MATH_OP_SATURATING_ADD_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingSubUsize")) { *op = IR_MATH_OP_SATURATING_SUB_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else if (ir_text_eq(callee_name, "std.math.saturatingMulUsize")) { *op = IR_MATH_OP_SATURATING_MUL_USIZE; *arg_type = IR_TYPE_USIZE; *return_type = IR_TYPE_USIZE; }
+  else return false;
+  return arg_count == *expected_args;
+}
+
+static bool ir_graph_make_std_math_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrMathOp op, IrTypeKind arg_type, IrTypeKind return_type, IrTypeKind return_element_type, size_t expected_args, IrValue **out) {
+  if (ir_graph_edge_count(graph, expr ? expr->id : NULL, "arg") != expected_args) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.math helper has unsupported arity", "wrong std.math arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_MATH_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  if (return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = return_element_type;
+  for (size_t i = 0; i < expected_args; i++) {
+    IrValue *arg = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, i, arg_type, &arg)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!arg || arg->type != arg_type) {
+      ir_free_value(arg);
+      ir_free_value(value);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", i), "typed graph MIR std.math helper argument has wrong type", "wrong std.math argument type");
+      return false;
+    }
+    ir_value_push_arg(ir, value, ir_new_cast_value(ir, arg, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr)));
+  }
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_std_search_runtime_spec(const char *callee_name, IrSearchOp *op, IrTypeKind *element_type) {
+  if (!callee_name || !op || !element_type) return false;
+  if (ir_text_eq(callee_name, "std.search.lowerBoundI32")) { *op = IR_SEARCH_OP_LOWER_BOUND_I32; *element_type = IR_TYPE_I32; return true; }
+  if (ir_text_eq(callee_name, "std.search.binaryI32")) { *op = IR_SEARCH_OP_BINARY_I32; *element_type = IR_TYPE_I32; return true; }
+  if (ir_text_eq(callee_name, "std.search.lowerBoundU32")) { *op = IR_SEARCH_OP_LOWER_BOUND_U32; *element_type = IR_TYPE_U32; return true; }
+  if (ir_text_eq(callee_name, "std.search.binaryU32")) { *op = IR_SEARCH_OP_BINARY_U32; *element_type = IR_TYPE_U32; return true; }
+  if (ir_text_eq(callee_name, "std.search.lowerBoundUsize")) { *op = IR_SEARCH_OP_LOWER_BOUND_USIZE; *element_type = IR_TYPE_USIZE; return true; }
+  if (ir_text_eq(callee_name, "std.search.binaryUsize")) { *op = IR_SEARCH_OP_BINARY_USIZE; *element_type = IR_TYPE_USIZE; return true; }
+  return false;
+}
+
+static bool ir_graph_lower_std_search_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = false;
+  IrSearchOp op = IR_SEARCH_OP_LOWER_BOUND_I32;
+  IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
+  if (!ir_graph_std_search_runtime_spec(callee_name, &op, &element_type)) return true;
+  *handled = true;
+  if (arg_count != 2) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.search helper has unsupported arity", "wrong std.search arity");
+    return false;
+  }
+  const ZProgramGraphNode *items_node = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0);
+  IrValue *items = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, items_node, &items)) return false;
+  IrTypeKind actual_element = items && items->element_type != IR_TYPE_UNSUPPORTED ? items->element_type : IR_TYPE_U8;
+  if (!items || items->type != IR_TYPE_BYTE_VIEW || actual_element != element_type) {
+    ir_free_value(items);
+    ir_graph_mark_unsupported(ir, items_node, "typed graph MIR std.search helper requires a typed span matching the helper width", "wrong std.search span type");
+    return false;
+  }
+  IrValue *needle = NULL;
+  if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, element_type, &needle)) {
+    ir_free_value(items);
+    return false;
+  }
+  if (!needle || needle->type != element_type) {
+    ir_free_value(needle);
+    ir_free_value(items);
+    ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 1), "typed graph MIR std.search helper needle has wrong type", "wrong std.search needle type");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_SEARCH_RUNTIME, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  value->left = items;
+  value->right = ir_new_cast_value(ir, needle, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_std_sort_runtime_spec(const char *callee_name, IrSortOp *op, IrTypeKind *element_type, IrTypeKind *return_type) {
+  if (!callee_name || !op || !element_type || !return_type) return false;
+  if (ir_text_eq(callee_name, "std.sort.insertionI32")) { *op = IR_SORT_OP_INSERTION_I32; *element_type = IR_TYPE_I32; *return_type = IR_TYPE_VOID; return true; }
+  if (ir_text_eq(callee_name, "std.sort.isSortedI32")) { *op = IR_SORT_OP_IS_SORTED_I32; *element_type = IR_TYPE_I32; *return_type = IR_TYPE_BOOL; return true; }
+  if (ir_text_eq(callee_name, "std.sort.insertionU32")) { *op = IR_SORT_OP_INSERTION_U32; *element_type = IR_TYPE_U32; *return_type = IR_TYPE_VOID; return true; }
+  if (ir_text_eq(callee_name, "std.sort.isSortedU32")) { *op = IR_SORT_OP_IS_SORTED_U32; *element_type = IR_TYPE_U32; *return_type = IR_TYPE_BOOL; return true; }
+  if (ir_text_eq(callee_name, "std.sort.insertionUsize")) { *op = IR_SORT_OP_INSERTION_USIZE; *element_type = IR_TYPE_USIZE; *return_type = IR_TYPE_VOID; return true; }
+  if (ir_text_eq(callee_name, "std.sort.isSortedUsize")) { *op = IR_SORT_OP_IS_SORTED_USIZE; *element_type = IR_TYPE_USIZE; *return_type = IR_TYPE_BOOL; return true; }
+  return false;
+}
+
+static bool ir_graph_lower_std_sort_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = false;
+  IrSortOp op = IR_SORT_OP_INSERTION_I32;
+  IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
+  IrTypeKind return_type = IR_TYPE_UNSUPPORTED;
+  if (!ir_graph_std_sort_runtime_spec(callee_name, &op, &element_type, &return_type)) return true;
+  *handled = true;
+  if (arg_count != 1) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.sort helper has unsupported arity", "wrong std.sort arity");
+    return false;
+  }
+  const ZProgramGraphNode *items_node = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0);
+  IrValue *items = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, items_node, &items)) return false;
+  IrTypeKind actual_element = items && items->element_type != IR_TYPE_UNSUPPORTED ? items->element_type : IR_TYPE_U8;
+  if (!items || items->type != IR_TYPE_BYTE_VIEW || actual_element != element_type) {
+    ir_free_value(items);
+    ir_graph_mark_unsupported(ir, items_node, "typed graph MIR std.sort helper requires a typed span matching the helper width", "wrong std.sort span type");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_SORT_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  value->left = items;
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_testing_arg(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, size_t order, IrTypeKind expected, IrValue **out) {
+  const ZProgramGraphNode *arg = ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", order);
+  if (!arg) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.testing helper argument is missing", "missing std.testing argument");
+    return false;
+  }
+  if (expected == IR_TYPE_BYTE_VIEW) return ir_graph_lower_byte_view(graph, ir, fun, arg, out);
+  if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, order, expected, out)) return false;
+  if (*out && (*out)->type == expected) return true;
+  ir_free_value(*out);
+  *out = NULL;
+  ir_graph_mark_unsupported(ir, arg, "typed graph MIR std.testing argument type does not match helper", ir_graph_node_type(graph, arg));
+  return false;
+}
+
+static bool ir_graph_lower_std_testing_equal_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTypeKind type, IrValue **out) {
+  IrValue *left = NULL;
+  IrValue *right = NULL;
+  if (!ir_graph_lower_std_testing_arg(graph, ir, fun, expr, 0, type, &left) ||
+      !ir_graph_lower_std_testing_arg(graph, ir, fun, expr, 1, type, &right)) {
+    ir_free_value(left);
+    ir_free_value(right);
+    return false;
+  }
+  *out = ir_new_compare_value(ir, IR_CMP_EQ, left, right, ir_graph_line(expr), ir_graph_column(expr));
+  return true;
+}
+
+static bool ir_graph_lower_std_testing_byte_pair_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrStrOp op, bool byte_equal, IrValue **out) {
+  if (byte_equal) {
+    IrValue *left = NULL;
+    IrValue *right = NULL;
+    if (!ir_graph_lower_std_testing_arg(graph, ir, fun, expr, 0, IR_TYPE_BYTE_VIEW, &left) ||
+        !ir_graph_lower_std_testing_arg(graph, ir, fun, expr, 1, IR_TYPE_BYTE_VIEW, &right)) {
+      ir_free_value(left);
+      ir_free_value(right);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_EQ, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = left;
+    value->right = right;
+    *out = value;
+    return true;
+  }
+  const IrTypeKind two_views[] = {IR_TYPE_BYTE_VIEW, IR_TYPE_BYTE_VIEW};
+  return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, op, IR_TYPE_BOOL, two_views, 2, out);
+}
+
+static bool ir_graph_lower_std_testing_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (ir_text_eq(callee_name, "std.testing.isTrue") && arg_count == 1) {
+    return ir_graph_lower_std_testing_arg(graph, ir, fun, expr, 0, IR_TYPE_BOOL, out);
+  }
+  if (ir_text_eq(callee_name, "std.testing.isFalse") && arg_count == 1) {
+    IrValue *arg = NULL;
+    if (!ir_graph_lower_std_testing_arg(graph, ir, fun, expr, 0, IR_TYPE_BOOL, &arg)) return false;
+    IrValue *false_value = ir_new_value(ir, IR_VALUE_BOOL, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    false_value->int_value = 0;
+    *out = ir_new_compare_value(ir, IR_CMP_EQ, arg, false_value, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.testing.equalBool") && arg_count == 2) return ir_graph_lower_std_testing_equal_call(graph, ir, fun, expr, IR_TYPE_BOOL, out);
+  if (ir_text_eq(callee_name, "std.testing.equalUsize") && arg_count == 2) return ir_graph_lower_std_testing_equal_call(graph, ir, fun, expr, IR_TYPE_USIZE, out);
+  if (ir_text_eq(callee_name, "std.testing.equalU32") && arg_count == 2) return ir_graph_lower_std_testing_equal_call(graph, ir, fun, expr, IR_TYPE_U32, out);
+  if (ir_text_eq(callee_name, "std.testing.equalI32") && arg_count == 2) return ir_graph_lower_std_testing_equal_call(graph, ir, fun, expr, IR_TYPE_I32, out);
+  if (ir_text_eq(callee_name, "std.testing.equalBytes") && arg_count == 2) return ir_graph_lower_std_testing_byte_pair_call(graph, ir, fun, expr, IR_STR_OP_CONTAINS, true, out);
+  if (ir_text_eq(callee_name, "std.testing.containsBytes") && arg_count == 2) return ir_graph_lower_std_testing_byte_pair_call(graph, ir, fun, expr, IR_STR_OP_CONTAINS, false, out);
+  if (ir_text_eq(callee_name, "std.testing.startsWith") && arg_count == 2) return ir_graph_lower_std_testing_byte_pair_call(graph, ir, fun, expr, IR_STR_OP_STARTS_WITH, false, out);
+  if (ir_text_eq(callee_name, "std.testing.endsWith") && arg_count == 2) return ir_graph_lower_std_testing_byte_pair_call(graph, ir, fun, expr, IR_STR_OP_ENDS_WITH, false, out);
+  *handled = false;
+  return true;
+}
+
+static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (ir_text_eq(callee_name, "std.args.len") && arg_count == 0) {
+    *out = ir_new_value(ir, IR_VALUE_ARGS_LEN, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.args.get") && arg_count == 1) {
+    IrValue *index = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index)) return false;
+    if (!ir_type_is_value(index->type)) {
+      ir_free_value(index);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.args.get index must be an integer value", "non-integer index");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = index;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.args.has") && arg_count == 1) {
+    IrValue *index = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index)) return false;
+    if (!ir_type_is_value(index->type)) {
+      ir_free_value(index);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.args.has index must be an integer value", "non-integer index");
+      return false;
+    }
+    IrValue *len = ir_new_value(ir, IR_VALUE_ARGS_LEN, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    *out = ir_new_compare_value(ir, IR_CMP_LT, index, len, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.args.getOr") && arg_count == 2) {
+    IrValue *index = NULL;
+    IrValue *fallback = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &fallback)) {
+      ir_free_value(index);
+      ir_free_value(fallback);
+      return false;
+    }
+    if (!ir_type_is_value(index->type)) {
+      ir_free_value(index);
+      ir_free_value(fallback);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.args.getOr index must be an integer value", "non-integer index");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET_OR, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = index;
+    value->right = fallback;
+    value->element_type = IR_TYPE_U8;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.args.find") && arg_count == 1) {
+    IrValue *name = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &name)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_FIND, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = name;
+    value->element_type = IR_TYPE_USIZE;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.args.valueAfter") || ir_text_eq(callee_name, "std.cli.optionValue")) && arg_count == 1) {
+    IrValue *name = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &name)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_VALUE_AFTER, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = name;
+    value->element_type = IR_TYPE_U8;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.optionValueOr") && arg_count == 2) {
+    IrValue *name = NULL;
+    IrValue *fallback = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &name) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &fallback)) {
+      ir_free_value(name);
+      ir_free_value(fallback);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_VALUE_AFTER_OR, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = name;
+    value->right = fallback;
+    value->element_type = IR_TYPE_U8;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.optionU32") && arg_count == 1) {
+    IrValue *name = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &name)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = name;
+    value->element_type = IR_TYPE_U32;
+    ir_graph_require_runtime_helper(ir);
+    if (ir->direct_host_runtime_import_count < 2) ir->direct_host_runtime_import_count = 2;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.successExitCode") && arg_count == 0) {
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.usageExitCode") && arg_count == 0) {
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 2, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  int json_error_code = ir_graph_json_error_code(callee_name);
+  if (json_error_code >= 0 && arg_count == 0) {
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_U32, (unsigned long long)json_error_code, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.argEquals") && arg_count == 2) {
+    IrValue *index = NULL;
+    IrValue *expected = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &expected)) {
+      ir_free_value(index);
+      ir_free_value(expected);
+      return false;
+    }
+    if (!ir_type_is_value(index->type)) {
+      ir_free_value(index);
+      ir_free_value(expected);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.cli.argEquals index must be an integer value", "non-integer index");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_EQ, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = index;
+    value->right = expected;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.hasFlag") && arg_count == 1) {
+    IrValue *name = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &name)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_CONTAINS, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = name;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.proc.spawn") && arg_count == 1) {
+    IrValue *command = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &command)) return false;
+    ir_free_value(command);
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.proc.exitCode") && arg_count == 1) {
+    return ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I32, out);
+  }
+  if ((ir_text_eq(callee_name, "std.proc.succeeded") || ir_text_eq(callee_name, "std.proc.failed")) && arg_count == 1) {
+    IrValue *status = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I32, &status)) return false;
+    if (!status || status->type != IR_TYPE_I32) {
+      ir_free_value(status);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 0), "typed graph MIR std.proc status helper expects ProcStatus", "non-ProcStatus argument");
+      return false;
+    }
+    IrCompareOp op = ir_text_eq(callee_name, "std.proc.succeeded") ? IR_CMP_EQ : IR_CMP_NE;
+    *out = ir_new_compare_value(ir, op, status, ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  {
+    IrMathOp math_op = IR_MATH_OP_MIN_I32;
+    IrTypeKind math_arg_type = IR_TYPE_UNSUPPORTED;
+    IrTypeKind math_return_type = IR_TYPE_UNSUPPORTED;
+    IrTypeKind math_return_element_type = IR_TYPE_UNSUPPORTED;
+    size_t math_expected_args = 0;
+    if (ir_graph_std_math_runtime_spec(callee_name, arg_count, &math_op, &math_arg_type, &math_return_type, &math_return_element_type, &math_expected_args)) {
+      return ir_graph_make_std_math_runtime_value(graph, ir, fun, expr, math_op, math_arg_type, math_return_type, math_return_element_type, math_expected_args, out);
+    }
+  }
+  {
+    bool handled = false;
+    if (!ir_graph_lower_std_search_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) return false;
+    if (handled) return true;
+  }
+  {
+    bool handled = false;
+    if (!ir_graph_lower_std_sort_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) return false;
+    if (handled) return true;
+  }
+  if ((ir_text_eq(callee_name, "std.math.isEvenU32") || ir_text_eq(callee_name, "std.math.isOddU32")) && arg_count == 1) {
+    IrValue *number = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_U32, &number)) return false;
+    if (!number || number->type != IR_TYPE_U32) {
+      ir_free_value(number);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 0), "typed graph MIR std.math parity helper expects u32", "non-u32 argument");
+      return false;
+    }
+    IrValue *remainder = ir_new_binary_value(ir, IR_BIN_MOD, IR_TYPE_U32, number, ir_new_integer_literal_value(ir, IR_TYPE_U32, 2, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    IrCompareOp op = ir_text_eq(callee_name, "std.math.isEvenU32") ? IR_CMP_EQ : IR_CMP_NE;
+    *out = ir_new_compare_value(ir, op, remainder, ir_new_integer_literal_value(ir, IR_TYPE_U32, 0, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.args.parseU32") && arg_count == 1) {
+    IrValue *index = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index)) return false;
+    if (!ir_type_is_value(index->type)) {
+      ir_free_value(index);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.args.parseU32 index must be an integer value", "non-integer index");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_PARSE_U32, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = index;
+    value->element_type = IR_TYPE_U32;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.mem.span") && arg_count == 1) {
+    return ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), out);
+  }
+  if (ir_text_eq(callee_name, "std.mem.len") && arg_count == 1) {
+    const ZProgramGraphNode *arg = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+    if (arg && arg->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER) {
+      const IrLocal *local = ir_function_find_local(fun, arg->name);
+      if (local && local->is_array) {
+        *out = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, local->array_len, ir_graph_line(expr), ir_graph_column(expr));
+        return true;
+      }
+    }
+    IrValue *view = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, arg, &view)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_LEN, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = view;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.mem.isEmpty") && arg_count == 1) {
+    IrValue *view = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &view)) return false;
+    IrValue *len = ir_new_value(ir, IR_VALUE_BYTE_VIEW_LEN, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    len->left = view;
+    *out = ir_new_compare_value(
+        ir,
+        IR_CMP_EQ,
+        len,
+        ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, ir_graph_line(expr), ir_graph_column(expr)),
+        ir_graph_line(expr),
+        ir_graph_column(expr));
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.io.remaining") && arg_count == 2) {
+    IrValue *view = NULL;
+    IrValue *offset = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &view) ||
+        !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_USIZE, &offset)) {
+      ir_free_value(view);
+      ir_free_value(offset);
+      return false;
+    }
+    if (!ir_type_is_value(offset->type)) {
+      ir_free_value(view);
+      ir_free_value(offset);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.io.remaining offset must be an integer value", "non-integer offset");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_BYTE_VIEW_REMAINING, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = view;
+    value->index = offset;
+    *out = value;
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.parse.parseI32") || ir_text_eq(callee_name, "std.parse.parseU32")) && arg_count == 1) {
+    IrValue *text = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &text)) return false;
+    bool signed_parse = ir_text_eq(callee_name, "std.parse.parseI32");
+    IrValue *value = ir_new_value(ir, signed_parse ? IR_VALUE_PARSE_I32 : IR_VALUE_PARSE_U32, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = text;
+    value->element_type = signed_parse ? IR_TYPE_I32 : IR_TYPE_U32;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.fmt.bool") ||
+       ir_text_eq(callee_name, "std.fmt.hexLowerU32") ||
+       ir_text_eq(callee_name, "std.fmt.i32") ||
+       ir_text_eq(callee_name, "std.fmt.u32") ||
+       ir_text_eq(callee_name, "std.fmt.usize")) &&
+      arg_count == 2) {
+    IrValue *buffer = NULL;
+    IrValue *number = NULL;
+    IrTypeKind number_type = IR_TYPE_U32;
+    IrValueKind kind = IR_VALUE_FMT_U32;
+    const char *type_error = "typed graph MIR std.fmt.u32 value must be u32";
+    const char *actual = "non-u32 value";
+    if (ir_text_eq(callee_name, "std.fmt.bool")) {
+      number_type = IR_TYPE_BOOL;
+      kind = IR_VALUE_FMT_BOOL;
+      type_error = "typed graph MIR std.fmt.bool value must be Bool";
+      actual = "non-Bool value";
+    } else if (ir_text_eq(callee_name, "std.fmt.hexLowerU32")) {
+      kind = IR_VALUE_FMT_HEX_U32;
+      type_error = "typed graph MIR std.fmt.hexLowerU32 value must be u32";
+    } else if (ir_text_eq(callee_name, "std.fmt.i32")) {
+      number_type = IR_TYPE_I32;
+      kind = IR_VALUE_FMT_I32;
+      type_error = "typed graph MIR std.fmt.i32 value must be i32";
+      actual = "non-i32 value";
+    } else if (ir_text_eq(callee_name, "std.fmt.usize")) {
+      number_type = IR_TYPE_USIZE;
+      kind = IR_VALUE_FMT_USIZE;
+      type_error = "typed graph MIR std.fmt.usize value must be usize";
+      actual = "non-usize value";
+    }
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buffer) ||
+        !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, number_type, &number)) {
+      ir_free_value(buffer);
+      ir_free_value(number);
+      return false;
+    }
+    if (number->type != number_type) {
+      ir_free_value(buffer);
+      ir_free_value(number);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 1), type_error, actual);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, kind, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = buffer;
+    value->right = number;
+    value->element_type = IR_TYPE_U8;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.mem.eql") || ir_text_eq(callee_name, "std.mem.eqlBytes") || ir_text_eq(callee_name, "std.str.contains")) && arg_count == 2) {
+    IrValue *left = NULL;
+    IrValue *right = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &left) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &right)) {
+      ir_free_value(left);
+      ir_free_value(right);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, ir_text_eq(callee_name, "std.str.contains") ? IR_VALUE_STR_CONTAINS : IR_VALUE_BYTE_VIEW_EQ, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = left;
+    value->right = right;
+    if (value->kind == IR_VALUE_STR_CONTAINS) ir_graph_require_runtime_helper(ir);
+    *out = value;
+    return true;
+  }
+  *handled = false;
+  return true;
+}
+
 static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
   if (expr->kind == Z_PROGRAM_GRAPH_NODE_CALL && (ir_compare_op(expr->name, &(IrCompareOp){0}) || ir_binary_op(expr->name, &(IrBinaryOp){0}))) {
     return ir_graph_lower_binary_call(graph, ir, fun, expr, out);
@@ -1240,33 +2391,70 @@ static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const
   char *qualified = ir_graph_expr_qualified_name(graph, expr);
   const char *callee_name = qualified && qualified[0] ? qualified : expr->name;
   size_t arg_count = ir_graph_edge_count(graph, expr->id, "arg");
-  if (ir_text_eq(callee_name, "std.args.len") && arg_count == 0) {
-    *out = ir_new_value(ir, IR_VALUE_ARGS_LEN, IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+  bool handled = false;
+  if (!ir_graph_lower_http_std_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
     free(qualified);
     return true;
   }
-  if (ir_text_eq(callee_name, "std.args.get") && arg_count == 1) {
-    IrValue *index = NULL;
-    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index)) {
-      free(qualified);
-      return false;
-    }
-    if (!ir_type_is_value(index->type)) {
-      ir_free_value(index);
-      free(qualified);
-      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.args.get index must be an integer value", "non-integer index");
-      return false;
-    }
-    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
-    value->left = index;
-    *out = value;
+  if (!ir_graph_lower_std_str_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
     free(qualified);
     return true;
   }
-  if (ir_text_eq(callee_name, "std.mem.span") && arg_count == 1) {
-    bool ok = ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), out);
+  if (!ir_graph_lower_std_ascii_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
     free(qualified);
-    return ok;
+    return false;
+  }
+  if (handled) {
+    free(qualified);
+    return true;
+  }
+  if (!ir_graph_lower_std_text_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
+    free(qualified);
+    return true;
+  }
+  if (!ir_graph_lower_std_parse_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
+    free(qualified);
+    return true;
+  }
+  if (!ir_graph_lower_std_time_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
+    free(qualified);
+    return true;
+  }
+  if (!ir_graph_lower_std_testing_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
+    free(qualified);
+    return true;
+  }
+  if (!ir_graph_lower_std_byte_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) {
+    free(qualified);
+    return false;
+  }
+  if (handled) {
+    free(qualified);
+    return true;
   }
   const char *source_backed_std = z_std_source_target_for_public_call(callee_name);
   if (source_backed_std) {
@@ -1300,6 +2488,22 @@ static bool ir_graph_lower_expr(const ZProgramGraph *graph, IrProgram *ir, const
       return ir_graph_lower_identifier(expr, ir, fun, out);
     case Z_PROGRAM_GRAPH_NODE_FIELD_ACCESS:
       return ir_graph_lower_field_access(graph, ir, fun, expr, out);
+    case Z_PROGRAM_GRAPH_NODE_INDEX_ACCESS:
+      return ir_graph_lower_index_access(graph, ir, fun, expr, out);
+    case Z_PROGRAM_GRAPH_NODE_SLICE:
+      return ir_graph_lower_byte_slice(graph, ir, fun, expr, out);
+    case Z_PROGRAM_GRAPH_NODE_CAST: {
+      IrValue *inner = NULL;
+      if (!ir_graph_lower_expr(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "left", 0), &inner)) return false;
+      IrTypeKind cast_type = ir_type_kind(ir_graph_node_type(graph, expr));
+      if (!ir_type_is_value(cast_type) && cast_type != IR_TYPE_BOOL) {
+        ir_free_value(inner);
+        ir_graph_mark_unsupported(ir, expr, "typed graph MIR cast target type is unsupported", ir_graph_node_type(graph, expr));
+        return false;
+      }
+      *out = ir_new_cast_value(ir, inner, cast_type, ir_graph_line(expr), ir_graph_column(expr));
+      return true;
+    }
     case Z_PROGRAM_GRAPH_NODE_CALL:
     case Z_PROGRAM_GRAPH_NODE_METHOD_CALL:
       return ir_graph_lower_call(graph, ir, fun, expr, out);
@@ -1344,6 +2548,54 @@ static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFun
     if (!ir_graph_lower_expr_for_type(graph, ir, fun, expr, local->type, false, ir_graph_line(stmt), ir_graph_column(stmt), &value)) return false;
     ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_LOCAL_SET, .local_index = local->index, .value = value, .line = ir_graph_line(stmt), .column = ir_graph_column(stmt)});
     ir_active_local_push(ir, stmt->name);
+    return true;
+  }
+  if (stmt->kind == Z_PROGRAM_GRAPH_NODE_ASSIGNMENT) {
+    const ZProgramGraphNode *target = ir_graph_ordered_node(graph, stmt->id, "target", 0);
+    const ZProgramGraphNode *expr = ir_graph_ordered_node(graph, stmt->id, "expr", 0);
+    if (target && target->kind == Z_PROGRAM_GRAPH_NODE_INDEX_ACCESS) {
+      const ZProgramGraphNode *base = ir_graph_ordered_node(graph, target->id, "left", 0);
+      const ZProgramGraphNode *index_node = ir_graph_ordered_node(graph, target->id, "right", 1);
+      if (!base || base->kind != Z_PROGRAM_GRAPH_NODE_IDENTIFIER) {
+        ir_graph_mark_unsupported(ir, target, "typed graph MIR indexed assignment supports only local fixed arrays and mutable byte views", "non-local indexed assignment");
+        return false;
+      }
+      const IrLocal *local = ir_function_find_local(fun, base->name);
+      if (!local || (!local->is_array && local->type != IR_TYPE_BYTE_VIEW)) {
+        ir_graph_mark_unsupported(ir, target, "typed graph MIR indexed assignment target is not a fixed array or byte view local", base->name);
+        return false;
+      }
+      if (!local->is_mutable) {
+        ir_graph_mark_unsupported(ir, target, "typed graph MIR indexed assignment target must be mutable", base->name);
+        return false;
+      }
+      IrValue *index = NULL;
+      IrValue *value = NULL;
+      IrTypeKind element_type = local->type == IR_TYPE_BYTE_VIEW ? (local->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : local->element_type) : local->element_type;
+      if (!ir_graph_lower_expr(graph, ir, fun, index_node, &index) ||
+          !ir_graph_lower_expr_for_type(graph, ir, fun, expr, element_type, false, ir_graph_line(expr), ir_graph_column(expr), &value)) {
+        ir_free_value(index);
+        ir_free_value(value);
+        return false;
+      }
+      if (!ir_type_is_value(index->type) || value->type != element_type) {
+        ir_free_value(index);
+        ir_free_value(value);
+        ir_graph_mark_unsupported(ir, target, "typed graph MIR indexed assignment type does not match target element", local->name);
+        return false;
+      }
+      ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_INDEX_STORE, .array_index = local->index, .index = index, .value = value, .line = ir_graph_line(stmt), .column = ir_graph_column(stmt)});
+      return true;
+    }
+    if (!target || target->kind != Z_PROGRAM_GRAPH_NODE_IDENTIFIER) {
+      ir_graph_mark_unsupported(ir, target ? target : stmt, "typed graph MIR assignment currently supports only local variables", "non-local assignment");
+      return false;
+    }
+    const IrLocal *local = ir_function_find_local(fun, target->name);
+    if (!local) return false;
+    IrValue *value = NULL;
+    if (!ir_graph_lower_expr_for_type(graph, ir, fun, expr, local->type, fun->return_type == IR_TYPE_I32, ir_graph_line(stmt), ir_graph_column(stmt), &value)) return false;
+    ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_LOCAL_SET, .local_index = local->index, .value = value, .line = ir_graph_line(stmt), .column = ir_graph_column(stmt)});
     return true;
   }
   if (stmt->kind == Z_PROGRAM_GRAPH_NODE_RETURN) {
@@ -1421,6 +2673,28 @@ static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFun
       ir_free_instrs(instr.else_instrs, instr.else_len);
       free(instr.then_instrs);
       free(instr.else_instrs);
+      return false;
+    }
+    ir_instr_vec_push(ir, out_items, out_len, out_cap, instr);
+    return true;
+  }
+  if (stmt->kind == Z_PROGRAM_GRAPH_NODE_WHILE) {
+    IrValue *cond = NULL;
+    const ZProgramGraphNode *expr = ir_graph_ordered_node(graph, stmt->id, "expr", 0);
+    if (!ir_graph_lower_expr(graph, ir, fun, expr, &cond)) return false;
+    if (cond->type != IR_TYPE_BOOL) {
+      ir_free_value(cond);
+      ir_graph_mark_unsupported(ir, stmt, "typed graph MIR while condition must be Bool", "non-Bool condition");
+      return false;
+    }
+    IrInstr instr = {.kind = IR_INSTR_WHILE, .value = cond, .line = ir_graph_line(stmt), .column = ir_graph_column(stmt)};
+    size_t scope_mark = ir_active_local_mark(ir);
+    bool body_ok = ir_graph_lower_block(graph, ir, fun, ir_graph_ordered_node(graph, stmt->id, "then", 0), &instr.then_instrs, &instr.then_len, &instr.then_cap, saw_return);
+    ir_active_local_restore(ir, scope_mark);
+    if (!body_ok) {
+      ir_free_value(cond);
+      ir_free_instrs(instr.then_instrs, instr.then_len);
+      free(instr.then_instrs);
       return false;
     }
     ir_instr_vec_push(ir, out_items, out_len, out_cap, instr);
@@ -1524,7 +2798,7 @@ static IrProgram ir_lower_program_graph_with_source_helpers(const ZProgramGraph 
   }
 
   if (source_helper_ir && !z_program_graph_steal_source_std_helpers(&ir, source_helper_ir)) {
-    ir_mark_unsupported(&ir, "typed graph MIR source-backed std helper import failed", 1, 1, "unmappable std helper MIR");
+    ir_mark_unsupported(&ir, "typed graph MIR std helper import failed", 1, 1, "unmappable std helper MIR");
     ir_free_function_order(order, stable_ids, ordered_len);
     return ir;
   }
@@ -1580,6 +2854,7 @@ bool z_program_graph_prepare_artifact_mir_input(const char *artifact_path, const
   z_program_graph_seed_source_metadata(input, &graph);
   IrProgram graph_ir = z_lower_program_graph_with_source(&graph, input, target);
   bool graph_mir_valid = graph_ir.mir_valid;
+  if (graph_mir_valid && ir_graph_requires_source_std_ast_mir(&graph)) graph_mir_valid = false;
   bool source_std_helpers_used = false;
   if (graph_mir_valid) {
     *ir = graph_ir;
@@ -1658,6 +2933,7 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
   z_program_graph_seed_source_metadata(input, &store.graph);
   IrProgram graph_ir = z_lower_program_graph_with_source(&store.graph, input, target);
   bool graph_mir_valid = graph_ir.mir_valid;
+  if (graph_mir_valid && ir_graph_requires_source_std_ast_mir(&store.graph)) graph_mir_valid = false;
   bool source_std_helpers_used = false;
   if (graph_mir_valid) {
     *ir = graph_ir;

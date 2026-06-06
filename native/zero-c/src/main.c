@@ -23,6 +23,7 @@
 #include "program_graph_repository_input.h"
 #include "program_graph_roundtrip.h"
 #include "program_graph_semantics.h"
+#include "program_graph_mir_std.h"
 #include "program_graph_size.h"
 #include "program_graph_source_map.h"
 #include "program_graph_store.h"
@@ -2515,7 +2516,7 @@ static void append_compile_time_json(ZBuf *buf, const Program *program, const So
 
 static void append_program_graph_artifact_source_json(ZBuf *buf, const ZProgramGraphArtifactSource *source);
 static void append_safety_facts_json(ZBuf *buf, const char *profile);
-static bool append_repository_graph_target_readiness_json(ZBuf *buf, SourceInput *input, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, const ZTargetInfo *target, const Command *command, long long *lower_ms_out, bool *graph_mir_used_out, bool *ast_fallback_used_out, bool *source_std_helpers_used_out);
+static bool append_repository_graph_target_readiness_json(ZBuf *buf, SourceInput *input, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, const ZTargetInfo *target, const Command *command, long long *lower_ms_out, bool *graph_mir_used_out, bool *ast_fallback_used_out, bool *std_helper_ast_fallback_used_out);
 
 static bool graph_check_text_eq(const char *left, const char *right) {
   const unsigned char *a = (const unsigned char *)(left ? left : "");
@@ -2611,9 +2612,9 @@ static bool graph_check_target_capabilities_ok(const ZProgramGraph *graph, const
   return true;
 }
 
-static void append_repository_graph_default_readiness_json(ZBuf *buf, const char *projection_state, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long validate_ms, long long resolve_ms, long long check_ms, long long lower_ms, long long cache_ms, bool validation_in_load, bool target_ready, bool graph_mir_used, bool ast_fallback_used, bool source_std_helpers_used) {
+static void append_repository_graph_default_readiness_json(ZBuf *buf, const char *projection_state, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long validate_ms, long long resolve_ms, long long check_ms, long long lower_ms, long long cache_ms, bool validation_in_load, bool target_ready, bool graph_mir_used, bool ast_fallback_used, bool std_helper_ast_fallback_used) {
   bool resolution_ok = resolution && resolution->diagnostic_len == 0;
-  bool compiler_input_ready = resolution_ok && graph_mir_used && target_ready && !source_std_helpers_used;
+  bool compiler_input_ready = resolution_ok && graph_mir_used && target_ready && !std_helper_ast_fallback_used;
   bool within_budget =
     load_ms <= 50 &&
     validate_ms <= 50 &&
@@ -2636,8 +2637,8 @@ static void append_repository_graph_default_readiness_json(ZBuf *buf, const char
   zbuf_append(buf, graph_mir_used ? "true" : "false");
   zbuf_append(buf, ",\"astToMirFallbackUsed\":");
   zbuf_append(buf, ast_fallback_used ? "true" : "false");
-  zbuf_append(buf, ",\"sourceBackedStdHelpersUsed\":");
-  zbuf_append(buf, source_std_helpers_used ? "true" : "false");
+  zbuf_append(buf, ",\"stdHelperAstFallbackUsed\":");
+  zbuf_append(buf, std_helper_ast_fallback_used ? "true" : "false");
   zbuf_append(buf, "}");
   zbuf_append(buf, ",\"unsupportedGraphFacts\":{\"count\":0,\"facts\":[]}");
   zbuf_append(buf, ",\"performance\":{\"withinBudget\":");
@@ -2653,7 +2654,7 @@ static void append_repository_graph_default_readiness_json(ZBuf *buf, const char
   zbuf_append(buf, "}");
 }
 
-static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZTargetInfo *target, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long validate_ms, long long resolve_ms, long long check_ms, long long lower_ms, long long cache_ms, bool validation_in_load, bool target_ready, bool graph_mir_used, bool ast_fallback_used, bool source_std_helpers_used) {
+static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZTargetInfo *target, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, long long load_ms, long long validate_ms, long long resolve_ms, long long check_ms, long long lower_ms, long long cache_ms, bool validation_in_load, bool target_ready, bool graph_mir_used, bool ast_fallback_used, bool std_helper_ast_fallback_used) {
   ZProgramGraphStoreTableCounts tables;
   z_program_graph_store_table_counts_for_graph(store ? &store->graph : NULL,
                                                store ? store->source_path_len : 0,
@@ -2669,12 +2670,12 @@ static void append_repository_graph_compiler_path_json(ZBuf *buf, const ZTargetI
   zbuf_append(buf, graph_mir_used ? "true" : "false");
   zbuf_append(buf, ",\"astToMirFallbackUsed\":");
   zbuf_append(buf, ast_fallback_used ? "true" : "false");
-  zbuf_append(buf, ",\"sourceBackedStdHelpersUsed\":");
-  zbuf_append(buf, source_std_helpers_used ? "true" : "false");
+  zbuf_append(buf, ",\"stdHelperAstFallbackUsed\":");
+  zbuf_append(buf, std_helper_ast_fallback_used ? "true" : "false");
   zbuf_append(buf, ",\"unsupportedGraphFacts\":{\"count\":0,\"facts\":[]}");
   zbuf_appendf(buf, ",\"timings\":{\"loadMs\":%lld,\"validateMs\":%lld,\"resolveMs\":%lld,\"checkMs\":%lld,\"lowerMs\":%lld,\"cacheMs\":%lld,\"validationInLoad\":%s}", load_ms, validate_ms, resolve_ms, check_ms, lower_ms, cache_ms, validation_in_load ? "true" : "false");
   zbuf_append(buf, ",\"defaultReadiness\":");
-  append_repository_graph_default_readiness_json(buf, projection_state, resolution, load_ms, validate_ms, resolve_ms, check_ms, lower_ms, cache_ms, validation_in_load, target_ready, graph_mir_used, ast_fallback_used, source_std_helpers_used);
+  append_repository_graph_default_readiness_json(buf, projection_state, resolution, load_ms, validate_ms, resolve_ms, check_ms, lower_ms, cache_ms, validation_in_load, target_ready, graph_mir_used, ast_fallback_used, std_helper_ast_fallback_used);
   zbuf_append(buf, ",\"tables\":");
   z_program_graph_store_append_table_counts_json(buf, &tables);
   zbuf_append(buf, ",\"resolution\":{\"state\":\"resolved-graph-facts\",\"ok\":");
@@ -2694,8 +2695,8 @@ static void print_repository_graph_check_json_success(const Command *command, co
   long long lower_ms = 0;
   bool graph_mir_used = false;
   bool ast_fallback_used = false;
-  bool source_std_helpers_used = false;
-  bool target_ready = append_repository_graph_target_readiness_json(&target_readiness, input, store, resolution, target, command, &lower_ms, &graph_mir_used, &ast_fallback_used, &source_std_helpers_used);
+  bool std_helper_ast_fallback_used = false;
+  bool target_ready = append_repository_graph_target_readiness_json(&target_readiness, input, store, resolution, target, command, &lower_ms, &graph_mir_used, &ast_fallback_used, &std_helper_ast_fallback_used);
   ZBuf buf;
   zbuf_init(&buf);
   zbuf_append(&buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"sourceFile\": ");
@@ -2707,7 +2708,7 @@ static void print_repository_graph_check_json_success(const Command *command, co
     .lowering = "graph-native-check",
     .source_projection_state = z_program_graph_projection_state_label(store, target, NULL, NULL, NULL),
     .canonical_source = false,
-    .source_std_helpers_used = source_std_helpers_used,
+    .source_std_helpers_used = std_helper_ast_fallback_used,
   };
   append_program_graph_artifact_source_json(&buf, &graph_source);
   const char *profile = command && command->profile ? command->profile : "release";
@@ -2722,7 +2723,7 @@ static void print_repository_graph_check_json_success(const Command *command, co
   zbuf_append(&buf, ",\n  \"safetyFacts\": ");
   append_safety_facts_json(&buf, profile);
   zbuf_append(&buf, ",\n  \"graphCompiler\": ");
-  append_repository_graph_compiler_path_json(&buf, target, store, resolution, load_ms, 0, resolve_ms, check_ms, lower_ms, cache_ms, true, target_ready, graph_mir_used, ast_fallback_used, source_std_helpers_used);
+  append_repository_graph_compiler_path_json(&buf, target, store, resolution, load_ms, 0, resolve_ms, check_ms, lower_ms, cache_ms, true, target_ready, graph_mir_used, ast_fallback_used, std_helper_ast_fallback_used);
   zbuf_append(&buf, ",\n  \"compilerPhases\": ");
   append_compiler_phases_json(&buf, input);
   zbuf_append(&buf, ",\n  \"compilerCaches\": ");
@@ -2865,7 +2866,7 @@ static void append_program_graph_artifact_source_json(ZBuf *buf, const ZProgramG
   append_json_string(buf, source->graph_hash ? source->graph_hash : "");
   zbuf_append(buf, ",\"lowering\":");
   append_json_string(buf, source->lowering ? source->lowering : "direct-program-graph");
-  zbuf_append(buf, ",\"sourceBackedStdHelpersUsed\":");
+  zbuf_append(buf, ",\"stdHelperAstFallbackUsed\":");
   zbuf_append(buf, source->source_std_helpers_used ? "true" : "false");
   if (source->source_projection_state) {
     zbuf_append(buf, ",\"sourceProjectionState\":");
@@ -4680,47 +4681,6 @@ static void direct_input_ensure_std_source_module(SourceInput *input, const ZStd
   direct_input_push_module(input, module->module, module->path);
 }
 
-static const Function *direct_program_find_function_index(const Program *program, const char *name, size_t *out_index) {
-  for (size_t i = 0; program && i < program->functions.len; i++) {
-    if (strcmp(program->functions.items[i].name ? program->functions.items[i].name : "", name ? name : "") == 0) {
-      if (out_index) *out_index = i;
-      return &program->functions.items[i];
-    }
-  }
-  return NULL;
-}
-
-static int direct_program_function_end_line(const Program *program, size_t function_index, const char *source) {
-  if (!program || function_index >= program->functions.len) return 1;
-  int start = program->functions.items[function_index].line > 0 ? program->functions.items[function_index].line : 1;
-  int end = (int)source_line_count(source);
-  if (end < start) end = start;
-  for (size_t i = 0; i < program->functions.len; i++) {
-    int line = program->functions.items[i].line;
-    if (line > start && line - 1 < end) end = line - 1;
-  }
-  return end;
-}
-
-static void direct_source_append_line_range(SourceInput *input, ZBuf *combined, const char *path, const char *source, int start_line, int end_line) {
-  if (!source || start_line <= 0 || end_line < start_line) return;
-  const char *line = source;
-  int original_line = 1;
-  while (*line && original_line <= end_line) {
-    const char *end = strchr(line, '\n');
-    size_t len = end ? (size_t)(end - line) : strlen(line);
-    if (original_line >= start_line) {
-      zbuf_appendf(combined, "%.*s\n", (int)len, line);
-      direct_input_push_source_line(input, path, original_line);
-    }
-    if (!end) break;
-    line = end + 1;
-    original_line++;
-  }
-  zbuf_append_char(combined, '\n');
-  direct_input_push_source_line(input, path, end_line > 0 ? end_line : 1);
-}
-
 static bool direct_expr_append_referenced_std_sources(SourceInput *input, ZBuf *combined, const Expr *expr, const ZStdSourceModule *owner, const ZStdSourceModule *current_module, ZDiag *diag);
 static bool direct_stmt_vec_append_referenced_std_sources(SourceInput *input, ZBuf *combined, const StmtVec *body, const ZStdSourceModule *owner, const ZStdSourceModule *current_module, ZDiag *diag);
 
@@ -4813,20 +4773,8 @@ static bool direct_program_append_referenced_std_sources(SourceInput *input, ZBu
   return direct_function_vec_append_referenced_std_sources(input, combined, program ? &program->functions : NULL, owner, NULL, diag);
 }
 
-static void direct_std_source_set_missing_helper_diag(ZDiag *diag, const ZStdSourceModule *module, const char *target_name) {
-  if (!diag || diag->code != 0) return;
-  diag->code = 7001;
-  diag->path = z_strdup(module && module->path ? module->path : "");
-  diag->line = 1;
-  diag->column = 1;
-  diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "source-backed stdlib helper is missing");
-  snprintf(diag->expected, sizeof(diag->expected), "function %s in %s", target_name ? target_name : "", module && module->path ? module->path : "");
-  snprintf(diag->actual, sizeof(diag->actual), "helper function was not found");
-  snprintf(diag->help, sizeof(diag->help), "keep std_source.c target mappings aligned with embedded stdlib source");
-}
-
 static bool direct_canonical_append_std_source_function(SourceInput *input, ZBuf *combined, const ZStdSourceModule *module, const char *target_name, ZDiag *diag) {
+  (void)combined;
   if (!module || !target_name || !target_name[0]) return true;
   if (input && input->source_file &&
       direct_source_path_has_module_suffix(input->source_file, module->path) &&
@@ -4835,40 +4783,8 @@ static bool direct_canonical_append_std_source_function(SourceInput *input, ZBuf
   }
   if (direct_input_has_function_symbol(input, module->module, target_name)) return true;
 
-  char *source = z_std_source_module_copy_source(module);
-  ZCanonicalTokenVec tokens = z_canonical_text_tokenize(source, diag);
-  Program program = {0};
-  if (diag->code == 0) program = z_parse_canonical_text_program(&tokens, diag);
-  if (diag->code != 0) {
-    if (!diag->path) diag->path = z_strdup(module->path);
-    z_free_program(&program);
-    z_free_canonical_text_tokens(&tokens);
-    free(source);
-    return false;
-  }
-
-  size_t function_index = 0;
-  const Function *fun = direct_program_find_function_index(&program, target_name, &function_index);
-  if (!fun) {
-    direct_std_source_set_missing_helper_diag(diag, module, target_name);
-    z_free_program(&program);
-    z_free_canonical_text_tokens(&tokens);
-    free(source);
-    return false;
-  }
-
   direct_input_ensure_std_source_module(input, module);
-  bool ok = direct_input_add_program_symbol(input, module->module, "function", fun->name, false, true, fun->line, fun->column, diag);
-  if (ok) {
-    int end_line = direct_program_function_end_line(&program, function_index, source);
-    direct_source_append_line_range(input, combined, module->path, source, fun->line > 0 ? fun->line : 1, end_line);
-    ok = direct_function_append_referenced_std_sources(input, combined, fun, NULL, module, diag);
-  }
-
-  z_free_program(&program);
-  z_free_canonical_text_tokens(&tokens);
-  free(source);
-  return ok && (!diag || diag->code == 0);
+  return direct_input_add_program_symbol(input, module->module, "function", target_name, false, true, 1, 1, diag);
 }
 
 static bool direct_canonical_append_referenced_std_sources(SourceInput *input, ZBuf *combined, const Program *program, const ZStdSourceModule *owner, ZDiag *diag) {
@@ -5265,6 +5181,12 @@ static bool try_check_canonical_text_input(const ZTargetInfo *target, const char
   diag->path = input->source_file;
   long long phase_started = now_ms();
   if (!z_parse_canonical_text_program_source(input->source, program, diag)) {
+    z_free_program(program);
+    memset(program, 0, sizeof(*program));
+    return false;
+  }
+  size_t appended_std_functions = 0;
+  if (!z_program_graph_append_source_std_functions(program, &appended_std_functions, diag)) {
     z_free_program(program);
     memset(program, 0, sizeof(*program));
     return false;
@@ -5872,6 +5794,32 @@ typedef struct {
   bool path_unlink_file;
   bool path_rename;
   bool zero_json_parse_bytes;
+  bool zero_ascii_op;
+  bool zero_text_op;
+  bool zero_time_op;
+  bool zero_math_op;
+  bool zero_math_usize_op;
+  bool zero_search_op;
+  bool zero_sort_op;
+  bool zero_sort_is_sorted_op;
+  bool zero_str_contains;
+  bool zero_str_buffer_op;
+  bool zero_str_concat;
+  bool zero_str_repeat;
+  bool zero_str_trim_op;
+  bool zero_str_pair_op;
+  bool zero_str_count_byte;
+  bool zero_str_word_count_ascii;
+  bool zero_args_find;
+  bool zero_parse_op;
+  bool zero_parse_usize;
+  bool zero_parse_i32;
+  bool zero_parse_u32;
+  bool zero_fmt_bool;
+  bool zero_fmt_hex_lower_u32;
+  bool zero_fmt_i32;
+  bool zero_fmt_u32;
+  bool zero_fmt_usize;
   bool zero_http_fetch_result;
   bool zero_http_result_ok;
   bool zero_http_result_status;
@@ -5884,6 +5832,9 @@ typedef struct {
   bool zero_http_header_found;
   bool zero_http_header_offset;
   bool zero_http_header_len;
+  bool zero_http_write_json_response;
+  bool zero_http_request_method_name;
+  bool zero_http_request_path;
 } RuntimeImportAudit;
 
 static void runtime_import_audit_mark_fs_base(RuntimeImportAudit *audit) {
@@ -5892,6 +5843,48 @@ static void runtime_import_audit_mark_fs_base(RuntimeImportAudit *audit) {
   audit->fd_read = true;
   audit->fd_close = true;
   audit->path_open = true;
+}
+
+static void runtime_import_audit_mark_str_runtime(RuntimeImportAudit *audit, const IrValue *value) {
+  if (!audit || !value) return;
+  switch ((IrStrOp)value->int_value) {
+    case IR_STR_OP_REVERSE:
+    case IR_STR_OP_COPY:
+    case IR_STR_OP_TO_LOWER_ASCII:
+    case IR_STR_OP_TO_UPPER_ASCII:
+      audit->zero_str_buffer_op = true;
+      break;
+    case IR_STR_OP_CONCAT:
+      audit->zero_str_concat = true;
+      break;
+    case IR_STR_OP_REPEAT:
+      audit->zero_str_repeat = true;
+      break;
+    case IR_STR_OP_TRIM_ASCII:
+    case IR_STR_OP_TRIM_START_ASCII:
+    case IR_STR_OP_TRIM_END_ASCII:
+    case IR_STR_OP_PATH_BASENAME:
+    case IR_STR_OP_PATH_DIRNAME:
+    case IR_STR_OP_PATH_EXTENSION:
+    case IR_STR_OP_PARSE_TOKEN_ASCII:
+      audit->zero_str_trim_op = true;
+      break;
+    case IR_STR_OP_COUNT_BYTE:
+      audit->zero_str_count_byte = true;
+      break;
+    case IR_STR_OP_STARTS_WITH:
+    case IR_STR_OP_ENDS_WITH:
+    case IR_STR_OP_CONTAINS:
+    case IR_STR_OP_COUNT:
+    case IR_STR_OP_INDEX_OF:
+    case IR_STR_OP_LAST_INDEX_OF:
+    case IR_STR_OP_EQL_IGNORE_ASCII_CASE:
+      audit->zero_str_pair_op = true;
+      break;
+    case IR_STR_OP_WORD_COUNT_ASCII:
+      audit->zero_str_word_count_ascii = true;
+      break;
+  }
 }
 
 static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit *audit) {
@@ -5940,6 +5933,68 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
       audit->zero_json_parse_bytes = true;
       break;
+    case IR_VALUE_ASCII_RUNTIME:
+      audit->zero_ascii_op = true;
+      break;
+    case IR_VALUE_TEXT_RUNTIME:
+      audit->zero_text_op = true;
+      break;
+    case IR_VALUE_TIME_RUNTIME:
+      audit->zero_time_op = true;
+      break;
+    case IR_VALUE_MATH_RUNTIME:
+      if (value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE) audit->zero_math_usize_op = true;
+      else audit->zero_math_op = true;
+      break;
+    case IR_VALUE_SEARCH_RUNTIME:
+      audit->zero_search_op = true;
+      break;
+    case IR_VALUE_SORT_RUNTIME:
+      if (value->type == IR_TYPE_BOOL) audit->zero_sort_is_sorted_op = true;
+      else audit->zero_sort_op = true;
+      break;
+    case IR_VALUE_STR_CONTAINS:
+      audit->zero_str_contains = true;
+      break;
+    case IR_VALUE_STR_RUNTIME:
+      runtime_import_audit_mark_str_runtime(audit, value);
+      break;
+    case IR_VALUE_PARSE_RUNTIME:
+      if (value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE) audit->zero_parse_usize = true;
+      else audit->zero_parse_op = true;
+      break;
+    case IR_VALUE_PARSE_I32:
+      audit->zero_parse_i32 = true;
+      break;
+    case IR_VALUE_PARSE_U32:
+    case IR_VALUE_ARGS_PARSE_U32:
+      audit->zero_parse_u32 = true;
+      break;
+    case IR_VALUE_ARGS_FIND:
+    case IR_VALUE_ARGS_CONTAINS:
+    case IR_VALUE_ARGS_VALUE_AFTER:
+    case IR_VALUE_ARGS_VALUE_AFTER_OR:
+      audit->zero_args_find = true;
+      break;
+    case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:
+      audit->zero_args_find = true;
+      audit->zero_parse_u32 = true;
+      break;
+    case IR_VALUE_FMT_BOOL:
+      audit->zero_fmt_bool = true;
+      break;
+    case IR_VALUE_FMT_HEX_U32:
+      audit->zero_fmt_hex_lower_u32 = true;
+      break;
+    case IR_VALUE_FMT_I32:
+      audit->zero_fmt_i32 = true;
+      break;
+    case IR_VALUE_FMT_U32:
+      audit->zero_fmt_u32 = true;
+      break;
+    case IR_VALUE_FMT_USIZE:
+      audit->zero_fmt_usize = true;
+      break;
     case IR_VALUE_HTTP_FETCH:
       audit->zero_http_fetch_result = true;
       break;
@@ -5975,6 +6030,15 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
       break;
     case IR_VALUE_HTTP_HEADER_LEN:
       audit->zero_http_header_len = true;
+      break;
+    case IR_VALUE_HTTP_WRITE_JSON_RESPONSE:
+      audit->zero_http_write_json_response = true;
+      break;
+    case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
+      audit->zero_http_request_method_name = true;
+      break;
+    case IR_VALUE_HTTP_REQUEST_PATH:
+      audit->zero_http_request_path = true;
       break;
     default:
       break;
@@ -6021,6 +6085,28 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
   if (value->kind == IR_VALUE_JSON_PARSE_BYTES ||
       value->kind == IR_VALUE_JSON_VALIDATE_BYTES ||
       value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
+      value->kind == IR_VALUE_ASCII_RUNTIME ||
+      value->kind == IR_VALUE_TEXT_RUNTIME ||
+      value->kind == IR_VALUE_TIME_RUNTIME ||
+      value->kind == IR_VALUE_MATH_RUNTIME ||
+      value->kind == IR_VALUE_SEARCH_RUNTIME ||
+      value->kind == IR_VALUE_SORT_RUNTIME ||
+      value->kind == IR_VALUE_STR_CONTAINS ||
+      value->kind == IR_VALUE_STR_RUNTIME ||
+      value->kind == IR_VALUE_ARGS_FIND ||
+      value->kind == IR_VALUE_ARGS_CONTAINS ||
+      value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
+      value->kind == IR_VALUE_ARGS_VALUE_AFTER_OR ||
+      value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
+      value->kind == IR_VALUE_PARSE_RUNTIME ||
+      value->kind == IR_VALUE_PARSE_I32 ||
+      value->kind == IR_VALUE_PARSE_U32 ||
+      value->kind == IR_VALUE_ARGS_PARSE_U32 ||
+      value->kind == IR_VALUE_FMT_BOOL ||
+      value->kind == IR_VALUE_FMT_HEX_U32 ||
+      value->kind == IR_VALUE_FMT_I32 ||
+      value->kind == IR_VALUE_FMT_U32 ||
+      value->kind == IR_VALUE_FMT_USIZE ||
       value->kind == IR_VALUE_HTTP_FETCH ||
       value->kind == IR_VALUE_HTTP_RESULT_OK ||
       value->kind == IR_VALUE_HTTP_RESULT_STATUS ||
@@ -6032,7 +6118,10 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
       value->kind == IR_VALUE_HTTP_HEADER_VALUE ||
       value->kind == IR_VALUE_HTTP_HEADER_FOUND ||
       value->kind == IR_VALUE_HTTP_HEADER_OFFSET ||
-      value->kind == IR_VALUE_HTTP_HEADER_LEN) return true;
+      value->kind == IR_VALUE_HTTP_HEADER_LEN ||
+      value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
+      value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
+      value->kind == IR_VALUE_HTTP_REQUEST_PATH) return true;
   if (ir_value_needs_zero_runtime_object(value->index) ||
       ir_value_needs_zero_runtime_object(value->left) ||
       ir_value_needs_zero_runtime_object(value->right)) {
@@ -6071,6 +6160,32 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (!audit) return 0;
   size_t count = 0;
   if (audit->zero_json_parse_bytes) count++;
+  if (audit->zero_ascii_op) count++;
+  if (audit->zero_text_op) count++;
+  if (audit->zero_time_op) count++;
+  if (audit->zero_math_op) count++;
+  if (audit->zero_math_usize_op) count++;
+  if (audit->zero_search_op) count++;
+  if (audit->zero_sort_op) count++;
+  if (audit->zero_sort_is_sorted_op) count++;
+  if (audit->zero_str_contains) count++;
+  if (audit->zero_str_buffer_op) count++;
+  if (audit->zero_str_concat) count++;
+  if (audit->zero_str_repeat) count++;
+  if (audit->zero_str_trim_op) count++;
+  if (audit->zero_str_pair_op) count++;
+  if (audit->zero_str_count_byte) count++;
+  if (audit->zero_str_word_count_ascii) count++;
+  if (audit->zero_args_find) count++;
+  if (audit->zero_parse_op) count++;
+  if (audit->zero_parse_usize) count++;
+  if (audit->zero_parse_i32) count++;
+  if (audit->zero_parse_u32) count++;
+  if (audit->zero_fmt_bool) count++;
+  if (audit->zero_fmt_hex_lower_u32) count++;
+  if (audit->zero_fmt_i32) count++;
+  if (audit->zero_fmt_u32) count++;
+  if (audit->zero_fmt_usize) count++;
   if (audit->zero_http_fetch_result) count++;
   if (audit->zero_http_result_ok) count++;
   if (audit->zero_http_result_status) count++;
@@ -6083,6 +6198,9 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_http_header_found) count++;
   if (audit->zero_http_header_offset) count++;
   if (audit->zero_http_header_len) count++;
+  if (audit->zero_http_write_json_response) count++;
+  if (audit->zero_http_request_method_name) count++;
+  if (audit->zero_http_request_path) count++;
   return count;
 }
 
@@ -6107,6 +6225,32 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   bool first = true;
   zbuf_append(buf, "[");
   if (audit && audit->zero_json_parse_bytes) append_json_string_array_item(buf, &first, "zero_json_parse_bytes");
+  if (audit && audit->zero_ascii_op) append_json_string_array_item(buf, &first, "zero_ascii_op");
+  if (audit && audit->zero_text_op) append_json_string_array_item(buf, &first, "zero_text_op");
+  if (audit && audit->zero_time_op) append_json_string_array_item(buf, &first, "zero_time_op");
+  if (audit && audit->zero_math_op) append_json_string_array_item(buf, &first, "zero_math_op");
+  if (audit && audit->zero_math_usize_op) append_json_string_array_item(buf, &first, "zero_math_usize_op");
+  if (audit && audit->zero_search_op) append_json_string_array_item(buf, &first, "zero_search_op");
+  if (audit && audit->zero_sort_op) append_json_string_array_item(buf, &first, "zero_sort_op");
+  if (audit && audit->zero_sort_is_sorted_op) append_json_string_array_item(buf, &first, "zero_sort_is_sorted_op");
+  if (audit && audit->zero_str_contains) append_json_string_array_item(buf, &first, "zero_str_contains");
+  if (audit && audit->zero_str_buffer_op) append_json_string_array_item(buf, &first, "zero_str_buffer_op");
+  if (audit && audit->zero_str_concat) append_json_string_array_item(buf, &first, "zero_str_concat");
+  if (audit && audit->zero_str_repeat) append_json_string_array_item(buf, &first, "zero_str_repeat");
+  if (audit && audit->zero_str_trim_op) append_json_string_array_item(buf, &first, "zero_str_trim_op");
+  if (audit && audit->zero_str_pair_op) append_json_string_array_item(buf, &first, "zero_str_pair_op");
+  if (audit && audit->zero_str_count_byte) append_json_string_array_item(buf, &first, "zero_str_count_byte");
+  if (audit && audit->zero_str_word_count_ascii) append_json_string_array_item(buf, &first, "zero_str_word_count_ascii");
+  if (audit && audit->zero_args_find) append_json_string_array_item(buf, &first, "zero_args_find");
+  if (audit && audit->zero_parse_op) append_json_string_array_item(buf, &first, "zero_parse_op");
+  if (audit && audit->zero_parse_usize) append_json_string_array_item(buf, &first, "zero_parse_usize");
+  if (audit && audit->zero_parse_i32) append_json_string_array_item(buf, &first, "zero_parse_i32");
+  if (audit && audit->zero_parse_u32) append_json_string_array_item(buf, &first, "zero_parse_u32");
+  if (audit && audit->zero_fmt_bool) append_json_string_array_item(buf, &first, "zero_fmt_bool");
+  if (audit && audit->zero_fmt_hex_lower_u32) append_json_string_array_item(buf, &first, "zero_fmt_hex_lower_u32");
+  if (audit && audit->zero_fmt_i32) append_json_string_array_item(buf, &first, "zero_fmt_i32");
+  if (audit && audit->zero_fmt_u32) append_json_string_array_item(buf, &first, "zero_fmt_u32");
+  if (audit && audit->zero_fmt_usize) append_json_string_array_item(buf, &first, "zero_fmt_usize");
   if (audit && audit->zero_http_fetch_result) append_json_string_array_item(buf, &first, "zero_http_fetch_result");
   if (audit && audit->zero_http_result_ok) append_json_string_array_item(buf, &first, "zero_http_result_ok");
   if (audit && audit->zero_http_result_status) append_json_string_array_item(buf, &first, "zero_http_result_status");
@@ -6119,6 +6263,9 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_http_header_found) append_json_string_array_item(buf, &first, "zero_http_header_found");
   if (audit && audit->zero_http_header_offset) append_json_string_array_item(buf, &first, "zero_http_header_offset");
   if (audit && audit->zero_http_header_len) append_json_string_array_item(buf, &first, "zero_http_header_len");
+  if (audit && audit->zero_http_write_json_response) append_json_string_array_item(buf, &first, "zero_http_write_json_response");
+  if (audit && audit->zero_http_request_method_name) append_json_string_array_item(buf, &first, "zero_http_request_method_name");
+  if (audit && audit->zero_http_request_path) append_json_string_array_item(buf, &first, "zero_http_request_path");
   zbuf_append(buf, "]");
   return !first;
 }
@@ -10730,10 +10877,10 @@ static void init_repository_graph_source_std_helpers_diag(ZDiag *diag, SourceInp
   diag->line = 1;
   diag->column = 1;
   diag->length = 1;
-  snprintf(diag->message, sizeof(diag->message), "repository graph target readiness requires graph-native stdlib helpers");
-  snprintf(diag->expected, sizeof(diag->expected), "graph-native stdlib helper MIR");
-  snprintf(diag->actual, sizeof(diag->actual), "source-backed-std-helpers");
-  snprintf(diag->help, sizeof(diag->help), "move the required stdlib helpers into graph-native MIR before treating this repository graph as source-free buildable");
+  snprintf(diag->message, sizeof(diag->message), "repository graph target readiness requires direct graph MIR for stdlib helpers");
+  snprintf(diag->expected, sizeof(diag->expected), "direct graph MIR for stdlib helper bodies");
+  snprintf(diag->actual, sizeof(diag->actual), "std-helper-ast-fallback");
+  snprintf(diag->help, sizeof(diag->help), "teach graph MIR lowering for the required stdlib helpers before treating this repository graph as source-free buildable");
   complete_backend_blocker_diag(diag, target, command, emit_kind, "lower");
 }
 
@@ -10751,13 +10898,14 @@ static void init_repository_graph_missing_store_diag(ZDiag *diag, SourceInput *i
 }
 
 static bool repository_graph_source_backed_std_helper_blocks_pre_mir(const char *qualified_name) {
-  return qualified_name && strncmp(qualified_name, "std.str.", strlen("std.str.")) == 0;
+  (void)qualified_name;
+  return false;
 }
 
 static bool repository_graph_resolution_uses_pre_mir_source_backed_std_blocker(const ZProgramGraphResolutionFacts *resolution) {
   for (size_t i = 0; resolution && i < resolution->reference_len; i++) {
     const ZProgramGraphResolutionReference *ref = &resolution->references[i];
-    if ((graph_check_text_eq(ref->target_kind, "sourceBackedStdlib") ||
+    if ((graph_check_text_eq(ref->target_kind, "graphBackedStdlib") ||
          z_std_source_target_for_public_call(ref->qualified_name)) &&
         repository_graph_source_backed_std_helper_blocks_pre_mir(ref->qualified_name)) return true;
   }

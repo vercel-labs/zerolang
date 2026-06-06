@@ -1,0 +1,678 @@
+zero-graph v1
+origin source-text
+module "collections"
+hash "graph:1fe349b2cbd6d3ba"
+
+node #mod_4c1e3f60 Module name:"collections" path:"std/collections.0" line:1 column:1
+node #decl_259fc8fa-9263 Function name:"__zero_std_collections_push" type:"usize" path:"std/collections.0" line:1 column:1
+node #param_5fbc279e Param name:"T" type:"Type" path:"std/collections.0" line:1 column:32
+node #type_608a95ef TypeRef type:"Type" path:"std/collections.0" line:1 column:32
+node #param_3a18791a Param name:"items" type:"MutSpan<T>" path:"std/collections.0" line:1 column:41
+node #type_3ca61b11 TypeRef type:"MutSpan<T>" path:"std/collections.0" line:1 column:41
+node #param_953df0bb Param name:"len" type:"usize" path:"std/collections.0" line:1 column:60
+node #type_777b22d7 TypeRef type:"usize" path:"std/collections.0" line:1 column:60
+node #param_28ad7fb2 Param name:"value" type:"T" path:"std/collections.0" line:1 column:72
+node #type_bf85a518 TypeRef type:"T" path:"std/collections.0" line:1 column:72
+node #type_c9aa8d8c TypeRef type:"usize" path:"std/collections.0" line:1 column:1
+node #block_bbf883a1 Block name:"body" path:"std/collections.0" line:1 column:1
+node #stmt_f0a4ad74 If path:"std/collections.0" line:2 column:5
+node #expr_adb296f7 Call name:">=" path:"std/collections.0" line:2 column:12
+node #expr_799e8d7d Identifier name:"len" path:"std/collections.0" line:2 column:8
+node #expr_e9830241 MethodCall name:"len" path:"std/collections.0" line:2 column:26
+node #expr_c82eaac9 FieldAccess name:"len" path:"std/collections.0" line:2 column:23
+node #expr_6a7a021b FieldAccess name:"mem" path:"std/collections.0" line:2 column:19
+node #expr_05b12cc0 Identifier name:"std" path:"std/collections.0" line:2 column:15
+node #expr_17ec06e9 Identifier name:"items" path:"std/collections.0" line:2 column:27
+node #block_67e1f8d4 Block name:"then" path:"std/collections.0" line:2 column:5
+node #stmt_45605393 Return path:"std/collections.0" line:3 column:9
+node #expr_620b1d9c Identifier name:"len" path:"std/collections.0" line:3 column:16
+node #stmt_965542e6 Assignment path:"std/collections.0" line:5 column:5
+node #expr_0d703880 IndexAccess path:"std/collections.0" line:5 column:10
+node #expr_341bda3c Identifier name:"items" path:"std/collections.0" line:5 column:5
+node #expr_e4067870 Identifier name:"len" path:"std/collections.0" line:5 column:11
+node #expr_2db54ee1 Identifier name:"value" path:"std/collections.0" line:5 column:18
+node #stmt_4fe4c79d Return path:"std/collections.0" line:6 column:5
+node #expr_a8afbfce Call name:"+" path:"std/collections.0" line:6 column:16
+node #expr_7b2f552e Identifier name:"len" path:"std/collections.0" line:6 column:12
+node #expr_58d97cf4 Literal value:"1" path:"std/collections.0" line:6 column:18
+node #decl_259fc8fa-2e2f Function name:"__zero_std_collections_append" type:"usize" path:"std/collections.0" line:9 column:1
+node #param_4ba1e43d Param name:"T" type:"Type" path:"std/collections.0" line:9 column:34
+node #type_019bb06c TypeRef type:"Type" path:"std/collections.0" line:9 column:34
+node #param_9bab6561 Param name:"items" type:"MutSpan<T>" path:"std/collections.0" line:9 column:43
+node #type_472fdef2 TypeRef type:"MutSpan<T>" path:"std/collections.0" line:9 column:43
+node #param_16de6ec0 Param name:"len" type:"usize" path:"std/collections.0" line:9 column:62
+node #type_db906ac2 TypeRef type:"usize" path:"std/collections.0" line:9 column:62
+node #param_66df032f Param name:"values" type:"Span<T>" path:"std/collections.0" line:9 column:74
+node #type_84bf46a3 TypeRef type:"Span<T>" path:"std/collections.0" line:9 column:74
+node #type_ad76668d TypeRef type:"usize" path:"std/collections.0" line:9 column:1
+node #block_99488228 Block name:"body" path:"std/collections.0" line:9 column:1
+node #stmt_376b885d-0d7d Let name:"capacity" type:"usize" path:"std/collections.0" line:10 column:5
+node #expr_88ec5c0a MethodCall name:"len" path:"std/collections.0" line:10 column:38
+node #expr_6b2967a8 FieldAccess name:"len" path:"std/collections.0" line:10 column:35
+node #expr_2be85a14 FieldAccess name:"mem" path:"std/collections.0" line:10 column:31
+node #expr_72b045a2 Identifier name:"std" path:"std/collections.0" line:10 column:27
+node #expr_a6031c6e Identifier name:"items" path:"std/collections.0" line:10 column:39
+node #type_8e6611c8 TypeRef type:"usize" path:"std/collections.0" line:10 column:5
+node #stmt_376b885d-d438 Let name:"value_count" type:"usize" path:"std/collections.0" line:11 column:5
+node #expr_7e6f076e MethodCall name:"len" path:"std/collections.0" line:11 column:41
+node #expr_7d9ba25b FieldAccess name:"len" path:"std/collections.0" line:11 column:38
+node #expr_07daa7f3 FieldAccess name:"mem" path:"std/collections.0" line:11 column:34
+node #expr_3f09b015 Identifier name:"std" path:"std/collections.0" line:11 column:30
+node #expr_effbc7af Identifier name:"values" path:"std/collections.0" line:11 column:42
+node #type_69d7854c TypeRef type:"usize" path:"std/collections.0" line:11 column:5
+node #stmt_c15b5215 If path:"std/collections.0" line:12 column:5
+node #expr_3a954418 Call name:"||" path:"std/collections.0" line:12 column:23
+node #expr_6b9a428c Call name:">" path:"std/collections.0" line:12 column:12
+node #expr_0f5a55a9 Identifier name:"len" path:"std/collections.0" line:12 column:8
+node #expr_4138d7b3 Identifier name:"capacity" path:"std/collections.0" line:12 column:14
+node #expr_dc84cf00 Call name:">" path:"std/collections.0" line:12 column:38
+node #expr_283556a8 Identifier name:"value_count" path:"std/collections.0" line:12 column:26
+node #expr_dbdf97bd Call name:"-" path:"std/collections.0" line:12 column:49
+node #expr_81672c6e Identifier name:"capacity" path:"std/collections.0" line:12 column:40
+node #expr_221b9f72 Identifier name:"len" path:"std/collections.0" line:12 column:51
+node #block_c97fbdab Block name:"then" path:"std/collections.0" line:12 column:5
+node #stmt_db189356 Return path:"std/collections.0" line:13 column:9
+node #expr_ffb278d1 Identifier name:"len" path:"std/collections.0" line:13 column:16
+node #stmt_e5a23870 Let name:"index" type:"usize" path:"std/collections.0" line:15 column:5 mutable:true
+node #expr_e828f0fa Literal value:"0" path:"std/collections.0" line:15 column:24
+node #type_e34c6096 TypeRef type:"usize" path:"std/collections.0" line:15 column:5
+node #stmt_3dc39a43 While path:"std/collections.0" line:16 column:5
+node #expr_dbdd6544 Call name:"<" path:"std/collections.0" line:16 column:17
+node #expr_2123f07f Identifier name:"index" path:"std/collections.0" line:16 column:11
+node #expr_f7f7c409 Identifier name:"value_count" path:"std/collections.0" line:16 column:19
+node #block_f96ab1e7 Block name:"then" path:"std/collections.0" line:16 column:5
+node #stmt_304c0d4e-b829 Assignment path:"std/collections.0" line:17 column:9
+node #expr_9db567b1 IndexAccess path:"std/collections.0" line:17 column:14
+node #expr_87bfc52a Identifier name:"items" path:"std/collections.0" line:17 column:9
+node #expr_bcb4ee0f Call name:"+" path:"std/collections.0" line:17 column:19
+node #expr_a7183f4d Identifier name:"len" path:"std/collections.0" line:17 column:15
+node #expr_747e845f Identifier name:"index" path:"std/collections.0" line:17 column:21
+node #expr_0773d767 IndexAccess path:"std/collections.0" line:17 column:36
+node #expr_998cd7b1 Identifier name:"values" path:"std/collections.0" line:17 column:30
+node #expr_da48f85b Identifier name:"index" path:"std/collections.0" line:17 column:37
+node #stmt_304c0d4e-b829-1 Assignment path:"std/collections.0" line:18 column:9
+node #expr_756e0bc2 Identifier name:"index" path:"std/collections.0" line:18 column:9
+node #expr_eb2ca7f9 Call name:"+" path:"std/collections.0" line:18 column:23
+node #expr_4f6f37b1 Identifier name:"index" path:"std/collections.0" line:18 column:17
+node #expr_05e1d559 Literal value:"1" path:"std/collections.0" line:18 column:25
+node #stmt_88ba4260 Return path:"std/collections.0" line:20 column:5
+node #expr_40ae994f Call name:"+" path:"std/collections.0" line:20 column:16
+node #expr_9210722e Identifier name:"len" path:"std/collections.0" line:20 column:12
+node #expr_231c1c32 Identifier name:"value_count" path:"std/collections.0" line:20 column:18
+node #decl_8a456832 Function name:"__zero_std_collections_view" type:"Span<T>" path:"std/collections.0" line:23 column:1
+node #param_2faaf1fe Param name:"T" type:"Type" path:"std/collections.0" line:23 column:32
+node #type_10212794 TypeRef type:"Type" path:"std/collections.0" line:23 column:32
+node #param_48501fde Param name:"items" type:"Span<T>" path:"std/collections.0" line:23 column:41
+node #type_f7aa3ab9 TypeRef type:"Span<T>" path:"std/collections.0" line:23 column:41
+node #param_9147e723 Param name:"len" type:"usize" path:"std/collections.0" line:23 column:57
+node #type_3728f1f8 TypeRef type:"usize" path:"std/collections.0" line:23 column:57
+node #type_e52a3166 TypeRef type:"Span<T>" path:"std/collections.0" line:23 column:1
+node #block_3b7eb599 Block name:"body" path:"std/collections.0" line:23 column:1
+node #stmt_7a0764c8 Let name:"end" type:"usize" path:"std/collections.0" line:24 column:5 mutable:true
+node #expr_e8750445 Identifier name:"len" path:"std/collections.0" line:24 column:22
+node #type_2d4ee527 TypeRef type:"usize" path:"std/collections.0" line:24 column:5
+node #stmt_dbcedce5 If path:"std/collections.0" line:25 column:5
+node #expr_dd0b2343 Call name:">" path:"std/collections.0" line:25 column:12
+node #expr_3671ae40 Identifier name:"end" path:"std/collections.0" line:25 column:8
+node #expr_68773952 MethodCall name:"len" path:"std/collections.0" line:25 column:25
+node #expr_efabc6cc FieldAccess name:"len" path:"std/collections.0" line:25 column:22
+node #expr_6e741bd4 FieldAccess name:"mem" path:"std/collections.0" line:25 column:18
+node #expr_d6bfb67d Identifier name:"std" path:"std/collections.0" line:25 column:14
+node #expr_f7fbb68a Identifier name:"items" path:"std/collections.0" line:25 column:26
+node #block_44bace80 Block name:"then" path:"std/collections.0" line:25 column:5
+node #stmt_0023eeca Assignment path:"std/collections.0" line:26 column:9
+node #expr_fafae1a2 Identifier name:"end" path:"std/collections.0" line:26 column:9
+node #expr_58daac82 MethodCall name:"len" path:"std/collections.0" line:26 column:26
+node #expr_80b81013 FieldAccess name:"len" path:"std/collections.0" line:26 column:23
+node #expr_56e032b4 FieldAccess name:"mem" path:"std/collections.0" line:26 column:19
+node #expr_baea36a1 Identifier name:"std" path:"std/collections.0" line:26 column:15
+node #expr_6d683fff Identifier name:"items" path:"std/collections.0" line:26 column:27
+node #stmt_5f130f98 Return path:"std/collections.0" line:28 column:5
+node #expr_a2ce62c6 Slice path:"std/collections.0" line:28 column:17
+node #expr_fed0056a Identifier name:"items" path:"std/collections.0" line:28 column:12
+node #expr_959aa7a8 Identifier name:"end" path:"std/collections.0" line:28 column:20
+node #decl_ba0b97ee Function name:"__zero_std_collections_contains" type:"Bool" path:"std/collections.0" line:31 column:1
+node #param_79934cd8 Param name:"T" type:"Type" path:"std/collections.0" line:31 column:36
+node #type_c747e13b TypeRef type:"Type" path:"std/collections.0" line:31 column:36
+node #param_0ce15270 Param name:"items" type:"Span<T>" path:"std/collections.0" line:31 column:45
+node #type_c9226c07 TypeRef type:"Span<T>" path:"std/collections.0" line:31 column:45
+node #param_b8c53d25 Param name:"len" type:"usize" path:"std/collections.0" line:31 column:61
+node #type_8c57889c TypeRef type:"usize" path:"std/collections.0" line:31 column:61
+node #param_5a1e7ec4 Param name:"needle" type:"T" path:"std/collections.0" line:31 column:73
+node #type_45726e0d TypeRef type:"T" path:"std/collections.0" line:31 column:73
+node #type_be4c037e TypeRef type:"Bool" path:"std/collections.0" line:31 column:1
+node #block_8a224363 Block name:"body" path:"std/collections.0" line:31 column:1
+node #stmt_9fe77e88 Let name:"view" type:"Span<T>" path:"std/collections.0" line:32 column:5
+node #expr_89b8de89 Call name:"__zero_std_collections_view" path:"std/collections.0" line:32 column:52
+node #expr_7cc87b45 Identifier name:"__zero_std_collections_view" path:"std/collections.0" line:32 column:25
+node #expr_38bde0b0 Identifier name:"items" path:"std/collections.0" line:32 column:53
+node #expr_43ad2ad1 Identifier name:"len" path:"std/collections.0" line:32 column:60
+node #type_98194334 TypeRef type:"Span<T>" path:"std/collections.0" line:32 column:5
+node #stmt_871b01b5 Let name:"index" type:"usize" path:"std/collections.0" line:33 column:5 mutable:true
+node #expr_32c1e2ff Literal value:"0" path:"std/collections.0" line:33 column:24
+node #type_1bf8757b TypeRef type:"usize" path:"std/collections.0" line:33 column:5
+node #stmt_b004ccca While path:"std/collections.0" line:34 column:5
+node #expr_f82e869e Call name:"<" path:"std/collections.0" line:34 column:17
+node #expr_d8093023 Identifier name:"index" path:"std/collections.0" line:34 column:11
+node #expr_4b447c8f MethodCall name:"len" path:"std/collections.0" line:34 column:30
+node #expr_d44bb4a9 FieldAccess name:"len" path:"std/collections.0" line:34 column:27
+node #expr_c7d80165 FieldAccess name:"mem" path:"std/collections.0" line:34 column:23
+node #expr_f22010cc Identifier name:"std" path:"std/collections.0" line:34 column:19
+node #expr_a79fc4d5 Identifier name:"view" path:"std/collections.0" line:34 column:31
+node #block_097ce409 Block name:"then" path:"std/collections.0" line:34 column:5
+node #stmt_73903ee6 If path:"std/collections.0" line:35 column:9
+node #expr_92c2d5f6 Call name:"==" path:"std/collections.0" line:35 column:24
+node #expr_2ce0718a IndexAccess path:"std/collections.0" line:35 column:16
+node #expr_2df51c3d Identifier name:"view" path:"std/collections.0" line:35 column:12
+node #expr_5139f78f Identifier name:"index" path:"std/collections.0" line:35 column:17
+node #expr_91416dcb Identifier name:"needle" path:"std/collections.0" line:35 column:27
+node #block_c7267a4d Block name:"then" path:"std/collections.0" line:35 column:9
+node #stmt_290a00d8 Return path:"std/collections.0" line:36 column:13
+node #expr_99918091 Literal value:"true" path:"std/collections.0" line:36 column:20
+node #stmt_f63c0df8 Assignment path:"std/collections.0" line:38 column:9
+node #expr_de11a567 Identifier name:"index" path:"std/collections.0" line:38 column:9
+node #expr_93066c22 Call name:"+" path:"std/collections.0" line:38 column:23
+node #expr_90e038bd Identifier name:"index" path:"std/collections.0" line:38 column:17
+node #expr_4114efa9 Literal value:"1" path:"std/collections.0" line:38 column:25
+node #stmt_d220ef85 Return path:"std/collections.0" line:40 column:5
+node #expr_f4b15d73 Literal value:"false" path:"std/collections.0" line:40 column:12
+node #decl_259fc8fa-5c74 Function name:"__zero_std_collections_count" type:"usize" path:"std/collections.0" line:43 column:1
+node #param_e0f476db Param name:"T" type:"Type" path:"std/collections.0" line:43 column:33
+node #type_5683c30e TypeRef type:"Type" path:"std/collections.0" line:43 column:33
+node #param_02445cab Param name:"items" type:"Span<T>" path:"std/collections.0" line:43 column:42
+node #type_e1379f31 TypeRef type:"Span<T>" path:"std/collections.0" line:43 column:42
+node #param_28e549c6 Param name:"len" type:"usize" path:"std/collections.0" line:43 column:58
+node #type_35496fee TypeRef type:"usize" path:"std/collections.0" line:43 column:58
+node #param_4f590a63 Param name:"needle" type:"T" path:"std/collections.0" line:43 column:70
+node #type_1299576e TypeRef type:"T" path:"std/collections.0" line:43 column:70
+node #type_77c5ad33 TypeRef type:"usize" path:"std/collections.0" line:43 column:1
+node #block_be342fa6 Block name:"body" path:"std/collections.0" line:43 column:1
+node #stmt_ef61aa1c Let name:"view" type:"Span<T>" path:"std/collections.0" line:44 column:5
+node #expr_a2dcea02 Call name:"__zero_std_collections_view" path:"std/collections.0" line:44 column:52
+node #expr_758fa6ae Identifier name:"__zero_std_collections_view" path:"std/collections.0" line:44 column:25
+node #expr_009e9dfd Identifier name:"items" path:"std/collections.0" line:44 column:53
+node #expr_f5af53dc Identifier name:"len" path:"std/collections.0" line:44 column:60
+node #type_a930de07 TypeRef type:"Span<T>" path:"std/collections.0" line:44 column:5
+node #stmt_687ac5ad-53b4 Let name:"index" type:"usize" path:"std/collections.0" line:45 column:5 mutable:true
+node #expr_4aaadabb Literal value:"0" path:"std/collections.0" line:45 column:24
+node #type_d89936e1 TypeRef type:"usize" path:"std/collections.0" line:45 column:5
+node #stmt_687ac5ad-45d6 Let name:"total" type:"usize" path:"std/collections.0" line:46 column:5 mutable:true
+node #expr_5fa691e4 Literal value:"0" path:"std/collections.0" line:46 column:24
+node #type_d78c5de2 TypeRef type:"usize" path:"std/collections.0" line:46 column:5
+node #stmt_9555ad1e While path:"std/collections.0" line:47 column:5
+node #expr_df5c8e95 Call name:"<" path:"std/collections.0" line:47 column:17
+node #expr_99f9ea53 Identifier name:"index" path:"std/collections.0" line:47 column:11
+node #expr_ced24b73 MethodCall name:"len" path:"std/collections.0" line:47 column:30
+node #expr_0c1d349d FieldAccess name:"len" path:"std/collections.0" line:47 column:27
+node #expr_e2d4c9e1 FieldAccess name:"mem" path:"std/collections.0" line:47 column:23
+node #expr_e8ed04d1 Identifier name:"std" path:"std/collections.0" line:47 column:19
+node #expr_40082cf9 Identifier name:"view" path:"std/collections.0" line:47 column:31
+node #block_fbd36fe6 Block name:"then" path:"std/collections.0" line:47 column:5
+node #stmt_6cad98e1 If path:"std/collections.0" line:48 column:9
+node #expr_d559b3b3 Call name:"==" path:"std/collections.0" line:48 column:24
+node #expr_7dfe4a1a IndexAccess path:"std/collections.0" line:48 column:16
+node #expr_59a8feb7 Identifier name:"view" path:"std/collections.0" line:48 column:12
+node #expr_17b0fe21 Identifier name:"index" path:"std/collections.0" line:48 column:17
+node #expr_1b3329b7 Identifier name:"needle" path:"std/collections.0" line:48 column:27
+node #block_47caa614 Block name:"then" path:"std/collections.0" line:48 column:9
+node #stmt_cd2c0b70 Assignment path:"std/collections.0" line:49 column:13
+node #expr_32597742 Identifier name:"total" path:"std/collections.0" line:49 column:13
+node #expr_30c38673 Call name:"+" path:"std/collections.0" line:49 column:27
+node #expr_d956cbc5 Identifier name:"total" path:"std/collections.0" line:49 column:21
+node #expr_627e98b1 Literal value:"1" path:"std/collections.0" line:49 column:29
+node #stmt_b20e964b Assignment path:"std/collections.0" line:51 column:9
+node #expr_c5047f8d Identifier name:"index" path:"std/collections.0" line:51 column:9
+node #expr_e7c8a3c4 Call name:"+" path:"std/collections.0" line:51 column:23
+node #expr_f7799fd4 Identifier name:"index" path:"std/collections.0" line:51 column:17
+node #expr_95b50ed2 Literal value:"1" path:"std/collections.0" line:51 column:25
+node #stmt_e642e89d Return path:"std/collections.0" line:53 column:5
+node #expr_74873ba4 Identifier name:"total" path:"std/collections.0" line:53 column:12
+node #decl_259fc8fa-7c71 Function name:"__zero_std_collections_remove_swap" type:"usize" path:"std/collections.0" line:56 column:1
+node #param_237cadbc Param name:"T" type:"Type" path:"std/collections.0" line:56 column:39
+node #type_c16476f9 TypeRef type:"Type" path:"std/collections.0" line:56 column:39
+node #param_cc693dd8 Param name:"items" type:"MutSpan<T>" path:"std/collections.0" line:56 column:48
+node #type_68c497ae TypeRef type:"MutSpan<T>" path:"std/collections.0" line:56 column:48
+node #param_278eb579 Param name:"len" type:"usize" path:"std/collections.0" line:56 column:67
+node #type_a9fbdbd9 TypeRef type:"usize" path:"std/collections.0" line:56 column:67
+node #param_327dff9a Param name:"index" type:"usize" path:"std/collections.0" line:56 column:79
+node #type_7bccd12c TypeRef type:"usize" path:"std/collections.0" line:56 column:79
+node #type_82cafd5e TypeRef type:"usize" path:"std/collections.0" line:56 column:1
+node #block_eabbd587 Block name:"body" path:"std/collections.0" line:56 column:1
+node #stmt_651d57ef-fa37 If path:"std/collections.0" line:57 column:5
+node #expr_5e0ee449 Call name:"||" path:"std/collections.0" line:57 column:45
+node #expr_a4f08ca8 Call name:"||" path:"std/collections.0" line:57 column:17
+node #expr_f1b05c94 Call name:"==" path:"std/collections.0" line:57 column:12
+node #expr_d2fd6312 Identifier name:"len" path:"std/collections.0" line:57 column:8
+node #expr_eee38b14 Literal value:"0" path:"std/collections.0" line:57 column:15
+node #expr_e3d6e7c8 Call name:">" path:"std/collections.0" line:57 column:24
+node #expr_ac1d0fe9 Identifier name:"len" path:"std/collections.0" line:57 column:20
+node #expr_c153c1d9 MethodCall name:"len" path:"std/collections.0" line:57 column:37
+node #expr_e9ddf374 FieldAccess name:"len" path:"std/collections.0" line:57 column:34
+node #expr_11c80b0d FieldAccess name:"mem" path:"std/collections.0" line:57 column:30
+node #expr_eea3ab27 Identifier name:"std" path:"std/collections.0" line:57 column:26
+node #expr_b687ca36 Identifier name:"items" path:"std/collections.0" line:57 column:38
+node #expr_967dc1e4 Call name:">=" path:"std/collections.0" line:57 column:54
+node #expr_8888bec5 Identifier name:"index" path:"std/collections.0" line:57 column:48
+node #expr_25d3fcf7 Identifier name:"len" path:"std/collections.0" line:57 column:57
+node #block_d3e7cc3c Block name:"then" path:"std/collections.0" line:57 column:5
+node #stmt_124e23fd Return path:"std/collections.0" line:58 column:9
+node #expr_c964fcb4 Identifier name:"len" path:"std/collections.0" line:58 column:16
+node #stmt_518f4797 Let name:"next_len" type:"usize" path:"std/collections.0" line:60 column:5
+node #expr_e82367ff Call name:"-" path:"std/collections.0" line:60 column:31
+node #expr_f272f16d Identifier name:"len" path:"std/collections.0" line:60 column:27
+node #expr_f842ab21 Literal value:"1" path:"std/collections.0" line:60 column:33
+node #type_52b8c5d2 TypeRef type:"usize" path:"std/collections.0" line:60 column:5
+node #stmt_651d57ef-fa37-1 If path:"std/collections.0" line:61 column:5
+node #expr_36fc70df Call name:"!=" path:"std/collections.0" line:61 column:14
+node #expr_c07ce94f Identifier name:"index" path:"std/collections.0" line:61 column:8
+node #expr_c0551559 Identifier name:"next_len" path:"std/collections.0" line:61 column:17
+node #block_d5fc7fde Block name:"then" path:"std/collections.0" line:61 column:5
+node #stmt_62ff945b Assignment path:"std/collections.0" line:62 column:9
+node #expr_f60b2186 IndexAccess path:"std/collections.0" line:62 column:14
+node #expr_a6985f9d Identifier name:"items" path:"std/collections.0" line:62 column:9
+node #expr_da6ce56f Identifier name:"index" path:"std/collections.0" line:62 column:15
+node #expr_a03adcd4 IndexAccess path:"std/collections.0" line:62 column:29
+node #expr_7f3a1a18 Identifier name:"items" path:"std/collections.0" line:62 column:24
+node #expr_bdbae214 Identifier name:"next_len" path:"std/collections.0" line:62 column:30
+node #stmt_a3c4632a Return path:"std/collections.0" line:64 column:5
+node #expr_e95ce7b0 Identifier name:"next_len" path:"std/collections.0" line:64 column:12
+node #decl_259fc8fa-9878 Function name:"__zero_std_collections_move_to_front" type:"usize" path:"std/collections.0" line:67 column:1
+node #param_51e5596c Param name:"T" type:"Type" path:"std/collections.0" line:67 column:41
+node #type_12d26abb TypeRef type:"Type" path:"std/collections.0" line:67 column:41
+node #param_5dbede00 Param name:"items" type:"MutSpan<T>" path:"std/collections.0" line:67 column:50
+node #type_5c03142d TypeRef type:"MutSpan<T>" path:"std/collections.0" line:67 column:50
+node #param_eed07ba1 Param name:"len" type:"usize" path:"std/collections.0" line:67 column:69
+node #type_58a5e135 TypeRef type:"usize" path:"std/collections.0" line:67 column:69
+node #param_f9bfc5c2 Param name:"index" type:"usize" path:"std/collections.0" line:67 column:81
+node #type_c8b9f234 TypeRef type:"usize" path:"std/collections.0" line:67 column:81
+node #type_e7fc720a TypeRef type:"usize" path:"std/collections.0" line:67 column:1
+node #block_6517a21f Block name:"body" path:"std/collections.0" line:67 column:1
+node #stmt_5f706d44 If path:"std/collections.0" line:68 column:5
+node #expr_63d2ec24 Call name:"||" path:"std/collections.0" line:68 column:47
+node #expr_c58df550 Call name:"||" path:"std/collections.0" line:68 column:33
+node #expr_2672d127 Call name:">" path:"std/collections.0" line:68 column:12
+node #expr_b457f815 Identifier name:"len" path:"std/collections.0" line:68 column:8
+node #expr_488890b5 MethodCall name:"len" path:"std/collections.0" line:68 column:25
+node #expr_7b74cd43 FieldAccess name:"len" path:"std/collections.0" line:68 column:22
+node #expr_fb20821f FieldAccess name:"mem" path:"std/collections.0" line:68 column:18
+node #expr_e90d9163 Identifier name:"std" path:"std/collections.0" line:68 column:14
+node #expr_e9af3ac7 Identifier name:"items" path:"std/collections.0" line:68 column:26
+node #expr_20e522d1 Call name:"==" path:"std/collections.0" line:68 column:42
+node #expr_04b5b94b Identifier name:"index" path:"std/collections.0" line:68 column:36
+node #expr_71d33beb Literal value:"0" path:"std/collections.0" line:68 column:45
+node #expr_45a097cc Call name:">=" path:"std/collections.0" line:68 column:56
+node #expr_177c00a0 Identifier name:"index" path:"std/collections.0" line:68 column:50
+node #expr_2a2f25dc Identifier name:"len" path:"std/collections.0" line:68 column:59
+node #block_9611f2bb Block name:"then" path:"std/collections.0" line:68 column:5
+node #stmt_1e315585 Return path:"std/collections.0" line:69 column:9
+node #expr_ea044932 Identifier name:"len" path:"std/collections.0" line:69 column:16
+node #stmt_c486a8fa Let name:"chosen" type:"T" path:"std/collections.0" line:71 column:5
+node #expr_edf05e7f IndexAccess path:"std/collections.0" line:71 column:26
+node #expr_cd9527e8 Identifier name:"items" path:"std/collections.0" line:71 column:21
+node #expr_0cbcbd24 Identifier name:"index" path:"std/collections.0" line:71 column:27
+node #type_eb6687bc TypeRef type:"T" path:"std/collections.0" line:71 column:5
+node #stmt_6b8ba259 Let name:"cursor" type:"usize" path:"std/collections.0" line:72 column:5 mutable:true
+node #expr_1a475db6 Identifier name:"index" path:"std/collections.0" line:72 column:25
+node #type_83905664 TypeRef type:"usize" path:"std/collections.0" line:72 column:5
+node #stmt_c198984a While path:"std/collections.0" line:73 column:5
+node #expr_61fcc455 Call name:">" path:"std/collections.0" line:73 column:18
+node #expr_0aa76793 Identifier name:"cursor" path:"std/collections.0" line:73 column:11
+node #expr_8188f7f7 Literal value:"0" path:"std/collections.0" line:73 column:20
+node #block_14f1b776 Block name:"then" path:"std/collections.0" line:73 column:5
+node #stmt_5f7a7513-b829 Assignment path:"std/collections.0" line:74 column:9
+node #expr_117f4d6f IndexAccess path:"std/collections.0" line:74 column:14
+node #expr_94c85f6f Identifier name:"items" path:"std/collections.0" line:74 column:9
+node #expr_2409f9f9 Identifier name:"cursor" path:"std/collections.0" line:74 column:15
+node #expr_96e4f881 IndexAccess path:"std/collections.0" line:74 column:30
+node #expr_2546489f Identifier name:"items" path:"std/collections.0" line:74 column:25
+node #expr_24aace3c Call name:"-" path:"std/collections.0" line:74 column:38
+node #expr_139fa75e Identifier name:"cursor" path:"std/collections.0" line:74 column:31
+node #expr_deeea074 Literal value:"1" path:"std/collections.0" line:74 column:40
+node #stmt_5f7a7513-b829-1 Assignment path:"std/collections.0" line:75 column:9
+node #expr_96c6fe78 Identifier name:"cursor" path:"std/collections.0" line:75 column:9
+node #expr_45fbc3e3 Call name:"-" path:"std/collections.0" line:75 column:25
+node #expr_af36cd31 Identifier name:"cursor" path:"std/collections.0" line:75 column:18
+node #expr_ef77c081 Literal value:"1" path:"std/collections.0" line:75 column:27
+node #stmt_a9ca1dde Assignment path:"std/collections.0" line:77 column:5
+node #expr_06533030 IndexAccess path:"std/collections.0" line:77 column:10
+node #expr_11e5b3fe Identifier name:"items" path:"std/collections.0" line:77 column:5
+node #expr_6fe3462c Literal value:"0" path:"std/collections.0" line:77 column:11
+node #expr_7f9b89b5 Identifier name:"chosen" path:"std/collections.0" line:77 column:16
+node #stmt_935ab509 Return path:"std/collections.0" line:78 column:5
+node #expr_aaa16da9 Identifier name:"len" path:"std/collections.0" line:78 column:12
+edge #mod_4c1e3f60 function #decl_259fc8fa-9263 order:0
+edge #decl_259fc8fa-9263 typeParam #param_5fbc279e order:0
+edge #param_5fbc279e type #type_608a95ef
+edge #decl_259fc8fa-9263 param #param_3a18791a order:0
+edge #param_3a18791a type #type_3ca61b11
+edge #decl_259fc8fa-9263 param #param_953df0bb order:1
+edge #param_953df0bb type #type_777b22d7
+edge #decl_259fc8fa-9263 param #param_28ad7fb2 order:2
+edge #param_28ad7fb2 type #type_bf85a518
+edge #decl_259fc8fa-9263 returnType #type_c9aa8d8c
+edge #expr_adb296f7 left #expr_799e8d7d
+edge #expr_6a7a021b left #expr_05b12cc0
+edge #expr_c82eaac9 left #expr_6a7a021b
+edge #expr_e9830241 left #expr_c82eaac9
+edge #expr_e9830241 arg #expr_17ec06e9 order:0
+edge #expr_adb296f7 right #expr_e9830241 order:1
+edge #stmt_f0a4ad74 expr #expr_adb296f7
+edge #stmt_45605393 expr #expr_620b1d9c
+edge #block_67e1f8d4 statement #stmt_45605393 order:0
+edge #stmt_f0a4ad74 then #block_67e1f8d4
+edge #block_bbf883a1 statement #stmt_f0a4ad74 order:0
+edge #expr_0d703880 left #expr_341bda3c
+edge #expr_0d703880 right #expr_e4067870 order:1
+edge #stmt_965542e6 target #expr_0d703880
+edge #stmt_965542e6 expr #expr_2db54ee1
+edge #block_bbf883a1 statement #stmt_965542e6 order:1
+edge #expr_a8afbfce left #expr_7b2f552e
+edge #expr_a8afbfce right #expr_58d97cf4 order:1
+edge #stmt_4fe4c79d expr #expr_a8afbfce
+edge #block_bbf883a1 statement #stmt_4fe4c79d order:2
+edge #decl_259fc8fa-9263 body #block_bbf883a1
+edge #mod_4c1e3f60 function #decl_259fc8fa-2e2f order:1
+edge #decl_259fc8fa-2e2f typeParam #param_4ba1e43d order:0
+edge #param_4ba1e43d type #type_019bb06c
+edge #decl_259fc8fa-2e2f param #param_9bab6561 order:0
+edge #param_9bab6561 type #type_472fdef2
+edge #decl_259fc8fa-2e2f param #param_16de6ec0 order:1
+edge #param_16de6ec0 type #type_db906ac2
+edge #decl_259fc8fa-2e2f param #param_66df032f order:2
+edge #param_66df032f type #type_84bf46a3
+edge #decl_259fc8fa-2e2f returnType #type_ad76668d
+edge #expr_2be85a14 left #expr_72b045a2
+edge #expr_6b2967a8 left #expr_2be85a14
+edge #expr_88ec5c0a left #expr_6b2967a8
+edge #expr_88ec5c0a arg #expr_a6031c6e order:0
+edge #stmt_376b885d-0d7d expr #expr_88ec5c0a
+edge #stmt_376b885d-0d7d declaredType #type_8e6611c8
+edge #block_99488228 statement #stmt_376b885d-0d7d order:0
+edge #expr_07daa7f3 left #expr_3f09b015
+edge #expr_7d9ba25b left #expr_07daa7f3
+edge #expr_7e6f076e left #expr_7d9ba25b
+edge #expr_7e6f076e arg #expr_effbc7af order:0
+edge #stmt_376b885d-d438 expr #expr_7e6f076e
+edge #stmt_376b885d-d438 declaredType #type_69d7854c
+edge #block_99488228 statement #stmt_376b885d-d438 order:1
+edge #expr_6b9a428c left #expr_0f5a55a9
+edge #expr_6b9a428c right #expr_4138d7b3 order:1
+edge #expr_3a954418 left #expr_6b9a428c
+edge #expr_dc84cf00 left #expr_283556a8
+edge #expr_dbdf97bd left #expr_81672c6e
+edge #expr_dbdf97bd right #expr_221b9f72 order:1
+edge #expr_dc84cf00 right #expr_dbdf97bd order:1
+edge #expr_3a954418 right #expr_dc84cf00 order:1
+edge #stmt_c15b5215 expr #expr_3a954418
+edge #stmt_db189356 expr #expr_ffb278d1
+edge #block_c97fbdab statement #stmt_db189356 order:0
+edge #stmt_c15b5215 then #block_c97fbdab
+edge #block_99488228 statement #stmt_c15b5215 order:2
+edge #stmt_e5a23870 expr #expr_e828f0fa
+edge #stmt_e5a23870 declaredType #type_e34c6096
+edge #block_99488228 statement #stmt_e5a23870 order:3
+edge #expr_dbdd6544 left #expr_2123f07f
+edge #expr_dbdd6544 right #expr_f7f7c409 order:1
+edge #stmt_3dc39a43 expr #expr_dbdd6544
+edge #expr_9db567b1 left #expr_87bfc52a
+edge #expr_bcb4ee0f left #expr_a7183f4d
+edge #expr_bcb4ee0f right #expr_747e845f order:1
+edge #expr_9db567b1 right #expr_bcb4ee0f order:1
+edge #stmt_304c0d4e-b829 target #expr_9db567b1
+edge #expr_0773d767 left #expr_998cd7b1
+edge #expr_0773d767 right #expr_da48f85b order:1
+edge #stmt_304c0d4e-b829 expr #expr_0773d767
+edge #block_f96ab1e7 statement #stmt_304c0d4e-b829 order:0
+edge #stmt_304c0d4e-b829-1 target #expr_756e0bc2
+edge #expr_eb2ca7f9 left #expr_4f6f37b1
+edge #expr_eb2ca7f9 right #expr_05e1d559 order:1
+edge #stmt_304c0d4e-b829-1 expr #expr_eb2ca7f9
+edge #block_f96ab1e7 statement #stmt_304c0d4e-b829-1 order:1
+edge #stmt_3dc39a43 then #block_f96ab1e7
+edge #block_99488228 statement #stmt_3dc39a43 order:4
+edge #expr_40ae994f left #expr_9210722e
+edge #expr_40ae994f right #expr_231c1c32 order:1
+edge #stmt_88ba4260 expr #expr_40ae994f
+edge #block_99488228 statement #stmt_88ba4260 order:5
+edge #decl_259fc8fa-2e2f body #block_99488228
+edge #mod_4c1e3f60 function #decl_8a456832 order:2
+edge #decl_8a456832 typeParam #param_2faaf1fe order:0
+edge #param_2faaf1fe type #type_10212794
+edge #decl_8a456832 param #param_48501fde order:0
+edge #param_48501fde type #type_f7aa3ab9
+edge #decl_8a456832 param #param_9147e723 order:1
+edge #param_9147e723 type #type_3728f1f8
+edge #decl_8a456832 returnType #type_e52a3166
+edge #stmt_7a0764c8 expr #expr_e8750445
+edge #stmt_7a0764c8 declaredType #type_2d4ee527
+edge #block_3b7eb599 statement #stmt_7a0764c8 order:0
+edge #expr_dd0b2343 left #expr_3671ae40
+edge #expr_6e741bd4 left #expr_d6bfb67d
+edge #expr_efabc6cc left #expr_6e741bd4
+edge #expr_68773952 left #expr_efabc6cc
+edge #expr_68773952 arg #expr_f7fbb68a order:0
+edge #expr_dd0b2343 right #expr_68773952 order:1
+edge #stmt_dbcedce5 expr #expr_dd0b2343
+edge #stmt_0023eeca target #expr_fafae1a2
+edge #expr_56e032b4 left #expr_baea36a1
+edge #expr_80b81013 left #expr_56e032b4
+edge #expr_58daac82 left #expr_80b81013
+edge #expr_58daac82 arg #expr_6d683fff order:0
+edge #stmt_0023eeca expr #expr_58daac82
+edge #block_44bace80 statement #stmt_0023eeca order:0
+edge #stmt_dbcedce5 then #block_44bace80
+edge #block_3b7eb599 statement #stmt_dbcedce5 order:1
+edge #expr_a2ce62c6 left #expr_fed0056a
+edge #expr_a2ce62c6 arg #expr_959aa7a8 order:1
+edge #stmt_5f130f98 expr #expr_a2ce62c6
+edge #block_3b7eb599 statement #stmt_5f130f98 order:2
+edge #decl_8a456832 body #block_3b7eb599
+edge #mod_4c1e3f60 function #decl_ba0b97ee order:3
+edge #decl_ba0b97ee typeParam #param_79934cd8 order:0
+edge #param_79934cd8 type #type_c747e13b
+edge #decl_ba0b97ee param #param_0ce15270 order:0
+edge #param_0ce15270 type #type_c9226c07
+edge #decl_ba0b97ee param #param_b8c53d25 order:1
+edge #param_b8c53d25 type #type_8c57889c
+edge #decl_ba0b97ee param #param_5a1e7ec4 order:2
+edge #param_5a1e7ec4 type #type_45726e0d
+edge #decl_ba0b97ee returnType #type_be4c037e
+edge #expr_89b8de89 left #expr_7cc87b45
+edge #expr_89b8de89 arg #expr_38bde0b0 order:0
+edge #expr_89b8de89 arg #expr_43ad2ad1 order:1
+edge #stmt_9fe77e88 expr #expr_89b8de89
+edge #stmt_9fe77e88 declaredType #type_98194334
+edge #block_8a224363 statement #stmt_9fe77e88 order:0
+edge #stmt_871b01b5 expr #expr_32c1e2ff
+edge #stmt_871b01b5 declaredType #type_1bf8757b
+edge #block_8a224363 statement #stmt_871b01b5 order:1
+edge #expr_f82e869e left #expr_d8093023
+edge #expr_c7d80165 left #expr_f22010cc
+edge #expr_d44bb4a9 left #expr_c7d80165
+edge #expr_4b447c8f left #expr_d44bb4a9
+edge #expr_4b447c8f arg #expr_a79fc4d5 order:0
+edge #expr_f82e869e right #expr_4b447c8f order:1
+edge #stmt_b004ccca expr #expr_f82e869e
+edge #expr_2ce0718a left #expr_2df51c3d
+edge #expr_2ce0718a right #expr_5139f78f order:1
+edge #expr_92c2d5f6 left #expr_2ce0718a
+edge #expr_92c2d5f6 right #expr_91416dcb order:1
+edge #stmt_73903ee6 expr #expr_92c2d5f6
+edge #stmt_290a00d8 expr #expr_99918091
+edge #block_c7267a4d statement #stmt_290a00d8 order:0
+edge #stmt_73903ee6 then #block_c7267a4d
+edge #block_097ce409 statement #stmt_73903ee6 order:0
+edge #stmt_f63c0df8 target #expr_de11a567
+edge #expr_93066c22 left #expr_90e038bd
+edge #expr_93066c22 right #expr_4114efa9 order:1
+edge #stmt_f63c0df8 expr #expr_93066c22
+edge #block_097ce409 statement #stmt_f63c0df8 order:1
+edge #stmt_b004ccca then #block_097ce409
+edge #block_8a224363 statement #stmt_b004ccca order:2
+edge #stmt_d220ef85 expr #expr_f4b15d73
+edge #block_8a224363 statement #stmt_d220ef85 order:3
+edge #decl_ba0b97ee body #block_8a224363
+edge #mod_4c1e3f60 function #decl_259fc8fa-5c74 order:4
+edge #decl_259fc8fa-5c74 typeParam #param_e0f476db order:0
+edge #param_e0f476db type #type_5683c30e
+edge #decl_259fc8fa-5c74 param #param_02445cab order:0
+edge #param_02445cab type #type_e1379f31
+edge #decl_259fc8fa-5c74 param #param_28e549c6 order:1
+edge #param_28e549c6 type #type_35496fee
+edge #decl_259fc8fa-5c74 param #param_4f590a63 order:2
+edge #param_4f590a63 type #type_1299576e
+edge #decl_259fc8fa-5c74 returnType #type_77c5ad33
+edge #expr_a2dcea02 left #expr_758fa6ae
+edge #expr_a2dcea02 arg #expr_009e9dfd order:0
+edge #expr_a2dcea02 arg #expr_f5af53dc order:1
+edge #stmt_ef61aa1c expr #expr_a2dcea02
+edge #stmt_ef61aa1c declaredType #type_a930de07
+edge #block_be342fa6 statement #stmt_ef61aa1c order:0
+edge #stmt_687ac5ad-53b4 expr #expr_4aaadabb
+edge #stmt_687ac5ad-53b4 declaredType #type_d89936e1
+edge #block_be342fa6 statement #stmt_687ac5ad-53b4 order:1
+edge #stmt_687ac5ad-45d6 expr #expr_5fa691e4
+edge #stmt_687ac5ad-45d6 declaredType #type_d78c5de2
+edge #block_be342fa6 statement #stmt_687ac5ad-45d6 order:2
+edge #expr_df5c8e95 left #expr_99f9ea53
+edge #expr_e2d4c9e1 left #expr_e8ed04d1
+edge #expr_0c1d349d left #expr_e2d4c9e1
+edge #expr_ced24b73 left #expr_0c1d349d
+edge #expr_ced24b73 arg #expr_40082cf9 order:0
+edge #expr_df5c8e95 right #expr_ced24b73 order:1
+edge #stmt_9555ad1e expr #expr_df5c8e95
+edge #expr_7dfe4a1a left #expr_59a8feb7
+edge #expr_7dfe4a1a right #expr_17b0fe21 order:1
+edge #expr_d559b3b3 left #expr_7dfe4a1a
+edge #expr_d559b3b3 right #expr_1b3329b7 order:1
+edge #stmt_6cad98e1 expr #expr_d559b3b3
+edge #stmt_cd2c0b70 target #expr_32597742
+edge #expr_30c38673 left #expr_d956cbc5
+edge #expr_30c38673 right #expr_627e98b1 order:1
+edge #stmt_cd2c0b70 expr #expr_30c38673
+edge #block_47caa614 statement #stmt_cd2c0b70 order:0
+edge #stmt_6cad98e1 then #block_47caa614
+edge #block_fbd36fe6 statement #stmt_6cad98e1 order:0
+edge #stmt_b20e964b target #expr_c5047f8d
+edge #expr_e7c8a3c4 left #expr_f7799fd4
+edge #expr_e7c8a3c4 right #expr_95b50ed2 order:1
+edge #stmt_b20e964b expr #expr_e7c8a3c4
+edge #block_fbd36fe6 statement #stmt_b20e964b order:1
+edge #stmt_9555ad1e then #block_fbd36fe6
+edge #block_be342fa6 statement #stmt_9555ad1e order:3
+edge #stmt_e642e89d expr #expr_74873ba4
+edge #block_be342fa6 statement #stmt_e642e89d order:4
+edge #decl_259fc8fa-5c74 body #block_be342fa6
+edge #mod_4c1e3f60 function #decl_259fc8fa-7c71 order:5
+edge #decl_259fc8fa-7c71 typeParam #param_237cadbc order:0
+edge #param_237cadbc type #type_c16476f9
+edge #decl_259fc8fa-7c71 param #param_cc693dd8 order:0
+edge #param_cc693dd8 type #type_68c497ae
+edge #decl_259fc8fa-7c71 param #param_278eb579 order:1
+edge #param_278eb579 type #type_a9fbdbd9
+edge #decl_259fc8fa-7c71 param #param_327dff9a order:2
+edge #param_327dff9a type #type_7bccd12c
+edge #decl_259fc8fa-7c71 returnType #type_82cafd5e
+edge #expr_f1b05c94 left #expr_d2fd6312
+edge #expr_f1b05c94 right #expr_eee38b14 order:1
+edge #expr_a4f08ca8 left #expr_f1b05c94
+edge #expr_e3d6e7c8 left #expr_ac1d0fe9
+edge #expr_11c80b0d left #expr_eea3ab27
+edge #expr_e9ddf374 left #expr_11c80b0d
+edge #expr_c153c1d9 left #expr_e9ddf374
+edge #expr_c153c1d9 arg #expr_b687ca36 order:0
+edge #expr_e3d6e7c8 right #expr_c153c1d9 order:1
+edge #expr_a4f08ca8 right #expr_e3d6e7c8 order:1
+edge #expr_5e0ee449 left #expr_a4f08ca8
+edge #expr_967dc1e4 left #expr_8888bec5
+edge #expr_967dc1e4 right #expr_25d3fcf7 order:1
+edge #expr_5e0ee449 right #expr_967dc1e4 order:1
+edge #stmt_651d57ef-fa37 expr #expr_5e0ee449
+edge #stmt_124e23fd expr #expr_c964fcb4
+edge #block_d3e7cc3c statement #stmt_124e23fd order:0
+edge #stmt_651d57ef-fa37 then #block_d3e7cc3c
+edge #block_eabbd587 statement #stmt_651d57ef-fa37 order:0
+edge #expr_e82367ff left #expr_f272f16d
+edge #expr_e82367ff right #expr_f842ab21 order:1
+edge #stmt_518f4797 expr #expr_e82367ff
+edge #stmt_518f4797 declaredType #type_52b8c5d2
+edge #block_eabbd587 statement #stmt_518f4797 order:1
+edge #expr_36fc70df left #expr_c07ce94f
+edge #expr_36fc70df right #expr_c0551559 order:1
+edge #stmt_651d57ef-fa37-1 expr #expr_36fc70df
+edge #expr_f60b2186 left #expr_a6985f9d
+edge #expr_f60b2186 right #expr_da6ce56f order:1
+edge #stmt_62ff945b target #expr_f60b2186
+edge #expr_a03adcd4 left #expr_7f3a1a18
+edge #expr_a03adcd4 right #expr_bdbae214 order:1
+edge #stmt_62ff945b expr #expr_a03adcd4
+edge #block_d5fc7fde statement #stmt_62ff945b order:0
+edge #stmt_651d57ef-fa37-1 then #block_d5fc7fde
+edge #block_eabbd587 statement #stmt_651d57ef-fa37-1 order:2
+edge #stmt_a3c4632a expr #expr_e95ce7b0
+edge #block_eabbd587 statement #stmt_a3c4632a order:3
+edge #decl_259fc8fa-7c71 body #block_eabbd587
+edge #mod_4c1e3f60 function #decl_259fc8fa-9878 order:6
+edge #decl_259fc8fa-9878 typeParam #param_51e5596c order:0
+edge #param_51e5596c type #type_12d26abb
+edge #decl_259fc8fa-9878 param #param_5dbede00 order:0
+edge #param_5dbede00 type #type_5c03142d
+edge #decl_259fc8fa-9878 param #param_eed07ba1 order:1
+edge #param_eed07ba1 type #type_58a5e135
+edge #decl_259fc8fa-9878 param #param_f9bfc5c2 order:2
+edge #param_f9bfc5c2 type #type_c8b9f234
+edge #decl_259fc8fa-9878 returnType #type_e7fc720a
+edge #expr_2672d127 left #expr_b457f815
+edge #expr_fb20821f left #expr_e90d9163
+edge #expr_7b74cd43 left #expr_fb20821f
+edge #expr_488890b5 left #expr_7b74cd43
+edge #expr_488890b5 arg #expr_e9af3ac7 order:0
+edge #expr_2672d127 right #expr_488890b5 order:1
+edge #expr_c58df550 left #expr_2672d127
+edge #expr_20e522d1 left #expr_04b5b94b
+edge #expr_20e522d1 right #expr_71d33beb order:1
+edge #expr_c58df550 right #expr_20e522d1 order:1
+edge #expr_63d2ec24 left #expr_c58df550
+edge #expr_45a097cc left #expr_177c00a0
+edge #expr_45a097cc right #expr_2a2f25dc order:1
+edge #expr_63d2ec24 right #expr_45a097cc order:1
+edge #stmt_5f706d44 expr #expr_63d2ec24
+edge #stmt_1e315585 expr #expr_ea044932
+edge #block_9611f2bb statement #stmt_1e315585 order:0
+edge #stmt_5f706d44 then #block_9611f2bb
+edge #block_6517a21f statement #stmt_5f706d44 order:0
+edge #expr_edf05e7f left #expr_cd9527e8
+edge #expr_edf05e7f right #expr_0cbcbd24 order:1
+edge #stmt_c486a8fa expr #expr_edf05e7f
+edge #stmt_c486a8fa declaredType #type_eb6687bc
+edge #block_6517a21f statement #stmt_c486a8fa order:1
+edge #stmt_6b8ba259 expr #expr_1a475db6
+edge #stmt_6b8ba259 declaredType #type_83905664
+edge #block_6517a21f statement #stmt_6b8ba259 order:2
+edge #expr_61fcc455 left #expr_0aa76793
+edge #expr_61fcc455 right #expr_8188f7f7 order:1
+edge #stmt_c198984a expr #expr_61fcc455
+edge #expr_117f4d6f left #expr_94c85f6f
+edge #expr_117f4d6f right #expr_2409f9f9 order:1
+edge #stmt_5f7a7513-b829 target #expr_117f4d6f
+edge #expr_96e4f881 left #expr_2546489f
+edge #expr_24aace3c left #expr_139fa75e
+edge #expr_24aace3c right #expr_deeea074 order:1
+edge #expr_96e4f881 right #expr_24aace3c order:1
+edge #stmt_5f7a7513-b829 expr #expr_96e4f881
+edge #block_14f1b776 statement #stmt_5f7a7513-b829 order:0
+edge #stmt_5f7a7513-b829-1 target #expr_96c6fe78
+edge #expr_45fbc3e3 left #expr_af36cd31
+edge #expr_45fbc3e3 right #expr_ef77c081 order:1
+edge #stmt_5f7a7513-b829-1 expr #expr_45fbc3e3
+edge #block_14f1b776 statement #stmt_5f7a7513-b829-1 order:1
+edge #stmt_c198984a then #block_14f1b776
+edge #block_6517a21f statement #stmt_c198984a order:3
+edge #expr_06533030 left #expr_11e5b3fe
+edge #expr_06533030 right #expr_6fe3462c order:1
+edge #stmt_a9ca1dde target #expr_06533030
+edge #stmt_a9ca1dde expr #expr_7f9b89b5
+edge #block_6517a21f statement #stmt_a9ca1dde order:4
+edge #stmt_935ab509 expr #expr_aaa16da9
+edge #block_6517a21f statement #stmt_935ab509 order:5
+edge #decl_259fc8fa-9878 body #block_6517a21f

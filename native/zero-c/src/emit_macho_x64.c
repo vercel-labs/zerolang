@@ -315,6 +315,11 @@ static bool machx64_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const 
     z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
     return true;
   }
+  if (view && view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) {
+    if (!machx64_emit_value(text, fun, view, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
+    return true;
+  }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     return machx64_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
   }
@@ -333,6 +338,7 @@ static bool machx64_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const 
     return true;
   }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return machx64_emit_value(text, fun, view, ctx, diag);
+  if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) return machx64_emit_value(text, fun, view, ctx, diag);
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
     if (!((local->is_array && view->field_offset == 0) || local->is_record)) return machx64_diag_at(diag, "direct x86_64 Mach-O byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
@@ -375,6 +381,11 @@ static void machx64_emit_move_byte_view_pair(ZBuf *text, unsigned ptr_reg, unsig
 static bool machx64_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, MachOEmitContext *ctx, ZDiag *diag) {
   if (ptr_reg == len_reg) return machx64_diag_at(diag, "direct x86_64 Mach-O byte-view pair requires distinct destination registers", view ? view->line : 1, view ? view->column : 1, "invalid byte-view registers");
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
+    if (!machx64_emit_value(text, fun, view, ctx, diag)) return false;
+    machx64_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
+    return true;
+  }
+  if (view && view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) {
     if (!machx64_emit_value(text, fun, view, ctx, diag)) return false;
     machx64_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
     return true;
@@ -671,6 +682,374 @@ static bool machx64_emit_field_load_value(ZBuf *text, const IrFunction *fun, con
   return true;
 }
 
+static MachORuntimeHelper machx64_str_runtime_helper(IrStrOp op) {
+  switch (op) {
+    case IR_STR_OP_REVERSE:
+    case IR_STR_OP_COPY:
+    case IR_STR_OP_TO_LOWER_ASCII:
+    case IR_STR_OP_TO_UPPER_ASCII:
+      return MACHO_RUNTIME_STR_BUFFER_OP;
+    case IR_STR_OP_CONCAT:
+      return MACHO_RUNTIME_STR_CONCAT;
+    case IR_STR_OP_REPEAT:
+      return MACHO_RUNTIME_STR_REPEAT;
+    case IR_STR_OP_TRIM_ASCII:
+    case IR_STR_OP_TRIM_START_ASCII:
+    case IR_STR_OP_TRIM_END_ASCII:
+    case IR_STR_OP_PATH_BASENAME:
+    case IR_STR_OP_PATH_DIRNAME:
+    case IR_STR_OP_PATH_EXTENSION:
+    case IR_STR_OP_PARSE_TOKEN_ASCII:
+      return MACHO_RUNTIME_STR_TRIM_OP;
+    case IR_STR_OP_COUNT_BYTE:
+      return MACHO_RUNTIME_STR_COUNT_BYTE;
+    case IR_STR_OP_STARTS_WITH:
+    case IR_STR_OP_ENDS_WITH:
+    case IR_STR_OP_CONTAINS:
+    case IR_STR_OP_COUNT:
+    case IR_STR_OP_INDEX_OF:
+    case IR_STR_OP_LAST_INDEX_OF:
+    case IR_STR_OP_EQL_IGNORE_ASCII_CASE:
+      return MACHO_RUNTIME_STR_PAIR_OP;
+    case IR_STR_OP_WORD_COUNT_ASCII:
+      return MACHO_RUNTIME_STR_WORD_COUNT_ASCII;
+  }
+  return MACHO_RUNTIME_HELPER_COUNT;
+}
+
+static void machx64_emit_encoded_len_to_maybe_byte_view_regs(ZBuf *text) {
+  z_x64_emit_mov_rcx_from_rax(text, false);
+  z_x64_emit_test_rax_rax(text, true);
+  size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
+  z_x64_emit_add_reg_i8(text, 1, -1, true);
+  z_x64_patch_rel32(text, none, text->len);
+  z_x64_emit_test_rax_rax(text, true);
+  z_x64_emit_setcc_al_to_bool(text, 0x95);
+}
+
+static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str helper requires an operation", 1, 1, "missing std.str helper");
+  IrStrOp op = (IrStrOp)value->int_value;
+  MachORuntimeHelper helper = machx64_str_runtime_helper(op);
+  if (helper == MACHO_RUNTIME_HELPER_COUNT) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str runtime helper is unsupported", value->line, value->column, "unsupported std.str op");
+  switch (op) {
+    case IR_STR_OP_REVERSE:
+    case IR_STR_OP_COPY:
+    case IR_STR_OP_TO_LOWER_ASCII:
+    case IR_STR_OP_TO_UPPER_ASCII:
+      if (value->arg_len != 2) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str buffer helper requires two arguments", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[1], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 1);
+      z_x64_emit_pop_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      z_x64_emit_mov_reg_u32(text, 8, (uint32_t)op);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      z_x64_emit_pop_reg64(text, 2);
+      machx64_emit_encoded_len_to_maybe_byte_view_regs(text);
+      return true;
+    case IR_STR_OP_CONCAT:
+      if (value->arg_len != 3) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str.concat requires three arguments", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[1], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[2], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 9);
+      z_x64_emit_pop_reg64(text, 8);
+      z_x64_emit_pop_reg64(text, 1);
+      z_x64_emit_pop_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      z_x64_emit_pop_reg64(text, 2);
+      machx64_emit_encoded_len_to_maybe_byte_view_regs(text);
+      return true;
+    case IR_STR_OP_REPEAT:
+      if (value->arg_len != 3) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str.repeat requires three arguments", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[1], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_value(text, fun, value->args[2], ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_pop_reg64(text, 8);
+      z_x64_emit_pop_reg64(text, 1);
+      z_x64_emit_pop_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      z_x64_emit_pop_reg64(text, 2);
+      machx64_emit_encoded_len_to_maybe_byte_view_regs(text);
+      return true;
+    case IR_STR_OP_TRIM_ASCII:
+    case IR_STR_OP_TRIM_START_ASCII:
+    case IR_STR_OP_TRIM_END_ASCII:
+    case IR_STR_OP_PATH_BASENAME:
+    case IR_STR_OP_PATH_DIRNAME:
+    case IR_STR_OP_PATH_EXTENSION:
+    case IR_STR_OP_PARSE_TOKEN_ASCII:
+      if (value->arg_len != 1) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str borrowed-slice helper requires one argument", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 0);
+      z_x64_emit_push_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      z_x64_emit_mov_reg_u32(text, 2, (uint32_t)op);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      z_x64_emit_mov_rcx_from_rax(text, true);
+      z_x64_emit_shr_reg_imm8(text, 1, 32, true);
+      z_x64_emit_mov_reg_from_reg(text, 2, 0, false);
+      z_x64_emit_pop_reg64(text, 0);
+      z_x64_emit_add_reg_reg(text, 0, 1, true);
+      return true;
+    case IR_STR_OP_COUNT_BYTE:
+      if (value->arg_len != 2) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str.countByte requires two arguments", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_value(text, fun, value->args[1], ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_pop_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      return true;
+    case IR_STR_OP_STARTS_WITH:
+    case IR_STR_OP_ENDS_WITH:
+    case IR_STR_OP_CONTAINS:
+    case IR_STR_OP_COUNT:
+    case IR_STR_OP_INDEX_OF:
+    case IR_STR_OP_LAST_INDEX_OF:
+    case IR_STR_OP_EQL_IGNORE_ASCII_CASE:
+      if (value->arg_len != 2) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str pair helper requires two arguments", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[1], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 1);
+      z_x64_emit_pop_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      z_x64_emit_mov_reg_u32(text, 8, (uint32_t)op);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+      return true;
+    case IR_STR_OP_WORD_COUNT_ASCII:
+      if (value->arg_len != 1) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str.wordCountAscii requires one argument", value->line, value->column, "invalid std.str arity");
+      if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      z_x64_emit_pop_reg64(text, 6);
+      z_x64_emit_pop_reg64(text, 7);
+      {
+        size_t patch = z_x64_emit_call32_placeholder(text);
+        if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+      }
+      return true;
+    default:
+      return machx64_diag_at(diag, "direct x86_64 Mach-O std.str runtime helper is unsupported", value->line, value->column, "unsupported std.str op");
+  }
+}
+
+static void machx64_emit_normalize_u32_maybe_result(ZBuf *text) {
+  z_x64_emit_mov_reg_from_reg(text, 2, 0, true);
+  z_x64_emit_mov_reg_from_reg(text, 2, 2, false);
+  z_x64_emit_shr_reg_imm8(text, 0, 32, true);
+}
+
+static bool machx64_emit_ascii_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len != 1) return machx64_diag_at(diag, "direct x86_64 Mach-O std.ascii helper requires one byte argument", value ? value->line : 1, value ? value->column : 1, "invalid std.ascii arity");
+  if (!machx64_emit_value(text, fun, value->args[0], ctx, diag)) return false;
+  z_x64_emit_mov_rdi_from_rax(text);
+  z_x64_emit_mov_reg_u32(text, 6, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_ASCII_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_MAYBE_SCALAR) {
+    z_x64_emit_mov_reg_from_reg(text, 8, 0, true);
+    z_x64_emit_mov_reg_from_reg(text, 2, 8, false);
+    z_x64_emit_and_reg_u32(text, 2, 0xffu, false);
+    z_x64_emit_test_rax_rax(text, false);
+    z_x64_emit_setcc_al_to_bool(text, 0x95);
+  } else if (value->type == IR_TYPE_BOOL || value->type == IR_TYPE_U8) {
+    z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  }
+  return true;
+}
+
+static bool machx64_emit_text_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len != 1) return machx64_diag_at(diag, "direct x86_64 Mach-O std.text helper requires one byte-view argument", value ? value->line : 1, value ? value->column : 1, "invalid std.text arity");
+  if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  z_x64_emit_push_reg64(text, 2);
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  z_x64_emit_mov_reg_u32(text, 2, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_TEXT_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_MAYBE_SCALAR) {
+    z_x64_emit_mov_reg_from_reg(text, 8, 0, true);
+    z_x64_emit_mov_reg_from_reg(text, 2, 8, true);
+    z_x64_emit_mov_reg_u32(text, 1, 1);
+    z_x64_emit_sub_reg_reg(text, 2, 1, true);
+    z_x64_emit_test_reg_reg(text, 8, true);
+    z_x64_emit_setcc_al_to_bool(text, 0x95);
+  } else if (value->type == IR_TYPE_BOOL) {
+    z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  }
+  return true;
+}
+
+static bool machx64_emit_parse_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len < 1 || value->arg_len > 2) return machx64_diag_at(diag, "direct x86_64 Mach-O std.parse helper requires one byte-view argument and optional byte argument", value ? value->line : 1, value ? value->column : 1, "invalid std.parse arity");
+  if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  z_x64_emit_push_reg64(text, 2);
+  if (value->arg_len == 2) {
+    if (!machx64_emit_value(text, fun, value->args[1], ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_reg(text, 2, 0, true);
+  } else {
+    z_x64_emit_xor_reg_reg(text, 2, true);
+  }
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  z_x64_emit_mov_reg_u32(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  bool maybe_usize = value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE;
+  if (!z_macho_record_value_runtime_patch(ctx, maybe_usize ? MACHO_RUNTIME_PARSE_USIZE : MACHO_RUNTIME_PARSE_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_MAYBE_SCALAR && !maybe_usize) machx64_emit_normalize_u32_maybe_result(text);
+  else if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
+static bool machx64_emit_parse_u32_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value) return machx64_diag_at(diag, "direct x86_64 Mach-O parse value is missing", 1, 1, "missing parse value");
+  if (value->kind != IR_VALUE_PARSE_I32 && value->kind != IR_VALUE_PARSE_U32) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O parse value kind is invalid for this helper", value->line, value->column, "invalid parse value");
+  }
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 0, 2, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  z_x64_emit_push_reg64(text, 2);
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, value->kind == IR_VALUE_PARSE_I32 ? MACHO_RUNTIME_PARSE_I32 : MACHO_RUNTIME_PARSE_U32, patch, value, diag)) return false;
+  machx64_emit_normalize_u32_maybe_result(text);
+  return true;
+}
+
+static MachORuntimeHelper machx64_fmt_runtime_helper(IrValueKind kind) {
+  switch (kind) {
+    case IR_VALUE_FMT_BOOL: return MACHO_RUNTIME_FMT_BOOL;
+    case IR_VALUE_FMT_HEX_U32: return MACHO_RUNTIME_FMT_HEX_LOWER_U32;
+    case IR_VALUE_FMT_I32: return MACHO_RUNTIME_FMT_I32;
+    case IR_VALUE_FMT_U32: return MACHO_RUNTIME_FMT_U32;
+    case IR_VALUE_FMT_USIZE: return MACHO_RUNTIME_FMT_USIZE;
+    default: return MACHO_RUNTIME_HELPER_COUNT;
+  }
+}
+
+static bool machx64_emit_fmt_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) return machx64_diag_at(diag, "direct x86_64 Mach-O std.fmt helper requires a buffer and value", value ? value->line : 1, value ? value->column : 1, "missing fmt input");
+  MachORuntimeHelper helper = machx64_fmt_runtime_helper(value->kind);
+  if (helper == MACHO_RUNTIME_HELPER_COUNT) return machx64_diag_at(diag, "direct x86_64 Mach-O std.fmt helper is unsupported", value->line, value->column, "unsupported std.fmt helper");
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 0, 2, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  z_x64_emit_push_rax(text);
+  z_x64_emit_push_reg64(text, 2);
+  if (!machx64_emit_value(text, fun, value->right, ctx, diag)) return false;
+  z_x64_emit_push_rax(text);
+  z_x64_emit_pop_reg64(text, 2);
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+  z_x64_emit_pop_reg64(text, 2);
+  z_x64_emit_mov_rcx_from_rax(text, false);
+  z_x64_emit_test_rax_rax(text, true);
+  z_x64_emit_setcc_al_to_bool(text, 0x95);
+  return true;
+}
+
+static bool machx64_emit_math_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 3) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.math helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.math arity");
+  }
+  for (size_t i = 0; i < value->arg_len; i++) {
+    if (!machx64_emit_value(text, fun, value->args[i], ctx, diag)) return false;
+    z_x64_emit_push_rax(text);
+  }
+  if (value->arg_len > 2) z_x64_emit_pop_reg64(text, 2);
+  else z_x64_emit_xor_reg_reg(text, 2, true);
+  if (value->arg_len > 1) z_x64_emit_pop_reg64(text, 6);
+  else z_x64_emit_xor_reg_reg(text, 6, true);
+  if (value->arg_len > 0) z_x64_emit_pop_reg64(text, 7);
+  else z_x64_emit_xor_reg_reg(text, 7, true);
+  z_x64_emit_mov_reg_u32(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  bool maybe_usize = value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE;
+  if (!z_macho_record_value_runtime_patch(ctx, maybe_usize ? MACHO_RUNTIME_MATH_USIZE_OP : MACHO_RUNTIME_MATH_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_MAYBE_SCALAR && !maybe_usize) machx64_emit_normalize_u32_maybe_result(text);
+  else if (value->type == IR_TYPE_I32 || value->type == IR_TYPE_U32 || value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
+static bool machx64_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 3) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.time helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.time arity");
+  }
+  for (size_t i = 0; i < value->arg_len; i++) {
+    if (!machx64_emit_value(text, fun, value->args[i], ctx, diag)) return false;
+    z_x64_emit_push_rax(text);
+  }
+  if (value->arg_len > 2) z_x64_emit_pop_reg64(text, 2);
+  else z_x64_emit_xor_reg_reg(text, 2, true);
+  if (value->arg_len > 1) z_x64_emit_pop_reg64(text, 6);
+  else z_x64_emit_xor_reg_reg(text, 6, true);
+  if (value->arg_len > 0) z_x64_emit_pop_reg64(text, 7);
+  else z_x64_emit_xor_reg_reg(text, 7, true);
+  z_x64_emit_mov_reg_u32(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_TIME_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_I32 || value->type == IR_TYPE_U32 || value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
 static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value) return machx64_diag_at(diag, "direct x86_64 Mach-O expression is missing", 1, 1, "missing expression");
   switch (value->kind) {
@@ -713,6 +1092,21 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
     case IR_VALUE_BYTE_FILL: return machx64_emit_byte_fill_value(text, fun, value, ctx, diag);
     case IR_VALUE_BYTE_VIEW_EQ: return machx64_emit_byte_view_eq_value(text, fun, value, ctx, diag);
     case IR_VALUE_CRC32_BYTES: return machx64_emit_crc32_bytes_value(text, fun, value, ctx, diag);
+    case IR_VALUE_ASCII_RUNTIME: return machx64_emit_ascii_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_TEXT_RUNTIME: return machx64_emit_text_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PARSE_RUNTIME: return machx64_emit_parse_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PARSE_I32:
+    case IR_VALUE_PARSE_U32:
+      return machx64_emit_parse_u32_value(text, fun, value, ctx, diag);
+    case IR_VALUE_FMT_BOOL:
+    case IR_VALUE_FMT_HEX_U32:
+    case IR_VALUE_FMT_I32:
+    case IR_VALUE_FMT_U32:
+    case IR_VALUE_FMT_USIZE:
+      return machx64_emit_fmt_value(text, fun, value, ctx, diag);
+    case IR_VALUE_STR_RUNTIME: return machx64_emit_str_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_TIME_RUNTIME: return machx64_emit_time_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_MATH_RUNTIME: return machx64_emit_math_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: return machx64_emit_byte_view_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_INDEX_LOAD: return machx64_emit_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_FIELD_LOAD: return machx64_emit_field_load_value(text, fun, value, diag);
@@ -761,7 +1155,13 @@ static bool machx64_emit_local_set_maybe_byte_view(ZBuf *text, const IrFunction 
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 2, 16, false);
     return true;
   }
-  if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
+  if ((instr->value->kind == IR_VALUE_CALL ||
+       instr->value->kind == IR_VALUE_STR_RUNTIME ||
+       instr->value->kind == IR_VALUE_FMT_BOOL ||
+       instr->value->kind == IR_VALUE_FMT_HEX_U32 ||
+       instr->value->kind == IR_VALUE_FMT_I32 ||
+       instr->value->kind == IR_VALUE_FMT_U32 ||
+       instr->value->kind == IR_VALUE_FMT_USIZE) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 2, 8, true);
@@ -780,7 +1180,13 @@ static bool machx64_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fu
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 8, true);
     return true;
   }
-  if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+  if ((instr->value->kind == IR_VALUE_CALL ||
+       instr->value->kind == IR_VALUE_ASCII_RUNTIME ||
+       instr->value->kind == IR_VALUE_TEXT_RUNTIME ||
+       instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
+       instr->value->kind == IR_VALUE_PARSE_I32 ||
+       instr->value->kind == IR_VALUE_PARSE_U32 ||
+       instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 2, 8, true);
@@ -907,7 +1313,7 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
     case IR_INSTR_EXPR: return !instr->value || machx64_emit_value(text, fun, instr->value, ctx, diag);
     case IR_INSTR_RETURN:
       if (fun->return_type == IR_TYPE_BYTE_VIEW && instr->value) {
-        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_BYTE_VIEW) {
+        if ((instr->value->kind == IR_VALUE_CALL || instr->value->kind == IR_VALUE_STR_RUNTIME) && instr->value->type == IR_TYPE_BYTE_VIEW) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else {
           if (!machx64_emit_byte_view_pair(text, fun, instr->value, 0, 2, ctx, diag)) return false;
@@ -916,7 +1322,13 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
         return true;
       }
       if (fun->return_type == IR_TYPE_MAYBE_BYTE_VIEW && instr->value) {
-        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
+        if ((instr->value->kind == IR_VALUE_CALL ||
+             instr->value->kind == IR_VALUE_STR_RUNTIME ||
+             instr->value->kind == IR_VALUE_FMT_BOOL ||
+             instr->value->kind == IR_VALUE_FMT_HEX_U32 ||
+             instr->value->kind == IR_VALUE_FMT_I32 ||
+             instr->value->kind == IR_VALUE_FMT_U32 ||
+             instr->value->kind == IR_VALUE_FMT_USIZE) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) {
           if (!instr->value->data_len) {
@@ -934,7 +1346,13 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
         return true;
       }
       if (fun->return_type == IR_TYPE_MAYBE_SCALAR && instr->value) {
-        if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+        if ((instr->value->kind == IR_VALUE_CALL ||
+             instr->value->kind == IR_VALUE_ASCII_RUNTIME ||
+             instr->value->kind == IR_VALUE_TEXT_RUNTIME ||
+             instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
+             instr->value->kind == IR_VALUE_PARSE_I32 ||
+             instr->value->kind == IR_VALUE_PARSE_U32 ||
+             instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
           z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);

@@ -1,0 +1,58 @@
+zero-graph v1
+origin source-text
+module "proc"
+hash "graph:d1fad6d788b47b3b"
+
+node #mod_9196a2f8 Module name:"proc" path:"std/proc.0" line:1 column:1
+node #decl_52c740db-1426 Function name:"__zero_std_proc_succeeded" type:"Bool" path:"std/proc.0" line:1 column:1
+node #param_8bd6fbc7 Param name:"status" type:"ProcStatus" path:"std/proc.0" line:1 column:30
+node #type_82d58781 TypeRef type:"ProcStatus" path:"std/proc.0" line:1 column:30
+node #type_7e010c75 TypeRef type:"Bool" path:"std/proc.0" line:1 column:1
+node #block_cbccb128 Block name:"body" path:"std/proc.0" line:1 column:1
+node #stmt_b2b0e995 Return path:"std/proc.0" line:2 column:5
+node #expr_9aa41ff3 Call name:"==" path:"std/proc.0" line:2 column:38
+node #expr_8dbb89f6 MethodCall name:"exitCode" path:"std/proc.0" line:2 column:29
+node #expr_f15f08b5 FieldAccess name:"exitCode" path:"std/proc.0" line:2 column:21
+node #expr_b05d2419 FieldAccess name:"proc" path:"std/proc.0" line:2 column:16
+node #expr_201b4ba8 Identifier name:"std" path:"std/proc.0" line:2 column:12
+node #expr_59915dcb Identifier name:"status" path:"std/proc.0" line:2 column:30
+node #expr_d24930b0 Literal value:"0" path:"std/proc.0" line:2 column:41
+node #decl_52c740db-4bb4 Function name:"__zero_std_proc_failed" type:"Bool" path:"std/proc.0" line:5 column:1
+node #param_26389fb0 Param name:"status" type:"ProcStatus" path:"std/proc.0" line:5 column:27
+node #type_d6a82dfd TypeRef type:"ProcStatus" path:"std/proc.0" line:5 column:27
+node #type_9e561028 TypeRef type:"Bool" path:"std/proc.0" line:5 column:1
+node #block_137ce089 Block name:"body" path:"std/proc.0" line:5 column:1
+node #stmt_f75ca7e5 Return path:"std/proc.0" line:6 column:5
+node #expr_b7808cbc Call name:"!=" path:"std/proc.0" line:6 column:38
+node #expr_90941794 MethodCall name:"exitCode" path:"std/proc.0" line:6 column:29
+node #expr_37ed69d3 FieldAccess name:"exitCode" path:"std/proc.0" line:6 column:21
+node #expr_e3331685 FieldAccess name:"proc" path:"std/proc.0" line:6 column:16
+node #expr_475dcbb5 Identifier name:"std" path:"std/proc.0" line:6 column:12
+node #expr_108ce26d Identifier name:"status" path:"std/proc.0" line:6 column:30
+node #expr_c6e25046 Literal value:"0" path:"std/proc.0" line:6 column:41
+edge #mod_9196a2f8 function #decl_52c740db-1426 order:0
+edge #decl_52c740db-1426 param #param_8bd6fbc7 order:0
+edge #param_8bd6fbc7 type #type_82d58781
+edge #decl_52c740db-1426 returnType #type_7e010c75
+edge #expr_b05d2419 left #expr_201b4ba8
+edge #expr_f15f08b5 left #expr_b05d2419
+edge #expr_8dbb89f6 left #expr_f15f08b5
+edge #expr_8dbb89f6 arg #expr_59915dcb order:0
+edge #expr_9aa41ff3 left #expr_8dbb89f6
+edge #expr_9aa41ff3 right #expr_d24930b0 order:1
+edge #stmt_b2b0e995 expr #expr_9aa41ff3
+edge #block_cbccb128 statement #stmt_b2b0e995 order:0
+edge #decl_52c740db-1426 body #block_cbccb128
+edge #mod_9196a2f8 function #decl_52c740db-4bb4 order:1
+edge #decl_52c740db-4bb4 param #param_26389fb0 order:0
+edge #param_26389fb0 type #type_d6a82dfd
+edge #decl_52c740db-4bb4 returnType #type_9e561028
+edge #expr_e3331685 left #expr_475dcbb5
+edge #expr_37ed69d3 left #expr_e3331685
+edge #expr_90941794 left #expr_37ed69d3
+edge #expr_90941794 arg #expr_108ce26d order:0
+edge #expr_b7808cbc left #expr_90941794
+edge #expr_b7808cbc right #expr_c6e25046 order:1
+edge #stmt_f75ca7e5 expr #expr_b7808cbc
+edge #block_137ce089 statement #stmt_f75ca7e5 order:0
+edge #decl_52c740db-4bb4 body #block_137ce089

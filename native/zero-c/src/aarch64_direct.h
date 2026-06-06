@@ -5,8 +5,34 @@
 
 typedef struct ZAArch64DirectContext ZAArch64DirectContext;
 
+typedef enum {
+  A64_DIRECT_RUNTIME_STR_BUFFER_OP,
+  A64_DIRECT_RUNTIME_STR_CONCAT,
+  A64_DIRECT_RUNTIME_STR_REPEAT,
+  A64_DIRECT_RUNTIME_STR_TRIM_OP,
+  A64_DIRECT_RUNTIME_STR_PAIR_OP,
+  A64_DIRECT_RUNTIME_STR_COUNT_BYTE,
+  A64_DIRECT_RUNTIME_STR_WORD_COUNT_ASCII,
+  A64_DIRECT_RUNTIME_ASCII_OP,
+  A64_DIRECT_RUNTIME_TEXT_OP,
+  A64_DIRECT_RUNTIME_PARSE_OP,
+  A64_DIRECT_RUNTIME_PARSE_USIZE,
+  A64_DIRECT_RUNTIME_PARSE_I32,
+  A64_DIRECT_RUNTIME_PARSE_U32,
+  A64_DIRECT_RUNTIME_FMT_BOOL,
+  A64_DIRECT_RUNTIME_FMT_HEX_U32,
+  A64_DIRECT_RUNTIME_FMT_I32,
+  A64_DIRECT_RUNTIME_FMT_U32,
+  A64_DIRECT_RUNTIME_FMT_USIZE,
+  A64_DIRECT_RUNTIME_TIME_OP,
+  A64_DIRECT_RUNTIME_MATH_OP,
+  A64_DIRECT_RUNTIME_MATH_USIZE_OP,
+  A64_DIRECT_RUNTIME_HELPER_COUNT
+} ZAArch64DirectRuntimeHelper;
+
 typedef bool (*ZAArch64DirectDataPatchFn)(void *user, size_t patch_offset, unsigned data_offset, const IrValue *value, ZDiag *diag);
 typedef bool (*ZAArch64DirectCallPatchFn)(void *user, size_t patch_offset, unsigned callee_index, const IrValue *value, ZDiag *diag);
+typedef bool (*ZAArch64DirectRuntimePatchFn)(void *user, size_t patch_offset, ZAArch64DirectRuntimeHelper helper, const IrValue *value, ZDiag *diag);
 typedef bool (*ZAArch64DirectWorldWriteFn)(ZBuf *text, const IrInstr *instr, ZAArch64DirectContext *ctx, ZDiag *diag);
 
 struct ZAArch64DirectContext {
@@ -17,6 +43,7 @@ struct ZAArch64DirectContext {
   void *patch_user;
   ZAArch64DirectDataPatchFn record_data_patch;
   ZAArch64DirectCallPatchFn record_call_patch;
+  ZAArch64DirectRuntimePatchFn record_runtime_patch;
   ZAArch64DirectWorldWriteFn emit_world_write;
 };
 

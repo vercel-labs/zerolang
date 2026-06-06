@@ -6,6 +6,27 @@
 
 static const char *const runtime_helper_symbols[COFF_RUNTIME_HELPER_COUNT] = {
   "zero_world_write",
+  "zero_str_buffer_op",
+  "zero_str_concat",
+  "zero_str_repeat",
+  "zero_str_trim_op",
+  "zero_str_pair_op",
+  "zero_str_count_byte",
+  "zero_str_word_count_ascii",
+  "zero_ascii_op",
+  "zero_text_op",
+  "zero_parse_op",
+  "zero_parse_usize",
+  "zero_parse_i32",
+  "zero_parse_u32",
+  "zero_fmt_bool",
+  "zero_fmt_hex_lower_u32",
+  "zero_fmt_i32",
+  "zero_fmt_u32",
+  "zero_fmt_usize",
+  "zero_time_op",
+  "zero_math_op",
+  "zero_math_usize_op",
 };
 
 static bool coff_emit_state_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {
@@ -67,9 +88,9 @@ bool z_coff_record_rodata_patch(CoffEmitContext *ctx, size_t patch_offset, unsig
   return true;
 }
 
-bool z_coff_record_instr_runtime_patch(CoffEmitContext *ctx, CoffRuntimeHelper helper, size_t patch_offset, const IrInstr *instr, ZDiag *diag) {
+static bool coff_record_runtime_patch_at(CoffEmitContext *ctx, CoffRuntimeHelper helper, size_t patch_offset, int line, int column, ZDiag *diag) {
   if (!ctx || !coff_runtime_helper_valid(helper)) {
-    return coff_emit_state_diag(diag, "direct COFF runtime relocation requires an emit context", instr ? instr->line : 1, instr ? instr->column : 1, "missing context");
+    return coff_emit_state_diag(diag, "direct COFF runtime relocation requires an emit context", line, column, "missing context");
   }
   CoffPatchList *list = &ctx->runtime_patches[helper];
   if (list->len == list->cap) {
@@ -78,6 +99,14 @@ bool z_coff_record_instr_runtime_patch(CoffEmitContext *ctx, CoffRuntimeHelper h
   }
   list->items[list->len++] = (CoffPatch){.patch_offset = patch_offset};
   return true;
+}
+
+bool z_coff_record_value_runtime_patch(CoffEmitContext *ctx, CoffRuntimeHelper helper, size_t patch_offset, const IrValue *value, ZDiag *diag) {
+  return coff_record_runtime_patch_at(ctx, helper, patch_offset, value ? value->line : 1, value ? value->column : 1, diag);
+}
+
+bool z_coff_record_instr_runtime_patch(CoffEmitContext *ctx, CoffRuntimeHelper helper, size_t patch_offset, const IrInstr *instr, ZDiag *diag) {
+  return coff_record_runtime_patch_at(ctx, helper, patch_offset, instr ? instr->line : 1, instr ? instr->column : 1, diag);
 }
 
 size_t z_coff_runtime_patch_count(const CoffEmitContext *ctx, CoffRuntimeHelper helper) {

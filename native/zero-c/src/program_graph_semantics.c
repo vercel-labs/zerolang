@@ -512,10 +512,10 @@ static ZGraphSemanticContract graph_semantics_contract(const ZProgramGraph *grap
   contract.reference = ref;
   if (!ref) return contract;
   contract.target_node = graph_semantics_node_by_id(graph, ref->target_node);
-  if (graph_semantics_reference_target_kind(ref, "stdlib") || graph_semantics_reference_target_kind(ref, "sourceBackedStdlib")) {
+  if (graph_semantics_reference_target_kind(ref, "stdlib") || graph_semantics_reference_target_kind(ref, "graphBackedStdlib")) {
     contract.helper = z_std_helper_find(ref->qualified_name);
   }
-  if (graph_semantics_reference_target_kind(ref, "sourceBackedStdlib")) contract.source_module = z_std_source_module_for_public_call(ref->qualified_name);
+  if (graph_semantics_reference_target_kind(ref, "graphBackedStdlib")) contract.source_module = z_std_source_module_for_public_call(ref->qualified_name);
   if (graph_semantics_reference_target_kind(ref, "cFunction") || (contract.target_node && contract.target_node->kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT)) {
     contract.c_import = contract.target_node;
     graph_semantics_load_c_import_contract(&contract);
@@ -539,7 +539,7 @@ static const char *graph_semantics_contract_kind(const ZGraphSemanticContract *c
   if (!contract) return "language";
   if (contract->world_write) return "worldStreamWrite";
   if (contract->c_import) return "cAbi";
-  if (contract->source_module) return "sourceBackedStdlib";
+  if (contract->source_module) return "graphBackedStdlib";
   if (contract->helper) return "stdlib";
   if (contract->reference && graph_semantics_text_present(contract->reference->target_kind)) return contract->reference->target_kind;
   return "language";
