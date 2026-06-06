@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo="${ZERO_REPO:-vercel-labs/zero}"
+repo="${ZERO_REPO:-vercel-labs/zerolang}"
 install_dir="${ZERO_INSTALL_DIR:-${HOME:-}/.zero/bin}"
 version="${ZERO_VERSION:-latest}"
 linux_flavor="${ZERO_LINUX_FLAVOR:-musl}"
