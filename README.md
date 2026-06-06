@@ -194,7 +194,13 @@ The project may make breaking changes to simplify the language, standard library
 
 ## Quick Start
 
-Install the latest release:
+### Homebrew (macOS/Linux)
+
+```bash
+brew install zerolang
+```
+
+### Install Script
 
 ```bash
 curl -fsSL https://zerolang.ai/install.sh | bash
