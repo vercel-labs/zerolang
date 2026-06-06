@@ -65,6 +65,67 @@ static void graph_size_record_symbol(SourceInput *input, const char *module, con
   input->symbol_public[input->symbol_count++] = is_public;
 }
 
+static void graph_size_clear_module_metadata(SourceInput *input) {
+  if (!input) return;
+  for (size_t i = 0; i < input->module_count; i++) {
+    free(input->module_names[i]);
+    free(input->module_paths[i]);
+  }
+  free(input->module_names);
+  free(input->module_paths);
+  input->module_names = NULL;
+  input->module_paths = NULL;
+  input->module_count = 0;
+}
+
+static void graph_size_clear_import_metadata(SourceInput *input) {
+  if (!input) return;
+  for (size_t i = 0; i < input->import_count; i++) free(input->imports[i]);
+  free(input->imports);
+  input->imports = NULL;
+  input->import_count = 0;
+
+  for (size_t i = 0; i < input->import_edge_count; i++) {
+    free(input->import_from[i]);
+    free(input->import_to[i]);
+    free(input->import_paths[i]);
+    free(input->import_source_paths[i]);
+  }
+  free(input->import_from);
+  free(input->import_to);
+  free(input->import_paths);
+  free(input->import_source_paths);
+  free(input->import_lines);
+  free(input->import_columns);
+  free(input->import_lengths);
+  input->import_from = NULL;
+  input->import_to = NULL;
+  input->import_paths = NULL;
+  input->import_source_paths = NULL;
+  input->import_lines = NULL;
+  input->import_columns = NULL;
+  input->import_lengths = NULL;
+  input->import_edge_count = 0;
+}
+
+static void graph_size_clear_symbol_metadata(SourceInput *input) {
+  if (!input) return;
+  for (size_t i = 0; i < input->symbol_count; i++) {
+    free(input->symbol_names[i]);
+    free(input->symbol_modules[i]);
+    free(input->symbol_kinds[i]);
+  }
+  free(input->symbol_names);
+  free(input->symbol_modules);
+  free(input->symbol_kinds);
+  free(input->symbol_public);
+  input->symbol_names = NULL;
+  input->symbol_modules = NULL;
+  input->symbol_kinds = NULL;
+  input->symbol_public = NULL;
+  input->symbol_count = 0;
+}
+
 static const ZProgramGraphNode *graph_size_find_node(const ZProgramGraph *graph, const char *id) {
   for (size_t i = 0; graph && id && i < graph->node_len; i++) {
     if (graph_size_text_eq(graph->nodes[i].id, id)) return &graph->nodes[i];
@@ -116,5 +177,8 @@ void z_program_graph_seed_source_metadata(SourceInput *input, const ZProgramGrap
   if (!input || !graph) return;
   free(input->source);
   input->source = z_strdup(graph->graph_hash ? graph->graph_hash : "");
+  graph_size_clear_module_metadata(input);
+  graph_size_clear_import_metadata(input);
+  graph_size_clear_symbol_metadata(input);
   graph_size_seed_from_graph(input, graph);
 }

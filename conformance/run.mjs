@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST_ALLOW_LOCAL !== "1") {
@@ -10,7 +10,7 @@ if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST
 }
 
 const execMaxBuffer = 16 * 1024 * 1024;
-const zero = "bin/zero";
+const zero = resolve("bin/zero");
 const outDir = ".zero/conformance";
 const canRunLinuxMuslX64 = process.platform === "linux" && process.arch === "x64";
 const runnableDirectTarget =
@@ -38,6 +38,15 @@ function execFileAsync(file, args = [], options = {}) {
       resolve({ stdout, stderr });
     });
   });
+}
+
+async function fileExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean") {
@@ -3552,6 +3561,14 @@ const programGraphSourceFreePackage = `${outDir}/program-graph-source-free`;
 const programGraphSourceFreeBuildPath = `${outDir}/program-graph-source-free-build`;
 const programGraphSourceFreeRunPath = `${outDir}/program-graph-source-free-run`;
 const programGraphSourceFreeShipPath = `${outDir}/program-graph-source-free-ship`;
+const programGraphAuthoringPackage = `${outDir}/program-graph-authoring`;
+const programGraphAuthoringRunPath = `${outDir}/program-graph-authoring-run`;
+const programGraphAuthoringRunAfterHumanEditPath = `${outDir}/program-graph-authoring-run-human-edit`;
+const programGraphAuthoringCliPackage = `${outDir}/program-graph-authoring-cli`;
+const programGraphAuthoringCliGraphBuildPath = `${outDir}/program-graph-authoring-cli-graph-build`;
+const programGraphAuthoringCliBuildPath = `${outDir}/program-graph-authoring-cli-build`;
+const programGraphAuthoringCliRunPath = `${outDir}/program-graph-authoring-cli-run`;
+const programGraphAuthoringCliRunAfterHumanEditPath = `${outDir}/program-graph-authoring-cli-run-human-edit`;
 const programGraphSourceFreeCImportPackage = `${outDir}/program-graph-source-free-c-import`;
 const programGraphSourceFreeCImportRunPath = `${outDir}/program-graph-source-free-c-import-run`;
 const programGraphSourceFreeCImportCwdPackage = `${outDir}/program-graph-source-free-c-import-cwd`;
@@ -3579,6 +3596,14 @@ await rm(programGraphSourceFreePackage, { recursive: true, force: true });
 await rm(programGraphSourceFreeBuildPath, { force: true });
 await rm(programGraphSourceFreeRunPath, { force: true });
 await rm(programGraphSourceFreeShipPath, { recursive: true, force: true });
+await rm(programGraphAuthoringPackage, { recursive: true, force: true });
+await rm(programGraphAuthoringRunPath, { force: true });
+await rm(programGraphAuthoringRunAfterHumanEditPath, { force: true });
+await rm(programGraphAuthoringCliPackage, { recursive: true, force: true });
+await rm(programGraphAuthoringCliGraphBuildPath, { force: true });
+await rm(programGraphAuthoringCliBuildPath, { force: true });
+await rm(programGraphAuthoringCliRunPath, { force: true });
+await rm(programGraphAuthoringCliRunAfterHumanEditPath, { force: true });
 await rm(programGraphSourceFreeCImportPackage, { recursive: true, force: true });
 await rm(programGraphSourceFreeCImportRunPath, { force: true });
 await rm(programGraphSourceFreeCImportCwdPackage, { recursive: true, force: true });
@@ -3633,6 +3658,104 @@ const programGraphSourceFreeMemJson = JSON.parse((await execFileAsync(zero, ["me
 const programGraphSourceFreeVerify = await execFileAsync(zero, ["graph", "verify-sync", "--json", programGraphSourceFreePackage]).catch((error) => error);
 const programGraphSourceFreeSyncFromGraph = JSON.parse((await execFileAsync(zero, ["graph", "sync", "--from-graph", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeVerifyAfter = JSON.parse((await execFileAsync(zero, ["graph", "verify-sync", "--json", programGraphSourceFreePackage])).stdout);
+const programGraphAuthoringInit = JSON.parse((await execFileAsync(zero, ["graph", "init", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringProjectionExistsAfterInit = await fileExists(`${programGraphAuthoringPackage}/src/main.0`);
+const programGraphAuthoringPatch = JSON.parse((await execFileAsync(zero, [
+  "graph",
+  "patch",
+  "--json",
+  "--op",
+  "addMain",
+  "--op",
+  "addFunction name=\"add\" ret=\"i32\"",
+  "--op",
+  "addParam fn=\"add\" name=\"left\" type=\"i32\"",
+  "--op",
+  "addParam fn=\"add\" name=\"right\" type=\"i32\"",
+  "--op",
+  "addReturnBinary fn=\"add\" name=\"+\" left=\"left\" right=\"right\" type=\"i32\"",
+  "--op",
+  "addCheckWrite fn=\"main\" text=\"graph authoring ok\\n\"",
+  "--op",
+  "addTest name=\"addition works\" call=\"add\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"i32\"",
+], { cwd: programGraphAuthoringPackage })).stdout);
+const programGraphAuthoringProjectionExistsAfterPatch = await fileExists(`${programGraphAuthoringPackage}/src/main.0`);
+const programGraphAuthoringStatusMissing = JSON.parse((await execFileAsync(zero, ["graph", "status", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringVerifyMissing = await execFileAsync(zero, ["graph", "verify-sync", "--json", programGraphAuthoringPackage]).catch((error) => error);
+const programGraphAuthoringCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringRun = await execFileAsync(zero, ["run", "--out", programGraphAuthoringRunPath, programGraphAuthoringPackage]);
+const programGraphAuthoringTest = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringSyncFromGraph = JSON.parse((await execFileAsync(zero, ["graph", "sync", "--from-graph", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringProjectionText = await readFile(`${programGraphAuthoringPackage}/src/main.0`, "utf8");
+const programGraphAuthoringVerifyAfter = JSON.parse((await execFileAsync(zero, ["graph", "verify-sync", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringCheckAfter = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringEditedText = programGraphAuthoringProjectionText.replace("graph authoring ok", "human edit ok");
+await writeFile(`${programGraphAuthoringPackage}/src/main.0`, programGraphAuthoringEditedText);
+const programGraphAuthoringStatusAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["graph", "status", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringSyncFromSource = JSON.parse((await execFileAsync(zero, ["graph", "sync", "--from-source", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringCheckAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphAuthoringPackage])).stdout);
+const programGraphAuthoringRunAfterHumanEdit = await execFileAsync(zero, ["run", "--out", programGraphAuthoringRunAfterHumanEditPath, programGraphAuthoringPackage]);
+const programGraphAuthoringCliInit = JSON.parse((await execFileAsync(zero, ["graph", "init", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliProjectionExistsAfterInit = await fileExists(`${programGraphAuthoringCliPackage}/src/main.0`);
+const programGraphAuthoringCliPatch = JSON.parse((await execFileAsync(zero, [
+  "graph",
+  "patch",
+  "--json",
+  "--op",
+  "setMainArgsAddCli fn=\"add_u32\"",
+], { cwd: programGraphAuthoringCliPackage })).stdout);
+const programGraphAuthoringCliProjectionExistsAfterPatch = await fileExists(`${programGraphAuthoringCliPackage}/src/main.0`);
+const programGraphAuthoringCliStaleAddPatch = JSON.parse((await execFileAsync(zero, [
+  "graph",
+  "patch",
+  "--json",
+  "--op",
+  "addFunction name=\"add\" ret=\"i32\"",
+  "--op",
+  "addParam fn=\"add\" name=\"x\" type=\"i32\"",
+  "--op",
+  "addParam fn=\"add\" name=\"y\" type=\"i32\"",
+  "--op",
+  "addReturnBinary fn=\"add\" name=\"+\" left=\"x\" right=\"y\" type=\"i32\"",
+  "--op",
+  "addTest name=\"add works\" call=\"add\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"i32\"",
+], { cwd: programGraphAuthoringCliPackage })).stdout);
+const programGraphAuthoringCliFindAdd = JSON.parse((await execFileAsync(zero, ["graph", "query", "--json", "--find", "add", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliNodeAdd = JSON.parse((await execFileAsync(zero, ["graph", "query", "--json", "--node", "#fn_add", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliCleanupPatch = JSON.parse((await execFileAsync(zero, [
+  "graph",
+  "patch",
+  "--json",
+  "--op",
+  "delete node=\"#fn___zero_test_0\"",
+  "--op",
+  "delete node=\"#fn_add\"",
+  "--op",
+  "addTest name=\"add_u32 works\" call=\"add_u32\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"u32\"",
+], { cwd: programGraphAuthoringCliPackage })).stdout);
+const programGraphAuthoringCliCallsText = (await execFileAsync(zero, ["graph", "query", "--fn", "main", "--calls", "std", programGraphAuthoringCliPackage])).stdout;
+const programGraphAuthoringCliRefsText = (await execFileAsync(zero, ["graph", "query", "--refs", "add_u32", programGraphAuthoringCliPackage])).stdout;
+const programGraphAuthoringCliQuery = JSON.parse((await execFileAsync(zero, ["graph", "query", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliGraphBuild = await execFileAsync(zero, ["graph", "build", "--out", programGraphAuthoringCliGraphBuildPath, programGraphAuthoringCliPackage]);
+const programGraphAuthoringCliBuild = await execFileAsync(zero, ["build", "--out", programGraphAuthoringCliBuildPath, programGraphAuthoringCliPackage]);
+const programGraphAuthoringCliTest = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliGraphTest = await execFileAsync(zero, ["graph", "test", programGraphAuthoringCliPackage]);
+const programGraphAuthoringCliRun = await execFileAsync(zero, ["run", "--out", programGraphAuthoringCliRunPath, programGraphAuthoringCliPackage, "--", "40", "2"]);
+const programGraphAuthoringCliGraphRun = await execFileAsync(zero, ["graph", "run", programGraphAuthoringCliPackage, "--", "7", "8"]);
+const programGraphAuthoringCliSize = JSON.parse((await execFileAsync(zero, ["size", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliSync = JSON.parse((await execFileAsync(zero, ["graph", "sync", "--from-graph", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliProjectionText = await readFile(`${programGraphAuthoringCliPackage}/src/main.0`, "utf8");
+const programGraphAuthoringCliEditedProjectionText = programGraphAuthoringCliProjectionText.replace("usage: zero run . -- <x> <y>\\n", "usage: zero run . -- <left> <right>\\n");
+await writeFile(`${programGraphAuthoringCliPackage}/src/main.0`, programGraphAuthoringCliEditedProjectionText);
+const programGraphAuthoringCliStatusAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["graph", "status", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliSyncFromSource = JSON.parse((await execFileAsync(zero, ["graph", "sync", "--from-source", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliQueryAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["graph", "query", "--json", "--calls", "std", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliFindUsageText = (await execFileAsync(zero, ["graph", "query", "--find", "usage", programGraphAuthoringCliPackage])).stdout;
+const programGraphAuthoringCliVerifyAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["graph", "verify-sync", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliCheckAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliTestAfterHumanEdit = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphAuthoringCliPackage])).stdout);
+const programGraphAuthoringCliRunAfterHumanEdit = await execFileAsync(zero, ["run", "--out", programGraphAuthoringCliRunAfterHumanEditPath, programGraphAuthoringCliPackage, "--", "5", "6"]);
 await mkdir(`${programGraphSourceFreeCImportPackage}/src`, { recursive: true });
 await mkdir(`${programGraphSourceFreeCImportPackage}/vendor/include`, { recursive: true });
 await writeFile(`${programGraphSourceFreeCImportPackage}/zero.json`, JSON.stringify({
@@ -3916,12 +4039,127 @@ assertSourceGraph(programGraphSourceFreeMemJson, `${programGraphSourceFreePackag
 assertProgramGraphCompilerInput(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`);
 assert.notEqual(programGraphSourceFreeVerify.code, 0);
 const programGraphSourceFreeVerifyBody = JSON.parse(programGraphSourceFreeVerify.stdout);
-assert.equal(programGraphSourceFreeVerifyBody.diagnostics[0].actual, "missing source file");
+assert.equal(programGraphSourceFreeVerifyBody.diagnostics[0].code, "RGP006");
+assert.equal(programGraphSourceFreeVerifyBody.diagnostics[0].actual, "missing source projection file");
+assert.match(programGraphSourceFreeVerifyBody.repairCommands.join("\n"), /zero graph sync --from-graph/);
 assert.equal(programGraphSourceFreeSyncFromGraph.ok, true);
 assert.deepEqual(programGraphSourceFreeSyncFromGraph.changedPaths, [`${programGraphSourceFreePackage}/hello.0`]);
 assert.equal(await readFile(`${programGraphSourceFreePackage}/hello.0`, "utf8"), programGraphSourceFixtureText);
 assert.equal(programGraphSourceFreeVerifyAfter.ok, true);
 assert.equal(programGraphSourceFreeVerifyAfter.repositoryGraph.projectionValidity, "clean");
+assert.equal(programGraphAuthoringInit.ok, true);
+assert.equal(programGraphAuthoringInit.compilerInput, "repository-graph");
+assert.equal(programGraphAuthoringInit.sourceProjection.path, "src/main.0");
+assert.equal(programGraphAuthoringInit.sourceProjection.materialized, false);
+assert.equal(programGraphAuthoringProjectionExistsAfterInit, false);
+assert.equal(programGraphAuthoringPatch.ok, true);
+assert.equal(programGraphAuthoringPatch.operationCount, 7);
+assert.equal(programGraphAuthoringPatch.artifact, "./zero.graph");
+assert.equal(programGraphAuthoringPatch.saved.path, "./zero.graph");
+assert.equal(programGraphAuthoringProjectionExistsAfterPatch, false);
+assert.equal(programGraphAuthoringStatusMissing.repositoryGraph.syncState, "source-missing");
+assert.equal(programGraphAuthoringStatusMissing.repositoryGraph.projectionValidity, "missing");
+assert.notEqual(programGraphAuthoringVerifyMissing.code, 0);
+const programGraphAuthoringVerifyMissingBody = JSON.parse(programGraphAuthoringVerifyMissing.stdout);
+assert.equal(programGraphAuthoringVerifyMissingBody.diagnostics[0].code, "RGP006");
+assert.equal(programGraphAuthoringVerifyMissingBody.diagnostics[0].actual, "missing source projection file");
+assert.match(programGraphAuthoringVerifyMissingBody.repairCommands.join("\n"), /zero graph sync --from-graph/);
+assert.equal(programGraphAuthoringCheck.ok, true);
+assert.equal(programGraphAuthoringCheck.sourceFile, `${programGraphAuthoringPackage}/zero.graph`);
+assert.equal(programGraphAuthoringCheck.graph.sourceProjectionState, "missing");
+assertRepositoryGraphNativeCheck(programGraphAuthoringCheck, "missing");
+assertProgramGraphCompilerInput(programGraphAuthoringCheck, `${programGraphAuthoringPackage}/zero.graph`);
+assert.equal(programGraphAuthoringRun.stdout, "graph authoring ok\n");
+assert.equal(programGraphAuthoringTest.ok, true);
+assert.equal(programGraphAuthoringTest.testDiscovery.mode, "package-graph");
+assert.equal(programGraphAuthoringTest.passedTests, 1);
+assert.equal(programGraphAuthoringSyncFromGraph.ok, true);
+assert.equal(programGraphAuthoringSyncFromGraph.repositoryGraph.syncState, "clean");
+assert.deepEqual(programGraphAuthoringSyncFromGraph.changedPaths, [`${programGraphAuthoringPackage}/src/main.0`]);
+assert.match(programGraphAuthoringProjectionText, /pub fn main\(world: World\) -> Void raises \{/);
+assert.match(programGraphAuthoringProjectionText, /fn add\(left: i32, right: i32\) -> i32/);
+assert.match(programGraphAuthoringProjectionText, /test "addition works"/);
+assert.equal(programGraphAuthoringVerifyAfter.ok, true);
+assert.equal(programGraphAuthoringVerifyAfter.repositoryGraph.syncState, "clean");
+assert.equal(programGraphAuthoringCheckAfter.ok, true);
+assert.equal(programGraphAuthoringCheckAfter.graph.sourceProjectionState, "clean");
+assert.equal(programGraphAuthoringStatusAfterHumanEdit.repositoryGraph.syncState, "source-stale");
+assert.equal(programGraphAuthoringSyncFromSource.ok, true);
+assert.equal(programGraphAuthoringSyncFromSource.repositoryGraph.syncState, "clean");
+assert.deepEqual(programGraphAuthoringSyncFromSource.changedPaths, [`${programGraphAuthoringPackage}/zero.graph`]);
+assert.equal(programGraphAuthoringCheckAfterHumanEdit.ok, true);
+assert.equal(programGraphAuthoringCheckAfterHumanEdit.graph.sourceProjectionState, "clean");
+assert.equal(programGraphAuthoringRunAfterHumanEdit.stdout, "human edit ok\n");
+assert.equal(programGraphAuthoringCliInit.ok, true);
+assert.equal(programGraphAuthoringCliInit.sourceProjection.materialized, false);
+assert.equal(programGraphAuthoringCliPatch.ok, true);
+assert.equal(programGraphAuthoringCliPatch.operationCount, 1);
+assert.equal(programGraphAuthoringCliProjectionExistsAfterInit, false);
+assert.equal(programGraphAuthoringCliProjectionExistsAfterPatch, false);
+assert.equal(programGraphAuthoringCliStaleAddPatch.ok, true);
+assert.equal(programGraphAuthoringCliStaleAddPatch.operationCount, 5);
+assert.equal(programGraphAuthoringCliFindAdd.ok, true);
+assert(programGraphAuthoringCliFindAdd.matches.some((node) => node.id === "#fn_add" && node.kind === "Function"));
+assert(programGraphAuthoringCliFindAdd.matches.some((node) => node.id === "#fn___zero_test_0" && node.kind === "Function" && node.value === "add works"));
+assert.equal(programGraphAuthoringCliNodeAdd.ok, true);
+assert.equal(programGraphAuthoringCliNodeAdd.query.node, "#fn_add");
+assert.equal(programGraphAuthoringCliNodeAdd.node.selected.id, "#fn_add");
+assert(programGraphAuthoringCliNodeAdd.node.parents.some((edge) => edge.kind === "function" && edge.from === "#mod_main"));
+assert(programGraphAuthoringCliNodeAdd.node.children.some((edge) => edge.kind === "body" && edge.to === "#block_add_body"));
+assert(programGraphAuthoringCliNodeAdd.node.children.some((edge) => edge.kind === "param" && edge.to === "#param_add_x"));
+assert.equal(programGraphAuthoringCliCleanupPatch.ok, true);
+assert.equal(programGraphAuthoringCliCleanupPatch.operationCount, 3);
+assert.match(programGraphAuthoringCliCallsText, /query: fn:main calls:std/);
+assert.match(programGraphAuthoringCliCallsText, /qualified:std\.args\.parseU32/);
+assert.match(programGraphAuthoringCliCallsText, /qualified:std\.fmt\.u32/);
+assert.match(programGraphAuthoringCliCallsText, /resolved:true/);
+assert.match(programGraphAuthoringCliRefsText, /query: refs:add_u32/);
+assert.match(programGraphAuthoringCliRefsText, /target:function node:#fn_add_u32/);
+assert.match(programGraphAuthoringCliRefsText, /fn:main name:add_u32/);
+assert.equal(programGraphAuthoringCliQuery.ok, true);
+assert.equal(programGraphAuthoringCliQuery.inputKind, "repository-graph");
+assert(programGraphAuthoringCliQuery.functions.some((fun) => fun.name === "main" && fun.public && fun.fallible));
+assert(programGraphAuthoringCliQuery.functions.some((fun) => fun.name === "add_u32" && fun.returnType === "u32" && fun.params.length === 2));
+assert(!programGraphAuthoringCliQuery.functions.some((fun) => fun.name === "add"));
+assert(programGraphAuthoringCliQuery.functions.some((fun) => fun.test === "add_u32 works"));
+assert(programGraphAuthoringCliQuery.patchOperations.includes("setMainArgsAddCli fn=\"add_u32\""));
+assert.equal(programGraphAuthoringCliCheck.ok, true);
+assert.equal(programGraphAuthoringCliCheck.sourceFile, `${programGraphAuthoringCliPackage}/zero.graph`);
+assert.equal(programGraphAuthoringCliCheck.graph.sourceProjectionState, "missing");
+assert.match(programGraphAuthoringCliGraphBuild.stdout, /program-graph-authoring-cli-graph-build/);
+assert.match(programGraphAuthoringCliBuild.stdout, /program-graph-authoring-cli-build/);
+assert.equal(programGraphAuthoringCliTest.ok, true);
+assert.equal(programGraphAuthoringCliTest.passedTests, 1);
+assert.equal(programGraphAuthoringCliGraphTest.stdout, "1 test(s) ok\n");
+assert.equal(programGraphAuthoringCliRun.stdout, "42\n");
+assert.equal(programGraphAuthoringCliGraphRun.stdout, "15\n");
+assertSourceGraph(programGraphAuthoringCliSize, `${programGraphAuthoringCliPackage}/zero.graph`, "package:program-graph-authoring-cli@0.1.0", "program-graph-ast-mir", false, "missing");
+assert(programGraphAuthoringCliSize.sizeBreakdown.stdlibHelpers.some((helper) => helper.name === "std.args.parseU32"));
+assert(programGraphAuthoringCliSize.sizeBreakdown.stdlibHelpers.some((helper) => helper.name === "std.fmt.u32"));
+assert.equal(programGraphAuthoringCliSync.ok, true);
+assert.deepEqual(programGraphAuthoringCliSync.changedPaths, [`${programGraphAuthoringCliPackage}/src/main.0`]);
+assert.match(programGraphAuthoringCliProjectionText, /fn add_u32\(x: u32, y: u32\) -> u32/);
+assert.match(programGraphAuthoringCliProjectionText, /test "add_u32 works"/);
+assert.doesNotMatch(programGraphAuthoringCliProjectionText, /fn add\(x: i32, y: i32\) -> i32/);
+assert.equal(programGraphAuthoringCliStatusAfterHumanEdit.repositoryGraph.syncState, "source-stale");
+assert.equal(programGraphAuthoringCliSyncFromSource.ok, true);
+assert.deepEqual(programGraphAuthoringCliSyncFromSource.changedPaths, [`${programGraphAuthoringCliPackage}/zero.graph`]);
+assert.equal(programGraphAuthoringCliSyncFromSource.store.nodes, 96);
+assert.equal(programGraphAuthoringCliSyncFromSource.store.sources, 1);
+assert.equal(programGraphAuthoringCliQueryAfterHumanEdit.ok, true);
+assert.equal(programGraphAuthoringCliQueryAfterHumanEdit.counts.nodes, 96);
+assert.deepEqual(programGraphAuthoringCliQueryAfterHumanEdit.modules.map((module) => module.name), ["main"]);
+assert(programGraphAuthoringCliQueryAfterHumanEdit.calls.some((call) => call.qualifiedName === "std.args.parseU32" && call.targetKind === "stdlib"));
+assert(programGraphAuthoringCliQueryAfterHumanEdit.calls.some((call) => call.qualifiedName === "std.fmt.u32" && call.targetKind === "stdlib"));
+assert(!programGraphAuthoringCliQueryAfterHumanEdit.calls.some((call) => call.targetKind === "sourceBackedStdlib"));
+assert.match(programGraphAuthoringCliFindUsageText, /value:usage: zero run \. -- <left> <right>\\n path:/);
+assert.equal(programGraphAuthoringCliVerifyAfterHumanEdit.ok, true);
+assert.equal(programGraphAuthoringCliVerifyAfterHumanEdit.repositoryGraph.syncState, "clean");
+assert.equal(programGraphAuthoringCliCheckAfterHumanEdit.ok, true);
+assert.equal(programGraphAuthoringCliCheckAfterHumanEdit.sourceFile, `${programGraphAuthoringCliPackage}/zero.graph`);
+assert.equal(programGraphAuthoringCliTestAfterHumanEdit.ok, true);
+assert.equal(programGraphAuthoringCliTestAfterHumanEdit.passedTests, 1);
+assert.equal(programGraphAuthoringCliRunAfterHumanEdit.stdout, "11\n");
 assert.equal(programGraphSourceFreeCImportSync.ok, true);
 assert.equal(programGraphSourceFreeCImportSync.repositoryGraph.projectionValidity, "clean");
 assert.equal(programGraphSourceFreeCImportCheck.ok, true);

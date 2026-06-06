@@ -212,7 +212,7 @@ static bool identity_owner_child_candidate(IdentityContext *context, size_t base
   if (base_edge_index == identity_missing() || edited_edge_index == identity_missing()) return false;
   const ZProgramGraphEdge *base_edge = &context->base->edges[base_edge_index];
   const ZProgramGraphEdge *edited_edge = &context->edited->edges[edited_edge_index];
-  if (!identity_text_eq(base_edge->kind, edited_edge->kind)) return false;
+  if (!identity_text_eq(base_edge->kind, edited_edge->kind) || base_edge->order != edited_edge->order) return false;
   size_t base_owner = identity_edge_source_index(context->base, base_edge_index);
   size_t edited_owner = identity_edge_source_index(context->edited, edited_edge_index);
   if (base_owner == identity_missing() || edited_owner == identity_missing()) return false;
@@ -223,10 +223,10 @@ static bool identity_owner_child_candidate(IdentityContext *context, size_t base
 static bool identity_base_id_candidate(IdentityContext *context, size_t base_index, size_t edited_index) {
   const ZProgramGraphNode *base = &context->base->nodes[base_index];
   const ZProgramGraphNode *edited = &context->edited->nodes[edited_index];
-  char base_id[80];
-  char edited_id[80];
-  return base->kind == edited->kind &&
-         identity_id_base(base->id, base_id, sizeof(base_id)) &&
+  char base_id[80], edited_id[80];
+  if (base->kind != edited->kind) return false;
+  if ((base->kind == Z_PROGRAM_GRAPH_NODE_IMPORT || base->kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT) && (identity_text_present(base->name) || identity_text_present(edited->name)) && !identity_text_eq(base->name, edited->name)) return false;
+  return identity_id_base(base->id, base_id, sizeof(base_id)) &&
          identity_id_base(edited->id, edited_id, sizeof(edited_id)) &&
          identity_text_eq(base_id, edited_id);
 }
@@ -454,11 +454,11 @@ bool z_program_graph_preserve_source_node_ids(const ZProgramGraph *base, ZProgra
     identity_fail(&context, "GRC003", "edited source has a different module identity", base->module_identity, edited->module_identity);
   }
   identity_match_exact_ids(&context);
-  identity_reject_ambiguous_missing_base_ids(&context);
   identity_apply_unique_pass(&context, identity_source_anchor_candidate);
   identity_apply_unique_pass(&context, identity_symbol_candidate);
   identity_apply_unique_pass(&context, identity_owner_child_candidate);
   identity_apply_unique_pass(&context, identity_base_id_candidate);
+  identity_reject_ambiguous_missing_base_ids(&context);
   identity_detect_ordered_payload_permutation(&context);
   if (context.result.ok) {
     for (size_t i = 0; i < base->node_len; i++) {

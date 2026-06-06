@@ -66,17 +66,28 @@ Useful JSON fields include `artifact`, `sizeBytes`, `toolchain`, `releaseTargetC
 
 ## Graph Inputs
 
-When an agent is authoring through ProgramGraph, inspect and patch the canonical `.0` source directly. Use graph build and run only when you intentionally need to validate a derived interchange artifact:
+When an agent is authoring an opted-in repository graph package, patch the
+package graph and use normal build/run commands. They compile from `zero.graph`
+and do not require `.0` projections to exist:
+
+```sh
+zero graph patch --op 'addMain'
+zero check .
+zero run .
+zero build . --out .zero/out/app
+```
+
+Use `zero graph sync --from-graph <package>` when humans need checked-in `.0`
+projections. If a human edits a projection, run
+`zero graph sync --from-source <package>` before the next graph-store compile.
+
+Use graph build and run against `.program-graph` only when you intentionally
+need to validate a derived interchange artifact:
 
 ```sh
 zero graph build --out .zero/out/app .zero/agent/app.program-graph
 zero graph run .zero/agent/app.program-graph
 ```
-
-Use normal `zero build` and `zero run` after persisting the accepted change to
-canonical `.0` source text. If the package opts into repository graph compiler
-input, run `zero graph sync --from-source <package>` after reviewed source
-changes so normal commands can compile from the refreshed `zero.graph` store.
 
 ## Targets
 

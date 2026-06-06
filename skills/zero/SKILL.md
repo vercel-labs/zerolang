@@ -43,13 +43,15 @@ Use `zero skills list` to discover additional skills bundled with that Zero vers
 ```sh
 zero check <file-or-package>
 zero graph <file-or-package>
+zero graph query <file-or-package>
 zero graph view <file-or-package>
 zero graph check <file-or-package>
-zero graph dump --json <file-or-package>
 zero size <file-or-package>
 zero explain <diagnostic-code>
 ```
 
-Use `--json` when another tool must parse stable fields, compare contracts, or inspect deeper diagnostic and repair metadata. `zero fix --plan --json` is intentionally machine-readable.
+Use `--json` when another tool must parse stable fields, compare contracts, or
+a debugging session needs the full machine contract. `zero fix --plan --json` is
+intentionally machine-readable.
 
 In a Zero repository checkout, prefer `bin/zero` when the task is about that checkout rather than the globally installed compiler.

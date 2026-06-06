@@ -13,6 +13,7 @@ Use this when working with `zero.json`, package-local modules, package tests, or
 zero new cli hello
 zero new lib math-tools
 zero new package app
+zero graph init graph-app
 ```
 
 Check the generated files before changing structure.
@@ -93,15 +94,30 @@ Use `--json` when a tool needs exact graph, doc, or dev fields. Useful `graph` f
 
 ## Graph Authoring
 
-For agent edits, inspect the package through the graph. Create an artifact under `.zero/` only when another tool needs a file artifact:
+For agent-authored packages, prefer the repository graph surface:
+
+```sh
+zero graph init <package>
+cd <package>
+zero graph patch --op 'addMain'
+zero check .
+zero run .
+```
+
+Inspect and patch existing packages through the graph. Create an artifact under
+`.zero/` only when another tool needs a file artifact:
 
 ```sh
 zero graph view <package>
 zero graph check <package>
-zero graph import --out .zero/agent/package.program-graph <package>
+zero graph patch <package> --op 'addMain'
 ```
 
-Source-backed graph patches rewrite canonical `.0` files directly after validation. Keep derived graph artifacts out of the package source unless the user explicitly asks for them.
+When `repositoryGraph.compilerInput` is true, package-level patches write
+`zero.graph`; use `zero graph sync --from-graph <package>` to materialize `.0`
+for human review and `zero graph sync --from-source <package>` after humans edit
+that projection. Keep derived graph artifacts out of the package source unless
+the user explicitly asks for them.
 
 ## Common Repairs
 

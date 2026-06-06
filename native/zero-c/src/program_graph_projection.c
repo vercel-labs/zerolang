@@ -403,12 +403,13 @@ const char *z_program_graph_projection_state_label(const ZProgramGraphStore *sto
   if (checked) *checked = false;
   if (current) *current = false;
   if (!store || store->projection_len == 0) return "unavailable";
+  if (!z_program_graph_projection_store_matches_graph(store, target, diag)) return "conflict";
+  if (z_program_graph_projection_sources_missing(store)) return "missing";
   bool matches = false;
   bool ok = z_program_graph_projection_sources_match(store, target, &matches, diag);
   if (checked) *checked = ok;
   if (current) *current = ok && matches;
   if (!ok) return "conflict";
-  if (z_program_graph_projection_sources_missing(store)) return "missing";
   return matches ? "clean" : "stale";
 }
 

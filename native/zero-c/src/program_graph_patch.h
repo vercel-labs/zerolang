@@ -21,6 +21,12 @@ typedef struct {
   char *name;
   char *type;
   char *path;
+  char *function;
+  char *left;
+  char *right;
+  char *arg0;
+  char *arg1;
+  char *call;
   size_t order;
   int line_value;
   int column_value;

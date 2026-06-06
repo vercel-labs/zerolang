@@ -2,6 +2,7 @@
 
 #include "canonical_text.h"
 #include "program_graph_import.h"
+#include "program_graph_view.h"
 #include "std_source.h"
 #include "zero.h"
 
@@ -189,180 +190,17 @@ static bool projection_source_matches_embedded_std(const char *path, const char 
   return false;
 }
 
+static bool projection_path_is_embedded_std(const char *path) {
+  for (size_t i = 0; i < z_std_source_module_count(); i++) {
+    if (projection_std_module_path_matches(z_std_source_module_at(i), path)) return true;
+  }
+  return false;
+}
+
 static bool projection_store_is_embedded_std_library(const ZProgramGraphStore *store) {
   if (!store || store->projection_len == 0) return false;
   for (size_t i = 0; i < store->projection_len; i++) {
     if (!projection_source_matches_embedded_std(store->projection_paths[i], store->projection_texts[i])) return false;
-  }
-  return true;
-}
-
-static bool projection_node_in_store_projection(const ZProgramGraphStore *store, const ZProgramGraphNode *node) {
-  return node && z_program_graph_store_projection_text(store, node->path) != NULL;
-}
-
-static bool projection_node_matches(const ZProgramGraphNode *expected, const ZProgramGraphNode *actual) {
-  if (!expected || !actual ||
-      expected->kind != actual->kind ||
-      expected->is_public != actual->is_public ||
-      expected->is_mutable != actual->is_mutable ||
-      expected->is_static != actual->is_static ||
-      expected->fallible != actual->fallible ||
-      expected->export_c != actual->export_c ||
-      !projection_text_eq(expected->path, actual->path) ||
-      !projection_text_eq(expected->name, actual->name) ||
-      !projection_text_eq(expected->type, actual->type) ||
-      !projection_text_eq(expected->value, actual->value)) {
-    return false;
-  }
-  return true;
-}
-
-static bool projection_node_actual_used(const ZProgramGraphNode *actual, const ZProgramGraphNode *expected) {
-  return actual && expected &&
-         projection_text_eq(actual->path, expected->path) &&
-         actual->kind == expected->kind;
-}
-
-static void projection_format_node_actual(char *buf, size_t len, const ZProgramGraphNode *node) {
-  snprintf(buf, len, "%s:%d:%d %s", node && node->path ? node->path : "missing path", node ? node->line : 1, node ? node->column : 1, node ? z_program_graph_node_kind_name(node->kind) : "Node");
-}
-
-static size_t projection_graph_node_index(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (projection_text_eq(graph->nodes[i].id, id)) return i;
-  }
-  return SIZE_MAX;
-}
-
-static bool projection_graph_matches_store_nodes(const ZProgramGraphStore *store, const ZProgramGraph *graph, size_t **out_store_to_graph, ZDiag *diag) {
-  size_t expected_len = 0;
-  size_t actual_len = 0;
-  for (size_t i = 0; store && i < store->graph.node_len; i++) {
-    if (projection_node_in_store_projection(store, &store->graph.nodes[i])) expected_len++;
-  }
-  for (size_t i = 0; graph && i < graph->node_len; i++) {
-    if (projection_node_in_store_projection(store, &graph->nodes[i])) actual_len++;
-  }
-  if (expected_len != actual_len) {
-    char actual[96];
-    snprintf(actual, sizeof(actual), "stored nodes:%zu projection nodes:%zu", expected_len, actual_len);
-    return projection_diag(store, diag, "repository graph source projection node count does not match stored graph", actual);
-  }
-
-  bool *matched = z_checked_calloc(graph && graph->node_len ? graph->node_len : 1, sizeof(bool));
-  size_t *store_to_graph = z_checked_calloc(store && store->graph.node_len ? store->graph.node_len : 1, sizeof(size_t));
-  for (size_t i = 0; store && i < store->graph.node_len; i++) store_to_graph[i] = SIZE_MAX;
-  for (size_t i = 0; store && i < store->graph.node_len; i++) {
-    const ZProgramGraphNode *expected = &store->graph.nodes[i];
-    if (!projection_node_in_store_projection(store, expected)) continue;
-    bool found = false;
-    for (size_t j = 0; graph && j < graph->node_len; j++) {
-      if (matched[j] || !projection_node_matches(expected, &graph->nodes[j])) continue;
-      matched[j] = true;
-      store_to_graph[i] = j;
-      found = true;
-      break;
-    }
-    if (!found) {
-      char actual[96];
-      projection_format_node_actual(actual, sizeof(actual), expected);
-      free(store_to_graph);
-      free(matched);
-      return projection_diag(store, diag, "repository graph source projection node does not match stored graph", actual);
-    }
-  }
-  for (size_t i = 0; graph && i < graph->node_len; i++) {
-    if (!projection_node_in_store_projection(store, &graph->nodes[i]) || matched[i]) continue;
-    bool covered = false;
-    for (size_t j = 0; store && j < store->graph.node_len; j++) {
-      if (projection_node_actual_used(&graph->nodes[i], &store->graph.nodes[j])) {
-        covered = true;
-        break;
-      }
-    }
-    if (!covered) {
-      char actual[96];
-      projection_format_node_actual(actual, sizeof(actual), &graph->nodes[i]);
-      free(store_to_graph);
-      free(matched);
-      return projection_diag(store, diag, "repository graph source projection has an extra graph node", actual);
-    }
-  }
-  free(matched);
-  if (out_store_to_graph) *out_store_to_graph = store_to_graph;
-  else free(store_to_graph);
-  return true;
-}
-
-static bool projection_store_edge_in_projection(const ZProgramGraphStore *store, const ZProgramGraphEdge *edge) {
-  size_t from = projection_graph_node_index(store ? &store->graph : NULL, edge ? edge->from : NULL);
-  if (from == SIZE_MAX || !projection_node_in_store_projection(store, &store->graph.nodes[from])) return false;
-  if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) return true;
-  size_t to = projection_graph_node_index(&store->graph, edge->to);
-  return to != SIZE_MAX && projection_node_in_store_projection(store, &store->graph.nodes[to]);
-}
-
-static bool projection_actual_edge_in_projection(const ZProgramGraphStore *store, const ZProgramGraph *graph, const ZProgramGraphEdge *edge) {
-  size_t from = projection_graph_node_index(graph, edge ? edge->from : NULL);
-  if (from == SIZE_MAX || !projection_node_in_store_projection(store, &graph->nodes[from])) return false;
-  if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) return true;
-  size_t to = projection_graph_node_index(graph, edge->to);
-  return to != SIZE_MAX && projection_node_in_store_projection(store, &graph->nodes[to]);
-}
-
-static bool projection_edge_matches(const ZProgramGraphStore *store, const ZProgramGraph *graph, const size_t *store_to_graph, const ZProgramGraphEdge *expected, const ZProgramGraphEdge *actual) {
-  if (!expected || !actual ||
-      expected->target != actual->target ||
-      expected->order != actual->order ||
-      !projection_text_eq(expected->kind, actual->kind)) {
-    return false;
-  }
-  size_t expected_from = projection_graph_node_index(store ? &store->graph : NULL, expected->from);
-  if (expected_from == SIZE_MAX || !store_to_graph || store_to_graph[expected_from] == SIZE_MAX) return false;
-  const char *actual_from = graph->nodes[store_to_graph[expected_from]].id;
-  if (!projection_text_eq(actual_from, actual->from)) return false;
-  if (expected->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) return projection_text_eq(expected->to, actual->to);
-
-  size_t expected_to = projection_graph_node_index(&store->graph, expected->to);
-  if (expected_to == SIZE_MAX || store_to_graph[expected_to] == SIZE_MAX) return false;
-  const char *actual_to = graph->nodes[store_to_graph[expected_to]].id;
-  return projection_text_eq(actual_to, actual->to);
-}
-
-static void projection_format_edge_actual(char *buf, size_t len, const ZProgramGraphEdge *edge) {
-  snprintf(buf, len, "%s %s %s", edge && edge->from ? edge->from : "missing from", edge && edge->kind ? edge->kind : "missing kind", edge && edge->to ? edge->to : "missing to");
-}
-
-static bool projection_graph_matches_store_edges(const ZProgramGraphStore *store, const ZProgramGraph *graph, const size_t *store_to_graph, ZDiag *diag) {
-  size_t expected_len = 0;
-  size_t actual_len = 0;
-  for (size_t i = 0; store && i < store->graph.edge_len; i++) {
-    if (projection_store_edge_in_projection(store, &store->graph.edges[i])) expected_len++;
-  }
-  for (size_t i = 0; graph && i < graph->edge_len; i++) {
-    if (projection_actual_edge_in_projection(store, graph, &graph->edges[i])) actual_len++;
-  }
-  if (expected_len != actual_len) {
-    char actual[96];
-    snprintf(actual, sizeof(actual), "stored edges:%zu projection edges:%zu", expected_len, actual_len);
-    return projection_diag(store, diag, "repository graph source projection edge count does not match stored graph", actual);
-  }
-  for (size_t i = 0; store && i < store->graph.edge_len; i++) {
-    const ZProgramGraphEdge *expected = &store->graph.edges[i];
-    if (!projection_store_edge_in_projection(store, expected)) continue;
-    bool found = false;
-    for (size_t j = 0; graph && j < graph->edge_len; j++) {
-      if (!projection_actual_edge_in_projection(store, graph, &graph->edges[j])) continue;
-      if (!projection_edge_matches(store, graph, store_to_graph, expected, &graph->edges[j])) continue;
-      found = true;
-      break;
-    }
-    if (!found) {
-      char actual[160];
-      projection_format_edge_actual(actual, sizeof(actual), expected);
-      return projection_diag(store, diag, "repository graph source projection edge does not match stored graph", actual);
-    }
   }
   return true;
 }
@@ -439,14 +277,45 @@ bool z_program_graph_projection_graph_from_store(const ZProgramGraphStore *store
 }
 
 bool z_program_graph_projection_store_matches_graph(const ZProgramGraphStore *store, const ZTargetInfo *target, ZDiag *diag) {
-  ZProgramGraph graph;
-  bool ok = z_program_graph_projection_graph_from_store(store, target, &graph, diag);
-  if (ok) {
-    size_t *store_to_graph = NULL;
-    ok = projection_graph_matches_store_nodes(store, &graph, &store_to_graph, diag) &&
-         projection_graph_matches_store_edges(store, &graph, store_to_graph, diag);
-    free(store_to_graph);
+  if (!store || store->projection_len == 0) return projection_diag(store, diag, "repository graph store has no source projections", "empty projection table");
+  for (size_t i = 0; i < store->source_path_len; i++) {
+    const char *path = store->source_paths[i];
+    if (!z_program_graph_store_source_path_is_local(path)) continue;
+    const char *stored = z_program_graph_store_projection_text(store, path);
+    if (!stored && projection_path_is_embedded_std(path)) continue;
+    if (!stored) return projection_diag(store, diag, "repository graph projection table is missing a source path", path);
   }
-  z_program_graph_free(&graph);
-  return ok || (diag && diag->message[0] ? false : projection_diag(store, diag, "repository graph source projection does not match stored graph", "projection graph mismatch"));
+  if (projection_store_is_embedded_std_library(store)) return true;
+  bool generated_ok = true;
+  bool generated_matches = true;
+  for (size_t i = 0; i < store->projection_len; i++) {
+    const char *path = store->projection_paths[i];
+    ZBuf generated;
+    zbuf_init(&generated);
+    ZDiag generated_diag = {0};
+    bool ok = z_program_graph_append_source_view(&generated, &store->graph, path, &generated_diag);
+    if (!ok) {
+      generated_ok = false;
+      zbuf_free(&generated);
+      break;
+    }
+    bool matches = projection_text_eq(generated.data ? generated.data : "", store->projection_texts[i]);
+    zbuf_free(&generated);
+    if (!matches) {
+      generated_matches = false;
+      break;
+    }
+  }
+  if (generated_ok && generated_matches) return true;
+
+  ZProgramGraph projection_graph = {0};
+  ZDiag projection_diag_value = {0};
+  if (!z_program_graph_projection_graph_from_store(store, target, &projection_graph, &projection_diag_value)) {
+    if (diag) *diag = projection_diag_value;
+    return false;
+  }
+  bool matches = z_program_graph_store_graph_matches_source(store, &projection_graph);
+  z_program_graph_free(&projection_graph);
+  if (matches) return true;
+  return projection_diag(store, diag, "repository graph source projection does not match stored graph", "projection graph mismatch");
 }

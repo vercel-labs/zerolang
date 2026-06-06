@@ -14,6 +14,7 @@ typedef struct {
 typedef enum {
   Z_PROGRAM_GRAPH_INPUT_UNKNOWN = 0, Z_PROGRAM_GRAPH_INPUT_SOURCE,
   Z_PROGRAM_GRAPH_INPUT_ARTIFACT, Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT,
+  Z_PROGRAM_GRAPH_INPUT_PATH,
 } ZProgramGraphInputMode;
 
 bool z_program_graph_command_kind_is_known(const char *kind);

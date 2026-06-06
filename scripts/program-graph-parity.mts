@@ -1314,10 +1314,12 @@ async function assertSourceEditReconcile() {
   assert.equal(await zeroText(["graph", "reconcile", baseArtifact, "--source", fixture]), "program graph reconcile ok\n", "reconcile text output");
 
   await writeFile(fixture, original.replace("\npub fn main", "\nfn appendedHelper() -> i32 {\n    return 2\n}\n\npub fn main"));
-  const ambiguous = await zeroJsonFailure(["graph", "reconcile", "--json", baseArtifact, "--source", fixture]);
-  assert.equal(ambiguous.ok, false, "reconcile should reject ambiguous same-shape declaration edits");
-  assert.equal(ambiguous.identity.ambiguous > 0, true, "reconcile should count ambiguous identities");
-  assert.equal(ambiguous.diagnostics[0].code, "GRC001", "reconcile should explain ambiguous identity");
+  const appended = await zeroJson(["graph", "reconcile", "--json", baseArtifact, "--source", fixture]);
+  assert.equal(appended.ok, true, "reconcile should accept unambiguous appended declarations");
+  assert.equal(appended.identity.ambiguous, 0, "named appended declaration should not be ambiguous");
+  assert.equal(appended.identity.inserted > 0, true, "reconcile should report inserted declaration nodes");
+  assert(appended.decisions.some((decision) => decision.status === "unchanged" && decision.kind === "Function" && decision.name === "helper"), "existing helper declaration should keep its identity");
+  assert(appended.decisions.some((decision) => decision.status === "inserted" && decision.kind === "Function" && decision.name === "appendedHelper"), "appended helper declaration should receive a new identity");
 
   const copiedFixture = `${outDir}/identity-reconcile-copy.0`;
   await writeFile(copiedFixture, original);

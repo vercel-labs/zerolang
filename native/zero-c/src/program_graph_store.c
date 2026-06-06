@@ -1,8 +1,11 @@
 #include "program_graph_store.h"
 
+#include "program_graph_compare.h"
 #include "program_graph_format.h"
 #include "program_graph_reconcile_apply.h"
+#include "program_graph_store_prune.h"
 #include "program_graph_store_tables.h"
+#include "program_graph_view.h"
 #include "std_source.h"
 #include "zero.h"
 
@@ -508,6 +511,21 @@ static void store_collect_source_projections(ZProgramGraphStore *store, const ZP
   store_sort_projections(store);
 }
 
+static bool store_collect_generated_source_projections(ZProgramGraphStore *store, const ZProgramGraph *graph, ZDiag *diag) {
+  for (size_t i = 0; store && i < store->source_path_len; i++) {
+    const char *path = store->source_paths[i];
+    if (store_graph_source_path_is_embedded_std(graph, path)) continue;
+    ZBuf source;
+    zbuf_init(&source);
+    bool ok = z_program_graph_append_source_view(&source, graph, path, diag);
+    if (ok) ok = store_add_projection(store, path, source.data ? source.data : "");
+    zbuf_free(&source);
+    if (!ok) return false;
+  }
+  store_sort_projections(store);
+  return true;
+}
+
 static bool store_source_path_present(const ZProgramGraphStore *store, const char *path) {
   if (!path || !path[0]) return true;
   for (size_t i = 0; store && i < store->source_path_len; i++) {
@@ -603,14 +621,24 @@ static void store_normalize_graph_paths_for_root(ZProgramGraph *graph, const cha
     free(graph->nodes[i].path);
     graph->nodes[i].path = normalized;
   }
+  z_program_graph_prune_embedded_std_source_nodes(graph);
   z_program_graph_assign_source_node_ids(graph);
+  z_program_graph_finalize_identities(graph);
+}
+
+static void store_normalize_graph_paths_preserving_ids_for_root(ZProgramGraph *graph, const char *root) {
+  if (!graph) return;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    char *normalized = store_source_path_for_root(root, graph->nodes[i].path);
+    free(graph->nodes[i].path);
+    graph->nodes[i].path = normalized;
+  }
   z_program_graph_finalize_identities(graph);
 }
 
 static bool store_normalized_source_graph(const char *root, const ZProgramGraph *source_graph, ZProgramGraph *out) {
   if (!source_graph || !out) return false;
-  store_copy_graph(source_graph, out);
-  store_normalize_graph_paths_for_root(out, root && root[0] ? root : ".");
+  store_copy_graph(source_graph, out); store_normalize_graph_paths_for_root(out, root && root[0] ? root : ".");
   return true;
 }
 
@@ -973,10 +1001,32 @@ bool z_program_graph_store_write_path(const char *path, const ZProgramGraphStore
     zbuf_free(&second);
     return store_byte_stability_fail(path, diag);
   }
-  zbuf_free(&second);
-  bool wrote = z_write_file(path, first.data ? first.data : "", diag);
+  zbuf_free(&second); bool wrote = z_write_file(path, first.data ? first.data : "", diag);
   zbuf_free(&first);
   return wrote;
+}
+
+bool z_program_graph_store_write_generated_path(const char *path, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag) {
+  if (!graph) return store_diag(diag, path, 1, "repository graph store write requires a graph", "missing graph");
+  ZProgramGraphStore generated;
+  z_program_graph_store_init(&generated);
+  generated.path = z_strdup(path ? path : "zero.graph");
+  generated.root = store_dirname(generated.path);
+  generated.present = true;
+  generated.schema_version = 1;
+  store_copy_graph(graph, &generated.graph);
+  store_normalize_graph_paths_preserving_ids_for_root(&generated.graph, generated.root && generated.root[0] ? generated.root : ".");
+  store_collect_source_paths(&generated, &generated.graph);
+  if (!store_collect_generated_source_projections(&generated, &generated.graph, diag)) {
+    z_program_graph_store_free(&generated);
+    return false;
+  }
+  bool ok = z_program_graph_store_write_path(generated.path, &generated, diag);
+  if (ok && out) {
+    ok = z_program_graph_store_load_path(generated.path, out, diag);
+  }
+  z_program_graph_store_free(&generated);
+  return ok;
 }
 
 bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
@@ -1067,12 +1117,9 @@ bool z_program_graph_store_graph_matches_source(const ZProgramGraphStore *store,
   if (!store_normalized_source_graph(store->root, source_graph, &normalized)) return false;
   ZProgramGraphIdentityReconcile identity = {0};
   bool preserved = z_program_graph_preserve_source_node_ids(&store->graph, &normalized, &identity);
-  bool ok = store_text_eq(store->graph.module_identity, normalized.module_identity) &&
-            store_text_eq(store->graph.graph_hash, normalized.graph_hash) &&
-            store->graph.node_len == normalized.node_len &&
-            store->graph.edge_len == normalized.edge_len &&
-            preserved &&
-            store_source_paths_match_graph(store, &normalized);
+  ZProgramGraphCompare comparison = {0};
+  bool semantic_match = preserved && z_program_graph_semantic_compare(&store->graph, &normalized, &comparison);
+  bool ok = semantic_match && store_source_paths_match_graph(store, &normalized);
   z_program_graph_free(&normalized);
   return ok;
 }

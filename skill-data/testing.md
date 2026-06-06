@@ -45,14 +45,23 @@ zero test conformance/packages/test-app
 
 Use `--filter` for a narrow loop. The filter matches test names by substring.
 
-For normal agent edits, patch the backing `.0` source and run `zero test`. When an agent is explicitly validating a derived ProgramGraph artifact, use the graph test surface:
+For graph-first packages, normal `zero test <package>` compiles from
+`zero.graph` when `repositoryGraph.compilerInput` is true and can run before
+`.0` projections exist:
+
+```sh
+zero graph patch --op 'addTest name="addition works" call="add" arg0="2" arg1="3" expect="5" type="i32"'
+zero test .
+zero test --filter addition .
+```
+
+When an agent is explicitly validating a derived ProgramGraph artifact, use the
+graph test surface:
 
 ```sh
 zero graph test .zero/agent/app.program-graph
 zero graph test --filter addition .zero/agent/app.program-graph
 ```
-
-Run normal `zero test` after persisting the accepted change to source text.
 
 ## JSON Fields
 

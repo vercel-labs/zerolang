@@ -472,6 +472,19 @@ static bool compare_node_bool_field(const char *field, bool left, bool right, si
   return compare_fail(out, "GRC005", "node flag differs", field, left_index, right_index, 0, 0);
 }
 
+static bool compare_node_type_is_source_semantic(ZProgramGraphNodeKind kind) {
+  return kind == Z_PROGRAM_GRAPH_NODE_FUNCTION || kind == Z_PROGRAM_GRAPH_NODE_PARAM ||
+         kind == Z_PROGRAM_GRAPH_NODE_CONST || kind == Z_PROGRAM_GRAPH_NODE_LET ||
+         kind == Z_PROGRAM_GRAPH_NODE_LITERAL || kind == Z_PROGRAM_GRAPH_NODE_TYPE_REF ||
+         kind == Z_PROGRAM_GRAPH_NODE_TYPE_ALIAS || kind == Z_PROGRAM_GRAPH_NODE_FIELD ||
+         kind == Z_PROGRAM_GRAPH_NODE_ENUM_CASE || kind == Z_PROGRAM_GRAPH_NODE_CHOICE_CASE;
+}
+
+static bool compare_node_type_field(const ZProgramGraphNode *left, const ZProgramGraphNode *right, size_t left_index, size_t right_index, ZProgramGraphCompare *out) {
+  if (!left || !compare_node_type_is_source_semantic(left->kind)) return true;
+  return compare_node_text_field("type", left ? left->type : NULL, right ? right->type : NULL, left_index, right_index, out);
+}
+
 static bool compare_nodes(const CompareIndex *left, const CompareIndex *right, ZProgramGraphCompare *out) {
   const ZProgramGraph *left_graph = left ? left->graph : NULL;
   const ZProgramGraph *right_graph = right ? right->graph : NULL;
@@ -489,7 +502,7 @@ static bool compare_nodes(const CompareIndex *left, const CompareIndex *right, Z
       return compare_fail(out, "GRC003", "node kind differs", "kind", left_index, right_index, 0, 0);
     }
     if (!compare_node_text_field("name", left_node->name, right_node->name, left_index, right_index, out) ||
-        !compare_node_text_field("type", left_node->type, right_node->type, left_index, right_index, out) ||
+        !compare_node_type_field(left_node, right_node, left_index, right_index, out) ||
         !compare_node_text_field("value", left_node->value, right_node->value, left_index, right_index, out) ||
         !compare_node_bool_field("public", left_node->is_public, right_node->is_public, left_index, right_index, out) ||
         !compare_node_bool_field("mutable", left_node->is_mutable, right_node->is_mutable, left_index, right_index, out) ||

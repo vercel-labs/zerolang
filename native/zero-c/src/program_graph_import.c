@@ -145,7 +145,6 @@ static const char *graph_expr_value(const Expr *expr) {
 
 static const char *graph_expr_type(const Expr *expr) {
   if (!expr) return NULL;
-  if (expr->resolved_type && expr->resolved_type[0]) return expr->resolved_type;
   if (expr->kind == EXPR_STRING) return "String";
   return expr->kind == EXPR_CHAR ? "char" : NULL;
 }

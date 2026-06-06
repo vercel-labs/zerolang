@@ -22,6 +22,11 @@ typedef struct {
   char *graph_error;
   char *projection_error;
   char *graph_hash;
+  char *module_identity;
+  char *expected_module_identity;
+  char *module_identity_error;
+  char *expected_main_path;
+  char *target_main_error;
   size_t node_count;
   size_t edge_count;
   size_t source_count;
@@ -37,6 +42,22 @@ typedef struct {
   ZDiag compiler_input_diag;
 } RepositoryGraphState;
 
+static const char *repo_strip_dot_slash(const char *path) {
+  while (path && path[0] == '.' && path[1] == '/') path += 2;
+  return path ? path : "";
+}
+
+static bool repo_paths_equal(const char *left, const char *right) {
+  return strcmp(repo_strip_dot_slash(left), repo_strip_dot_slash(right)) == 0;
+}
+
+static bool repo_store_has_source_path(const ZProgramGraphStore *store, const char *path) {
+  for (size_t i = 0; store && path && path[0] && i < store->source_path_len; i++) {
+    if (repo_paths_equal(store->source_paths[i], path)) return true;
+  }
+  return false;
+}
+
 static RepositoryGraphState repo_graph_state(const char *input, const ZTargetInfo *target, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag) {
   RepositoryGraphState state = {.input = input && input[0] ? input : ".", .compiler_input_valid = true};
   state.root = z_program_graph_store_root_for_input(state.input);
@@ -51,10 +72,31 @@ static RepositoryGraphState repo_graph_state(const char *input, const ZTargetInf
     if (z_program_graph_store_load_path(state.store_path, &store, &diag)) {
       state.store_valid = true;
       state.graph_hash = z_strdup(store.graph.graph_hash ? store.graph.graph_hash : "");
+      state.module_identity = z_strdup(store.graph.module_identity ? store.graph.module_identity : "");
       state.node_count = store.graph.node_len;
       state.edge_count = store.graph.edge_len;
       state.source_count = store.source_path_len;
       state.compiler_store_available = true;
+      char *expected_identity = NULL;
+      ZDiag identity_diag = {0};
+      if (z_program_graph_manifest_module_identity(state.input, &expected_identity, &identity_diag)) {
+        state.expected_module_identity = z_strdup(expected_identity ? expected_identity : "");
+        if (expected_identity && strcmp(expected_identity, store.graph.module_identity ? store.graph.module_identity : "") != 0) {
+          state.module_identity_error = z_strdup("repository graph store module identity does not match package manifest");
+        }
+      }
+      free(expected_identity);
+      free((char *)identity_diag.path);
+      char *expected_main_path = NULL;
+      ZDiag main_path_diag = {0};
+      if (z_program_graph_manifest_main_path(state.input, &expected_main_path, &main_path_diag)) {
+        if (expected_main_path && expected_main_path[0] && !repo_store_has_source_path(&store, expected_main_path)) {
+          state.expected_main_path = z_strdup(expected_main_path);
+          state.target_main_error = z_strdup("repository graph store target main does not match package manifest");
+        }
+      }
+      free(expected_main_path);
+      free((char *)main_path_diag.path);
       z_program_graph_store_table_counts_for_graph(&store.graph, store.source_path_len, store.projection_len, &state.compiler_tables);
       if (source_graph) {
         state.graph_checked = true;
@@ -83,6 +125,11 @@ static void repo_graph_state_free(RepositoryGraphState *state) {
   free(state->graph_error);
   free(state->projection_error);
   free(state->graph_hash);
+  free(state->module_identity);
+  free(state->expected_module_identity);
+  free(state->module_identity_error);
+  free(state->expected_main_path);
+  free(state->target_main_error);
   free((char *)state->compiler_input_diag.path);
   memset(state, 0, sizeof(*state));
 }
@@ -115,11 +162,12 @@ static char *repo_command_text(const char *command, const char *input) {
 }
 
 static const char *repo_sync_state(const RepositoryGraphState *state) {
+  if (state && state->store_present && state->store_valid && state->module_identity_error) return "conflict";
+  if (state && state->store_present && state->store_valid && state->target_main_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->graph_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->projection_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->projection_missing) return "source-missing";
   if (state && state->store_present && state->store_valid && state->projection_checked && !state->projection_current) return "source-stale";
-  if (state && state->store_present && state->store_valid && state->graph_checked && !state->graph_current) return "graph-stale";
   if (state && state->store_present && state->store_valid && state->projection_checked) return state->projection_current ? "clean" : "source-stale";
   if (state && state->store_present && state->store_valid) return "store-valid";
   if (state && state->store_present) return "store-invalid";
@@ -138,8 +186,8 @@ static const char *repo_semantic_validity_label(const RepositoryGraphState *stat
 static const char *repo_projection_validity_label(const RepositoryGraphState *state) {
   if (!state || !state->store_valid) return "unavailable";
   if (state->projection_error) return "conflict";
-  if (!state->projection_checked) return "unchecked";
   if (state->projection_missing) return "missing";
+  if (!state->projection_checked) return "unchecked";
   return state->projection_current ? "clean" : "stale";
 }
 
@@ -197,7 +245,7 @@ static void repo_append_state_json(ZBuf *buf, const RepositoryGraphState *state,
   zbuf_append(buf, state->store_valid ? "true" : "false");
   zbuf_append(buf, ", \"syncState\": ");
   repo_append_json_string(buf, repo_sync_state(state));
-  zbuf_append(buf, ", \"possibleSyncStates\": [\"not-enabled\", \"store-invalid\", \"clean\", \"source-missing\", \"source-stale\", \"graph-stale\", \"conflict\"], \"canonicalSourceExtension\": \".0\", \"compilerInput\": ");
+  zbuf_append(buf, ", \"possibleSyncStates\": [\"not-enabled\", \"store-invalid\", \"clean\", \"source-missing\", \"source-stale\", \"conflict\"], \"canonicalSourceExtension\": \".0\", \"compilerInput\": ");
   repo_append_json_string(buf, repo_compiler_input_label(state));
   zbuf_append(buf, ", \"semanticValidity\": ");
   repo_append_json_string(buf, repo_semantic_validity_label(state));
@@ -310,6 +358,32 @@ static int repo_missing_or_invalid_store_error(const RepositoryGraphState *state
   return 0;
 }
 
+static int repo_module_identity_error(const RepositoryGraphState *state, bool json, const char *mode) {
+  if (!state || !state->module_identity_error) return 0;
+  return repo_graph_error(state,
+                          json,
+                          mode,
+                          "RGP007",
+                          state->module_identity_error,
+                          state->expected_module_identity && state->expected_module_identity[0] ? state->expected_module_identity : "zero.json package identity",
+                          state->module_identity && state->module_identity[0] ? state->module_identity : "missing module identity",
+                          "check in the zero.graph generated for this package, or update zero.json after reviewing the package identity",
+                          REPO_GRAPH_REPAIR_STATUS);
+}
+
+static int repo_target_main_error(const RepositoryGraphState *state, bool json, const char *mode) {
+  if (!state || !state->target_main_error) return 0;
+  return repo_graph_error(state,
+                          json,
+                          mode,
+                          "RGP007",
+                          state->target_main_error,
+                          "targets.cli.main source path present in zero.graph",
+                          state->expected_main_path && state->expected_main_path[0] ? state->expected_main_path : "missing targets.cli.main",
+                          "check in the zero.graph generated for this target main, or update zero.json after reviewing the package entry point",
+                          REPO_GRAPH_REPAIR_STATUS);
+}
+
 static int repo_graph_direction_error(const RepositoryGraphState *state, bool json, bool from_graph, bool from_source) {
   const char *actual = from_graph && from_source ? "--from-graph and --from-source" : "missing sync direction";
   if (json) {
@@ -413,6 +487,16 @@ int z_repository_graph_verify_sync_command(const char *input, const ZTargetInfo 
     repo_graph_state_free(&state);
     return rc;
   }
+  rc = repo_module_identity_error(&state, json, "verify-sync");
+  if (rc != 0) {
+    repo_graph_state_free(&state);
+    return rc;
+  }
+  rc = repo_target_main_error(&state, json, "verify-sync");
+  if (rc != 0) {
+    repo_graph_state_free(&state);
+    return rc;
+  }
   ZProgramGraphStore store;
   ZDiag diag = {0};
   if (!z_program_graph_store_load_path(state.store_path, &store, &diag)) {
@@ -420,8 +504,8 @@ int z_repository_graph_verify_sync_command(const char *input, const ZTargetInfo 
     repo_graph_state_free(&state);
     return rc;
   }
-  if (!z_program_graph_store_graph_matches_source(&store, source_graph)) {
-    rc = repo_graph_error(&state, json, "verify-sync", "RGP005", "repository graph store is out of sync with source text", "zero.graph graph hash matching current .0 source graph", source_graph && source_graph->graph_hash ? source_graph->graph_hash : "missing source graph", "run zero graph sync --from-source after reviewing source changes", REPO_GRAPH_REPAIR_FROM_SOURCE);
+  if (state.projection_missing) {
+    rc = repo_graph_error(&state, json, "verify-sync", "RGP006", "source projection is missing", "checked-in .0 source text matching zero.graph projection", "missing source projection file", "run zero graph sync --from-graph after reviewing graph changes", REPO_GRAPH_REPAIR_FROM_GRAPH);
     z_program_graph_store_free(&store);
     repo_graph_state_free(&state);
     return rc;
@@ -429,6 +513,12 @@ int z_repository_graph_verify_sync_command(const char *input, const ZTargetInfo 
   bool projection_current = false;
   bool projection_checked = z_program_graph_projection_sources_match(&store, target, &projection_current, &diag);
   if (!projection_checked || !projection_current) {
+    if (source_graph && !z_program_graph_store_graph_matches_source(&store, source_graph)) {
+      rc = repo_graph_error(&state, json, "verify-sync", "RGP005", "repository graph store is out of sync with source text", "zero.graph projection matching checked-in .0 source text", source_graph && source_graph->graph_hash ? source_graph->graph_hash : "changed source graph", "run zero graph sync --from-source after reviewing source changes", REPO_GRAPH_REPAIR_FROM_SOURCE);
+      z_program_graph_store_free(&store);
+      repo_graph_state_free(&state);
+      return rc;
+    }
     const char *actual = projection_checked ? "source projection differs" : (diag.message[0] ? diag.message : "projection unavailable");
     rc = repo_graph_error(&state, json, "verify-sync", "RGP006", "source projection is out of sync with repository graph", "checked-in .0 source text matching zero.graph projection", actual, "run zero graph sync --from-graph after reviewing graph changes", REPO_GRAPH_REPAIR_FROM_GRAPH);
     z_program_graph_store_free(&store);
@@ -459,6 +549,11 @@ int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target
       repo_graph_state_free(&state);
       return rc;
     }
+    rc = repo_module_identity_error(&state, json, "sync-from-graph");
+    if (rc != 0) {
+      repo_graph_state_free(&state);
+      return rc;
+    }
     ZProgramGraphStore store;
     ZDiag diag = {0};
     if (!z_program_graph_store_load_path(state.store_path, &store, &diag)) {
@@ -482,7 +577,7 @@ int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target
     bool post_ok = post_checked && load_source_graph(load_source_graph_ctx, &post_graph, &post_diag);
     state = repo_graph_state(input, target, post_ok ? &post_graph : NULL, post_checked && !post_ok ? &post_diag : NULL);
     bool post_clean = state.store_present && state.store_valid && state.projection_checked && state.projection_current;
-    post_clean = post_clean && (!state.graph_checked || state.graph_current) && !state.graph_error && !state.projection_error;
+    post_clean = post_clean && !state.projection_error;
     if (post_checked && (!post_ok || !post_clean)) {
       rc = repo_graph_error_paths(&state, json, "sync-from-graph", "RGP006", "repository graph store is not clean after sync from graph", "clean repository graph state", repo_sync_state(&state), "run zero graph status to inspect repository graph state before choosing a repair", projection.changed_len > 0, (const char *const *)projection.changed_paths, projection.changed_len, REPO_GRAPH_REPAIR_STATUS);
       z_program_graph_free(&post_graph);
@@ -502,6 +597,11 @@ int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target
     int rc = repo_graph_error(&state, json, "sync-from-source", "RGP003", "source graph could not be built", "current source graph", "missing source graph", "run zero graph check on the input first", REPO_GRAPH_REPAIR_NONE);
     repo_graph_state_free(&state);
     return rc;
+  }
+  int identity_rc = repo_module_identity_error(&state, json, "sync-from-source");
+  if (identity_rc != 0) {
+    repo_graph_state_free(&state);
+    return identity_rc;
   }
   ZProgramGraphStore saved;
   ZDiag diag = {0};
@@ -706,12 +806,7 @@ int z_repository_graph_merge_command(const char *input, const ZTargetInfo *targe
 
 bool z_repository_graph_needs_source_graph(const char *kind, const char *input, const ZTargetInfo *target, bool from_graph, bool from_source) {
   if (kind && strcmp(kind, "sync") == 0) return from_source && !from_graph;
-  if (kind && strcmp(kind, "status") == 0 && !from_graph && !from_source) {
-    RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
-    bool needs_source = state.compiler_input_valid && state.store_valid && state.projection_checked && state.projection_current;
-    repo_graph_state_free(&state);
-    return needs_source;
-  }
+  if (kind && strcmp(kind, "status") == 0 && !from_graph && !from_source) return false;
   if (!kind || strcmp(kind, "verify-sync") != 0 || from_graph || from_source) return false;
   RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
   bool needs_source = state.compiler_input_valid && state.store_valid;
@@ -719,7 +814,12 @@ bool z_repository_graph_needs_source_graph(const char *kind, const char *input, 
   return needs_source;
 }
 
-bool z_repository_graph_source_graph_optional(const char *kind, bool from_graph, bool from_source) { return kind && strcmp(kind, "status") == 0 && !from_graph && !from_source; }
+bool z_repository_graph_source_graph_optional(const char *kind, bool from_graph, bool from_source) {
+  return kind &&
+         (strcmp(kind, "status") == 0 || strcmp(kind, "verify-sync") == 0) &&
+         !from_graph &&
+         !from_source;
+}
 
 int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *merge_base, const char *merge_left, const char *merge_right, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
   if (handled) *handled = true;

@@ -3,6 +3,7 @@
 #include "program_graph_projection.h"
 #include "program_graph_reconcile_apply.h"
 #include "program_graph_view.h"
+#include "std_source.h"
 #include "zero.h"
 
 #include <stdio.h>
@@ -496,8 +497,37 @@ static bool merge_projection_path_seen(char **paths, size_t len, const char *pat
   return false;
 }
 
+static const char *merge_basename(const char *path) {
+  const char *slash = path ? strrchr(path, '/') : NULL;
+  return slash ? slash + 1 : (path ? path : "");
+}
+
+static bool merge_path_is_embedded_std(const char *path) {
+  for (size_t i = 0; path && i < z_std_source_module_count(); i++) {
+    const ZStdSourceModule *module = z_std_source_module_at(i);
+    if (module &&
+        (merge_text_eq(module->path, path) ||
+         merge_text_eq(merge_basename(module->path), merge_basename(path)))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool merge_add_source_path(ZProgramGraphStore *store, const char *path) {
+  if (!store || !path || !path[0] || !z_program_graph_store_source_path_is_local(path)) return true;
+  if (merge_projection_path_seen(store->source_paths, store->source_path_len, path)) return true;
+  if (store->source_path_len == store->source_path_cap) {
+    size_t next = z_grow_capacity(store->source_path_cap, store->source_path_len + 1, 8);
+    store->source_paths = z_checked_reallocarray(store->source_paths, next, sizeof(char *));
+    store->source_path_cap = next;
+  }
+  store->source_paths[store->source_path_len++] = z_strdup(path);
+  return true;
+}
+
 static bool merge_add_projection(ZProgramGraphStore *store, const char *path, const char *text) {
-  if (!store || !path || !path[0] || !text || !z_program_graph_store_source_path_is_local(path)) return true;
+  if (!store || !path || !path[0] || !text || !z_program_graph_store_source_path_is_local(path) || merge_path_is_embedded_std(path)) return true;
   if (merge_projection_path_seen(store->projection_paths, store->projection_len, path)) return true;
   if (store->projection_len == store->projection_cap) {
     size_t next = z_grow_capacity(store->projection_cap, store->projection_len + 1, 8);
@@ -509,6 +539,18 @@ static bool merge_add_projection(ZProgramGraphStore *store, const char *path, co
   store->projection_texts[store->projection_len] = z_strdup(text);
   store->projection_len++;
   return true;
+}
+
+static void merge_sort_source_paths(ZProgramGraphStore *store) {
+  for (size_t i = 1; store && i < store->source_path_len; i++) {
+    char *path = store->source_paths[i];
+    size_t cursor = i;
+    while (cursor > 0 && strcmp(path, store->source_paths[cursor - 1]) < 0) {
+      store->source_paths[cursor] = store->source_paths[cursor - 1];
+      cursor--;
+    }
+    store->source_paths[cursor] = path;
+  }
 }
 
 static void merge_sort_projections(ZProgramGraphStore *store) {
@@ -709,7 +751,9 @@ static bool merge_build_projections(
   bool right_projections_match_graph = merge_store_projections_match_graph(right, target);
   for (size_t i = 0; store && i < store->graph.node_len; i++) {
     const char *path = store->graph.nodes[i].path;
-    if (!path || !path[0] || merge_projection_path_seen(store->projection_paths, store->projection_len, path)) continue;
+    if (!path || !path[0] || !z_program_graph_store_source_path_is_local(path)) continue;
+    merge_add_source_path(store, path);
+    if (merge_path_is_embedded_std(path) || merge_projection_path_seen(store->projection_paths, store->projection_len, path)) continue;
     const char *tracked_text = NULL;
     if (!merge_choose_projection_text(base,
                                       left,
@@ -739,6 +783,7 @@ static bool merge_build_projections(
                         "projection");
     }
   }
+  merge_sort_source_paths(store);
   merge_sort_projections(store);
   if (store && store->projection_len > 0 && !merge_refresh_graph_from_projections(store, target, result, diag)) return false;
   if (store && store->projection_len > 0 && !z_program_graph_projection_store_matches_graph(store, target, diag)) {

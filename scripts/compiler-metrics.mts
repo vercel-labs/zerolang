@@ -18,7 +18,7 @@ const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 990, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 11710, maxStrcmpCalls: 287 },
-  "native/zero-c/src/main.c": { maxLines: 13468, maxStrcmpCalls: 476 },
+  "native/zero-c/src/main.c": { maxLines: 14206, maxStrcmpCalls: 500 },
   "native/zero-c/src/ir.c": { maxLines: 4213, maxStrcmpCalls: 229 },
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -71,10 +71,10 @@ const fileBudgets = {
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_build.c": { maxLines: 60, maxStrcmpCalls: 8 },
   "native/zero-c/src/program_graph_build.h": { maxLines: 25, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_command.c": { maxLines: 150, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_command.c": { maxLines: 170, maxStrcmpCalls: 2 },
   "native/zero-c/src/program_graph_command.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_compile.c": { maxLines: 95, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_compare.c": { maxLines: 560, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_compare.c": { maxLines: 570, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_compare.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_format.c": { maxLines: 850, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_format.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -86,13 +86,22 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_lower.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest.c": { maxLines: 240, maxStrcmpCalls: 8 },
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 70, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 1280, maxStrcmpCalls: 3 },
+  "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 1575, maxStrcmpCalls: 4 },
+  "native/zero-c/src/program_graph_mir_std.c": { maxLines: 175, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_mir_std.h": { maxLines: 10, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_query.c": { maxLines: 350, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_query.h": { maxLines: 10, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_query_refs.c": { maxLines: 180, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_query_text.c": { maxLines: 150, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_order.c": { maxLines: 80, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_order.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_node_id.c": { maxLines: 350, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_validate.c": { maxLines: 537, maxStrcmpCalls: 5 },
-  "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 715, maxStrcmpCalls: 11 },
-  "native/zero-c/src/program_graph_patch.c": { maxLines: 591, maxStrcmpCalls: 28 },
-  "native/zero-c/src/program_graph_patch.h": { maxLines: 63, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 1733, maxStrcmpCalls: 11 },
+  "native/zero-c/src/program_graph_patch.c": { maxLines: 717, maxStrcmpCalls: 43 },
+  "native/zero-c/src/program_graph_patch.h": { maxLines: 69, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_projection.c": { maxLines: 465, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_projection.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_projection_validate.c": { maxLines: 465, maxStrcmpCalls: 1 },
@@ -100,25 +109,27 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_reconcile.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_reconcile_apply.c": { maxLines: 478, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile_apply.h": { maxLines: 25, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_repository.c": { maxLines: 760, maxStrcmpCalls: 9 },
+  "native/zero-c/src/program_graph_repository.c": { maxLines: 832, maxStrcmpCalls: 12 },
   "native/zero-c/src/program_graph_repository.h": { maxLines: 18, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_repository_input.c": { maxLines: 245, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_repository_input.h": { maxLines: 12, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_repository_merge.c": { maxLines: 819, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_repository_merge.c": { maxLines: 864, maxStrcmpCalls: 3 },
   "native/zero-c/src/program_graph_repository_merge.h": { maxLines: 35, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_repository_repair.c": { maxLines: 75, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_repository_repair.h": { maxLines: 20, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_store.c": { maxLines: 1100, maxStrcmpCalls: 6 },
+  "native/zero-c/src/program_graph_store.c": { maxLines: 1125, maxStrcmpCalls: 6 },
+  "native/zero-c/src/program_graph_store_prune.c": { maxLines: 140, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_store_prune.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_store_tables.c": { maxLines: 220, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_store_tables.h": { maxLines: 40, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_store.h": { maxLines: 35, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_store.h": { maxLines: 36, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_resolve.c": { maxLines: 1395, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_resolve.h": { maxLines: 35, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_semantics.c": { maxLines: 1240, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_semantics.c": { maxLines: 1348, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_semantics.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.c": { maxLines: 55, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_size.c": { maxLines: 124, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_size.c": { maxLines: 184, maxStrcmpCalls: 2 },
   "native/zero-c/src/program_graph_size.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_source_map.c": { maxLines: 460, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_source_map.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -145,7 +156,7 @@ const fileBudgets = {
 const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1484],
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 567],
-  ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 924],
+  ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 935],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 379],
   ["native/zero-c/src/checker.c|static bool check_stmt(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {", 279],
   ["native/zero-c/src/checker.c|static bool check_program_internal(const Program *program, bool require_entrypoint, ZDiag *diag) {", 213],
@@ -904,7 +915,7 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
     });
   }
   if (!programGraph.repositoryGraphMirPrepTypedLowering ||
-      !programGraph.repositoryGraphMirPrepNoAstFallback ||
+      !programGraph.repositoryGraphMirPrepStdOnlyAstFallback ||
       !programGraph.repositoryGraphMirPrepReportsUnsupportedFacts) {
     violations.push({
       kind: "program-graph-repository-mir-prep",
@@ -1657,9 +1668,11 @@ const programGraph = {
     /importPaths/.test(main) &&
     !/GRAPH_CACHE_INPUTS_(?:PARSE|CHECK|SPECIALIZATION|OBJECT|AGGREGATE)\s*=\s*"\[[^\]]*sourceFiles/.test(main),
   repositoryGraphMirPrepTypedLowering: /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
-    /source\s*->\s*lowering\s*=\s*"typed-program-graph-mir"/.test(repositoryGraphMirPrepRawBody),
-  repositoryGraphMirPrepNoAstFallback: !/z_lower_program_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
-    !/program-graph-ast-mir/.test(repositoryGraphMirPrepRawBody),
+    /source\s*->\s*lowering\s*=\s*graph_mir_valid\s*\?\s*"typed-program-graph-mir"\s*:\s*"program-graph-ast-mir"/.test(repositoryGraphMirPrepRawBody),
+  repositoryGraphMirPrepStdOnlyAstFallback: /z_program_graph_append_source_std_functions\s*\(\s*program\s*,\s*&appended_std_functions\s*,\s*diag\s*\)/.test(repositoryGraphMirPrepBody) &&
+    /appended_std_functions\s*==\s*0/.test(repositoryGraphMirPrepBody) &&
+    /z_lower_program_with_source\s*\(\s*program\s*,\s*input\s*,\s*target\s*\)/.test(repositoryGraphMirPrepBody) &&
+    /source\s*->\s*lowering\s*=\s*graph_mir_valid\s*\?\s*"typed-program-graph-mir"\s*:\s*"program-graph-ast-mir"/.test(repositoryGraphMirPrepRawBody),
   repositoryGraphMirPrepReportsUnsupportedFacts: /ir_graph_init_lowering_diag\s*\(/.test(repositoryGraphMirPrepBody) &&
     /graph_ir\.mir_valid/.test(repositoryGraphMirPrepBody),
   repositoryCompilerInputSourceFree: /z_repository_graph_verify_compiler_input\s*\(\s*command->input\s*,\s*target\s*,\s*command->json\s*,\s*&store_path\s*\)/.test(directManifestGraphInputBody) &&

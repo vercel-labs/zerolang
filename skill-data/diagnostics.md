@@ -5,7 +5,10 @@ description: Read Zero diagnostics, explanations, and typed fix plans.
 
 # Zero Diagnostics
 
-Use this when Zero code fails to parse, typecheck, build, test, or target-check. Zero diagnostics are intended for agents: start with the readable command output, then use JSON when you need stable fields, spans, or repair metadata.
+Use this when Zero code fails to parse, typecheck, build, test, or target-check.
+Zero diagnostics are intended for agents: start with the readable command
+output. Use JSON only when an automation tool needs stable fields or a debugging
+session needs exact spans, repair metadata, or machine-readable diagnostics.
 
 ## Commands
 
@@ -14,7 +17,7 @@ zero check <input>
 zero explain <diagnostic-code>
 ```
 
-Use machine-readable output when you need exact fields:
+Use machine-readable output when a tool needs exact fields:
 
 ```sh
 zero check --json <input>
@@ -70,7 +73,7 @@ Apply only the edit you can justify from the source and fix plan. Treat `require
 ## Agent Triage
 
 1. Run the failing command normally first.
-2. If the readable output is not enough, rerun with `--json` and use the span to inspect only the relevant source.
+2. If a debugging session needs exact machine fields, rerun with `--json` and use the span to inspect only the relevant source.
 3. Run `zero explain <code>` before broad refactors.
 4. If multiple diagnostics share a root cause, fix the earliest source issue.
 5. Re-run the same command after the patch.

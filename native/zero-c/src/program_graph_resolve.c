@@ -303,11 +303,10 @@ static char *graph_resolve_binding_name(const ZProgramGraphNode *node) {
 }
 
 static bool graph_resolve_binding_is_ordered(const ZProgramGraph *graph, const ZProgramGraphNode *node) {
+  (void)graph;
   if (!node) return false;
   if (node->kind == Z_PROGRAM_GRAPH_NODE_LET) return true;
-  if (node->kind != Z_PROGRAM_GRAPH_NODE_PARAM) return false;
-  const ZProgramGraphEdge *owner = graph_resolve_owner_edge(graph, node->id);
-  return !owner || !graph_resolve_text_eq(owner->kind, "typeParam");
+  return false;
 }
 
 static void graph_resolve_add_binding(ZGraphResolver *resolver, size_t scope_index, size_t node_index, const char *name, const char *kind, const char *target_module, const char *target_name, bool ordered) {

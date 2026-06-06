@@ -107,8 +107,8 @@ static const char *input_sync_state(const RepositoryGraphInputState *state) {
 static const char *input_projection_validity_label(const RepositoryGraphInputState *state) {
   if (!state || !state->store_valid) return "unavailable";
   if (state->projection_error) return "conflict";
-  if (!state->projection_checked) return "unavailable";
   if (state->projection_missing) return "missing";
+  if (!state->projection_checked) return "unavailable";
   return state->projection_current ? "clean" : "stale";
 }
 

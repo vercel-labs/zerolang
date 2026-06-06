@@ -1,12 +1,11 @@
 #include "program_graph_patch.h"
-
+#include "program_graph_order.h"
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 static void patch_free_text(char **slot) {
   if (!slot) return;
   free(*slot);
@@ -347,7 +346,20 @@ static bool patch_parse_structural_attrs(const char *line, const char *verb, ZPr
     } else if (strcmp(key, "value") == 0) ok = patch_assign_attr(&op->value, value);
     else if (strcmp(key, "name") == 0) ok = patch_assign_attr(&op->name, value);
     else if (strcmp(key, "type") == 0) ok = patch_assign_attr(&op->type, value);
+    else if (strcmp(key, "ret") == 0) ok = patch_assign_attr(&op->type, value);
     else if (strcmp(key, "path") == 0) ok = patch_assign_attr(&op->path, value);
+    else if (strcmp(key, "fn") == 0) ok = patch_assign_attr(&op->function, value);
+    else if (strcmp(key, "function") == 0) ok = patch_assign_attr(&op->function, value);
+    else if (strcmp(key, "left") == 0) ok = patch_assign_attr(&op->left, value);
+    else if (strcmp(key, "receiver") == 0) ok = patch_assign_attr(&op->left, value);
+    else if (strcmp(key, "world") == 0) ok = patch_assign_attr(&op->left, value);
+    else if (strcmp(key, "right") == 0) ok = patch_assign_attr(&op->right, value);
+    else if (strcmp(key, "arg0") == 0) ok = patch_assign_attr(&op->arg0, value);
+    else if (strcmp(key, "arg1") == 0) ok = patch_assign_attr(&op->arg1, value);
+    else if (strcmp(key, "call") == 0) ok = patch_assign_attr(&op->call, value);
+    else if (strcmp(key, "want") == 0) ok = patch_assign_attr(&op->value, value);
+    else if (strcmp(key, "text") == 0) ok = patch_assign_attr(&op->value, value);
+    else if (strcmp(key, "message") == 0) ok = patch_assign_attr(&op->value, value);
     else if (strcmp(key, "order") == 0) ok = patch_assign_order(op, value);
     else if (strcmp(key, "line") == 0) ok = patch_assign_line_value(op, value);
     else if (strcmp(key, "column") == 0) ok = patch_assign_column_value(op, value);
@@ -373,6 +385,10 @@ static bool patch_has_node_payload(const ZProgramGraphPatchOpResult *op) {
           op->has_export_c_value);
 }
 
+static bool patch_has_authoring_payload(const ZProgramGraphPatchOpResult *op) {
+  return op && (op->function || op->left || op->right || op->arg0 || op->arg1 || op->call);
+}
+
 static bool patch_reject_attrs(
   ZProgramGraphPatchOpResult *op,
   ZProgramGraphPatchResult *result,
@@ -385,7 +401,8 @@ static bool patch_reject_attrs(
   bool allow_target,
   bool allow_order,
   bool allow_expected,
-  bool allow_payload
+  bool allow_payload,
+  bool allow_authoring_payload
 ) {
   if ((!allow_node && op->node) ||
       (!allow_parent && op->parent) ||
@@ -395,7 +412,8 @@ static bool patch_reject_attrs(
       (!allow_target && op->target) ||
       (!allow_order && op->has_order) ||
       (!allow_expected && op->has_expected) ||
-      (!allow_payload && patch_has_node_payload(op))) {
+      (!allow_payload && patch_has_node_payload(op)) ||
+      (!allow_authoring_payload && patch_has_authoring_payload(op))) {
     patch_op_fail(result, op, "GPH001", "patch operation has unsupported attributes", "attributes supported by the operation", line);
     return false;
   }
@@ -407,7 +425,7 @@ static bool patch_parse_insert(const char *line, int line_number, ZProgramGraphP
   op->line = line_number;
   op->op = z_strdup("insert");
   if (!patch_parse_structural_attrs(line, "insert", result, op)) return false;
-  if (!patch_reject_attrs(op, result, line, true, true, false, true, true, false, true, false, true)) return false;
+  if (!patch_reject_attrs(op, result, line, true, true, false, true, true, false, true, false, true, false)) return false;
   if (!op->node || !op->kind || !op->parent || !op->edge || !op->has_order) {
     patch_op_fail(result, op, "GPH001", "insert operation is missing required attributes", "node, kind, parent, edge, and order", line);
     return false;
@@ -420,7 +438,7 @@ static bool patch_parse_insert_edge(const char *line, int line_number, ZProgramG
   op->line = line_number;
   op->op = z_strdup("insertEdge");
   if (!patch_parse_structural_attrs(line, "insertEdge", result, op)) return false;
-  if (!patch_reject_attrs(op, result, line, false, false, true, true, false, true, true, false, false)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, true, true, false, true, true, false, false, false)) return false;
   if (!op->from || !op->to || !op->edge || !op->target || !op->has_order) {
     patch_op_fail(result, op, "GPH001", "insertEdge operation is missing required attributes", "from, to, edge, target, and order", line);
     return false;
@@ -433,7 +451,7 @@ static bool patch_parse_replace(const char *line, int line_number, ZProgramGraph
   op->line = line_number;
   op->op = z_strdup("replace");
   if (!patch_parse_structural_attrs(line, "replace", result, op)) return false;
-  if (!patch_reject_attrs(op, result, line, true, false, false, false, true, false, false, true, true)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, true, false, false, true, true, false)) return false;
   if (!op->node) {
     patch_op_fail(result, op, "GPH001", "replace operation is missing required attributes", "node", line);
     return false;
@@ -446,7 +464,7 @@ static bool patch_parse_delete(const char *line, int line_number, ZProgramGraphP
   op->line = line_number;
   op->op = z_strdup("delete");
   if (!patch_parse_structural_attrs(line, "delete", result, op)) return false;
-  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, false)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, false, false)) return false;
   if (!op->node) {
     patch_op_fail(result, op, "GPH001", "delete operation is missing required attributes", "node", line);
     return false;
@@ -459,7 +477,7 @@ static bool patch_parse_rename(const char *line, int line_number, ZProgramGraphP
   op->line = line_number;
   op->op = z_strdup("rename");
   if (!patch_parse_structural_attrs(line, "rename", result, op)) return false;
-  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true, false)) return false;
   if (op->name || op->type || op->path || op->has_line_value || op->has_column_value ||
       op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
       op->has_export_c_value) {
@@ -470,6 +488,89 @@ static bool patch_parse_rename(const char *line, int line_number, ZProgramGraphP
     patch_op_fail(result, op, "GPH001", "rename operation is missing required attributes", "node and value", line);
     return false;
   }
+  return true;
+}
+
+static bool patch_parse_add_function(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addFunction");
+  if (!patch_parse_structural_attrs(line, "addFunction", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, false, true, false)) return false;
+  if (!op->name) {
+    patch_op_fail(result, op, "GPH001", "addFunction operation is missing required attributes", "name", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_main(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addMain");
+  if (!patch_parse_structural_attrs(line, "addMain", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, false, true, false)) return false;
+  return true;
+}
+
+static bool patch_parse_add_param(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addParam");
+  if (!patch_parse_structural_attrs(line, "addParam", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, false, true, true)) return false;
+  if (!op->function || !op->name || !op->type) {
+    patch_op_fail(result, op, "GPH001", "addParam operation is missing required attributes", "fn, name, and type", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_return_binary(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addReturnBinary");
+  if (!patch_parse_structural_attrs(line, "addReturnBinary", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, false, true, true)) return false;
+  if (!op->function || !op->name || !op->left || !op->right) {
+    patch_op_fail(result, op, "GPH001", "addReturnBinary operation is missing required attributes", "fn, name, left, and right", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_check_write(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addCheckWrite");
+  if (!patch_parse_structural_attrs(line, "addCheckWrite", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, false, true, true)) return false;
+  if (!op->function || !op->value) {
+    patch_op_fail(result, op, "GPH001", "addCheckWrite operation is missing required attributes", "fn and text", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_test(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addTest");
+  if (!patch_parse_structural_attrs(line, "addTest", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, true, true, true)) return false;
+  if (!op->name || !op->call || !op->arg0 || !op->arg1 || (!op->value && !op->has_expected)) {
+    patch_op_fail(result, op, "GPH001", "addTest operation is missing required attributes", "name, call, arg0, arg1, and expect", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_set_main_args_add_cli(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("setMainArgsAddCli");
+  if (!patch_parse_structural_attrs(line, "setMainArgsAddCli", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, false, false, false, false, false, false, false, false, true, true)) return false;
   return true;
 }
 
@@ -514,8 +615,26 @@ static bool patch_parse_text(char *text, ZProgramGraphPatchResult *result) {
       if (!patch_parse_delete(trimmed, line_number, result)) return false;
     } else if (strncmp(trimmed, "rename", strlen("rename")) == 0 && isspace((unsigned char)trimmed[strlen("rename")])) {
       if (!patch_parse_rename(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addFunction", strlen("addFunction")) == 0 && isspace((unsigned char)trimmed[strlen("addFunction")])) {
+      if (!patch_parse_add_function(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addMain", strlen("addMain")) == 0 && isspace((unsigned char)trimmed[strlen("addMain")])) {
+      if (!patch_parse_add_main(trimmed, line_number, result)) return false;
+    } else if (strcmp(trimmed, "addMain") == 0) {
+      if (!patch_parse_add_main(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addParam", strlen("addParam")) == 0 && isspace((unsigned char)trimmed[strlen("addParam")])) {
+      if (!patch_parse_add_param(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addReturnBinary", strlen("addReturnBinary")) == 0 && isspace((unsigned char)trimmed[strlen("addReturnBinary")])) {
+      if (!patch_parse_add_return_binary(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addCheckWrite", strlen("addCheckWrite")) == 0 && isspace((unsigned char)trimmed[strlen("addCheckWrite")])) {
+      if (!patch_parse_add_check_write(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addTest", strlen("addTest")) == 0 && isspace((unsigned char)trimmed[strlen("addTest")])) {
+      if (!patch_parse_add_test(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "setMainArgsAddCli", strlen("setMainArgsAddCli")) == 0 && isspace((unsigned char)trimmed[strlen("setMainArgsAddCli")])) {
+      if (!patch_parse_set_main_args_add_cli(trimmed, line_number, result)) return false;
+    } else if (strcmp(trimmed, "setMainArgsAddCli") == 0) {
+      if (!patch_parse_set_main_args_add_cli(trimmed, line_number, result)) return false;
     } else {
-      patch_result_fail(result, "GPH001", "unknown program graph patch operation", "expect, set, insert, insertEdge, replace, delete, or rename", trimmed);
+      patch_result_fail(result, "GPH001", "unknown program graph patch operation", "expect, set, insert, insertEdge, replace, delete, rename, addFunction, addMain, addParam, addReturnBinary, addCheckWrite, addTest, or setMainArgsAddCli", trimmed);
       return false;
     }
   }
@@ -545,6 +664,7 @@ bool z_program_graph_apply_patch_text(const char *label, const char *text, size_
     if (!z_program_graph_patch_apply_operation(graph, result, &result->operations[i])) return false;
     z_program_graph_finalize_identities(graph);
   }
+  z_program_graph_compact_ordered_edges(graph); z_program_graph_finalize_identities(graph);
   patch_replace_text(&result->actual_graph_hash, graph->graph_hash);
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(graph, &validation)) {
@@ -585,6 +705,12 @@ void z_program_graph_patch_result_free(ZProgramGraphPatchResult *result) {
     patch_free_text(&op->name);
     patch_free_text(&op->type);
     patch_free_text(&op->path);
+    patch_free_text(&op->function);
+    patch_free_text(&op->left);
+    patch_free_text(&op->right);
+    patch_free_text(&op->arg0);
+    patch_free_text(&op->arg1);
+    patch_free_text(&op->call);
   }
   free(result->operations);
   *result = (ZProgramGraphPatchResult){0};

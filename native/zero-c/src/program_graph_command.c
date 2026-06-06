@@ -17,8 +17,24 @@ typedef struct {
   {name, input_mode, false, {false, message, expected, actual, help}}
 
 static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
-  GRAPH_OUT("dump", Z_PROGRAM_GRAPH_INPUT_SOURCE),
-  GRAPH_OUT("import", Z_PROGRAM_GRAPH_INPUT_SOURCE),
+  GRAPH_NO_OUT(
+    "init",
+    Z_PROGRAM_GRAPH_INPUT_PATH,
+    "graph init writes repository files and does not support --out",
+    "zero graph init [--json] <project-path>",
+    "zero graph init --out",
+    "graph init writes zero.json and zero.graph at the selected project path; remove --out"
+  ),
+  GRAPH_OUT("dump", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
+  GRAPH_OUT("import", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
+  GRAPH_NO_OUT(
+    "query",
+    Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT,
+    "graph query does not support --out",
+    "zero graph query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>",
+    "zero graph query --out",
+    "queries are reported on stdout; remove --out"
+  ),
   GRAPH_NO_OUT(
     "inspect",
     Z_PROGRAM_GRAPH_INPUT_SOURCE,
@@ -33,7 +49,7 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
     "source-map",
     Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT,
     "graph source-map does not support --out",
-    "zero graph source-map --json <program-graph-or-source>",
+    "zero graph source-map [--json] <program-graph-or-source>",
     "zero graph source-map --out",
     "source maps are reported on stdout; remove --out"
   ),
@@ -109,22 +125,27 @@ ZProgramGraphOutputContract z_program_graph_command_output_contract(const char *
 }
 
 void z_program_graph_print_command_help(void) {
-  printf("Usage: zero graph [dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n\n");
+  printf("Usage: zero graph [init|dump|import|query|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n\n");
+  printf("Graph-first project usage: zero graph init [--json] <project-path>\n");
   printf("Output usage: zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
   printf("View output usage: zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
-  printf("Source map usage: zero graph source-map --json <program-graph-or-source>\n");
+  printf("Source map usage: zero graph source-map [--json] <program-graph-or-source>\n");
+  printf("Query usage: zero graph query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>\n");
   printf("Reconcile usage: zero graph reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>\n");
   printf("Repository sync usage: zero graph status|verify-sync [--json] <project|zero.json|file.0>; zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>; zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.json|file.0>\n");
   printf("Size output usage: zero graph size [--json] [--target <target>] --out <artifact> <input>\n");
-  printf("Patch output usage: zero graph patch [--json] [--out <program-graph-artifact>] <program-graph-or-source> (<patch-file>|--op <operation>)\n\n");
+  printf("Patch output usage: zero graph patch [--json] [--out <program-graph-artifact>] [<program-graph-or-source>] (<patch-file>|--op <operation>)\n");
+  printf("  In a graph-first package, zero graph patch --op <operation> defaults to the current directory.\n\nPatch operation help: zero graph patch --op help\n\n");
   printf("Build usage: zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n\n");
   printf("Run usage: zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n\n");
   printf("Test usage: zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n\n");
   printf("Inspect modules, symbols, capabilities, static metadata, stdlib helpers, or deterministic ProgramGraph inputs.\n\n");
   printf("Subcommands:\n");
+  printf("  init      create a graph-first package with zero.graph as compiler input\n");
   printf("  dump      print or write only the deterministic ProgramGraph\n");
   printf("  import    convert current Zero source into deterministic ProgramGraph input\n");
-  printf("  inspect   report semantic graph and compiler facts as JSON\n");
+  printf("  query     report compact module, function, body, and patch facts for agents\n");
+  printf("  inspect   report semantic graph and compiler facts\n");
   printf("  validate  read ProgramGraph input and optionally write its normalized artifact form\n");
   printf("  view      render ProgramGraph input as a generated Zero view\n");
   printf("  source-map map graph nodes to source ranges and semantic identity facts\n");
@@ -138,4 +159,12 @@ void z_program_graph_print_command_help(void) {
   printf("  build     build ProgramGraph input through direct graph lowering\n  run       build and run ProgramGraph input through direct graph lowering\n  test      run test blocks from ProgramGraph input through direct graph lowering\n");
   printf("  patch     apply checked edits to ProgramGraph input\n");
   printf("  roundtrip compare graph semantics after direct ProgramGraph lowering\n");
+  printf("\nCommon patch operations:\n");
+  printf("  addMain\n");
+  printf("  addCheckWrite fn=\"main\" text=\"hello\\n\"\n");
+  printf("  addFunction name=\"add\" ret=\"i32\"\n");
+  printf("  addParam fn=\"add\" name=\"left\" type=\"i32\"\n");
+  printf("  addReturnBinary fn=\"add\" name=\"+\" left=\"left\" right=\"right\" type=\"i32\"\n");
+  printf("  addTest name=\"addition works\" call=\"add\" arg0=\"40\" arg1=\"2\" expect=\"42\" type=\"i32\"\n");
+  printf("  setMainArgsAddCli fn=\"add_u32\"\n");
 }

@@ -26,6 +26,7 @@ bool z_program_graph_store_file_exists(const char *path);
 bool z_program_graph_store_load_path(const char *path, ZProgramGraphStore *out, ZDiag *diag);
 bool z_program_graph_store_load_for_input(const char *input, ZProgramGraphStore *out, ZDiag *diag);
 bool z_program_graph_store_write_path(const char *path, const ZProgramGraphStore *store, ZDiag *diag);
+bool z_program_graph_store_write_generated_path(const char *path, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag);
 bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *graph, ZDiag *diag);
 bool z_program_graph_store_save_for_input(const char *input, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag);
 bool z_program_graph_store_graph_matches_source(const ZProgramGraphStore *store, const ZProgramGraph *source_graph);
