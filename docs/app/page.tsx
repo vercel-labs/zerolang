@@ -15,11 +15,11 @@ const PILLARS = [
       "Agents can inspect checked ProgramGraph facts and submit graph edits instead of only patching source text ranges.",
   },
   {
-    metric: "Source",
-    label: "truth",
-    title: "Human-readable storage",
+    metric: ".0",
+    label: "view",
+    title: "Human-readable projection",
     description:
-      ".0 source stays the durable representation: reviewable, auditable, formatted, and regular enough to behave like program data.",
+      ".0 source stays reviewable and bidirectional for humans, while graph-first packages compile from zero.graph.",
   },
   {
     metric: "Small",
@@ -33,8 +33,8 @@ const PILLARS = [
 const FEATURES = [
   { title: "Experimental by design", description: "Today's syntax and APIs are not a contract. Breaking changes and removed compatibility paths are expected when a clearer agent-facing design wins." },
   { title: "Safe environments only", description: "Security vulnerabilities should be expected. Run and develop zerolang in isolated environments, not production systems or sensitive infrastructure." },
-  { title: "Source-backed graph", description: "The ProgramGraph is derived from source. Graph artifacts are inspection and interchange data, not the primary project files." },
-  { title: "Checked graph edits", description: "Graph patches can target semantic nodes with graph-hash and field-value preconditions before source is written." },
+  { title: "Repository graph store", description: "Graph-first packages keep zero.graph as compiler input. .0 files are projections, and ProgramGraph artifacts are optional inspection data." },
+  { title: "Checked graph edits", description: "Graph patches can target semantic nodes with graph-hash and field-value preconditions before projections are refreshed." },
   { title: "Semantic facts", description: "The compiler can expose node IDs, resolved types, effects, ownership facts, capabilities, helper use, and module edges." },
   { title: "Regular source", description: "The syntax should stay boring enough to index, compare, format, audit, and regenerate while still reading like normal code." },
   { title: "Version-matched skills", description: "The compiler ships language, graph, diagnostics, build, testing, package, and stdlib guides that match the binary in use." },
@@ -86,7 +86,7 @@ node #expr_c403020c MethodCall name:"write" type:"Void"
 node #expr_653eeb6e Literal type:"String" value:"hello from zero\\n"
 edge #expr_c403020c arg #expr_653eeb6e order:0`;
 
-const PATCH_EXAMPLE = `zero graph patch examples/hello.0 \\
+const PATCH_EXAMPLE = `zero patch examples/hello.0 \\
   --expect-graph-hash graph:a7f7e6899a73f3b4 \\
   --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\\n" value="hello graph\\n"'`;
 
@@ -149,12 +149,12 @@ export default function HomePage() {
           <div className="mx-auto mb-10 max-w-[48rem] text-center">
             <p className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-[0.04em] text-blue">Why graph</p>
             <h2 className="mb-4 text-[clamp(1.5rem,4vw,2.25rem)] font-bold leading-[1.15] tracking-[-0.035em]">
-              Source is the artifact.
+              Graph is the artifact.
               <br />
-              The graph is the work surface.
+              Source is the projection.
             </h2>
             <p className="m-0 text-[1.0625rem] leading-[1.65] text-muted">
-              Source text is good for humans and review, but it is a weak interface for program understanding. Agents need to gather focused context, know what a call resolves to, avoid stale edits, change related structure, and get validation before source is written.
+              Source text is good for humans and review, but it is a weak interface for program understanding. Agents need to gather focused context, know what a call resolves to, avoid stale edits, change related structure, and get validation before projections are refreshed.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2">
@@ -169,13 +169,13 @@ export default function HomePage() {
 
         <section className="relative z-10 mx-auto w-[min(100%-3rem,var(--container-content))] border-t border-border py-[clamp(4rem,8vh,6rem)]">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <CodeWindow title="main.0" html={CODE_EXAMPLE} />
+            <CodeWindow title="main.0 projection" html={CODE_EXAMPLE} />
             <CodeWindow title="zero graph dump">
               {GRAPH_EXAMPLE}
             </CodeWindow>
           </div>
           <div className="mt-6">
-            <CodeWindow title="zero graph patch">
+            <CodeWindow title="zero patch">
               {PATCH_EXAMPLE}
             </CodeWindow>
           </div>
@@ -184,9 +184,9 @@ export default function HomePage() {
         <section className="relative z-10 mx-auto w-[min(100%-3rem,var(--container-content))] border-t border-border py-[clamp(4rem,8vh,6rem)]">
           <div className="mx-auto mb-12 max-w-[48rem] text-center">
             <p className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-[0.04em] text-blue">Direction</p>
-            <h2 className="mb-4 text-[clamp(1.5rem,4vw,2.25rem)] font-bold leading-[1.15] tracking-[-0.035em]">Source as data. Graph as interface.</h2>
+            <h2 className="mb-4 text-[clamp(1.5rem,4vw,2.25rem)] font-bold leading-[1.15] tracking-[-0.035em]">Graph as data. Source as projection.</h2>
             <p className="m-0 leading-[1.65] text-muted">
-              The language is still designed under systems constraints: token efficiency, low memory usage, fast startup, fast builds, low runtime latency, and zero dependencies. The graph work does not replace readable source; it gives agents a checked structure and a tighter write, validate, check, and format loop.
+              The language is still designed under systems constraints: token efficiency, low memory usage, fast startup, fast builds, low runtime latency, and zero dependencies. The graph work does not remove readable source; it makes source the human projection of a checked structure and gives agents a tighter write, validate, check, and sync loop.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2 lg:grid-cols-3">

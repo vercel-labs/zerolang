@@ -45,7 +45,7 @@ zero check <file-or-package>
 zero graph <file-or-package>
 zero graph query <file-or-package>
 zero graph view <file-or-package>
-zero graph check <file-or-package>
+zero patch <file-or-package>
 zero size <file-or-package>
 zero explain <diagnostic-code>
 ```

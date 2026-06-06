@@ -50,7 +50,7 @@ For graph-first packages, normal `zero test <package>` compiles from
 `.0` projections exist:
 
 ```sh
-zero graph patch --op 'addTest name="addition works" call="add" arg0="2" arg1="3" expect="5" type="i32"'
+zero patch --op 'addTest name="addition works" call="add" arg0="2" arg1="3" expect="5" type="i32"'
 zero test .
 zero test --filter addition .
 ```

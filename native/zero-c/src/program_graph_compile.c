@@ -23,7 +23,7 @@ static bool graph_compile_diag(ZDiag *diag, const char *path, const char *messag
   diag->code = 2002; diag->path = path; diag->line = 1; diag->column = 1; diag->length = 1;
   snprintf(diag->message, sizeof(diag->message), "%s", message ? message : "failed to prepare source program graph");
   snprintf(diag->expected, sizeof(diag->expected), "source-imported ProgramGraph"); snprintf(diag->actual, sizeof(diag->actual), "%s", actual ? actual : "invalid graph");
-  snprintf(diag->help, sizeof(diag->help), "run zero graph check to inspect the source graph");
+  snprintf(diag->help, sizeof(diag->help), "run zero check to inspect the source graph");
   return false;
 }
 

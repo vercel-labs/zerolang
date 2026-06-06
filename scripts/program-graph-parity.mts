@@ -51,6 +51,10 @@ async function dumpGraphArtifact(fixture, name) {
   return artifact;
 }
 
+function artifactNameForFixture(prefix, fixture) {
+  return `${prefix}-${fixture.replace(/[^A-Za-z0-9_.-]+/g, "-")}`;
+}
+
 function buildSummary(result) {
   return {
     emit: result.emit,
@@ -352,11 +356,13 @@ function graphDumpText(graph) {
 
 async function assertCheckParity(fixture) {
   const source = await zeroJson(["check", "--json", fixture]);
-  const graph = await zeroJson(["graph", "check", "--json", fixture]);
+  const artifact = await dumpGraphArtifact(fixture, artifactNameForFixture("check", fixture));
+  const graph = await zeroJson(["check", "--json", artifact]);
 
-  assert.equal(graph.canonicalSource, true, `${fixture}: graph check should report source input`);
-  assert.equal(graph.check.phase, "typecheck", `${fixture}: graph check phase`);
-  assert.equal(graph.check.lowering, "direct-program-graph", `${fixture}: graph lowering`);
+  assert.equal(source.graph?.canonicalSource, true, `${fixture}: source check should report canonical source graph input`);
+  assert.equal(graph.canonicalSource, false, `${fixture}: graph artifact check should report artifact input`);
+  assert.equal(graph.check.phase, "typecheck", `${fixture}: graph artifact check phase`);
+  assert.equal(graph.check.lowering, "direct-program-graph", `${fixture}: graph artifact lowering`);
   assert.equal(graph.check.ok, source.ok, `${fixture}: source and graph typecheck should agree`);
   assert.equal(graph.check.target, source.targetReadiness?.target ?? graph.check.target, `${fixture}: target should agree`);
   assert.deepEqual(targetReadinessSummary(graph.targetReadiness), targetReadinessSummary(source.targetReadiness), `${fixture}: target readiness should agree`);
@@ -364,11 +370,12 @@ async function assertCheckParity(fixture) {
 
 async function assertCheckFailureParity(fixture) {
   const source = await zeroJsonFailure(["check", "--json", fixture]);
-  const graph = await zeroJsonFailure(["graph", "check", "--json", fixture]);
-  assert.equal(graph.canonicalSource, true, `${fixture}: graph check failure should report source input`);
-  assert.equal(graph.check.phase, "typecheck", `${fixture}: graph check failure phase`);
-  assert.equal(graph.check.lowering, "direct-program-graph", `${fixture}: graph check failure lowering`);
-  assert.equal(graph.check.ok, false, `${fixture}: graph check should fail`);
+  const artifact = await dumpGraphArtifact(fixture, artifactNameForFixture("check-fail", fixture));
+  const graph = await zeroJsonFailure(["check", "--json", artifact]);
+  assert.equal(graph.canonicalSource, false, `${fixture}: graph artifact check failure should report artifact input`);
+  assert.equal(graph.check.phase, "typecheck", `${fixture}: graph artifact check failure phase`);
+  assert.equal(graph.check.lowering, "direct-program-graph", `${fixture}: graph artifact check failure lowering`);
+  assert.equal(graph.check.ok, false, `${fixture}: graph artifact check should fail`);
   const sourceDiag = source.diagnostics?.[0];
   const graphDiag = graph.diagnostics?.[0];
   for (const field of ["code", "message", "path", "line", "column", "expected", "actual", "help"]) {
@@ -416,7 +423,7 @@ async function assertCommandStateContracts() {
   assert.equal(view.canonicalSource, false, "graph view should report artifact input");
   assert.match(view.view, /pub fn main/, "graph view should include canonical source text");
 
-  const check = await zeroJson(["graph", "check", "--json", artifact]);
+  const check = await zeroJson(["check", "--json", artifact]);
   assert.equal(check.ok, true, "graph check should typecheck the artifact");
   assert.equal(check.canonicalSource, false, "graph check should report artifact input");
   assert.equal(check.check.phase, "typecheck", "graph check should promise typecheck state");
@@ -1015,7 +1022,7 @@ async function assertPatchRecomputesNestedSymbolOwners() {
     "",
   ].join("\n"));
 
-  const patch = await zeroJson(["graph", "patch", "--json", "--out", patchedPath, graphPath, patchPath]);
+  const patch = await zeroJson(["patch", "--json", "--out", patchedPath, graphPath, patchPath]);
   assert.equal(patch.ok, true, "patch should save a reordered graph after owner rename");
   const validate = await zeroJson(["graph", "validate", "--json", patchedPath]);
   assert.equal(validate.ok, true, "patched reordered graph should read back with matching identities");
@@ -1035,7 +1042,6 @@ async function assertSourceBackedPatchParity() {
   const literal = findStringLiteral(beforeGraph, "hello from zero\n");
 
   const patch = await zeroJson([
-    "graph",
     "patch",
     "--json",
     fixture,
@@ -1056,8 +1062,7 @@ async function assertSourceBackedPatchParity() {
 
   const patchedSource = await readFile(fixture, "utf8");
   assert.match(patchedSource, /hello source-backed\\n/, "source-backed graph patch should rewrite source text");
-  assert.equal(await zeroText(["check", fixture]), "ok\n", "patched source should check through source command");
-  assert.equal(await zeroText(["graph", "check", fixture]), "program graph check ok\n", "patched source should check through graph command");
+  assert.equal(await zeroText(["check", fixture]), "ok\n", "patched source should check through first-class check command");
 
   const artifact = await dumpGraphArtifact(fixture, "source-backed-patch-run");
   const sourceOut = `${outDir}/source-backed-patch.source-run`;
@@ -1077,7 +1082,6 @@ async function assertGraphPatchPreservesNodeIds() {
   assert(beforeMain, "missing main function");
 
   const patch = await zeroJson([
-    "graph",
     "patch",
     "--json",
     "--out",
@@ -1095,7 +1099,7 @@ async function assertGraphPatchPreservesNodeIds() {
   const patchedText = await readFile(patchedArtifact, "utf8");
   assert.match(patchedText, new RegExp(`node ${beforeLiteral.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} Literal[^\\n]*value:"hello preserved\\\\n"`), "graph patch should preserve literal node ID");
   assert.match(patchedText, new RegExp(`node ${beforeMain.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} Function[^\\n]*name:"main"`), "graph patch should not churn unrelated function ID");
-  assert.equal(await zeroText(["graph", "check", patchedArtifact]), "program graph check ok\n", "patched graph artifact should check");
+  assert.equal(await zeroText(["check", patchedArtifact]), "ok\n", "patched graph artifact should check");
 }
 
 function findStringLiteral(graph, value) {

@@ -6,8 +6,8 @@ Most commands accept the same input forms:
 
 | Input | Meaning |
 | --- | --- |
-| `file.0` | Canonical Zero source text. |
-| `project/` | A package directory containing `zero.json`. |
+| `file.0` | Human-readable Zero source text. In graph-first packages this is a projection, not the normal agent write surface. |
+| `project/` | A package directory containing `zero.json`; graph-first packages compile from `zero.graph`. |
 | `zero.json` | A package manifest. |
 
 ## Daily Commands
@@ -15,6 +15,7 @@ Most commands accept the same input forms:
 | Command | Use it for |
 | --- | --- |
 | `zero check <input>` | Parse, typecheck, and report diagnostics. |
+| `zero patch <input>` | Apply checked graph edits. |
 | `zero run <input>` | Build and run a host executable with the selected backend. |
 | `zero test <input>` | Run inline `test` blocks. |
 | `zero fmt <input>` | Print formatted source. Add `--check` in CI. |
@@ -34,7 +35,7 @@ zero run examples/add.0
 zero test conformance/native/pass/test-blocks.0
 zero build --emit exe --target linux-musl-x64 examples/add.0 --out .zero/out/add
 zero graph init .zero/out/graph-hello
-zero graph patch .zero/out/graph-hello --op 'addMain' --op 'addCheckWrite fn="main" text="hello from graph\n"'
+zero patch .zero/out/graph-hello --op 'addMain' --op 'addCheckWrite fn="main" text="hello from graph\n"'
 zero graph query .zero/out/graph-hello
 zero graph query --fn main .zero/out/graph-hello
 zero graph query --find write .zero/out/graph-hello
@@ -55,13 +56,13 @@ zero graph view --out .zero/out/hello.view.0 .zero/out/hello.program-graph
 zero graph source-map examples/hello.0
 zero graph reconcile .zero/out/hello.program-graph --source examples/hello.0
 zero graph status .
-zero graph check .zero/out/hello.program-graph
+zero check .zero/out/hello.program-graph
 zero graph size .zero/out/hello.program-graph
 zero graph build --emit obj --target linux-musl-x64 --out .zero/out/hello.o .zero/out/hello.program-graph
 zero graph run .zero/out/hello.program-graph
 zero graph test .zero/out/hello.program-graph
-zero graph patch examples/hello.0 --expect-graph-hash graph:a7f7e6899a73f3b4 --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\n" value="hello patched\n"'
-zero graph patch --op help
+zero patch examples/hello.0 --expect-graph-hash graph:a7f7e6899a73f3b4 --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\n" value="hello patched\n"'
+zero patch --op help
 zero graph roundtrip examples/hello.0
 zero graph roundtrip .zero/out/hello.program-graph
 zero size examples/point.0
@@ -89,7 +90,7 @@ another tool needs stable fields.
 
 | Command | Useful JSON fields |
 | --- | --- |
-| `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, `graph` identity for canonical source, `targetReadiness`, and `safetyFacts` for the selected target/emit kind. |
+| `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, graph identity for source/package/artifact inputs, target readiness, direct graph lowering facts for ProgramGraph inputs, and safety facts for the selected target/emit kind. |
 | `zero graph --json` | Modules, public symbols, capabilities, static facts, safety facts, helper use, and nested `programGraph`. |
 | `zero graph init --json` | Create a graph-first package with `zero.json` and `zero.graph`, no materialized `.0` source projection, and next-step graph patch commands. |
 | `zero graph query --json` | Compact graph-first facts for tools: input kind, graph identity, selector metadata, module/function/body summaries, resolver-backed call/reference facts, matched node handles, selected-node neighborhoods, statement IDs, and common patch operations. |
@@ -102,10 +103,9 @@ another tool needs stable fields.
 | `zero graph status --json` | Repository graph sync facts, the expected `zero.graph` path, no-write status, store validity, and whether graph/source sync is enabled. |
 | `zero graph verify-sync --json` | A no-write graph/source sync check that compares a valid repository graph store with the current source graph and reports repair commands on drift. |
 | `zero graph merge --json` | Three-way repository graph store merge with base/left/right stores, durable-node conflict diagnostics, changed-path reporting, storage facts, and scale counts. |
-| `zero graph check --json` | Typecheck source or a ProgramGraph artifact through direct graph lowering with graph identity, target, `check.lowering: "direct-program-graph"`, target readiness, safety facts, and graph-mapped diagnostics. |
 | `zero graph size --json` | Size, helper, runtime, profile, safety, and backend facts for a ProgramGraph artifact lowered through typed graph MIR, with graph identity. |
 | `zero graph build --json` | Build a ProgramGraph artifact through typed graph MIR when supported, including graph identity, selected `emit` kind, target, artifact path and size, safety facts, compiler cache facts, and graph-aware incremental invalidation. |
-| `zero graph patch --json` | Checked graph edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and the saved source or artifact path. |
+| `zero patch --json` | Checked graph edits with graph-hash preconditions, per-operation node/field results, the changed graph hash, and the saved source or artifact path. |
 | `zero graph roundtrip --json` | Source or ProgramGraph artifact stability through direct graph lowering with `semanticStable`, lowering mode, original and roundtripped graph hashes, raw counts, normalized semantic counts, and optional ProgramGraph output. |
 | `zero dev --json` | A watch plan for changed source, manifest, package-lock, and generated-binding inputs. |
 | `zero dev --json --trace` | Adds phase timing, cache hit/miss facts, diagnostics passthrough, and `interfaceFingerprints`. |
@@ -156,8 +156,8 @@ interchange files.
 `zero graph init <project>` creates a graph-first package with
 `repositoryGraph.compilerInput: true`, `zero.json`, and `zero.graph`; it does
 not materialize `.0` files. Agents can patch the package with
-`zero graph patch <project> --op ...`; from inside a graph-first package,
-`zero graph patch --op ...` defaults to the current directory. Then normal
+`zero patch <project> --op ...`; from inside a graph-first package,
+`zero patch --op ...` defaults to the current directory. Then normal
 `zero check`, `zero run`, and `zero test` run against the graph store.
 `zero graph sync --from-source` writes a deterministic `zero.graph` repository
 store from current `.0` source, preserves existing graph node handles where the
@@ -185,14 +185,14 @@ In this repository, `pnpm run repository-graph:check` verifies checked-in
 
 ## ProgramGraph Patches
 
-`zero graph patch` applies checked edits to a graph. When the input is an
+`zero patch` applies checked edits to a graph. When the input is an
 opted-in repository graph package, the command writes `zero.graph` after loading
 the store, applying operations, validating graph readiness, and rechecking
 compiler input. For small edits, pass one or more operations inline:
 
 ```sh
 cd .zero/out/graph-hello
-zero graph patch \
+zero patch \
   --op 'addMain' \
   --op 'addCheckWrite fn="main" text="hello from graph\n"'
 zero check .
@@ -202,14 +202,14 @@ zero run .
 Preview a repository graph patch without writing:
 
 ```sh
-zero graph patch --check-only <package> /tmp/body.patch
-zero graph patch --dry-run --json <package> /tmp/body.patch
+zero patch --check-only <package> /tmp/body.patch
+zero patch --dry-run --json <package> /tmp/body.patch
 ```
 
 Agents can compose larger functions without writing node tables or `.0` source:
 
 ```sh
-zero graph patch \
+zero patch \
   --op 'addFunction name="add_twice" ret="u32"' \
   --op 'addParam fn="add_twice" name="x" type="u32"' \
   --op 'addParam fn="add_twice" name="y" type="u32"' \
@@ -224,7 +224,7 @@ the source after lowering, formatting, re-parsing, and semantic graph
 comparison succeeds:
 
 ```sh
-zero graph patch \
+zero patch \
   examples/hello.0 \
   --expect-graph-hash graph:a7f7e6899a73f3b4 \
   --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\n" value="hello patched\n"'
@@ -284,7 +284,7 @@ add function, and writes the formatted sum. `setMainGreetingCli` creates a
 first-argument greeting CLI. `replaceFunctionBody` replaces a function body from
 compact row syntax while still writing the repository graph.
 
-Run `zero graph patch --op help` to list supported operation shapes without
+Run `zero patch --op help` to list supported operation shapes without
 loading or writing a graph.
 
 Editable scalar fields are `name`, `type`, `value`, `public`, `mutable`,
@@ -374,7 +374,7 @@ zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero graph [init|query|dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]
+zero graph [init|query|dump|import|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|size|build|run|test|roundtrip] [--json] [--target <target>] <input>
 zero graph init [--json] <project-path>
 zero graph query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>
 zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>
@@ -385,7 +385,7 @@ zero graph status|verify-sync [--json] <project|zero.json|file.0>
 zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>
 zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.json|file.0>
 zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
-zero graph patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<program-graph-or-source>] (<patch-file>|--op <operation>)
+zero patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<program-graph-or-source>] (<patch-file>|--op <operation>)
 zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>
 zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
 zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>

@@ -98,7 +98,11 @@ describe("docs registry", () => {
     };
 
     assert.match(await readDoc("getting-started"), /curl -fsSL https:\/\/zerolang\.ai\/install\.sh \| bash/);
-    assert.match(await readDoc("getting-started"), /```sh[\s\S]*zero new cli hello/);
+    const gettingStarted = await readDoc("getting-started");
+    assert.match(gettingStarted, /Ask An Agent For Hello World/);
+    assert.match(gettingStarted, /zero graph init hello/);
+    assert.match(gettingStarted, /zero patch --op 'addMain'/);
+    assert.match(gettingStarted, /`src\/main\.0` is the human-readable projection/);
     assert.match(await readDoc("getting-started"), /zero build --target linux-musl-x64/);
     assert.match(await readDoc("examples"), /bin\/zero check examples\/hello\.0/);
     const learnZero = await readDoc("learn-zero");
@@ -222,7 +226,7 @@ describe("docs registry", () => {
     }
     const homePage = await readFile(join(docsSiteRoot, "app/page.tsx"), "utf8");
     assert.match(homePage, /The programming language\s+<br \/>\s+for agents/);
-    assert.match(homePage, /Source is the artifact\.\s+<br \/>\s+The graph is the work surface\./);
+    assert.match(homePage, /Graph is the artifact\.\s+<br \/>\s+Source is the projection\./);
     assert.match(homePage, /Semantic navigation/);
     assert.match(homePage, /Precise edits/);
     assert.match(homePage, /Validated refactors/);

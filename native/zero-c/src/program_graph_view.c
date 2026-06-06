@@ -224,7 +224,7 @@ static bool view_append_program(ZBuf *buf, const ZProgramGraph *graph, const cha
     snprintf(diag->message, sizeof(diag->message), "failed to render program graph as canonical source");
     snprintf(diag->expected, sizeof(diag->expected), "lowerable ProgramGraph");
     snprintf(diag->actual, sizeof(diag->actual), "invalid graph view");
-    snprintf(diag->help, sizeof(diag->help), "run zero graph check to inspect graph lowering diagnostics");
+    snprintf(diag->help, sizeof(diag->help), "run zero check to inspect graph lowering diagnostics");
   }
   z_free_program(&program);
   z_free_source(&input);

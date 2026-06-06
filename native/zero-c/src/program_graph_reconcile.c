@@ -242,7 +242,7 @@ static void reconcile_append_diagnostic_json(ZBuf *buf, const char *code, const 
   zbuf_append(buf, ",\"actual\":");
   zbuf_appendf(buf, "\"%zu candidate%s\"", candidates, candidates == 1 ? "" : "s");
   zbuf_append(buf, ",\"help\":");
-  reconcile_json_string(buf, "make the edit through zero graph patch or split the change so identity is unambiguous");
+  reconcile_json_string(buf, "make the edit through zero patch or split the change so identity is unambiguous");
   zbuf_append(buf, "}");
 }
 

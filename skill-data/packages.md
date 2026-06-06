@@ -9,14 +9,19 @@ Use this when working with `zero.json`, package-local modules, package tests, or
 
 ## Create
 
+For agent-authored packages, start graph-first:
+
 ```sh
-zero new cli hello
-zero new lib math-tools
-zero new package app
-zero graph init graph-app
+zero graph init hello
+cd hello
+zero patch --op 'addMain'
+zero check .
+zero graph sync --from-graph .
 ```
 
-Check the generated files before changing structure.
+`zero.graph` is the package graph store and compiler input. `.0` files are the
+human-readable projection; sync them after graph checks pass. Use `zero new`
+only when the user explicitly asks for a source-text package template.
 
 ## Manifest
 
@@ -99,7 +104,7 @@ For agent-authored packages, prefer the repository graph surface:
 ```sh
 zero graph init <package>
 cd <package>
-zero graph patch --op 'addMain'
+zero patch --op 'addMain'
 zero check .
 zero run .
 ```
@@ -109,8 +114,8 @@ Inspect and patch existing packages through the graph. Create an artifact under
 
 ```sh
 zero graph view <package>
-zero graph check <package>
-zero graph patch <package> --op 'addMain'
+zero check <package>
+zero patch <package> --op 'addMain'
 ```
 
 When `repositoryGraph.compilerInput` is true, package-level patches write

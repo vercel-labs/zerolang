@@ -71,7 +71,7 @@ package graph and use normal build/run commands. They compile from `zero.graph`
 and do not require `.0` projections to exist:
 
 ```sh
-zero graph patch --op 'addMain'
+zero patch --op 'addMain'
 zero check .
 zero run .
 zero build . --out .zero/out/app

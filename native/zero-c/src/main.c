@@ -88,6 +88,7 @@ typedef struct {
   const char *backend;
   const char *unknown_flag;
   const char *invalid_emit;
+  const char *retired_graph_subcommand;
   const char *filter;
   ZProgramGraphArtifactSource graph_source;
   int run_argc;
@@ -127,6 +128,7 @@ typedef struct {
 } ShipArtifacts;
 
 static void print_command_help(const char *command);
+static void print_graph_patch_help_text(void);
 static void manifest_path_for_input(const SourceInput *input, char *manifest_path, size_t manifest_path_len);
 
 static const char *diag_code(int code) {
@@ -3745,7 +3747,7 @@ static void print_check_diag_json(const char *path, const ZDiag *diag, const cha
 }
 
 static void print_command_diag_json(const Command *command, const char *path, const ZDiag *diag) {
-  if (command && command->command && strcmp(command->command, "check") == 0) print_check_diag_json(path, diag, command->profile);
+  if (command && graph_check_text_eq(command->command, "check")) print_check_diag_json(path, diag, command->profile);
   else print_diag_json(path, diag);
 }
 
@@ -3945,7 +3947,8 @@ static void print_help(void) {
   printf("  zero --version [--json]\n");
   printf("  zero skills [list|get] [--json]\n");
   printf("  zero new cli|lib|package <name>\n");
-  printf("  zero check <file.0|project|zero.json>\n");
+  printf("  zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] <file.0|project|zero.json|program-graph-artifact>\n");
+  printf("  zero patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<input>] (<patch-file>|--op <operation>)\n");
   printf("  zero test <file.0|project|zero.json>\n");
   printf("  zero fmt <file.0|project|zero.json>\n");
   printf("  zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json>\n");
@@ -3953,7 +3956,7 @@ static void print_help(void) {
   printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
   printf("  zero tokens --json <file.0|project|zero.json>\n");
   printf("  zero parse --json <file.0|project|zero.json>\n");
-  printf("  zero graph [init|dump|import|query|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|check|size|build|run|test|patch|roundtrip] [--json] [--target <target>] <input> [patch]\n");
+  printf("  zero graph [init|dump|import|query|inspect|validate|view|source-map|reconcile|status|verify-sync|sync|merge|size|build|run|test|roundtrip] [--json] [--target <target>] <input>\n");
   printf("  zero graph [dump|import|validate|roundtrip] [--json] --out <program-graph-artifact> <input>\n");
   printf("  zero graph view [--json] [--out <file.0>] <program-graph-or-source>\n");
   printf("  zero graph query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>\n");
@@ -3963,7 +3966,6 @@ static void print_help(void) {
   printf("  zero graph sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>\n");
   printf("  zero graph merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.json|file.0>\n");
   printf("  zero graph size [--json] [--target <target>] --out <artifact> <program-graph-or-package>\n");
-  printf("  zero graph patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<program-graph-or-source>] (<patch-file>|--op <operation>)\n");
   printf("  zero graph build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package>\n  zero graph run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]\n  zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>\n");
   printf("  zero doc [--json] <file.0|project|zero.json>\n");
   printf("  zero size [--json] [--out <artifact>] <file.0|project|zero.json>\n");
@@ -4009,8 +4011,11 @@ static void print_command_help(const char *command) {
     printf("Flags:\n");
     printf("  --all    remove broader .zero generated state while preserving .zero/bin\n");
   } else if (strcmp(command, "check") == 0) {
-    printf("Usage: zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] <file.0|project|zero.json>\n\n");
-    printf("Parse and typecheck Zero source without emitting artifacts. JSON output includes target readiness for the selected emit kind.\n");
+    printf("Usage: zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] <file.0|project|zero.json|program-graph-artifact>\n\n");
+    printf("Parse and typecheck Zero input without emitting artifacts. Graph-first packages and ProgramGraph artifacts check through the graph path.\n");
+  } else if (strcmp(command, "patch") == 0) {
+    printf("Usage: zero patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<input>] (<patch-file>|--op <operation>)\n\n");
+    print_graph_patch_help_text();
   } else if (strcmp(command, "build") == 0) {
     printf("Usage: zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <input>\n\n");
     printf("Build direct native executable or object artifacts.\n\n");
@@ -4282,15 +4287,21 @@ static bool parse_command(int argc, char **argv, Command *command) {
   }
   int arg_start = 2;
   bool is_graph_command = strcmp(command->command, "graph") == 0;
+  bool is_patch_command = graph_check_text_eq(command->command, "patch");
   if (strcmp(command->command, "abi") == 0 && argc >= 3 && strncmp(argv[2], "--", 2) != 0) {
     command->kind = argv[2];
     arg_start = 3;
   }
-  if (is_graph_command && argc >= 3 && z_program_graph_command_kind_is_known(argv[2])) {
+  if (is_graph_command && argc >= 3 && (cli_arg_is(argv[2], "check") || cli_arg_is(argv[2], "patch"))) {
+    command->kind = argv[2];
+    command->retired_graph_subcommand = argv[2];
+    arg_start = 3;
+  } else if (is_graph_command && argc >= 3 && z_program_graph_command_kind_is_known(argv[2])) {
     command->kind = argv[2];
     arg_start = 3;
   }
-  command->graph_patch_command = is_graph_command && command->kind && cli_arg_is(command->kind, "patch");
+  if (is_patch_command) command->kind = "patch";
+  command->graph_patch_command = is_patch_command;
   command->graph_reconcile_command = is_graph_command && command->kind && cli_arg_is(command->kind, "reconcile");
   bool graph_merge_command = is_graph_command && command->kind && cli_arg_is(command->kind, "merge");
   bool graph_run_command = is_graph_command && command->kind && strcmp(command->kind, "run") == 0;
@@ -4327,6 +4338,7 @@ static bool parse_command(int argc, char **argv, Command *command) {
          strcmp(command->command, "version") == 0 ||
          strcmp(command->command, "skills") == 0 ||
          strcmp(command->command, "check") == 0 ||
+         strcmp(command->command, "patch") == 0 ||
          strcmp(command->command, "test") == 0 ||
          strcmp(command->command, "fmt") == 0 ||
          strcmp(command->command, "build") == 0 ||
@@ -4378,6 +4390,17 @@ static bool is_existing_directory_path(const char *path) {
 
 static bool path_has_program_graph_storage_header(const char *path) {
   static const char header[] = "zero-graph v";
+  if (!path || !path[0]) return false;
+  FILE *file = fopen(path, "rb");
+  if (!file) return false;
+  char bytes[sizeof(header) - 1];
+  size_t read = fread(bytes, 1, sizeof(bytes), file);
+  fclose(file);
+  return read == sizeof(bytes) && memcmp(bytes, header, sizeof(bytes)) == 0;
+}
+
+static bool path_has_program_graph_patch_header(const char *path) {
+  static const char header[] = "zero-program-graph-patch v1";
   if (!path || !path[0]) return false;
   FILE *file = fopen(path, "rb");
   if (!file) return false;
@@ -7435,7 +7458,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
       zbuf_init(&sync_command);
       zbuf_append(&patch_command, "cd ");
       zbuf_append(&patch_command, command->input);
-      zbuf_append(&patch_command, " && zero graph patch --op 'addMain'");
+      zbuf_append(&patch_command, " && zero patch --op 'addMain'");
       zbuf_append(&sync_command, "cd ");
       zbuf_append(&sync_command, command->input);
       zbuf_append(&sync_command, " && zero graph sync --from-graph .");
@@ -7460,7 +7483,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
       printf("graph project init ok\n");
       printf("wrote: %s/zero.json\n", command->input);
       printf("wrote: %s/zero.graph\n", command->input);
-      printf("next: cd %s && zero graph patch --op 'addMain'\n", command->input);
+      printf("next: cd %s && zero patch --op 'addMain'\n", command->input);
     }
     free(store_path);
   }
@@ -12354,7 +12377,7 @@ static bool validate_graph_patch_sources(const Command *command, bool *has_file,
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "graph patch requires patch operations");
-    snprintf(diag->expected, sizeof(diag->expected), "zero graph patch <program-graph-or-source> (<patch-file>|--op <operation>|--patch-text <text>)");
+    snprintf(diag->expected, sizeof(diag->expected), "zero patch <program-graph-or-source> (<patch-file>|--op <operation>|--patch-text <text>)");
     snprintf(diag->actual, sizeof(diag->actual), "missing patch input");
     snprintf(diag->help, sizeof(diag->help), "pass a zero-program-graph-patch v1 file or one or more --op lines");
     return false;
@@ -12391,7 +12414,7 @@ static bool graph_patch_help_requested(const Command *command) {
 static void print_graph_patch_help_json(void) {
   ZBuf json;
   zbuf_init(&json);
-  zbuf_append(&json, "{\"schemaVersion\":1,\"ok\":true,\"command\":\"zero graph patch\",\"operations\":[");
+  zbuf_append(&json, "{\"schemaVersion\":1,\"ok\":true,\"command\":\"zero patch\",\"operations\":[");
   const char *const *ops = z_program_graph_patch_operation_examples();
   for (size_t i = 0; ops[i]; i++) {
     if (i > 0) zbuf_append(&json, ",");
@@ -12404,7 +12427,7 @@ static void print_graph_patch_help_json(void) {
 
 static void print_graph_patch_help_text(void) {
   printf("program graph patch operations\n");
-  printf("accepted by --op, --patch-text, and zero-program-graph-patch v1 files\n");
+  printf("accepted by zero patch --op, --patch-text, and zero-program-graph-patch v1 files\n");
   const char *const *ops = z_program_graph_patch_operation_examples();
   for (size_t i = 0; ops[i]; i++) printf("  %s\n", ops[i]);
   printf("\nFor larger graph edits, put these lines in a patch file under /tmp or pass --patch-text.\n");
@@ -12422,7 +12445,7 @@ static bool save_graph_patch_output(const Command *command, const ZTargetInfo *t
       diag->column = 1;
       diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "source-backed graph patch writes the input .0 file");
-      snprintf(diag->expected, sizeof(diag->expected), "zero graph patch <file.0> (<patch-file>|--op <operation>)");
+      snprintf(diag->expected, sizeof(diag->expected), "zero patch <file.0> (<patch-file>|--op <operation>)");
       snprintf(diag->actual, sizeof(diag->actual), "%s", command->out);
       snprintf(diag->help, sizeof(diag->help), "omit --out when patching canonical source");
       return false;
@@ -12440,7 +12463,7 @@ static bool save_graph_patch_output(const Command *command, const ZTargetInfo *t
       diag->column = 1;
       diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "repository graph patch writes the input zero.graph store");
-      snprintf(diag->expected, sizeof(diag->expected), "zero graph patch <package|zero.json> (<patch-file>|--op <operation>)");
+      snprintf(diag->expected, sizeof(diag->expected), "zero patch <package|zero.json> (<patch-file>|--op <operation>)");
       snprintf(diag->actual, sizeof(diag->actual), "%s", command->out);
       snprintf(diag->help, sizeof(diag->help), "omit --out when patching a repository graph compiler input");
       return false;
@@ -12460,7 +12483,7 @@ static bool save_graph_patch_output(const Command *command, const ZTargetInfo *t
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "program graph output must not use source text extension");
-    snprintf(diag->expected, sizeof(diag->expected), "zero graph patch --out <program-graph-artifact> <program-graph-artifact> (<patch-file>|--op <operation>)");
+    snprintf(diag->expected, sizeof(diag->expected), "zero patch --out <program-graph-artifact> <program-graph-artifact> (<patch-file>|--op <operation>)");
     snprintf(diag->actual, sizeof(diag->actual), "%s", command->out);
     snprintf(diag->help, sizeof(diag->help), ".0 files are canonical source text; write derived ProgramGraph artifacts to a non-source path");
     return false;
@@ -12617,7 +12640,7 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
     fputs(json.data, stdout);
     zbuf_free(&json);
   } else if (ok) {
-    printf("program graph check ok\n");
+    printf("ok\n");
   } else {
     print_diag(diag->path ? diag->path : command->input, diag);
   }
@@ -12685,7 +12708,7 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
     snprintf(diag->message, sizeof(diag->message), "failed to prepare checked ProgramGraph input for size report");
     snprintf(diag->expected, sizeof(diag->expected), "checked ProgramGraph compiler input");
     snprintf(diag->actual, sizeof(diag->actual), "graph import failed");
-    snprintf(diag->help, sizeof(diag->help), "run zero graph check to inspect the graph artifact");
+    snprintf(diag->help, sizeof(diag->help), "run zero check to inspect the graph artifact");
     if (command && command->json) print_diag_json(diag->path ? diag->path : command->input, diag); else print_diag(diag->path ? diag->path : (command ? command->input : NULL), diag);
     z_free_program(&program);
     z_free_source(&input);
@@ -12934,6 +12957,43 @@ static int run_repository_graph_check_command(Command *command, const ZTargetInf
   return ok ? 0 : 1;
 }
 
+static int run_graph_subcommand_dispatch(Command *command, const ZTargetInfo *target, bool graph_command_artifact_input, ZDiag *diag, bool *handled) {
+  if (handled) *handled = false;
+  if (!command || !graph_check_text_eq(command->command, "graph") || !command->kind) return 0;
+  if (handled) *handled = true;
+  if (graph_check_text_eq(command->kind, "init")) return run_graph_init_command(command, diag);
+  bool repo_graph_command = false;
+  SourceInput repo_graph_input = {0}; Program repo_graph_program = {0}; ZProgramGraph repo_source_graph = {0};
+  bool repo_wants_source_graph = z_repository_graph_needs_source_graph(command->kind, command->input, target, command->graph_sync_from_graph, command->graph_sync_from_source);
+  ZDiag repo_source_graph_diag = {0};
+  bool repo_has_source_graph = false;
+  if (repo_wants_source_graph) {
+    repo_has_source_graph = repository_graph_command_loads_checked_source(command)
+      ? load_graph_from_checked_current_source(command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &repo_source_graph_diag)
+      : load_graph_from_current_source(command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &repo_source_graph_diag);
+  }
+  if (repo_wants_source_graph && !repo_has_source_graph && !z_repository_graph_source_graph_optional(command->kind, command->graph_sync_from_graph, command->graph_sync_from_source)) {
+    if (command->json) print_command_diag_json(command, repo_source_graph_diag.path ? repo_source_graph_diag.path : command->input, &repo_source_graph_diag); else print_diag(repo_source_graph_diag.path ? repo_source_graph_diag.path : command->input, &repo_source_graph_diag);
+    z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
+    return 1;
+  }
+  RepositoryGraphSourceGraphLoader repo_graph_loader = {.command = command, .target = target};
+  int repo_graph_rc = z_repository_graph_maybe_command(command->kind, command->input, target, command->json, command->graph_sync_from_graph, command->graph_sync_from_source, command->merge_base, command->merge_left, command->merge_right, repo_has_source_graph ? &repo_source_graph : NULL, repo_wants_source_graph && !repo_has_source_graph ? &repo_source_graph_diag : NULL, command->graph_sync_from_graph ? load_repository_graph_checked_source_graph : NULL, &repo_graph_loader, &repo_graph_command);
+  z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
+  if (repo_graph_command) return repo_graph_rc;
+  if (graph_check_text_eq(command->kind, "validate")) return run_graph_validate_command(command, diag);
+  if (graph_check_text_eq(command->kind, "dump")) return run_graph_dump_input_command(command, target, diag, false);
+  if (graph_check_text_eq(command->kind, "import")) return run_graph_dump_input_command(command, target, diag, true);
+  if (graph_check_text_eq(command->kind, "view")) return run_graph_view_command(command, diag);
+  if (graph_check_text_eq(command->kind, "query")) return run_graph_query_command(command, target, diag);
+  if (graph_check_text_eq(command->kind, "source-map")) return run_graph_source_map_command(command, target, diag);
+  if (graph_check_text_eq(command->kind, "reconcile")) return run_graph_reconcile_command(command, target, diag);
+  if (graph_check_text_eq(command->kind, "size")) return run_graph_size_command(command, target, diag);
+  if (graph_check_text_eq(command->kind, "roundtrip") && graph_command_artifact_input) return run_graph_artifact_roundtrip_command(command, diag);
+  if (handled) *handled = false;
+  return 0;
+}
+
 static int run_graph_roundtrip_command(const Command *command, SourceInput *input, Program *program, ZDiag *diag) {
   ZProgramGraph original = {0};
   ZProgramGraph roundtrip = {0};
@@ -13156,6 +13216,23 @@ static int run_llvm_native_artifact_command(const Command *command, SourceInput 
   return 0;
 }
 
+static int reject_retired_graph_subcommand(const Command *command) {
+  ZDiag diag = {0};
+  const char *subcommand = command && command->retired_graph_subcommand ? command->retired_graph_subcommand : "";
+  const bool patch_subcommand = graph_check_text_eq(subcommand, "patch");
+  diag.code = 2002;
+  diag.line = 1;
+  diag.column = 1;
+  diag.length = 1;
+  snprintf(diag.message, sizeof(diag.message), "zero graph %s is not supported", subcommand);
+  snprintf(diag.expected, sizeof(diag.expected), patch_subcommand ? "zero patch [<input>] (<patch-file>|--op <operation>)" : "zero check <input>");
+  snprintf(diag.actual, sizeof(diag.actual), "zero graph %s", subcommand);
+  snprintf(diag.help, sizeof(diag.help), patch_subcommand ? "run zero patch; graph is now the first-class patch surface" : "run zero check; graph inputs now check through the first-class check command");
+  if (command && command->json) print_command_diag_json(command, diag.actual, &diag);
+  else print_diag(diag.actual, &diag);
+  return 1;
+}
+
 int main(int argc, char **argv) {
   if (argc >= 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "help") == 0)) {
     print_help();
@@ -13169,6 +13246,9 @@ int main(int argc, char **argv) {
   if (command.kind && strcmp(command.kind, "help") == 0) {
     print_command_help(command.command);
     return 0;
+  }
+  if (command.retired_graph_subcommand) {
+    return reject_retired_graph_subcommand(&command);
   }
   if (command.unknown_flag) {
     fprintf(stderr, "unknown flag: %s\n", command.unknown_flag);
@@ -13214,11 +13294,17 @@ int main(int argc, char **argv) {
   if (strcmp(command.command, "skills") == 0) {
     return embedded_skills_command(argc, argv, command.json);
   }
-  if (!command.input &&
-      strcmp(command.command, "graph") == 0 &&
-      command.kind &&
-      strcmp(command.kind, "patch") == 0 &&
-      (command.patch_op_len > 0 || command.patch_text)) {
+  if (command.graph_patch_command &&
+      graph_check_text_eq(command.command, "patch") &&
+      command.input &&
+      !command.patch_file &&
+      command.patch_op_len == 0 &&
+      !command.patch_text &&
+      path_has_program_graph_patch_header(command.input)) {
+    command.patch_file = command.input;
+    command.input = ".";
+  }
+  if (!command.input && command.graph_patch_command && (command.patch_op_len > 0 || command.patch_text || command.patch_file)) {
     command.input = ".";
   }
   if (!command.input) {
@@ -13333,38 +13419,18 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  if (strcmp(command.command, "graph") == 0 && command.kind) {
-    if (strcmp(command.kind, "init") == 0) return run_graph_init_command(&command, &diag);
-    bool repo_graph_command = false;
-    SourceInput repo_graph_input = {0}; Program repo_graph_program = {0}; ZProgramGraph repo_source_graph = {0};
-    bool repo_wants_source_graph = z_repository_graph_needs_source_graph(command.kind, command.input, target, command.graph_sync_from_graph, command.graph_sync_from_source);
-    ZDiag repo_source_graph_diag = {0};
-    bool repo_has_source_graph = false;
-    if (repo_wants_source_graph) {
-      repo_has_source_graph = repository_graph_command_loads_checked_source(&command)
-        ? load_graph_from_checked_current_source(&command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &repo_source_graph_diag)
-        : load_graph_from_current_source(&command, target, &repo_graph_input, &repo_graph_program, &repo_source_graph, NULL, &repo_source_graph_diag);
-    }
-    if (repo_wants_source_graph && !repo_has_source_graph && !z_repository_graph_source_graph_optional(command.kind, command.graph_sync_from_graph, command.graph_sync_from_source)) {
-      if (command.json) print_command_diag_json(&command, repo_source_graph_diag.path ? repo_source_graph_diag.path : command.input, &repo_source_graph_diag); else print_diag(repo_source_graph_diag.path ? repo_source_graph_diag.path : command.input, &repo_source_graph_diag);
-      z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
+  bool graph_subcommand_handled = false;
+  int graph_subcommand_rc = run_graph_subcommand_dispatch(&command, target, graph_command_artifact_input, &diag, &graph_subcommand_handled);
+  if (graph_subcommand_handled) return graph_subcommand_rc;
+
+  if (graph_check_text_eq(command.command, "patch")) {
+    bool top_patch_artifact_input = false;
+    if (!resolve_graph_repository_store_input(&command, &top_patch_artifact_input, &diag)) {
+      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      else print_diag(diag.path ? diag.path : command.input, &diag);
       return 1;
     }
-    RepositoryGraphSourceGraphLoader repo_graph_loader = {.command = &command, .target = target};
-    int repo_graph_rc = z_repository_graph_maybe_command(command.kind, command.input, target, command.json, command.graph_sync_from_graph, command.graph_sync_from_source, command.merge_base, command.merge_left, command.merge_right, repo_has_source_graph ? &repo_source_graph : NULL, repo_wants_source_graph && !repo_has_source_graph ? &repo_source_graph_diag : NULL, command.graph_sync_from_graph ? load_repository_graph_checked_source_graph : NULL, &repo_graph_loader, &repo_graph_command);
-    z_program_graph_free(&repo_source_graph); z_free_program(&repo_graph_program); z_free_source(&repo_graph_input);
-    if (repo_graph_command) return repo_graph_rc;
-    if (strcmp(command.kind, "validate") == 0) return run_graph_validate_command(&command, &diag);
-    if (strcmp(command.kind, "dump") == 0) return run_graph_dump_input_command(&command, target, &diag, false);
-    if (strcmp(command.kind, "import") == 0) return run_graph_dump_input_command(&command, target, &diag, true);
-    if (strcmp(command.kind, "view") == 0) return run_graph_view_command(&command, &diag);
-    if (strcmp(command.kind, "query") == 0) return run_graph_query_command(&command, target, &diag);
-    if (strcmp(command.kind, "source-map") == 0) return run_graph_source_map_command(&command, target, &diag);
-    if (strcmp(command.kind, "reconcile") == 0) return run_graph_reconcile_command(&command, target, &diag);
-    if (strcmp(command.kind, "check") == 0) return run_graph_check_command(&command, target, &diag);
-    if (strcmp(command.kind, "size") == 0) return run_graph_size_command(&command, target, &diag);
-    if (strcmp(command.kind, "patch") == 0) return run_graph_patch_command(&command, target, &diag);
-    if (strcmp(command.kind, "roundtrip") == 0 && graph_command_artifact_input) return run_graph_artifact_roundtrip_command(&command, &diag);
+    return run_graph_patch_command(&command, target, &diag);
   }
 
   if (strcmp(command.command, "fmt") == 0) {
@@ -13495,6 +13561,14 @@ int main(int argc, char **argv) {
   bool direct_graph_manifest_command = false;
   int repository_graph_check_rc = run_repository_graph_check_command(&command, target, &direct_graph_manifest_command);
   if (repository_graph_check_rc != 0 || direct_graph_manifest_command) return repository_graph_check_rc;
+  if (graph_check_text_eq(command.command, "check") && path_has_program_graph_storage_header(command.input)) {
+    if (command.out) {
+      Command check_command = command;
+      check_command.kind = "check";
+      return reject_graph_unsupported_out(&check_command, &diag);
+    }
+    return run_graph_check_command(&command, target, &diag);
+  }
   int direct_graph_manifest_rc = resolve_direct_command_manifest_graph_input(&command, target, &direct_graph_manifest_command);
   if (direct_graph_manifest_rc != 0) return direct_graph_manifest_rc;
 

@@ -189,7 +189,7 @@ static void ir_mark_unsupported_at(IrProgram *ir, const char *message, const cha
   snprintf(ir->mir_message, sizeof(ir->mir_message), "%s", message ? message : "typed graph MIR lowering failed");
   snprintf(ir->mir_expected, sizeof(ir->mir_expected), "typed program graph MIR subset");
   snprintf(ir->mir_actual, sizeof(ir->mir_actual), "%s", actual ? actual : "unsupported graph construct");
-  snprintf(ir->mir_help, sizeof(ir->mir_help), "use graph check to inspect unsupported graph constructs or choose another supported target");
+  snprintf(ir->mir_help, sizeof(ir->mir_help), "use zero check to inspect unsupported graph constructs or choose another supported target");
   z_backend_blocker_set(&ir->backend_blocker, NULL, NULL, NULL, "lower", ir->mir_actual);
 }
 
@@ -216,7 +216,7 @@ static void ir_graph_init_lowering_diag(ZDiag *diag, SourceInput *input, const Z
   snprintf(diag->message, sizeof(diag->message), "%s", ir && ir->mir_message[0] ? ir->mir_message : "typed graph MIR lowering failed");
   snprintf(diag->expected, sizeof(diag->expected), "%s", ir && ir->mir_expected[0] ? ir->mir_expected : "typed program graph MIR subset");
   snprintf(diag->actual, sizeof(diag->actual), "%s", ir && ir->mir_actual[0] ? ir->mir_actual : "unsupported graph construct");
-  snprintf(diag->help, sizeof(diag->help), "%s", ir && ir->mir_help[0] ? ir->mir_help : "use graph check to inspect unsupported graph constructs or choose another supported target");
+  snprintf(diag->help, sizeof(diag->help), "%s", ir && ir->mir_help[0] ? ir->mir_help : "use zero check to inspect unsupported graph constructs or choose another supported target");
   const char *backend = z_backend_request_is_llvm(requested_backend, emit_kind) ? "llvm" : z_direct_backend_name_for_emit_kind(target, emit_kind ? emit_kind : "exe", z_backend_direct_request_name(requested_backend));
   z_backend_blocker_set(&diag->backend_blocker, target ? target->name : "", target ? target->object_format : "", backend, "lower", diag->actual);
 }
@@ -1396,7 +1396,7 @@ IrProgram z_lower_program_graph_with_source(const ZProgramGraph *graph, const So
   ir.mir_line = 1;
   ir.mir_column = 1;
   snprintf(ir.mir_expected, sizeof(ir.mir_expected), "typed program graph MIR subset");
-  snprintf(ir.mir_help, sizeof(ir.mir_help), "use graph check to inspect unsupported graph constructs or choose another supported target");
+  snprintf(ir.mir_help, sizeof(ir.mir_help), "use zero check to inspect unsupported graph constructs or choose another supported target");
   ir.mir_bytes = sizeof(IrProgram);
 
   size_t function_count = 0;

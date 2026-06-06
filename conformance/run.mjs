@@ -3637,7 +3637,7 @@ const programGraphView = (await execFileAsync(zero, ["graph", "view", programGra
 const programGraphViewAgain = (await execFileAsync(zero, ["graph", "view", programGraphDumpPath])).stdout;
 const programGraphViewJson = JSON.parse((await execFileAsync(zero, ["graph", "view", "--json", programGraphDumpPath])).stdout);
 const programGraphTypeInvalidView = (await execFileAsync(zero, ["graph", "view", "conformance/check/fail/unknown-name.0"])).stdout;
-const programGraphTypeInvalidCheckJson = await execFileAsync(zero, ["graph", "check", "--json", "conformance/check/fail/unknown-name.0"]).catch((error) => error);
+const programGraphTypeInvalidCheckJson = await execFileAsync(zero, ["check", "--json", "conformance/check/fail/unknown-name.0"]).catch((error) => error);
 const programGraphViewOut = await execFileAsync(zero, ["graph", "view", "--out", programGraphViewPath, programGraphDumpPath]);
 const programGraphViewFile = await readFile(programGraphViewPath, "utf8");
 const programGraphViewOutJson = JSON.parse((await execFileAsync(zero, ["graph", "view", "--json", "--out", programGraphViewPath, programGraphDumpPath])).stdout);
@@ -3665,7 +3665,6 @@ const programGraphSourceFreeVerifyAfter = JSON.parse((await execFileAsync(zero, 
 const programGraphAuthoringInit = JSON.parse((await execFileAsync(zero, ["graph", "init", "--json", programGraphAuthoringPackage])).stdout);
 const programGraphAuthoringProjectionExistsAfterInit = await fileExists(`${programGraphAuthoringPackage}/src/main.0`);
 const programGraphAuthoringPatch = JSON.parse((await execFileAsync(zero, [
-  "graph",
   "patch",
   "--json",
   "--op",
@@ -3701,7 +3700,6 @@ const programGraphAuthoringCheckAfterHumanEdit = JSON.parse((await execFileAsync
 const programGraphAuthoringRunAfterHumanEdit = await execFileAsync(zero, ["run", "--out", programGraphAuthoringRunAfterHumanEditPath, programGraphAuthoringPackage]);
 const programGraphBuilderOpsInit = JSON.parse((await execFileAsync(zero, ["graph", "init", "--json", programGraphBuilderOpsPackage])).stdout);
 const programGraphBuilderOpsPatch = JSON.parse((await execFileAsync(zero, [
-  "graph",
   "patch",
   "--json",
   "--op",
@@ -3736,7 +3734,6 @@ const programGraphBuilderOpsProjectionText = await readFile(`${programGraphBuild
 const programGraphAuthoringCliInit = JSON.parse((await execFileAsync(zero, ["graph", "init", "--json", programGraphAuthoringCliPackage])).stdout);
 const programGraphAuthoringCliProjectionExistsAfterInit = await fileExists(`${programGraphAuthoringCliPackage}/src/main.0`);
 const programGraphAuthoringCliPatch = JSON.parse((await execFileAsync(zero, [
-  "graph",
   "patch",
   "--json",
   "--op",
@@ -3744,7 +3741,6 @@ const programGraphAuthoringCliPatch = JSON.parse((await execFileAsync(zero, [
 ], { cwd: programGraphAuthoringCliPackage })).stdout);
 const programGraphAuthoringCliProjectionExistsAfterPatch = await fileExists(`${programGraphAuthoringCliPackage}/src/main.0`);
 const programGraphAuthoringCliStaleAddPatch = JSON.parse((await execFileAsync(zero, [
-  "graph",
   "patch",
   "--json",
   "--op",
@@ -3761,7 +3757,6 @@ const programGraphAuthoringCliStaleAddPatch = JSON.parse((await execFileAsync(ze
 const programGraphAuthoringCliFindAdd = JSON.parse((await execFileAsync(zero, ["graph", "query", "--json", "--find", "add", programGraphAuthoringCliPackage])).stdout);
 const programGraphAuthoringCliNodeAdd = JSON.parse((await execFileAsync(zero, ["graph", "query", "--json", "--node", "#fn_add", programGraphAuthoringCliPackage])).stdout);
 const programGraphAuthoringCliCleanupPatch = JSON.parse((await execFileAsync(zero, [
-  "graph",
   "patch",
   "--json",
   "--op",
@@ -3943,7 +3938,7 @@ for (const [name, fixture, patterns] of programGraphViewCoverage) {
   assert.doesNotMatch(view, /fn __zero_test_/);
   if (name === "systems-package") {
     assert.doesNotMatch(view, /^use (helpers|types)$/m);
-    assert.equal((await execFileAsync(zero, ["graph", "check", viewPath])).stdout, "program graph check ok\n");
+    assert.equal((await execFileAsync(zero, ["check", viewPath])).stdout, "ok\n");
   }
   if (name === "std-math") assert.doesNotMatch(view, /fn __zero_std_/);
 }
@@ -4718,7 +4713,7 @@ assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero
 assert(!externCallImport.typedModel.functions.some((item) => item.name === "zero_ext_disabled"));
 const externCallGraphArtifact = `${externCallRoot}/extern-call.program-graph`;
 await execFileAsync(zero, ["graph", "dump", "--out", externCallGraphArtifact, externCallRoot]);
-const externCallGraphCheck = await execFileAsync(zero, ["graph", "check", "--json", externCallGraphArtifact]);
+const externCallGraphCheck = await execFileAsync(zero, ["check", "--json", externCallGraphArtifact]);
 assert.equal(JSON.parse(externCallGraphCheck.stdout).ok, true);
 const externCallGraphSizeArtifact = `${externCallRoot}/extern-call-size-metadata.json`;
 const externCallGraphSize = await execFileAsync(zero, ["graph", "size", "--json", "--out", externCallGraphSizeArtifact, externCallGraphArtifact]);

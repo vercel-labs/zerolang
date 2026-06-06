@@ -36,7 +36,7 @@ understand the package boundary.
 ```sh
 zero graph init <package>
 cd <package>
-zero graph patch --op 'addMain'
+zero patch --op 'addMain'
 zero graph query .
 zero check .
 ```
@@ -51,7 +51,7 @@ zero graph query --calls std <file-or-package>
 zero graph query --refs add <file-or-package>
 zero graph query --node '#expr_2cad38f9' <file-or-package>
 zero graph view <file-or-package>
-zero graph check <file-or-package>
+zero check <file-or-package>
 zero graph status <file-or-package>
 ```
 
@@ -78,8 +78,7 @@ zero graph query --node '#fn_main' <file-or-package>
 normal compiler commands:
 
 ```sh
-zero graph patch --op 'addCheckWrite fn="main" text="hello\n"'
-zero graph check .
+zero patch --op 'addCheckWrite fn="main" text="hello\n"'
 zero check .
 zero test .
 ```
@@ -88,7 +87,7 @@ For multi-statement functions, compose graph builder operations instead of
 writing `.0` source by hand:
 
 ```sh
-zero graph patch \
+zero patch \
   --op 'addLetLiteral fn="main" name="message" type="String" value="hello\n"' \
   --op 'addCheckWriteValue fn="main" value="message" type="String"'
 zero check .
@@ -98,14 +97,14 @@ For a small argument-parsing CLI that adds two numbers, use the structured graph
 operation instead of hand-authoring node tables:
 
 ```sh
-zero graph patch --op 'setMainArgsAddCli fn="add_u32"'
+zero patch --op 'setMainArgsAddCli fn="add_u32"'
 zero run . -- 40 2
 ```
 
 For a simple greeting CLI, use the graph builder:
 
 ```sh
-zero graph patch --op 'setMainGreetingCli prefix="hello " fallback="anonymous"'
+zero patch --op 'setMainGreetingCli prefix="hello " fallback="anonymous"'
 zero run . -- Ada
 ```
 
@@ -128,18 +127,18 @@ end
 Preview repository graph patches without writing:
 
 ```sh
-zero graph patch --check-only <package> /tmp/body.patch
+zero patch --check-only <package> /tmp/body.patch
 ```
 
 When you need patch operation shapes, ask the compiler without loading or
 writing a graph:
 
 ```sh
-zero graph patch --op help
+zero patch --op help
 ```
 
 If the user asks you to read or write through the graph, do not hand-edit `.0`
-source or create temporary `.0` programs as a fallback. Use `zero graph patch`
+source or create temporary `.0` programs as a fallback. Use `zero patch`
 with `--op`, `--patch-text`, or a `zero-program-graph-patch v1` file under
 `/tmp`. If the graph surface cannot express the change, say which graph
 operation is missing instead of silently switching to source text.
@@ -210,7 +209,6 @@ zero check <input>
 zero graph <input>
 zero graph query <input>
 zero graph view <input>
-zero graph check <input>
 zero graph status <input>
 zero test <input>
 zero size <input>

@@ -39,7 +39,7 @@ package can be created with:
 ```sh
 zero graph init app
 cd app
-zero graph patch --op 'addMain'
+zero patch --op 'addMain'
 zero check .
 ```
 

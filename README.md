@@ -2,15 +2,15 @@
 
 zerolang is an experimental graph-first programming language where agents work with semantic program structure instead of raw source text.
 
-Source code is still the source of truth. The graph is the compiler-derived interface agents use to inspect and change programs with less guessing.
+For graph-first packages, `zero.graph` is the repository graph store and normal compiler input. `.0` files are human-readable projections: reviewable and bidirectional for humans, but not the normal agent authoring surface.
 
 The current model:
 
-- Human-readable `.0` source stays reviewable, auditable, and durable.
-- The compiler derives a checked ProgramGraph from source.
+- Human-readable `.0` projections stay reviewable, auditable, and durable.
+- `zero.graph` is the checked repository graph store for opted-in packages.
 - Agents inspect graph facts such as node IDs, graph hashes, types, effects, ownership facts, capabilities, helper use, and module edges.
-- Agents can submit checked graph edits instead of only patching text ranges.
-- Where source rewriting is supported, the compiler validates the edit before writing source.
+- Agents submit checked graph edits instead of patching source text ranges.
+- Humans can edit `.0` when needed, then sync the reviewed projection back to the graph.
 
 Design goals:
 
@@ -29,13 +29,13 @@ Design goals:
 
 Agents can edit source text, but source text is a lossy interface for program understanding. A text patch has to guess which references are related, whether a range is stale, whether a call resolves to the intended function, and whether an edit preserved ownership, fallibility, effects, imports, and target constraints.
 
-The ProgramGraph is zerolang's compiler-owned structure for that work. It is meant to give agents a map they can navigate in slices: start from a symbol, diagnostic, call, capability, module, or node ID, then ask for the surrounding semantic facts instead of loading unrelated source. That keeps context gathering focused while leaving source code as the durable artifact humans review.
+The ProgramGraph is zerolang's compiler-owned structure for that work. It is meant to give agents a map they can navigate in slices: start from a symbol, diagnostic, call, capability, module, or node ID, then ask for the surrounding semantic facts instead of loading unrelated source. That keeps context gathering focused while leaving `.0` projections as the durable artifact humans review.
 
 The edit loop is also different. A graph edit can target `node #expr_653eeb6e` instead of a line range, require the inspected `graphHash`, require an expected field value, and let the compiler validate, lower, write, format, reparse, and check the result as one path. Refactors can be expressed as semantic operations such as renaming a function node or replacing a resolved callee, rather than search-and-replace over text followed by separate cleanup commands.
 
 ## Source Text
 
-`.0` source is intentionally regular. The goal is source that behaves like durable data: easy to index, compare, format, audit, and regenerate, while still reading like normal code.
+`.0` source is intentionally regular. In graph-first packages it is a human-readable projection that behaves like durable data: easy to index, compare, format, audit, regenerate, and sync back to the graph after a human edit.
 
 A small program shows typed signatures, infix expressions, fallibility, and explicit capability passing:
 
@@ -51,7 +51,7 @@ pub fn main(world: World) -> Void raises {
 }
 ```
 
-Source code remains the stored representation. ProgramGraph artifacts are derived inspection and interchange data, not the primary project files.
+For graph-first packages, `zero.graph` is the stored compiler input. ProgramGraph artifacts are optional derived inspection and interchange data, not primary project files.
 
 ## ProgramGraph
 
@@ -81,10 +81,10 @@ The graph gives agents explicit handles such as node IDs, graph hashes, resolved
 
 ## Checked Graph Edits
 
-For supported canonical `.0` source, `zero graph patch` applies checked edits to the graph and rewrites source only after validation. The command is intended to collapse the normal agent loop of edit, format, reparse, check, and fix into a compiler-mediated operation:
+For graph-first packages and supported canonical `.0` inputs, `zero patch` applies checked edits to the graph and rewrites the target only after validation. The command is intended to collapse the normal agent loop of edit, format, reparse, check, and fix into a compiler-mediated operation:
 
 ```bash
-zero graph patch examples/hello.0 \
+zero patch examples/hello.0 \
   --expect-graph-hash graph:a7f7e6899a73f3b4 \
   --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\n" value="hello graph\n"'
 ```
@@ -140,7 +140,7 @@ The inspection and repair surfaces are compiler commands, not editor-only featur
 | `zero parse --json` | A stable parse summary with declarations, function signatures, and body node kinds. |
 | `zero graph --json` | Modules, imports, public symbols, capabilities, effects, ownership facts, safety facts, helper use, and interface fingerprints. |
 | `zero graph dump` | Deterministic ProgramGraph text with graph hashes, node IDs, nodes, and edges. |
-| `zero graph patch` | Checked graph edits with graph-hash and field-value preconditions. |
+| `zero patch` | Checked graph edits with graph-hash and field-value preconditions. |
 | `zero fix --plan --json` | Typed repair plans that describe proposed fixes without editing files. |
 | `zero size --json` | Retained helpers, size reasons, profile policy, safety facts, backend facts, and artifact budget data. |
 

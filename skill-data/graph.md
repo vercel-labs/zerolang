@@ -32,7 +32,7 @@ Create a graph-first package without writing `.0` source:
 ```sh
 zero graph init app
 cd app
-zero graph patch --op 'addMain'
+zero patch --op 'addMain'
 zero graph query .
 zero check .
 zero run .
@@ -42,7 +42,7 @@ zero graph sync --from-graph .
 Build useful program shape through graph operations:
 
 ```sh
-zero graph patch \
+zero patch \
   --op 'addFunction name="add" ret="i32"' \
   --op 'addParam fn="add" name="left" type="i32"' \
   --op 'addParam fn="add" name="right" type="i32"' \
@@ -55,7 +55,7 @@ For multi-statement functions, use builder operations instead of hand-authoring
 node tables:
 
 ```sh
-zero graph patch \
+zero patch \
   --op 'addFunction name="add_twice" ret="u32"' \
   --op 'addParam fn="add_twice" name="x" type="u32"' \
   --op 'addParam fn="add_twice" name="y" type="u32"' \
@@ -68,7 +68,7 @@ zero check .
 For output from a local value:
 
 ```sh
-zero graph patch \
+zero patch \
   --op 'addLetLiteral fn="main" name="message" type="String" value="hello\n"' \
   --op 'addCheckWriteValue fn="main" value="message" type="String"'
 ```
@@ -77,14 +77,14 @@ Create a simple CLI that parses two `u32` command-line arguments, adds them,
 and writes the result:
 
 ```sh
-zero graph patch --op 'setMainArgsAddCli fn="add_u32"'
+zero patch --op 'setMainArgsAddCli fn="add_u32"'
 zero run . -- 40 2
 ```
 
 Create a simple greeting CLI without writing source:
 
 ```sh
-zero graph patch --op 'setMainGreetingCli prefix="hello " fallback="anonymous"'
+zero patch --op 'setMainGreetingCli prefix="hello " fallback="anonymous"'
 zero run . -- Ada
 ```
 
@@ -108,8 +108,8 @@ end
 Preview repository graph patches without writing:
 
 ```sh
-zero graph patch --check-only <package> /tmp/body.patch
-zero graph patch --dry-run --json <package> /tmp/body.patch
+zero patch --check-only <package> /tmp/body.patch
+zero patch --dry-run --json <package> /tmp/body.patch
 ```
 
 Inspect an existing package through the graph interface:
@@ -122,7 +122,7 @@ zero graph query --calls std <file-or-package>
 zero graph query --refs add <file-or-package>
 zero graph query --node '#expr_2cad38f9' <file-or-package>
 zero graph view <file-or-package>
-zero graph check <file-or-package>
+zero check <file-or-package>
 zero graph status <file-or-package>
 ```
 
@@ -147,7 +147,7 @@ zero graph query --refs add <file-or-package>
 zero graph query --node '#fn_main' <file-or-package>
 zero graph source-map <file-or-package>
 zero graph inspect <file-or-package>
-zero graph patch <package> --op 'addMain'
+zero patch <package> --op 'addMain'
 ```
 
 Create a derived graph artifact only when you need to carry a graph between
@@ -161,7 +161,7 @@ Inspect it with normal readable output:
 
 ```sh
 zero graph view .zero/agent/app.program-graph
-zero graph check .zero/agent/app.program-graph
+zero check .zero/agent/app.program-graph
 zero graph roundtrip .zero/agent/app.program-graph
 ```
 
@@ -190,7 +190,7 @@ store, applying operations, validating graph readiness, and rechecking compiler
 input:
 
 ```sh
-zero graph patch \
+zero patch \
   --op 'addMain' \
   --op 'addCheckWrite fn="main" text="hello from graph\n"'
 zero check .
@@ -200,14 +200,14 @@ zero run .
 For common CLI scaffolding, prefer the structured operation:
 
 ```sh
-zero graph patch --op 'setMainArgsAddCli fn="add_u32"'
+zero patch --op 'setMainArgsAddCli fn="add_u32"'
 zero run . -- 40 2
 ```
 
 List supported patch operation shapes without loading or writing a graph:
 
 ```sh
-zero graph patch --op help
+zero patch --op help
 ```
 
 Supported graph patch operations:
@@ -249,7 +249,7 @@ usually right for singular edges like `expr`, `left`, and `declaredType`.
 For precise existing-node edits, use graph hashes and node facts:
 
 ```sh
-zero graph patch \
+zero patch \
   <package> \
   --expect-graph-hash graph:a7f7e6899a73f3b4 \
   --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\n" value="hello agent\n"'
@@ -277,7 +277,6 @@ are carrying a patch across tool calls.
 After a graph-first patch, validate with the normal compiler commands:
 
 ```sh
-zero graph check <package>
 zero check <package>
 zero test <package>
 ```
@@ -325,7 +324,7 @@ change to a package graph store or source projection:
 
 ```sh
 zero graph validate .zero/agent/app.patched.program-graph
-zero graph check .zero/agent/app.patched.program-graph
+zero check .zero/agent/app.patched.program-graph
 zero graph view .zero/agent/app.patched.program-graph
 ```
 
@@ -340,8 +339,8 @@ artifact when another tool needs a file transfer:
 ```sh
 zero graph query <package-dir>
 zero graph view <package-dir>
-zero graph check <package-dir>
-zero graph patch <package-dir> --op 'addMain'
+zero check <package-dir>
+zero patch <package-dir> --op 'addMain'
 ```
 
 If `zero.json` sets `repositoryGraph.compilerInput` to `true`, those commands
