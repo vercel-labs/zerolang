@@ -143,10 +143,29 @@ static const char *graph_expr_value(const Expr *expr) {
   return NULL;
 }
 
+static bool graph_text_ends_with(const char *text, const char *suffix) {
+  size_t text_len = text ? strlen(text) : 0;
+  size_t suffix_len = suffix ? strlen(suffix) : 0;
+  return suffix_len <= text_len && strcmp(text + text_len - suffix_len, suffix) == 0;
+}
+
+static const char *graph_number_literal_type(const char *text) {
+  const char *types[] = {"usize", "isize", "u64", "i64", "u32", "i32", "u16", "i16", "u8", "i8", "f64", "f32", NULL};
+  for (size_t i = 0; types[i]; i++) {
+    if (graph_text_ends_with(text, types[i])) return types[i];
+  }
+  for (const char *cursor = text ? text : ""; *cursor; cursor++) {
+    if (*cursor == '.' || *cursor == 'e' || *cursor == 'E') return "f64";
+  }
+  return "i32";
+}
+
 static const char *graph_expr_type(const Expr *expr) {
   if (!expr) return NULL;
   if (expr->resolved_type && expr->resolved_type[0]) return expr->resolved_type;
   if (expr->kind == EXPR_STRING) return "String";
+  if (expr->kind == EXPR_BOOL) return "Bool";
+  if (expr->kind == EXPR_NUMBER) return graph_number_literal_type(expr->text);
   return expr->kind == EXPR_CHAR ? "char" : NULL;
 }
 

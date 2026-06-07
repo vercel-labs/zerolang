@@ -124,7 +124,9 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `BOR002`: reference-origin escapes, including references returned from calls or stored through mutable parameter storage
 - `OWN001`: owned value use after move, or generic containers that would own unconstrained generic payloads
 - `TYP010`: conditions must be `Bool`
+- `TYP001`: call argument type does not match the callee parameter annotation
 - `TYP002`: type mismatch in assignments, literals, returns, or type defaults
+- `TYP003`: return expression type does not match the function return annotation
 - `TYP011`: `null` requires a `Maybe<T>` context
 - `TYP012`: `break` requires an enclosing loop
 - `TYP013`: `continue` requires an enclosing loop
@@ -159,7 +161,9 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `FLD001`: a type literal includes an unknown field
 - `FLD002`: a type literal omitted a required field that has no default
 - `MEM002`: a `Maybe<T>.value` payload read requires a visible `.has` guard, `check`, or `rescue`
-- `TAR001`: the requested target name is not in `zero targets`
+- `TAR001`: the requested target name is not in `zero targets`; JSON command
+  failures require `zero targets --json` before retrying with a
+  `<supported-target>` value, preserving repair modes and graph patch inputs
 - `TAR002`: the selected target does not provide a capability required by the program
 - Bounds check failures: native executables print `zero bounds check failed` and
   abort when an index, indexed assignment, or slice range is outside the base
@@ -206,6 +210,13 @@ var dst: [4]u8 = [0, 0, 0, 0]
 let src: [4]u8 = [122, 101, 114, 111]
 let _copied: usize = std.mem.copy(dst, src)
 ```
+
+If the destination is repaired but the receiving binding still uses the wrong
+annotation, `zero check --json` reports `TYP002` with repair id
+`match-binding-annotation`. For simple binding annotation mismatches,
+`zero fix --apply --json` can change the annotation to the initializer's
+reported `actual` type, after which the agent should rerun check before graph
+edits.
 
 Named-error `std.fs` calls require explicit error flow:
 
@@ -397,6 +408,134 @@ Related static-value diagnostics:
 - `zero explain <code>`: human explanation for a diagnostic code
 - `zero explain <code> --json`: machine-readable explanation
 - `zero fix --plan --json <input>`: proposed typed fixes without editing files
+- `zero fix --patch --json <input>`: compiler-generated patch lines for supported repairs
+- `zero fix --apply --json <input>`: apply supported behavior-preserving repairs
+
+Successful `zero check --json` reports include `agentCommand`, a replayable
+command contract with canonical `command.argv`, committed `auditFields`,
+`diagnosticFields`, and verification commands. Agents should use that contract
+when replaying checks instead of reconstructing omitted defaults such as target
+or profile flags. Its verification command includes `purpose: "source-check"`
+and `required: true`.
+Failing `zero check --json` diagnostics include `repair.agentRepair`, a
+structured entrypoint into the repair transaction surface. Its required
+`repair-plan` command is the safe default, and optional `repair-patch` /
+`repair-apply` commands are explicit review and write paths into the same
+`agentTransaction` contract. Each command carries `purpose`, `required`, and
+`argv`, preserving target/profile flags so agents do not have to reconstruct
+`zero fix` invocations from prose.
+
+`zero fix --plan --json`, `zero fix --patch --json`, and `zero fix --apply --json`
+include `agentTransaction`, a stable transaction outline for agents. It records
+the repair id, diagnostic code, transaction phases, graph-patch preconditions,
+checked edit surface, failure class, rollback metadata, and verification
+commands. Treat this object as the compiler-owned repair contract: inspect the
+diagnostic, plan the edit, apply a checked source or graph patch, then rerun the
+listed verification commands. `resultFields` and `failureClasses` describe the
+stable machine fields and rejected-transaction classes an agent should depend on.
+For source repairs, `resultFields` includes the input path, executed
+`command.argv`, diagnostic code, repair id, rollback fields, verification
+commands, `verificationCommands[].purpose`,
+`verificationCommands[].required`, and failure class, phase, retryable state,
+retry commands, `failure.retryCommands[].purpose`,
+`failure.retryCommands[].required`, and applied state.
+`writePolicy` is `preview-only` for `--plan` and `--patch`, and `writes-source`
+for `--apply`.
+Source repair transactions list both
+`zero check --json` and `zero graph check --json` so agents can verify type
+correctness and ProgramGraph consistency before continuing. Each verification
+command includes `purpose`, `required`, and `argv`; execute every required
+command and record whether the proof is a source check or graph check. If
+`agentTransaction.ok` is false, use the
+structured `failure.retryCommands` and `failure.retryStrategy` instead of
+guessing from terminal text. Check `failure.retryable` and
+`failureClasses[].retryable` before retrying automatically. `failure.phase`
+identifies whether the rejected
+source repair failed during inspect, patch, or rewrite. A `source-unavailable`
+transaction reports `zero check --json <input>` as its inspect retry. A `write-failed`
+transaction reports `zero fix --apply --json <input>` as its retry command after
+the agent checks file permissions or the output path.
+Retry command objects include `purpose`, `required`, and `argv`; use
+`source-check`, `repair-plan`, `graph-inspect`, or `repair-apply` to route the
+next step without parsing the command string.
+If a compiler source repair would be a no-op or the diagnostic span no longer
+matches a supported single-line replacement, the transaction is rejected as
+`edit-not-found` and reports `zero check --json <input>` for replanning.
+`agentTransaction.phaseAudit` records whether inspect and plan completed, whether
+a source patch is ready, whether source patch preconditions validated, whether
+rewrite was applied, and whether verification commands were scheduled.
+Every `zero check --json` and `zero fix --plan/--patch/--apply --json`
+diagnostic includes `graphLookup`. That object gives graph inspection commands,
+the diagnostic span, and the ProgramGraph node fields (`path`, `line`, `column`)
+an agent should match before reading broader source. Use it to map
+diagnostic-driven work back to a semantic node neighborhood. Lookup commands
+include `purpose`, `required`, and `argv`; use `graph-inspect` for semantic
+facts and `graph-check` for verification without parsing command strings.
+If a graph inspection command still fails because the program has a type error,
+its JSON response can include `agentRecovery` and `recoverableProgramGraph`.
+Treat that graph as parse-level context for lookup and repair planning only, then
+rerun the listed verification commands after applying a checked edit. Recovery
+verification commands carry `purpose`, `required`, and `argv` fields.
+For source repairs, `agentTransaction.patchContract` describes the `patches`
+array as single-line replacements with required `path`, `line`, `old`, and `new`
+fields. Agents should treat `old` as a precondition and refuse to apply a patch
+when the current line or diagnostic span no longer matches. `rollback.restoreFields`
+points at the `patches[].path`, `patches[].line`, and `patches[].old` fields an
+agent can use for a reviewed source rollback.
+Each item in `fixes[]` also includes `repairContract`, which records the
+required diagnostic inputs, whether the compiler can generate an automatic
+source patch for that repair id, the patch source, preconditions, and the
+verification command shape. This lets an agent decide whether to request
+`--patch`, fall back to `zero graph patch`, or require human review without
+parsing prose. `repairContract.verification[]` uses the same `purpose`,
+`required`, and `argv` shape as transaction verification commands.
+Supported repairs can also include `fixes[].graphPatchCandidates[]`. These are
+compiler-generated checked edit candidates with a graph hash, target node,
+expected value, patch text, preconditions, evidence, and
+`zero graph patch --json` command shape. `evidence` records the diagnostic span,
+semantic target node, and typed values used to prove the candidate. Agents
+should inspect this object before applying the patch, then use the operation
+result fields and verification commands for the audit trail. Candidate
+verification commands also include `purpose`, `required`, and `argv`. This lets an agent
+move from a diagnostic directly into a checked graph transaction without
+inventing a line patch.
+Each candidate includes `candidateContract`, which declares the patch kind, the
+structured command field, the `patch.text` field that must be written to a patch
+file, state fields such as `patch.graphHash`, audit fields, and the graph patch
+transaction result contract to expect after submission.
+If the source or graph changes after planning, submit the candidate anyway only
+through `zero graph patch --json`; stale graph hashes are rejected as structured
+transactions with `agentTransaction.failure.retryCommands` for reinspection.
+The repair planner emits these candidates for supported mutability, parameter
+annotation, binding annotation, field default annotation, return annotation, and
+narrowly proven missing-symbol repairs. For `TYP001`, a direct call argument
+mismatch may produce `changeParamType` when the call resolves to one function,
+the argument node type matches the diagnostic `actual`, and the corresponding
+parameter type matches `expected`. The argument type may come from a typed
+literal, same-function parameter, or prior same-function `let` binding; treat it
+as human-reviewed because it changes the function signature. For `TYP002`, a
+binding mismatch may produce `changeLocalType` when the initializer expression
+type matches the diagnostic `actual` field. The initializer proof may come from
+a typed literal, same-function parameter, prior same-function `let` binding, or
+known stdlib helper return signature. A shape field default mismatch whose
+default expression type matches the diagnostic `actual` field may produce
+`changeFieldType`.
+For `TYP003`, a return mismatch whose return expression type matches the
+diagnostic `actual` field may produce a `changeReturnType` candidate. The return
+expression type may come from a typed literal, same-function parameter, or prior
+same-function `let` binding, or known stdlib helper return signature; treat it
+as human-reviewed because it changes the function signature. For `NAM003`, an
+unresolved typed call may produce `replaceCallee` when exactly one existing
+function has the required return type and parameter types, or `addFunction` when
+no replacement is proven and a typed result context such as
+`let value: i32 = missing()` or `return missing(input)` inside
+`fn run(input: i32) -> i32` can scaffold `fn missing(...) -> i32 { return 0 }`.
+When call argument types are proven from literals, same-function parameters, or
+prior same-function `let` bindings, the candidate includes a checked `params`
+signature, for example `missing(41)` can scaffold
+`fn missing(arg0: i32) -> i32 { return 0 }`. Calls with non-inferable arguments
+are deliberately left without a candidate until the planner can validate a full
+signature.
 
 Useful examples:
 
@@ -404,5 +543,7 @@ Useful examples:
 zero explain TAR002
 zero explain --json TYP009
 zero fix --plan --json conformance/native/fail/mem-copy-immutable-dst.0
+zero fix --patch --json examples/agent-repair-demo/broken.0
+zero fix --apply --json examples/agent-repair-demo/broken.0
 zero fix --plan --json --target linux-musl-x64 conformance/native/fail/std-fs-target-unsupported.0
 ```

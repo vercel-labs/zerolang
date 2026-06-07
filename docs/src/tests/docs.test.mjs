@@ -136,6 +136,8 @@ describe("docs registry", () => {
     assert.match(await readDoc("cli-reference"), /expectedFailures/);
     assert.match(await readDoc("cli-reference"), /snapshotKey/);
     assert.match(await readDoc("cli-reference"), /BLD003/);
+    assert.match(await readDoc("cli-reference"), /agentQuery\.checkedEditSurface\.supportedOperations/);
+    assert.match(await readDoc("cli-reference"), /removeFunction/);
     const testing = await readDoc("testing");
     for (const testingTerm of ["zero test --json", "expectedFailures", "fixtures", "snapshotKey", "reliability:smoke", "native:sanitize", "fuzz", "crasher"]) {
       assert.match(testing, new RegExp(testingTerm));

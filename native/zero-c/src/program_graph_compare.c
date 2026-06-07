@@ -464,7 +464,9 @@ static CompareEdgeFact *compare_build_edge_facts(const CompareIndex *index) {
 
 static bool compare_node_text_field(const char *field, const char *left, const char *right, size_t left_index, size_t right_index, ZProgramGraphCompare *out) {
   if (compare_text_eq(left, right)) return true;
-  return compare_fail(out, "GRC004", "node semantic field differs", field, left_index, right_index, 0, 0);
+  char message[160];
+  snprintf(message, sizeof(message), "node semantic field differs: left='%.48s' right='%.48s'", left ? left : "", right ? right : "");
+  return compare_fail(out, "GRC004", message, field, left_index, right_index, 0, 0);
 }
 
 static bool compare_node_bool_field(const char *field, bool left, bool right, size_t left_index, size_t right_index, ZProgramGraphCompare *out) {

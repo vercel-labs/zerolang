@@ -347,6 +347,7 @@ static bool patch_parse_structural_attrs(const char *line, const char *verb, ZPr
     } else if (strcmp(key, "value") == 0) ok = patch_assign_attr(&op->value, value);
     else if (strcmp(key, "name") == 0) ok = patch_assign_attr(&op->name, value);
     else if (strcmp(key, "type") == 0) ok = patch_assign_attr(&op->type, value);
+    else if (strcmp(key, "params") == 0) ok = patch_assign_attr(&op->params, value);
     else if (strcmp(key, "path") == 0) ok = patch_assign_attr(&op->path, value);
     else if (strcmp(key, "order") == 0) ok = patch_assign_order(op, value);
     else if (strcmp(key, "line") == 0) ok = patch_assign_line_value(op, value);
@@ -369,7 +370,7 @@ static bool patch_parse_structural_attrs(const char *line, const char *verb, ZPr
 
 static bool patch_has_node_payload(const ZProgramGraphPatchOpResult *op) {
   return (op->name || op->type || op->value || op->path || op->has_line_value || op->has_column_value ||
-          op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+          op->params || op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
           op->has_export_c_value);
 }
 
@@ -460,7 +461,7 @@ static bool patch_parse_rename(const char *line, int line_number, ZProgramGraphP
   op->op = z_strdup("rename");
   if (!patch_parse_structural_attrs(line, "rename", result, op)) return false;
   if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
-  if (op->name || op->type || op->path || op->has_line_value || op->has_column_value ||
+  if (op->name || op->type || op->params || op->path || op->has_line_value || op->has_column_value ||
       op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
       op->has_export_c_value) {
     patch_op_fail(result, op, "GPH001", "rename operation has unsupported attributes", "node, expect, and value", line);
@@ -468,6 +469,303 @@ static bool patch_parse_rename(const char *line, int line_number, ZProgramGraphP
   }
   if (!op->node || !op->value) {
     patch_op_fail(result, op, "GPH001", "rename operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_rename_symbol(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("renameSymbol");
+  if (!patch_parse_structural_attrs(line, "renameSymbol", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "renameSymbol operation has unsupported attributes", "node, expect, and value", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "renameSymbol operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_replace_callee(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("replaceCallee");
+  if (!patch_parse_structural_attrs(line, "replaceCallee", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "replaceCallee operation has unsupported attributes", "node, expect, and value", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "replaceCallee operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_import(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addImport");
+  if (!patch_parse_structural_attrs(line, "addImport", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, true, false, false, false, false, true, true, true)) return false;
+  if (op->type || op->params || op->path || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "addImport operation has unsupported attributes", "name, optional node, parent, value, order, and expect", line);
+    return false;
+  }
+  if (!op->name) {
+    patch_op_fail(result, op, "GPH001", "addImport operation is missing required attributes", "name", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_function(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addFunction");
+  if (!patch_parse_structural_attrs(line, "addFunction", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, true, false, false, false, false, true, true, true)) return false;
+  if (op->path || op->has_line_value || op->has_column_value || op->has_mutable_value || op->has_static_value) {
+    patch_op_fail(result, op, "GPH001", "addFunction operation has unsupported attributes", "name, type, optional params, value, node, parent, order, public, fallible, exportC, and expect", line);
+    return false;
+  }
+  if (!op->name || !op->type) {
+    patch_op_fail(result, op, "GPH001", "addFunction operation is missing required attributes", "name and type", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_add_param(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("addParam");
+  if (!patch_parse_structural_attrs(line, "addParam", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, true, true, true)) return false;
+  if (op->params || op->path || op->has_line_value || op->has_column_value || op->has_public_value ||
+      op->has_mutable_value || op->has_static_value || op->has_fallible_value || op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "addParam operation has unsupported attributes", "node, name, type, optional value, order, and expect", line);
+    return false;
+  }
+  if (!op->node || !op->name || !op->type) {
+    patch_op_fail(result, op, "GPH001", "addParam operation is missing required attributes", "node, name, and type", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_remove_param(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("removeParam");
+  if (!patch_parse_structural_attrs(line, "removeParam", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, false)) return false;
+  if (!op->node) {
+    patch_op_fail(result, op, "GPH001", "removeParam operation is missing required attributes", "node", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_remove_function(const char *line, int line_number, ZProgramGraphPatchResult *result) { ZProgramGraphPatchOpResult *op = patch_push_operation(result); op->line = line_number; op->op = z_strdup("removeFunction"); if (!patch_parse_structural_attrs(line, "removeFunction", result, op)) return false; if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, false)) return false; if (!op->node) { patch_op_fail(result, op, "GPH001", "removeFunction operation is missing required attributes", "node", line); return false; } return true; }
+
+static bool patch_parse_remove_import(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("removeImport");
+  if (!patch_parse_structural_attrs(line, "removeImport", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, true, false, false, false, false, false, true, true)) return false;
+  if (op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "removeImport operation has unsupported attributes", "node or name, optional parent, value, and expect", line);
+    return false;
+  }
+  if (!op->node && !op->name) {
+    patch_op_fail(result, op, "GPH001", "removeImport operation is missing required attributes", "node or name", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_replace_import(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("replaceImport");
+  if (!patch_parse_structural_attrs(line, "replaceImport", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, true, false, false, false, false, false, true, true)) return false;
+  if (op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "replaceImport operation has unsupported attributes", "node or name, value, optional parent, and expect", line);
+    return false;
+  }
+  if ((!op->node && !op->name) || !op->value) {
+    patch_op_fail(result, op, "GPH001", "replaceImport operation is missing required attributes", "node or name, and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_rename_import_alias(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("renameImportAlias");
+  if (!patch_parse_structural_attrs(line, "renameImportAlias", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, true, false, false, false, false, false, true, true)) return false;
+  if (op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "renameImportAlias operation has unsupported attributes", "node or name, value, optional parent, and expect", line);
+    return false;
+  }
+  if ((!op->node && !op->name) || !op->value) {
+    patch_op_fail(result, op, "GPH001", "renameImportAlias operation is missing required attributes", "node or name, and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_change_return_type(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("changeReturnType");
+  if (!patch_parse_structural_attrs(line, "changeReturnType", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "changeReturnType operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "changeReturnType operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_change_param_type(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("changeParamType");
+  if (!patch_parse_structural_attrs(line, "changeParamType", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "changeParamType operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "changeParamType operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_change_field_type(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("changeFieldType");
+  if (!patch_parse_structural_attrs(line, "changeFieldType", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "changeFieldType operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "changeFieldType operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_change_local_type(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("changeLocalType");
+  if (!patch_parse_structural_attrs(line, "changeLocalType", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "changeLocalType operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "changeLocalType operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_rename_param(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("renameParam");
+  if (!patch_parse_structural_attrs(line, "renameParam", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "renameParam operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "renameParam operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_rename_field(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("renameField");
+  if (!patch_parse_structural_attrs(line, "renameField", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "renameField operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "renameField operation is missing required attributes", "node and value", line);
+    return false;
+  }
+  return true;
+}
+
+static bool patch_parse_rename_local(const char *line, int line_number, ZProgramGraphPatchResult *result) {
+  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  op->line = line_number;
+  op->op = z_strdup("renameLocal");
+  if (!patch_parse_structural_attrs(line, "renameLocal", result, op)) return false;
+  if (!patch_reject_attrs(op, result, line, true, false, false, false, false, false, false, true, true)) return false;
+  if (op->name || op->type || op->params || op->path || op->has_order || op->has_line_value || op->has_column_value ||
+      op->has_public_value || op->has_mutable_value || op->has_static_value || op->has_fallible_value ||
+      op->has_export_c_value) {
+    patch_op_fail(result, op, "GPH001", "renameLocal operation has unsupported attributes", "node, value, and optional expect", line);
+    return false;
+  }
+  if (!op->node || !op->value) {
+    patch_op_fail(result, op, "GPH001", "renameLocal operation is missing required attributes", "node and value", line);
     return false;
   }
   return true;
@@ -514,8 +812,38 @@ static bool patch_parse_text(char *text, ZProgramGraphPatchResult *result) {
       if (!patch_parse_delete(trimmed, line_number, result)) return false;
     } else if (strncmp(trimmed, "rename", strlen("rename")) == 0 && isspace((unsigned char)trimmed[strlen("rename")])) {
       if (!patch_parse_rename(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "renameSymbol", strlen("renameSymbol")) == 0 && isspace((unsigned char)trimmed[strlen("renameSymbol")])) {
+      if (!patch_parse_rename_symbol(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "replaceCallee", strlen("replaceCallee")) == 0 && isspace((unsigned char)trimmed[strlen("replaceCallee")])) {
+      if (!patch_parse_replace_callee(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addImport", strlen("addImport")) == 0 && isspace((unsigned char)trimmed[strlen("addImport")])) {
+      if (!patch_parse_add_import(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addFunction", strlen("addFunction")) == 0 && isspace((unsigned char)trimmed[strlen("addFunction")])) {
+      if (!patch_parse_add_function(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "addParam", strlen("addParam")) == 0 && isspace((unsigned char)trimmed[strlen("addParam")])) {
+      if (!patch_parse_add_param(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "removeParam", strlen("removeParam")) == 0 && isspace((unsigned char)trimmed[strlen("removeParam")])) { if (!patch_parse_remove_param(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "removeFunction", strlen("removeFunction")) == 0 && isspace((unsigned char)trimmed[strlen("removeFunction")])) { if (!patch_parse_remove_function(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "removeImport", strlen("removeImport")) == 0 && isspace((unsigned char)trimmed[strlen("removeImport")])) { if (!patch_parse_remove_import(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "replaceImport", strlen("replaceImport")) == 0 && isspace((unsigned char)trimmed[strlen("replaceImport")])) { if (!patch_parse_replace_import(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "renameImportAlias", strlen("renameImportAlias")) == 0 && isspace((unsigned char)trimmed[strlen("renameImportAlias")])) {
+      if (!patch_parse_rename_import_alias(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "changeReturnType", strlen("changeReturnType")) == 0 && isspace((unsigned char)trimmed[strlen("changeReturnType")])) {
+      if (!patch_parse_change_return_type(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "changeParamType", strlen("changeParamType")) == 0 && isspace((unsigned char)trimmed[strlen("changeParamType")])) {
+      if (!patch_parse_change_param_type(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "changeFieldType", strlen("changeFieldType")) == 0 && isspace((unsigned char)trimmed[strlen("changeFieldType")])) {
+      if (!patch_parse_change_field_type(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "changeLocalType", strlen("changeLocalType")) == 0 && isspace((unsigned char)trimmed[strlen("changeLocalType")])) {
+      if (!patch_parse_change_local_type(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "renameParam", strlen("renameParam")) == 0 && isspace((unsigned char)trimmed[strlen("renameParam")])) {
+      if (!patch_parse_rename_param(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "renameField", strlen("renameField")) == 0 && isspace((unsigned char)trimmed[strlen("renameField")])) {
+      if (!patch_parse_rename_field(trimmed, line_number, result)) return false;
+    } else if (strncmp(trimmed, "renameLocal", strlen("renameLocal")) == 0 && isspace((unsigned char)trimmed[strlen("renameLocal")])) {
+      if (!patch_parse_rename_local(trimmed, line_number, result)) return false;
     } else {
-      patch_result_fail(result, "GPH001", "unknown program graph patch operation", "expect, set, insert, insertEdge, replace, delete, or rename", trimmed);
+      patch_result_fail(result, "GPH001", "unknown program graph patch operation", "expect, set, insert, insertEdge, replace, delete, rename, renameSymbol, renameParam, renameLocal, renameField, replaceCallee, addImport, addFunction, addParam, removeParam, removeFunction, removeImport, replaceImport, renameImportAlias, changeReturnType, changeParamType, changeFieldType, or changeLocalType", trimmed);
       return false;
     }
   }
@@ -584,6 +912,7 @@ void z_program_graph_patch_result_free(ZProgramGraphPatchResult *result) {
     patch_free_text(&op->value);
     patch_free_text(&op->name);
     patch_free_text(&op->type);
+    patch_free_text(&op->params);
     patch_free_text(&op->path);
   }
   free(result->operations);

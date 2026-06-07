@@ -153,7 +153,7 @@ char *z_read_file(const char *path, ZDiag *diag) {
 static bool mkdir_parents(const char *path) {
   char *copy = z_strdup(path);
   for (char *cursor = copy + 1; *cursor; cursor++) {
-    if (*cursor == '/') {
+    if (*cursor == '/' || *cursor == '\\') {
       *cursor = 0;
       zero_mkdir(copy);
       *cursor = '/';
@@ -197,8 +197,11 @@ static bool ends_with(const char *text, const char *suffix) {
   return text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0;
 }
 
+static bool path_sep(char ch) { return ch == '/' || ch == '\\'; }
+
 static char *dirname_of(const char *path) {
-  const char *slash = strrchr(path, '/');
+  const char *slash = NULL;
+  for (const char *cursor = path ? path : ""; *cursor; cursor++) if (path_sep(*cursor)) slash = cursor;
   if (!slash) return z_strdup(".");
   return z_strndup(path, (size_t)(slash - path));
 }
@@ -219,10 +222,10 @@ static char *normalize_path_text(const char *path) {
   size_t segment_count = 0;
   char *cursor = copy;
   while (*cursor) {
-    while (*cursor == '/') cursor++;
+    while (path_sep(*cursor)) cursor++;
     if (!*cursor) break;
     char *start = cursor;
-    while (*cursor && *cursor != '/') cursor++;
+    while (*cursor && !path_sep(*cursor)) cursor++;
     char saved = *cursor;
     *cursor = 0;
     if (strcmp(start, ".") == 0) {

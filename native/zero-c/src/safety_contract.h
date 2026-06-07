@@ -9,5 +9,6 @@ typedef struct {
 } ZSafetyFactsProfile;
 
 void z_append_safety_facts_json(ZBuf *buf, const ZSafetyFactsProfile *profile);
+void z_append_production_readiness_json(ZBuf *buf, const ZSafetyFactsProfile *profile);
 
 #endif

@@ -34,6 +34,21 @@ zero run examples/cli-file.0 -- input.txt
 
 Arguments after `--` are passed to the Zero program.
 
+`zero run --json` and `zero graph run --json` are rejected because program
+stdout and stderr are passed through unchanged. The JSON rejection still includes
+`agentCommand`; use `agentCommand.recommendedNextCommands[]` to run the required
+`artifact-validate` build audit or the optional structured `test-run` follow-up.
+
+## Clean
+
+Use `zero clean --json` when an agent needs to remove compiler artifacts. Its
+`agentCommand.writePolicy.name` is `destructive-clean`: it deletes artifact
+roots, does not provide compiler rollback, and requires external restore policy
+if deleted outputs matter. Audit `removedRoots[].path`,
+`removedRoots[].existedBefore`, `removedRoots[].existsAfter`, and
+`agentCommand.verificationCommands` instead of inferring deletion scope from
+prose output.
+
 ## Build
 
 Use direct emitters. The removed generated-C backend is not a fallback path.
@@ -62,7 +77,54 @@ Use `--json` when a tool will read exact build fields:
 zero build --json --target linux-musl-x64 examples/memory-package
 ```
 
-Useful JSON fields include `artifact`, `sizeBytes`, `toolchain`, `releaseTargetContract`, selected target facts, linker flavor, and sysroot status.
+Useful JSON fields include `agentCommand`, `artifactPath`, `artifactBytes`,
+`toolchain`, `releaseTargetContract`, selected target facts, linker flavor, and
+sysroot status. Use `agentCommand.command.argv` as the canonical build command
+for audit logs, `agentCommand.auditFields` to locate stable build facts, and
+`agentCommand.verificationCommands` to rerun source checking and size analysis
+after the build. Replay those verification commands directly; source build,
+size, test, and ship contracts preserve the selected `--target` and
+`--profile` in their check/size verification argv. Each verification command
+has `purpose`, `required`, and `argv`; execute every required `source-check`
+and `size-analysis` proof before accepting build, size, or ship results.
+For commands that write artifacts, read `agentCommand.writePolicy`; it declares
+`writes-artifact`, the artifact path field, required verification field, and the
+agent-enforced rollback policy for deleting or replacing the artifact. Use
+`agentCommand.writePolicy.rollbackActions[]` rather than inferring cleanup from
+file extensions or output paths.
+After artifact validation, use build `agentCommand.recommendedNextCommands[]`
+for the optional `test-run` follow-up when behavioral confidence is required.
+The follow-up preserves target/profile placeholders and returns structured
+`passedTests`, `failedTests`, `unexpectedPasses`, `results[]`, and
+`agentCommand.verificationCommands` fields.
+When `zero build --json` fails with
+`agentCommand.kind: "agent-build-failure-command-contract"`, treat the top-level
+`agentCommand` as the recovery contract. Run the required `source-check`
+follow-up first, then use the optional `target-selection`, `doctor`, and
+`graph-inspect` commands when target capability, host readiness, or semantic
+source attribution is needed. Do not infer those commands from diagnostic prose;
+read `diagnostics[].backendBlocker` and the declared argv/result fields.
+When `zero graph build --json` fails with
+`agentCommand.kind: "agent-graph-build-failure-command-contract"`, keep the
+workflow graph-native. Replay `agentCommand.command.argv`, run the required
+`graph-check` follow-up, and use the same optional `target-selection`, `doctor`,
+and `graph-inspect` recovery commands from the contract.
+After source size analysis, use size `agentCommand.recommendedNextCommands[]`
+for the optional `artifact-validate` build follow-up when a runnable artifact is
+required. It preserves target/profile placeholders and returns `artifactPath`,
+`artifactBytes`, `artifactHash`, `agentCommand.writePolicy`, and
+`agentCommand.verificationCommands`.
+After source release packaging, use ship `agentCommand.recommendedNextCommands[]`
+for the optional `size-analysis` follow-up when release preview or artifact
+audit needs a fresh budget view, and the optional `test-run` follow-up when
+behavioral confidence is required before accepting the release preview. Both
+preserve target/profile placeholders. `size-analysis` returns `sizeBreakdown`,
+`profileBudget`, `profileSemantics`, and verification commands; `test-run`
+returns `passedTests`, `failedTests`, `unexpectedPasses`, `results[]`, and
+verification commands.
+For package or manifest inputs, keep using `agentCommand.command.argv`; `sourceFile`
+may name the resolved entry `.0` file, but replay should preserve the package
+or manifest path that carried package context.
 
 ## Graph Inputs
 
@@ -70,6 +132,7 @@ When an agent is authoring through ProgramGraph, inspect and patch the canonical
 
 ```sh
 zero graph build --out .zero/out/app .zero/agent/app.program-graph
+zero graph ship --json --out .zero/ship/app .zero/agent/app.program-graph
 zero graph run .zero/agent/app.program-graph
 ```
 
@@ -77,16 +140,75 @@ Use normal `zero build` and `zero run` after persisting the accepted change to
 canonical `.0` source text. If the package opts into repository graph compiler
 input, run `zero graph sync --from-source <package>` after reviewed source
 changes so normal commands can compile from the refreshed `zero.graph` store.
+For ProgramGraph artifact build audits, prefer JSON:
+`zero graph size --json <artifact-or-package>` and
+`zero graph build --json <artifact-or-package>`. Read `agentCommand.command.argv`
+for the canonical graph replay command, `agentCommand.stateFields` for graph hash
+and lowering state, `agentCommand.artifact` for `artifactPath`/`artifactBytes`,
+`agentCommand.writePolicy` for artifact write boundaries, and
+`agentCommand.verificationCommands` to rerun `zero graph check --json` plus
+`zero graph size --json` against the same artifact. Graph build, size, and ship
+verification commands use `purpose: "graph-check"` for semantic validity and
+`purpose: "graph-size"` for artifact/profile facts; both are required.
+Use `zero graph ship --json <artifact-or-package>` when the derived graph itself
+is the release input. Its `agentCommand` replays `zero graph ship`, maps
+`checksum` and release artifact fields, and verifies with graph check/size.
+For ProgramGraph buildability failures, require
+`agent-graph-build-failure-command-contract`; its first recovery command must be
+`graph-check`, not source `check`.
+
+Use normal `zero build` and `zero run` after persisting the accepted change to canonical `.0` source text.
+
+## Memory
+
+Use `zero mem --json --target <target> <input>` when an agent needs to audit
+direct backend memory behavior. The report includes `agentCommand`, stack and
+readonly data estimates, memory budgets, regions, allocator and collection
+facts, capability facts, used stdlib helpers, runtime shims, object backend
+facts, MIR validity, and cache/invalidation facts. Replay
+`agentCommand.command.argv` and then run its `verificationCommands` before
+accepting a memory-sensitive refactor or release change. Execute required
+`memory-audit` and `source-check` proofs. When allocator, capability, or
+hidden-memory facts need source attribution, use
+`agentCommand.recommendedNextCommands[]` for the optional `graph-inspect`
+follow-up; it preserves target/profile placeholders and returns ProgramGraph
+node hashes plus capability indexes.
+
+## ABI
+
+Use `zero abi dump --json --target <target> <input>` when an agent needs to
+audit a C interop or FFI boundary. The report includes `agentCommand`,
+target pointer size, object format, calling convention, primitive layouts,
+extern shapes, C imports/exports, and generated header text. Replay
+`agentCommand.command.argv` for the ABI view and run the listed
+`verificationCommands` before accepting a build or release change that crosses
+the C boundary. Non-default `--profile` is preserved in ABI replay and
+verification argv. Execute required `abi-audit` and `source-check` proofs.
 
 ## Targets
 
 Inspect target names and capability facts before cross-building:
 
 ```sh
-zero targets
+zero targets --json
 zero check --target linux-musl-x64 examples/memory-package
 zero graph --target linux-musl-x64 examples/memory-package
 ```
+
+`zero targets --json` returns JSON with `agentCommand`. Use
+`agentCommand.command.argv` for audit logs and `selectionFields` to choose a
+target from stable fields such as `targets[].name`, `capabilities`, and
+`directBackend.*` support before building or shipping. Its verification command
+uses `purpose: "target-selection"`, `required: true`, and an explicit
+`["zero", "targets", "--json"]` replay argv.
+Unknown target failures (`TAR001`) also use that required `target-selection`
+retry before exposing a `correct-command-usage` template with
+`<supported-target>`, so do not replay the invalid target value. The retry
+preserves repair modes and graph patch inputs, so keep the reported argv intact.
+Before a non-host build, follow targets `agentCommand.recommendedNextCommands[]`
+for the optional `doctor` readiness audit. The follow-up replays
+`["zero", "doctor", "--json"]` and returns structured `checks[]` plus
+`targetToolchains[]` fields for the selected-target readiness decision.
 
 Hosted APIs such as process args, environment, filesystem, net, and proc are target-gated. A non-host target may reject code that checks on the host.
 
@@ -101,6 +223,7 @@ zero size --profile tiny examples/hello.0
 
 Use `zero size` to explain retained functions, sections, literals, runtime shims, imports, debug metadata, and optimization hints. Add `--json` when a tool needs exact fields.
 Use `zero size --backend llvm` when the question is specifically about the explicit LLVM backend; the report includes LLVM target triple, optimization level, retained runtime/helper facts, toolchain readiness, and direct-vs-LLVM comparison rows.
+Use `zero size` to explain retained functions, sections, literals, runtime shims, imports, debug metadata, and optimization hints. Add `--json` when a tool needs exact fields. In JSON, use `agentCommand.command.argv` for audit logs, `agentCommand.auditFields` to locate `sizeBreakdown`, `retentionReasons`, `optimizationHints`, `profileBudget`, and safety facts, and `agentCommand.verificationCommands` to rerun required `source-check` and `size-analysis` proofs in the same target/profile context.
 
 ## Ship
 
@@ -112,6 +235,7 @@ zero ship --target linux-musl-x64 examples/hello.0 \
 ```
 
 The preview includes artifact names, sizes, hashes, checksum file metadata, size report data, debug-symbol metadata, and target contract facts.
+In JSON, use `agentCommand.command.argv` for the release audit, `agentCommand.artifact` to locate the binary and checksum fields, `agentCommand.auditFields` to review `releasePreview`, `artifacts`, `releaseTargetContract`, package cache, and safety facts, and `agentCommand.verificationCommands` to rerun required `source-check` and `size-analysis` proofs in the same target/profile context.
 
 ## Troubleshooting
 

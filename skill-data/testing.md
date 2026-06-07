@@ -40,16 +40,22 @@ values for ordinary `expect` statements.
 ```sh
 zero test conformance/native/pass/test-blocks.0
 zero test --filter addition conformance/native/pass/test-blocks.0
+zero test --target linux-musl-x64 --profile audit conformance/native/pass/test-blocks.0
 zero test conformance/packages/test-app
 ```
 
 Use `--filter` for a narrow loop. The filter matches test names by substring.
+When target/profile context matters, pass `--target` and `--profile`; JSON
+`agentCommand.command.argv` and `verificationCommands` preserve that context.
+Verification commands include `purpose`, `required`, and `argv`; run the
+required `source-check` proof before the required `test-run` proof.
 
 For normal agent edits, patch the backing `.0` source and run `zero test`. When an agent is explicitly validating a derived ProgramGraph artifact, use the graph test surface:
 
 ```sh
 zero graph test .zero/agent/app.program-graph
 zero graph test --filter addition .zero/agent/app.program-graph
+zero graph test --target linux-musl-x64 --profile audit .zero/agent/app.program-graph
 ```
 
 Run normal `zero test` after persisting the accepted change to source text.
@@ -58,16 +64,35 @@ Run normal `zero test` after persisting the accepted change to source text.
 
 Use `zero test --json` when a tool or CI job needs exact fields. Useful fields:
 
+- `agentCommand`: canonical test argv, stable audit fields, failure fields, and
+  verification commands for Agent repair loops
 - `testDiscovery`: how files and tests were found
 - `fixtures`: fixture inputs and snapshot metadata
 - `snapshotKey`: stable test snapshot contract
 - `discoveredTests`, `selectedTests`, `passedTests`, `failedTests`
 - `expectedFailures`, `unexpectedPasses`
 - `targetFacts`: selected target and capability facts
+- `profile`: selected profile for replay and verification
 - `results`: per-test name, status, duration, source location, and failure span
 - `stdout`, `stderr`, `durationMs`
 
 Use JSON for machines and CI contracts. Normal test output is the default agent loop.
+
+For ProgramGraph artifacts, use `zero graph test --json <artifact-or-package>`.
+Its `agentCommand` is graph-specific: `command.argv` replays `zero graph test`,
+`stateFields` carries `graph.graphHash`, lowering, target, profile, and filter state,
+`failureFields` points to per-test failure and location spans, and
+`verificationCommands` rerun `zero graph check --json` plus the same graph test.
+Replay those verification commands directly; they preserve target/profile and
+filter context. Use `purpose: "graph-check"` for semantic validity and
+`purpose: "graph-test"` for the filtered test proof.
+When `failedTests > 0` or `unexpectedPasses > 0`, prefer
+`agentCommand.recommendedNextCommands[]` for the optional `graph-inspect`
+follow-up. It preserves the same target/profile context and returns graph hashes
+plus semantic node ids before planning a repair.
+When `selectedTests == 0`, prefer the optional `doc-audit` follow-up from
+`agentCommand.recommendedNextCommands[]` to inspect public symbols and missing
+example/test coverage before claiming behavioral confidence.
 
 ## Expected Failures
 
