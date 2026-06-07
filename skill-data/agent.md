@@ -176,8 +176,10 @@ but do not rewrite projections. When combining repository graph stores, use
 <right-zero.graph> <input>` and then refresh projections explicitly if the merge
 succeeds.
 `zero.graph` is text by default. Use `--format binary` only when explicitly
-opting a repository graph store into binary encoding; reads auto-detect either
-format, and plain writes preserve an existing binary store.
+opting a repository graph store or graph artifact output into binary encoding;
+reads auto-detect either format, and plain package writes preserve an existing
+binary store. Stdlib `std/*.graph` stores are binary by design; sibling `.0`
+files are human projections, not the stdlib compiler source.
 10. Run a focused check:
 
 ```sh

@@ -7,32 +7,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const stdRoot = path.join(repoRoot, "std");
 const outPath = path.join(repoRoot, "native/zero-c/src/embedded_stdlib_graph.inc");
 
-function chunkText(text: string): string[] {
-  const chunks: string[] = [];
-  let current = "";
-  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) || []) {
-    if (current && JSON.stringify(current + line).length > 3000) {
-      chunks.push(current);
-      current = "";
-    }
-    if (JSON.stringify(line).length <= 3000) {
-      current += line;
-      continue;
-    }
-    for (let index = 0; index < line.length; index += 1400) {
-      if (current) {
-        chunks.push(current);
-        current = "";
-      }
-      chunks.push(line.slice(index, index + 1400));
-    }
-  }
-  if (current) chunks.push(current);
-  return chunks;
-}
-
 function cIdent(text: string): string {
   return text.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+function appendByteArray(out: string[], ident: string, bytes: Buffer) {
+  out.push(`static const unsigned char ${ident}[] = {`);
+  const rowWidth = 64;
+  for (let offset = 0; offset < bytes.length; offset += rowWidth) {
+    const row = [...bytes.subarray(offset, Math.min(offset + rowWidth, bytes.length))]
+      .map((byte) => `0x${byte.toString(16).padStart(2, "0")}`)
+      .join(", ");
+    out.push(`  ${row},`);
+  }
+  out.push("};");
 }
 
 const inputs = fs.existsSync(stdRoot)
@@ -43,18 +31,15 @@ const inputs = fs.existsSync(stdRoot)
   : [];
 
 const out: string[] = [];
-out.push("/* Generated from Zero standard-library ProgramGraphs. Run node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-stdlib-graphs.mts to refresh. */");
+out.push("/* Generated from Zero standard-library binary ProgramGraphs. Run node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/embed-stdlib-graphs.mts to refresh. */");
 out.push("#ifndef ZERO_EMBEDDED_STDLIB_GRAPH_INC");
 out.push("#define ZERO_EMBEDDED_STDLIB_GRAPH_INC");
 out.push("");
 
 for (const relativePath of inputs) {
-  const ident = `zero_embedded_stdlib_graph_${cIdent(relativePath)}_chunks`;
-  const text = fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
-  out.push(`static const char *const ${ident}[] = {`);
-  for (const chunk of chunkText(text)) out.push(`  ${JSON.stringify(chunk)},`);
-  out.push("  NULL");
-  out.push("};");
+  const ident = `zero_embedded_stdlib_graph_${cIdent(relativePath)}_bytes`;
+  const bytes = fs.readFileSync(path.join(repoRoot, relativePath));
+  appendByteArray(out, ident, bytes);
   out.push("");
 }
 

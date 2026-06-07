@@ -43,6 +43,7 @@
     "rosetta:local": "make -C native/zero-c && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/rosetta.mts",
     "compiler:metrics": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/compiler-metrics.mts",
     "llvm:profile": "make -C native/zero-c && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/llvm-profile-smoke.mts",
+    "stdlib:binary-graphs": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/convert-stdlib-graphs-to-binary.mts",
     "stdlib:contracts": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/stdlib-contracts.mts",
     "stdlib:targets": "make -C native/zero-c && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/stdlib-target-matrix.mts",
     "reliability:smoke": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/reliability-smoke.mts",

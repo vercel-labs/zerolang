@@ -37,7 +37,6 @@ const publicModuleDocsDir = "docs/articles/modules";
 const skillPath = "skill-data/stdlib.md";
 const stdSigPath = "native/zero-c/src/std_sig.c";
 const stdSourcePath = "native/zero-c/src/std_source.c";
-const embeddedStdlibPath = "native/zero-c/src/embedded_stdlib.inc";
 const embeddedStdlibGraphPath = "native/zero-c/src/embedded_stdlib_graph.inc";
 const fixtureRoots = ["examples", "conformance", "benchmarks/rosetta"];
 
@@ -80,26 +79,12 @@ function cIdent(text: string): string {
   return text.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
-function parseEmbeddedStdlibSource(text: string, sourcePath: string): string | null {
-  const ident = `zero_embedded_stdlib_${cIdent(sourcePath)}_chunks`;
-  const block = cBlock(text, `static const char *const ${ident}[] =`);
+function parseEmbeddedStdlibGraphBytes(text: string, graphPath: string): Buffer | null {
+  const ident = `zero_embedded_stdlib_graph_${cIdent(graphPath)}_bytes`;
+  const block = cBlock(text, `static const unsigned char ${ident}[] =`);
   if (block.length === 0) return null;
-  let source = "";
-  for (const match of block.matchAll(/"((?:\\.|[^"\\])*)"/g)) {
-    source += JSON.parse(match[0]);
-  }
-  return source;
-}
-
-function parseEmbeddedStdlibGraph(text: string, graphPath: string): string | null {
-  const ident = `zero_embedded_stdlib_graph_${cIdent(graphPath)}_chunks`;
-  const block = cBlock(text, `static const char *const ${ident}[] =`);
-  if (block.length === 0) return null;
-  let source = "";
-  for (const match of block.matchAll(/"((?:\\.|[^"\\])*)"/g)) {
-    source += JSON.parse(match[0]);
-  }
-  return source;
+  const bytes = [...block.matchAll(/0x([0-9a-fA-F]{2})/g)].map((match) => Number.parseInt(match[1], 16));
+  return Buffer.from(bytes);
 }
 
 function parseStdHelpers(text: string): StdHelper[] {
@@ -128,7 +113,7 @@ function parseStdHelpers(text: string): StdHelper[] {
 
 function parseStdSourceModules(text: string): StdSourceModule[] {
   const block = cBlock(text, "static const ZStdSourceModule std_source_modules[] =");
-  return [...block.matchAll(/\{\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*zero_embedded_stdlib_[A-Za-z0-9_]+_chunks\s*,\s*zero_embedded_stdlib_graph_[A-Za-z0-9_]+_chunks\s*\}/g)]
+  return [...block.matchAll(/\{\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*zero_embedded_stdlib_graph_[A-Za-z0-9_]+_bytes\s*,\s*sizeof\s*\(\s*zero_embedded_stdlib_graph_[A-Za-z0-9_]+_bytes\s*\)\s*\}/g)]
     .map((match) => ({ module: match[1], path: match[2], graphPath: match[2].replace(/\.0$/, ".graph") }))
     .sort((a, b) => a.module.localeCompare(b.module));
 }
@@ -161,10 +146,9 @@ function pushIf(condition: boolean, failures: string[], message: string) {
   if (condition) failures.push(message);
 }
 
-const [stdSig, stdSource, embeddedStdlib, embeddedStdlibGraph, skill] = await Promise.all([
+const [stdSig, stdSource, embeddedStdlibGraph, skill] = await Promise.all([
   readFile(stdSigPath, "utf8"),
   readFile(stdSourcePath, "utf8"),
-  readFile(embeddedStdlibPath, "utf8"),
   readFile(embeddedStdlibGraphPath, "utf8"),
   readFile(skillPath, "utf8"),
 ]);
@@ -210,6 +194,10 @@ await Promise.all(modules.map(async (module) => {
 }));
 
 const failures: string[] = [];
+
+pushIf(stdSource.includes("embedded_stdlib.inc"), failures, "std_source.c must not include embedded stdlib source chunks");
+pushIf(/zero_embedded_stdlib_[A-Za-z0-9_]+_chunks/.test(stdSource), failures, "std_source.c must not reference embedded stdlib source chunks");
+pushIf(/z_std_source_module_copy_source/.test(stdSource), failures, "std_source.c must not expose source-copy stdlib bridges");
 
 pushIf(helpers.length === 0, failures, "no stdlib helpers were parsed from std_sig.c");
 for (const duplicate of duplicateValues(helpers.map((helper) => helper.name))) {
@@ -257,15 +245,12 @@ for (const sourceModule of sourceModules) {
   pushIf(!moduleNamePattern.test(sourceModule.module), failures, `${sourceModule.module}: invalid graph-backed std module name`);
   pushIf(!existsSync(sourceModule.path), failures, `${sourceModule.module}: missing std projection ${sourceModule.path}`);
   pushIf(!modules.includes(sourceModule.module), failures, `${sourceModule.module}: graph-backed module has no public helpers`);
-  const embedded = parseEmbeddedStdlibSource(embeddedStdlib, sourceModule.path);
-  const embeddedGraph = parseEmbeddedStdlibGraph(embeddedStdlibGraph, sourceModule.graphPath);
-  const source = existsSync(sourceModule.path) ? await readFile(sourceModule.path, "utf8") : null;
-  const graph = existsSync(sourceModule.graphPath) ? await readFile(sourceModule.graphPath, "utf8") : null;
-  pushIf(embedded === null, failures, `${sourceModule.module}: embedded stdlib projection is missing for ${sourceModule.path}`);
+  const embeddedGraph = parseEmbeddedStdlibGraphBytes(embeddedStdlibGraph, sourceModule.graphPath);
+  const graph = existsSync(sourceModule.graphPath) ? await readFile(sourceModule.graphPath) : null;
   pushIf(!existsSync(sourceModule.graphPath), failures, `${sourceModule.module}: missing graph-backed std module ${sourceModule.graphPath}`);
   pushIf(embeddedGraph === null, failures, `${sourceModule.module}: embedded stdlib graph is missing for ${sourceModule.graphPath}`);
-  pushIf(source !== null && embedded !== null && embedded !== source, failures, `${sourceModule.module}: embedded stdlib projection is stale for ${sourceModule.path}`);
-  pushIf(graph !== null && embeddedGraph !== null && embeddedGraph !== graph, failures, `${sourceModule.module}: embedded stdlib graph is stale for ${sourceModule.graphPath}`);
+  pushIf(graph !== null && graph.subarray(0, 8).toString("latin1") !== "ZRGBIN1\0", failures, `${sourceModule.module}: std graph store must be binary ${sourceModule.graphPath}`);
+  pushIf(graph !== null && embeddedGraph !== null && Buffer.compare(embeddedGraph, graph) !== 0, failures, `${sourceModule.module}: embedded stdlib graph is stale for ${sourceModule.graphPath}`);
 }
 for (const duplicate of duplicateValues(sourceCalls.map((call) => call.publicName))) {
   failures.push(`duplicate graph-backed public helper mapping: ${duplicate}`);

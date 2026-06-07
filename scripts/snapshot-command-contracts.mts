@@ -855,7 +855,7 @@ for (const [code, goodExample, stalePattern] of [
 }
 
 const graphHelp = zero(["query", "--help"]).stdout;
-assert.match(graphHelp, /zero dump\|import\|validate\|roundtrip \[--json\] --out <program-graph-artifact> <input>/);
+assert.match(graphHelp, /zero dump\|import\|validate\|roundtrip \[--json\] \[--format text\|binary\] --out <program-graph-artifact> <input>/);
 assert.match(graphHelp, /zero view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(graphHelp, /zero source-map \[--json\] <program-graph-or-source>/);
 assert.match(graphHelp, /zero query \[--json\] \[--fn <name>\] \[--find <text>\] \[--refs <name>\] \[--calls <name>\] \[--node <id>\] <program-graph-or-source>/);
@@ -864,9 +864,9 @@ assert.match(graphHelp, /zero status\|verify-sync \[--json\] <project\|zero\.tom
 assert.match(graphHelp, /zero sync \(--from-source\|--from-graph\) \[--json\] <project\|zero\.toml\|zero\.json\|file\.0>/);
 assert.match(graphHelp, /zero merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] <project\|zero\.toml\|zero\.json\|file\.0>/);
 assert.match(graphHelp, /zero size \[--json\] \[--target <target>\] \[--out <artifact>\] <program-graph-artifact>/);
-assert.match(graphHelp, /Patch usage: zero patch \[--json\] \[--check-only\|--dry-run\] \[--out <program-graph-artifact>\] \[<input>\] \(<patch-file>\|--op <operation>\)/);
+assert.match(graphHelp, /Patch usage: zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[<input>\] \(<patch-file>\|--op <operation>\)/);
 assert.match(graphHelp, /Patch operation help: zero patch --op help/);
-assert.match(graphHelp, /--format binary opts init, patch, sync --from-source, or merge into binary zero\.graph writes/);
+assert.match(graphHelp, /--format binary opts repository graph writes and explicit graph artifact outputs into binary storage/);
 assert.doesNotMatch(graphHelp, /setMain[A-Za-z]+Cli/);
 assert.match(graphHelp, /replaceFunctionBody main \.\.\. end/);
 assert.match(graphHelp, /replaceBlockBody #block_id \.\.\. end/);
@@ -884,7 +884,7 @@ assert.match(rootHelp, /zero build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<fil
 assert.match(rootHelp, /zero test <file\.0\|project\|zero\.toml\|zero\.json\|program-graph-artifact>/);
 assert.match(rootHelp, /zero check \[--json\] \[--target <target>\] \[--emit exe\|obj\|llvm-ir\] <file\.0\|project\|zero\.toml\|zero\.json\|program-graph-artifact>/);
 assert.match(rootHelp, /zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[<input>\] \(<patch-file>\|--op <operation>\)/);
-assert.match(rootHelp, /zero dump\|import\|validate\|roundtrip \[--json\] \[--out <program-graph-artifact>\] <input>/);
+assert.match(rootHelp, /zero dump\|import\|validate\|roundtrip \[--json\] \[--format text\|binary\] \[--out <program-graph-artifact>\] <input>/);
 assert.match(rootHelp, /zero view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(rootHelp, /zero source-map \[--json\] <program-graph-or-source>/);
 assert.match(rootHelp, /zero query \[--json\] \[--fn <name>\] \[--find <text>\] \[--refs <name>\] \[--calls <name>\] \[--node <id>\] <program-graph-or-source>/);
@@ -2162,6 +2162,7 @@ assert.equal(graphMainFunctionNode.symbolId, "symbol:hello::value.main");
 assert.doesNotMatch(graphDump, /node #000001/);
 assert(graphDumpJson.edges.some((edge) => edge.from === graphModuleNode.id && edge.to === graphMainFunctionNode.id && edge.kind === "function" && edge.order === 0));
 const graphDumpPath = join(outDir, "hello.program-graph");
+const graphDumpBinaryPath = join(outDir, "hello.binary.graph");
 const graphDumpJsonPath = join(outDir, "hello.dump-json.program-graph");
 const graphStableSiblingSourcePath = join(outDir, "hello-stable-sibling.0");
 const graphImportPath = join(outDir, "hello.imported.program-graph");
@@ -2387,6 +2388,10 @@ assert.equal(graphStableSiblingJson.nodes.find((node) => node.kind === "Function
 assert.equal(graphStableSiblingJson.nodes.find((node) => node.kind === "Literal" && node.type === "String" && node.value === "hello from zero\n")?.id, graphStableBaseLiteral.id);
 assert.equal(zero(["dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
 assert.equal(readFileSync(graphDumpPath, "utf8"), graphDump);
+assert.equal(zero(["dump", "--format", "binary", "--out", graphDumpBinaryPath, "examples/hello.0"]).stdout, "");
+assert.equal(readFileSync(graphDumpBinaryPath).subarray(0, 8).toString("latin1"), "ZRGBIN1\0");
+assert.equal(zero(["validate", graphDumpBinaryPath]).stdout, "program graph ok\n");
+assert.equal(zero(["view", graphDumpBinaryPath]).stdout, zero(["view", graphDumpPath]).stdout);
 const graphDumpOutJson = json(["dump", "--json", "--out", graphDumpJsonPath, "examples/hello.0"]).body;
 assert.deepEqual(graphDumpOutJson, graphDumpJson);
 assert.equal(readFileSync(graphDumpJsonPath, "utf8"), graphDump);

@@ -186,8 +186,13 @@ for tracked local files. Ambiguous identity changes fail instead of guessing.
 Text is the default `zero.graph` encoding. `--format binary` opts `zero init`,
 `zero patch`, `zero sync --from-source`, or `zero merge` into a binary
 repository graph store that is decoded as typed graph tables instead of parsed
-as the text wrapper. Reads auto-detect both encodings, plain writes preserve an
-existing binary store, and `zero status` reports the active store format.
+as the text wrapper. `zero dump`, `zero import`, `zero validate`, `zero patch
+--out`, and `zero roundtrip --out` can also write binary graph artifacts with
+`--format binary`. Reads auto-detect both encodings, plain package writes
+preserve an existing binary store, and `zero status` reports the active store
+format. Stdlib `std/*.graph` stores are binary graph stores used by the
+compiler path; sibling `std/*.0` files are human-readable projections, not the
+stdlib compile source.
 `zero sync --from-graph` rewrites stale `.0` source projections from that
 store, and `zero verify-sync` checks the store against the current source
 graph and source projection without writing files. Packages can opt normal
@@ -422,7 +427,7 @@ zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <f
 zero fmt [--check] <input>
 zero init [--json] [--manifest toml|json] <project-path>
 zero query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>
-zero dump|import|validate|roundtrip [--json] [--out <program-graph-artifact>] <input>
+zero dump|import|validate|roundtrip [--json] [--format text|binary] [--out <program-graph-artifact>] <input>
 zero view [--json] [--out <file.0>] <program-graph-or-source>
 zero source-map [--json] <program-graph-or-source>
 zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>

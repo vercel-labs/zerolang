@@ -3336,6 +3336,7 @@ typedef struct {
 } ExplainInfo;
 
 static void print_diag_json(const char *path, const ZDiag *diag);
+static void print_command_diag(const Command *command, const char *path, const ZDiag *diag);
 
 static const ExplainInfo explain_infos[] = {
   {
@@ -3717,8 +3718,7 @@ static int explain_command(const Command *command) {
     snprintf(diag.expected, sizeof(diag.expected), "known diagnostic code");
     snprintf(diag.actual, sizeof(diag.actual), "%s", command->input ? command->input : "");
     snprintf(diag.help, sizeof(diag.help), "try TAR002, TYP009, TYP023, ERR002, ERR003, or STD003");
-    if (command->json) print_diag_json(command->input, &diag);
-    else print_diag(command->input, &diag);
+    print_command_diag(command, command->input, &diag);
     return 1;
   }
   if (command->json) print_explain_json(info);
@@ -3804,6 +3804,11 @@ static void print_check_diag_json(const char *path, const ZDiag *diag, const cha
 static void print_command_diag_json(const Command *command, const char *path, const ZDiag *diag) {
   if (command && graph_check_text_eq(command->command, "check")) print_check_diag_json(path, diag, command->profile);
   else print_diag_json(path, diag);
+}
+
+static void print_command_diag(const Command *command, const char *path, const ZDiag *diag) {
+  if (command && command->json) print_command_diag_json(command, path, diag);
+  else print_diag(path, diag);
 }
 
 static void append_fix_plan_diagnostic(ZBuf *buf, const char *path, const ZDiag *diag) {
@@ -4016,7 +4021,7 @@ static void print_help(void) {
   printf("  zero view [--json] [--out <file.0>] <program-graph-or-source>\n");
   printf("  zero status|verify-sync [--json] <project|zero.toml|zero.json|file.0>\n");
   printf("  zero sync (--from-source|--from-graph) [--json] [--format text|binary] <project|zero.toml|zero.json|file.0>\n");
-  printf("  zero dump|import|validate|roundtrip [--json] [--out <program-graph-artifact>] <input>\n");
+  printf("  zero dump|import|validate|roundtrip [--json] [--format text|binary] [--out <program-graph-artifact>] <input>\n");
   printf("  zero source-map [--json] <program-graph-or-source>\n");
   printf("  zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>\n");
   printf("  zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] [--format text|binary] <project|zero.toml|zero.json|file.0>\n");
@@ -4636,20 +4641,17 @@ static bool direct_source_path_has_module_suffix(const char *path, const char *m
   return before == '/' || before == '\\';
 }
 
-static const ZStdSourceModule *direct_embedded_std_source_module_for_file(const char *path, const char *source) {
+static const ZStdSourceModule *direct_std_source_module_for_file(const char *path) {
   for (size_t i = 0; i < z_std_source_module_count(); i++) {
     const ZStdSourceModule *module = z_std_source_module_at(i);
     if (!module || !direct_source_path_has_module_suffix(path, module->path)) continue;
-    char *embedded = z_std_source_module_copy_source(module);
-    bool ok = embedded && strcmp(source ? source : "", embedded) == 0;
-    free(embedded);
-    if (ok) return module;
+    return module;
   }
   return NULL;
 }
 
-static bool direct_source_is_embedded_std_source_file(const char *path, const char *source) {
-  return direct_embedded_std_source_module_for_file(path, source) != NULL;
+static bool direct_source_is_embedded_std_source_file(const char *path) {
+  return direct_std_source_module_for_file(path) != NULL;
 }
 
 static bool direct_input_add_program_symbol(SourceInput *input, const char *module, const char *kind, const char *name, bool is_public, bool allow_internal_names, int line, int column, ZDiag *diag) {
@@ -4816,7 +4818,7 @@ static bool direct_canonical_append_std_source_function(SourceInput *input, ZBuf
   if (!module || !target_name || !target_name[0]) return true;
   if (input && input->source_file &&
       direct_source_path_has_module_suffix(input->source_file, module->path) &&
-      direct_source_is_embedded_std_source_file(input->source_file, input->source)) {
+      direct_source_is_embedded_std_source_file(input->source_file)) {
     return true;
   }
   if (direct_input_has_function_symbol(input, module->module, target_name)) return true;
@@ -4997,7 +4999,7 @@ static bool direct_canonical_resolve_file(const char *path, const char *root, So
     return false;
   }
 
-  const ZStdSourceModule *std_owner = direct_embedded_std_source_module_for_file(path, source);
+  const ZStdSourceModule *std_owner = direct_std_source_module_for_file(path);
   if (!direct_canonical_append_referenced_std_sources(input, combined, &program, std_owner, diag)) {
     if (!diag->path) diag->path = z_strdup(path);
   }
@@ -5038,7 +5040,7 @@ static bool direct_canonical_resolve_file(const char *path, const char *root, So
   if (diag->code == 0) {
     direct_input_push_string(&input->source_files, &input->source_file_count, path);
     direct_input_push_module(input, module, path);
-    bool allow_internal_names = direct_source_is_embedded_std_source_file(path, source);
+    bool allow_internal_names = direct_source_is_embedded_std_source_file(path);
     if (allow_internal_names && input->source_file && strcmp(input->source_file, path) == 0) input->allow_missing_main = true;
     if (direct_input_add_program_symbols(input, &program, module, allow_internal_names, diag)) {
       direct_source_append(input, combined, path, source);
@@ -7621,7 +7623,7 @@ static bool command_repository_store_format(const Command *command, ZProgramGrap
     snprintf(diag->message, sizeof(diag->message), "repository graph store format is not supported");
     snprintf(diag->expected, sizeof(diag->expected), "--format text|binary");
     snprintf(diag->actual, sizeof(diag->actual), "%s", command->store_format);
-    snprintf(diag->help, sizeof(diag->help), "use --format binary to opt into binary zero.graph stores; omit --format for text");
+    snprintf(diag->help, sizeof(diag->help), "use --format binary to opt into binary zero.graph stores or binary graph artifacts; omit --format for text");
   }
   return false;
 }
@@ -7656,8 +7658,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     snprintf(diag->expected, sizeof(diag->expected), "zero init [--manifest toml|json] [--format text|binary] <project-path>");
     snprintf(diag->actual, sizeof(diag->actual), "zero init --out");
     snprintf(diag->help, sizeof(diag->help), "remove --out; init writes zero.toml or zero.json plus zero.graph in the selected project");
-    if (command->json) print_diag_json(command->out, diag);
-    else print_diag(command->out, diag);
+    print_command_diag(command, command->out, diag);
     return 1;
   }
   if (!command->input || !command->input[0]) {
@@ -7668,8 +7669,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     snprintf(diag->message, sizeof(diag->message), "graph init requires a project path");
     snprintf(diag->expected, sizeof(diag->expected), "zero init [--manifest toml|json] [--format text|binary] <project-path>");
     snprintf(diag->actual, sizeof(diag->actual), "missing project path");
-    if (command->json) print_diag_json("<graph-init>", diag);
-    else print_diag("<graph-init>", diag);
+    print_command_diag(command, "<graph-init>", diag);
     return 1;
   }
   struct stat st;
@@ -7682,25 +7682,21 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     snprintf(diag->message, sizeof(diag->message), "graph init path is not a directory");
     snprintf(diag->expected, sizeof(diag->expected), "directory project path");
     snprintf(diag->actual, sizeof(diag->actual), "%s", command->input);
-    if (command->json) print_diag_json(command->input, diag);
-    else print_diag(command->input, diag);
+    print_command_diag(command, command->input, diag);
     return 1;
   }
   if (!graph_init_reject_existing(command->input, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
   ZProgramGraphStoreFormat store_format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
   if (!command_repository_store_format(command, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, &store_format, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
   const char *manifest_file_name = command_manifest_file_name(command, diag);
   if (!manifest_file_name) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
   char *package_name = graph_init_package_name(command->input);
@@ -7754,8 +7750,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     free(store_path);
   }
   if (!ok) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
   }
   free(package_name);
   return ok ? 0 : 1;
@@ -11843,8 +11838,7 @@ static bool reject_graph_source_text_out(const Command *command, const char *exp
   snprintf(diag->expected, sizeof(diag->expected), "%s", expected ? expected : "zero dump|import|validate|roundtrip --out <program-graph-artifact> <input>");
   snprintf(diag->actual, sizeof(diag->actual), "%s", command->out);
   snprintf(diag->help, sizeof(diag->help), ".0 files are canonical source text; write derived ProgramGraph artifacts to a non-source path");
-  if (command->json) print_diag_json(command->out, diag);
-  else print_diag(command->out, diag);
+  print_command_diag(command, command->out, diag);
   return true;
 }
 
@@ -12427,8 +12421,7 @@ static void append_graph_roundtrip_json(
 static int run_graph_validate_command(const Command *command, ZDiag *diag) {
   ZProgramGraph graph = {0};
   if (!z_program_graph_load(command->input, &graph, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
   if (command->out) {
@@ -12436,9 +12429,14 @@ static int run_graph_validate_command(const Command *command, ZDiag *diag) {
       z_program_graph_free(&graph);
       return 1;
     }
-    if (!z_program_graph_save(command->out, &graph, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-      else print_diag(diag->path ? diag->path : command->out, diag);
+    ZProgramGraphStoreFormat store_format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+    if (!command_repository_store_format(command, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, &store_format, diag)) {
+      print_command_diag(command, diag->path ? diag->path : command->out, diag);
+      z_program_graph_free(&graph);
+      return 1;
+    }
+    if (!z_program_graph_save_format(command->out, &graph, store_format, diag)) {
+      print_command_diag(command, diag->path ? diag->path : command->out, diag);
       z_program_graph_free(&graph);
       return 1;
     }
@@ -12467,17 +12465,19 @@ static int run_graph_dump_input_command(const Command *command, const ZTargetInf
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(command, target, &input, &program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
-  if (command->out && !z_program_graph_save(command->out, &graph, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-    else print_diag(diag->path ? diag->path : command->out, diag);
-    z_free_program(&program);
-    z_free_source(&input);
-    z_program_graph_free(&graph);
-    return 1;
+  if (command->out) {
+    ZProgramGraphStoreFormat store_format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+    if (!command_repository_store_format(command, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, &store_format, diag) ||
+        !z_program_graph_save_format(command->out, &graph, store_format, diag)) {
+      print_command_diag(command, diag->path ? diag->path : command->out, diag);
+      z_free_program(&program);
+      z_free_source(&input);
+      z_program_graph_free(&graph);
+      return 1;
+    }
   }
   ZProgramGraphValidation validation = {0};
   z_program_graph_validate(&graph, &validation);
@@ -12509,8 +12509,7 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   const ZTargetInfo *host_target = z_find_target(z_host_target());
   if (!load_graph_input_for_read(command, host_target, &input, &program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
   if (command->out && !has_suffix(command->out, ".0")) {
@@ -12523,8 +12522,7 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
     snprintf(diag->expected, sizeof(diag->expected), "zero view --out <file.0> <program-graph-or-source>");
     snprintf(diag->actual, sizeof(diag->actual), "%s", command->out);
     snprintf(diag->help, sizeof(diag->help), "graph view writes canonical source text");
-    if (command->json) print_diag_json(command->out, diag);
-    else print_diag(command->out, diag);
+    print_command_diag(command, command->out, diag);
     z_free_program(&program);
     z_free_source(&input);
     z_program_graph_free(&graph);
@@ -12533,8 +12531,7 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
   ZBuf view;
   zbuf_init(&view);
   if (!z_program_graph_append_view(&view, &graph, command->input, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     zbuf_free(&view);
     z_free_program(&program);
     z_free_source(&input);
@@ -12542,8 +12539,7 @@ static int run_graph_view_command(const Command *command, ZDiag *diag) {
     return 1;
   }
   if (command->out && !z_write_file(command->out, view.data ? view.data : "", diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-    else print_diag(diag->path ? diag->path : command->out, diag);
+    print_command_diag(command, diag->path ? diag->path : command->out, diag);
     zbuf_free(&view);
     z_free_program(&program);
     z_free_source(&input);
@@ -12584,8 +12580,7 @@ static int run_graph_query_command(const Command *command, const ZTargetInfo *ta
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(command, target, &input, &program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
   if (command->json) {
@@ -12613,8 +12608,7 @@ static int run_graph_source_map_command(const Command *command, const ZTargetInf
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_checked_read(command, target, &input, &program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -12647,8 +12641,7 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
     snprintf(diag->expected, sizeof(diag->expected), "zero reconcile <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>");
     snprintf(diag->actual, sizeof(diag->actual), "missing --source");
     snprintf(diag->help, sizeof(diag->help), "pass the edited source or package that should be reconciled against the base graph");
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -12657,8 +12650,7 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
   ZProgramGraph base_graph = {0};
   GraphInputKind base_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(command, target, &base_input, &base_program, &base_graph, &base_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -12670,8 +12662,7 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
   ZProgramGraph edited_graph = {0};
   GraphInputKind edited_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(&edited_command, target, &edited_input, &edited_program, &edited_graph, &edited_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->reconcile_source, diag);
-    else print_diag(diag->path ? diag->path : command->reconcile_source, diag);
+    print_command_diag(command, diag->path ? diag->path : command->reconcile_source, diag);
     z_free_program(&base_program);
     z_free_source(&base_input);
     z_program_graph_free(&base_graph);
@@ -12837,7 +12828,9 @@ static bool save_graph_patch_output(const Command *command, const ZTargetInfo *t
     snprintf(diag->help, sizeof(diag->help), ".0 files are canonical source text; write derived ProgramGraph artifacts to a non-source path");
     return false;
   }
-  if (!z_program_graph_save(command->out, graph, diag)) return false;
+  ZProgramGraphStoreFormat store_format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  if (!command_repository_store_format(command, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, &store_format, diag)) return false;
+  if (!z_program_graph_save_format(command->out, graph, store_format, diag)) return false;
   *saved_path = command->out;
   return true;
 }
@@ -12861,8 +12854,7 @@ static int run_graph_patch_command(const Command *command, const ZTargetInfo *ta
   bool has_patch_text = command->patch_text != NULL;
   bool has_ops = command->patch_op_len > 0;
   if (!validate_graph_patch_sources(command, &has_file, &has_patch_text, &has_ops, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -12871,8 +12863,7 @@ static int run_graph_patch_command(const Command *command, const ZTargetInfo *ta
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_patch(command, &input, &program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -12881,15 +12872,13 @@ static int run_graph_patch_command(const Command *command, const ZTargetInfo *ta
   char *inline_text = NULL;
   bool ok = apply_graph_patch_source(command, has_file, has_patch_text, &graph, &result, &inline_text, diag);
   if (!ok && !result.message[0] && diag->code != 0) {
-    if (command->json) print_diag_json(diag->path ? diag->path : graph_patch_source_label(command), diag);
-    else print_diag(diag->path ? diag->path : graph_patch_source_label(command), diag);
+    print_command_diag(command, diag->path ? diag->path : graph_patch_source_label(command), diag);
     free_graph_patch_state(inline_text, &result, original_hash, &program, &input, &graph);
     return 1;
   }
   const char *saved_path = NULL;
   if (ok && !save_graph_patch_output(command, target, &graph, input_kind, &input, &saved_path, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : (command->out ? command->out : command->input), diag);
-    else print_diag(diag->path ? diag->path : (command->out ? command->out : command->input), diag);
+    print_command_diag(command, diag->path ? diag->path : (command->out ? command->out : command->input), diag);
     free_graph_patch_state(inline_text, &result, original_hash, &program, &input, &graph);
     return 1;
   }
@@ -12955,8 +12944,7 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(command, target, &source_input, &source_program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -13009,8 +12997,7 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   ZProgramGraph graph = {0};
   GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
   if (!load_graph_input_for_read(command, target, &source_input, &source_program, &graph, &input_kind, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     return 1;
   }
 
@@ -13026,8 +13013,7 @@ static int run_graph_size_command(const Command *command, const ZTargetInfo *tar
   if (!ok) {
     if (input.source_file) z_map_source_diag(&input, diag);
     if (!diag->path) diag->path = input.source_file ? input.source_file : command->input;
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     z_free_program(&program);
     z_free_source(&input);
     z_free_program(&source_program);
@@ -13100,8 +13086,7 @@ static int run_graph_artifact_roundtrip_command(const Command *command, ZDiag *d
   ZProgramGraphDirectRoundtrip result = {0};
   if (!z_program_graph_direct_roundtrip_file(command->input, command->out, &result, diag)) {
     const char *path = diag->path ? diag->path : (command->out ? command->out : command->input);
-    if (command->json) print_diag_json(path, diag);
-    else print_diag(path, diag);
+    print_command_diag(command, path, diag);
     z_program_graph_direct_roundtrip_free(&result);
     return 1;
   }
@@ -13365,23 +13350,20 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "failed to build source program graph");
-    if (command->json) print_diag_json(diag->path, diag);
-    else print_diag(diag->path, diag);
+    print_command_diag(command, diag->path, diag);
     zbuf_free(&view);
     return 1;
   }
   original.canonical_source = input && input->canonical_text_source;
   if (!z_program_graph_merge_embedded_std_graph_modules(&original, input, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     z_program_graph_free(&original);
     zbuf_free(&view);
     return 1;
   }
 
   if (!z_program_graph_direct_roundtrip_graph(&original, input && input->source_file ? input->source_file : command->input, &roundtrip, &comparison, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     z_program_graph_free(&roundtrip);
     z_program_graph_free(&original);
     zbuf_free(&view);
@@ -13389,8 +13371,7 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
   }
 
   if (command->json && !command->out && !z_program_graph_append_view(&view, &original, input && input->source_file ? input->source_file : command->input, diag)) {
-    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-    else print_diag(diag->path ? diag->path : command->input, diag);
+    print_command_diag(command, diag->path ? diag->path : command->input, diag);
     z_program_graph_free(&roundtrip);
     z_program_graph_free(&original);
     zbuf_free(&view);
@@ -13403,9 +13384,10 @@ static int run_graph_roundtrip_command(const Command *command, SourceInput *inpu
       zbuf_free(&view);
       return 1;
     }
-    if (!z_program_graph_save(command->out, &roundtrip, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-      else print_diag(diag->path ? diag->path : command->out, diag);
+    ZProgramGraphStoreFormat store_format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+    if (!command_repository_store_format(command, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, &store_format, diag) ||
+        !z_program_graph_save_format(command->out, &roundtrip, store_format, diag)) {
+      print_command_diag(command, diag->path ? diag->path : command->out, diag);
       z_program_graph_free(&roundtrip);
       z_program_graph_free(&original);
       zbuf_free(&view);
@@ -13463,20 +13445,19 @@ static int run_graph_command(const Command *command, SourceInput *input, Program
       diag->column = 1;
       diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "failed to build source program graph");
-      if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-      else print_diag(diag->path ? diag->path : command->input, diag);
+      print_command_diag(command, diag->path ? diag->path : command->input, diag);
       return 1;
     }
     stored.canonical_source = input && input->canonical_text_source;
     if (!z_program_graph_merge_embedded_std_graph_modules(&stored, input, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
-      else print_diag(diag->path ? diag->path : command->input, diag);
+      print_command_diag(command, diag->path ? diag->path : command->input, diag);
       z_program_graph_free(&stored);
       return 1;
     }
-    if (!z_program_graph_save(command->out, &stored, diag)) {
-      if (command->json) print_diag_json(diag->path ? diag->path : command->out, diag);
-      else print_diag(diag->path ? diag->path : command->out, diag);
+    ZProgramGraphStoreFormat store_format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+    if (!command_repository_store_format(command, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, &store_format, diag) ||
+        !z_program_graph_save_format(command->out, &stored, store_format, diag)) {
+      print_command_diag(command, diag->path ? diag->path : command->out, diag);
       z_program_graph_free(&stored);
       return 1;
     }
@@ -13554,8 +13535,7 @@ static int run_llvm_native_artifact_command(const Command *command, SourceInput 
   if (wrote_llvm_ir && links_zero_runtime) wrote_llvm_ir = compile_zero_runtime_object(runtime_object_file, &llvm_toolchain, command, target, true, &diag);
   input->object_ms = now_ms() - phase_started;
   if (!wrote_llvm_ir) {
-    if (command->json) print_diag_json(diag.path ? diag.path : input->source_file, &diag);
-    else print_diag(diag.path ? diag.path : input->source_file, &diag);
+    print_command_diag(command, diag.path ? diag.path : input->source_file, &diag);
     free(runtime_object_file); free(llvm_file); free(exe_file); zbuf_free(&llvm_ir); z_free_ir_program(ir); z_free_program(program); z_free_source(input);
     return 1;
   }
@@ -13567,8 +13547,7 @@ static int run_llvm_native_artifact_command(const Command *command, SourceInput 
   remove(llvm_file);
   if (runtime_object_file) remove(runtime_object_file);
   if (!linked) {
-    if (command->json) print_diag_json(diag.path ? diag.path : input->source_file, &diag);
-    else print_diag(diag.path ? diag.path : input->source_file, &diag);
+    print_command_diag(command, diag.path ? diag.path : input->source_file, &diag);
     free(runtime_object_file); free(llvm_file); free(exe_file); zbuf_free(&llvm_ir); z_free_ir_program(ir); z_free_program(program); z_free_source(input);
     return 1;
   }

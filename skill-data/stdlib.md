@@ -7,6 +7,11 @@ description: Use Zero standard library modules and target-gated capabilities.
 
 Use this when an agent needs common library calls, memory helpers, hosted I/O, or target-capability guidance.
 
+Stdlib modules are graph-backed. The checked-in `std/*.graph` files are binary
+graph stores used by the compiler path; sibling `std/*.0` files are
+human-readable projections for review and repair. Do not treat the projections
+as the stdlib compile source.
+
 ## Import
 
 ```zero

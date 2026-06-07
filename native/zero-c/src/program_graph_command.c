@@ -113,7 +113,7 @@ ZProgramGraphOutputContract z_program_graph_command_output_contract(const char *
   static const ZProgramGraphOutputContract fallback = {
     false,
     "output requires an output-capable graph command",
-    "zero dump|import|validate|roundtrip --out <program-graph-artifact> <input>",
+    "zero dump|import|validate|roundtrip [--format text|binary] --out <program-graph-artifact> <input>",
     "zero --out",
     "use zero view --out <file.0> for canonical source, or choose a graph subcommand with command-specific output",
   };
@@ -125,14 +125,14 @@ ZProgramGraphOutputContract z_program_graph_command_output_contract(const char *
 void z_program_graph_print_command_help(void) {
   printf("Usage: zero init|query|view|status|verify-sync|sync|dump|import|inspect|validate|source-map|reconcile|merge|roundtrip [--json] <input>\n\n");
   printf("Graph-first project usage: zero init [--json] <project-path>\n");
-  printf("Output usage: zero dump|import|validate|roundtrip [--json] --out <program-graph-artifact> <input>\n");
+  printf("Output usage: zero dump|import|validate|roundtrip [--json] [--format text|binary] --out <program-graph-artifact> <input>\n");
   printf("View output usage: zero view [--json] [--out <file.0>] <program-graph-or-source>\n");
   printf("Source map usage: zero source-map [--json] <program-graph-or-source>\n");
   printf("Query usage: zero query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>\n");
   printf("Reconcile usage: zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>\n");
   printf("Repository sync usage: zero status|verify-sync [--json] <project|zero.toml|zero.json|file.0>; zero sync (--from-source|--from-graph) [--json] <project|zero.toml|zero.json|file.0>; zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.toml|zero.json|file.0>\n");
   printf("Size usage: zero size [--json] [--target <target>] [--out <artifact>] <program-graph-artifact>\n");
-  printf("Patch usage: zero patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<input>] (<patch-file>|--op <operation>)\n");
+  printf("Patch usage: zero patch [--json] [--check-only|--dry-run] [--format text|binary] [--out <program-graph-artifact>] [<input>] (<patch-file>|--op <operation>)\n");
   printf("  In a graph-first package, zero patch --op <operation> defaults to the current directory.\nPatch operation help: zero patch --op help\n\n");
   printf("Build usage: zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-artifact>\n\n");
   printf("Run usage: zero run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-artifact> [-- args...]\n\n");
@@ -155,8 +155,8 @@ void z_program_graph_print_command_help(void) {
   printf("  roundtrip compare graph semantics after direct ProgramGraph lowering\n");
   printf("\nRepository store encoding:\n");
   printf("  text is the default zero.graph encoding\n");
-  printf("  --format binary opts init, patch, sync --from-source, or merge into binary zero.graph writes\n");
-  printf("  reads auto-detect text and binary stores\n");
+  printf("  --format binary opts repository graph writes and explicit graph artifact outputs into binary storage\n");
+  printf("  reads auto-detect text and binary stores and graph artifacts\n");
   printf("\nCommon patch operations:\n");
   printf("  addMain\n");
   printf("  addCheckWrite fn=\"main\" text=\"hello\\n\"\n");

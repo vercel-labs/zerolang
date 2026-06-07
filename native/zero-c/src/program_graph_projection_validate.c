@@ -184,18 +184,6 @@ static bool projection_std_module_path_matches(const ZStdSourceModule *module, c
           projection_text_eq(projection_basename(module->path), projection_basename(path)));
 }
 
-static bool projection_source_matches_embedded_std(const char *path, const char *source) {
-  for (size_t i = 0; i < z_std_source_module_count(); i++) {
-    const ZStdSourceModule *module = z_std_source_module_at(i);
-    if (!projection_std_module_path_matches(module, path)) continue;
-    char *embedded = z_std_source_module_copy_source(module);
-    bool matches = embedded && projection_text_eq(source, embedded);
-    free(embedded);
-    if (matches) return true;
-  }
-  return false;
-}
-
 static bool projection_path_is_embedded_std(const char *path) {
   for (size_t i = 0; i < z_std_source_module_count(); i++) {
     if (projection_std_module_path_matches(z_std_source_module_at(i), path)) return true;
@@ -206,7 +194,7 @@ static bool projection_path_is_embedded_std(const char *path) {
 static bool projection_store_is_embedded_std_library(const ZProgramGraphStore *store) {
   if (!store || store->projection_len == 0) return false;
   for (size_t i = 0; i < store->projection_len; i++) {
-    if (!projection_source_matches_embedded_std(store->projection_paths[i], store->projection_texts[i])) return false;
+    if (!projection_path_is_embedded_std(store->projection_paths[i])) return false;
   }
   return true;
 }

@@ -1,8 +1,9 @@
 #include "std_source.h"
 
 #include "embedded_stdlib_graph.inc"
-#include "embedded_stdlib.inc"
+#include "program_graph_store_binary.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,32 +14,32 @@ typedef struct {
 } ZStdSourceCall;
 
 static const ZStdSourceModule std_source_modules[] = {
-  {"std.args", "std/args.0", zero_embedded_stdlib_std_args_0_chunks, zero_embedded_stdlib_graph_std_args_graph_chunks},
-  {"std.ascii", "std/ascii.0", zero_embedded_stdlib_std_ascii_0_chunks, zero_embedded_stdlib_graph_std_ascii_graph_chunks},
-  {"std.cli", "std/cli.0", zero_embedded_stdlib_std_cli_0_chunks, zero_embedded_stdlib_graph_std_cli_graph_chunks},
-  {"std.codec", "std/codec.0", zero_embedded_stdlib_std_codec_0_chunks, zero_embedded_stdlib_graph_std_codec_graph_chunks},
-  {"std.collections", "std/collections.0", zero_embedded_stdlib_std_collections_0_chunks, zero_embedded_stdlib_graph_std_collections_graph_chunks},
-  {"std.env", "std/env.0", zero_embedded_stdlib_std_env_0_chunks, zero_embedded_stdlib_graph_std_env_graph_chunks},
-  {"std.fmt", "std/fmt.0", zero_embedded_stdlib_std_fmt_0_chunks, zero_embedded_stdlib_graph_std_fmt_graph_chunks},
-  {"std.fs", "std/fs.0", zero_embedded_stdlib_std_fs_0_chunks, zero_embedded_stdlib_graph_std_fs_graph_chunks},
-  {"std.http", "std/http.0", zero_embedded_stdlib_std_http_0_chunks, zero_embedded_stdlib_graph_std_http_graph_chunks},
-  {"std.io", "std/io.0", zero_embedded_stdlib_std_io_0_chunks, zero_embedded_stdlib_graph_std_io_graph_chunks},
-  {"std.json", "std/json.0", zero_embedded_stdlib_std_json_0_chunks, zero_embedded_stdlib_graph_std_json_graph_chunks},
-  {"std.log", "std/log.0", zero_embedded_stdlib_std_log_0_chunks, zero_embedded_stdlib_graph_std_log_graph_chunks},
-  {"std.math", "std/math.0", zero_embedded_stdlib_std_math_0_chunks, zero_embedded_stdlib_graph_std_math_graph_chunks},
-  {"std.mem", "std/mem.0", zero_embedded_stdlib_std_mem_0_chunks, zero_embedded_stdlib_graph_std_mem_graph_chunks},
-  {"std.net", "std/net.0", zero_embedded_stdlib_std_net_0_chunks, zero_embedded_stdlib_graph_std_net_graph_chunks},
-  {"std.parse", "std/parse.0", zero_embedded_stdlib_std_parse_0_chunks, zero_embedded_stdlib_graph_std_parse_graph_chunks},
-  {"std.path", "std/path.0", zero_embedded_stdlib_std_path_0_chunks, zero_embedded_stdlib_graph_std_path_graph_chunks},
-  {"std.proc", "std/proc.0", zero_embedded_stdlib_std_proc_0_chunks, zero_embedded_stdlib_graph_std_proc_graph_chunks},
-  {"std.search", "std/search.0", zero_embedded_stdlib_std_search_0_chunks, zero_embedded_stdlib_graph_std_search_graph_chunks},
-  {"std.sort", "std/sort.0", zero_embedded_stdlib_std_sort_0_chunks, zero_embedded_stdlib_graph_std_sort_graph_chunks},
-  {"std.str", "std/str.0", zero_embedded_stdlib_std_str_0_chunks, zero_embedded_stdlib_graph_std_str_graph_chunks},
-  {"std.testing", "std/testing.0", zero_embedded_stdlib_std_testing_0_chunks, zero_embedded_stdlib_graph_std_testing_graph_chunks},
-  {"std.text", "std/text.0", zero_embedded_stdlib_std_text_0_chunks, zero_embedded_stdlib_graph_std_text_graph_chunks},
-  {"std.time", "std/time.0", zero_embedded_stdlib_std_time_0_chunks, zero_embedded_stdlib_graph_std_time_graph_chunks},
-  {"std.toml", "std/toml.0", zero_embedded_stdlib_std_toml_0_chunks, zero_embedded_stdlib_graph_std_toml_graph_chunks},
-  {"std.url", "std/url.0", zero_embedded_stdlib_std_url_0_chunks, zero_embedded_stdlib_graph_std_url_graph_chunks},
+  {"std.args", "std/args.0", zero_embedded_stdlib_graph_std_args_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_args_graph_bytes)},
+  {"std.ascii", "std/ascii.0", zero_embedded_stdlib_graph_std_ascii_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_ascii_graph_bytes)},
+  {"std.cli", "std/cli.0", zero_embedded_stdlib_graph_std_cli_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_cli_graph_bytes)},
+  {"std.codec", "std/codec.0", zero_embedded_stdlib_graph_std_codec_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_codec_graph_bytes)},
+  {"std.collections", "std/collections.0", zero_embedded_stdlib_graph_std_collections_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_collections_graph_bytes)},
+  {"std.env", "std/env.0", zero_embedded_stdlib_graph_std_env_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_env_graph_bytes)},
+  {"std.fmt", "std/fmt.0", zero_embedded_stdlib_graph_std_fmt_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_fmt_graph_bytes)},
+  {"std.fs", "std/fs.0", zero_embedded_stdlib_graph_std_fs_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_fs_graph_bytes)},
+  {"std.http", "std/http.0", zero_embedded_stdlib_graph_std_http_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_http_graph_bytes)},
+  {"std.io", "std/io.0", zero_embedded_stdlib_graph_std_io_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_io_graph_bytes)},
+  {"std.json", "std/json.0", zero_embedded_stdlib_graph_std_json_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_json_graph_bytes)},
+  {"std.log", "std/log.0", zero_embedded_stdlib_graph_std_log_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_log_graph_bytes)},
+  {"std.math", "std/math.0", zero_embedded_stdlib_graph_std_math_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_math_graph_bytes)},
+  {"std.mem", "std/mem.0", zero_embedded_stdlib_graph_std_mem_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_mem_graph_bytes)},
+  {"std.net", "std/net.0", zero_embedded_stdlib_graph_std_net_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_net_graph_bytes)},
+  {"std.parse", "std/parse.0", zero_embedded_stdlib_graph_std_parse_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_parse_graph_bytes)},
+  {"std.path", "std/path.0", zero_embedded_stdlib_graph_std_path_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_path_graph_bytes)},
+  {"std.proc", "std/proc.0", zero_embedded_stdlib_graph_std_proc_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_proc_graph_bytes)},
+  {"std.search", "std/search.0", zero_embedded_stdlib_graph_std_search_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_search_graph_bytes)},
+  {"std.sort", "std/sort.0", zero_embedded_stdlib_graph_std_sort_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_sort_graph_bytes)},
+  {"std.str", "std/str.0", zero_embedded_stdlib_graph_std_str_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_str_graph_bytes)},
+  {"std.testing", "std/testing.0", zero_embedded_stdlib_graph_std_testing_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_testing_graph_bytes)},
+  {"std.text", "std/text.0", zero_embedded_stdlib_graph_std_text_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_text_graph_bytes)},
+  {"std.time", "std/time.0", zero_embedded_stdlib_graph_std_time_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_time_graph_bytes)},
+  {"std.toml", "std/toml.0", zero_embedded_stdlib_graph_std_toml_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_toml_graph_bytes)},
+  {"std.url", "std/url.0", zero_embedded_stdlib_graph_std_url_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_url_graph_bytes)},
 };
 
 static const ZStdSourceCall std_source_calls[] = {
@@ -176,18 +177,30 @@ const char *z_std_source_target_for_public_call(const char *qualified_name) {
   return call ? call->target_name : NULL;
 }
 
-char *z_std_source_module_copy_source(const ZStdSourceModule *module) {
-  if (!module || !module->chunks) return z_strdup("");
-  ZBuf source;
-  zbuf_init(&source);
-  for (size_t i = 0; module->chunks[i]; i++) zbuf_append(&source, module->chunks[i]);
-  return source.data ? source.data : z_strdup("");
-}
-
-char *z_std_source_module_copy_graph(const ZStdSourceModule *module) {
-  if (!module || !module->graph_chunks) return z_strdup("");
-  ZBuf graph;
-  zbuf_init(&graph);
-  for (size_t i = 0; module->graph_chunks[i]; i++) zbuf_append(&graph, module->graph_chunks[i]);
-  return graph.data ? graph.data : z_strdup("");
+bool z_std_source_module_load_graph(const ZStdSourceModule *module, ZProgramGraph *out, ZDiag *diag) {
+  if (out) z_program_graph_init(out);
+  if (!module || !module->graph_bytes || module->graph_len == 0) {
+    if (diag) {
+      *diag = (ZDiag){0};
+      diag->code = 1001;
+      diag->path = module ? module->path : "std";
+      diag->line = 1;
+      diag->column = 1;
+      diag->length = 1;
+      snprintf(diag->message, sizeof(diag->message), "embedded stdlib graph is missing");
+      snprintf(diag->expected, sizeof(diag->expected), "binary graph bytes");
+      snprintf(diag->actual, sizeof(diag->actual), "%s", module && module->module ? module->module : "unknown std module");
+    }
+    return false;
+  }
+  ZProgramGraphStore store;
+  z_program_graph_store_init(&store);
+  bool ok = z_program_graph_store_parse_binary(module->path, module->graph_bytes, module->graph_len, &store, diag);
+  if (ok && out) {
+    *out = store.graph;
+    store.graph = (ZProgramGraph){0};
+  }
+  z_program_graph_store_free(&store);
+  if (!ok && diag && !diag->path) diag->path = module->path;
+  return ok;
 }

@@ -3,6 +3,7 @@
 #include "program_graph_import.h"
 #include "program_graph_resolve.h"
 #include "program_graph_semantics.h"
+#include "program_graph_store.h"
 #include "std_source.h"
 
 #include <ctype.h>
@@ -224,10 +225,8 @@ bool z_program_graph_merge_embedded_std_graph_modules(ZProgramGraph *graph, cons
     if (graph_format_module_name_seen(merged_modules, merged_module_len, module->module)) continue;
     merged_modules[merged_module_len++] = graph_format_strdup(module->module);
     graph_format_remove_module_path_nodes(graph, module);
-    char *graph_text = z_std_source_module_copy_graph(module);
     ZProgramGraph module_graph = {0};
-    bool ok = z_program_graph_parse_dump(graph_text, &module_graph, diag);
-    free(graph_text);
+    bool ok = z_std_source_module_load_graph(module, &module_graph, diag);
     if (!ok) {
       if (diag && !diag->path) diag->path = module->path;
       for (size_t j = 0; j < merged_module_len; j++) free(merged_modules[j]);
@@ -846,6 +845,18 @@ static bool graph_format_storage_validation_fail(const char *path, const ZProgra
 }
 
 bool z_program_graph_load(const char *path, ZProgramGraph *out, ZDiag *diag) {
+  if (z_program_graph_store_path_is_binary(path)) {
+    ZProgramGraphStore store;
+    z_program_graph_store_init(&store);
+    bool ok = z_program_graph_store_load_path(path, &store, diag);
+    if (ok) {
+      *out = store.graph;
+      store.graph = (ZProgramGraph){0};
+    }
+    z_program_graph_store_free(&store);
+    if (!ok && diag && !diag->path) diag->path = path;
+    return ok;
+  }
   char *text = z_read_file(path, diag);
   if (!text) return false;
   bool parsed = z_program_graph_parse_dump(text, out, diag);
@@ -862,9 +873,12 @@ bool z_program_graph_load(const char *path, ZProgramGraph *out, ZDiag *diag) {
   return true;
 }
 
-bool z_program_graph_save(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
+bool z_program_graph_save_format(const char *path, const ZProgramGraph *graph, ZProgramGraphStoreFormat format, ZDiag *diag) {
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(graph, &validation)) return graph_format_storage_validation_fail(path, &validation, diag);
+  if (format == Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY) {
+    return z_program_graph_store_write_generated_path_format(path, graph, Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY, NULL, diag);
+  }
   ZProgramGraph storage = graph ? *graph : (ZProgramGraph){0};
   storage.canonical_source = false;
   ZBuf dump; zbuf_init(&dump);
@@ -879,6 +893,10 @@ bool z_program_graph_save(const char *path, const ZProgramGraph *graph, ZDiag *d
   bool ok = z_write_file(path, dump.data ? dump.data : "", diag);
   zbuf_free(&dump);
   return ok;
+}
+
+bool z_program_graph_save(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
+  return z_program_graph_save_format(path, graph, Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT, diag);
 }
 
 void z_program_graph_append_json(ZBuf *buf, const ZProgramGraph *graph, const ZProgramGraphValidation *validation) {

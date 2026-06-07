@@ -36,12 +36,16 @@ without parsing the text wrapper:
 zero init --format binary app
 zero sync --from-source --format binary <package>
 zero patch --format binary <package> --op 'addMain'
+zero validate --format binary --out /tmp/app.graph <input>
 ```
 
-Reads auto-detect text and binary `zero.graph` stores. Plain writes preserve an
-existing binary store, and `zero status <package>` reports `store format:
-text|binary`. Do not make binary the default in prompts; use it when the task is
-to test or opt into binary graph storage.
+Reads auto-detect text and binary `zero.graph` stores and binary graph
+artifacts. Plain package writes preserve an existing binary store, and
+`zero status <package>` reports `store format: text|binary`. Do not make binary
+the default for user packages in prompts; use it when the task is to test or opt
+into binary graph storage. The standard library is the exception:
+`std/*.graph` files are binary graph stores used by the compiler, while
+`std/*.0` files remain human-readable projections for review.
 
 `zero.graph` remains the authoring and repository compiler-input store.
 Repository graph build, run, test, size, ship, and mem commands, plus

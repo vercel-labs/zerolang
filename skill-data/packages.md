@@ -156,7 +156,9 @@ the user explicitly asks for them.
 Repository graph stores are text by default. Use `zero init --format binary` or
 `zero sync --from-source --format binary <package>` only when the package is
 intentionally opting into binary `zero.graph` storage. Normal reads auto-detect
-both encodings, and normal writes preserve an existing binary store.
+both encodings, and normal writes preserve an existing binary store. Stdlib
+`std/*.graph` stores are binary graph stores; `std/*.0` siblings are human
+projections and are not used as the stdlib compile source.
 
 ## Common Repairs
 
