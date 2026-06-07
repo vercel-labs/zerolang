@@ -22,7 +22,6 @@ typedef struct {
   bool store_valid;
   ZProgramGraphStoreFormat store_format;
   char *store_error;
-  char *graph_error;
   char *projection_error;
   char *graph_hash;
   char *module_identity;
@@ -33,8 +32,6 @@ typedef struct {
   size_t node_count;
   size_t edge_count;
   size_t source_count;
-  bool graph_checked;
-  bool graph_current;
   bool projection_checked;
   bool projection_current;
   bool projection_missing;
@@ -61,7 +58,7 @@ static bool repo_store_has_source_path(const ZProgramGraphStore *store, const ch
   return false;
 }
 
-static RepositoryGraphState repo_graph_state(const char *input, const ZTargetInfo *target, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag) {
+static RepositoryGraphState repo_graph_state(const char *input, const ZTargetInfo *target) {
   RepositoryGraphState state = {.input = input && input[0] ? input : ".", .compiler_input_valid = true};
   state.root = z_program_graph_store_root_for_input(state.input);
   state.store_path = z_program_graph_store_path_for_root(state.root);
@@ -102,13 +99,6 @@ static RepositoryGraphState repo_graph_state(const char *input, const ZTargetInf
       free(expected_main_path);
       free((char *)main_path_diag.path);
       z_program_graph_store_table_counts_for_graph(&store.graph, store.source_path_len, store.projection_len, &state.compiler_tables);
-      if (source_graph) {
-        state.graph_checked = true;
-        state.graph_current = z_program_graph_store_graph_matches_source(&store, source_graph);
-      } else if (source_graph_diag && (source_graph_diag->code != 0 || source_graph_diag->message[0])) {
-        state.graph_checked = true;
-        state.graph_error = z_strdup(source_graph_diag->message[0] ? source_graph_diag->message : "source graph could not be built");
-      }
       ZDiag projection_diag = {0};
       state.projection_missing = z_program_graph_projection_sources_missing(&store);
       z_program_graph_projection_state_label(&store, target, &state.projection_checked, &state.projection_current, &projection_diag);
@@ -126,7 +116,6 @@ static void repo_graph_state_free(RepositoryGraphState *state) {
   free(state->root);
   free(state->store_path);
   free(state->store_error);
-  free(state->graph_error);
   free(state->projection_error);
   free(state->graph_hash);
   free(state->module_identity);
@@ -168,7 +157,6 @@ static char *repo_command_text(const char *command, const char *input) {
 static const char *repo_projection_state(const RepositoryGraphState *state) {
   if (state && state->store_present && state->store_valid && state->module_identity_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->target_main_error) return "conflict";
-  if (state && state->store_present && state->store_valid && state->graph_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->projection_error) return "conflict";
   if (state && state->store_present && state->store_valid && state->projection_missing) return "source-missing";
   if (state && state->store_present && state->store_valid && state->projection_checked && !state->projection_current) return "source-stale";
@@ -440,8 +428,8 @@ static int repo_graph_success(const RepositoryGraphState *state, bool json, cons
   return repo_graph_success_paths(state, json, mode, writes, changed_path && changed_path[0] ? paths : NULL, changed_path && changed_path[0] ? 1 : 0);
 }
 
-int z_repository_graph_status_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag) {
-  RepositoryGraphState state = repo_graph_state(input, target, source_graph, source_graph_diag);
+int z_repository_graph_status_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source) {
+  RepositoryGraphState state = repo_graph_state(input, target);
   if (from_graph || from_source) {
     int rc = repo_graph_import_export_error(&state, json, "status", "unexpected import/export direction");
     repo_graph_state_free(&state);
@@ -482,7 +470,7 @@ int z_repository_graph_status_command(const char *input, const ZTargetInfo *targ
 }
 
 int z_repository_graph_verify_projection_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source) {
-  RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
+  RepositoryGraphState state = repo_graph_state(input, target);
   if (from_graph || from_source) {
     int rc = repo_graph_import_export_error(&state, json, "verify-projection", "unexpected import/export direction");
     repo_graph_state_free(&state);
@@ -536,8 +524,8 @@ int z_repository_graph_verify_projection_command(const char *input, const ZTarge
   return rc;
 }
 
-int z_repository_graph_import_export_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *store_format, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx) {
-  RepositoryGraphState state = repo_graph_state(input, target, from_source ? source_graph : NULL, from_graph ? source_graph_diag : NULL);
+int z_repository_graph_import_export_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *store_format, const ZProgramGraph *source_graph, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx) {
+  RepositoryGraphState state = repo_graph_state(input, target);
   const char *mode = from_graph ? "export" : "import";
   if (from_graph == from_source) {
     int rc = repo_graph_import_export_error(&state, json, mode, from_graph ? "import and export directions" : "missing import/export direction");
@@ -581,11 +569,13 @@ int z_repository_graph_import_export_command(const char *input, const ZTargetInf
     ZDiag post_diag = {0};
     bool post_checked = load_source_graph != NULL;
     bool post_ok = post_checked && load_source_graph(load_source_graph_ctx, &post_graph, &post_diag);
-    state = repo_graph_state(input, target, post_ok ? &post_graph : NULL, post_checked && !post_ok ? &post_diag : NULL);
+    state = repo_graph_state(input, target);
     bool post_clean = state.store_present && state.store_valid && state.projection_checked && state.projection_current;
     post_clean = post_clean && !state.projection_error;
     if (post_checked && (!post_ok || !post_clean)) {
-      rc = repo_graph_error_paths(&state, json, "export", "RGP006", "repository graph store is not clean after export", "clean repository graph projection state", repo_projection_state(&state), "run zero status to inspect repository graph projection state before choosing a repair", projection.changed_len > 0, (const char *const *)projection.changed_paths, projection.changed_len, REPO_GRAPH_REPAIR_STATUS);
+      const char *actual = post_ok ? repo_projection_state(&state) : (post_diag.message[0] ? post_diag.message : "exported source projection could not be checked");
+      const char *help = post_ok ? "run zero status to inspect repository graph projection state before choosing a repair" : "inspect the exported .0 projection and run zero import after reviewing human-source changes";
+      rc = repo_graph_error_paths(&state, json, "export", "RGP006", "repository graph store is not clean after export", "clean repository graph projection state", actual, help, projection.changed_len > 0, (const char *const *)projection.changed_paths, projection.changed_len, REPO_GRAPH_REPAIR_STATUS);
       z_program_graph_free(&post_graph);
       z_program_graph_projection_free(&projection);
       z_program_graph_store_free(&store);
@@ -633,7 +623,7 @@ int z_repository_graph_import_export_command(const char *input, const ZTargetInf
     return rc;
   }
   repo_graph_state_free(&state);
-  state = repo_graph_state(input, target, source_graph, NULL);
+  state = repo_graph_state(input, target);
   if (strcmp(repo_projection_state(&state), "clean") != 0) {
     const char *paths[1] = {saved.path};
     int rc = repo_graph_error_paths(&state, json, "import", "RGP006", "repository graph store is not clean after import", "clean repository graph projection state", repo_projection_state(&state), "run zero status to inspect repository graph projection state before choosing a repair", saved.path && saved.path[0], saved.path && saved.path[0] ? paths : NULL, saved.path && saved.path[0] ? 1 : 0, REPO_GRAPH_REPAIR_STATUS);
@@ -739,7 +729,7 @@ static int repo_graph_merge_conflict(const RepositoryGraphState *state, bool jso
 }
 
 int z_repository_graph_merge_command(const char *input, const ZTargetInfo *target, const char *base_path, const char *left_path, const char *right_path, const char *store_format, bool json) {
-  RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
+  RepositoryGraphState state = repo_graph_state(input, target);
   if (!base_path || !left_path || !right_path) {
     const char *actual = !base_path ? "missing --base" : (!left_path ? "missing --left" : "missing --right");
     int rc = repo_graph_merge_direction_error(&state, json, actual);
@@ -804,7 +794,7 @@ int z_repository_graph_merge_command(const char *input, const ZTargetInfo *targe
     }
   }
   repo_graph_state_free(&state);
-  state = repo_graph_state(input, target, NULL, NULL);
+  state = repo_graph_state(input, target);
   int rc = 0;
   if (!ok) {
     if (!merge.code[0]) {
@@ -839,27 +829,21 @@ int z_repository_graph_merge_command(const char *input, const ZTargetInfo *targe
 
 bool z_repository_graph_needs_source_graph(const char *kind, const char *input, const ZTargetInfo *target, bool from_graph, bool from_source) {
   if (REPO_KIND(kind, "import")) return true;
-  if (REPO_KIND(kind, "status") && !from_graph && !from_source) return false;
-  if (REPO_KIND(kind, "verify-projection") && !from_graph && !from_source) return false;
   (void)input;
   (void)target;
+  (void)from_graph;
+  (void)from_source;
   return false;
 }
 
-bool z_repository_graph_source_graph_optional(const char *kind, bool from_graph, bool from_source) {
-  return (REPO_KIND(kind, "status") || REPO_KIND(kind, "verify-projection")) &&
-         !from_graph &&
-         !from_source;
-}
-
-int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *merge_base, const char *merge_left, const char *merge_right, const char *store_format, const char *out, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
+int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *merge_base, const char *merge_left, const char *merge_right, const char *store_format, const char *out, const ZProgramGraph *source_graph, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
   if (handled) *handled = true;
-  if (REPO_KIND(kind, "status")) return z_repository_graph_status_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag);
+  if (REPO_KIND(kind, "status")) return z_repository_graph_status_command(input, target, json, from_graph, from_source);
   if (REPO_KIND(kind, "verify-projection")) return z_repository_graph_verify_projection_command(input, target, json, from_graph, from_source);
   bool is_import = REPO_KIND(kind, "import");
   bool is_export = REPO_KIND(kind, "export");
   if (is_import || is_export) {
-    RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
+    RepositoryGraphState state = repo_graph_state(input, target);
     bool has_out = out && out[0];
     bool repository_command = is_export ||
                               (state.compiler_input_valid &&
@@ -875,7 +859,7 @@ int z_repository_graph_maybe_command(const char *kind, const char *input, const 
       return rc;
     }
     repo_graph_state_free(&state);
-    return z_repository_graph_import_export_command(input, target, json, is_export, is_import, store_format, source_graph, source_graph_diag, load_source_graph, load_source_graph_ctx);
+    return z_repository_graph_import_export_command(input, target, json, is_export, is_import, store_format, source_graph, load_source_graph, load_source_graph_ctx);
   }
   if (REPO_KIND(kind, "merge")) return z_repository_graph_merge_command(input, target, merge_base, merge_left, merge_right, store_format, json);
   if (handled) *handled = false;

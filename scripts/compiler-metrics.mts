@@ -1314,6 +1314,8 @@ const artifactGraphMirPrepRawBody = cTextWithoutComments(cBlock(programGraphMirR
 const artifactGraphMirPrepBody = cCodeText(cBlock(programGraphMirRaw, "bool z_program_graph_prepare_artifact_mir_input"));
 const repositoryGraphMirPrepRawBody = cTextWithoutComments(cBlock(programGraphMirRaw, "bool z_program_graph_prepare_repository_store_mir_input"));
 const repositoryGraphMirPrepBody = cCodeText(cBlock(programGraphMirRaw, "bool z_program_graph_prepare_repository_store_mir_input"));
+const repositoryStateBody = cCodeText(cBlock(programGraphRepositoryRaw, "static RepositoryGraphState repo_graph_state"));
+const repositoryStatusBody = cCodeText(cBlock(programGraphRepositoryRaw, "int z_repository_graph_status_command"));
 const repositoryVerifyProjectionBody = cCodeText(cBlock(programGraphRepositoryRaw, "int z_repository_graph_verify_projection_command"));
 const repositoryNeedsSourceGraphBody = cTextWithoutComments(cBlock(programGraphRepositoryRaw, "bool z_repository_graph_needs_source_graph"));
 const rawX64RegisterImmediateOpcode = /\bz_x64_append_u8\s*\(\s*(?:code|text)\s*,\s*0xb[8-9a-f]\s*\)/i;
@@ -1712,11 +1714,18 @@ const programGraph = {
     /z_program_graph_store_append_table_counts_json\s*\(/.test(programGraphRepositorySource),
   repositoryStatusProjectionValidity: /repo_projection_validity_label\s*\(/.test(programGraphRepositorySource) &&
     /projectionValidity/.test(programGraphRepositoryRaw),
+  repositoryStatusSourceGraphFree:
+    !/\bsource_graph\b/.test(repositoryStatusBody) &&
+    !/\bsource_graph_diag\b/.test(repositoryStatusBody) &&
+    !/z_program_graph_store_graph_matches_source\s*\(/.test(repositoryStateBody) &&
+    !/\bgraph_checked\b|\bgraph_current\b|\bgraph_error\b/.test(programGraphRepositorySource),
   repositoryVerifyProjectionSourceFree: /z_program_graph_projection_sources_match\s*\(/.test(repositoryVerifyProjectionBody) &&
     !/z_program_graph_store_graph_matches_source\s*\(/.test(repositoryVerifyProjectionBody) &&
     !/source_graph\s*&&/.test(repositoryVerifyProjectionBody) &&
     /REPO_GRAPH_REPAIR_IMPORT_OR_EXPORT/.test(repositoryVerifyProjectionBody) &&
-    /REPO_KIND\s*\(\s*kind,\s*"verify-projection"\s*\)[\s\S]*return\s+false/.test(repositoryNeedsSourceGraphBody),
+    /REPO_KIND\s*\(\s*kind,\s*"import"\s*\)\)\s*return\s+true/.test(repositoryNeedsSourceGraphBody) &&
+    !/REPO_KIND\s*\(\s*kind,\s*"verify-projection"\s*\)/.test(repositoryNeedsSourceGraphBody) &&
+    !/REPO_KIND\s*\(\s*kind,\s*"status"\s*\)/.test(repositoryNeedsSourceGraphBody),
   repositoryGraphCheckNative: /z_repository_graph_require_compiler_store\s*\(/.test(repositoryGraphCheckBody) &&
     /z_program_graph_store_load_path\s*\(/.test(repositoryGraphCheckBody) &&
     /z_program_graph_collect_resolution_facts\s*\(/.test(repositoryGraphCheckBody) &&
