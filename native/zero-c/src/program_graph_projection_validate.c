@@ -60,11 +60,17 @@ static void projection_seed_package_metadata(SourceInput *input, const ZProgramG
   if (!input || !store || !projection_starts_with(store->graph.module_identity, "package:")) return;
   projection_source_set_package_identity(input, store->graph.module_identity);
   input->package_root = z_strdup(store->root && store->root[0] ? store->root : ".");
-  char *manifest_path = projection_join_path(input->package_root, "zero.json");
+  char *manifest_path = projection_join_path(input->package_root, "zero.toml");
   if (z_program_graph_store_file_exists(manifest_path)) {
     input->manifest_path = manifest_path;
   } else {
     free(manifest_path);
+    manifest_path = projection_join_path(input->package_root, "zero.json");
+    if (z_program_graph_store_file_exists(manifest_path)) {
+      input->manifest_path = manifest_path;
+    } else {
+      free(manifest_path);
+    }
   }
 }
 

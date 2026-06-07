@@ -37,6 +37,7 @@ static const ZStdSourceModule std_source_modules[] = {
   {"std.testing", "std/testing.0", zero_embedded_stdlib_std_testing_0_chunks, zero_embedded_stdlib_graph_std_testing_graph_chunks},
   {"std.text", "std/text.0", zero_embedded_stdlib_std_text_0_chunks, zero_embedded_stdlib_graph_std_text_graph_chunks},
   {"std.time", "std/time.0", zero_embedded_stdlib_std_time_0_chunks, zero_embedded_stdlib_graph_std_time_graph_chunks},
+  {"std.toml", "std/toml.0", zero_embedded_stdlib_std_toml_0_chunks, zero_embedded_stdlib_graph_std_toml_graph_chunks},
   {"std.url", "std/url.0", zero_embedded_stdlib_std_url_0_chunks, zero_embedded_stdlib_graph_std_url_graph_chunks},
 };
 
@@ -122,6 +123,13 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.path.relative", "__zero_std_path_relative", "std.path"},
   {"std.search.indexOf", "__zero_std_search_index_of", "std.search"},
   {"std.search.lastIndexOf", "__zero_std_search_last_index_of", "std.search"},
+  {"std.toml.bool", "__zero_std_toml_bool", "std.toml"},
+  {"std.toml.field", "__zero_std_toml_field", "std.toml"},
+  {"std.toml.string", "__zero_std_toml_string", "std.toml"},
+  {"std.toml.stringDecode", "__zero_std_toml_string_decode", "std.toml"},
+  {"std.toml.u32", "__zero_std_toml_u32", "std.toml"},
+  {"std.toml.validate", "__zero_std_toml_validate", "std.toml"},
+  {"std.toml.validateBytes", "__zero_std_toml_validate_bytes", "std.toml"},
   {"std.url.appendQuery", "__zero_std_url_append_query", "std.url"},
   {"std.url.authority", "__zero_std_url_authority", "std.url"},
   {"std.url.host", "__zero_std_url_host", "std.url"},

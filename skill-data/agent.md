@@ -29,8 +29,9 @@ Inside the Zero repository checkout, prefer `bin/zero` over a global `zero`. For
 
 ## Graph-First Edit Loop
 
-1. Read the nearest `zero.json`, graph status, tests, and examples enough to
-understand the package boundary.
+1. Read the nearest package manifest, graph status, tests, and examples enough
+to understand the package boundary. If both `zero.toml` and `zero.json` are in
+the package root, `zero.toml` is the active manifest.
 2. For a new agent-authored package, start from the graph:
 
 ```sh
@@ -40,6 +41,9 @@ zero patch --op 'addMain'
 zero query .
 zero check .
 ```
+
+Use `zero init --manifest toml <package>` when the user asks for TOML package
+metadata.
 
 3. Inspect the current program through the graph:
 
@@ -165,7 +169,7 @@ store or source projection. Do not commit derived `.program-graph` files unless
 the user explicitly asks.
 9. If `zero status <input>` reports repository graph sync as enabled, use
 `zero verify-sync <input>` when graph/source drift must fail the workflow.
-When `zero.json` sets `repositoryGraph.compilerInput` to `true`, normal compiler
+When `zero.toml` or `zero.json` sets `repositoryGraph.compilerInput` to `true`, normal compiler
 commands validate and compile from `zero.graph`; they report projection state
 but do not rewrite projections. When combining repository graph stores, use
 `zero merge --base <base-zero.graph> --left <left-zero.graph> --right

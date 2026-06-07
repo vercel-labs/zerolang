@@ -59,7 +59,7 @@ Apply only the edit you can justify from the source and fix plan. Treat `require
 - `NAM003`: unknown name; declare it, import it, or fix spelling.
 - `IMP001`: unknown package-local import.
 - `IMP002`: package-local import cycle.
-- `PKG001`: local dependency path lacks `zero.json`.
+- `PKG001`: local dependency path lacks `zero.toml` or `zero.json`.
 - `PKG002`: package dependency cycle.
 - `PKG003`: one package name resolves to conflicting versions.
 - `PKG004`: selected target is not supported by a dependency.

@@ -12,8 +12,11 @@ Use this when an agent needs to run, build, cross-build, inspect artifacts, or e
 Most build commands accept one of these:
 
 - a single `.0` file
-- a package directory containing `zero.json`
-- a direct path to `zero.json`
+- a package directory containing `zero.toml` or `zero.json`
+- a direct path to `zero.toml` or `zero.json`
+
+When both manifests are present in the same package root, Zero uses
+`zero.toml`. Prefer one checked-in manifest unless testing precedence.
 
 For packages with `repositoryGraph.compilerInput: true`, normal check, build,
 run, test, size, ship, and mem commands compile from the checked-in
@@ -83,6 +86,14 @@ projections. If a human edits a projection, run
 If the package has opted into binary graph storage, normal build and run
 commands still read `zero.graph` directly; `zero status <package>` reports the
 store format.
+
+Repository graph artifact commands also maintain a final MIR cache under
+`.zero/cache/native/mir-*.zmir`. The cache is keyed by graph hash, compiler
+version, target, emit kind, and backend request. On a miss, the compiler lowers
+the graph once, writes compact final MIR, memory-maps and verifies that cache,
+then sends the verified MIR to codegen. On a hit, codegen can skip graph-to-MIR
+lowering. JSON build, size, run, test, ship, and mem outputs report graph
+`lowering: "mapped-final-mir"` when this path is used.
 
 Use normal build and run commands against `.program-graph` only when you
 intentionally need to validate a derived interchange artifact:

@@ -260,15 +260,20 @@ static char *store_parent_dir(const char *path) {
 char *z_program_graph_store_root_for_input(const char *input) {
   if (!input || !input[0]) return z_strdup(".");
   char *cursor = NULL;
-  if (store_ends_with(input, "/zero.json") || strcmp(input, "zero.json") == 0) cursor = store_dirname(input);
+  if (store_ends_with(input, "zero.toml") || store_ends_with(input, "zero.json")) cursor = store_dirname(input);
   else if (store_path_is_dir(input)) cursor = z_strdup(input);
   else cursor = store_dirname(input);
   char *fallback = cursor && cursor[0] ? z_strdup(cursor) : z_strdup(".");
 
   while (cursor && cursor[0]) {
-    char *manifest = store_join_path(cursor, "zero.json");
+    char *manifest = store_join_path(cursor, "zero.toml");
     bool found = z_program_graph_store_file_exists(manifest);
     free(manifest);
+    if (!found) {
+      manifest = store_join_path(cursor, "zero.json");
+      found = z_program_graph_store_file_exists(manifest);
+      free(manifest);
+    }
     if (found) {
       free(fallback);
       return cursor;

@@ -1,0 +1,12 @@
+{
+  "package": {
+    "name": "json-precedence",
+    "version": "0.1.0"
+  },
+  "targets": {
+    "cli": {
+      "kind": "exe",
+      "main": "src/json.0"
+    }
+  }
+}

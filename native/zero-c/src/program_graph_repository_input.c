@@ -181,9 +181,9 @@ static int input_manifest_identity_error(const RepositoryGraphInputState *state,
                          json,
                          identity_error ? "RGP007" : "RGP003",
                          diag.message[0] ? diag.message : (identity_error ? "repository graph compiler input requires package.name" : "package manifest could not be read"),
-                         diag.expected[0] ? diag.expected : (identity_error ? "zero.json package.name matching zero.graph module identity" : "valid zero.json package manifest"),
+                         diag.expected[0] ? diag.expected : (identity_error ? "zero.toml or zero.json package.name matching zero.graph module identity" : "valid zero.toml or zero.json package manifest"),
                          identity_error ? actual : (diag.message[0] ? diag.message : "manifest unavailable"),
-                         diag.help[0] ? diag.help : (identity_error ? "add package.name before using repository graph compiler input" : "fix zero.json before using repository graph compiler input"),
+                         diag.help[0] ? diag.help : (identity_error ? "add package.name before using repository graph compiler input" : "fix zero.toml or zero.json before using repository graph compiler input"),
                          identity_error ? REPO_GRAPH_REPAIR_STATUS : REPO_GRAPH_REPAIR_NONE);
     free((char *)diag.path);
     return rc;
@@ -195,7 +195,7 @@ static int input_manifest_identity_error(const RepositoryGraphInputState *state,
                          "repository graph store module identity does not match package manifest",
                          expected,
                          state && state->module_identity ? state->module_identity : "missing module identity",
-                         "check in the zero.graph generated for this package, or update zero.json after reviewing the package identity",
+                         "check in the zero.graph generated for this package, or update the package manifest after reviewing the package identity",
                          REPO_GRAPH_REPAIR_STATUS);
     free(expected);
     return rc;

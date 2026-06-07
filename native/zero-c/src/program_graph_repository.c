@@ -391,9 +391,9 @@ static int repo_module_identity_error(const RepositoryGraphState *state, bool js
                           mode,
                           "RGP007",
                           state->module_identity_error,
-                          state->expected_module_identity && state->expected_module_identity[0] ? state->expected_module_identity : "zero.json package identity",
+                          state->expected_module_identity && state->expected_module_identity[0] ? state->expected_module_identity : "zero.toml or zero.json package identity",
                           state->module_identity && state->module_identity[0] ? state->module_identity : "missing module identity",
-                          "check in the zero.graph generated for this package, or update zero.json after reviewing the package identity",
+                          "check in the zero.graph generated for this package, or update the package manifest after reviewing the package identity",
                           REPO_GRAPH_REPAIR_STATUS);
 }
 
@@ -406,7 +406,7 @@ static int repo_target_main_error(const RepositoryGraphState *state, bool json, 
                           state->target_main_error,
                           "targets.cli.main source path present in zero.graph",
                           state->expected_main_path && state->expected_main_path[0] ? state->expected_main_path : "missing targets.cli.main",
-                          "check in the zero.graph generated for this target main, or update zero.json after reviewing the package entry point",
+                          "check in the zero.graph generated for this target main, or update the package manifest after reviewing the package entry point",
                           REPO_GRAPH_REPAIR_STATUS);
 }
 
@@ -685,14 +685,14 @@ static int repo_graph_merge_direction_error(const RepositoryGraphState *state, b
     repo_append_state_json(&buf, state, false, "merge", false);
     zbuf_append(&buf, ",\n  \"diagnostics\": [{\"severity\":\"error\",\"code\":\"RGM001\",\"message\":\"graph merge requires base, left, and right stores\",\"path\":");
     repo_append_json_string(&buf, state->input);
-    zbuf_append(&buf, ",\"line\":1,\"column\":1,\"length\":1,\"expected\":\"zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.json|file.0>\",\"actual\":");
+    zbuf_append(&buf, ",\"line\":1,\"column\":1,\"length\":1,\"expected\":\"zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.toml|zero.json|file.0>\",\"actual\":");
     repo_append_json_string(&buf, actual ? actual : "missing merge input");
     zbuf_append(&buf, ",\"help\":\"pass the common ancestor store and both side stores\",\"fixSafety\":\"requires-human-review\",\"repair\":{\"id\":\"choose-repository-graph-merge-inputs\",\"summary\":\"Choose the three repository graph stores to merge.\"},\"related\":[]}],\n  \"repairCommands\": []\n}\n");
     fputs(buf.data, stdout);
     zbuf_free(&buf);
   } else {
     fprintf(stderr, "%s:1:1 RGM001: graph merge requires base, left, and right stores\n", state->input);
-    fprintf(stderr, "  expected: zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.json|file.0>\n");
+    fprintf(stderr, "  expected: zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.toml|zero.json|file.0>\n");
     fprintf(stderr, "  actual: %s\n", actual ? actual : "missing merge input");
     fprintf(stderr, "  help: pass the common ancestor store and both side stores\n");
   }

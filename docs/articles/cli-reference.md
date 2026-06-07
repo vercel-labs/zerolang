@@ -7,8 +7,9 @@ Most commands accept the same input forms:
 | Input | Meaning |
 | --- | --- |
 | `file.0` | Human-readable Zero source text. In graph-first packages this is a projection, not the normal agent write surface. |
-| `project/` | A package directory containing `zero.json`; graph-first packages compile from `zero.graph`. |
-| `zero.json` | A package manifest. |
+| `project/` | A package directory containing `zero.toml` or `zero.json`; graph-first packages compile from `zero.graph`. |
+| `zero.toml` | A TOML package manifest. Takes precedence for directory inputs when both manifests exist. |
+| `zero.json` | A JSON package manifest. |
 
 ## Daily Commands
 
@@ -92,7 +93,7 @@ another tool needs stable fields.
 | --- | --- |
 | `zero check --json` | Diagnostics with code, span, expected/actual details, help, repair metadata, graph identity for source/package/artifact inputs, target readiness, direct graph lowering facts for ProgramGraph inputs, and safety facts for the selected target/emit kind. |
 | `zero inspect --json` | Modules, public symbols, capabilities, static facts, safety facts, helper use, and nested `programGraph`. |
-| `zero init --json` | Create a graph-first package with `zero.json` and `zero.graph`, no materialized `.0` source projection, and next-step graph patch commands. |
+| `zero init --json` | Create a graph-first package with a manifest and `zero.graph`, no materialized `.0` source projection, and next-step graph patch commands. |
 | `zero query --json` | Compact graph-first facts for tools: input kind, graph identity, selector metadata, module/function/body summaries, resolver-backed call/reference facts, matched node handles, selected-node neighborhoods, statement IDs, and common patch operations. |
 | `zero dump --json` | The bare deterministic ProgramGraph with `moduleIdentity`, `graphHash`, validation, counts, nodes, and edges. Use `--out <program-graph-artifact>` to also write a derived graph artifact. |
 | `zero import --json` | Source-to-ProgramGraph import with graph identity and validation. With `--out <program-graph-artifact>`, writes a derived graph artifact and reports `saved.path`. |
@@ -126,6 +127,13 @@ compile. Planning and introspection commands such as `zero dev`, `zero time`,
 Derived ProgramGraph artifact commands report the same identity fields for the
 artifact being inspected or built.
 
+Repository graph build/run/test/size/ship/mem commands can also report
+`lowering: "mapped-final-mir"`. That means the graph-backed package was lowered
+to compact final MIR, written under `.zero/cache/native/mir-*.zmir`,
+memory-mapped, verified against the compiler version, graph hash, target, emit
+kind, and backend request, then passed to codegen. `zero.graph` remains the
+authoring store; `.zmir` files are derived compiler caches.
+
 `zero check --json` and `zero inspect --json` also include `compileTime`.
 That object records bounded `meta` evaluation, sandbox denials, cache key
 inputs, typed reflection facts, and integer/Bool/enum static values.
@@ -154,8 +162,9 @@ interchange files.
 `zero status`, `zero verify-sync`, and `zero sync
 --from-source|--from-graph` define the repository graph sync surface.
 `zero init <project>` creates a graph-first package with
-`repositoryGraph.compilerInput: true`, `zero.json`, and `zero.graph`; it does
-not materialize `.0` files. Agents can patch the package with
+`repositoryGraph.compilerInput: true`, `zero.json`, and `zero.graph`; pass
+`--manifest toml` to write `zero.toml` instead. It does not materialize `.0`
+files. Agents can patch the package with
 `zero patch <project> --op ...`; from inside a graph-first package,
 `zero patch --op ...` defaults to the current directory. Then normal
 `zero check`, `zero run`, and `zero test` run against the graph store.
@@ -172,7 +181,8 @@ existing binary store, and `zero status` reports the active store format.
 store, and `zero verify-sync` checks the store against the current source
 graph and source projection without writing files. Packages can opt normal
 check, build, run, test, size, ship, and mem commands into the checked-in store
-with `repositoryGraph.compilerInput: true` in `zero.json`. Normal compiler
+with `repositoryGraph.compilerInput: true` in `zero.toml` or `zero.json`.
+Normal compiler
 commands validate and compile from the graph store, including target and package
 metadata, so source-free graph packages can still be checked, built, run,
 tested, sized, shipped, and inspected. Commands report source projection state
@@ -399,18 +409,18 @@ zero build [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--
 zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <input>
 zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <input>
 zero fmt [--check] <input>
-zero init [--json] <project-path>
+zero init [--json] [--manifest toml|json] <project-path>
 zero query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>
 zero dump|import|validate|roundtrip [--json] [--out <program-graph-artifact>] <input>
 zero view [--json] [--out <file.0>] <program-graph-or-source>
 zero source-map [--json] <program-graph-or-source>
-zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>
-zero status|verify-sync [--json] <project|zero.json|file.0>
-zero sync (--from-source|--from-graph) [--json] <project|zero.json|file.0>
-zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.json|file.0>
+zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>
+zero status|verify-sync [--json] <project|zero.toml|zero.json|file.0>
+zero sync (--from-source|--from-graph) [--json] <project|zero.toml|zero.json|file.0>
+zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] <project|zero.toml|zero.json|file.0>
 zero size [--json] [--target <target>] --out <artifact> <program-graph-or-package>
 zero patch [--json] [--check-only|--dry-run] [--out <program-graph-artifact>] [<program-graph-or-source>] (<patch-file>|--op <operation>)
-zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json|program-graph-artifact>
+zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.toml|zero.json|program-graph-artifact>
 zero run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <program-graph-or-package> [-- args...]
 zero test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>
 zero doc [--json] [--target <target>] <input>

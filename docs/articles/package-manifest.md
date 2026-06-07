@@ -1,7 +1,33 @@
 ## Package And Manifest Reference
 
-`zero.json` is the package manifest. The current compiler supports local
-packages and executable targets.
+Zero packages use either `zero.toml` or `zero.json` as the package manifest.
+Use one manifest per package in normal projects. If both files exist,
+`zero.toml` takes precedence for directory inputs; an explicit `zero.json` path
+still checks that JSON manifest directly.
+
+The current compiler supports local packages and executable targets.
+
+TOML is the preferred graph-first manifest format:
+
+```toml
+[package]
+name = "hello"
+version = "0.1.0"
+license = "MIT"
+
+[targets.cli]
+kind = "exe"
+main = "src/main.0"
+
+[repositoryGraph]
+compilerInput = true
+
+[dependencies.local-tools]
+path = "../local-tools"
+version = "0.1.0"
+```
+
+The equivalent JSON shape is also accepted:
 
 ```json
 {
@@ -37,7 +63,7 @@ conflicting, or unavailable, and do not rewrite `.0` files. A graph-first
 package can be created with:
 
 ```sh
-zero init app
+zero init --manifest toml app
 cd app
 zero patch --op 'addMain'
 zero check .
@@ -62,7 +88,7 @@ target, package version, manifest hash, dependency graph hash, and lockfile hash
 
 Package graph failures use stable diagnostics:
 
-- `PKG001`: a local dependency path does not contain `zero.json`
+- `PKG001`: a local dependency path does not contain `zero.toml` or `zero.json`
 - `PKG002`: package dependencies form a cycle
 - `PKG003`: the graph resolves one package name to conflicting versions
 - `PKG004`: the selected target is not listed in a dependency's target metadata

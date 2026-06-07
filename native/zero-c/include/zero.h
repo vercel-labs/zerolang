@@ -6,6 +6,8 @@
 
 #include "zero_contracts.h"
 
+#define ZERO_VERSION "0.2.1"
+
 typedef struct ZTargetInfo ZTargetInfo;
 typedef struct ZProgramGraph ZProgramGraph;
 
@@ -910,6 +912,8 @@ typedef struct {
   char *main_path;
   char *graph_path;
   char *kind;
+  bool repository_graph_compiler_input_present;
+  bool repository_graph_compiler_input;
   ZManifestDependency *dependencies;
   ZManifestCLib *c_libs;
   size_t dependency_count;
@@ -1043,6 +1047,7 @@ void z_free_source(Z_INOUT SourceInput *input);
 bool z_parse_manifest_json(Z_IN const char *manifest, Z_OUT ZManifest *out, Z_OUT ZDiag *diag);
 bool z_resolve_package_metadata(Z_IN const char *manifest_path, Z_IN const char *manifest, Z_IN const ZManifest *parsed_manifest, Z_OUT SourceInput *out, Z_OUT ZDiag *diag);
 Z_RET_OWNED Z_RET_OPTIONAL char *z_manifest_path_for_input(Z_IN const char *input_path);
+Z_RET_OWNED Z_RET_OPTIONAL char *z_manifest_path_for_root(Z_IN const char *root);
 bool z_resolve_manifest_graph_artifact_path(Z_IN const char *input_path, Z_OUT char **out_artifact_path, Z_OUT bool *handled, bool require_graph, Z_OUT ZDiag *diag);
 void z_free_manifest(Z_INOUT ZManifest *manifest);
 Z_RET_OWNED char *z_default_out_path(Z_IN const char *source_file);

@@ -106,7 +106,7 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `IMP001`: unknown package-local imports, with repair id `fix-import-path`
 - `IMP002`: package-local import cycles
 - `IMP003`: duplicate public exports across imported modules
-- `PKG001`: a local package dependency path does not contain `zero.json`
+- `PKG001`: a local package dependency path does not contain `zero.toml` or `zero.json`
 - `PKG002`: package dependencies form a cycle
 - `PKG003`: one package name resolves to conflicting versions
 - `PKG004`: a package dependency does not support the selected target
@@ -259,10 +259,10 @@ The canonical repair is to use package-relative vendored headers/libraries or
 configure the target sysroot. Do not rely on host include paths, host library
 paths, or host `pkg-config` discovery for cross-target builds.
 
-Extern C calls also require a matching link plan in `zero.json`. The imported
-header must appear in `c.libs.*.headers`, and that library must provide `lib` or
-`link` inputs. Missing matching inputs and unsafe `link` names report `CIMP005`
-with repair id `configure-c-link-plan`.
+Extern C calls also require a matching link plan in the active package
+manifest. The imported header must appear in `c.libs.*.headers`, and that
+library must provide `lib` or `link` inputs. Missing matching inputs and unsafe
+`link` names report `CIMP005` with repair id `configure-c-link-plan`.
 
 Package dependency diagnostics are graph-level repairs:
 

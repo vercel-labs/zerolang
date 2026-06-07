@@ -1,0 +1,8 @@
+# TOML takes precedence over zero.json for directory package inputs.
+[package]
+name = "toml-precedence"
+version = "0.1.0"
+
+[targets.cli]
+kind = "exe"
+main = "src/toml.0"

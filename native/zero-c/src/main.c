@@ -49,8 +49,6 @@
 #endif
 #include <unistd.h>
 
-#define ZERO_VERSION "0.2.1"
-
 #include "embedded_runtime_sources.inc"
 #include "embedded_skills.inc"
 
@@ -75,6 +73,7 @@ typedef struct {
   const char *merge_left;
   const char *merge_right;
   const char *store_format;
+  const char *manifest_format;
   const char *query_find;
   const char *query_function;
   const char *query_node;
@@ -1948,6 +1947,15 @@ static char *read_optional_file(const char *path) {
   return data;
 }
 
+static char *read_optional_manifest_file(const SourceInput *input) {
+  if (input && input->manifest_path && input->manifest_path[0]) return read_optional_file(input->manifest_path);
+  char *manifest_path = z_manifest_path_for_root(".");
+  if (!manifest_path) return NULL;
+  char *manifest = read_optional_file(manifest_path);
+  free(manifest_path);
+  return manifest;
+}
+
 static void append_hash_json(ZBuf *buf, const char *key, uint64_t hash) {
   zbuf_appendf(buf, ",\n    \"%s\": \"%016llx\"", key, (unsigned long long)hash);
 }
@@ -2490,7 +2498,7 @@ static void append_type_param_constraints_json(ZBuf *buf, const ParamVec *params
 }
 
 static void append_compile_time_json(ZBuf *buf, const Program *program, const SourceInput *input, const ZTargetInfo *target) {
-  char *manifest = read_optional_file(input && input->manifest_path ? input->manifest_path : "zero.json");
+  char *manifest = read_optional_manifest_file(input);
   zbuf_append(buf, "{");
   zbuf_append(buf, "\"deterministic\":true,\"releaseMetadataDefault\":false");
   zbuf_append(buf, ",\"sandbox\":{\"filesystem\":\"denied\",\"network\":\"denied\",\"ambientEnv\":\"denied\",\"process\":\"denied\"}");
@@ -2735,7 +2743,7 @@ static void print_check_json_success(const char *path, SourceInput *input, const
   const char *profile = command && command->profile ? command->profile : "release";
   CapabilitySummary caps = program_capabilities(program);
   ZMetaCacheStats meta = z_meta_cache_stats();
-  char *manifest = read_optional_file("zero.json");
+  char *manifest = read_optional_manifest_file(input);
   zbuf_append(&buf, ",\n  \"package\": ");
   append_package_metadata_json(&buf, input, target);
   zbuf_append(&buf, ",\n  \"packageCache\": ");
@@ -2995,7 +3003,12 @@ static void append_dev_plan_json(ZBuf *buf, const SourceInput *input, const Prog
     append_json_string(buf, input->source_files[i]);
   }
   zbuf_append(buf, "], \"manifest\": ");
-  append_json_string(buf, "zero.json");
+  const char *watch_manifest = "package manifest";
+  if (input && input->manifest_path && input->manifest_path[0]) {
+    const char *slash = strrchr(input->manifest_path, '/');
+    watch_manifest = slash ? slash + 1 : input->manifest_path;
+  }
+  append_json_string(buf, watch_manifest);
   zbuf_append(buf, ", \"packageLocks\": [");
   if (input && input->lockfile_path) append_json_string(buf, input->lockfile_path);
   zbuf_append(buf, "], \"generatedBindingInputs\": ");
@@ -3229,8 +3242,8 @@ static const char *diag_repair_summary(int code) {
     case 6002: return "Build for a target that provides the required capability, or move that capability behind a target-specific entry point.";
     case 8003: return "Use package-relative vendored headers/libraries or set the target sysroot instead of relying on host include, lib, or pkg-config discovery.";
     case 8004: return "Call a function declared by the imported C header, or wrap unsupported C ABI types behind a scalar C shim.";
-    case 8005: return "Add matching c.libs headers plus package-relative C libraries or safe system library names to zero.json for extern C calls.";
-    case 9001: return "Create the local dependency package or update the path in zero.json.";
+    case 8005: return "Add matching c.libs headers plus package-relative C libraries or safe system library names to the package manifest for extern C calls.";
+    case 9001: return "Create the local dependency package or update the path in zero.toml or zero.json.";
     case 9002: return "Remove the package cycle or move shared code into an acyclic dependency.";
     case 9003: return "Resolve the graph to one version of each package name.";
     case 9004: return "Select a target supported by the dependency or gate the dependency behind a compatible target.";
@@ -3950,32 +3963,32 @@ static void print_help(void) {
   printf("  zero --version [--json]\n");
   printf("  zero skills [list|get] [--json]\n");
   printf("  zero new cli|lib|package <name>\n");
-  printf("  zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] <file.0|project|zero.json|program-graph-artifact>\n");
+  printf("  zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] <file.0|project|zero.toml|zero.json|program-graph-artifact>\n");
   printf("  zero patch [--json] [--check-only|--dry-run] [--format text|binary] [--out <program-graph-artifact>] [<input>] (<patch-file>|--op <operation>)\n");
-  printf("  zero test <file.0|project|zero.json|program-graph-artifact>\n");
-  printf("  zero fmt <file.0|project|zero.json>\n");
-  printf("  zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json|program-graph-artifact>\n");
-  printf("  zero run [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json|program-graph-artifact> [-- args...]\n");
-  printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.json>\n");
-  printf("  zero tokens --json <file.0|project|zero.json>\n");
-  printf("  zero parse --json <file.0|project|zero.json>\n");
-  printf("  zero init [--json] [--format text|binary] <project-path>\n");
+  printf("  zero test <file.0|project|zero.toml|zero.json|program-graph-artifact>\n");
+  printf("  zero fmt <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.toml|zero.json|program-graph-artifact>\n");
+  printf("  zero run [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.toml|zero.json|program-graph-artifact> [-- args...]\n");
+  printf("  zero ship [--json] [--target <target>] [--profile release-small|tiny|audit] [--out <file>] <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero tokens --json <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero parse --json <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero init [--json] [--manifest toml|json] [--format text|binary] <project-path>\n");
   printf("  zero query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name>] [--node <id>] <program-graph-or-source>\n");
   printf("  zero view [--json] [--out <file.0>] <program-graph-or-source>\n");
-  printf("  zero status|verify-sync [--json] <project|zero.json|file.0>\n");
-  printf("  zero sync (--from-source|--from-graph) [--json] [--format text|binary] <project|zero.json|file.0>\n");
+  printf("  zero status|verify-sync [--json] <project|zero.toml|zero.json|file.0>\n");
+  printf("  zero sync (--from-source|--from-graph) [--json] [--format text|binary] <project|zero.toml|zero.json|file.0>\n");
   printf("  zero dump|import|validate|roundtrip [--json] [--out <program-graph-artifact>] <input>\n");
   printf("  zero source-map [--json] <program-graph-or-source>\n");
-  printf("  zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.json>\n");
-  printf("  zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] [--format text|binary] <project|zero.json|file.0>\n");
-  printf("  zero doc [--json] <file.0|project|zero.json>\n");
-  printf("  zero size [--json] [--out <artifact>] <file.0|project|zero.json>\n");
-  printf("  zero mem [--json] [--target <target>] <file.0|project|zero.json>\n");
-  printf("  zero dev [--json] [--trace] <file.0|project|zero.json>\n");
-  printf("  zero time --json <file.0|project|zero.json>\n");
-  printf("  zero abi check|dump [--json] [--target <target>] <file.0|project|zero.json>\n");
+  printf("  zero reconcile [--json] <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>\n");
+  printf("  zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] [--format text|binary] <project|zero.toml|zero.json|file.0>\n");
+  printf("  zero doc [--json] <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero size [--json] [--out <artifact>] <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero mem [--json] [--target <target>] <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero dev [--json] [--trace] <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero time --json <file.0|project|zero.toml|zero.json>\n");
+  printf("  zero abi check|dump [--json] [--target <target>] <file.0|project|zero.toml|zero.json>\n");
   printf("  zero explain [--json] <code>\n");
-  printf("  zero fix --plan --json <file.0|project|zero.json>\n");
+  printf("  zero fix --plan --json <file.0|project|zero.toml|zero.json>\n");
   printf("  zero doctor [--json]\n");
   printf("  zero clean [--all]\n");
   printf("  zero targets\n");
@@ -4012,17 +4025,17 @@ static void print_command_help(const char *command) {
     printf("Flags:\n");
     printf("  --all    remove broader .zero generated state while preserving .zero/bin\n");
   } else if (strcmp(command, "check") == 0) {
-    printf("Usage: zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] <file.0|project|zero.json|program-graph-artifact>\n\n");
+    printf("Usage: zero check [--json] [--target <target>] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] <file.0|project|zero.toml|zero.json|program-graph-artifact>\n\n");
     printf("Parse and typecheck Zero input without emitting artifacts. Graph-first packages and ProgramGraph artifacts check through the graph path.\n");
   } else if (strcmp(command, "patch") == 0) {
     printf("Usage: zero patch [--json] [--check-only|--dry-run] [--format text|binary] [--out <program-graph-artifact>] [<input>] (<patch-file>|--op <operation>)\n\n");
     print_graph_patch_help_text();
   } else if (strcmp(command, "build") == 0) {
-    printf("Usage: zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json|program-graph-artifact>\n\n");
+    printf("Usage: zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.toml|zero.json|program-graph-artifact>\n\n");
     printf("Build direct native executable or object artifacts.\n\n");
     printf("Example: zero build --release tiny --emit exe examples/hello.0 --out .zero/out/hello\n");
   } else if (strcmp(command, "run") == 0) {
-    printf("Usage: zero run [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.json|program-graph-artifact> [-- args...]\n\n");
+    printf("Usage: zero run [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] <file.0|project|zero.toml|zero.json|program-graph-artifact> [-- args...]\n\n");
     printf("Build a host executable with the selected backend and run it. Direct is the default; LLVM is explicit and requires clang. Program stdout and stderr are passed through unchanged.\n\n");
     printf("Example: zero run examples/add.0\n");
   } else if (strcmp(command, "ship") == 0) {
@@ -4030,45 +4043,45 @@ static void print_command_help(const char *command) {
     printf("Produce a deterministic release preview with a direct binary, stripped binary copy, checksum, archive manifest, debug-symbol metadata, size report, and SBOM placeholder.\n\n");
     printf("Example: zero ship --target linux-musl-x64 examples/hello.0 --out .zero/ship/hello\n");
   } else if (strcmp(command, "test") == 0) {
-    printf("Usage: zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <file.0|project|zero.json|program-graph-artifact>\n\n");
+    printf("Usage: zero test [--json] [--filter <name>] [--target <target>] [--cc <path>] [--out <file>] <file.0|project|zero.toml|zero.json|program-graph-artifact>\n\n");
     printf("Build and run inline `test` blocks.\n");
   } else if (strcmp(command, "fmt") == 0) {
-    printf("Usage: zero fmt [--check] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero fmt [--check] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Print deterministic bootstrap formatting for Zero source.\n");
   } else if (strcmp(command, "targets") == 0) {
     printf("Usage: zero targets\n\n");
     printf("Print supported target facts as JSON.\n");
   } else if (strcmp(command, "tokens") == 0) {
-    printf("Usage: zero tokens --json <file.0|project|zero.json>\n\n");
+    printf("Usage: zero tokens --json <file.0|project|zero.toml|zero.json>\n\n");
     printf("Emit source token JSON for oracle comparisons.\n");
   } else if (strcmp(command, "parse") == 0) {
-    printf("Usage: zero parse --json <file.0|project|zero.json>\n\n");
+    printf("Usage: zero parse --json <file.0|project|zero.toml|zero.json>\n\n");
     printf("Emit normalized source parse JSON for oracle comparisons.\n");
   } else if (strcmp(command, "abi") == 0) {
-    printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero abi check|dump [--json] [--target <target>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Check ABI-safe declarations or dump target-aware source layout facts.\n");
   } else if (strcmp(command, "graph") == 0 || is_program_graph_root_command(command)) {
     z_program_graph_print_command_help();
   } else if (strcmp(command, "doc") == 0) {
-    printf("Usage: zero doc [--json] [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero doc [--json] [--target <target>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Emit package API documentation facts without emitting artifacts.\n");
   } else if (strcmp(command, "size") == 0) {
-    printf("Usage: zero size [--json] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <artifact>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero size [--json] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <artifact>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Report direct IR size, optional artifact bytes, capabilities, and stdlib helper metadata.\n");
   } else if (strcmp(command, "mem") == 0) {
-    printf("Usage: zero mem [--json] [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero mem [--json] [--target <target>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Report direct stack, static, heap, buffer, and runtime memory facts.\n");
   } else if (strcmp(command, "dev") == 0) {
-    printf("Usage: zero dev [--json] [--trace] [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero dev [--json] [--trace] [--target <target>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Emit a direct incremental watch plan, interface fingerprints, and affected-test summary.\n");
   } else if (strcmp(command, "time") == 0) {
-    printf("Usage: zero time --json [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero time --json [--target <target>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Emit compiler phase, cache, and invalidation timing facts.\n");
   } else if (strcmp(command, "explain") == 0) {
     printf("Usage: zero explain [--json] <diagnostic-code>\n\n");
     printf("Explain a diagnostic and its repair metadata.\n");
   } else if (strcmp(command, "fix") == 0) {
-    printf("Usage: zero fix (--plan|--patch|--apply) --json [--target <target>] <file.0|project|zero.json>\n\n");
+    printf("Usage: zero fix (--plan|--patch|--apply) --json [--target <target>] <file.0|project|zero.toml|zero.json>\n\n");
     printf("Print repair plans, reviewable patches, or apply behavior-preserving edits.\n");
   } else if (strcmp(command, "version") == 0 || strcmp(command, "--version") == 0) {
     printf("Usage: zero --version [--json]\n\n");
@@ -4133,36 +4146,27 @@ static bool parse_emit_option(int argc, char **argv, int *index, Command *comman
   return true;
 }
 
+static bool parse_common_value_option(int argc, char **argv, int *index, Command *command) {
+  const char *arg = argv[*index];
+  const char **slot = NULL;
+  if (strcmp(arg, "--out") == 0) slot = &command->out;
+  else if (strcmp(arg, "--target") == 0) slot = &command->target;
+  else if (strcmp(arg, "--profile") == 0 || strcmp(arg, "--release") == 0) slot = &command->profile;
+  else if (strcmp(arg, "--cc") == 0) slot = &command->cc;
+  else if (strcmp(arg, "--backend") == 0) slot = &command->backend;
+  else if (strcmp(arg, "--format") == 0) slot = &command->store_format;
+  else if (strcmp(arg, "--manifest") == 0) slot = &command->manifest_format;
+  else if (strcmp(arg, "--filter") == 0) slot = &command->filter;
+  if (!slot) return false;
+  if (*index + 1 >= argc) command->unknown_flag = arg;
+  else *slot = argv[++(*index)];
+  return true;
+}
+
 static bool parse_common_option(int argc, char **argv, int *index, Command *command) {
   const char *arg = argv[*index];
   if (parse_emit_option(argc, argv, index, command)) return true;
-  if (strcmp(arg, "--out") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->out = argv[++(*index)];
-    return true;
-  } else if (strcmp(arg, "--target") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->target = argv[++(*index)];
-    return true;
-  } else if (strcmp(arg, "--profile") == 0 || strcmp(arg, "--release") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->profile = argv[++(*index)];
-    return true;
-  } else if (strcmp(arg, "--cc") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->cc = argv[++(*index)];
-    return true;
-  } else if (strcmp(arg, "--backend") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->backend = argv[++(*index)];
-    return true;
-  } else if (strcmp(arg, "--format") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->store_format = argv[++(*index)];
-    return true;
-  } else if (strcmp(arg, "--filter") == 0) {
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->filter = argv[++(*index)];
+  if (parse_common_value_option(argc, argv, index, command)) {
     return true;
   } else if (parse_graph_query_option(argc, argv, index, command)) {
     return true;
@@ -5094,7 +5098,7 @@ static void set_source_input_diag(const char *input_path, ZDiag *diag) {
   diag->column = 1;
   diag->length = 1;
   snprintf(diag->message, sizeof(diag->message), "expected Zero source file or package");
-  snprintf(diag->expected, sizeof(diag->expected), ".0 source file, zero.json, or package directory");
+  snprintf(diag->expected, sizeof(diag->expected), ".0 source file, zero.toml, zero.json, or package directory");
   snprintf(diag->actual, sizeof(diag->actual), "%s", input_path ? input_path : "");
   snprintf(diag->help, sizeof(diag->help), "pass a canonical .0 source file or a package with targets.cli.main");
 }
@@ -7329,6 +7333,24 @@ static void append_graph_first_manifest(ZBuf *buf, const char *name, const char 
   zbuf_append(buf, "}\n");
 }
 
+static void append_graph_first_manifest_toml(ZBuf *buf, const char *name, const char *main_path) {
+  zbuf_append(buf, "[package]\n");
+  zbuf_append(buf, "name = ");
+  append_json_string(buf, name);
+  zbuf_append(buf, "\nversion = \"0.1.0\"\nlicense = \"MIT\"\n\n");
+  zbuf_append(buf, "[targets.cli]\n");
+  zbuf_append(buf, "kind = \"exe\"\nmain = ");
+  append_json_string(buf, main_path);
+  zbuf_append(buf, "\ndefaultTarget = \"linux-musl-x64\"\ndevTarget = \"host\"\nreleaseProfile = \"release-small\"\n\n");
+  zbuf_append(buf, "[repositoryGraph]\n");
+  zbuf_append(buf, "compilerInput = true\n\n");
+  zbuf_append(buf, "[deps]\n\n");
+  zbuf_append(buf, "[profiles.dev]\n");
+  zbuf_append(buf, "inherits = \"dev\"\n\n");
+  zbuf_append(buf, "[profiles.release-small]\n");
+  zbuf_append(buf, "inherits = \"release-small\"\n");
+}
+
 static bool create_cli_template(const char *root, const char *name, ZDiag *diag) {
   ZBuf manifest;
   zbuf_init(&manifest);
@@ -7497,27 +7519,27 @@ static char *graph_init_package_name(const char *path) {
 }
 
 static bool graph_init_reject_existing(const char *root, ZDiag *diag) {
-  char *manifest = join_cli_path(root, "zero.json");
+  char *toml_manifest = join_cli_path(root, "zero.toml");
+  char *json_manifest = join_cli_path(root, "zero.json");
   char *store = join_cli_path(root, "zero.graph");
-  bool exists = path_exists(manifest) || path_exists(store);
+  bool exists = path_exists(toml_manifest) || path_exists(json_manifest) || path_exists(store);
   if (exists) {
     diag->code = 2002;
-    diag->path = path_exists(manifest) ? manifest : store;
+    diag->path = path_exists(toml_manifest) ? toml_manifest : (path_exists(json_manifest) ? json_manifest : store);
     diag->line = 1;
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "graph-first project already exists");
-    snprintf(diag->expected, sizeof(diag->expected), "project path without zero.json or zero.graph");
+    snprintf(diag->expected, sizeof(diag->expected), "project path without zero.toml, zero.json, or zero.graph");
     snprintf(diag->actual, sizeof(diag->actual), "%s", diag->path);
     snprintf(diag->help, sizeof(diag->help), "choose a new project path or remove the existing graph project files");
-    if (diag->path == store) {
-      free(manifest);
-    } else {
-      free(store);
-    }
+    if (diag->path != toml_manifest) free(toml_manifest);
+    if (diag->path != json_manifest) free(json_manifest);
+    if (diag->path != store) free(store);
     return false;
   }
-  free(manifest);
+  free(toml_manifest);
+  free(json_manifest);
   free(store);
   return true;
 }
@@ -7565,6 +7587,25 @@ static bool command_repository_store_format(const Command *command, ZProgramGrap
   return false;
 }
 
+static const char *command_manifest_file_name(const Command *command, ZDiag *diag) {
+  const char *format = command && command->manifest_format ? command->manifest_format : "json";
+  if (strcmp(format, "json") == 0) return "zero.json";
+  if (strcmp(format, "toml") == 0) return "zero.toml";
+  if (diag) {
+    *diag = (ZDiag){0};
+    diag->code = 2002;
+    diag->path = command && command->input ? command->input : ".";
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "manifest format is not supported");
+    snprintf(diag->expected, sizeof(diag->expected), "--manifest toml|json");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", format ? format : "");
+    snprintf(diag->help, sizeof(diag->help), "use --manifest toml to write zero.toml, or omit it for zero.json");
+  }
+  return NULL;
+}
+
 static int run_graph_init_command(const Command *command, ZDiag *diag) {
   if (command->out) {
     diag->code = 2002;
@@ -7573,9 +7614,9 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "graph init writes repository files and does not support --out");
-    snprintf(diag->expected, sizeof(diag->expected), "zero init [--format text|binary] <project-path>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero init [--manifest toml|json] [--format text|binary] <project-path>");
     snprintf(diag->actual, sizeof(diag->actual), "zero init --out");
-    snprintf(diag->help, sizeof(diag->help), "remove --out; init writes zero.json and zero.graph in the selected project");
+    snprintf(diag->help, sizeof(diag->help), "remove --out; init writes zero.toml or zero.json plus zero.graph in the selected project");
     if (command->json) print_diag_json(command->out, diag);
     else print_diag(command->out, diag);
     return 1;
@@ -7586,7 +7627,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "graph init requires a project path");
-    snprintf(diag->expected, sizeof(diag->expected), "zero init [--format text|binary] <project-path>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero init [--manifest toml|json] [--format text|binary] <project-path>");
     snprintf(diag->actual, sizeof(diag->actual), "missing project path");
     if (command->json) print_diag_json("<graph-init>", diag);
     else print_diag("<graph-init>", diag);
@@ -7617,11 +7658,18 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
     else print_diag(diag->path ? diag->path : command->input, diag);
     return 1;
   }
+  const char *manifest_file_name = command_manifest_file_name(command, diag);
+  if (!manifest_file_name) {
+    if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
+    else print_diag(diag->path ? diag->path : command->input, diag);
+    return 1;
+  }
   char *package_name = graph_init_package_name(command->input);
   ZBuf manifest;
   zbuf_init(&manifest);
-  append_graph_first_manifest(&manifest, package_name, "src/main.0");
-  bool ok = write_project_buf(command->input, "zero.json", &manifest, diag);
+  if (strcmp(manifest_file_name, "zero.toml") == 0) append_graph_first_manifest_toml(&manifest, package_name, "src/main.0");
+  else append_graph_first_manifest(&manifest, package_name, "src/main.0");
+  bool ok = write_project_buf(command->input, manifest_file_name, &manifest, diag);
   if (ok) {
     ZProgramGraph graph = {0};
     graph_init_append_module_graph(&graph, package_name);
@@ -7644,7 +7692,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
       zbuf_append(&json, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"project\": ");
       append_json_string(&json, command->input);
       zbuf_append(&json, ",\n  \"compilerInput\": \"repository-graph\",\n  \"writes\": [");
-      char *manifest_path = join_cli_path(command->input, "zero.json");
+      char *manifest_path = join_cli_path(command->input, manifest_file_name);
       append_json_string(&json, manifest_path);
       zbuf_append(&json, ", ");
       append_json_string(&json, store_path);
@@ -7660,7 +7708,7 @@ static int run_graph_init_command(const Command *command, ZDiag *diag) {
       free(manifest_path);
     } else if (ok) {
       printf("graph project init ok\n");
-      printf("wrote: %s/zero.json\n", command->input);
+      printf("wrote: %s/%s\n", command->input, manifest_file_name);
       printf("wrote: %s/zero.graph\n", command->input);
       printf("next: cd %s && zero patch --op 'addMain'\n", command->input);
     }
@@ -10366,7 +10414,7 @@ static bool c_import_link_plan_required(const SourceInput *input, const Command 
 static void set_c_import_link_plan_diag(ZDiag *diag, const char *manifest_path, const char *message, const char *actual) {
   if (!diag) return;
   diag->code = 8005;
-  diag->path = z_strdup(manifest_path ? manifest_path : "zero.json");
+  diag->path = z_strdup(manifest_path ? manifest_path : "zero.toml or zero.json");
   diag->line = 1;
   diag->column = 1;
   diag->length = 1;
@@ -10385,8 +10433,17 @@ static void manifest_path_for_input(const SourceInput *input, char *manifest_pat
   }
   const char *src = input && input->source_file ? input->source_file : "";
   const char *src_dir = strstr(src, "/src/");
-  if (src_dir) snprintf(manifest_path, manifest_path_len, "%.*s/zero.json", (int)(src_dir - src), src);
-  else snprintf(manifest_path, manifest_path_len, "zero.json");
+  if (src_dir) {
+    char *root = z_strndup(src, (size_t)(src_dir - src));
+    char *found = z_manifest_path_for_root(root);
+    snprintf(manifest_path, manifest_path_len, "%s", found ? found : "");
+    free(found);
+    free(root);
+    return;
+  }
+  char *found = z_manifest_path_for_root(".");
+  snprintf(manifest_path, manifest_path_len, "%s", found ? found : "");
+  free(found);
 }
 
 static void append_c_libraries_json(ZBuf *buf, const SourceInput *input, const ZTargetInfo *target) {
@@ -10463,7 +10520,7 @@ static bool validate_c_libraries_for_target(const SourceInput *input, const ZTar
   ZDiag read_diag = {0}; char *manifest = z_read_file(manifest_path, &read_diag);
   if (!manifest && !require_link_plan) return true;
   if (!manifest) {
-    set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", "zero.json was not found");
+    set_c_import_link_plan_diag(diag, manifest_path, "extern C calls require C link metadata", "zero.toml or zero.json was not found");
     return false;
   }
   ZManifest parsed_manifest = {0};
@@ -10868,7 +10925,7 @@ static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Pr
     }
   }
   if (!ready && input) {
-    /* C library validation points at zero.json; source mapping would erase that. */
+    /* C library validation points at the package manifest; source mapping would erase that. */
     if (diag.code != 8003 && diag.code != 8005) z_map_source_diag(input, &diag);
     if (!diag.path) diag.path = input->source_file;
   }
@@ -12547,7 +12604,7 @@ static int run_graph_reconcile_command(const Command *command, const ZTargetInfo
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "graph reconcile requires edited source input");
-    snprintf(diag->expected, sizeof(diag->expected), "zero reconcile <base-program-graph-or-source> --source <edited-file.0|project|zero.json>");
+    snprintf(diag->expected, sizeof(diag->expected), "zero reconcile <base-program-graph-or-source> --source <edited-file.0|project|zero.toml|zero.json>");
     snprintf(diag->actual, sizeof(diag->actual), "missing --source");
     snprintf(diag->help, sizeof(diag->help), "pass the edited source or package that should be reconciled against the base graph");
     if (command->json) print_diag_json(diag->path ? diag->path : command->input, diag);
@@ -12710,7 +12767,7 @@ static bool save_graph_patch_output(const Command *command, const ZTargetInfo *t
       diag->column = 1;
       diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "repository graph patch writes the input zero.graph store");
-      snprintf(diag->expected, sizeof(diag->expected), "zero patch <package|zero.json> (<patch-file>|--op <operation>)");
+      snprintf(diag->expected, sizeof(diag->expected), "zero patch <package|zero.toml|zero.json> (<patch-file>|--op <operation>)");
       snprintf(diag->actual, sizeof(diag->actual), "%s", command->out);
       snprintf(diag->help, sizeof(diag->help), "omit --out when patching a repository graph compiler input");
       return false;

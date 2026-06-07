@@ -278,7 +278,13 @@ static char *lower_find_manifest_for_source_path(const char *path) {
   if (!path || !path[0]) return NULL;
   char *dir = lower_dirname_of(path);
   while (dir && dir[0]) {
-    char *manifest = lower_join_path(dir, "zero.json");
+    char *manifest = lower_join_path(dir, "zero.toml");
+    if (lower_file_exists(manifest)) {
+      free(dir);
+      return manifest;
+    }
+    free(manifest);
+    manifest = lower_join_path(dir, "zero.json");
     if (lower_file_exists(manifest)) {
       free(dir);
       return manifest;

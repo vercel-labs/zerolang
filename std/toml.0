@@ -1,0 +1,337 @@
+fn __zero_std_toml_validate(bytes: Span<u8>) -> Bool {
+    var index: usize = 0
+    while index < std.mem.len(bytes) {
+        let line_end: usize = __zero_std_toml_line_end(bytes, index)
+        let content_end: usize = __zero_std_toml_comment_end(bytes, index, line_end)
+        let start: usize = __zero_std_toml_skip_ws(bytes, index, content_end)
+        if start < content_end {
+            if bytes[start] == 91_u8 {
+                let table_end: Maybe<usize> = __zero_std_toml_table_end(bytes, start, content_end)
+                if !table_end.has {
+                    return false
+                }
+            } else {
+                let equals: Maybe<usize> = __zero_std_toml_find_equals(bytes, start, content_end)
+                if !equals.has {
+                    return false
+                }
+                let key_end: usize = __zero_std_toml_trim_end(bytes, start, equals.value)
+                let value_start: usize = __zero_std_toml_skip_ws(bytes, equals.value + 1, content_end)
+                let value_end: usize = __zero_std_toml_trim_end(bytes, value_start, content_end)
+                if key_end == start || value_start == value_end || !__zero_std_toml_value_valid(bytes[value_start..value_end]) {
+                    return false
+                }
+            }
+        }
+        index = line_end
+        if index < std.mem.len(bytes) && bytes[index] == 10_u8 {
+            index = index + 1
+        }
+    }
+    return true
+}
+
+fn __zero_std_toml_validate_bytes(bytes: Span<u8>) -> Bool {
+    return __zero_std_toml_validate(bytes)
+}
+
+fn __zero_std_toml_field(bytes: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
+    var table_start: usize = 0
+    var table_end: usize = 0
+    var has_table: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(bytes) {
+        let line_end: usize = __zero_std_toml_line_end(bytes, index)
+        let content_end: usize = __zero_std_toml_comment_end(bytes, index, line_end)
+        let start: usize = __zero_std_toml_skip_ws(bytes, index, content_end)
+        if start < content_end {
+            if bytes[start] == 91_u8 {
+                let next_table_end: Maybe<usize> = __zero_std_toml_table_end(bytes, start, content_end)
+                if !next_table_end.has {
+                    return null
+                }
+                table_start = start + 1
+                table_end = next_table_end.value
+                has_table = true
+            } else {
+                let equals: Maybe<usize> = __zero_std_toml_find_equals(bytes, start, content_end)
+                if !equals.has {
+                    return null
+                }
+                let field_key_end: usize = __zero_std_toml_trim_end(bytes, start, equals.value)
+                let value_start: usize = __zero_std_toml_skip_ws(bytes, equals.value + 1, content_end)
+                let value_end: usize = __zero_std_toml_trim_end(bytes, value_start, content_end)
+                var table: Span<u8> = bytes[0..0]
+                if has_table {
+                    table = bytes[table_start..table_end]
+                }
+                if __zero_std_toml_key_matches(table, bytes[start..field_key_end], key) {
+                    return bytes[value_start..value_end]
+                }
+            }
+        }
+        index = line_end
+        if index < std.mem.len(bytes) && bytes[index] == 10_u8 {
+            index = index + 1
+        }
+    }
+    return null
+}
+
+fn __zero_std_toml_string_decode(buffer: MutSpan<u8>, value: Span<u8>) -> Maybe<Span<u8>> {
+    if std.mem.len(value) < 2 || value[0] != 34_u8 || value[std.mem.len(value) - 1] != 34_u8 {
+        return null
+    }
+    var input: usize = 1
+    var output: usize = 0
+    while input + 1 < std.mem.len(value) {
+        var byte: u8 = value[input]
+        if byte == 92_u8 {
+            input = input + 1
+            if input + 1 >= std.mem.len(value) {
+                return null
+            }
+            let escaped: u8 = value[input]
+            if escaped == 34_u8 {
+                byte = 34_u8
+            } else if escaped == 92_u8 {
+                byte = 92_u8
+            } else if escaped == 110_u8 {
+                byte = 10_u8
+            } else if escaped == 114_u8 {
+                byte = 13_u8
+            } else if escaped == 116_u8 {
+                byte = 9_u8
+            } else {
+                return null
+            }
+        }
+        if output >= std.mem.len(buffer) {
+            return null
+        }
+        buffer[output] = byte
+        output = output + 1
+        input = input + 1
+    }
+    return buffer[..output]
+}
+
+fn __zero_std_toml_string(buffer: MutSpan<u8>, bytes: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_field(bytes, key)
+    if !raw.has {
+        return null
+    }
+    return __zero_std_toml_string_decode(buffer, raw.value)
+}
+
+fn __zero_std_toml_u32(bytes: Span<u8>, key: Span<u8>) -> Maybe<u32> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_field(bytes, key)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseU32(raw.value)
+}
+
+fn __zero_std_toml_bool(bytes: Span<u8>, key: Span<u8>) -> Maybe<Bool> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_field(bytes, key)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseBool(raw.value)
+}
+
+fn __zero_std_toml_line_end(bytes: Span<u8>, start: usize) -> usize {
+    var index: usize = start
+    while index < std.mem.len(bytes) && bytes[index] != 10_u8 {
+        index = index + 1
+    }
+    return index
+}
+
+fn __zero_std_toml_skip_ws(bytes: Span<u8>, start: usize, end: usize) -> usize {
+    var index: usize = start
+    while index < end && (bytes[index] == 32_u8 || bytes[index] == 9_u8 || bytes[index] == 13_u8) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __zero_std_toml_trim_end(bytes: Span<u8>, start: usize, end: usize) -> usize {
+    var index: usize = end
+    while index > start && (bytes[index - 1] == 32_u8 || bytes[index - 1] == 9_u8 || bytes[index - 1] == 13_u8) {
+        index = index - 1
+    }
+    return index
+}
+
+fn __zero_std_toml_comment_end(bytes: Span<u8>, start: usize, end: usize) -> usize {
+    var index: usize = start
+    var in_string: Bool = false
+    var escaped: Bool = false
+    while index < end {
+        let byte: u8 = bytes[index]
+        if escaped {
+            escaped = false
+        } else if in_string && byte == 92_u8 {
+            escaped = true
+        } else if byte == 34_u8 {
+            in_string = !in_string
+        } else if !in_string && byte == 35_u8 {
+            return __zero_std_toml_trim_end(bytes, start, index)
+        }
+        index = index + 1
+    }
+    return end
+}
+
+fn __zero_std_toml_find_equals(bytes: Span<u8>, start: usize, end: usize) -> Maybe<usize> {
+    var index: usize = start
+    var in_string: Bool = false
+    var escaped: Bool = false
+    while index < end {
+        let byte: u8 = bytes[index]
+        if escaped {
+            escaped = false
+        } else if in_string && byte == 92_u8 {
+            escaped = true
+        } else if byte == 34_u8 {
+            in_string = !in_string
+        } else if !in_string && byte == 61_u8 {
+            return index
+        }
+        index = index + 1
+    }
+    return null
+}
+
+fn __zero_std_toml_table_end(bytes: Span<u8>, start: usize, end: usize) -> Maybe<usize> {
+    if start >= end || bytes[start] != 91_u8 {
+        return null
+    }
+    var index: usize = start + 1
+    while index < end {
+        if bytes[index] == 93_u8 {
+            let trailing: usize = __zero_std_toml_skip_ws(bytes, index + 1, end)
+            if trailing == end && index > start + 1 {
+                return index
+            }
+            return null
+        }
+        index = index + 1
+    }
+    return null
+}
+
+fn __zero_std_toml_string_value_end(value: Span<u8>) -> Maybe<usize> {
+    if std.mem.len(value) == 0 || value[0] != 34_u8 {
+        return null
+    }
+    var index: usize = 1
+    var escaped: Bool = false
+    while index < std.mem.len(value) {
+        let byte: u8 = value[index]
+        if escaped {
+            if !(byte == 34_u8 || byte == 92_u8 || byte == 110_u8 || byte == 114_u8 || byte == 116_u8) {
+                return null
+            }
+            escaped = false
+        } else if byte == 92_u8 {
+            escaped = true
+        } else if byte == 34_u8 {
+            return index + 1
+        }
+        index = index + 1
+    }
+    return null
+}
+
+fn __zero_std_toml_array_valid(value: Span<u8>) -> Bool {
+    if std.mem.len(value) < 2 || value[0] != 91_u8 || value[std.mem.len(value) - 1] != 93_u8 {
+        return false
+    }
+    var index: usize = 1
+    let end: usize = std.mem.len(value) - 1
+    while index < end {
+        index = __zero_std_toml_skip_ws(value, index, end)
+        if index == end {
+            return true
+        }
+        let item_end: Maybe<usize> = __zero_std_toml_string_value_end(value[index..end])
+        if !item_end.has {
+            return false
+        }
+        index = index + item_end.value
+        index = __zero_std_toml_skip_ws(value, index, end)
+        if index < end {
+            if value[index] != 44_u8 {
+                return false
+            }
+            index = index + 1
+        }
+    }
+    return true
+}
+
+fn __zero_std_toml_value_valid(value: Span<u8>) -> Bool {
+    if std.mem.len(value) == 0 {
+        return false
+    }
+    if value[0] == 34_u8 {
+        let end: Maybe<usize> = __zero_std_toml_string_value_end(value)
+        return end.has && end.value == std.mem.len(value)
+    }
+    if value[0] == 91_u8 {
+        return __zero_std_toml_array_valid(value)
+    }
+    if std.mem.eql(value, "true") || std.mem.eql(value, "false") {
+        return true
+    }
+    let parsed: Maybe<i32> = std.parse.parseI32(value)
+    return parsed.has
+}
+
+fn __zero_std_toml_span_eq(left: Span<u8>, right: Span<u8>) -> Bool {
+    if std.mem.len(left) != std.mem.len(right) {
+        return false
+    }
+    var index: usize = 0
+    while index < std.mem.len(right) {
+        if left[index] != right[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_toml_key_matches(table: Span<u8>, field: Span<u8>, query: Span<u8>) -> Bool {
+    if __zero_std_toml_span_eq(field, query) {
+        return true
+    }
+    if std.mem.len(table) == 0 {
+        return false
+    }
+    let table_len: usize = std.mem.len(table)
+    let field_len: usize = std.mem.len(field)
+    if std.mem.len(query) != table_len + 1 + field_len {
+        return false
+    }
+    var index: usize = 0
+    while index < table_len {
+        if query[index] != table[index] {
+            return false
+        }
+        index = index + 1
+    }
+    if query[table_len] != 46_u8 {
+        return false
+    }
+    var field_index: usize = 0
+    while field_index < field_len {
+        if query[table_len + 1 + field_index] != field[field_index] {
+            return false
+        }
+        field_index = field_index + 1
+    }
+    return true
+}

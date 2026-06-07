@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST_ALLOW_LOCAL !== "1") {
@@ -3694,6 +3694,7 @@ await writeFile(`${programGraphSourceFreePackage}/zero.graph`, programGraphSourc
 const programGraphSourceFreeCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeSizeJson = JSON.parse((await execFileAsync(zero, ["size", "--json", "--target", "linux-musl-x64", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeBuildJson = JSON.parse((await execFileAsync(zero, ["build", "--json", "--target", "linux-musl-x64", "--out", programGraphSourceFreeBuildPath, programGraphSourceFreePackage])).stdout);
+const programGraphSourceFreeMappedMirCacheFiles = (await readdir(`${programGraphSourceFreePackage}/.zero/cache/native`)).filter((name) => name.startsWith("mir-") && name.endsWith(".zmir"));
 const programGraphSourceFreeRun = await execFileAsync(zero, ["run", "--out", programGraphSourceFreeRunPath, programGraphSourceFreePackage]);
 const programGraphSourceFreeTestJson = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeShipJson = JSON.parse((await execFileAsync(zero, ["ship", "--json", "--target", "linux-musl-x64", "--out", programGraphSourceFreeShipPath, programGraphSourceFreePackage])).stdout);
@@ -4180,19 +4181,20 @@ assert.equal(programGraphSourceFreeCheckJson.graph.artifact, `${programGraphSour
 assert.equal(programGraphSourceFreeCheckJson.graph.sourceProjectionState, "missing");
 assertRepositoryGraphNativeCheck(programGraphSourceFreeCheckJson, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeCheckJson, `${programGraphSourceFreePackage}/zero.graph`);
-assertSourceGraph(programGraphSourceFreeSizeJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeSizeJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeSizeJson, `${programGraphSourceFreePackage}/zero.graph`);
 assert.equal(programGraphSourceFreeBuildJson.sourceFile, `${programGraphSourceFreePackage}/zero.graph`);
-assertSourceGraph(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`);
+assert(programGraphSourceFreeMappedMirCacheFiles.some((path) => path.endsWith(".zmir")), "repository graph build should write a mapped MIR cache");
 assert.equal(programGraphSourceFreeRun.stdout, "hello from zero\n");
 assert.equal(programGraphSourceFreeTestJson.ok, true);
-assertSourceGraph(programGraphSourceFreeTestJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeTestJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assert.equal(programGraphSourceFreeTestJson.testDiscovery.mode, "package-graph");
 assert.equal(programGraphSourceFreeShipJson.ok, true);
-assertSourceGraph(programGraphSourceFreeShipJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeShipJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeShipJson, `${programGraphSourceFreePackage}/zero.graph`);
-assertSourceGraph(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`);
 assert.notEqual(programGraphSourceFreeVerify.code, 0);
 const programGraphSourceFreeVerifyBody = JSON.parse(programGraphSourceFreeVerify.stdout);
@@ -4217,7 +4219,7 @@ assert.equal(programGraphCrmApiCheckJson.sourceFile, "examples/crm-api/zero.grap
 assertSourceGraph(programGraphCrmApiCheckJson, "examples/crm-api/zero.graph", "package:crm-api@0.1.0", "graph-native-check", false, "clean");
 assertRepositoryGraphNativeCheck(programGraphCrmApiCheckJson, "clean");
 assert.equal(programGraphCrmApiBuildJson.sourceFile, "examples/crm-api/zero.graph");
-assertSourceGraph(programGraphCrmApiBuildJson, "examples/crm-api/zero.graph", "package:crm-api@0.1.0", "typed-program-graph-mir", false, "clean");
+assertSourceGraph(programGraphCrmApiBuildJson, "examples/crm-api/zero.graph", "package:crm-api@0.1.0", "mapped-final-mir", false, "clean");
 assert.equal(programGraphCrmApiBuildJson.generatedCBytes, 0);
 assert.equal(programGraphCrmApiBuildJson.incrementalInvalidation.sourceKind, "program-graph");
 assert.equal(programGraphCrmApiBuildJson.incrementalInvalidation.graphInput.parserArtifactsInKey, false);
@@ -4362,7 +4364,7 @@ assert.equal(programGraphAuthoringCliTest.passedTests, 1);
 assert.equal(programGraphAuthoringCliGraphTest.stdout, "1 test(s) ok\n");
 assert.equal(programGraphAuthoringCliRun.stdout, "42\n");
 assert.equal(programGraphAuthoringCliGraphRun.stdout, "15\n");
-assertSourceGraph(programGraphAuthoringCliSize, `${programGraphAuthoringCliPackage}/zero.graph`, "package:program-graph-authoring-cli@0.1.0", "typed-program-graph-mir", false, "missing");
+assertSourceGraph(programGraphAuthoringCliSize, `${programGraphAuthoringCliPackage}/zero.graph`, "package:program-graph-authoring-cli@0.1.0", "mapped-final-mir", false, "missing");
 assert(programGraphAuthoringCliSize.sizeBreakdown.stdlibHelpers.some((helper) => helper.name === "std.args.parseU32"));
 assert(programGraphAuthoringCliSize.sizeBreakdown.stdlibHelpers.some((helper) => helper.name === "std.fmt.u32"));
 assert.equal(programGraphAuthoringCliSync.ok, true);

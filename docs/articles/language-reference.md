@@ -1,6 +1,7 @@
 ## Program Model
 
-A Zero program can be a single `.0` file or a package with a `zero.json` manifest.
+A Zero program can be a single `.0` file or a package with a `zero.toml` or
+`zero.json` manifest.
 
 ```json
 {
@@ -765,18 +766,18 @@ part of the current public surface.
 
 ## Packages
 
-A package uses `zero.json`:
+A package uses `zero.toml` or `zero.json`. `zero.toml` takes precedence when
+both exist for a directory input:
 
-```json
-{
-  "package": { "name": "systems-package", "version": "0.1.0", "license": "MIT" },
-  "targets": { "cli": { "kind": "exe", "main": "src/main.0" } },
-  "deps": {},
-  "profiles": {
-    "dev": { "inherits": "dev" },
-    "release-small": { "inherits": "release-small" }
-  }
-}
+```toml
+[package]
+name = "systems-package"
+version = "0.1.0"
+license = "MIT"
+
+[targets.cli]
+kind = "exe"
+main = "src/main.0"
 ```
 
 Check a package by passing its directory:
@@ -802,8 +803,8 @@ whether the selected target provides hosted filesystem support.
 There is no published package registry or semantic version solver in the
 current compiler.
 
-Local path dependencies resolve from `zero.json`. Exact versioned registry
-references are recorded as metadata without remote fetches. The resolver writes
+Local path dependencies resolve from the active package manifest. Exact
+versioned registry references are recorded as metadata without remote fetches. The resolver writes
 deterministic dependency fingerprint files under `.zero/package-locks/`.
 
 ## C Interop

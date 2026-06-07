@@ -195,7 +195,7 @@ const sourceModulePaths = new Set(sourceModules.map((module) => module.path));
 const sourceModuleGraphPaths = new Set(sourceModules.map((module) => module.graphPath));
 const sourceCallsByPublicName = new Map(sourceCalls.map((call) => [call.publicName, call]));
 const graphImplementedHelperModules = new Set(sourceCalls.map((call) => call.module));
-const partiallyGraphBackedModules = new Set(["std.args", "std.cli", "std.codec", "std.env", "std.fs", "std.http", "std.io", "std.json", "std.math", "std.mem", "std.net", "std.parse", "std.path", "std.proc", "std.search", "std.time"]);
+const partiallyGraphBackedModules = new Set(["std.args", "std.cli", "std.codec", "std.env", "std.fs", "std.http", "std.io", "std.json", "std.math", "std.mem", "std.net", "std.parse", "std.path", "std.proc", "std.search", "std.time", "std.toml"]);
 const docsEntries = await readdir(publicModuleDocsDir, { withFileTypes: true });
 const publicModuleDocs = new Set(
   docsEntries

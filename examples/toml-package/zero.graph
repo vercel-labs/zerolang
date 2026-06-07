@@ -1,0 +1,55 @@
+zero-repository-graph v1
+sourceProjection ".0"
+moduleIdentity "package:toml-package@0.1.0"
+graphHash "graph:f93a5b3bd1475e9a"
+moduleHash "graph:f93a5b3bd1475e9a"
+compilerStore schemaVersion:1 shape:"compiler-oriented-tables" semanticOk:true semanticValidity:"shape-valid" sourceProjectionRequired:false sourceMapRequired:false storageInterface:"ProgramGraphStore"
+compilerTables schema:1 package:1 module:1 declaration:2 scope:3 import:0 symbol:3 type:6 effect:2 capability:3 ownership:0 resource:2 node:13 edge:12 projection:1 sourceMap:13
+compilerHashInputs graphHashExcludes:"source-path,line,column,projection-text" nodeHashExcludes:"source-path,line,column,projection-text" idCollisionFallbackMayUse:"source-path,line,column"
+source path:"src/main.0"
+projection path:"src/main.0" text:"pub fn main(world: World) -> Void raises {\n    check world.out.write(\"toml manifest ok\\n\")\n}\n"
+nodeHash node:"#mod_main" hash:"nodehash:1523597da939a24c"
+nodeHash node:"#fn_main" hash:"nodehash:974df069ea5ea1ca"
+nodeHash node:"#type_main_returnType" hash:"nodehash:4861242e6ec1517a"
+nodeHash node:"#effect_main_error" hash:"nodehash:55ede9fe255a8451"
+nodeHash node:"#block_main_body" hash:"nodehash:1de8eb7e6c48dda8"
+nodeHash node:"#param_main_world" hash:"nodehash:487ef8ecf9ce8b3e"
+nodeHash node:"#type_main_world_type" hash:"nodehash:9d4f262305f2d0ac"
+nodeHash node:"#stmt_main_check_write_0" hash:"nodehash:a680be28703690f1"
+nodeHash node:"#expr_main_write_call_0" hash:"nodehash:f478b29c421a4d4b"
+nodeHash node:"#expr_main_write_field_0" hash:"nodehash:8d429c2642986dea"
+nodeHash node:"#expr_main_out_field_0" hash:"nodehash:306fff6d75febe43"
+nodeHash node:"#expr_main_write_receiver_0" hash:"nodehash:66c8343433e5c17a"
+nodeHash node:"#expr_main_write_text_0" hash:"nodehash:734157016243784c"
+
+graph
+zero-graph v1
+origin source-text
+module "package:toml-package@0.1.0"
+hash "graph:f93a5b3bd1475e9a"
+
+node #mod_main Module name:"main" path:"src/main.0" line:1 column:1
+node #fn_main Function name:"main" type:"Void" path:"src/main.0" line:1 column:1 public:true fallible:true
+node #type_main_returnType TypeRef type:"Void" path:"src/main.0" line:1 column:1
+node #effect_main_error EffectRef name:"error" path:"src/main.0" line:1 column:1
+node #block_main_body Block name:"body" path:"src/main.0" line:1 column:1
+node #param_main_world Param name:"world" type:"World" path:"src/main.0" line:1 column:1
+node #type_main_world_type TypeRef type:"World" path:"src/main.0" line:1 column:1
+node #stmt_main_check_write_0 Check path:"src/main.0" line:1 column:1
+node #expr_main_write_call_0 MethodCall name:"write" type:"Void" path:"src/main.0" line:1 column:1
+node #expr_main_write_field_0 FieldAccess name:"write" path:"src/main.0" line:1 column:1
+node #expr_main_out_field_0 FieldAccess name:"out" path:"src/main.0" line:1 column:1
+node #expr_main_write_receiver_0 Identifier name:"world" path:"src/main.0" line:1 column:1
+node #expr_main_write_text_0 Literal type:"String" value:"toml manifest ok\n" path:"src/main.0" line:1 column:1
+edge #mod_main function #fn_main order:0
+edge #fn_main returnType #type_main_returnType
+edge #fn_main effect #effect_main_error
+edge #fn_main body #block_main_body
+edge #fn_main param #param_main_world order:0
+edge #param_main_world type #type_main_world_type
+edge #expr_main_out_field_0 left #expr_main_write_receiver_0
+edge #expr_main_write_field_0 left #expr_main_out_field_0
+edge #expr_main_write_call_0 left #expr_main_write_field_0
+edge #expr_main_write_call_0 arg #expr_main_write_text_0 order:0
+edge #stmt_main_check_write_0 expr #expr_main_write_call_0
+edge #block_main_body statement #stmt_main_check_write_0 order:0

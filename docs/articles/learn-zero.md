@@ -286,13 +286,17 @@ when you need explicit `Fs`, `File`, and `owned<File>` resource examples.
 
 ## Organize A Package
 
-A package has a `zero.json` manifest and source files under `src/`.
+A package has a `zero.toml` or `zero.json` manifest and source projections under
+`src/`.
 
-```json
-{
-  "package": { "name": "systems-package", "version": "0.1.0" },
-  "targets": { "cli": { "kind": "exe", "main": "src/main.0" } }
-}
+```toml
+[package]
+name = "systems-package"
+version = "0.1.0"
+
+[targets.cli]
+kind = "exe"
+main = "src/main.0"
 ```
 
 `examples/systems-package/src/main.0` imports modules and local declarations:

@@ -113,7 +113,7 @@ console.log(`repository graph verify-sync ok (${stores.length} ${stores.length =
 
 function sourceInputForStore(store: string) {
   const root = dirname(store);
-  if (existsSync(join(root, "zero.json"))) return root;
+  if (existsSync(join(root, "zero.toml")) || existsSync(join(root, "zero.json"))) return root;
 
   const text = readFileSync(store, "utf8");
   const projections = text.matchAll(/^projection path:"((?:\\.|[^"])*)" text:/gm);

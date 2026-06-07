@@ -68,7 +68,7 @@ export const docs: Doc[] = [
   {
     slug: "package-manifest",
     title: "Package And Manifest Reference",
-    description: "zero.json schema, package-local imports, targets, dependencies, and profiles.",
+    description: "zero.toml and zero.json package manifests, imports, targets, dependencies, and profiles.",
     path: "/package-manifest",
     sourcePath: "/articles/package-manifest.md",
     section: "Reference",
@@ -279,6 +279,14 @@ export const docs: Doc[] = [
     description: "Validation, field lookup, explicit-allocator parsing, and caller-buffer writing.",
     path: "/modules/json",
     sourcePath: "/articles/modules/json.md",
+    section: "Modules",
+  },
+  {
+    slug: "module-toml",
+    title: "std.toml",
+    description: "TOML validation, shallow field lookup, and typed scalar decode helpers.",
+    path: "/modules/toml",
+    sourcePath: "/articles/modules/toml.md",
     section: "Modules",
   },
   {

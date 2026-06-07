@@ -5,7 +5,7 @@ description: Create, inspect, and repair Zero packages and manifests.
 
 # Zero Packages
 
-Use this when working with `zero.json`, package-local modules, package tests, or multi-file Zero projects.
+Use this when working with `zero.toml`, `zero.json`, package-local modules, package tests, or multi-file Zero projects.
 
 ## Create
 
@@ -22,10 +22,26 @@ zero sync --from-graph .
 `zero.graph` is the package graph store and compiler input. `.0` files are the
 human-readable projection; sync them after graph checks pass. Use `zero new`
 only when the user explicitly asks for a source-text package template.
+Use `zero init --manifest toml <package>` when the user wants TOML metadata.
 
 ## Manifest
 
-Minimal executable package:
+Minimal executable package in TOML:
+
+```toml
+[package]
+name = "hello"
+version = "0.1.0"
+
+[targets.cli]
+kind = "exe"
+main = "src/main.0"
+
+[repositoryGraph]
+compilerInput = false
+```
+
+JSON is also accepted:
 
 ```json
 {
@@ -35,10 +51,15 @@ Minimal executable package:
 }
 ```
 
+If both `zero.toml` and `zero.json` exist in the same package root, Zero uses
+`zero.toml`. Keep one manifest checked in unless the task is specifically
+testing precedence.
+
 Pass either the package directory or manifest to commands:
 
 ```sh
 zero check .
+zero check zero.toml
 zero check zero.json
 zero run examples/systems-package
 ```
@@ -67,7 +88,15 @@ zero inspect <package>
 
 ## Dependencies
 
-Current packages support local path dependencies and registry metadata. Local dependencies must point at a directory containing `zero.json`.
+Current packages support local path dependencies and registry metadata. Local dependencies must point at a directory containing `zero.toml` or `zero.json`; `zero.toml` takes precedence.
+
+TOML dependency metadata:
+
+```toml
+[dependencies.local-tools]
+path = "../local-tools"
+version = "0.1.0"
+```
 
 ```json
 {
@@ -133,7 +162,7 @@ both encodings, and normal writes preserve an existing binary store.
 
 - `IMP001`: create the imported module, fix its path, or adjust `use`.
 - `IMP002`: break a direct import cycle.
-- `PKG001`: fix a local dependency path so it contains `zero.json`.
+- `PKG001`: fix a local dependency path so it contains `zero.toml` or `zero.json`.
 - `PKG002`: break a package dependency cycle.
 - `PKG003`: avoid resolving one package name to multiple versions.
 - `PKG004`: update target metadata or choose a supported target.

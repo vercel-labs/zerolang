@@ -805,6 +805,16 @@ for (const [command, expected] of [
   assert.match(zero(command).stdout, expected);
 }
 
+const tomlInitRoot = join(outDir, "init-toml-manifest");
+rmSync(tomlInitRoot, { recursive: true, force: true });
+const tomlInit = json(["init", "--json", "--manifest", "toml", tomlInitRoot]).body;
+assert.equal(tomlInit.ok, true);
+assert(tomlInit.writes.includes(join(tomlInitRoot, "zero.toml")));
+assert(tomlInit.writes.includes(join(tomlInitRoot, "zero.graph")));
+assert(existsSync(join(tomlInitRoot, "zero.toml")));
+assert(!existsSync(join(tomlInitRoot, "zero.json")));
+assert.match(readFileSync(join(tomlInitRoot, "zero.toml"), "utf8"), /\[package\]/);
+
 for (const [code, goodExample, stalePattern] of [
   ["STD003", "var bytes: [4]u8 = [0, 0, 0, 0]", /\bmut bytes\b|std\.mem\.fill bytes/],
   ["TYP026", "alias Bytes = Span<u8>", /\btype [A-Z][A-Za-z0-9_]* =/],
@@ -831,10 +841,10 @@ assert.match(graphHelp, /zero dump\|import\|validate\|roundtrip \[--json\] --out
 assert.match(graphHelp, /zero view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(graphHelp, /zero source-map \[--json\] <program-graph-or-source>/);
 assert.match(graphHelp, /zero query \[--json\] \[--fn <name>\] \[--find <text>\] \[--refs <name>\] \[--calls <name>\] \[--node <id>\] <program-graph-or-source>/);
-assert.match(graphHelp, /zero reconcile \[--json\] <base-program-graph-or-source> --source <edited-file\.0\|project\|zero\.json>/);
-assert.match(graphHelp, /zero status\|verify-sync \[--json\] <project\|zero\.json\|file\.0>/);
-assert.match(graphHelp, /zero sync \(--from-source\|--from-graph\) \[--json\] <project\|zero\.json\|file\.0>/);
-assert.match(graphHelp, /zero merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] <project\|zero\.json\|file\.0>/);
+assert.match(graphHelp, /zero reconcile \[--json\] <base-program-graph-or-source> --source <edited-file\.0\|project\|zero\.toml\|zero\.json>/);
+assert.match(graphHelp, /zero status\|verify-sync \[--json\] <project\|zero\.toml\|zero\.json\|file\.0>/);
+assert.match(graphHelp, /zero sync \(--from-source\|--from-graph\) \[--json\] <project\|zero\.toml\|zero\.json\|file\.0>/);
+assert.match(graphHelp, /zero merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] <project\|zero\.toml\|zero\.json\|file\.0>/);
 assert.match(graphHelp, /zero size \[--json\] \[--target <target>\] \[--out <artifact>\] <program-graph-artifact>/);
 assert.match(graphHelp, /Patch usage: zero patch \[--json\] \[--check-only\|--dry-run\] \[--out <program-graph-artifact>\] \[<input>\] \(<patch-file>\|--op <operation>\)/);
 assert.match(graphHelp, /Patch operation help: zero patch --op help/);
@@ -851,19 +861,19 @@ const runHelp = zero(["run", "--help"]).stdout;
 assert.match(runHelp, /Usage: zero run \[--backend direct\|llvm\|<direct-emitter>\]/);
 assert.match(runHelp, /LLVM is explicit and requires clang/);
 const rootHelp = zero(["--help"]).stdout;
-assert.match(rootHelp, /zero run \[--backend direct\|llvm\|<direct-emitter>\].*<file\.0\|project\|zero\.json\|program-graph-artifact> \[-- args\.\.\.\]/);
-assert.match(rootHelp, /zero build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<file\.0\|project\|zero\.json\|program-graph-artifact>/);
-assert.match(rootHelp, /zero test <file\.0\|project\|zero\.json\|program-graph-artifact>/);
-assert.match(rootHelp, /zero check \[--json\] \[--target <target>\] \[--emit exe\|obj\|llvm-ir\] <file\.0\|project\|zero\.json\|program-graph-artifact>/);
+assert.match(rootHelp, /zero run \[--backend direct\|llvm\|<direct-emitter>\].*<file\.0\|project\|zero\.toml\|zero\.json\|program-graph-artifact> \[-- args\.\.\.\]/);
+assert.match(rootHelp, /zero build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<file\.0\|project\|zero\.toml\|zero\.json\|program-graph-artifact>/);
+assert.match(rootHelp, /zero test <file\.0\|project\|zero\.toml\|zero\.json\|program-graph-artifact>/);
+assert.match(rootHelp, /zero check \[--json\] \[--target <target>\] \[--emit exe\|obj\|llvm-ir\] <file\.0\|project\|zero\.toml\|zero\.json\|program-graph-artifact>/);
 assert.match(rootHelp, /zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[<input>\] \(<patch-file>\|--op <operation>\)/);
 assert.match(rootHelp, /zero dump\|import\|validate\|roundtrip \[--json\] \[--out <program-graph-artifact>\] <input>/);
 assert.match(rootHelp, /zero view \[--json\] \[--out <file\.0>\] <program-graph-or-source>/);
 assert.match(rootHelp, /zero source-map \[--json\] <program-graph-or-source>/);
 assert.match(rootHelp, /zero query \[--json\] \[--fn <name>\] \[--find <text>\] \[--refs <name>\] \[--calls <name>\] \[--node <id>\] <program-graph-or-source>/);
-assert.match(rootHelp, /zero reconcile \[--json\] <base-program-graph-or-source> --source <edited-file\.0\|project\|zero\.json>/);
-assert.match(rootHelp, /zero status\|verify-sync \[--json\] <project\|zero\.json\|file\.0>/);
-assert.match(rootHelp, /zero sync \(--from-source\|--from-graph\) \[--json\] \[--format text\|binary\] <project\|zero\.json\|file\.0>/);
-assert.match(rootHelp, /zero merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] \[--format text\|binary\] <project\|zero\.json\|file\.0>/);
+assert.match(rootHelp, /zero reconcile \[--json\] <base-program-graph-or-source> --source <edited-file\.0\|project\|zero\.toml\|zero\.json>/);
+assert.match(rootHelp, /zero status\|verify-sync \[--json\] <project\|zero\.toml\|zero\.json\|file\.0>/);
+assert.match(rootHelp, /zero sync \(--from-source\|--from-graph\) \[--json\] \[--format text\|binary\] <project\|zero\.toml\|zero\.json\|file\.0>/);
+assert.match(rootHelp, /zero merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] \[--format text\|binary\] <project\|zero\.toml\|zero\.json\|file\.0>/);
 assert.doesNotMatch(rootHelp, /zero graph (check|patch|size|build|run|test)/);
 const graphPatchHelp = zero(["patch", "--op", "help"]).stdout;
 assert.match(graphPatchHelp, /program graph patch operations/);
@@ -2395,7 +2405,7 @@ assert.match(graphInspectText, /next: use `zero query examples\/hello\.0` for pa
 const graphInspectOutJson = json(["inspect", "--json", "--out", graphInspectOutPath, "examples/hello.0"], { allowFailure: true });
 assert.notEqual(graphInspectOutJson.code, 0);
 assert.equal(graphInspectOutJson.body.diagnostics[0].message, "inspect does not support --out");
-assert.equal(graphInspectOutJson.body.diagnostics[0].expected, "zero inspect [--json] <file.0|project|zero.json>");
+assert.equal(graphInspectOutJson.body.diagnostics[0].expected, "zero inspect [--json] <file.0|project|zero.toml|zero.json>");
 assert.equal(zero(["validate", graphDumpPath]).stdout, "program graph ok\n");
 const graphSourceMapJson = json(["source-map", "--json", "examples/hello.0"]).body;
 assert.equal(graphSourceMapJson.ok, true);
@@ -4333,7 +4343,7 @@ for (const args of [
   assert.notEqual(rejected.code, 0);
   assert.equal(rejected.body.diagnostics[0].code, "BLD002");
   assert.equal(rejected.body.diagnostics[0].message, "expected Zero source file or package");
-  assert.equal(rejected.body.diagnostics[0].expected, ".0 source file, zero.json, or package directory");
+  assert.equal(rejected.body.diagnostics[0].expected, ".0 source file, zero.toml, zero.json, or package directory");
 }
 for (const args of [
   ["view", "--json", unsupportedSourceFixture],
@@ -4346,7 +4356,7 @@ for (const args of [
 const unsupportedFmtRejected = zero(["fmt", "--check", unsupportedSourceFixture], { allowFailure: true });
 assert.notEqual(unsupportedFmtRejected.code, 0);
 assert.match(unsupportedFmtRejected.stderr, /expected Zero source file or package/);
-assert.match(unsupportedFmtRejected.stderr, /\.0 source file, zero\.json, or package directory/);
+assert.match(unsupportedFmtRejected.stderr, /\.0 source file, zero\.toml, zero\.json, or package directory/);
 
 const unsupportedSourcePackage = join(outDir, "unsupported-source-package");
 rmSync(unsupportedSourcePackage, { recursive: true, force: true });

@@ -12,7 +12,8 @@ packages, `.0` files are the human-readable source projection, and
 
 ## Source Boundary
 
-- For graph-first packages, patch the package or `zero.json`; the patch writes
+- For graph-first packages, patch the package or active manifest (`zero.toml`
+  takes precedence over `zero.json`); the patch writes
   `zero.graph` after validation. Normal `zero check`, `zero run`, `zero test`,
   `zero build`, `zero size`, `zero ship`, and `zero mem` commands compile from
   `zero.graph` when `repositoryGraph.compilerInput` is true.
@@ -41,6 +42,13 @@ Reads auto-detect text and binary `zero.graph` stores. Plain writes preserve an
 existing binary store, and `zero status <package>` reports `store format:
 text|binary`. Do not make binary the default in prompts; use it when the task is
 to test or opt into binary graph storage.
+
+`zero.graph` remains the authoring and repository compiler-input store. Build,
+run, test, size, ship, and mem commands may additionally write
+`.zero/cache/native/mir-*.zmir`, a derived final-MIR cache. The compiler
+memory-maps and verifies that cache before codegen; stale caches are rejected by
+compiler version, graph hash, target, emit kind, and backend request. Agents
+should not patch `.zmir` files.
 
 ## Graph-First Loop
 
@@ -358,7 +366,7 @@ zero check <package-dir>
 zero patch <package-dir> --op 'addMain'
 ```
 
-If `zero.json` sets `repositoryGraph.compilerInput` to `true`, those commands
+If `zero.toml` or `zero.json` sets `repositoryGraph.compilerInput` to `true`, those commands
 use the checked-in `zero.graph` store and report source projection state without
 rewriting `.0` files. Otherwise, normal build, run, test, and ship commands use
 checked-in `.0` source unless the package opts into repository graph input.

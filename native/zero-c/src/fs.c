@@ -1,4 +1,5 @@
 #include "zero.h"
+#include "manifest_toml.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -191,10 +192,9 @@ bool z_write_binary_file(const char *path, const unsigned char *data, size_t len
   return true;
 }
 
-static bool ends_with(const char *text, const char *suffix) {
-  size_t text_len = strlen(text);
-  size_t suffix_len = strlen(suffix);
-  return text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0;
+static bool basename_is(const char *path, const char *name) {
+  const char *base = strrchr(path ? path : "", '/');
+  return strcmp(base ? base + 1 : (path ? path : ""), name) == 0;
 }
 
 static char *dirname_of(const char *path) {
@@ -499,6 +499,33 @@ static char *json_get_array_path(const char *json, const char **path, size_t pat
   return json_array_from_value_span(start, end);
 }
 
+static bool json_get_bool_path(const char *json, const char **path, size_t path_len, bool *present, bool *value, ZDiag *diag, const char *field_name) {
+  if (present) *present = false;
+  if (value) *value = false;
+  const char *start = NULL;
+  const char *end = NULL;
+  if (!json_get_span_path(json, path, path_len, &start, &end)) return true;
+  if (present) *present = true;
+  start = json_skip_ws(start);
+  while (end > start && isspace((unsigned char)end[-1])) end--;
+  if ((size_t)(end - start) == 4 && strncmp(start, "true", 4) == 0) {
+    if (value) *value = true;
+    return true;
+  }
+  if ((size_t)(end - start) == 5 && strncmp(start, "false", 5) == 0) return true;
+  if (diag) {
+    diag->code = 2002;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "%s must be a boolean", field_name ? field_name : "manifest field");
+    snprintf(diag->expected, sizeof(diag->expected), "true or false");
+    snprintf(diag->actual, sizeof(diag->actual), "non-boolean value");
+    snprintf(diag->help, sizeof(diag->help), "use a boolean manifest value");
+  }
+  return false;
+}
+
 static void manifest_push_c_lib(ZManifest *manifest, ZManifestCLib lib) {
   manifest->c_libs = z_checked_reallocarray(manifest->c_libs, manifest->c_lib_count + 1, sizeof(ZManifestCLib));
   manifest->c_libs[manifest->c_lib_count++] = lib;
@@ -568,28 +595,40 @@ static void parse_manifest_dependencies_object(const char *deps, ZManifest *out)
 
 bool z_parse_manifest_json(const char *manifest, ZManifest *out, ZDiag *diag) {
   memset(out, 0, sizeof(*out));
-  if (*json_skip_ws(manifest) != '{') {
+  const char *trimmed_manifest = json_skip_ws(manifest ? manifest : "");
+  if (*trimmed_manifest == 0) {
     if (diag) {
       diag->code = 2002;
       diag->line = 1;
       diag->column = 1;
-      snprintf(diag->message, sizeof(diag->message), "zero.json must be a JSON object");
-      snprintf(diag->expected, sizeof(diag->expected), "JSON object with targets.cli.main");
-      snprintf(diag->help, sizeof(diag->help), "create zero.json with package and targets metadata");
+      snprintf(diag->message, sizeof(diag->message), "package manifest is empty");
+      snprintf(diag->expected, sizeof(diag->expected), "zero.json object or zero.toml tables with targets.cli.main");
+      snprintf(diag->help, sizeof(diag->help), "create zero.toml or zero.json with package and targets metadata");
     }
     return false;
   }
+  if (*trimmed_manifest != '{') return z_parse_manifest_toml(manifest, out, diag);
 
   const char *package_name_path[] = {"package", "name"};
   const char *package_version_path[] = {"package", "version"};
   const char *main_path[] = {"targets", "cli", "main"};
   const char *graph_path[] = {"targets", "cli", "graph"};
   const char *kind_path[] = {"targets", "cli", "kind"};
+  const char *compiler_input_path[] = {"repositoryGraph", "compilerInput"};
   out->package_name = json_get_string_path(manifest, package_name_path, 2);
   out->package_version = json_get_string_path(manifest, package_version_path, 2);
   out->main_path = json_get_string_path(manifest, main_path, 3);
   out->graph_path = json_get_string_path(manifest, graph_path, 3);
   out->kind = json_get_string_path(manifest, kind_path, 3);
+  if (!json_get_bool_path(manifest,
+                          compiler_input_path,
+                          2,
+                          &out->repository_graph_compiler_input_present,
+                          &out->repository_graph_compiler_input,
+                          diag,
+                          "repositoryGraph.compilerInput")) {
+    return false;
+  }
 
   const char *dependencies_path[] = {"dependencies"};
   const char *deps_alias_path[] = {"deps"};
@@ -691,8 +730,23 @@ void z_free_manifest(ZManifest *manifest) {
 
 char *z_manifest_path_for_input(const char *input_path) {
   if (!input_path || !input_path[0]) return NULL;
-  if (strcmp(input_path, "zero.json") == 0 || ends_with(input_path, "/zero.json")) return z_strdup(input_path);
-  char *manifest_path = join_path(input_path, "zero.json");
+  if (basename_is(input_path, "zero.toml")) return z_strdup(input_path);
+  if (basename_is(input_path, "zero.json")) return z_strdup(input_path);
+  char *manifest_path = join_path(input_path, "zero.toml");
+  if (file_exists(manifest_path)) return manifest_path;
+  free(manifest_path);
+  manifest_path = join_path(input_path, "zero.json");
+  if (file_exists(manifest_path)) return manifest_path;
+  free(manifest_path);
+  return NULL;
+}
+
+char *z_manifest_path_for_root(const char *root) {
+  if (!root || !root[0]) return NULL;
+  char *manifest_path = join_path(root, "zero.toml");
+  if (file_exists(manifest_path)) return manifest_path;
+  free(manifest_path);
+  manifest_path = join_path(root, "zero.json");
   if (file_exists(manifest_path)) return manifest_path;
   free(manifest_path);
   return NULL;
@@ -750,7 +804,7 @@ bool z_resolve_manifest_graph_artifact_path(const char *input_path, char **out_a
     if (require_graph) {
       set_manifest_graph_diag(diag,
                               manifest_path,
-                              "zero.json is missing targets.cli.graph",
+                              "package manifest is missing targets.cli.graph",
                               "targets.cli.graph pointing at a derived ProgramGraph artifact",
                               "missing targets.cli.graph",
                               "run zero import --out <module.program-graph> <source>, then set targets.cli.graph");
@@ -792,12 +846,16 @@ static char *dependency_manifest_path(const char *current_manifest_path, const c
     dep_root = join_path(base, dependency_path);
     free(base);
   }
-  if (ends_with(dep_root, "zero.json")) {
+  if (basename_is(dep_root, "zero.toml") || basename_is(dep_root, "zero.json")) {
     char *normalized = normalize_path_text(dep_root);
     free(dep_root);
     return normalized;
   }
-  char *manifest = join_path(dep_root, "zero.json");
+  char *manifest = join_path(dep_root, "zero.toml");
+  if (!file_exists(manifest)) {
+    free(manifest);
+    manifest = join_path(dep_root, "zero.json");
+  }
   free(dep_root);
   char *normalized = normalize_path_text(manifest);
   free(manifest);
@@ -819,7 +877,7 @@ static void set_package_diag(ZDiag *diag, int code, const char *path, const char
   snprintf(diag->message, sizeof(diag->message), "%s", message ? message : "package dependency error");
   snprintf(diag->expected, sizeof(diag->expected), "%s", expected ? expected : "valid package dependency graph");
   snprintf(diag->actual, sizeof(diag->actual), "%s", actual ? actual : "invalid package dependency graph");
-  snprintf(diag->help, sizeof(diag->help), "%s", help ? help : "repair zero.json dependency metadata");
+  snprintf(diag->help, sizeof(diag->help), "%s", help ? help : "repair package manifest dependency metadata");
 }
 
 static unsigned long long source_dependency_graph_hash(const SourceInput *input) {
@@ -923,7 +981,7 @@ static bool resolve_manifest_dependencies(const char *manifest_path, const ZMani
     }
     char *dep_manifest_path = dependency_manifest_path(manifest_path, dep->path);
     if (!dep_manifest_path || !file_exists(dep_manifest_path)) {
-      set_package_diag(diag, 9001, manifest_path, "package dependency manifest not found", "dependency path containing zero.json", dep->path, "create the dependency package or update the dependency path");
+      set_package_diag(diag, 9001, manifest_path, "package dependency manifest not found", "dependency path containing zero.toml or zero.json", dep->path, "create the dependency package or update the dependency path");
       free(dep_manifest_path);
       return false;
     }

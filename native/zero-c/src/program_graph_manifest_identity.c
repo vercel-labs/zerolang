@@ -32,7 +32,7 @@ bool z_program_graph_manifest_module_identity(const char *input_path, char **out
       diag->column = 1;
       diag->length = 1;
       snprintf(diag->message, sizeof(diag->message), "repository graph compiler input requires package.name");
-      snprintf(diag->expected, sizeof(diag->expected), "zero.json package.name matching zero.graph module identity");
+      snprintf(diag->expected, sizeof(diag->expected), "zero.toml or zero.json package.name matching zero.graph module identity");
       snprintf(diag->actual, sizeof(diag->actual), "missing package.name");
       snprintf(diag->help, sizeof(diag->help), "add package.name before using repository graph compiler input");
     }

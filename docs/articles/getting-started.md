@@ -69,7 +69,7 @@ The graph-first package has these important files:
 
 ```text
 hello/
-  zero.json
+  zero.toml or zero.json
   zero.graph
   src/
     main.0
@@ -108,7 +108,8 @@ zero build --target linux-musl-x64 --out .zero/out/hello .
 ```
 
 Normal compiler commands compile from `zero.graph` when
-`repositoryGraph.compilerInput: true` is set in `zero.json`. They report source
+`repositoryGraph.compilerInput: true` is set in `zero.toml` or `zero.json`.
+They report source
 projection state, but they do not rewrite `.0` files. Sync explicitly when the
 human projection needs to be refreshed.
 
@@ -170,6 +171,11 @@ The manifest records that the graph store is the compiler input:
   "repositoryGraph": { "compilerInput": true }
 }
 ```
+
+After the first graph-backed build or run, Zero may also create
+`.zero/cache/native/mir-*.zmir`. That file is not an authoring surface. It is a
+derived final-MIR cache that the compiler memory-maps and verifies before
+codegen so later graph builds can stay closer to the compiler.
 
 ## Next Steps
 
