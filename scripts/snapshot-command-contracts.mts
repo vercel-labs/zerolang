@@ -4107,30 +4107,31 @@ assert.equal(graphInternalFunction.body.ok, false);
 assert.equal(graphInternalFunction.body.check.phase, "lower");
 assert.equal(graphInternalFunction.body.check.lowering, "graph-native-check");
 assert.equal(graphInternalFunction.body.diagnostics[0].message, "program graph declaration uses a reserved compiler-internal symbol name");
-assert.equal(zero(["dump", "--out", graphPackageDumpPath, "examples/systems-package"]).stdout, "");
-assert.equal(zero(["view", "--out", graphPackageViewPath, "examples/systems-package"]).stdout, "");
+assert.equal(zero(["dump", "--out", graphPackageDumpPath, "examples/direct-package-call-order"]).stdout, "");
+assert.equal(zero(["view", "--out", graphPackageViewPath, "examples/direct-package-call-order"]).stdout, "");
 const graphPackageView = readFileSync(graphPackageViewPath, "utf8");
-assert.match(graphPackageView, /use std\.codec/);
+assert.match(graphPackageView, /fn right_score/);
+assert.match(graphPackageView, /fn left_score/);
 assert.doesNotMatch(graphPackageView, /^use (helpers|types)$/m);
 assert.equal(zero(["check", graphPackageViewPath]).stdout, "ok\n");
-const graphPackageDumpJson = json(["dump", "--json", "examples/systems-package"]).body;
-const graphStatusFunctionNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Function" && node.name === "status");
+const graphPackageDumpJson = json(["dump", "--json", "examples/direct-package-call-order"]).body;
+const graphStatusFunctionNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Function" && node.name === "right_score");
 assert(graphStatusFunctionNode);
 writeFileSync(graphPackagePathMismatchPatchPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphPackageDumpJson.graphHash}"`,
-  `replace node="${graphStatusFunctionNode.id}" expect="${graphStatusFunctionNode.nodeHash}" path="examples/systems-package/src/main.0" public="true"`,
+  `replace node="${graphStatusFunctionNode.id}" expect="${graphStatusFunctionNode.nodeHash}" path="examples/direct-package-call-order/src/main.0" public="true"`,
   "",
 ].join("\n"));
 assert.equal(zero(["patch", "--out", graphPackagePathMismatchPath, graphPackageDumpPath, graphPackagePathMismatchPatchPath]).stdout, "program graph patch ok\n");
 assert.equal(zero(["check", graphPackagePathMismatchPath]).stdout, "ok\n");
 const graphPackagePathMismatchSize = json(["size", "--json", "--target", "linux-musl-x64", graphPackagePathMismatchPath]).body;
-const graphHelpersInterface = graphPackagePathMismatchSize.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "helpers");
+const graphHelpersInterface = graphPackagePathMismatchSize.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "right");
 assert(graphHelpersInterface);
-assert(graphHelpersInterface.publicSymbols.some((item) => item.name === "status" && item.kind === "function"));
+assert(graphHelpersInterface.publicSymbols.some((item) => item.name === "right_score" && item.kind === "function"));
 const graphMainInterface = graphPackagePathMismatchSize.incrementalInvalidation.interfaceFingerprints.modules.find((item) => item.name === "main");
 assert(graphMainInterface);
-assert(!graphMainInterface.publicSymbols.some((item) => item.name === "status"));
+assert(!graphMainInterface.publicSymbols.some((item) => item.name === "right_score"));
 const graphImportNode = graphPackageDumpJson.nodes.find((node) => node.kind === "Import");
 assert(graphImportNode);
 writeFileSync(graphPatchInvalidImportAliasPath, [

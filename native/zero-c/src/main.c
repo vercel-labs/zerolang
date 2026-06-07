@@ -12992,92 +12992,35 @@ static int run_graph_check_command(const Command *command, const ZTargetInfo *ta
 }
 
 static int run_graph_size_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
-  SourceInput source_input = {0};
-  Program source_program = {0};
-  ZProgramGraph graph = {0};
-  GraphInputKind input_kind = GRAPH_INPUT_ARTIFACT;
-  if (!load_graph_input_for_read(command, target, &source_input, &source_program, &graph, &input_kind, diag)) {
-    print_command_diag(command, diag->path ? diag->path : command->input, diag);
-    return 1;
-  }
-
   SourceInput input = {0};
   Program program = {0};
-  bool ok = z_program_graph_lower_to_program_with_source(&graph, command->input, &program, &input, diag);
-  if (ok) {
-    z_set_check_target(target);
-    ok = z_check_program(&program, diag);
-  }
-  if (ok && !validate_target_capabilities(&program, target, diag, input.source_file)) ok = false;
-  if (ok && !validate_package_dependencies_for_target(&input, target, diag)) ok = false;
-  if (!ok) {
-    if (input.source_file) z_map_source_diag(&input, diag);
-    if (!diag->path) diag->path = input.source_file ? input.source_file : command->input;
+  IrProgram ir = {0};
+  ZProgramGraphArtifactSource artifact_source = {0};
+  if (!z_program_graph_prepare_artifact_mir_input(command->input,
+                                                  target,
+                                                  emit_kind_name(command ? command->emit : EMIT_EXE),
+                                                  command ? command->backend : NULL,
+                                                  false,
+                                                  &program,
+                                                  &input,
+                                                  &ir,
+                                                  &artifact_source,
+                                                  diag)) {
     print_command_diag(command, diag->path ? diag->path : command->input, diag);
-    z_free_program(&program);
-    z_free_source(&input);
-    z_free_program(&source_program);
-    z_free_source(&source_input);
-    z_program_graph_free(&graph);
+    free_loaded_command_state(&input, &program, &ir);
     return 1;
   }
 
   if (!metadata_backend_request_buildable(command, &input, target, diag)) {
     if (command && command->json) print_diag_json(diag->path ? diag->path : command->input, diag); else print_diag(diag->path ? diag->path : (command ? command->input : NULL), diag);
-    z_free_program(&program);
-    z_free_source(&input);
-    z_free_program(&source_program);
-    z_free_source(&source_input);
-    z_program_graph_free(&graph);
+    free_loaded_command_state(&input, &program, &ir);
     return 1;
   }
 
-  long long phase_started = now_ms();
-  ZProgramGraph compiler_graph = {0};
-  if (!z_program_graph_from_program(&input, &program, &compiler_graph)) {
-    diag->code = 2002;
-    diag->path = command->input;
-    diag->line = 1;
-    diag->column = 1;
-    diag->length = 1;
-    snprintf(diag->message, sizeof(diag->message), "failed to prepare checked ProgramGraph input for size report");
-    snprintf(diag->expected, sizeof(diag->expected), "checked ProgramGraph compiler input");
-    snprintf(diag->actual, sizeof(diag->actual), "graph import failed");
-    snprintf(diag->help, sizeof(diag->help), "run zero check to inspect the graph artifact");
-    if (command && command->json) print_diag_json(diag->path ? diag->path : command->input, diag); else print_diag(diag->path ? diag->path : (command ? command->input : NULL), diag);
-    z_free_program(&program);
-    z_free_source(&input);
-    z_free_program(&source_program);
-    z_free_source(&source_input);
-    z_program_graph_free(&graph);
-    return 1;
-  }
-  compiler_graph.canonical_source = false;
-  if (!z_program_graph_merge_embedded_std_graph_modules(&compiler_graph, &input, diag)) {
-    if (command && command->json) print_diag_json(diag->path ? diag->path : command->input, diag); else print_diag(diag->path ? diag->path : (command ? command->input : NULL), diag);
-    z_free_program(&program);
-    z_free_source(&input);
-    z_free_program(&source_program);
-    z_free_source(&source_input);
-    z_program_graph_free(&compiler_graph);
-    z_program_graph_free(&graph);
-    return 1;
-  }
-  IrProgram ir = z_lower_program_graph_with_source(&compiler_graph, &input, target);
-  input.lower_ms = now_ms() - phase_started;
-  apply_ir_metrics_to_input(&input, &ir, target);
-  GraphSizeSource graph_source = {.graph = &compiler_graph, .artifact = command->input, .lowering = ir.mir_valid ? "typed-program-graph-mir" : "typed-program-graph-mir-blocked"};
-  z_program_graph_seed_source_metadata(&input, &graph);
-  touch_program_graph_compiler_caches(&input, target, command && command->profile ? command->profile : "release", compiler_graph.graph_hash);
+  GraphSizeSource graph_source = {.artifact_source = &artifact_source};
+  touch_program_graph_compiler_caches(&input, target, command && command->profile ? command->profile : "release", artifact_source.graph_hash);
   int rc = run_size_report_command(command, &input, &program, target, &ir, &graph_source, diag);
-  z_free_ir_program(&ir);
-  z_program_graph_free(&compiler_graph);
-  z_free_program(&program);
-  z_free_source(&input);
-  z_free_program(&source_program);
-  z_free_source(&source_input);
-  z_program_graph_free(&graph);
-  (void)input_kind;
+  free_loaded_command_state(&input, &program, &ir);
   return rc;
 }
 
@@ -13968,11 +13911,6 @@ int main(int argc, char **argv) {
       apply_ir_metrics_to_input(&input, &graph_prepared_ir, target);
     }
     if (!prepared_graph) {
-      if (graph_size_artifact_command && diag.code == 2004) {
-        free_loaded_command_state(&input, &program, &graph_prepared_ir);
-        diag = (ZDiag){0};
-        return run_graph_size_command(&command, target, &diag);
-      }
       if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       free_loaded_command_state(&input, &program, &graph_prepared_ir);

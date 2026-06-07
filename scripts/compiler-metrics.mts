@@ -968,7 +968,8 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       !programGraph.repositoryGraphMirPrepNoStdHelperBridge ||
       !programGraph.repositoryGraphMirPrepReportsUnsupportedFacts ||
       !programGraph.repositoryGraphMirPrepNoInvalidMirProgramFallback ||
-      !programGraph.artifactGraphMirPrepNoInvalidMirProgramFallback) {
+      !programGraph.artifactGraphMirPrepNoInvalidMirProgramFallback ||
+      !programGraph.artifactGraphSizeNoProgramReconstruction) {
     violations.push({
       kind: "program-graph-repository-mir-prep",
       programGraph,
@@ -1303,6 +1304,7 @@ const programGraphProjectionValidateSource = cCodeText(programGraphProjectionVal
 const artifactGraphCheckBody = cCodeText(cBlock(main, "static int run_graph_check_command"));
 const artifactGraphCheckJsonRawBody = cBlock(main, "static void append_graph_check_json");
 const artifactGraphReadinessBody = cCodeText(cBlock(main, "static bool append_graph_artifact_target_readiness_json"));
+const artifactGraphSizeBody = cCodeText(cBlock(main, "static int run_graph_size_command"));
 const repositoryGraphCheckBody = cCodeText(cBlock(main, "static int run_repository_graph_check_command"));
 const graphNativeCompilerInputBody = cCodeText(cBlock(main, "static bool graph_native_compiler_input_ok"));
 const repositoryGraphTargetReadinessBody = cCodeText(cBlock(main, "static bool append_repository_graph_target_readiness_json(ZBuf *buf, SourceInput *input, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, const ZTargetInfo *target, const Command *command, long long *lower_ms_out, bool *graph_mir_used_out) {"));
@@ -1823,6 +1825,13 @@ const programGraph = {
   artifactGraphMirPrepNoInvalidMirProgramFallback:
     (artifactGraphMirPrepRawBody.match(/ir_graph_lower_checked_program\s*\(&graph/g) ?? []).length === 2 &&
     /else\s*\{\s*if\s*\(\s*diag\s*&&\s*diag->code\s*==\s*0\s*\)\s*ir_graph_init_lowering_diag/.test(artifactGraphMirPrepRawBody),
+  artifactGraphSizeNoProgramReconstruction:
+    /z_program_graph_prepare_artifact_mir_input\s*\(/.test(artifactGraphSizeBody) &&
+    !/z_program_graph_lower_to_program_with_source\s*\(/.test(artifactGraphSizeBody) &&
+    !/z_check_program\s*\(/.test(artifactGraphSizeBody) &&
+    !/z_program_graph_from_program\s*\(/.test(artifactGraphSizeBody) &&
+    !/load_graph_input_for_read\s*\(/.test(artifactGraphSizeBody) &&
+    !/graph_size_artifact_command\s*&&\s*diag\.code\s*==\s*2004/.test(main),
   repositoryCompilerInputSourceFree: /z_repository_graph_verify_compiler_input\s*\(\s*command->input\s*,\s*target\s*,\s*command->json\s*,\s*&store_path\s*\)/.test(directManifestGraphInputBody) &&
     !/load_graph_from_checked_current_source\s*\(/.test(directManifestGraphInputBody) &&
     !/SourceInput\s+source_input/.test(directManifestGraphInputBody),
