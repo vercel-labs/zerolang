@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -67,8 +67,39 @@ async function zeroRun(args: string[]) {
   return execFileAsync(zero, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
 }
 
+async function findCheckedInGraphStores(root: string, stores: string[] = []) {
+  if (!existsSync(root)) return stores;
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = `${root}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name === ".zero" || entry.name === "node_modules") continue;
+      await findCheckedInGraphStores(path, stores);
+    } else if (entry.isFile() && entry.name === "zero.graph") {
+      stores.push(path);
+    } else if (entry.isSymbolicLink()) {
+      const stat = await lstat(path);
+      if (stat.isFile() && entry.name === "zero.graph") stores.push(path);
+    }
+  }
+  return stores;
+}
+
+function assertBinaryGraphStore(path: string, bytes: Buffer) {
+  assert.equal(bytes.subarray(0, 8).toString("binary"), "ZRGBIN1\0", `${path} should be a binary repository graph store`);
+}
+
+const checkedInStores = [
+  ...(await findCheckedInGraphStores("examples")),
+  ...(await findCheckedInGraphStores("conformance")),
+  ...(await findCheckedInGraphStores("benchmarks")),
+].sort();
+assert(checkedInStores.length > 0, "expected checked-in repository graph stores");
+for (const store of checkedInStores) {
+  assertBinaryGraphStore(store, await readFile(store));
+}
+
 const checkedInBinaryStore = await readFile(`${checkedInBinaryRoot}/zero.graph`);
-assert.equal(checkedInBinaryStore.subarray(0, 8).toString("binary"), "ZRGBIN1\0");
+assertBinaryGraphStore(`${checkedInBinaryRoot}/zero.graph`, checkedInBinaryStore);
 const checkedInBinaryStatus = JSON.parse((await zeroRun(["status", "--json", checkedInBinaryRoot])).stdout);
 assert.equal(checkedInBinaryStatus.store.encoding, "binary");
 assert.equal(checkedInBinaryStatus.repositoryGraph.projectionValidity, "clean");
@@ -78,7 +109,7 @@ assert.equal((await zeroRun(["run", checkedInBinaryRoot])).stdout, "binary graph
 assert.equal((await zeroRun(["verify-sync", checkedInBinaryRoot])).stdout, "repository graph verify-sync ok\n");
 
 const checkedInBinaryCrmStore = await readFile(`${checkedInBinaryCrmRoot}/zero.graph`);
-assert.equal(checkedInBinaryCrmStore.subarray(0, 8).toString("binary"), "ZRGBIN1\0");
+assertBinaryGraphStore(`${checkedInBinaryCrmRoot}/zero.graph`, checkedInBinaryCrmStore);
 const checkedInBinaryCrmStatus = JSON.parse((await zeroRun(["status", "--json", checkedInBinaryCrmRoot])).stdout);
 assert.equal(checkedInBinaryCrmStatus.store.encoding, "binary");
 assert.equal(checkedInBinaryCrmStatus.repositoryGraph.projectionValidity, "clean");

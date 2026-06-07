@@ -2561,7 +2561,7 @@ assert.equal(checkedInGraphQueryJson.patchOperations.includes("addReturnValue fn
 rmSync(graphRepositoryPatchPackageDir, { recursive: true, force: true });
 mkdirSync(graphRepositoryPatchPackageDir, { recursive: true });
 writeFileSync(join(graphRepositoryPatchPackageDir, "zero.toml"), readFileSync(join(checkedInGraphPackageDir, "zero.toml"), "utf8"));
-writeFileSync(join(graphRepositoryPatchPackageDir, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+writeFileSync(join(graphRepositoryPatchPackageDir, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath));
 writeFileSync(join(graphRepositoryPatchPackageDir, "hello.0"), checkedInGraphSource);
 const repositoryPatchQueryJson = json(["query", "--json", graphRepositoryPatchPackageDir]).body;
 writeFileSync(graphRepositoryBodyPatchPath, [
@@ -2657,7 +2657,7 @@ rmSync(sourceFreeMissingPackageNameRoot, { recursive: true, force: true });
 rmSync(sourceFreeBadProjectionRoot, { recursive: true, force: true });
 mkdirSync(sourceFreeCopiedGraphRoot, { recursive: true });
 writeFileSync(join(sourceFreeCopiedGraphRoot, "zero.toml"), readFileSync(join(checkedInGraphPackageDir, "zero.toml"), "utf8"));
-writeFileSync(sourceFreeCopiedGraphStorePath, readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+writeFileSync(sourceFreeCopiedGraphStorePath, readFileSync(checkedInRepositoryGraphStorePath));
 const sourceFreeCopiedGraphCheckJson = json(["check", "--json", sourceFreeCopiedGraphRoot]).body;
 assert.equal(sourceFreeCopiedGraphCheckJson.ok, true);
 assert.equal(sourceFreeCopiedGraphCheckJson.sourceFile, sourceFreeCopiedGraphStorePath);
@@ -2665,23 +2665,23 @@ assertSourceGraph(sourceFreeCopiedGraphCheckJson, sourceFreeCopiedGraphStorePath
 assertProgramGraphCompilerInput(sourceFreeCopiedGraphCheckJson, sourceFreeCopiedGraphStorePath);
 assertRepositoryGraphNativeCheck(sourceFreeCopiedGraphCheckJson, "missing");
 const sourceFreeCopiedGraphSizeJson = json(["size", "--json", "--target", "linux-musl-x64", sourceFreeCopiedGraphRoot]).body;
-assertSourceGraph(sourceFreeCopiedGraphSizeJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(sourceFreeCopiedGraphSizeJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(sourceFreeCopiedGraphSizeJson, sourceFreeCopiedGraphStorePath);
 const sourceFreeCopiedGraphBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", sourceFreeCopiedGraphBuildPath, sourceFreeCopiedGraphRoot]).body;
 assert.equal(sourceFreeCopiedGraphBuildJson.sourceFile, sourceFreeCopiedGraphStorePath);
-assertSourceGraph(sourceFreeCopiedGraphBuildJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(sourceFreeCopiedGraphBuildJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(sourceFreeCopiedGraphBuildJson, sourceFreeCopiedGraphStorePath);
 assert.equal(zero(["run", "--out", sourceFreeCopiedGraphRunPath, sourceFreeCopiedGraphRoot]).stdout, "hello from zero\n");
 const sourceFreeCopiedGraphTestJson = json(["test", "--json", sourceFreeCopiedGraphRoot]).body;
 assert.equal(sourceFreeCopiedGraphTestJson.ok, true);
-assertSourceGraph(sourceFreeCopiedGraphTestJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(sourceFreeCopiedGraphTestJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assert.equal(sourceFreeCopiedGraphTestJson.testDiscovery.mode, "package-graph");
 const sourceFreeCopiedGraphShipJson = json(["ship", "--json", "--target", "linux-musl-x64", "--out", sourceFreeCopiedGraphShipPath, sourceFreeCopiedGraphRoot]).body;
 assert.equal(sourceFreeCopiedGraphShipJson.ok, true);
-assertSourceGraph(sourceFreeCopiedGraphShipJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(sourceFreeCopiedGraphShipJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(sourceFreeCopiedGraphShipJson, sourceFreeCopiedGraphStorePath);
 const sourceFreeCopiedGraphMemJson = json(["mem", "--json", sourceFreeCopiedGraphRoot]).body;
-assertSourceGraph(sourceFreeCopiedGraphMemJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(sourceFreeCopiedGraphMemJson, sourceFreeCopiedGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(sourceFreeCopiedGraphMemJson, sourceFreeCopiedGraphStorePath);
 const sourceFreeCopiedGraphVerify = json(["verify-sync", "--json", sourceFreeCopiedGraphRoot], { allowFailure: true });
 assert.notEqual(sourceFreeCopiedGraphVerify.code, 0);
@@ -2744,7 +2744,7 @@ writeZeroTomlSync(sourceFreeIdentityMismatchRoot, {
   targets: { cli: { kind: "exe", main: "hello.0" } },
   repositoryGraph: { compilerInput: true },
 });
-writeFileSync(join(sourceFreeIdentityMismatchRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+writeFileSync(join(sourceFreeIdentityMismatchRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath));
 const sourceFreeIdentityMismatchCheck = json(["check", "--json", sourceFreeIdentityMismatchRoot], { allowFailure: true });
 assert.notEqual(sourceFreeIdentityMismatchCheck.code, 0);
 assert.equal(sourceFreeIdentityMismatchCheck.body.diagnostics[0].code, "RGP007");
@@ -2758,7 +2758,7 @@ writeZeroTomlSync(sourceFreeMissingPackageNameRoot, {
   targets: { cli: { kind: "exe", main: "hello.0" } },
   repositoryGraph: { compilerInput: true },
 });
-writeFileSync(join(sourceFreeMissingPackageNameRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8"));
+writeFileSync(join(sourceFreeMissingPackageNameRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath));
 const sourceFreeMissingPackageNameCheck = json(["check", "--json", sourceFreeMissingPackageNameRoot], { allowFailure: true });
 assert.notEqual(sourceFreeMissingPackageNameCheck.code, 0);
 assert.equal(sourceFreeMissingPackageNameCheck.body.diagnostics[0].code, "RGP007");
@@ -2766,7 +2766,10 @@ assert.equal(sourceFreeMissingPackageNameCheck.body.diagnostics[0].message, "rep
 assert.match(sourceFreeMissingPackageNameCheck.body.diagnostics[0].actual, /package:program-graph-fixture@0\.1\.0/);
 mkdirSync(sourceFreeBadProjectionRoot, { recursive: true });
 writeFileSync(join(sourceFreeBadProjectionRoot, "zero.toml"), readFileSync(join(checkedInGraphPackageDir, "zero.toml"), "utf8"));
-writeFileSync(join(sourceFreeBadProjectionRoot, "zero.graph"), readFileSync(checkedInRepositoryGraphStorePath, "utf8").replace(
+writeFileSync(join(sourceFreeBadProjectionRoot, "hello.0"), checkedInGraphSource);
+zero(["sync", "--from-source", "--format", "text", sourceFreeBadProjectionRoot]);
+const sourceFreeBadProjectionStoreText = readFileSync(join(sourceFreeBadProjectionRoot, "zero.graph"), "utf8");
+writeFileSync(join(sourceFreeBadProjectionRoot, "zero.graph"), sourceFreeBadProjectionStoreText.replace(
   /^projection path:"hello\.0" text:.*$/m,
   `projection path:"hello.0" text:${JSON.stringify("pub fn broken( {\n")}`,
 ));
@@ -2953,14 +2956,14 @@ assert(sourceFreeStdGraphCheckJson.graphCompiler.semanticFacts.calls.some((call)
 assert(sourceFreeStdGraphCheckJson.graphCompiler.tables.capability > 0);
 const checkedInGraphPackageSizeJson = json(["size", "--json", "--target", "linux-musl-x64", checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageSizeJson.sourceFile, checkedInRepositoryGraphStorePath);
-assertSourceGraph(checkedInGraphPackageSizeJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false);
+assertSourceGraph(checkedInGraphPackageSizeJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true);
 assertProgramGraphCompilerInput(checkedInGraphPackageSizeJson, checkedInRepositoryGraphStorePath);
 const checkedInGraphPackageSizeMir = checkedInGraphPackageSizeJson.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
 assert.equal(checkedInGraphPackageSizeMir.codegenImmediate, false);
 assert.equal(checkedInGraphPackageSizeMir.programReconstructed, true);
 const checkedInGraphPackageBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", checkedInGraphBuildPath, checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageBuildJson.sourceFile, checkedInRepositoryGraphStorePath);
-assertSourceGraph(checkedInGraphPackageBuildJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false);
+assertSourceGraph(checkedInGraphPackageBuildJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true);
 assertProgramGraphCompilerInput(checkedInGraphPackageBuildJson, checkedInRepositoryGraphStorePath);
 const checkedInGraphPackageBuildMir = checkedInGraphPackageBuildJson.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
 assert.equal(checkedInGraphPackageBuildMir.hit, true);
@@ -3024,28 +3027,27 @@ assert.equal(zero(["run", "--out", checkedInGraphRunPath, checkedInGraphPackageD
 const checkedInGraphPackageTestJson = json(["test", "--json", checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageTestJson.ok, true);
 assert.equal(checkedInGraphPackageTestJson.sourceFile, checkedInRepositoryGraphStorePath);
-assertSourceGraph(checkedInGraphPackageTestJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false);
+assertSourceGraph(checkedInGraphPackageTestJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true);
 assert.equal(checkedInGraphPackageTestJson.testDiscovery.mode, "package-graph");
 assert.equal(checkedInGraphPackageTestJson.selectedTests, 0);
 const checkedInGraphPackageShipJson = json(["ship", "--json", "--target", "linux-musl-x64", "--out", checkedInGraphShipPath, checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageShipJson.ok, true);
 assert.equal(checkedInGraphPackageShipJson.sourceFile, checkedInRepositoryGraphStorePath);
-assertSourceGraph(checkedInGraphPackageShipJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false);
+assertSourceGraph(checkedInGraphPackageShipJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true);
 assertProgramGraphCompilerInput(checkedInGraphPackageShipJson, checkedInRepositoryGraphStorePath);
 assert.equal(checkedInGraphPackageShipJson.artifactPath, checkedInGraphShipPath);
 const checkedInGraphPackageDefaultShipJson = json(["ship", "--json", "--target", "linux-musl-x64", checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageDefaultShipJson.artifactPath, checkedInGraphDefaultShipPath);
-const checkedInRepositoryGraphStoreText = readFileSync(checkedInRepositoryGraphStorePath, "utf8");
-assert.match(checkedInRepositoryGraphStoreText, /^zero-repository-graph v1\n/);
-assert.match(checkedInRepositoryGraphStoreText, /^moduleIdentity "package:program-graph-fixture@0\.1\.0"$/m);
-assert.match(checkedInRepositoryGraphStoreText, /^source path:"hello\.0"$/m);
-assert.match(checkedInRepositoryGraphStoreText, /^projection path:"hello\.0" text:/m);
+const checkedInRepositoryGraphStoreBytes = readFileSync(checkedInRepositoryGraphStorePath);
+assert.equal(checkedInRepositoryGraphStoreBytes.subarray(0, 8).toString("binary"), "ZRGBIN1\0");
 const sourceLocationOnlyGraphRoot = join(outDir, "repository-graph-source-location-only");
 rmSync(sourceLocationOnlyGraphRoot, { recursive: true, force: true });
 mkdirSync(sourceLocationOnlyGraphRoot, { recursive: true });
 writeFileSync(join(sourceLocationOnlyGraphRoot, "zero.toml"), readFileSync(join(checkedInGraphPackageDir, "zero.toml"), "utf8"));
 writeFileSync(join(sourceLocationOnlyGraphRoot, "hello.0"), checkedInGraphSource);
-writeFileSync(join(sourceLocationOnlyGraphRoot, "zero.graph"), checkedInRepositoryGraphStoreText.replace("line:1 column:1", "line:99 column:77"));
+zero(["sync", "--from-source", "--format", "text", sourceLocationOnlyGraphRoot]);
+const sourceLocationOnlyStoreText = readFileSync(join(sourceLocationOnlyGraphRoot, "zero.graph"), "utf8");
+writeFileSync(join(sourceLocationOnlyGraphRoot, "zero.graph"), sourceLocationOnlyStoreText.replace("line:1 column:1", "line:99 column:77"));
 const sourceLocationOnlyVerify = json(["verify-sync", "--json", sourceLocationOnlyGraphRoot]).body;
 assert.equal(sourceLocationOnlyVerify.ok, true);
 assert.equal(sourceLocationOnlyVerify.repositoryGraph.syncState, "clean");
@@ -3061,7 +3063,7 @@ const checkedInRepositoryGraphSyncFromGraph = json(["sync", "--from-graph", "--j
 assert.equal(checkedInRepositoryGraphSyncFromGraph.body.ok, true);
 assert.deepEqual(checkedInRepositoryGraphSyncFromGraph.body.changedPaths, []);
 assert.equal(readFileSync(checkedInGraphSourcePath, "utf8"), checkedInGraphSource);
-assert.equal(readFileSync(checkedInRepositoryGraphStorePath, "utf8"), checkedInRepositoryGraphStoreText);
+assert.equal(Buffer.compare(readFileSync(checkedInRepositoryGraphStorePath), checkedInRepositoryGraphStoreBytes), 0);
 const checkedInRepositoryGraphScript = repositoryGraphVerifyScript(checkedInGraphPackageDir, { target: "linux-musl-x64" });
 assert.equal(checkedInRepositoryGraphScript.code, 0);
 assert.match(checkedInRepositoryGraphScript.stdout, /repository graph verify-sync ok \(1 store\)/);
@@ -3069,7 +3071,7 @@ const checkedInGraphDriftRoot = join(outDir, "repository-graph-drift-package");
 rmSync(checkedInGraphDriftRoot, { recursive: true, force: true });
 mkdirSync(checkedInGraphDriftRoot, { recursive: true });
 writeFileSync(join(checkedInGraphDriftRoot, "zero.toml"), readFileSync(join(checkedInGraphPackageDir, "zero.toml"), "utf8"));
-writeFileSync(join(checkedInGraphDriftRoot, "zero.graph"), checkedInRepositoryGraphStoreText);
+writeFileSync(join(checkedInGraphDriftRoot, "zero.graph"), checkedInRepositoryGraphStoreBytes);
 writeFileSync(join(checkedInGraphDriftRoot, "hello.0"), checkedInGraphSource.replace("hello from zero", "hello from drift"));
 const checkedInGraphDriftCheck = json(["check", "--json", checkedInGraphDriftRoot]);
 assert.equal(checkedInGraphDriftCheck.body.ok, true);

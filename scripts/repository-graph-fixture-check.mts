@@ -41,7 +41,7 @@ function assertBudget(name: string, elapsedMs: number, maxMs: number) {
 }
 
 const sourceBefore = readFileSync(`${root}/hello.0`, "utf8");
-const storeBefore = readFileSync(storePath, "utf8");
+const storeBefore = readFileSync(storePath);
 
 const status = runJson(["status", "--json", "--target", target, root]);
 assert.equal(status.body.ok, true);
@@ -69,7 +69,7 @@ assert.equal(fromSource.body.ok, true);
 assert.equal(fromSource.body.repositoryGraph.syncState, "clean");
 assert.deepEqual(fromSource.body.changedPaths, [storePath]);
 assert.equal(readFileSync(`${root}/hello.0`, "utf8"), sourceBefore);
-assert.equal(readFileSync(storePath, "utf8"), storeBefore);
+assert.equal(Buffer.compare(readFileSync(storePath), storeBefore), 0);
 assertBudget("sync --from-source", fromSource.elapsedMs, budgets.syncFromSourceMs);
 
 const fromGraph = runJson(["sync", "--from-graph", "--json", "--target", target, root]);
@@ -77,7 +77,7 @@ assert.equal(fromGraph.body.ok, true);
 assert.equal(fromGraph.body.repositoryGraph.syncState, "clean");
 assert.deepEqual(fromGraph.body.changedPaths, []);
 assert.equal(readFileSync(`${root}/hello.0`, "utf8"), sourceBefore);
-assert.equal(readFileSync(storePath, "utf8"), storeBefore);
+assert.equal(Buffer.compare(readFileSync(storePath), storeBefore), 0);
 assertBudget("sync --from-graph", fromGraph.elapsedMs, budgets.syncFromGraphMs);
 
 console.log(

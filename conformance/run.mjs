@@ -3801,12 +3801,13 @@ const programGraphRoundtripJson = JSON.parse((await execFileAsync(zero, ["roundt
 const programGraphArtifactRoundtrip = await execFileAsync(zero, ["roundtrip", programGraphDumpPath]);
 const programGraphArtifactRoundtripJson = JSON.parse((await execFileAsync(zero, ["roundtrip", "--json", "--out", programGraphArtifactRoundtripPath, programGraphDumpPath])).stdout);
 const programGraphSourceFixtureText = await readFile(programGraphSourceFixturePath, "utf8");
-const programGraphSourceFixtureStoreText = await readFile(programGraphSourceFixtureStorePath, "utf8");
+const programGraphSourceFixtureStoreBytes = await readFile(programGraphSourceFixtureStorePath);
 const programGraphSourceFixturePackageCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFixturePackage])).stdout);
+const programGraphSourceFixturePackageStatusJson = JSON.parse((await execFileAsync(zero, ["status", "--json", programGraphSourceFixturePackage])).stdout);
 const programGraphSourceFixturePackageRun = await execFileAsync(zero, ["run", "--out", programGraphSourceFixtureRunPath, programGraphSourceFixturePackage]);
 await mkdir(programGraphSourceFreePackage, { recursive: true });
 await writeFile(`${programGraphSourceFreePackage}/zero.toml`, await readFile(`${programGraphSourceFixturePackage}/zero.toml`, "utf8"));
-await writeFile(`${programGraphSourceFreePackage}/zero.graph`, programGraphSourceFixtureStoreText);
+await writeFile(`${programGraphSourceFreePackage}/zero.graph`, programGraphSourceFixtureStoreBytes);
 const programGraphSourceFreeCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeSizeJson = JSON.parse((await execFileAsync(zero, ["size", "--json", "--target", "linux-musl-x64", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeBuildJson = JSON.parse((await execFileAsync(zero, ["build", "--json", "--target", "linux-musl-x64", "--out", programGraphSourceFreeBuildPath, programGraphSourceFreePackage])).stdout);
@@ -4072,7 +4073,7 @@ await writeZeroToml(programGraphIdentityMismatchPackage, {
   targets: { cli: { kind: "exe", main: "hello.0" } },
   repositoryGraph: { compilerInput: true },
 });
-await writeFile(`${programGraphIdentityMismatchPackage}/zero.graph`, programGraphSourceFixtureStoreText);
+await writeFile(`${programGraphIdentityMismatchPackage}/zero.graph`, programGraphSourceFixtureStoreBytes);
 const programGraphIdentityMismatchCheck = await execFileAsync(zero, ["check", "--json", programGraphIdentityMismatchPackage]).catch((error) => error);
 const programGraphIdentityMismatchSize = await execFileAsync(zero, ["size", "--json", programGraphIdentityMismatchPackage]).catch((error) => error);
 await mkdir(programGraphMissingPackageNamePackage, { recursive: true });
@@ -4080,11 +4081,14 @@ await writeZeroToml(programGraphMissingPackageNamePackage, {
   targets: { cli: { kind: "exe", main: "hello.0" } },
   repositoryGraph: { compilerInput: true },
 });
-await writeFile(`${programGraphMissingPackageNamePackage}/zero.graph`, programGraphSourceFixtureStoreText);
+await writeFile(`${programGraphMissingPackageNamePackage}/zero.graph`, programGraphSourceFixtureStoreBytes);
 const programGraphMissingPackageNameCheck = await execFileAsync(zero, ["check", "--json", programGraphMissingPackageNamePackage]).catch((error) => error);
 await mkdir(programGraphBadProjectionPackage, { recursive: true });
 await writeFile(`${programGraphBadProjectionPackage}/zero.toml`, await readFile(`${programGraphSourceFixturePackage}/zero.toml`, "utf8"));
-await writeFile(`${programGraphBadProjectionPackage}/zero.graph`, programGraphSourceFixtureStoreText.replace(
+await writeFile(`${programGraphBadProjectionPackage}/hello.0`, programGraphSourceFixtureText);
+await execFileAsync(zero, ["sync", "--from-source", "--format", "text", programGraphBadProjectionPackage]);
+const programGraphBadProjectionStoreText = await readFile(`${programGraphBadProjectionPackage}/zero.graph`, "utf8");
+await writeFile(`${programGraphBadProjectionPackage}/zero.graph`, programGraphBadProjectionStoreText.replace(
   /^projection path:"hello\.0" text:.*$/m,
   `projection path:"hello.0" text:${JSON.stringify("pub fn broken( {\n")}`,
 ));
@@ -4110,7 +4114,7 @@ await writeFile(`${programGraphInvalidStorePackage}/zero.graph`, "not a reposito
 const programGraphInvalidStoreCheck = await execFileAsync(zero, ["check", "--json", programGraphInvalidStorePackage]).catch((error) => error);
 await mkdir(programGraphSourceFixtureDriftPackage, { recursive: true });
 await writeFile(`${programGraphSourceFixtureDriftPackage}/zero.toml`, await readFile(`${programGraphSourceFixturePackage}/zero.toml`, "utf8"));
-await writeFile(`${programGraphSourceFixtureDriftPackage}/zero.graph`, programGraphSourceFixtureStoreText);
+await writeFile(`${programGraphSourceFixtureDriftPackage}/zero.graph`, programGraphSourceFixtureStoreBytes);
 await writeFile(`${programGraphSourceFixtureDriftPackage}/hello.0`, programGraphSourceFixtureText.replace("hello from zero", "hello from drift"));
 const programGraphSourceFixtureDriftCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFixtureDriftPackage])).stdout);
 const programGraphSourceFixtureDriftVerify = await execFileAsync(zero, ["verify-sync", "--json", programGraphSourceFixtureDriftPackage]).catch((error) => error);
@@ -4290,6 +4294,8 @@ assert.equal(programGraphSourceFixturePackageCheckJson.graph.canonicalSource, fa
 assert.equal(programGraphSourceFixturePackageCheckJson.graph.moduleIdentity, "package:program-graph-fixture@0.1.0");
 assert.match(programGraphSourceFixturePackageCheckJson.graph.graphHash, /^graph:[0-9a-f]{16}$/);
 assert.equal(programGraphSourceFixturePackageCheckJson.graph.lowering, "graph-native-check");
+assert.equal(programGraphSourceFixturePackageStatusJson.store.encoding, "binary");
+assert.equal(programGraphSourceFixturePackageStatusJson.storage.encoding, "single-file-binary");
 assertRepositoryGraphNativeCheck(programGraphSourceFixturePackageCheckJson);
 assert.equal(programGraphSourceFixturePackageRun.stdout, "hello from zero\n");
 assert.equal(programGraphSourceFreeCheckJson.ok, true);
@@ -4298,20 +4304,20 @@ assert.equal(programGraphSourceFreeCheckJson.graph.artifact, `${programGraphSour
 assert.equal(programGraphSourceFreeCheckJson.graph.sourceProjectionState, "missing");
 assertRepositoryGraphNativeCheck(programGraphSourceFreeCheckJson, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeCheckJson, `${programGraphSourceFreePackage}/zero.graph`);
-assertSourceGraph(programGraphSourceFreeSizeJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeSizeJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeSizeJson, `${programGraphSourceFreePackage}/zero.graph`);
 assert.equal(programGraphSourceFreeBuildJson.sourceFile, `${programGraphSourceFreePackage}/zero.graph`);
-assertSourceGraph(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`);
 assert(programGraphSourceFreeMappedMirCacheFiles.some((path) => path.endsWith(".zmir")), "repository graph build should write a mapped MIR cache");
 assert.equal(programGraphSourceFreeRun.stdout, "hello from zero\n");
 assert.equal(programGraphSourceFreeTestJson.ok, true);
-assertSourceGraph(programGraphSourceFreeTestJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeTestJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assert.equal(programGraphSourceFreeTestJson.testDiscovery.mode, "package-graph");
 assert.equal(programGraphSourceFreeShipJson.ok, true);
-assertSourceGraph(programGraphSourceFreeShipJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeShipJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeShipJson, `${programGraphSourceFreePackage}/zero.graph`);
-assertSourceGraph(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
+assertSourceGraph(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeMemJson, `${programGraphSourceFreePackage}/zero.graph`);
 assert.notEqual(programGraphSourceFreeVerify.code, 0);
 const programGraphSourceFreeVerifyBody = JSON.parse(programGraphSourceFreeVerify.stdout);
