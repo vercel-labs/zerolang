@@ -171,6 +171,9 @@ but do not rewrite projections. When combining repository graph stores, use
 `zero merge --base <base-zero.graph> --left <left-zero.graph> --right
 <right-zero.graph> <input>` and then refresh projections explicitly if the merge
 succeeds.
+`zero.graph` is text by default. Use `--format binary` only when explicitly
+opting a repository graph store into binary encoding; reads auto-detect either
+format, and plain writes preserve an existing binary store.
 10. Run a focused check:
 
 ```sh

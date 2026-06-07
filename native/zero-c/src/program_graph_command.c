@@ -20,7 +20,7 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
     "init",
     Z_PROGRAM_GRAPH_INPUT_PATH,
     "init writes repository files and does not support --out",
-    "zero init [--json] <project-path>",
+    "zero init [--json] [--format text|binary] <project-path>",
     "zero init --out",
     "init writes zero.json and zero.graph at the selected project path; remove --out"
   ),
@@ -62,8 +62,8 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
   ),
   GRAPH_NO_OUT("status", Z_PROGRAM_GRAPH_INPUT_SOURCE, "status does not support --out", "zero status [--json] <project|zero.json|file.0>", "zero status --out", "status is reported on stdout; remove --out"),
   GRAPH_NO_OUT("verify-sync", Z_PROGRAM_GRAPH_INPUT_SOURCE, "verify-sync does not support --out", "zero verify-sync [--json] <project|zero.json|file.0>", "zero verify-sync --out", "verify-sync is a no-write check; remove --out"),
-  GRAPH_NO_OUT("sync", Z_PROGRAM_GRAPH_INPUT_SOURCE, "sync writes fixed repository paths and does not support --out", "zero sync (--from-source|--from-graph) <project|zero.json|file.0>", "zero sync --out", "choose --from-source or --from-graph; sync writes repository graph/source paths when enabled"),
-  GRAPH_NO_OUT("merge", Z_PROGRAM_GRAPH_INPUT_SOURCE, "merge writes the target zero.graph and does not support --out", "zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> <project|zero.json|file.0>", "zero merge --out", "merge writes the repository graph store selected by the input path; remove --out"),
+  GRAPH_NO_OUT("sync", Z_PROGRAM_GRAPH_INPUT_SOURCE, "sync writes fixed repository paths and does not support --out", "zero sync (--from-source|--from-graph) [--format text|binary] <project|zero.json|file.0>", "zero sync --out", "choose --from-source or --from-graph; sync writes repository graph/source paths when enabled"),
+  GRAPH_NO_OUT("merge", Z_PROGRAM_GRAPH_INPUT_SOURCE, "merge writes the target zero.graph and does not support --out", "zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--format text|binary] <project|zero.json|file.0>", "zero merge --out", "merge writes the repository graph store selected by the input path; remove --out"),
   GRAPH_OUT("size", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("build", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("run", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
@@ -153,6 +153,10 @@ void z_program_graph_print_command_help(void) {
   printf("  sync      synchronize repository graph and source projections when enabled\n");
   printf("  merge     combine independent repository graph store edits by durable node id\n");
   printf("  roundtrip compare graph semantics after direct ProgramGraph lowering\n");
+  printf("\nRepository store encoding:\n");
+  printf("  text is the default zero.graph encoding\n");
+  printf("  --format binary opts init, patch, sync --from-source, or merge into binary zero.graph writes\n");
+  printf("  reads auto-detect text and binary stores\n");
   printf("\nCommon patch operations:\n");
   printf("  addMain\n");
   printf("  addCheckWrite fn=\"main\" text=\"hello\\n\"\n");

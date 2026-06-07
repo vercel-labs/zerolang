@@ -18,6 +18,7 @@ typedef struct {
   char *store_path;
   bool store_present;
   bool store_valid;
+  ZProgramGraphStoreFormat store_format;
   char *store_error;
   char *graph_error;
   char *projection_error;
@@ -71,6 +72,7 @@ static RepositoryGraphState repo_graph_state(const char *input, const ZTargetInf
     ZDiag diag = {0};
     if (z_program_graph_store_load_path(state.store_path, &store, &diag)) {
       state.store_valid = true;
+      state.store_format = store.format;
       state.graph_hash = z_strdup(store.graph.graph_hash ? store.graph.graph_hash : "");
       state.module_identity = z_strdup(store.graph.module_identity ? store.graph.module_identity : "");
       state.node_count = store.graph.node_len;
@@ -179,6 +181,26 @@ static const char *repo_compiler_input_label(const RepositoryGraphState *state) 
   return state->compiler_input_enabled ? "repository-graph" : "source-text";
 }
 
+static bool repo_requested_store_format(const char *format_name, ZProgramGraphStoreFormat fallback, ZProgramGraphStoreFormat *out, ZDiag *diag) {
+  if (!format_name || !format_name[0]) {
+    if (out) *out = fallback;
+    return true;
+  }
+  if (z_program_graph_store_format_from_name(format_name, out)) return true;
+  if (diag) {
+    *diag = (ZDiag){0};
+    diag->code = 2002;
+    diag->line = 1;
+    diag->column = 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "repository graph store format is not supported");
+    snprintf(diag->expected, sizeof(diag->expected), "--format text|binary");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", format_name);
+    snprintf(diag->help, sizeof(diag->help), "use --format binary to opt into binary zero.graph stores; omit --format for text");
+  }
+  return false;
+}
+
 static const char *repo_semantic_validity_label(const RepositoryGraphState *state) {
   return state && state->store_valid ? "shape-valid" : "unavailable";
 }
@@ -253,7 +275,9 @@ static void repo_append_state_json(ZBuf *buf, const RepositoryGraphState *state,
   repo_append_json_string(buf, repo_projection_validity_label(state));
   zbuf_append(buf, "}");
   if (state->store_valid) {
-    zbuf_append(buf, ",\n  \"store\": {\"format\":\"zero-repository-graph\",\"schemaVersion\":1,\"graphHash\":");
+    zbuf_append(buf, ",\n  \"store\": {\"format\":\"zero-repository-graph\",\"encoding\":");
+    repo_append_json_string(buf, z_program_graph_store_format_name(state->store_format));
+    zbuf_append(buf, ",\"schemaVersion\":1,\"graphHash\":");
     repo_append_json_string(buf, state->graph_hash);
     zbuf_appendf(buf, ",\"nodes\":%zu,\"edges\":%zu,\"sources\":%zu}", state->node_count, state->edge_count, state->source_count);
     zbuf_append(buf, ",\n  \"compilerStore\": {\"schemaVersion\":1,\"shape\":\"compiler-oriented-tables\",\"sourceFreeInspection\":true,\"sourceProjectionRequiredForSemanticFacts\":false,\"sourceMapRequiredForSemanticFacts\":false,\"semanticValidity\":{\"state\":");
@@ -270,7 +294,9 @@ static void repo_append_state_json(ZBuf *buf, const RepositoryGraphState *state,
     z_program_graph_store_append_compiler_hash_inputs_json(buf);
     zbuf_append(buf, "}");
   }
-  zbuf_append(buf, ",\n  \"storage\": {\"encoding\":\"single-file-text\",\"artifact\":\"zero.graph\",\"interface\":\"ProgramGraphStore\",\"schemaVersion\":1,\"evolvable\":true}");
+  zbuf_append(buf, ",\n  \"storage\": {\"encoding\":");
+  repo_append_json_string(buf, state->store_valid && state->store_format == Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY ? "single-file-binary" : "single-file-text");
+  zbuf_append(buf, ",\"artifact\":\"zero.graph\",\"interface\":\"ProgramGraphStore\",\"schemaVersion\":1,\"evolvable\":true,\"binaryAvailable\":true,\"defaultEncoding\":\"text\"}");
   zbuf_appendf(buf, ",\n  \"scale\": {\"nodes\":%zu,\"edges\":%zu,\"sources\":%zu}", state->node_count, state->edge_count, state->source_count);
   zbuf_append(buf, ",\n  \"contract\": ");
   repo_append_contract_json(buf, state);
@@ -458,6 +484,7 @@ int z_repository_graph_status_command(const char *input, const ZTargetInfo *targ
     printf("repository graph status: %s\n", repo_sync_state(&state));
     printf("root: %s\n", state.root);
     printf("store: %s\n", state.store_path);
+    if (state.store_valid) printf("store format: %s\n", z_program_graph_store_format_name(state.store_format));
     printf("store valid: %s\n", state.store_valid ? "true" : "false");
     printf("source projection: checked-in .0 source text\n");
     printf("semantic validity: %s\n", repo_semantic_validity_label(&state));
@@ -531,7 +558,7 @@ int z_repository_graph_verify_sync_command(const char *input, const ZTargetInfo 
   return rc;
 }
 
-int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx) {
+int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *store_format, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx) {
   RepositoryGraphState state = repo_graph_state(input, target, from_source ? source_graph : NULL, from_graph ? source_graph_diag : NULL);
   if (from_graph == from_source) {
     int rc = repo_graph_direction_error(&state, json, from_graph, from_source);
@@ -605,7 +632,23 @@ int z_repository_graph_sync_command(const char *input, const ZTargetInfo *target
   }
   ZProgramGraphStore saved;
   ZDiag diag = {0};
-  if (!z_program_graph_store_save_for_input(input, source_graph, &saved, &diag)) {
+  ZProgramGraphStoreFormat requested_format = z_program_graph_store_path_is_binary(state.store_path)
+    ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
+    : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  if (!repo_requested_store_format(store_format, requested_format, &requested_format, &diag)) {
+    int rc = repo_graph_error(&state,
+                              json,
+                              "sync-from-source",
+                              "RGP003",
+                              diag.message,
+                              diag.expected,
+                              diag.actual,
+                              diag.help,
+                              REPO_GRAPH_REPAIR_STATUS);
+    repo_graph_state_free(&state);
+    return rc;
+  }
+  if (!z_program_graph_store_save_for_input_format(input, source_graph, requested_format, &saved, &diag)) {
     bool identity_error = repo_diag_is_identity_reconcile_error(&diag);
     bool module_identity_error = identity_error && ((strncmp(diag.expected, "module:", 7) == 0) || (strncmp(diag.expected, "package:", 8) == 0));
     int rc = repo_graph_error(&state,
@@ -726,7 +769,7 @@ static int repo_graph_merge_conflict(const RepositoryGraphState *state, bool jso
   return 1;
 }
 
-int z_repository_graph_merge_command(const char *input, const ZTargetInfo *target, const char *base_path, const char *left_path, const char *right_path, bool json) {
+int z_repository_graph_merge_command(const char *input, const ZTargetInfo *target, const char *base_path, const char *left_path, const char *right_path, const char *store_format, bool json) {
   RepositoryGraphState state = repo_graph_state(input, target, NULL, NULL);
   if (!base_path || !left_path || !right_path) {
     const char *actual = !base_path ? "missing --base" : (!left_path ? "missing --left" : "missing --right");
@@ -760,10 +803,31 @@ int z_repository_graph_merge_command(const char *input, const ZTargetInfo *targe
   }
   char *root = z_program_graph_store_root_for_input(input && input[0] ? input : ".");
   char *target_path = z_program_graph_store_path_for_root(root);
+  ZProgramGraphStoreFormat requested_format = z_program_graph_store_path_is_binary(target_path)
+    ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
+    : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  if (!repo_requested_store_format(store_format, requested_format, &requested_format, &diag)) {
+    int rc = repo_graph_error(&state,
+                              json,
+                              "merge",
+                              "RGM001",
+                              diag.message,
+                              diag.expected,
+                              diag.actual,
+                              diag.help,
+                              REPO_GRAPH_REPAIR_NONE);
+    z_program_graph_store_free(&base);
+    z_program_graph_store_free(&left);
+    z_program_graph_store_free(&right);
+    free(root);
+    free(target_path);
+    repo_graph_state_free(&state);
+    return rc;
+  }
   ZRepositoryGraphMergeResult merge = {0};
   bool ok = z_repository_graph_merge_stores(&base, &left, &right, target, target_path, &merged, &merge, &diag);
   if (ok) {
-    ok = z_program_graph_store_write_path(target_path, &merged, &diag);
+    ok = z_program_graph_store_write_path_format(target_path, &merged, requested_format, &diag);
     merge.wrote = ok;
     if (!ok) {
       snprintf(merge.code, sizeof(merge.code), "RGM007");
@@ -821,12 +885,12 @@ bool z_repository_graph_source_graph_optional(const char *kind, bool from_graph,
          !from_source;
 }
 
-int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *merge_base, const char *merge_left, const char *merge_right, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
+int z_repository_graph_maybe_command(const char *kind, const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *merge_base, const char *merge_left, const char *merge_right, const char *store_format, const ZProgramGraph *source_graph, const ZDiag *source_graph_diag, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx, bool *handled) {
   if (handled) *handled = true;
   if (kind && strcmp(kind, "status") == 0) return z_repository_graph_status_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag);
   if (kind && strcmp(kind, "verify-sync") == 0) return z_repository_graph_verify_sync_command(input, target, json, from_graph, from_source, source_graph);
-  if (kind && strcmp(kind, "sync") == 0) return z_repository_graph_sync_command(input, target, json, from_graph, from_source, source_graph, source_graph_diag, load_source_graph, load_source_graph_ctx);
-  if (kind && strcmp(kind, "merge") == 0) return z_repository_graph_merge_command(input, target, merge_base, merge_left, merge_right, json);
+  if (kind && strcmp(kind, "sync") == 0) return z_repository_graph_sync_command(input, target, json, from_graph, from_source, store_format, source_graph, source_graph_diag, load_source_graph, load_source_graph_ctx);
+  if (kind && strcmp(kind, "merge") == 0) return z_repository_graph_merge_command(input, target, merge_base, merge_left, merge_right, store_format, json);
   if (handled) *handled = false;
   return 0;
 }

@@ -124,6 +124,11 @@ for human review and `zero sync --from-source <package>` after humans edit
 that projection. Keep derived graph artifacts out of the package source unless
 the user explicitly asks for them.
 
+Repository graph stores are text by default. Use `zero init --format binary` or
+`zero sync --from-source --format binary <package>` only when the package is
+intentionally opting into binary `zero.graph` storage. Normal reads auto-detect
+both encodings, and normal writes preserve an existing binary store.
+
 ## Common Repairs
 
 - `IMP001`: create the imported module, fix its path, or adjust `use`.

@@ -77,7 +77,9 @@ hello/
 
 `zero.graph` is the repository graph store and the normal compiler input for
 this package. Agents should usually inspect and patch that graph with
-`zero query` and `zero patch`.
+`zero query` and `zero patch`. Its default encoding is text; binary
+`zero.graph` storage is available with `--format binary` when you specifically
+want to test or opt into direct binary graph loading.
 
 `src/main.0` is the human-readable projection. It is deliberately readable and
 bidirectional: humans can review it, and humans may edit it directly when that

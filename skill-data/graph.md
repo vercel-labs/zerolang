@@ -25,6 +25,23 @@ packages, `.0` files are the human-readable source projection, and
 - Use `.program-graph` artifacts only when another tool needs a standalone
   debug or interchange file.
 
+## Repository Store Encoding
+
+`zero.graph` defaults to the text repository graph store. The compiler also
+supports an explicit binary store that is loaded through typed graph tables
+without parsing the text wrapper:
+
+```sh
+zero init --format binary app
+zero sync --from-source --format binary <package>
+zero patch --format binary <package> --op 'addMain'
+```
+
+Reads auto-detect text and binary `zero.graph` stores. Plain writes preserve an
+existing binary store, and `zero status <package>` reports `store format:
+text|binary`. Do not make binary the default in prompts; use it when the task is
+to test or opt into binary graph storage.
+
 ## Graph-First Loop
 
 Create a graph-first package without writing `.0` source:

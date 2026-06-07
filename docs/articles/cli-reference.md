@@ -163,6 +163,11 @@ not materialize `.0` files. Agents can patch the package with
 store from current `.0` source, preserves existing graph node handles where the
 source edit is unambiguous, and stores exact checked-in source projection bytes
 for tracked local files. Ambiguous identity changes fail instead of guessing.
+Text is the default `zero.graph` encoding. `--format binary` opts `zero init`,
+`zero patch`, `zero sync --from-source`, or `zero merge` into a binary
+repository graph store that is decoded as typed graph tables instead of parsed
+as the text wrapper. Reads auto-detect both encodings, plain writes preserve an
+existing binary store, and `zero status` reports the active store format.
 `zero sync --from-graph` rewrites stale `.0` source projections from that
 store, and `zero verify-sync` checks the store against the current source
 graph and source projection without writing files. Packages can opt normal

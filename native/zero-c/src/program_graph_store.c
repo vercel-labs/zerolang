@@ -3,6 +3,7 @@
 #include "program_graph_compare.h"
 #include "program_graph_format.h"
 #include "program_graph_reconcile_apply.h"
+#include "program_graph_store_binary.h"
 #include "program_graph_store_prune.h"
 #include "program_graph_store_tables.h"
 #include "program_graph_view.h"
@@ -36,6 +37,26 @@ static bool store_path_is_dir(const char *path) {
 bool z_program_graph_store_file_exists(const char *path) {
   struct stat st;
   return path && stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+const char *z_program_graph_store_format_name(ZProgramGraphStoreFormat format) {
+  switch (format) {
+    case Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY: return "binary";
+    case Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT:
+    default: return "text";
+  }
+}
+
+bool z_program_graph_store_format_from_name(const char *name, ZProgramGraphStoreFormat *out) {
+  if (strcmp(name ? name : "", "text") == 0) {
+    if (out) *out = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+    return true;
+  }
+  if (strcmp(name ? name : "", "binary") == 0) {
+    if (out) *out = Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY;
+    return true;
+  }
+  return false;
 }
 
 static bool store_ends_with(const char *text, const char *suffix) {
@@ -265,7 +286,14 @@ char *z_program_graph_store_path_for_root(const char *root) {
   return store_join_path(root && root[0] ? root : ".", "zero.graph");
 }
 
-void z_program_graph_store_init(ZProgramGraphStore *store) { if (store) *store = (ZProgramGraphStore){.schema_version = 1}; }
+void z_program_graph_store_init(ZProgramGraphStore *store) {
+  if (store) {
+    *store = (ZProgramGraphStore){
+      .format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT,
+      .schema_version = 1,
+    };
+  }
+}
 
 void z_program_graph_store_free(ZProgramGraphStore *store) {
   if (!store) return;
@@ -296,6 +324,54 @@ static bool store_diag(ZDiag *diag, const char *path, size_t line, const char *m
     snprintf(diag->actual, sizeof(diag->actual), "%s", actual ? actual : "invalid store");
   }
   return false;
+}
+
+static bool store_read_file_bytes(const char *path, unsigned char **out, size_t *out_len, ZDiag *diag) {
+  *out = NULL;
+  *out_len = 0;
+  FILE *file = fopen(path, "rb");
+  if (!file) {
+    if (diag) {
+      *diag = (ZDiag){0};
+      diag->code = 1;
+      diag->path = path;
+      diag->line = 1;
+      diag->column = 1;
+      snprintf(diag->message, sizeof(diag->message), "failed to read '%s'", path ? path : "zero.graph");
+    }
+    return false;
+  }
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fclose(file);
+    return store_diag(diag, path, 1, "failed to read repository graph store", "seek failed");
+  }
+  long size = ftell(file);
+  if (size < 0) {
+    fclose(file);
+    return store_diag(diag, path, 1, "failed to read repository graph store", "size unavailable");
+  }
+  rewind(file);
+  unsigned char *data = z_checked_malloc((size_t)size + 1);
+  size_t read = fread(data, 1, (size_t)size, file);
+  fclose(file);
+  if (read != (size_t)size) {
+    free(data);
+    return store_diag(diag, path, 1, "failed to read repository graph store", "short read");
+  }
+  data[read] = 0;
+  *out = data;
+  *out_len = read;
+  return true;
+}
+
+bool z_program_graph_store_path_is_binary(const char *path) {
+  unsigned char *data = NULL;
+  size_t len = 0;
+  ZDiag diag = {0};
+  bool ok = store_read_file_bytes(path, &data, &len, &diag);
+  bool binary = ok && z_program_graph_store_bytes_are_binary(data, len);
+  free(data);
+  return binary;
 }
 
 static void store_append_quoted(ZBuf *buf, const char *text) {
@@ -763,14 +839,10 @@ static bool store_parse_projection_line(const char *line, ZProgramGraphStore *st
   return ok;
 }
 
-static bool store_verify_metadata(const char *path, ZProgramGraphStore *store, const char *module_identity, const char *graph_hash, const char *module_hash, const char *compiler_store, const char *compiler_tables, const char *compiler_hash_inputs, const StoreNodeHashVec *node_hashes, ZDiag *diag) {
+static bool store_verify_graph_metadata_common(const char *path, ZProgramGraphStore *store, const char *module_identity, const char *graph_hash, const char *module_hash, const StoreNodeHashVec *node_hashes, ZDiag *diag) {
   if (!store_text_eq(module_identity, store->graph.module_identity)) return store_diag(diag, path, 1, "repository graph module identity does not match stored graph", store->graph.module_identity);
   if (!store_text_eq(graph_hash, store->graph.graph_hash)) return store_diag(diag, path, 1, "repository graph hash does not match stored graph", store->graph.graph_hash);
   if (!store_text_eq(module_hash, store->graph.graph_hash)) return store_diag(diag, path, 1, "repository graph module hash does not match stored graph", store->graph.graph_hash);
-  const char *actual = NULL;
-  if (!z_program_graph_store_compiler_metadata_matches(&store->graph, store->source_path_len, store->projection_len, compiler_store, compiler_tables, compiler_hash_inputs, &actual)) {
-    return store_diag(diag, path, 1, "repository graph compiler store metadata does not match stored graph", actual);
-  }
   if (node_hashes->len != store->graph.node_len) return store_diag(diag, path, 1, "repository graph node hash table has the wrong size", "node hash count mismatch");
   for (size_t i = 0; i < store->graph.node_len; i++) {
     const ZProgramGraphNode *node = &store->graph.nodes[i];
@@ -792,6 +864,14 @@ static bool store_verify_metadata(const char *path, ZProgramGraphStore *store, c
     if (!store_source_path_present(store, store->projection_paths[i])) return store_diag(diag, path, 1, "repository graph projection table references an unknown source path", store->projection_paths[i]);
   }
   return true;
+}
+
+static bool store_verify_metadata(const char *path, ZProgramGraphStore *store, const char *module_identity, const char *graph_hash, const char *module_hash, const char *compiler_store, const char *compiler_tables, const char *compiler_hash_inputs, const StoreNodeHashVec *node_hashes, ZDiag *diag) {
+  const char *actual = NULL;
+  if (!z_program_graph_store_compiler_metadata_matches(&store->graph, store->source_path_len, store->projection_len, compiler_store, compiler_tables, compiler_hash_inputs, &actual)) {
+    return store_diag(diag, path, 1, "repository graph compiler store metadata does not match stored graph", actual);
+  }
+  return store_verify_graph_metadata_common(path, store, module_identity, graph_hash, module_hash, node_hashes, diag);
 }
 
 static bool store_parse_text(const char *path, const char *text, ZProgramGraphStore *out, ZDiag *diag) {
@@ -962,22 +1042,46 @@ static bool store_byte_stability_fail(const char *path, ZDiag *diag) {
   return store_diag(diag, path, 1, "repository graph store is not byte-stable after reload", "different canonical bytes");
 }
 
-bool z_program_graph_store_load_path(const char *path, ZProgramGraphStore *out, ZDiag *diag) {
-  char *text = z_read_file(path, diag);
-  if (!text) return false;
+static void store_append_format(ZBuf *buf, const ZProgramGraph *graph, const ZProgramGraphStore *store, ZProgramGraphStoreFormat format) {
+  if (format == Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY) z_program_graph_store_append_binary(buf, graph, store);
+  else store_append_text(buf, graph, store);
+}
+
+static bool store_parse_format(const char *path, const unsigned char *data, size_t len, ZProgramGraphStoreFormat format, ZProgramGraphStore *out, ZDiag *diag) {
+  if (format == Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY) return z_program_graph_store_parse_binary(path, data, len, out, diag);
+  char *text = z_strndup((const char *)data, len);
   bool ok = store_parse_text(path, text, out, diag);
+  free(text);
+  if (ok) out->format = Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  return ok;
+}
+
+static bool store_bytes_equal(const unsigned char *left, size_t left_len, const ZBuf *right) {
+  size_t right_len = right && right->data ? right->len : 0;
+  const unsigned char *right_data = right && right->data ? (const unsigned char *)right->data : (const unsigned char *)"";
+  return left_len == right_len && (left_len == 0 || memcmp(left, right_data, left_len) == 0);
+}
+
+bool z_program_graph_store_load_path(const char *path, ZProgramGraphStore *out, ZDiag *diag) {
+  unsigned char *data = NULL;
+  size_t len = 0;
+  if (!store_read_file_bytes(path, &data, &len, diag)) return false;
+  ZProgramGraphStoreFormat format = z_program_graph_store_bytes_are_binary(data, len)
+    ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
+    : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  bool ok = store_parse_format(path, data, len, format, out, diag);
   if (ok) {
     ZBuf canonical;
     zbuf_init(&canonical);
-    store_append_text(&canonical, &out->graph, out);
-    ok = store_text_eq(text, canonical.data ? canonical.data : "");
+    store_append_format(&canonical, &out->graph, out, out->format);
+    ok = store_bytes_equal(data, len, &canonical);
     zbuf_free(&canonical);
     if (!ok) {
       z_program_graph_store_free(out);
       store_byte_stability_fail(path, diag);
     }
   }
-  free(text);
+  free(data);
   return ok;
 }
 
@@ -991,7 +1095,7 @@ bool z_program_graph_store_load_for_input(const char *input, ZProgramGraphStore 
   return ok;
 }
 
-bool z_program_graph_store_write_path(const char *path, const ZProgramGraphStore *store, ZDiag *diag) {
+bool z_program_graph_store_write_path_format(const char *path, const ZProgramGraphStore *store, ZProgramGraphStoreFormat format, ZDiag *diag) {
   if (!store) return store_diag(diag, path, 1, "repository graph store write requires a store", "missing store");
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(&store->graph, &validation)) {
@@ -999,34 +1103,42 @@ bool z_program_graph_store_write_path(const char *path, const ZProgramGraphStore
   }
   ZBuf first;
   zbuf_init(&first);
-  store_append_text(&first, &store->graph, store);
+  store_append_format(&first, &store->graph, store, format);
   ZProgramGraphStore parsed;
-  if (!store_parse_text(path, first.data ? first.data : "", &parsed, diag)) {
+  if (!store_parse_format(path, (const unsigned char *)(first.data ? first.data : ""), first.len, format, &parsed, diag)) {
     zbuf_free(&first);
     return false;
   }
   ZBuf second;
   zbuf_init(&second);
-  store_append_text(&second, &parsed.graph, &parsed);
-  bool stable = store_text_eq(first.data, second.data);
+  store_append_format(&second, &parsed.graph, &parsed, format);
+  bool stable = first.len == second.len && (first.len == 0 || memcmp(first.data, second.data, first.len) == 0);
   z_program_graph_store_free(&parsed);
   if (!stable) {
     zbuf_free(&first);
     zbuf_free(&second);
     return store_byte_stability_fail(path, diag);
   }
-  zbuf_free(&second); bool wrote = z_write_file(path, first.data ? first.data : "", diag);
+  zbuf_free(&second);
+  bool wrote = z_write_binary_file(path, (const unsigned char *)(first.data ? first.data : ""), first.len, diag);
   zbuf_free(&first);
   return wrote;
 }
 
-bool z_program_graph_store_write_generated_path(const char *path, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag) {
+bool z_program_graph_store_write_path(const char *path, const ZProgramGraphStore *store, ZDiag *diag) {
+  ZProgramGraphStoreFormat format = store ? store->format : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  if (format == Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT && z_program_graph_store_path_is_binary(path)) format = Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY;
+  return z_program_graph_store_write_path_format(path, store, format, diag);
+}
+
+bool z_program_graph_store_write_generated_path_format(const char *path, const ZProgramGraph *graph, ZProgramGraphStoreFormat format, ZProgramGraphStore *out, ZDiag *diag) {
   if (!graph) return store_diag(diag, path, 1, "repository graph store write requires a graph", "missing graph");
   ZProgramGraphStore generated;
   z_program_graph_store_init(&generated);
   generated.path = z_strdup(path ? path : "zero.graph");
   generated.root = store_dirname(generated.path);
   generated.present = true;
+  generated.format = format;
   generated.schema_version = 1;
   store_copy_graph(graph, &generated.graph);
   store_normalize_graph_paths_preserving_ids_for_root(&generated.graph, generated.root && generated.root[0] ? generated.root : ".");
@@ -1035,7 +1147,7 @@ bool z_program_graph_store_write_generated_path(const char *path, const ZProgram
     z_program_graph_store_free(&generated);
     return false;
   }
-  bool ok = z_program_graph_store_write_path(generated.path, &generated, diag);
+  bool ok = z_program_graph_store_write_path_format(generated.path, &generated, format, diag);
   if (ok && out) {
     ok = z_program_graph_store_load_path(generated.path, out, diag);
   }
@@ -1043,7 +1155,14 @@ bool z_program_graph_store_write_generated_path(const char *path, const ZProgram
   return ok;
 }
 
-bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
+bool z_program_graph_store_write_generated_path(const char *path, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag) {
+  ZProgramGraphStoreFormat format = z_program_graph_store_path_is_binary(path)
+    ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
+    : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  return z_program_graph_store_write_generated_path_format(path, graph, format, out, diag);
+}
+
+bool z_program_graph_store_save_path_format(const char *path, const ZProgramGraph *graph, ZProgramGraphStoreFormat format, ZDiag *diag) {
   char *root = store_dirname(path ? path : "zero.graph");
   ZProgramGraph normalized;
   if (!store_normalized_source_graph(root, graph, &normalized)) {
@@ -1081,12 +1200,13 @@ bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *grap
   zbuf_init(&first);
   ZProgramGraphStore projections;
   z_program_graph_store_init(&projections);
+  projections.format = format;
   store_collect_source_paths(&projections, &normalized);
   store_collect_source_projections(&projections, root);
-  store_append_text(&first, &normalized, &projections);
+  store_append_format(&first, &normalized, &projections, format);
 
   ZProgramGraphStore parsed;
-  if (!store_parse_text(path, first.data ? first.data : "", &parsed, diag)) {
+  if (!store_parse_format(path, (const unsigned char *)(first.data ? first.data : ""), first.len, format, &parsed, diag)) {
     z_program_graph_store_free(&projections);
     zbuf_free(&first);
     z_program_graph_free(&normalized);
@@ -1095,8 +1215,8 @@ bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *grap
   }
   ZBuf second;
   zbuf_init(&second);
-  store_append_text(&second, &parsed.graph, &parsed);
-  bool stable = store_text_eq(first.data, second.data);
+  store_append_format(&second, &parsed.graph, &parsed, format);
+  bool stable = first.len == second.len && (first.len == 0 || memcmp(first.data, second.data, first.len) == 0);
   z_program_graph_store_free(&parsed);
   if (!stable) {
     z_program_graph_store_free(&projections);
@@ -1107,7 +1227,7 @@ bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *grap
     return store_byte_stability_fail(path, diag);
   }
   zbuf_free(&second);
-  bool wrote = z_write_file(path, first.data ? first.data : "", diag);
+  bool wrote = z_write_binary_file(path, (const unsigned char *)(first.data ? first.data : ""), first.len, diag);
   z_program_graph_store_free(&projections);
   zbuf_free(&first);
   z_program_graph_free(&normalized);
@@ -1115,14 +1235,32 @@ bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *grap
   return wrote;
 }
 
-bool z_program_graph_store_save_for_input(const char *input, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag) {
+bool z_program_graph_store_save_path(const char *path, const ZProgramGraph *graph, ZDiag *diag) {
+  ZProgramGraphStoreFormat format = z_program_graph_store_path_is_binary(path)
+    ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
+    : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  return z_program_graph_store_save_path_format(path, graph, format, diag);
+}
+
+bool z_program_graph_store_save_for_input_format(const char *input, const ZProgramGraph *graph, ZProgramGraphStoreFormat format, ZProgramGraphStore *out, ZDiag *diag) {
   char *root = z_program_graph_store_root_for_input(input);
   char *path = z_program_graph_store_path_for_root(root);
-  bool saved = z_program_graph_store_save_path(path, graph, diag);
+  bool saved = z_program_graph_store_save_path_format(path, graph, format, diag);
   if (saved && out) saved = z_program_graph_store_load_path(path, out, diag);
   free(root);
   free(path);
   return saved;
+}
+
+bool z_program_graph_store_save_for_input(const char *input, const ZProgramGraph *graph, ZProgramGraphStore *out, ZDiag *diag) {
+  char *root = z_program_graph_store_root_for_input(input);
+  char *path = z_program_graph_store_path_for_root(root);
+  ZProgramGraphStoreFormat format = z_program_graph_store_path_is_binary(path)
+    ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
+    : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  free(root);
+  free(path);
+  return z_program_graph_store_save_for_input_format(input, graph, format, out, diag);
 }
 
 bool z_program_graph_store_graph_matches_source(const ZProgramGraphStore *store, const ZProgramGraph *source_graph) {

@@ -80,6 +80,9 @@ zero build . --out .zero/out/app
 Use `zero sync --from-graph <package>` when humans need checked-in `.0`
 projections. If a human edits a projection, run
 `zero sync --from-source <package>` before the next graph-store compile.
+If the package has opted into binary graph storage, normal build and run
+commands still read `zero.graph` directly; `zero status <package>` reports the
+store format.
 
 Use normal build and run commands against `.program-graph` only when you
 intentionally need to validate a derived interchange artifact:
