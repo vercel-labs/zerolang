@@ -2848,7 +2848,7 @@ assertSourceGraph(sourceFreeGraphPackageSizeJson, sourceFreeGraphPackageStorePat
 assertProgramGraphCompilerInput(sourceFreeGraphPackageSizeJson, sourceFreeGraphPackageStorePath);
 const sourceFreeGraphPackageSizeMir = sourceFreeGraphPackageSizeJson.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
 assert.equal(sourceFreeGraphPackageSizeMir.codegenImmediate, false);
-assert.equal(sourceFreeGraphPackageSizeMir.programReconstructed, true);
+assert.equal(sourceFreeGraphPackageSizeMir.programReconstructed, false);
 const sourceFreeGraphPackageBuildPath = join(outDir, "source-free-graph-package-build");
 const sourceFreeGraphPackageBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", sourceFreeGraphPackageBuildPath, sourceFreeGraphPackageRoot]).body;
 assert.equal(sourceFreeGraphPackageBuildJson.sourceFile, sourceFreeGraphPackageStorePath);
@@ -2962,8 +2962,8 @@ assert.equal(checkedInGraphPackageSizeJson.sourceFile, checkedInRepositoryGraphS
 assertSourceGraph(checkedInGraphPackageSizeJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true);
 assertProgramGraphCompilerInput(checkedInGraphPackageSizeJson, checkedInRepositoryGraphStorePath);
 const checkedInGraphPackageSizeMir = checkedInGraphPackageSizeJson.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
-assert.equal(checkedInGraphPackageSizeMir.codegenImmediate, false);
-assert.equal(checkedInGraphPackageSizeMir.programReconstructed, true);
+assert.equal(checkedInGraphPackageSizeMir.codegenImmediate, true);
+assert.equal(checkedInGraphPackageSizeMir.programReconstructed, false);
 const checkedInGraphPackageBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", checkedInGraphBuildPath, checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageBuildJson.sourceFile, checkedInRepositoryGraphStorePath);
 assertSourceGraph(checkedInGraphPackageBuildJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "mapped-final-mir", true);
@@ -3171,8 +3171,8 @@ assert.equal(graphSizeJson.objectBackend.objectEmission.path, "direct-elf64-obje
 assert.equal(graphSizeJson.artifactPath, null);
 assertProgramGraphCompilerInput(graphSizeJson, graphDumpPath);
 const graphSizeMirCache = graphSizeJson.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
-assert.equal(graphSizeMirCache.codegenImmediate, false);
-assert.equal(graphSizeMirCache.programReconstructed, true);
+assert.equal(graphSizeMirCache.codegenImmediate, true);
+assert.equal(graphSizeMirCache.programReconstructed, false);
 assert.equal(graphSizeJson.incrementalInvalidation.changedInputs.graphArtifact, graphDumpPath);
 assert.equal(graphSizeJson.incrementalInvalidation.interfaceFingerprints.sourceKind, "program-graph");
 assert.equal(graphSizeJson.incrementalInvalidation.interfaceFingerprints.graphHash, graphSizeJson.graph.graphHash);

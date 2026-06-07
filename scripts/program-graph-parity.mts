@@ -437,8 +437,8 @@ async function assertCommandStateContracts() {
   assert.equal(size.generatedCBytes, 0, "graph size should stay on the direct backend");
   assert.equal(size.cBridgeFallback, false, "graph size should not use C bridge fallback");
   const sizeMirCache = size.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
-  assert.equal(sizeMirCache.codegenImmediate, false, "graph size should keep checked program facts for reports");
-  assert.equal(sizeMirCache.programReconstructed, true, "graph size should reconstruct checked program facts");
+  assert.equal(sizeMirCache.codegenImmediate, false, "graph size should compute report facts after a cold mapped-MIR write");
+  assert.equal(sizeMirCache.programReconstructed, false, "graph size should derive report facts from graph/IR metadata instead of reconstructing checked Program facts");
   const build = await zeroJson(["build", "--json", "--target", "linux-musl-x64", "--out", `${outDir}/state-contracts-build`, artifact]);
   const buildMirCache = build.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
   assert.equal(buildMirCache.hit, true, "graph build should reuse the mapped final MIR warmed by size");

@@ -136,8 +136,8 @@ version, graph hash, target, emit kind, and backend request, then passed to
 codegen. For warm repository `zero.graph` build/run commands and warm
 standalone `.program-graph` build/run commands, a mapped MIR hit is the
 immediate codegen input: the compiler skips graph-to-MIR lowering and checked
-Program reconstruction. Reporting commands such as `zero size` still
-reconstruct checked Program facts for their summaries. The
+Program reconstruction. Graph-backed `zero size` derives helper and capability
+summaries from graph/IR facts instead of reconstructing checked Program facts. The
 `compilerCaches` array includes a `mappedFinalMir` row with the cache path,
 byte length, whether the cache was reused or written by this command, whether
 codegen borrowed stable storage from the mapped file, and the

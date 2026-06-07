@@ -19,6 +19,7 @@
 #include "program_graph_query.h"
 #include "program_graph_reconcile.h"
 #include "program_graph_reconcile_apply.h"
+#include "program_graph_report.h"
 #include "program_graph_resolve.h"
 #include "program_graph_repository.h"
 #include "program_graph_repository_input.h"
@@ -9225,6 +9226,7 @@ static void append_backend_comparison_json(ZBuf *buf, const Command *command, co
 
 static void append_size_breakdown_json(ZBuf *buf, const SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command, const HelperUseSummary *helpers, const CapabilitySummary *caps, long long artifact_bytes) {
   const char *profile = command && command->profile ? command->profile : "release";
+  size_t function_count = program && program->functions.len > 0 ? program->functions.len : (input ? input->direct_function_count : 0);
   zbuf_append(buf, "{\"schemaVersion\":1,\"profile\":");
   append_json_string(buf, profile);
   zbuf_append(buf, ",\"profileKey\":");
@@ -9232,7 +9234,7 @@ static void append_size_breakdown_json(ZBuf *buf, const SourceInput *input, cons
   zbuf_append(buf, ",\"target\":");
   append_json_string(buf, target ? target->name : z_host_target());
   zbuf_appendf(buf, ",\"summary\":{\"functionCount\":%zu,\"stdlibHelperCount\":%zu,\"runtimeImportCount\":%d,\"debugMetadataBytes\":%zu},\"functions\":",
-               program ? program->functions.len : 0,
+               function_count,
                helpers ? helper_count_used(helpers) : 0,
                caps ? ((caps->world ? 1 : 0) + (caps->args ? 1 : 0) + (caps->env ? 1 : 0) + (caps->fs ? 1 : 0) + (caps->net ? 1 : 0) + (caps->proc ? 1 : 0)) : 0,
                profile_debug_metadata_bytes(program, profile));
@@ -9962,12 +9964,7 @@ static void append_runtime_shims_json_ex(ZBuf *buf, const char *emitted_symbol_t
 
 static void append_runtime_shims_json(ZBuf *buf, const char *emitted_symbol_text, const CapabilitySummary *caps) { append_runtime_shims_json_ex(buf, emitted_symbol_text, caps, false); }
 
-typedef struct {
-  const ZProgramGraph *graph;
-  const ZProgramGraphArtifactSource *artifact_source;
-  const char *artifact;
-  const char *lowering;
-} GraphSizeSource;
+typedef struct { const ZProgramGraph *graph; const ZProgramGraphArtifactSource *artifact_source; const char *artifact; const char *lowering; } GraphSizeSource;
 
 static bool write_size_metadata_artifact(const Command *command, SourceInput *input, const ZTargetInfo *target, char **artifact_path, long long *artifact_bytes, ZDiag *diag) {
   if (artifact_path) *artifact_path = NULL;
@@ -10017,10 +10014,7 @@ static void append_size_graph_source_json(ZBuf *buf, const GraphSizeSource *grap
   zbuf_appendf(buf, ", \"canonicalSource\": %s, \"moduleIdentity\": ", canonical_source ? "true" : "false"); append_json_string(buf, module_identity ? module_identity : "");
   zbuf_append(buf, ", \"graphHash\": "); append_json_string(buf, graph_hash ? graph_hash : "");
   zbuf_append(buf, ", \"lowering\": "); append_json_string(buf, lowering ? lowering : "direct-program-graph");
-  if (graph_source->artifact_source && graph_source->artifact_source->source_projection_state) {
-    zbuf_append(buf, ", \"sourceProjectionState\": ");
-    append_json_string(buf, graph_source->artifact_source->source_projection_state);
-  }
+  if (graph_source->artifact_source && graph_source->artifact_source->source_projection_state) { zbuf_append(buf, ", \"sourceProjectionState\": "); append_json_string(buf, graph_source->artifact_source->source_projection_state); }
   zbuf_append(buf, "}");
 }
 
@@ -10092,17 +10086,20 @@ static void append_size_report_back_json(ZBuf *buf, const Command *command, Sour
 }
 
 static int run_size_report_command(const Command *command, SourceInput *input, Program *program, const ZTargetInfo *target, IrProgram *ir, const GraphSizeSource *graph_source, ZDiag *diag) {
-  CapabilitySummary caps = program_capabilities(program);
+  ZProgramGraphReportLoad size_graph = {0};
+  const char *graph_artifact = graph_source ? (graph_source->artifact ? graph_source->artifact : (graph_source->artifact_source ? graph_source->artifact_source->artifact : NULL)) : NULL;
+  const ZProgramGraph *report_graph = graph_source && graph_source->graph ? graph_source->graph : z_program_graph_report_load_source(graph_artifact, command && command->repository_graph_input, &size_graph);
+  CapabilitySummary caps = program_or_ir_capabilities(program, ir);
+  if (report_graph) { CapabilitySummary graph_caps = z_program_graph_report_capabilities(report_graph); z_capability_summary_merge(&caps, &graph_caps); }
   HelperUseSummary used_helpers = program_used_helpers(program);
+  if (report_graph) z_program_graph_report_mark_used_std_helpers(report_graph, used_helpers.used, used_helpers.len);
   long long artifact_bytes = -1;
   char *artifact_path = NULL;
   if (!write_size_metadata_artifact(command, input, target, &artifact_path, &artifact_bytes, diag)) {
     const char *path = diag && diag->path ? diag->path : (command && command->out ? command->out : artifact_path);
     if (command && command->json) print_diag_json(path, diag);
     else print_diag(path, diag);
-    free(artifact_path);
-    helper_summary_free(&used_helpers);
-    return 1;
+    free(artifact_path); z_program_graph_report_load_free(&size_graph); helper_summary_free(&used_helpers); return 1;
   }
 
   ZBuf json;
@@ -10111,8 +10108,7 @@ static int run_size_report_command(const Command *command, SourceInput *input, P
   append_size_report_back_json(&json, command, input, program, target, ir, &used_helpers, &caps, graph_source, artifact_path, artifact_bytes);
   fputs(json.data, stdout);
   zbuf_free(&json);
-  free(artifact_path);
-  helper_summary_free(&used_helpers);
+  free(artifact_path); z_program_graph_report_load_free(&size_graph); helper_summary_free(&used_helpers);
   return 0;
 }
 
@@ -13951,9 +13947,9 @@ int main(int argc, char **argv) {
       }
     }
     bool prepared_graph = command.repository_graph_input
-      ? z_program_graph_prepare_repository_store_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, !(strcmp(command.command, "build") == 0 || strcmp(command.command, "run") == 0), &program, &input, &graph_prepared_ir, &graph_source, &diag)
+      ? z_program_graph_prepare_repository_store_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, !(strcmp(command.command, "build") == 0 || strcmp(command.command, "run") == 0 || strcmp(command.command, "size") == 0), &program, &input, &graph_prepared_ir, &graph_source, &diag)
       : (graph_mir_command
-          ? z_program_graph_prepare_artifact_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, !(graph_build_command || graph_run_artifact_command), &program, &input, &graph_prepared_ir, &graph_source, &diag)
+          ? z_program_graph_prepare_artifact_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, !(graph_build_command || graph_run_artifact_command || graph_size_artifact_command), &program, &input, &graph_prepared_ir, &graph_source, &diag)
           : z_program_graph_prepare_artifact_input(command.input, target, &program, &input, &graph_source, &diag));
     if (prepared_graph && graph_mir_command) {
       input.lower_ms = now_ms() - graph_lower_started;

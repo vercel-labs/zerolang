@@ -96,8 +96,8 @@ borrows stable string and readonly-data storage from the mapped file, then sends
 the verified MIR to codegen. On warm repository `zero.graph` build/run hits and
 warm standalone `.program-graph` build/run hits, the mapped final MIR is the
 immediate codegen input: the compiler skips graph-to-MIR lowering and checked
-Program reconstruction. Reporting commands such as `zero size` still
-reconstruct checked Program facts for their summaries.
+Program reconstruction. Graph-backed `zero size` derives helper and capability
+summaries from graph/IR facts instead of reconstructing checked Program facts.
 JSON outputs report graph `lowering: "mapped-final-mir"` when this path is used
 and include a `mappedFinalMir` compiler cache row with `path`, `hit`,
 `written`, `memoryMapped`, `borrowedStorage`, `byteLength`,

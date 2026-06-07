@@ -62,9 +62,9 @@ Agents should not patch `.zmir` files. JSON outputs expose this path as a
 from the mapped cache instead of copied source text. For warm repository
 `zero.graph` build/run hits and warm standalone `.program-graph` build/run hits,
 `codegenImmediate: true` and `programReconstructed: false` mean codegen started
-from mapped final MIR without reconstructing checked Program state. Reporting
-commands such as `zero size` may still report `programReconstructed: true`
-because their summaries need checked Program facts.
+from mapped final MIR without reconstructing checked Program state. Graph-backed
+`zero size` also reports `programReconstructed: false`; it derives helper and
+capability summaries from graph/IR facts instead of checked Program state.
 
 ## Graph-First Loop
 
