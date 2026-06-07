@@ -1,0 +1,11 @@
+pub fn main(world: World) -> Void raises {
+    check world.out.write("binary graph store example\n")
+}
+
+fn add(x: i32, y: i32) -> i32 {
+    return x + y
+}
+
+test "add works" {
+    expect (add(40, 2) == 42)
+}

@@ -1,0 +1,24 @@
+{
+  "package": {
+    "name": "binary-graph-store",
+    "version": "0.1.0",
+    "license": "MIT"
+  },
+  "targets": {
+    "cli": {
+      "kind": "exe",
+      "main": "src/main.0",
+      "defaultTarget": "linux-musl-x64",
+      "devTarget": "host",
+      "releaseProfile": "release-small"
+    }
+  },
+  "repositoryGraph": {
+    "compilerInput": true
+  },
+  "deps": {},
+  "profiles": {
+    "dev": { "inherits": "dev" },
+    "release-small": { "inherits": "release-small" }
+  }
+}

@@ -47,11 +47,22 @@ try {
 }
 
 const zero = "bin/zero";
+const checkedInBinaryRoot = "examples/binary-graph-store";
 const binaryRoot = `/tmp/zero-program-graph-binary-store-${process.pid}`;
 
 async function zeroRun(args: string[]) {
   return execFileAsync(zero, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
 }
+
+const checkedInBinaryStore = await readFile(`${checkedInBinaryRoot}/zero.graph`);
+assert.equal(checkedInBinaryStore.subarray(0, 8).toString("binary"), "ZRGBIN1\0");
+const checkedInBinaryStatus = JSON.parse((await zeroRun(["status", "--json", checkedInBinaryRoot])).stdout);
+assert.equal(checkedInBinaryStatus.store.encoding, "binary");
+assert.equal(checkedInBinaryStatus.repositoryGraph.projectionValidity, "clean");
+assert.equal((await zeroRun(["check", checkedInBinaryRoot])).stdout, "ok\n");
+assert.equal((await zeroRun(["test", checkedInBinaryRoot])).stdout, "1 test(s) ok\n");
+assert.equal((await zeroRun(["run", checkedInBinaryRoot])).stdout, "binary graph store example\n");
+assert.equal((await zeroRun(["verify-sync", checkedInBinaryRoot])).stdout, "repository graph verify-sync ok\n");
 
 await rm(binaryRoot, { recursive: true, force: true });
 await mkdir(binaryRoot, { recursive: true });
