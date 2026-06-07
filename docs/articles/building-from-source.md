@@ -106,6 +106,7 @@ pnpm run docs:test
 pnpm run conformance
 pnpm run native:test
 pnpm run command-contracts
+pnpm run agent:protocol
 ```
 
 Run local benchmark smoke coverage:

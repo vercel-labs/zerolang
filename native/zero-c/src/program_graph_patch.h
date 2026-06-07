@@ -20,6 +20,7 @@ typedef struct {
   char *value;
   char *name;
   char *type;
+  char *params;
   char *path;
   size_t order;
   int line_value;

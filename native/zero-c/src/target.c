@@ -407,7 +407,7 @@ static void append_target_libc_json(ZBuf *buf, const ZTargetInfo *target) {
 
 void z_append_targets_json(ZBuf *buf) {
   ensure_targets_loaded();
-  zbuf_appendf(buf, "{\n  \"schemaVersion\": 1,\n  \"host\": \"%s\",\n  \"targets\": [\n", z_host_target());
+  zbuf_appendf(buf, "{\n  \"schemaVersion\": 1,\n  \"host\": \"%s\",\n  \"agentCommand\": {\"schemaVersion\":1,\"kind\":\"agent-targets-command-contract\",\"command\":{\"argv\":[\"zero\",\"targets\",\"--json\"]},\"auditFields\":[\"host\",\"targets\",\"targets[].directBackend\",\"targets[].capabilityFacts\",\"targets[].toolchain\",\"targets[].libcFacts\"],\"selectionFields\":[\"targets[].name\",\"targets[].aliases\",\"targets[].hosted\",\"targets[].capabilities\",\"targets[].directBackend.status\",\"targets[].directBackend.exeSupported\",\"targets[].directBackend.objectSupported\"],\"recommendedNextCommands\":[{\"purpose\":\"doctor\",\"required\":false,\"when\":\"before non-host target build or when selected target readiness is unclear\",\"inputField\":\"targets[].name or command.argv target selection\",\"argv\":[\"zero\",\"doctor\",\"--json\"],\"resultFields\":[\"status\",\"host\",\"checks[]\",\"checks[].name\",\"checks[].status\",\"targetToolchains[]\",\"targetToolchains[].target\",\"targetToolchains[].status\",\"agentCommand.verificationCommands\"]}],\"verificationCommands\":[{\"purpose\":\"target-selection\",\"required\":true,\"argv\":[\"zero\",\"targets\",\"--json\"]}]},\n  \"targets\": [\n", z_host_target());
   for (size_t i = 0; i < target_count; i++) {
     zbuf_appendf(
       buf,

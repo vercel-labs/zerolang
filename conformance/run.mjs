@@ -10,7 +10,7 @@ if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST
 }
 
 const execMaxBuffer = 16 * 1024 * 1024;
-const zero = "bin/zero";
+const zero = process.env.ZERO_BIN ?? "bin/zero";
 const outDir = ".zero/conformance";
 const canRunLinuxMuslX64 = process.platform === "linux" && process.arch === "x64";
 const runnableDirectTarget =
@@ -2081,6 +2081,11 @@ assert.equal(compileTimeBody.safetyFacts.initialization.locals, "initializer-req
 assert.equal(compileTimeBody.safetyFacts.initialization.maybePayloadReads, "guard-checked");
 assert.equal(compileTimeBody.safetyFacts.aliasing.mutableAliases, "diagnostic");
 assert.equal(compileTimeBody.safetyFacts.mir.invalidMemoryContractsBlockEmission, true);
+assert.equal(compileTimeBody.safetyFacts.productionReadiness.status, "blocked");
+assert.equal(compileTimeBody.productionReadiness.status, "blocked");
+assert.equal(compileTimeBody.productionReadiness.sensitiveEnvironmentApproved, false);
+assert(compileTimeBody.productionReadiness.satisfiedControls.includes("compile-time-network-denied"));
+assert(compileTimeBody.productionReadiness.blockingRisks.some((item) => item.id === "runtime-integer-overflow-unchecked" && item.severity === "high"));
 
 const compileTimeGraph = await execFileAsync(zero, ["graph", "--json", "conformance/native/pass/compile-time-v1.0"]);
 const compileTimeGraphBody = JSON.parse(compileTimeGraph.stdout);
@@ -2127,6 +2132,9 @@ assert.equal(buildJsonM6Body.safetyFacts.bounds.optimizerElision, false);
 assert.equal(buildJsonM6Body.safetyFacts.overflow.policy, "literal-range-checked-runtime-unchecked");
 assert.equal(buildJsonM6Body.safetyFacts.overflow.integerLiterals, "range-checked");
 assert.equal(buildJsonM6Body.safetyFacts.ownership.useAfterMove, "diagnostic");
+assert.equal(buildJsonM6Body.productionReadiness.gate, "sensitive-production-v1");
+assert.equal(buildJsonM6Body.productionReadiness.profileKey, "tiny");
+assert(buildJsonM6Body.productionReadiness.blockingRisks.some((item) => item.id === "release-sbom-placeholder"));
 assert.equal(buildJsonM6Body.profileBudget.helperBudgetPolicy, "pay-as-used-minimum-runtime");
 assert(buildJsonM6Body.profileCatalog.some((item) => item.canonical === "debug" && item.debugInfo === true));
 assert(buildJsonM6Body.profileCatalog.some((item) => item.canonical === "release-fast" && item.boundsPolicy === "checked"));
@@ -2162,6 +2170,7 @@ assert.equal(profileSizeBody.generatedCBytes, 0);
 assert.equal(profileSizeBody.profileSemantics.profileKey, "debug");
 assert.equal(profileSizeBody.safetyFacts.profileKey, "debug");
 assert.equal(profileSizeBody.safetyFacts.uncheckedSurfaces[0].surface, "C imports");
+assert.equal(profileSizeBody.productionReadiness.sensitiveEnvironmentApproved, false);
 assert.equal(profileSizeBody.sizeBreakdown.profileKey, "debug");
 assert(profileSizeBody.sizeBreakdown.functions.some((item) => item.name === "main" && item.retainedBy === "entry point"));
 assert(profileSizeBody.sizeBreakdown.sections.some((item) => item.name === "text" && item.retainedBy.includes("retained functions")));
@@ -3286,6 +3295,14 @@ assert.equal(fixPlanBody.fixes[0].id, "make-binding-mutable");
 assert.equal(fixPlanBody.fixes[0].diagnosticCode, "TYP009");
 assert.equal(fixPlanBody.fixes[0].safety, "behavior-preserving");
 assert.equal(fixPlanBody.diagnostics[0].repair.id, "make-binding-mutable");
+assert.equal(fixPlanBody.agentTransaction.kind, "compiler-mediated-repair-transaction");
+assert.equal(fixPlanBody.agentTransaction.repairId, "make-binding-mutable");
+assert(fixPlanBody.agentTransaction.phases.includes("validate"));
+assert.equal(fixPlanBody.agentTransaction.preconditions.graphHashRequiredForGraphPatch, true);
+assert.equal(fixPlanBody.agentTransaction.patchContract.kind, "single-line-source-replacement");
+assert.equal(fixPlanBody.agentTransaction.verificationCommands[0].argv[1], "check");
+assert.equal(fixPlanBody.fixes[0].repairContract.kind, "compiler-mediated-repair-contract");
+assert.equal(fixPlanBody.fixes[0].repairContract.autoPatchSupported, true);
 
 const genericFixPlanJson = await execFileAsync(zero, ["fix", "--plan", "--json", "conformance/check/fail/generic-cannot-infer.0"]);
 const genericFixPlanBody = JSON.parse(genericFixPlanJson.stdout);
@@ -3299,6 +3316,10 @@ const fixPatchBody = JSON.parse(fixPatchJson.stdout);
 assert.equal(fixPatchBody.mode, "patch");
 assert.equal(fixPatchBody.appliesEdits, false);
 assert.equal(fixPatchBody.fixes[0].appliesEdits, true);
+assert.equal(fixPatchBody.agentTransaction.mode, "patch");
+assert.equal(fixPatchBody.agentTransaction.checkedEditSurface, "reviewable-source-patch");
+assert.equal(fixPatchBody.agentTransaction.patchContract.preconditions.oldLineMustMatch, true);
+assert.equal(fixPatchBody.fixes[0].repairContract.transactionKind, "single-line-source-replacement");
 assert.match(fixPatchBody.patches[0].new, /var dst/);
 
 const fixApplyFixture = `${outDir}/fix-apply-mutable.0`;

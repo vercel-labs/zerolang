@@ -10,12 +10,15 @@ Use this when working with `zero.json`, package-local modules, package tests, or
 ## Create
 
 ```sh
-zero new cli hello
-zero new lib math-tools
-zero new package app
+zero new --json cli hello
+zero new --json lib math-tools
+zero new --json package app
 ```
 
-Check the generated files before changing structure.
+In automated workflows, read `agentCommand.writePolicy` before accepting the
+created source tree. `zero new --json` reports `project.path`, `project.files[]`,
+rollback boundary `project.path`, and required `source-check` / `test-run`
+verification commands.
 
 ## Manifest
 
@@ -89,7 +92,21 @@ zero doc <package>
 zero dev <package>
 ```
 
-Use `--json` when a tool needs exact graph, doc, or dev fields. Useful `graph` facts include modules, source paths, import edges, public and private symbol counts, function effects, required capabilities, target facts, dependency facts, and package cache key inputs.
+Use `--json` when a tool needs exact graph, doc, or dev fields. `zero doc --json`
+includes `agentCommand`; use its canonical argv, `symbols`, `requiresCapabilities`,
+`publicationGate`, and same-target/profile verification commands when auditing public API changes.
+`zero dev --json` also includes `agentCommand`; use it to replay watch plans,
+inspect partial diagnostics, and run required `dev-plan` / `source-check`
+verification commands. When `zero doc --json` reports missing publication
+examples or a public symbol needs semantic location, use its
+`agentCommand.recommendedNextCommands[]` `graph-find` follow-up bound to
+`symbols[].name` instead of reconstructing graph lookup argv.
+`zero time --json` includes `agentCommand` for replaying timing/cache probes and
+cross-checking incremental invalidation facts against same-profile checking;
+use its required `time-audit` / `source-check` verification commands.
+Useful `graph` facts include modules, source paths, import edges, public and
+private symbol counts, function effects, required capabilities, target facts,
+dependency facts, and package cache key inputs.
 
 ## Graph Authoring
 

@@ -27,6 +27,9 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
     "zero graph inspect --out",
     "use zero graph dump or zero graph import with --out when you need a derived ProgramGraph artifact"
   ),
+  GRAPH_NO_OUT("find", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT, "graph find does not support --out", "zero graph find --json --symbol <symbol-or-name> <program-graph-or-source>", "zero graph find --out", "find reports token-bounded symbol lookup results on stdout; remove --out"),
+  GRAPH_NO_OUT("impact", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT, "graph impact does not support --out", "zero graph impact --json --node <node-id> <program-graph-or-source>", "zero graph impact --out", "impact reports token-bounded edit impact facts on stdout; remove --out"),
+  GRAPH_NO_OUT("slice", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT, "graph slice does not support --out", "zero graph slice --json --node <node-id> <program-graph-or-source>", "zero graph slice --out", "slice reports a token-bounded node neighborhood on stdout; remove --out"),
   GRAPH_OUT("validate", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("view", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
   GRAPH_NO_OUT(
@@ -60,6 +63,7 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
   GRAPH_OUT("size", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("build", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_OUT("run", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
+  GRAPH_OUT("ship", Z_PROGRAM_GRAPH_INPUT_ARTIFACT),
   GRAPH_NO_OUT(
     "test",
     Z_PROGRAM_GRAPH_INPUT_ARTIFACT,
@@ -70,6 +74,14 @@ static const ZProgramGraphCommandKind z_graph_command_kinds[] = {
   ),
   GRAPH_OUT("patch", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
   GRAPH_OUT("roundtrip", Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT),
+  GRAPH_NO_OUT(
+    "compare",
+    Z_PROGRAM_GRAPH_INPUT_SOURCE_OR_ARTIFACT,
+    "graph compare does not support --out",
+    "zero graph compare --json --against <right> <left>",
+    "zero graph compare --out",
+    "compare reports semantic equality on stdout; remove --out"
+  ),
 };
 
 #undef GRAPH_OUT

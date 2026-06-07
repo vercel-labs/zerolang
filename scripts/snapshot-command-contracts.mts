@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative } from "node:path";
+import { resolve } from "node:path";
 
 if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST_ALLOW_LOCAL !== "1") {
   console.error("command contract snapshots emit native test artifacts; run `pnpm run command-contracts` for Vercel Sandbox execution or set ZERO_NATIVE_TEST_ALLOW_LOCAL=1 to opt into local artifacts.");
@@ -13,25 +13,29 @@ if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST
 
 const outDir = ".zero/command-contracts";
 const execMaxBuffer = 16 * 1024 * 1024;
+const zeroBin = process.env.ZERO_BIN ?? "bin/zero";
+const commandContractBodies = [];
 mkdirSync(outDir, { recursive: true });
 
-function zero(args, options: { allowFailure?: boolean; env?: Record<string, string> } = {}) {
+function zero(args, options: { allowFailure?: boolean; env?: NodeJS.ProcessEnv } = {}) {
   try {
-    const stdout = execFileSync("bin/zero", args, { encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"], env: options.env ? { ...process.env, ...options.env } : process.env });
-    return { code: 0, stdout };
+    const stdout = execFileSync(zeroBin, args, { encoding: "utf8", maxBuffer: execMaxBuffer, env: { ...process.env, ...options.env }, stdio: ["ignore", "pipe", "pipe"] });
+    return { code: 0, stdout: stdout.replace(/\r\n/g, "\n") };
   } catch (error) {
     if (!options.allowFailure) throw error;
     return {
       code: error.status ?? 1,
-      stdout: error.stdout?.toString() ?? "",
-      stderr: error.stderr?.toString() ?? "",
+      stdout: (error.stdout?.toString() ?? "").replace(/\r\n/g, "\n"),
+      stderr: (error.stderr?.toString() ?? "").replace(/\r\n/g, "\n"),
     };
   }
 }
 
 function json(args, options = {}) {
   const result = zero(args, options);
-  return { ...result, body: JSON.parse(result.stdout) };
+  const body = JSON.parse(result.stdout);
+  commandContractBodies.push({ args, body });
+  return { ...result, body };
 }
 
 function repositoryGraphVerifyScript(root, options: { allowFailure?: boolean; target?: string } = {}) {
@@ -148,6 +152,14 @@ function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean")
   assert.equal(body.compileTime.deterministic, true);
   assert.equal(body.targetReadiness.languageOk, true);
   assert.equal(body.safetyFacts.schemaVersion, 1);
+}
+
+function contractPath(path) {
+  return String(path ?? "").replace(/\\/g, "/");
+}
+
+function executableExists(path) {
+  return existsSync(path) || existsSync(`${path}.exe`);
 }
 
 const graphHashPrime = 1099511628211n;
@@ -690,10 +702,16 @@ function assertDevReport(report, kind) {
   assert(report.actions.some((action) => action.kind === "restart" && action.enabled === (kind !== "lib")));
 }
 
-function assertShipReport(report, outPath) {
+function assertShipReport(report, outPath, inputPath, profile = "release") {
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.ok, true);
   assert.equal(report.command, "ship");
+  assertAgentShipCommand(report, {
+    argv: ["zero", "ship", "--json", "--target", "linux-musl-x64", "--profile", profile, "--out", outPath, inputPath],
+    input: inputPath,
+    target: "linux-musl-x64",
+    profile,
+  });
   assert.equal(report.emit, "exe");
   assert.equal(report.target, "linux-musl-x64");
   assert.equal(report.generatedCBytes, 0);
@@ -752,6 +770,971 @@ function assertReleaseTargetContract(report, expected) {
   assert(contract.capabilityFacts.some((capability) => capability.name === "memory" && capability.available === true));
 }
 
+function assertVerificationCommand(command, purpose, argv, required = true) {
+  assert.equal(command.purpose, purpose);
+  assert.equal(command.required, required);
+  assert.deepEqual(command.argv, argv);
+}
+
+function assertCommandObjectShape(command, path) {
+  assert.equal(typeof command?.purpose, "string", `${path}.purpose should be a string`);
+  assert.notEqual(command.purpose.length, 0, `${path}.purpose should not be empty`);
+  assert.equal(typeof command.required, "boolean", `${path}.required should be boolean`);
+  assert(Array.isArray(command.argv), `${path}.argv should be an array`);
+  assert(command.argv.length > 0, `${path}.argv should not be empty`);
+  for (const [index, value] of command.argv.entries()) {
+    assert.equal(typeof value, "string", `${path}.argv[${index}] should be a string`);
+  }
+}
+
+function assertAgentTransactionShape(transaction, path) {
+  assert.equal(transaction?.schemaVersion, 1, `${path}.schemaVersion should be 1`);
+  assert.equal(typeof transaction.kind, "string", `${path}.kind should be a string`);
+  assert.notEqual(transaction.kind.length, 0, `${path}.kind should not be empty`);
+  assert(Array.isArray(transaction.command?.argv), `${path}.command.argv should be an array`);
+  assert(transaction.command.argv.length > 0, `${path}.command.argv should not be empty`);
+  for (const [index, value] of transaction.command.argv.entries()) {
+    assert.equal(typeof value, "string", `${path}.command.argv[${index}] should be a string`);
+  }
+  assert(Array.isArray(transaction.resultFields), `${path}.resultFields should be an array`);
+  for (const field of [
+    "agentTransaction.command.argv",
+    "agentTransaction.phaseAudit",
+    "agentTransaction.proofLedger",
+    "agentTransaction.verificationCommands",
+  ]) {
+    assert(transaction.resultFields.includes(field), `${path}.resultFields should include ${field}`);
+  }
+  assert(transaction.proofLedger && typeof transaction.proofLedger === "object", `${path}.proofLedger should be an object`);
+  assert(Array.isArray(transaction.proofLedger.phases), `${path}.proofLedger.phases should be an array`);
+  assert(
+    transaction.resultFields.some((field) => field.startsWith("agentTransaction.rollback.")),
+    `${path}.resultFields should include rollback fields`,
+  );
+  assert(
+    transaction.resultFields.some((field) => field.startsWith("agentTransaction.failure.")),
+    `${path}.resultFields should include failure fields`,
+  );
+  if (transaction.kind === "compiler-mediated-graph-patch-transaction") {
+    assert(transaction.resultFields.includes("evidenceBindings[]"), `${path}.resultFields should include evidenceBindings[]`);
+    assert(transaction.resultFields.includes("evidenceBindings[].sourceFields"), `${path}.resultFields should include evidenceBindings[].sourceFields`);
+    assert(transaction.resultFields.includes("agentTransaction.verificationCommands[].resultFields"), `${path}.resultFields should include verification resultFields`);
+    assert(transaction.resultFields.includes("agentTransaction.rollback.verificationCommands[].resultFields"), `${path}.resultFields should include rollback verification resultFields`);
+  }
+  assert(transaction.phaseAudit && typeof transaction.phaseAudit === "object", `${path}.phaseAudit should be an object`);
+  assert(transaction.rollback && typeof transaction.rollback === "object", `${path}.rollback should be an object`);
+  assert(Array.isArray(transaction.rollback.verificationCommands), `${path}.rollback.verificationCommands should be an array`);
+  for (const [index, command] of transaction.rollback.verificationCommands.entries()) {
+    assertCommandObjectShape(command, `${path}.rollback.verificationCommands[${index}]`);
+  }
+  if (transaction.rollback.applied || transaction.rollback.changedPath) {
+    assert(transaction.rollback.verificationCommands.length > 0, `${path}.rollback.verificationCommands should describe rollback proof commands`);
+  }
+  assert(Array.isArray(transaction.verificationCommands), `${path}.verificationCommands should be an array`);
+  for (const [index, command] of transaction.verificationCommands.entries()) {
+    assertCommandObjectShape(command, `${path}.verificationCommands[${index}]`);
+  }
+  assert(Array.isArray(transaction.failureClasses), `${path}.failureClasses should be an array`);
+  assert(transaction.failureClasses.length > 0, `${path}.failureClasses should not be empty`);
+  for (const [index, failureClass] of transaction.failureClasses.entries()) {
+    assert.equal(typeof failureClass.phase, "string", `${path}.failureClasses[${index}].phase should be a string`);
+    assert.equal(typeof failureClass.retryable, "boolean", `${path}.failureClasses[${index}].retryable should be boolean`);
+    assert("retryCommand" in failureClass, `${path}.failureClasses[${index}].retryCommand should be present`);
+    if ("class" in failureClass) assert.equal(typeof failureClass.class, "string", `${path}.failureClasses[${index}].class should be a string`);
+    if ("code" in failureClass) assert.equal(typeof failureClass.code, "string", `${path}.failureClasses[${index}].code should be a string`);
+  }
+  if (transaction.failure) {
+    assert.equal(typeof transaction.failure.phase, "string", `${path}.failure.phase should be a string`);
+    assert.equal(typeof transaction.failure.retryable, "boolean", `${path}.failure.retryable should be boolean`);
+    assert(Array.isArray(transaction.failure.retryCommands), `${path}.failure.retryCommands should be an array`);
+    for (const [index, command] of transaction.failure.retryCommands.entries()) {
+      assertCommandObjectShape(command, `${path}.failure.retryCommands[${index}]`);
+    }
+  }
+}
+
+function assertStructuredCommandArrays(value, path = "$") {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) assertStructuredCommandArrays(item, `${path}[${index}]`);
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (["verificationCommands", "retryCommands", "recommendedNextCommands"].includes(key) || key.endsWith("VerificationCommands") || (key === "commands" && path.endsWith(".agentRepair"))) {
+      assert(Array.isArray(item), `${path}.${key} should be an array`);
+      for (const [index, command] of item.entries()) assertCommandObjectShape(command, `${path}.${key}[${index}]`);
+    } else if (key === "agentTransaction") {
+      assertAgentTransactionShape(item, `${path}.${key}`);
+      assertStructuredCommandArrays(item, `${path}.${key}`);
+    } else {
+      assertStructuredCommandArrays(item, `${path}.${key}`);
+    }
+  }
+}
+
+function assertArtifactWritePolicy(report) {
+  assert(report.agentCommand.auditFields.includes("agentCommand.writePolicy"));
+  assert.equal(report.agentCommand.writePolicy.name, "writes-artifact");
+  assert.equal(report.agentCommand.writePolicy.writesSource, false);
+  assert.equal(report.agentCommand.writePolicy.writesArtifacts, true);
+  assert.equal(report.agentCommand.writePolicy.artifactPathField, report.agentCommand.artifact.pathField);
+  assert.equal(report.agentCommand.writePolicy.requiresVerification, true);
+  assert.equal(report.agentCommand.writePolicy.verificationField, "agentCommand.verificationCommands");
+  assert.equal(report.agentCommand.writePolicy.rollbackField, "artifactPath");
+  assert.equal(report.agentCommand.writePolicy.rollbackPolicy, "agent-enforced-delete-or-replace");
+  assert(report.agentCommand.writePolicy.rollbackActions.some((action) =>
+    action.kind === "delete-path" &&
+    action.pathField === "artifactPath" &&
+    action.condition === "created-by-command" &&
+    action.requiresVerification === true));
+}
+
+function assertAgentBuildCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-build-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assertArtifactWritePolicy(report);
+  assert.equal(report.agentCommand.artifact.pathField, "artifactPath");
+  assert.equal(report.agentCommand.artifact.bytesField, "artifactBytes");
+  assert.equal(report.agentCommand.artifact.hashField, "artifactHash");
+  assert.deepEqual(report.agentCommand.artifact.verificationFields, ["artifactHash", "artifactBytes"]);
+  assert.equal(report.artifactHash.algorithm, "fnv1a64");
+  assert.match(report.artifactHash.value, /^[0-9a-f]{16}$/);
+  assert(report.agentCommand.auditFields.includes("artifactHash"));
+  assert(report.agentCommand.auditFields.includes("releaseTargetContract"));
+  assert(report.agentCommand.auditFields.includes("packageCache"));
+  assert(report.agentCommand.auditFields.includes("safetyFacts"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "test-run");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after artifact validation when behavioral confidence is required");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "test", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("passedTests"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("failedTests"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "size-analysis", ["zero", "size", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[2], "artifact-validate", expected.argv);
+}
+
+function assertAgentTestCommand(report, expected) {
+  const expectedArgv = testContextArgv(expected.argv, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-test-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "source");
+  assert(report.agentCommand.auditFields.includes("testDiscovery"));
+  assert(report.agentCommand.auditFields.includes("profile"));
+  assert(report.agentCommand.auditFields.includes("results"));
+  assert(report.agentCommand.stateFields.includes("results[].status"));
+  assert(report.agentCommand.stateFields.includes("results[].expectedFailure"));
+  assert(report.agentCommand.stateFields.includes("results[].location.sourceFile"));
+  assert(report.agentCommand.failureFields.includes("results[].failure.sourceFile"));
+  assert(report.agentCommand.failureFields.includes("results[].location.sourceFile"));
+  assert(report.agentCommand.failureFields.includes("stderr"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-inspect");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "failedTests > 0 or unexpectedPasses > 0");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].id"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "doc-audit");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].when, "selectedTests == 0");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "doc", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("publicationGate.missingExampleCount"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("symbols[].name"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "test-run", expectedArgv);
+}
+
+function assertAgentGraphTestCommand(report, expected) {
+  const expectedArgv = testContextArgv(expected.argv, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-test-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, "program-graph");
+  assert(report.agentCommand.auditFields.includes("graph.graphHash"));
+  assert(report.agentCommand.auditFields.includes("profile"));
+  assert(report.agentCommand.auditFields.includes("testDiscovery"));
+  assert(report.agentCommand.stateFields.includes("graph.graphHash"));
+  assert(report.agentCommand.stateFields.includes("profile"));
+  assert(report.agentCommand.stateFields.includes("testDiscovery.filter"));
+  assert(report.agentCommand.failureFields.includes("results[].failure.sourceFile"));
+  assert(report.agentCommand.failureFields.includes("results[].location.sourceFile"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-inspect");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "failedTests > 0 or unexpectedPasses > 0");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].nodeHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-check", ["zero", "graph", "check", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "graph-test", expectedArgv);
+}
+
+function assertAgentSizeCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-size-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assertArtifactWritePolicy(report);
+  assert.equal(report.agentCommand.artifact.pathField, "artifactPath");
+  assert.equal(report.agentCommand.artifact.hashField, "artifactHash");
+  assert.deepEqual(report.agentCommand.artifact.verificationFields, ["artifactHash", "artifactBytes"]);
+  if (report.artifactPath) {
+    assert.equal(report.artifactHash.algorithm, "fnv1a64");
+    assert.match(report.artifactHash.value, /^[0-9a-f]{16}$/);
+  } else {
+    assert.equal(report.artifactHash, null);
+  }
+  assert(report.agentCommand.auditFields.includes("artifactHash"));
+  assert(report.agentCommand.auditFields.includes("sizeBreakdown"));
+  assert(report.agentCommand.auditFields.includes("optimizationHints"));
+  assert(report.agentCommand.auditFields.includes("profileBudget"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "artifact-validate");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after size budget review when a runnable artifact is required");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "build", "--json", "--emit", "exe", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("artifactHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.writePolicy"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "size-analysis", expected.argv);
+}
+
+function assertAgentShipCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-ship-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "source");
+  assertArtifactWritePolicy(report);
+  assert.equal(report.agentCommand.artifact.pathField, "artifactPath");
+  assert.equal(report.agentCommand.artifact.bytesField, "artifactBytes");
+  assert.equal(report.agentCommand.artifact.checksumField, "checksum");
+  assert(report.agentCommand.auditFields.includes("releasePreview"));
+  assert(report.agentCommand.auditFields.includes("artifacts"));
+  assert(report.agentCommand.auditFields.includes("releaseTargetContract"));
+  assert.deepEqual(report.agentCommand.artifact.verificationFields, ["checksum", "artifactBytes", "artifacts"]);
+  if (expected.sourceKind === "program-graph") {
+    assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-size");
+    assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+    assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after release preview or artifact audit");
+    assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+    assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "size", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+    assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("sizeBreakdown"));
+    assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("profileBudget"));
+    assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+    assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "graph-test");
+    assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+    assert.equal(report.agentCommand.recommendedNextCommands[1].when, "after release preview when graph-backed behavioral confidence is required");
+    assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "command.argv input");
+    assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "test", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("ok"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("passedTests"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("failedTests"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("unexpectedPasses"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("results[]"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("results[].status"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.verificationCommands"));
+    assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-check", ["zero", "graph", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+    assertVerificationCommand(report.agentCommand.verificationCommands[1], "graph-size", ["zero", "graph", "size", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+    assertVerificationCommand(report.agentCommand.verificationCommands[2], "artifact-validate", expected.argv);
+  } else {
+    assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "size-analysis");
+    assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+    assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after release preview or artifact audit");
+    assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+    assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "size", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+    assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("sizeBreakdown"));
+    assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("profileBudget"));
+    assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+    assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "test-run");
+    assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+    assert.equal(report.agentCommand.recommendedNextCommands[1].when, "after release preview when behavioral confidence is required");
+    assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "command.argv input");
+    assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "test", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("ok"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("passedTests"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("failedTests"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("unexpectedPasses"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("results[]"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("results[].status"));
+    assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.verificationCommands"));
+    assertVerificationCommand(report.agentCommand.verificationCommands[0], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+    assertVerificationCommand(report.agentCommand.verificationCommands[1], "size-analysis", ["zero", "size", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+    assertVerificationCommand(report.agentCommand.verificationCommands[2], "artifact-validate", expected.argv);
+  }
+}
+
+function assertAgentCheckCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-check-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "source");
+  assert.equal(report.agentCommand.readPolicy.name, "semantic-diagnostic-read");
+  assert.equal(report.agentCommand.readPolicy.readsSource, true);
+  assert.equal(report.agentCommand.readPolicy.writesSource, false);
+  assert.equal(report.agentCommand.readPolicy.writesArtifacts, false);
+  assert.equal(report.agentCommand.readPolicy.fullSourceRequired, false);
+  assert(report.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+  assert(report.agentCommand.auditFields.includes("diagnostics"));
+  assert(report.agentCommand.auditFields.includes("targetReadiness"));
+  assert(report.agentCommand.diagnosticFields.includes("diagnostics[].graphLookup"));
+  const repairPlan = report.agentCommand.recommendedNextCommands.find((item) => item.purpose === "repair-plan");
+  assert(repairPlan);
+  assert.equal(repairPlan.required, false);
+  assert.equal(repairPlan.when, "diagnostics.length > 0");
+  assert.equal(repairPlan.inputField, "command.argv input");
+  assert.deepEqual(repairPlan.argv, ["zero", "fix", "--plan", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert.equal(repairPlan.resultContract, "agentTransaction");
+  assert(repairPlan.resultFields.includes("agentTransaction.proofLedger"));
+  assert(repairPlan.resultFields.includes("agentTransaction.rollback.actions[]"));
+  assert(repairPlan.resultFields.includes("agentTransaction.failure.retryCommands"));
+  assert(repairPlan.resultFields.includes("fixes[].graphPatchCandidates[]"));
+  assert(repairPlan.resultFields.includes("diagnostics[].graphLookup"));
+  const graphInspect = report.agentCommand.recommendedNextCommands.find((item) => item.purpose === "graph-inspect");
+  assert(graphInspect);
+  assert.equal(graphInspect.required, false);
+  assert.equal(graphInspect.when, "diagnostics.length > 0");
+  assert.equal(graphInspect.inputField, "diagnostics[].graphLookup or command.argv input");
+  assert.deepEqual(graphInspect.argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert(graphInspect.resultFields.includes("programGraph.graphHash"));
+  assert(graphInspect.resultFields.includes("programGraph.nodes[].id"));
+  assert(graphInspect.resultFields.includes("programGraph.nodes[].nodeHash"));
+  assert(graphInspect.resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(graphInspect.resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.verificationCommands[0].purpose, "source-check");
+  assert.equal(report.agentCommand.verificationCommands[0].required, true);
+  assert.deepEqual(report.agentCommand.verificationCommands[0].argv, expected.argv);
+}
+
+function assertAgentGraphCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-command-contract");
+  assert.equal(report.agentCommand.mode, expected.mode);
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "source");
+  assert.equal(report.agentCommand.readPolicy.name, "semantic-graph-read");
+  assert.equal(report.agentCommand.readPolicy.readsSource, true);
+  assert.equal(report.agentCommand.readPolicy.writesSource, false);
+  assert.equal(report.agentCommand.readPolicy.writesArtifacts, false);
+  assert.equal(report.agentCommand.readPolicy.fullSourceRequired, false);
+  assert.equal(report.agentCommand.readPolicy.tokenStrategyField, "agentQuery.tokenStrategy");
+  assert(report.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+  assert(report.agentCommand.auditFields.includes("agentQuery"));
+  assert(report.agentCommand.stateFields.includes("programGraph.graphHash"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-slice");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after selecting programGraph.nodes[].id");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "programGraph.nodes[].id");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "slice", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<programGraph.nodes[].id>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("center.nodeHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("nodes[]"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.verificationCommands[0].purpose, expected.purpose ?? "graph-inspect");
+  assert.equal(report.agentCommand.verificationCommands[0].required, true);
+  assert.deepEqual(report.agentCommand.verificationCommands[0].argv, expected.argv);
+}
+
+function assertAgentGraphCheckCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-check-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "program-graph");
+  assert(report.agentCommand.auditFields.includes("graphHash"));
+  assert(report.agentCommand.auditFields.includes("targetReadiness"));
+  assert(report.agentCommand.stateFields.includes("check.lowering"));
+  assert(report.agentCommand.diagnosticFields.includes("diagnostics[].graphLookup"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-inspect");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "diagnostics.length > 0");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].id"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].nodeHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "graph-size");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].when, "after graph check passes when size or build budget review is needed");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "size", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("sizeBreakdown"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("profileBudget"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("profileSemantics"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.verificationCommands[0].purpose, "graph-check");
+  assert.equal(report.agentCommand.verificationCommands[0].required, true);
+  assert.deepEqual(report.agentCommand.verificationCommands[0].argv, expected.argv);
+}
+
+function assertAgentGraphSizeCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-size-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assert.equal(report.agentCommand.sourceKind, "program-graph");
+  assert.equal(report.agentCommand.artifact.pathField, "artifactPath");
+  assert.equal(report.agentCommand.artifact.bytesField, "artifactBytes");
+  assert.equal(report.agentCommand.artifact.hashField, "artifactHash");
+  assert.deepEqual(report.agentCommand.artifact.verificationFields, ["artifactHash", "artifactBytes"]);
+  if (report.artifactPath) {
+    assert.equal(report.artifactHash.algorithm, "fnv1a64");
+    assert.match(report.artifactHash.value, /^[0-9a-f]{16}$/);
+  } else {
+    assert.equal(report.artifactHash, null);
+  }
+  assert(report.agentCommand.auditFields.includes("artifactHash"));
+  assert(report.agentCommand.auditFields.includes("graph.graphHash"));
+  assert(report.agentCommand.auditFields.includes("sizeBreakdown"));
+  assert(report.agentCommand.stateFields.includes("incrementalInvalidation.graphInput.graphHash"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "artifact-validate");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after graph size budget review when a runnable artifact is required");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "build", "--json", "--emit", "exe", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("artifactHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.writePolicy"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-check", ["zero", "graph", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "graph-size", expected.argv);
+}
+
+function assertAgentGraphBuildCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-build-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.argv);
+  assert.equal(report.agentCommand.sourceKind, "program-graph");
+  assert.equal(report.agentCommand.artifact.pathField, "artifactPath");
+  assert.equal(report.agentCommand.artifact.bytesField, "artifactBytes");
+  assert.equal(report.agentCommand.artifact.kindField, "emit");
+  assert.equal(report.agentCommand.artifact.hashField, "artifactHash");
+  assert.deepEqual(report.agentCommand.artifact.verificationFields, ["artifactHash", "artifactBytes"]);
+  assert.equal(report.artifactHash.algorithm, "fnv1a64");
+  assert.match(report.artifactHash.value, /^[0-9a-f]{16}$/);
+  assert(report.agentCommand.auditFields.includes("graph.graphHash"));
+  assert(report.agentCommand.auditFields.includes("releaseTargetContract"));
+  assert(report.agentCommand.stateFields.includes("incrementalInvalidation.graphInput.graphHash"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-size");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after artifact build or budget review");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "size", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("sizeBreakdown"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("profileBudget"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "graph-test");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].when, "after artifact validation when graph-backed behavioral confidence is required");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "test", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("ok"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("passedTests"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("failedTests"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("unexpectedPasses"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("results[]"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("results[].status"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-check", ["zero", "graph", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "graph-size", ["zero", "graph", "size", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[2], "artifact-validate", expected.argv);
+}
+
+function graphContextArgv(argv, target = "host", profile = "release") {
+  if (argv.includes("--target")) return argv;
+  const jsonIndex = argv.indexOf("--json");
+  assert.notEqual(jsonIndex, -1);
+  return [...argv.slice(0, jsonIndex + 1), "--target", target, "--profile", profile, ...argv.slice(jsonIndex + 1)];
+}
+
+function assertAgentGraphDumpCommand(report, expected) {
+  const expectedArgv = graphContextArgv(expected.argv, expected.target, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-dump-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, "source");
+  assert(report.agentCommand.auditFields.includes("nodes"));
+  assert(report.agentCommand.auditFields.includes("graphHash"));
+  assert(report.agentCommand.auditFields.includes("agentCommand.writePolicy"));
+  assert(report.agentCommand.stateFields.includes("graphHash"));
+  assert(report.agentCommand.stateFields.includes("validation.ok"));
+  if (expected.argv.includes("--out")) {
+    assert.equal(report.agentCommand.writePolicy.name, "writes-artifact");
+    assert.equal(report.agentCommand.writePolicy.writesSource, false);
+    assert.equal(report.agentCommand.writePolicy.writesArtifacts, true);
+    assert.equal(report.agentCommand.writePolicy.artifactPathField, "saved.path");
+    assert.equal(report.agentCommand.writePolicy.rollbackField, "saved.path");
+    assert.equal(report.agentCommand.writePolicy.verificationField, "agentCommand.verificationCommands");
+    assert.equal(report.agentCommand.artifact.pathField, "saved.path");
+    assert.equal(report.saved.path, expected.argv[expected.argv.indexOf("--out") + 1]);
+  } else {
+    assert.equal(report.agentCommand.writePolicy.name, "preview-only");
+    assert.equal(report.agentCommand.writePolicy.writesArtifacts, false);
+  }
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after graph dump when a token-bounded artifact view is needed");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "saved.path or command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "view", "--json", "<saved.path-or-input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("moduleIdentity"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("view"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-dump", expectedArgv);
+}
+
+function assertAgentGraphCompareCommand(report, expected) {
+  const expectedArgv = graphContextArgv(expected.argv, expected.target, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-compare-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, "source-or-program-graph");
+  assert(report.agentCommand.auditFields.includes("comparison"));
+  assert(report.agentCommand.stateFields.includes("semanticStable"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "semanticStable");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "right.input or left.input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "view", "--json", "<program-graph-or-source>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("view"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "graph-view");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].when, "semanticStable == false");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "left.input or right.input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "view", "--json", "<left-or-right-input>"]);
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("comparison.code"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("comparison.field"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-compare", expectedArgv);
+}
+
+function testContextArgv(argv, profile = "release") {
+  if (argv.includes("--profile")) return argv;
+  const targetIndex = argv.indexOf("--target");
+  assert.notEqual(targetIndex, -1);
+  return [...argv.slice(0, targetIndex + 2), "--profile", profile, ...argv.slice(targetIndex + 2)];
+}
+
+function assertSavedWritePolicy(report, expected) {
+  assert(report.agentCommand.auditFields.includes("agentCommand.writePolicy"));
+  if (expected.argv.includes("--out")) {
+    assert.equal(report.agentCommand.writePolicy.name, "writes-artifact");
+    assert.equal(report.agentCommand.writePolicy.writesSource, false);
+    assert.equal(report.agentCommand.writePolicy.writesArtifacts, true);
+    assert.equal(report.agentCommand.writePolicy.artifactPathField, "saved.path");
+    assert.equal(report.agentCommand.writePolicy.artifactPathField, report.agentCommand.artifact.pathField);
+    assert.equal(report.agentCommand.writePolicy.requiresVerification, true);
+    assert.equal(report.agentCommand.writePolicy.verificationField, "agentCommand.verificationCommands");
+    assert.equal(report.agentCommand.writePolicy.rollbackField, "saved.path");
+    assert.equal(report.agentCommand.writePolicy.rollbackPolicy, "agent-enforced-delete-or-replace");
+    assert(report.agentCommand.writePolicy.rollbackActions.some((action) =>
+      action.kind === "delete-path" &&
+      action.pathField === "saved.path" &&
+      action.condition === "created-by-command" &&
+      action.requiresVerification === true));
+  } else {
+    assert.equal(report.agentCommand.writePolicy.name, "preview-only");
+    assert.equal(report.agentCommand.writePolicy.writesSource, false);
+    assert.equal(report.agentCommand.writePolicy.writesArtifacts, false);
+  }
+}
+
+function assertAgentGraphValidateCommand(report, expected) {
+  const expectedArgv = graphContextArgv(expected.argv, expected.target, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-validate-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "program-graph");
+  assert(report.agentCommand.auditFields.includes("validation"));
+  assert(report.agentCommand.auditFields.includes("saved"));
+  assertSavedWritePolicy(report, expected);
+  assert(report.agentCommand.stateFields.includes("validation.state"));
+  assert.equal(report.agentCommand.artifact.pathField, "saved.path");
+  assert.equal(report.agentCommand.artifact.byteStableField, "saved.byteStable");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after artifact validation when a token-bounded source view is needed");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "saved.path or command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "view", "--json", "<saved.path-or-input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("moduleIdentity"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("view"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "artifact-validate", expectedArgv);
+}
+
+function assertAgentGraphViewCommand(report, expected) {
+  const expectedArgv = graphContextArgv(expected.argv, expected.target, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-view-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "program-graph");
+  assert(report.agentCommand.auditFields.includes("view"));
+  assert(report.agentCommand.auditFields.includes("saved"));
+  assertSavedWritePolicy(report, expected);
+  assert(report.agentCommand.stateFields.includes("canonicalSource"));
+  assert.equal(report.agentCommand.artifact.pathField, "saved.path");
+  assert.equal(report.agentCommand.artifact.byteStableField, "saved.byteStable");
+  assert.equal(report.agentCommand.artifact.viewField, "view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-check");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "after reviewing the source view when target-aware validation is needed");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "check", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<program-graph>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("moduleIdentity"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("check"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("targetReadiness"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("diagnostics"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-view", expectedArgv);
+}
+
+function assertAgentGraphRoundtripCommand(report, expected) {
+  const expectedArgv = graphContextArgv(expected.argv, expected.target, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-roundtrip-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, expected.sourceKind ?? "source");
+  assert(report.agentCommand.auditFields.includes("semanticStable"));
+  assert(report.agentCommand.auditFields.includes("comparison"));
+  assertSavedWritePolicy(report, expected);
+  assert(report.agentCommand.stateFields.includes("originalGraphHash"));
+  assert(report.agentCommand.stateFields.includes("roundtripGraphHash"));
+  assert.equal(report.agentCommand.artifact.pathField, "saved.path");
+  assert.equal(report.agentCommand.artifact.kindField, "saved.kind");
+  assert.equal(report.agentCommand.artifact.byteStableField, "saved.byteStable");
+  assert.equal(report.agentCommand.artifact.viewField, "view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "saved.path is present or source artifact is inspectable");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "saved.path or command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "view", "--json", "<saved.path-or-input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("moduleIdentity"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("view"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-roundtrip", expectedArgv);
+}
+
+function assertAgentGraphImportCommand(report, expected) {
+  const expectedArgv = graphContextArgv(expected.argv, expected.target, expected.profile);
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-graph-import-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expectedArgv);
+  assert.equal(report.agentCommand.sourceKind, "source");
+  assert(report.agentCommand.auditFields.includes("sourceFile"));
+  assert(report.agentCommand.auditFields.includes("validation"));
+  assertSavedWritePolicy(report, expected);
+  assert(report.agentCommand.stateFields.includes("graphHash"));
+  assert.equal(report.agentCommand.artifact.pathField, "saved.path");
+  assert.equal(report.agentCommand.artifact.byteStableField, "saved.byteStable");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-view");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "saved.path is present");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "saved.path");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "view", "--json", "<saved.path>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("view"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "graph-roundtrip");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].inputField, "saved.path");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "roundtrip", "--json", "<saved.path>"]);
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("semanticStable"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("comparison.ok"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "graph-import", expectedArgv);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "artifact-validate", graphContextArgv(["zero", "graph", "validate", "--json", expected.artifact ?? "<program-graph-artifact>"], expected.target, expected.profile));
+}
+
+function assertAgentDoctorCommand(report) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-doctor-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "doctor", "--json"]);
+  assert(report.agentCommand.auditFields.includes("checks"));
+  assert(report.agentCommand.auditFields.includes("targetToolchains"));
+  assert(report.agentCommand.readinessFields.includes("checks[].status"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "target-selection");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "targets", "--json"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("targets[].directBackend.status"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "doctor", ["zero", "doctor", "--json"]);
+}
+
+function assertAgentCleanCommand(report, all = false) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-clean-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, all ? ["zero", "clean", "--json", "--all"] : ["zero", "clean", "--json"]);
+  assert.equal(report.agentCommand.writePolicy.name, "destructive-clean");
+  assert.equal(report.agentCommand.writePolicy.deletesArtifacts, true);
+  assert.equal(report.agentCommand.writePolicy.rollbackAvailable, false);
+  assert.equal(report.agentCommand.writePolicy.externalRestoreRequired, true);
+  assert.equal(report.agentCommand.writePolicy.allowedRootsField, "removedRoots[].path");
+  assert(report.agentCommand.auditFields.includes("agentCommand.writePolicy"));
+  assert(report.agentCommand.auditFields.includes("removedRoots[].path"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "clean-audit", report.agentCommand.command.argv);
+}
+
+function assertAgentNewCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-new-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "new", "--json", expected.kind, expected.path]);
+  assert.equal(report.agentCommand.writePolicy.name, "writes-source-tree");
+  assert.equal(report.agentCommand.writePolicy.writesSource, true);
+  assert.equal(report.agentCommand.writePolicy.writesArtifacts, false);
+  assert.equal(report.agentCommand.writePolicy.createsRootField, "project.path");
+  assert.equal(report.agentCommand.writePolicy.rollbackField, "project.path");
+  assert.equal(report.agentCommand.writePolicy.rollbackPolicy, "agent-enforced-delete-created-root");
+  assert(report.agentCommand.writePolicy.rollbackActions.some((action) => action.kind === "delete-path" && action.pathField === "project.path" && action.condition === "created-by-command"));
+  assert(report.agentCommand.auditFields.includes("agentCommand.writePolicy"));
+  assert(report.agentCommand.auditFields.includes("project.files"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "source-check", ["zero", "check", "--json", expected.path]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "test-run", ["zero", "test", "--json", expected.path]);
+}
+
+function assertAgentSkillsCommand(report, argv) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-skills-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, argv);
+  assert.equal(report.agentCommand.readPolicy.name, "bundled-compiler-guidance");
+  assert.equal(report.agentCommand.readPolicy.source, "embedded-skills");
+  assert.equal(report.agentCommand.readPolicy.writesSource, false);
+  assert.equal(report.agentCommand.readPolicy.writesArtifacts, false);
+  assert.equal(report.agentCommand.readPolicy.versionMatchedToCompiler, true);
+  assert(report.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+  assert(report.agentCommand.auditFields.includes("data[].content"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "skills-read", argv);
+}
+
+function assertAgentVersionCommand(report) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-version-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "--version", "--json"]);
+  assert.equal(report.agentCommand.readPolicy.name, "compiler-provenance");
+  assert.equal(report.agentCommand.readPolicy.versionMatchedToBinary, true);
+  assert.equal(report.agentCommand.readPolicy.writesSource, false);
+  assert.equal(report.agentCommand.readPolicy.writesArtifacts, false);
+  assert(report.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+  assert(report.agentCommand.auditFields.includes("targetCompiler"));
+  assert(report.agentCommand.auditFields.includes("crossCompilation"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "agent-protocol");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "agent", "protocol", "--json"]);
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "version-read", ["zero", "--version", "--json"]);
+}
+
+function assertAgentProtocolManifestCommand(report) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-protocol-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "agent", "protocol", "--json"]);
+  assert.equal(report.agentCommand.readPolicy.name, "compiler-owned-agent-protocol");
+  assert.equal(report.agentCommand.readPolicy.versionMatchedToCompiler, true);
+  assert.equal(report.agentCommand.readPolicy.writesSource, false);
+  assert.equal(report.agentCommand.readPolicy.writesArtifacts, false);
+  assert(report.agentCommand.auditFields.includes("proofPurposes"));
+  assert(report.agentCommand.auditFields.includes("proofReceiptPolicy"));
+  assert(report.agentCommand.auditFields.includes("localGates[].command.argv"));
+  assert(report.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+  assert(report.proofPurposes.includes("protocol-read"));
+  assert(report.proofResultFields["protocol-read"].includes("proofResultFields"));
+  assert(report.proofResultFields["protocol-read"].includes("proofReceiptPolicy"));
+  assert(report.proofResultFields["source-check"].includes("diagnostics"));
+  assert(report.proofResultFields["graph-check"].includes("graphHash"));
+  assert(report.proofResultFields["test-run"].includes("results[]"));
+  assert.equal(report.proofReceiptPolicy.owner, "external-agent");
+  assert(report.proofReceiptPolicy.requiredFields.includes("observedFields"));
+  assert(report.proofReceiptPolicy.bindsTo.includes("graphHash"));
+  assert(report.localGates[0].summaryFields.includes("proofReceiptReplayOperational"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "protocol-read", ["zero", "agent", "protocol", "--json"]);
+}
+
+function assertAgentTargetsCommand(report) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-targets-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "targets", "--json"]);
+  assert(report.agentCommand.auditFields.includes("targets[].directBackend"));
+  assert(report.agentCommand.selectionFields.includes("targets[].directBackend.exeSupported"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "doctor");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "targets[].name or command.argv target selection");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "doctor", "--json"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("targetToolchains[].target"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "target-selection", ["zero", "targets", "--json"]);
+}
+
+function assertAgentTokensCommand(report, input) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-tokens-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "tokens", "--json", input]);
+  assert(report.agentCommand.auditFields.includes("tokens"));
+  assert(report.agentCommand.spanFields.includes("tokens[].offset"));
+  assert(report.agentCommand.spanFields.includes("tokens[].length"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "parse");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "token spans are insufficient for declaration or semantic edit planning");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "parse", "--json", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("root"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("functions[]"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("functions[].name"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "tokens", ["zero", "tokens", "--json", input]);
+}
+
+function assertAgentParseCommand(report, input) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-parse-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "parse", "--json", input]);
+  assert(report.agentCommand.auditFields.includes("root"));
+  assert(report.agentCommand.auditFields.includes("functions"));
+  assert(report.agentCommand.declarationFields.includes("functions[].bodyKinds"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-inspect");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "declaration summary is insufficient for semantic edit planning");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "inspect", "--json", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].id"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].nodeHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].symbolId"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "parse", ["zero", "parse", "--json", input]);
+}
+
+function assertAgentFmtCommand(report, input, check = false) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-fmt-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, check ? ["zero", "fmt", "--json", "--check", input] : ["zero", "fmt", "--json", input]);
+  assert(report.agentCommand.auditFields.includes("formatted"));
+  assert(report.agentCommand.stateFields.includes("matches"));
+  assert.equal(report.agentCommand.artifact.viewField, "formatted");
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "format", report.agentCommand.command.argv);
+}
+
+function assertAgentDocCommand(report, input, target, profile = "release") {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-doc-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "doc", "--json", "--target", target, "--profile", profile, input]);
+  assert(report.agentCommand.auditFields.includes("profile"));
+  assert(report.agentCommand.auditFields.includes("symbols"));
+  assert(report.agentCommand.auditFields.includes("publicationGate"));
+  assert(report.agentCommand.stateFields.includes("symbols[].targetSupport"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-find");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "publicationGate.missingExampleCount > 0 or symbol audit needs semantic location");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "symbols[].name");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "find", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--symbol", "<symbols[].name>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("matches[].id"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("matches[].nodeHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("resolution.status"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "doc-audit", report.agentCommand.command.argv);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "source-check", ["zero", "check", "--json", "--target", target, "--profile", profile, input]);
+}
+
+function assertAgentDevCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-dev-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, expected.trace
+    ? ["zero", "dev", "--json", "--trace", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]
+    : ["zero", "dev", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+  assert(report.agentCommand.auditFields.includes("watch"));
+  assert(report.agentCommand.auditFields.includes("profile"));
+  assert(report.agentCommand.auditFields.includes("incrementalInvalidation"));
+  assert(report.agentCommand.stateFields.includes("partialDiagnostics.stable"));
+  assert(report.agentCommand.stateFields.includes("interfaceFingerprints.modules[].publicInterfaceHash"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "dev-plan", report.agentCommand.command.argv);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+}
+
+function assertAgentTimeCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-time-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "time", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+  assert(report.agentCommand.auditFields.includes("compilerPhases"));
+  assert(report.agentCommand.auditFields.includes("profile"));
+  assert(report.agentCommand.auditFields.includes("cacheSummary"));
+  assert(report.agentCommand.auditFields.includes("incrementalInvalidation"));
+  assert(report.agentCommand.stateFields.includes("compilerCaches.sourceCache.key"));
+  assert(report.agentCommand.stateFields.includes("interfaceFingerprints.modules[].publicInterfaceHash"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "time-audit", report.agentCommand.command.argv);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+}
+
+function assertAgentAbiCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-abi-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "abi", expected.mode, "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+  assert(report.agentCommand.auditFields.includes("profile"));
+  assert(report.agentCommand.auditFields.includes("primitiveLayouts"));
+  assert(report.agentCommand.auditFields.includes("cImports"));
+  assert(report.agentCommand.auditFields.includes("cExports"));
+  assert(report.agentCommand.stateFields.includes("callingConvention"));
+  assert(report.agentCommand.stateFields.includes("generatedHeader.text"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "abi-audit", report.agentCommand.command.argv);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile ?? "release", expected.input]);
+}
+
+function assertAgentMemCommand(report, expected) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-mem-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "mem", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+  assert(report.agentCommand.auditFields.includes("memoryBudgets"));
+  assert(report.agentCommand.auditFields.includes("allocatorFacts"));
+  assert(report.agentCommand.auditFields.includes("objectBackend"));
+  assert(report.agentCommand.auditFields.includes("mir"));
+  assert(report.agentCommand.stateFields.includes("memory.linearMemory"));
+  assert(report.agentCommand.stateFields.includes("objectBackend.objectEmission.path"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "graph-inspect");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, false);
+  assert.equal(report.agentCommand.recommendedNextCommands[0].when, "memory, allocator, or capability facts need semantic source attribution");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].inputField, "command.argv input");
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.graphHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].id"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.nodes[].nodeHash"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentLookupIndexes.capabilities[]"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.recommendedNextCommands"));
+  assert(report.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+  assertVerificationCommand(report.agentCommand.verificationCommands[0], "memory-audit", report.agentCommand.command.argv);
+  assertVerificationCommand(report.agentCommand.verificationCommands[1], "source-check", ["zero", "check", "--json", "--target", expected.target, "--profile", expected.profile, expected.input]);
+}
+
+function assertAgentExplainCommand(report, code) {
+  assert.equal(report.agentCommand.schemaVersion, 1);
+  assert.equal(report.agentCommand.kind, "agent-explain-command-contract");
+  assert.deepEqual(report.agentCommand.command.argv, ["zero", "explain", "--json", code]);
+  assert(report.agentCommand.auditFields.includes("repair"));
+  assert(report.agentCommand.repairFields.includes("repair.id"));
+  assert.equal(report.agentCommand.recommendedNextCommands[0].purpose, "source-check");
+  assert.equal(report.agentCommand.recommendedNextCommands[0].required, true);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].purpose, "repair-plan");
+  assert.equal(report.agentCommand.recommendedNextCommands[1].required, false);
+  assert.deepEqual(report.agentCommand.recommendedNextCommands[1].argv, ["zero", "fix", "--plan", "--json", "<input>"]);
+  assert.equal(report.agentCommand.recommendedNextCommands[1].resultContract, "agentTransaction");
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentTransaction.proofLedger"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentTransaction.rollback.actions[]"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("agentTransaction.rollback.verificationCommands"));
+  assert(report.agentCommand.recommendedNextCommands[1].resultFields.includes("fixes[].graphPatchCandidates[]"));
+  assert.equal(report.agentCommand.recommendedNextCommands[2].purpose, "graph-inspect");
+  assert.equal(report.agentCommand.recommendedNextCommands[2].required, false);
+  assert.equal(report.agentCommand.verificationCommands[0].purpose, "explain");
+  assert.equal(report.agentCommand.verificationCommands[0].required, true);
+  assert.deepEqual(report.agentCommand.verificationCommands[0].argv, ["zero", "explain", "--json", code]);
+}
+
 const generatedCBytesBeforeReadOnlyCommands = json(["size", "--json", "examples/memory-package"]).body.generatedCBytes;
 
 assert.equal(zero(["--version"]).stdout, "zero 0.2.1\n");
@@ -765,9 +1748,17 @@ assert(version.targets.includes("darwin-arm64"));
 assert(version.targets.includes("linux-musl-x64"));
 assert(version.targets.includes("win32-x64.exe"));
 assert.equal(typeof version.targetCompiler.available, "boolean");
+assertAgentVersionCommand(version);
 
-const doctor = json(["doctor", "--json"]).body;
+const agentProtocol = json(["agent", "protocol", "--json"]).body;
+assert.equal(agentProtocol.schemaVersion, 1);
+assert.equal(agentProtocol.kind, "agent-protocol-manifest");
+assert.equal(agentProtocol.protocolVersion, "agent-programming-protocol-v1");
+assertAgentProtocolManifestCommand(agentProtocol);
+
+const doctor = json(["doctor", "--json"], { allowFailure: true }).body;
 assert.equal(doctor.schemaVersion, 1);
+assertAgentDoctorCommand(doctor);
 assert(["ok", "warning", "error"].includes(doctor.status));
 assert(doctor.checks.some((check) => check.name === "native-c-compiler"));
 assert(doctor.checks.some((check) => check.name === "target-c-compiler"));
@@ -818,6 +1809,7 @@ for (const [code, goodExample, stalePattern] of [
 ] as Array<[string, string, RegExp]>) {
   const explanation = json(["explain", "--json", code]).body;
   assert.equal(explanation.code, code);
+  assertAgentExplainCommand(explanation, code);
   assert(explanation.examples.good.includes(goodExample), `${code} explain good example should use canonical source`);
   assert.doesNotMatch(
     `${explanation.repair.summary}\n${explanation.examples.bad}\n${explanation.examples.good}`,
@@ -837,8 +1829,12 @@ assert.match(graphHelp, /zero graph merge --base <base-zero\.graph> --left <left
 assert.match(graphHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <input>/);
 assert.match(graphHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
 assert.match(graphHelp, /zero graph build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<program-graph-or-package>/);
+assert.match(graphHelp, /compare two source or ProgramGraph inputs with --against/);
+assert.match(graphHelp, /emit a token-bounded one-hop graph neighborhood with --node/);
+assert.match(graphHelp, /zero graph build \[--json\] \[--emit exe\|obj\].*<program-graph-or-package>/);
 assert.match(graphHelp, /zero graph run \[--target <host-target>\].*<program-graph-or-package> \[-- args\.\.\.\]/);
-assert.match(graphHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
+assert.match(graphHelp, /zero graph ship \[--json\] \[--target <target>\].*<program-graph-or-package>/);
+assert.match(graphHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] \[--profile debug\|dev\|release-fast\|release-small\|tiny\|audit\] <program-graph-or-package>/);
 assert.doesNotMatch(graphHelp, /zero graph check[^\n]*--out/);
 const runHelp = zero(["run", "--help"]).stdout;
 assert.match(runHelp, /Usage: zero run \[--backend direct\|llvm\|<direct-emitter>\]/);
@@ -855,8 +1851,11 @@ assert.match(rootHelp, /zero graph merge --base <base-zero\.graph> --left <left-
 assert.match(rootHelp, /zero graph size \[--json\] \[--target <target>\] --out <artifact> <program-graph-or-package>/);
 assert.match(rootHelp, /zero graph patch \[--json\] \[--out <program-graph-artifact>\] <program-graph-or-source> \(<patch-file>\|--op <operation>\)/);
 assert.match(rootHelp, /zero graph build \[--json\] \[--emit exe\|obj\|llvm-ir\].*<program-graph-or-package>/);
+assert.match(rootHelp, /zero graph \[dump\|import\|inspect\|slice\|validate\|view\|check\|size\|build\|run\|ship\|test\|patch\|roundtrip\|compare\]/);
+assert.match(rootHelp, /zero graph build \[--json\] \[--emit exe\|obj\].*<program-graph-or-package>/);
 assert.match(rootHelp, /zero graph run \[--target <host-target>\].*<program-graph-or-package> \[-- args\.\.\.\]/);
-assert.match(rootHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] <program-graph-or-package>/);
+assert.match(rootHelp, /zero graph ship \[--json\] \[--target <target>\].*<program-graph-or-package>/);
+assert.match(rootHelp, /zero graph test \[--json\] \[--filter <name>\] \[--target <target>\] \[--profile debug\|dev\|release-fast\|release-small\|tiny\|audit\] <program-graph-or-package>/);
 
 const graphDump = zero(["graph", "dump", "examples/hello.0"]).stdout;
 const graphDumpAgain = zero(["graph", "dump", "examples/hello.0"]).stdout;
@@ -920,7 +1919,7 @@ assert.notEqual(invalidRepoGraphCompilerInputStatus.code, 0);
 assert.equal(invalidRepoGraphCompilerInputStatus.body.ok, false);
 assert.equal(invalidRepoGraphCompilerInputStatus.body.repositoryGraph.compilerInput, "invalid");
 assert.equal(invalidRepoGraphCompilerInputStatus.body.diagnostics[0].code, "BLD002");
-assert.equal(invalidRepoGraphCompilerInputStatus.body.diagnostics[0].path, join(invalidRepoGraphCompilerInputRoot, "zero.json"));
+assert.equal(contractPath(invalidRepoGraphCompilerInputStatus.body.diagnostics[0].path), contractPath(join(invalidRepoGraphCompilerInputRoot, "zero.json")));
 assert.equal(invalidRepoGraphCompilerInputStatus.body.diagnostics[0].message, "repositoryGraph.compilerInput must be a boolean");
 const standaloneRepoGraphRoot = join("/tmp", `zero-repo-graph-contract-${process.pid}`);
 const standaloneRepoGraphSource = join(standaloneRepoGraphRoot, "standalone.0");
@@ -930,18 +1929,18 @@ mkdirSync(standaloneRepoGraphRoot, { recursive: true });
 const standaloneRepoGraphComment = "// repository graph projection comment\n";
 writeFileSync(standaloneRepoGraphSource, standaloneRepoGraphComment + readFileSync("examples/hello.0", "utf8"));
 const standaloneRepoGraphStatus = json(["graph", "status", "--json", resolve(standaloneRepoGraphSource)]).body;
-assert.equal(standaloneRepoGraphStatus.repositoryGraph.root, resolve(standaloneRepoGraphRoot));
-assert.equal(standaloneRepoGraphStatus.repositoryGraph.storePath, standaloneRepoGraphStore);
-const nestedRelativeRepoGraphStatus = JSON.parse(execFileSync(resolve("bin/zero"), ["graph", "status", "--json", "main.0"], { cwd: "examples/systems-package/src", encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
-assert.equal(nestedRelativeRepoGraphStatus.repositoryGraph.root, "..");
-assert.equal(nestedRelativeRepoGraphStatus.repositoryGraph.storePath, "../zero.graph");
+assert.equal(standaloneRepoGraphStatus.repositoryGraph.root, ".");
+assert.equal(standaloneRepoGraphStatus.repositoryGraph.storePath, "./zero.graph");
+const nestedRelativeRepoGraphStatus = JSON.parse(execFileSync(resolve(zeroBin), ["graph", "status", "--json", "main.0"], { cwd: "examples/systems-package/src", encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
+assert.equal(nestedRelativeRepoGraphStatus.repositoryGraph.root, ".");
+assert.equal(nestedRelativeRepoGraphStatus.repositoryGraph.storePath, "./zero.graph");
 writeFileSync(standaloneRepoGraphStore, "");
 const standaloneRepoGraphInvalidStatus = json(["graph", "status", "--json", resolve(standaloneRepoGraphSource)], { allowFailure: true });
-assert.notEqual(standaloneRepoGraphInvalidStatus.code, 0);
-assert.equal(standaloneRepoGraphInvalidStatus.body.repositoryGraph.storePresent, true);
+assert.equal(standaloneRepoGraphInvalidStatus.code, 0);
+assert.equal(standaloneRepoGraphInvalidStatus.body.repositoryGraph.storePresent, false);
 assert.equal(standaloneRepoGraphInvalidStatus.body.repositoryGraph.storeValid, false);
-assert.equal(standaloneRepoGraphInvalidStatus.body.repositoryGraph.syncState, "store-invalid");
-assert.equal(standaloneRepoGraphInvalidStatus.body.diagnostics[0].code, "RGP003");
+assert.equal(standaloneRepoGraphInvalidStatus.body.repositoryGraph.syncState, "not-enabled");
+assert.deepEqual(standaloneRepoGraphInvalidStatus.body.diagnostics, []);
 rmSync(standaloneRepoGraphStore, { force: true });
 const repoGraphSyncFromSource = json(["graph", "sync", "--from-source", "--json", resolve(standaloneRepoGraphSource)]);
 assert.equal(repoGraphSyncFromSource.code, 0);
@@ -1023,7 +2022,7 @@ const repositoryGraphVerifyRedirectScript = repositoryGraphVerifyScript(reposito
 assert.notEqual(repositoryGraphVerifyRedirectScript.code, 0);
 assert.match(repositoryGraphVerifyRedirectScript.stderr, /repository graph verify-sync failed/);
 assert.match(repositoryGraphVerifyRedirectScript.stderr, /zero-repo-graph-redirect-[0-9]+\/bad/);
-const standaloneRepoGraphVerifyRelative = JSON.parse(execFileSync(resolve("bin/zero"), ["graph", "verify-sync", "--json", "standalone.0"], { cwd: standaloneRepoGraphRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
+const standaloneRepoGraphVerifyRelative = JSON.parse(execFileSync(resolve(zeroBin), ["graph", "verify-sync", "--json", "standalone.0"], { cwd: standaloneRepoGraphRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
 assert.equal(standaloneRepoGraphVerifyRelative.ok, true);
 const repoGraphSyncFromSourceAgain = json(["graph", "sync", "--from-source", "--json", resolve(standaloneRepoGraphSource)]);
 assert.equal(repoGraphSyncFromSourceAgain.code, 0);
@@ -1131,9 +2130,9 @@ const relativePackageStoreText = readFileSync(relativePackageStore, "utf8");
 assert.match(relativePackageStoreText, /^source path:"src\/main\.0"$/m);
 assert(!relativePackageStoreText.includes(relativePackageRoot));
 const relativePackageStoreHash = sha256File(relativePackageStore);
-const relativePackageVerifyDot = JSON.parse(execFileSync(resolve("bin/zero"), ["graph", "verify-sync", "--json", "."], { cwd: relativePackageRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
+const relativePackageVerifyDot = JSON.parse(execFileSync(resolve(zeroBin), ["graph", "verify-sync", "--json", "."], { cwd: relativePackageRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
 assert.equal(relativePackageVerifyDot.ok, true);
-const relativePackageSyncDot = JSON.parse(execFileSync(resolve("bin/zero"), ["graph", "sync", "--from-source", "--json", "."], { cwd: relativePackageRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
+const relativePackageSyncDot = JSON.parse(execFileSync(resolve(zeroBin), ["graph", "sync", "--from-source", "--json", "."], { cwd: relativePackageRoot, encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"] }));
 assert.equal(relativePackageSyncDot.ok, true);
 assert.equal(sha256File(relativePackageStore), relativePackageStoreHash);
 const relativePackageVerifyAbsolute = json(["graph", "verify-sync", "--json", relativePackageRoot]);
@@ -2050,6 +3049,58 @@ assert.equal(graphDumpJson.schemaVersion, 1);
 assert.equal(graphDumpJson.moduleIdentity, "module:hello");
 assert.equal(graphDumpJson.validation.ok, true);
 assert.match(graphDumpJson.graphHash, /^graph:[0-9a-f]{16}$/);
+assertAgentGraphDumpCommand(graphDumpJson, {
+  argv: ["zero", "graph", "dump", "--json", "examples/hello.0"],
+});
+const graphCompareSourceJson = json(["graph", "compare", "--json", "--against", "examples/hello.0", "examples/hello.0"]).body;
+assert.equal(graphCompareSourceJson.ok, true);
+assert.equal(graphCompareSourceJson.semanticStable, true);
+assert.equal(graphCompareSourceJson.comparison.ok, true);
+assertAgentGraphCompareCommand(graphCompareSourceJson, {
+  argv: ["zero", "graph", "compare", "--json", "--against", "examples/hello.0", "examples/hello.0"],
+});
+const graphCompareUnstableJson = json(["graph", "compare", "--json", "--against", "examples/add.0", "examples/hello.0"], { allowFailure: true }).body;
+assert.equal(graphCompareUnstableJson.ok, false);
+assert.equal(graphCompareUnstableJson.semanticStable, false);
+assert.equal(graphCompareUnstableJson.agentCommand.recommendedNextCommands[1].purpose, "graph-view");
+assert.equal(graphCompareUnstableJson.agentCommand.recommendedNextCommands[1].when, "semanticStable == false");
+assert(graphCompareUnstableJson.agentCommand.recommendedNextCommands[1].resultFields.includes("comparison.field"));
+const graphCompareMissingAgainstJson = json(["graph", "compare", "--json", "examples/hello.0"], { allowFailure: true });
+assert.notEqual(graphCompareMissingAgainstJson.code, 0);
+assert.equal(graphCompareMissingAgainstJson.body.agentCommand.kind, "agent-command-failure-contract");
+assert.equal(graphCompareMissingAgainstJson.body.agentCommand.failure.class, "invalid-command-usage");
+assert.equal(graphCompareMissingAgainstJson.body.agentCommand.failure.retryCommands[0].purpose, "correct-command-usage");
+assert(graphCompareMissingAgainstJson.body.agentCommand.failure.retryCommands[0].argv.includes("--against"));
+assert.deepEqual(graphCompareMissingAgainstJson.body.agentCommand.recommendedNextCommands[0].argv, graphCompareMissingAgainstJson.body.agentCommand.failure.retryCommands[0].argv);
+const invalidTargetJson = json(["build", "--json", "--target", "not-a-real-zero-target", "examples/hello.0"], { allowFailure: true });
+assert.notEqual(invalidTargetJson.code, 0);
+assert.equal(invalidTargetJson.body.agentCommand.kind, "agent-command-failure-contract");
+assert.equal(invalidTargetJson.body.agentCommand.failure.class, "unknown-target");
+assert.equal(invalidTargetJson.body.agentCommand.failure.code, "TAR001");
+assert.equal(invalidTargetJson.body.agentCommand.failure.retryCommands[0].purpose, "target-selection");
+assert.equal(invalidTargetJson.body.agentCommand.failure.retryCommands[0].required, true);
+assert.deepEqual(invalidTargetJson.body.agentCommand.failure.retryCommands[0].argv, ["zero", "targets", "--json"]);
+assert.equal(invalidTargetJson.body.agentCommand.failure.retryCommands[1].purpose, "correct-command-usage");
+assert.equal(invalidTargetJson.body.agentCommand.failure.retryCommands[1].required, false);
+assert(invalidTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("<supported-target>"));
+assert(!invalidTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("not-a-real-zero-target"));
+assert.deepEqual(invalidTargetJson.body.agentCommand.recommendedNextCommands[0].argv, ["zero", "targets", "--json"]);
+const invalidFixTargetJson = json(["fix", "--apply", "--json", "--target", "not-a-real-zero-target", "examples/hello.0"], { allowFailure: true });
+assert.equal(invalidFixTargetJson.body.agentCommand.failure.class, "unknown-target");
+assert(invalidFixTargetJson.body.agentCommand.command.argv.includes("--apply"));
+assert(invalidFixTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("--apply"));
+assert(invalidFixTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("<supported-target>"));
+assert(!invalidFixTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("not-a-real-zero-target"));
+const invalidGraphPatchTargetJson = json(["graph", "patch", "--json", "--target", "not-a-real-zero-target", "--expect-graph-hash", "graph:1234567890abcdef", "examples/hello.0", ".zero/missing.patch"], { allowFailure: true });
+assert.equal(invalidGraphPatchTargetJson.body.agentCommand.failure.class, "unknown-target");
+assert(invalidGraphPatchTargetJson.body.agentCommand.command.argv.includes("--expect-graph-hash"));
+assert(invalidGraphPatchTargetJson.body.agentCommand.command.argv.includes("graph:1234567890abcdef"));
+assert.equal(invalidGraphPatchTargetJson.body.agentCommand.command.argv.at(-1), ".zero/missing.patch");
+assert(invalidGraphPatchTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("--expect-graph-hash"));
+assert(invalidGraphPatchTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("graph:1234567890abcdef"));
+assert(invalidGraphPatchTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("<supported-target>"));
+assert.equal(invalidGraphPatchTargetJson.body.agentCommand.failure.retryCommands[1].argv.at(-1), ".zero/missing.patch");
+assert(!invalidGraphPatchTargetJson.body.agentCommand.failure.retryCommands[1].argv.includes("not-a-real-zero-target"));
 const graphNodeBy = (predicate) => {
   const node = graphDumpJson.nodes.find(predicate);
   assert(node);
@@ -2289,8 +3340,23 @@ assert.equal(graphStableSiblingJson.nodes.find((node) => node.kind === "Function
 assert.equal(graphStableSiblingJson.nodes.find((node) => node.kind === "Literal" && node.type === "String" && node.value === "hello from zero\n")?.id, graphStableBaseLiteral.id);
 assert.equal(zero(["graph", "dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
 assert.equal(readFileSync(graphDumpPath, "utf8"), graphDump);
+const graphCompareArtifactJson = json(["graph", "compare", "--json", "--against", graphDumpPath, "examples/hello.0"]).body;
+assert.equal(graphCompareArtifactJson.ok, true);
+assert.equal(graphCompareArtifactJson.semanticStable, true);
+assert.equal(graphCompareArtifactJson.left.graphHash, graphCompareArtifactJson.right.graphHash);
+assert.equal(graphCompareArtifactJson.left.sourceKind, "checked-source");
+assert.equal(graphCompareArtifactJson.right.sourceKind, "program-graph");
+assertAgentGraphCompareCommand(graphCompareArtifactJson, {
+  argv: ["zero", "graph", "compare", "--json", "--against", graphDumpPath, "examples/hello.0"],
+});
 const graphDumpOutJson = json(["graph", "dump", "--json", "--out", graphDumpJsonPath, "examples/hello.0"]).body;
-assert.deepEqual(graphDumpOutJson, graphDumpJson);
+assertAgentGraphDumpCommand(graphDumpOutJson, {
+  argv: ["zero", "graph", "dump", "--json", "--out", graphDumpJsonPath, "examples/hello.0"],
+});
+const { agentCommand: graphDumpOutAgentCommand, saved: graphDumpSaved, ...graphDumpOutWithoutAgentCommand } = graphDumpOutJson;
+const { agentCommand: graphDumpAgentCommand, ...graphDumpWithoutAgentCommand } = graphDumpJson;
+assert.equal(graphDumpSaved.path, graphDumpJsonPath);
+assert.deepEqual(graphDumpOutWithoutAgentCommand, graphDumpWithoutAgentCommand);
 assert.equal(readFileSync(graphDumpJsonPath, "utf8"), graphDump);
 assert.equal(zero(["graph", "validate", graphDumpJsonPath]).stdout, "program graph ok\n");
 assert.equal(zero(["graph", "dump", "--out", graphDumpPath, "examples/hello.0"]).stdout, "");
@@ -2299,11 +3365,27 @@ assert.equal(zero(["graph", "import", "examples/hello.0"]).stdout, graphDump);
 assert.equal(zero(["graph", "import", "--out", graphImportPath, "examples/hello.0"]).stdout, "");
 assert.equal(readFileSync(graphImportPath, "utf8"), graphDump);
 const graphImportJson = json(["graph", "import", "--json", "examples/hello.0"]).body;
+assert.equal(graphImportJson.ok, true);
+assert.equal(graphImportJson.sourceFile, "examples/hello.0");
+assertAgentGraphImportCommand(graphImportJson, {
+  argv: ["zero", "graph", "import", "--json", "examples/hello.0"],
+});
 assert.equal(graphImportJson.moduleIdentity, graphDumpJson.moduleIdentity);
 assert.equal(graphImportJson.graphHash, graphDumpJson.graphHash);
 assert.equal(graphImportJson.validation.ok, true);
+assert.equal(graphImportJson.saved, null);
 const graphImportOutJson = json(["graph", "import", "--json", "--out", graphImportJsonPath, "examples/hello.0"]).body;
 assert.equal(graphImportOutJson.ok, true);
+assertAgentGraphImportCommand(graphImportOutJson, {
+  argv: ["zero", "graph", "import", "--json", "--out", graphImportJsonPath, "examples/hello.0"],
+  artifact: graphImportJsonPath,
+});
+const graphImportTargetProfileJson = json(["graph", "import", "--json", "--target", "linux-musl-x64", "--profile", "audit", "examples/memory-package"]).body;
+assertAgentGraphImportCommand(graphImportTargetProfileJson, {
+  argv: ["zero", "graph", "import", "--json", "--target", "linux-musl-x64", "--profile", "audit", "examples/memory-package"],
+  target: "linux-musl-x64",
+  profile: "audit",
+});
 assert.equal(graphImportOutJson.moduleIdentity, graphDumpJson.moduleIdentity);
 assert.equal(graphImportOutJson.graphHash, graphDumpJson.graphHash);
 assert.equal(graphImportOutJson.validation.ok, true);
@@ -2320,6 +3402,122 @@ const graphInspectOutJson = json(["graph", "inspect", "--json", "--out", graphIn
 assert.notEqual(graphInspectOutJson.code, 0);
 assert.equal(graphInspectOutJson.body.diagnostics[0].message, "graph inspect does not support --out");
 assert.equal(graphInspectOutJson.body.diagnostics[0].expected, "zero graph inspect [--json] <file.0|project|zero.json>");
+assert.equal(graphInspectOutJson.body.agentCommand.kind, "agent-command-failure-contract");
+assert.equal(graphInspectOutJson.body.agentCommand.failure.retryCommands[0].purpose, "correct-command-usage");
+assert(!graphInspectOutJson.body.agentCommand.failure.retryCommands[0].argv.includes("--out"));
+assert(!graphInspectOutJson.body.agentCommand.failure.retryCommands[0].argv.includes("--node"));
+const graphFindJson = json(["graph", "find", "--json", "--symbol", "main", "examples/hello.0"]).body;
+assert.equal(graphFindJson.ok, true);
+assert.equal(graphFindJson.graphHash, graphDumpJson.graphHash);
+assert.equal(graphFindJson.query.symbol, "main");
+assert.equal(graphFindJson.agentCommand.kind, "agent-graph-find-command-contract");
+assert.equal(graphFindJson.agentCommand.readPolicy.name, "semantic-graph-query-read");
+assert.equal(graphFindJson.agentCommand.readPolicy.readsSource, true);
+assert.equal(graphFindJson.agentCommand.readPolicy.writesSource, false);
+assert.equal(graphFindJson.agentCommand.readPolicy.writesArtifacts, false);
+assert.equal(graphFindJson.agentCommand.readPolicy.fullSourceRequired, false);
+assert.equal(graphFindJson.agentCommand.readPolicy.tokenStrategyField, "tokenStrategy");
+assert(graphFindJson.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+assert.equal(graphFindJson.agentCommand.verificationCommands[0].purpose, "graph-find");
+assert.deepEqual(graphFindJson.agentCommand.verificationCommands[0].argv, ["zero", "graph", "find", "--json", "--target", "host", "--profile", "release", "--symbol", "main", "examples/hello.0"]);
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[0].purpose, "graph-slice");
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[0].required, false);
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[0].when, "resolution.requiresFollowupSlice");
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[0].inputField, "matches[].id");
+assert.deepEqual(graphFindJson.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "slice", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<matches[].id>", "<input>"]);
+assert(graphFindJson.agentCommand.recommendedNextCommands[0].resultFields.includes("center.nodeHash"));
+assert(graphFindJson.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[1].purpose, "graph-slice");
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[1].required, false);
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[1].when, "resolution.ambiguous");
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[1].inputField, "matches[].id");
+assert.deepEqual(graphFindJson.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "slice", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<matches[].id>", "<input>"]);
+assert(graphFindJson.agentCommand.recommendedNextCommands[1].resultFields.includes("center.nodeHash"));
+assert(graphFindJson.agentCommand.recommendedNextCommands[1].resultFields.includes("nodes[]"));
+assert(graphFindJson.agentCommand.recommendedNextCommands[1].resultFields.includes("edges[]"));
+assert(graphFindJson.agentCommand.recommendedNextCommands[1].resultFields.includes("agentCommand.verificationCommands"));
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[2].purpose, "graph-inspect");
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[2].required, false);
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[2].when, "resolution.status == not-found");
+assert.equal(graphFindJson.agentCommand.recommendedNextCommands[2].inputField, "command.argv input");
+assert.deepEqual(graphFindJson.agentCommand.recommendedNextCommands[2].argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert(graphFindJson.agentCommand.recommendedNextCommands[2].resultFields.includes("programGraph.nodes[].symbolId"));
+assert(graphFindJson.agentCommand.recommendedNextCommands[2].resultFields.includes("agentQuery.lookupSurfaces.symbol"));
+assert(graphFindJson.agentCommand.recommendedNextCommands[2].resultFields.includes("agentCommand.verificationCommands"));
+const graphFindMissingJson = json(["graph", "find", "--json", "--symbol", "does_not_exist", "examples/hello.0"], { allowFailure: true });
+assert.equal(graphFindMissingJson.code, 1);
+assert.equal(graphFindMissingJson.body.ok, true);
+assert.equal(graphFindMissingJson.body.resolution.status, "not-found");
+assert.equal(graphFindMissingJson.body.counts.matches, 0);
+assert.equal(graphFindMissingJson.body.agentCommand.recommendedNextCommands[2].purpose, "graph-inspect");
+assert.equal(graphFindJson.tokenStrategy.readFullSourceRequired, false);
+assert.equal(graphFindJson.tokenStrategy.preferFollowupSlice, true);
+assert(graphFindJson.matches.some((node) => node.id === graphMainFunctionNode.id && node.symbolId.endsWith("::value.main")));
+assert(graphFindJson.matches.length < graphDumpJson.nodes.length);
+const graphImpactFunctionJson = json(["graph", "find", "--json", "--symbol", "greeting", "examples/functions.0"]).body;
+const graphImpactFunctionNode = graphImpactFunctionJson.matches.find((node) => node.kind === "Function" && node.name === "greeting");
+assert(graphImpactFunctionNode);
+const graphImpactJson = json(["graph", "impact", "--json", "--node", graphImpactFunctionNode.id, "examples/functions.0"]).body;
+assert.equal(graphImpactJson.ok, true);
+assert.equal(graphImpactJson.target.id, graphImpactFunctionNode.id);
+assert.equal(graphImpactJson.agentCommand.kind, "agent-graph-impact-command-contract");
+assert.equal(graphImpactJson.agentCommand.readPolicy.name, "semantic-graph-query-read");
+assert.equal(graphImpactJson.agentCommand.readPolicy.readsSource, true);
+assert.equal(graphImpactJson.agentCommand.readPolicy.writesSource, false);
+assert.equal(graphImpactJson.agentCommand.readPolicy.writesArtifacts, false);
+assert.equal(graphImpactJson.agentCommand.readPolicy.fullSourceRequired, false);
+assert.equal(graphImpactJson.agentCommand.readPolicy.tokenStrategyField, "tokenStrategy");
+assert(graphImpactJson.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+assert.equal(graphImpactJson.agentCommand.verificationCommands[0].purpose, "graph-impact");
+assert.deepEqual(graphImpactJson.agentCommand.verificationCommands[0].argv, ["zero", "graph", "impact", "--json", "--target", "host", "--profile", "release", "--node", graphImpactFunctionNode.id, "examples/functions.0"]);
+assert.equal(graphImpactJson.agentCommand.recommendedNextCommands[0].purpose, "graph-patch");
+assert.equal(graphImpactJson.agentCommand.recommendedNextCommands[0].required, false);
+assert.equal(graphImpactJson.agentCommand.recommendedNextCommands[0].when, "after-reviewing-editGuards");
+assert.equal(graphImpactJson.agentCommand.recommendedNextCommands[0].inputField, "target.id");
+assert.deepEqual(graphImpactJson.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "patch", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>", "<patch-file>"]);
+assert.equal(graphImpactJson.agentCommand.recommendedNextCommands[0].resultContract, "agentTransaction");
+assert(graphImpactJson.agentCommand.recommendedNextCommands[0].resultFields.includes("agentTransaction.proofLedger"));
+assert(graphImpactJson.agentCommand.recommendedNextCommands[0].resultFields.includes("agentTransaction.rollback.actions[]"));
+assert(graphImpactJson.agentCommand.recommendedNextCommands[0].resultFields.includes("operations[].retryCommands"));
+assert.equal(graphImpactJson.tokenStrategy.readFullSourceRequired, false);
+assert(graphImpactJson.directCallSites.some((node) => node.kind === "Call" && node.name === "greeting"));
+assert(graphImpactJson.nameReferences.some((node) => node.kind === "Identifier" && node.name === "greeting"));
+assert(graphImpactJson.editGuards.includes("removeFunction-blocked-by-direct-call-sites"));
+const graphSliceJson = json(["graph", "slice", "--json", "--node", graphMainFunctionNode.id, "examples/hello.0"]).body;
+assert.equal(graphSliceJson.ok, true);
+assert.equal(graphSliceJson.graphHash, graphDumpJson.graphHash);
+assert.equal(graphSliceJson.center.id, graphMainFunctionNode.id);
+assert.equal(graphSliceJson.agentCommand.kind, "agent-graph-slice-command-contract");
+assert.equal(graphSliceJson.agentCommand.readPolicy.name, "semantic-graph-query-read");
+assert.equal(graphSliceJson.agentCommand.readPolicy.readsSource, true);
+assert.equal(graphSliceJson.agentCommand.readPolicy.writesSource, false);
+assert.equal(graphSliceJson.agentCommand.readPolicy.writesArtifacts, false);
+assert.equal(graphSliceJson.agentCommand.readPolicy.fullSourceRequired, false);
+assert.equal(graphSliceJson.agentCommand.readPolicy.tokenStrategyField, "tokenStrategy");
+assert(graphSliceJson.agentCommand.auditFields.includes("agentCommand.readPolicy"));
+assert.equal(graphSliceJson.agentCommand.verificationCommands[0].purpose, "graph-slice");
+assert.deepEqual(graphSliceJson.agentCommand.verificationCommands[0].argv, ["zero", "graph", "slice", "--json", "--target", "host", "--profile", "release", "--node", graphMainFunctionNode.id, "examples/hello.0"]);
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[0].purpose, "graph-impact");
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[0].required, false);
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[0].when, "before patching a sliced edit target");
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[0].inputField, "center.id");
+assert.deepEqual(graphSliceJson.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "impact", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<center.id>", "<input>"]);
+assert(graphSliceJson.agentCommand.recommendedNextCommands[0].resultFields.includes("editGuards[]"));
+assert(graphSliceJson.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.recommendedNextCommands"));
+assert(graphSliceJson.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[1].purpose, "graph-patch");
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[1].required, false);
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[1].when, "after-reviewing-neighborhood-and-impact");
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[1].inputField, "center.id");
+assert.deepEqual(graphSliceJson.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "patch", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>", "<patch-file>"]);
+assert.equal(graphSliceJson.agentCommand.recommendedNextCommands[1].resultContract, "agentTransaction");
+assert(graphSliceJson.agentCommand.recommendedNextCommands[1].resultFields.includes("agentTransaction.proofLedger"));
+assert(graphSliceJson.agentCommand.recommendedNextCommands[1].resultFields.includes("agentTransaction.rollback.actions[]"));
+assert(graphSliceJson.agentCommand.recommendedNextCommands[1].resultFields.includes("operations[].retryCommands"));
+assert.equal(graphSliceJson.tokenStrategy.readFullSourceRequired, false);
+assert(graphSliceJson.nodes.length < graphDumpJson.nodes.length);
+assert(graphSliceJson.nodes.some((node) => node.kind === "Param" && node.name === "world"));
+assert(graphSliceJson.edges.every((edge) => edge.from === graphMainFunctionNode.id || edge.to === graphMainFunctionNode.id));
 const graphBareOutJson = json(["graph", "--json", "--out", graphBareOutPath, "examples/hello.0"], { allowFailure: true });
 assert.notEqual(graphBareOutJson.code, 0);
 assert.equal(graphBareOutJson.body.diagnostics[0].message, "graph requires an output-capable subcommand for --out");
@@ -2360,6 +3558,17 @@ assert.equal(graphReconcileMissingSource.body.diagnostics[0].message, "graph rec
 assert.equal(graphReconcileMissingSource.body.diagnostics[0].actual, "missing --source");
 const graphValidateJson = json(["graph", "validate", "--json", "--out", graphCanonicalPath, graphDumpPath]).body;
 assert.equal(graphValidateJson.ok, true);
+assertAgentGraphValidateCommand(graphValidateJson, {
+  argv: ["zero", "graph", "validate", "--json", "--out", graphCanonicalPath, graphDumpPath],
+  sourceKind: "program-graph",
+});
+const graphValidateTargetProfileJson = json(["graph", "validate", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphDumpPath]).body;
+assertAgentGraphValidateCommand(graphValidateTargetProfileJson, {
+  argv: ["zero", "graph", "validate", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphDumpPath],
+  sourceKind: "program-graph",
+  target: "linux-musl-x64",
+  profile: "audit",
+});
 assert.equal(graphValidateJson.moduleIdentity, "module:hello");
 assert.equal(graphValidateJson.graphHash, graphDumpJson.graphHash);
 assert.equal(graphValidateJson.saved.path, graphCanonicalPath);
@@ -2487,7 +3696,7 @@ writeFileSync(join(sourceFreeCImportCwdRoot, "zero.json"), JSON.stringify({
   package: { name: "unrelated-cwd-package", version: "0.1.0" },
   targets: { cli: { kind: "exe", main: "src/main.0" } },
 }, null, 2));
-const sourceFreeCImportCwdBuild = JSON.parse(execFileSync(resolve("bin/zero"), [
+const sourceFreeCImportCwdBuild = JSON.parse(execFileSync(resolve(zeroBin), [
   "build",
   "--json",
   "--out",
@@ -2700,6 +3909,11 @@ assertProgramGraphCompilerInput(sourceFreeStdGraphCheckJson, join(sourceFreeStdG
 assertRepositoryGraphNativeCheck(sourceFreeStdGraphCheckJson, "missing");
 assert(sourceFreeStdGraphCheckJson.graphCompiler.semanticFacts.calls.some((call) => call.qualifiedName === "std.str.reverse" && call.contract.kind === "sourceBackedStdlib" && call.returnType === "Maybe<Span<u8>>"));
 assert(sourceFreeStdGraphCheckJson.graphCompiler.tables.capability > 0);
+assert.equal(checkedInGraphPackageCheckJson.sourceFile, checkedInGraphSourcePath);
+assertAgentCheckCommand(checkedInGraphPackageCheckJson, { argv: ["zero", "check", "--json", "--target", version.host, "--profile", "release", checkedInGraphPackageDir] });
+assert.equal(checkedInGraphPackageCheckJson.package.name, "program-graph-fixture");
+assert.equal(contractPath(checkedInGraphPackageCheckJson.package.manifestPath), contractPath(join(checkedInGraphPackageDir, "zero.json")));
+assert.equal(checkedInGraphPackageCheckJson.graph, undefined);
 const checkedInGraphPackageSizeJson = json(["size", "--json", "--target", "linux-musl-x64", checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageSizeJson.sourceFile, checkedInRepositoryGraphStorePath);
 assertSourceGraph(checkedInGraphPackageSizeJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false);
@@ -2781,6 +3995,7 @@ assert.equal(checkedInGraphPackageTestJson.sourceFile, checkedInRepositoryGraphS
 assertSourceGraph(checkedInGraphPackageTestJson, checkedInRepositoryGraphStorePath, "package:program-graph-fixture@0.1.0", "typed-program-graph-mir", false);
 assert.equal(checkedInGraphPackageTestJson.testDiscovery.mode, "package-graph");
 assert.equal(checkedInGraphPackageTestJson.selectedTests, 0);
+assert.equal(checkedInGraphPackageTestJson.agentCommand.recommendedNextCommands[1].purpose, "doc-audit");
 const checkedInGraphPackageShipJson = json(["ship", "--json", "--target", "linux-musl-x64", "--out", checkedInGraphShipPath, checkedInGraphPackageDir]).body;
 assert.equal(checkedInGraphPackageShipJson.ok, true);
 assert.equal(checkedInGraphPackageShipJson.sourceFile, checkedInRepositoryGraphStorePath);
@@ -2843,6 +4058,17 @@ assert.match(graphView, /^pub fn main\(world: World\) -> Void raises \{\n/);
 assert.match(graphView, /check world\.out\.write\("hello from zero\\n"\)/);
 const graphViewJson = json(["graph", "view", "--json", graphDumpPath]).body;
 assert.equal(graphViewJson.ok, true);
+assertAgentGraphViewCommand(graphViewJson, {
+  argv: ["zero", "graph", "view", "--json", graphDumpPath],
+  sourceKind: "program-graph",
+});
+const graphViewTargetProfileJson = json(["graph", "view", "--json", "--target", "linux-musl-x64", "--profile", "audit", "examples/memory-package"]).body;
+assertAgentGraphViewCommand(graphViewTargetProfileJson, {
+  argv: ["zero", "graph", "view", "--json", "--target", "linux-musl-x64", "--profile", "audit", "examples/memory-package"],
+  sourceKind: "source",
+  target: "linux-musl-x64",
+  profile: "audit",
+});
 assert.equal(graphViewJson.canonicalSource, false);
 assert.equal(graphViewJson.moduleIdentity, "module:hello");
 assert.equal(graphViewJson.graphHash, graphDumpJson.graphHash);
@@ -2851,6 +4077,10 @@ assert.equal(zero(["graph", "view", "--out", graphViewPath, graphDumpPath]).stdo
 assert.equal(readFileSync(graphViewPath, "utf8"), graphView);
 const graphViewOutJson = json(["graph", "view", "--json", "--out", graphViewPath, graphDumpPath]).body;
 assert.equal(graphViewOutJson.ok, true);
+assertAgentGraphViewCommand(graphViewOutJson, {
+  argv: ["zero", "graph", "view", "--json", "--out", graphViewPath, graphDumpPath],
+  sourceKind: "program-graph",
+});
 assert.equal(graphViewOutJson.saved.path, graphViewPath);
 assert.equal(graphViewOutJson.view, null);
 assert.equal(readFileSync(graphViewPath, "utf8"), graphView);
@@ -2862,6 +4092,10 @@ assert.equal(existsSync(graphViewWrongOutPath), false);
 assert.equal(zero(["graph", "check", graphDumpPath]).stdout, "program graph check ok\n");
 const graphCheckJson = json(["graph", "check", "--json", graphDumpPath]).body;
 assert.equal(graphCheckJson.ok, true);
+assertAgentGraphCheckCommand(graphCheckJson, {
+  argv: ["zero", "graph", "check", "--json", "--target", graphCheckJson.check.target, "--profile", "release", graphDumpPath],
+  sourceKind: "program-graph",
+});
 assert.equal(graphCheckJson.canonicalSource, false);
 assert.equal(graphCheckJson.moduleIdentity, "module:hello");
 assert.equal(graphCheckJson.graphHash, graphDumpJson.graphHash);
@@ -2903,7 +4137,16 @@ const graphCheckOutJson = json(["graph", "check", "--json", "--out", graphCheckV
 assert.notEqual(graphCheckOutJson.code, 0);
 assert.equal(graphCheckOutJson.body.diagnostics[0].message, "graph check does not support --out");
 assert.equal(graphCheckOutJson.body.diagnostics[0].expected, "zero graph view --out <file.0> <program-graph-or-source>");
+assert.equal(graphCheckOutJson.body.agentCommand.kind, "agent-command-failure-contract");
+assert.equal(graphCheckOutJson.body.agentCommand.failure.retryCommands[0].purpose, "correct-command-usage");
+assert(!graphCheckOutJson.body.agentCommand.failure.retryCommands[0].argv.includes("--out"));
 const graphSizeJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphDumpPath]).body;
+assertAgentGraphSizeCommand(graphSizeJson, {
+  argv: ["zero", "graph", "size", "--json", "--target", "linux-musl-x64", "--profile", "release", graphDumpPath],
+  input: graphDumpPath,
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert.equal(graphSizeJson.schemaVersion, 1);
 assert.equal(graphSizeJson.sourceFile, graphDumpPath);
 assert.equal(graphSizeJson.graph.artifact, graphDumpPath);
@@ -2930,11 +4173,23 @@ assert(graphSizeHelloInterface);
 assert.equal(graphSizeHelloInterface.publicSymbolCount, 1);
 assert.deepEqual(graphSizeHelloInterface.publicSymbols, [{ name: "main", kind: "function" }]);
 const graphSizeOutJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", "--out", graphSizePath, graphDumpPath]).body;
+assertAgentGraphSizeCommand(graphSizeOutJson, {
+  argv: ["zero", "graph", "size", "--json", "--target", "linux-musl-x64", "--profile", "release", "--out", graphSizePath, graphDumpPath],
+  input: graphDumpPath,
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert.equal(graphSizeOutJson.graph.graphHash, graphDumpJson.graphHash);
 assert.equal(graphSizeOutJson.artifactPath, graphSizePath);
 assert.equal(graphSizeOutJson.artifactBytes, statSync(graphSizePath).size);
 assert.match(readFileSync(graphSizePath, "utf8"), /"kind": "zero-size-metadata"/);
 const graphBuildJson = json(["graph", "build", "--json", "--target", "linux-musl-x64", "--out", graphBuildPath, graphDumpPath]).body;
+assertAgentGraphBuildCommand(graphBuildJson, {
+  argv: ["zero", "graph", "build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "--profile", "release", "--out", graphBuildPath, graphDumpPath],
+  input: graphDumpPath,
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert.equal(graphBuildJson.schemaVersion, 1);
 assert.equal(graphBuildJson.sourceFile, graphDumpPath);
 assert.equal(graphBuildJson.graph.artifact, graphDumpPath);
@@ -2953,6 +4208,12 @@ assert.equal(graphBuildJson.incrementalInvalidation.graphInput.artifact, graphDu
 assert.equal(graphBuildJson.incrementalInvalidation.graphInput.graphHash, graphDumpJson.graphHash);
 assert.equal(graphBuildJson.incrementalInvalidation.changedInputs.graphArtifact, graphDumpPath);
 const graphObjJson = json(["graph", "build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "--out", graphObjPath, graphDumpPath]).body;
+assertAgentGraphBuildCommand(graphObjJson, {
+  argv: ["zero", "graph", "build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "--profile", "release", "--out", graphObjPath, graphDumpPath],
+  input: graphDumpPath,
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert.equal(graphObjJson.sourceFile, graphDumpPath);
 assert.equal(graphObjJson.graph.graphHash, graphDumpJson.graphHash);
 assert.equal(graphObjJson.emit, "obj");
@@ -2960,21 +4221,102 @@ assert.equal(graphObjJson.target, "linux-musl-x64");
 assert.equal(graphObjJson.generatedCBytes, 0);
 assert.equal(graphObjJson.artifactPath, graphObjPath);
 assert.equal(graphObjJson.artifactBytes, statSync(graphObjPath).size);
+const graphShipJson = json(["graph", "ship", "--json", "--target", "linux-musl-x64", "--out", checkedInGraphShipPath, graphDumpPath]).body;
+assertAgentShipCommand(graphShipJson, {
+  argv: ["zero", "graph", "ship", "--json", "--target", "linux-musl-x64", "--profile", "release", "--out", checkedInGraphShipPath, graphDumpPath],
+  input: graphDumpPath,
+  target: "linux-musl-x64",
+  profile: "release",
+  sourceKind: "program-graph",
+});
+assert.equal(graphShipJson.ok, true);
+assert.equal(graphShipJson.graph.artifact, graphDumpPath);
+assert.equal(graphShipJson.graph.graphHash, graphDumpJson.graphHash);
+assert.equal(graphShipJson.artifactPath, checkedInGraphShipPath);
+assert.equal(existsSync(checkedInGraphShipPath), true);
+assert(graphShipJson.compilerCaches.every((cache) => cache.sourceKind === "program-graph" && cache.graphHash === graphDumpJson.graphHash));
+assert.equal(graphShipJson.incrementalInvalidation.graphInput.artifact, graphDumpPath);
+assert.equal(graphShipJson.incrementalInvalidation.graphInput.graphHash, graphDumpJson.graphHash);
 assert.equal(zero(["graph", "run", "--out", graphRunPath, graphDumpPath]).stdout, "hello from zero\n");
-assert.equal(existsSync(graphRunPath), true);
+assert.equal(executableExists(graphRunPath), true);
 assert.equal(zero(["graph", "dump", "--out", graphArgsDumpPath, "conformance/native/pass/std-args.0"]).stdout, "");
-assert.equal(zero(["graph", "run", "--out", graphArgsRunPath, graphArgsDumpPath, "--", "alpha", "beta"]).stdout, "alpha\n");
-assert.equal(existsSync(graphArgsRunPath), true);
+const graphArgsRun = zero(["graph", "run", "--out", graphArgsRunPath, graphArgsDumpPath, "--", "alpha", "beta"], { allowFailure: version.host.startsWith("win32") });
+if (version.host.startsWith("win32")) {
+  assert.notEqual(graphArgsRun.code, 0);
+  assert.match(graphArgsRun.stderr, /IR_VALUE_ARGS_LEN/);
+} else {
+  assert.equal(graphArgsRun.stdout, "alpha\n");
+  assert.equal(executableExists(graphArgsRunPath), true);
+}
 const graphRunJson = json(["graph", "run", "--json", graphDumpPath], { allowFailure: true });
 assert.equal(graphRunJson.code, 1);
 assert.equal(graphRunJson.body.diagnostics[0].message, "zero graph run does not support --json");
+assert.equal(graphRunJson.body.agentCommand.kind, "agent-run-json-unsupported-contract");
+assert.equal(graphRunJson.body.agentCommand.stdoutPolicy, "reserved-for-program-output");
+assert.equal(graphRunJson.body.agentCommand.recommendedNextCommands[0].purpose, "artifact-validate");
+assert.equal(graphRunJson.body.agentCommand.recommendedNextCommands[0].required, true);
+assert.deepEqual(graphRunJson.body.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "build", "--json", "--emit", "exe", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert(graphRunJson.body.agentCommand.recommendedNextCommands[0].resultFields.includes("artifactHash"));
+assert(graphRunJson.body.agentCommand.recommendedNextCommands[0].resultFields.includes("agentCommand.verificationCommands"));
+assert.equal(graphRunJson.body.agentCommand.recommendedNextCommands[1].purpose, "test-run");
+assert.deepEqual(graphRunJson.body.agentCommand.recommendedNextCommands[1].argv, ["zero", "graph", "test", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assertVerificationCommand(graphRunJson.body.agentCommand.verificationCommands[0], "artifact-validate", ["zero", "graph", "build", "--json", "--emit", "exe", "--target", graphRunJson.body.agentCommand.command.argv[5], "--profile", graphRunJson.body.agentCommand.command.argv[7], graphDumpPath]);
+const sourceRunJson = json(["run", "--json", "examples/hello.0"], { allowFailure: true });
+assert.equal(sourceRunJson.code, 1);
+assert.equal(sourceRunJson.body.diagnostics[0].message, "zero run does not support --json");
+assert.equal(sourceRunJson.body.agentCommand.kind, "agent-run-json-unsupported-contract");
+assert.equal(sourceRunJson.body.agentCommand.stdoutPolicy, "reserved-for-program-output");
+assert.deepEqual(sourceRunJson.body.agentCommand.recommendedNextCommands[0].argv, ["zero", "build", "--json", "--emit", "exe", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(sourceRunJson.body.agentCommand.recommendedNextCommands[1].argv, ["zero", "test", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
 assert.equal(zero(["graph", "dump", "--out", graphTestDumpPath, "conformance/native/pass/test-blocks.0"]).stdout, "");
 assert.equal(zero(["graph", "test", graphTestDumpPath]).stdout, "1 test(s) ok\n");
 const graphTestOutJson = json(["graph", "test", "--json", "--out", graphCheckViewPath, graphTestDumpPath], { allowFailure: true });
 assert.notEqual(graphTestOutJson.code, 0);
 assert.equal(graphTestOutJson.body.diagnostics[0].message, "graph test does not support --out");
 assert.equal(graphTestOutJson.body.diagnostics[0].expected, "zero graph test [--json] [--filter <name>] [--target <target>] <program-graph-or-package>");
+assert.equal(graphTestOutJson.body.agentCommand.kind, "agent-command-failure-contract");
+assert.equal(graphTestOutJson.body.agentCommand.failure.retryCommands[0].purpose, "correct-command-usage");
+assert(!graphTestOutJson.body.agentCommand.failure.retryCommands[0].argv.includes("--out"));
+const graphMissingArtifactPath = join(outDir, "missing.program-graph");
+const graphMissingArtifactJson = json(["graph", "test", "--json", "--target", "linux-musl-x64", graphMissingArtifactPath], { allowFailure: true });
+assert.notEqual(graphMissingArtifactJson.code, 0);
+assert.equal(graphMissingArtifactJson.body.agentCommand.kind, "agent-command-failure-contract");
+assert.equal(graphMissingArtifactJson.body.agentCommand.failure.class, "missing-graph-artifact");
+assert.equal(graphMissingArtifactJson.body.agentCommand.failure.retryCommands[0].purpose, "graph-artifact-create");
+assert.equal(graphMissingArtifactJson.body.agentCommand.failure.retryCommands[0].required, true);
+assert.deepEqual(graphMissingArtifactJson.body.agentCommand.failure.retryCommands[0].argv, ["zero", "graph", "dump", "--json", "--out", graphMissingArtifactPath, "<source-or-package>"]);
+assert(graphMissingArtifactJson.body.agentCommand.failure.retryCommands[0].resultFields.includes("saved.path"));
+assert.deepEqual(graphMissingArtifactJson.body.agentCommand.recommendedNextCommands[0].argv, graphMissingArtifactJson.body.agentCommand.failure.retryCommands[0].argv);
+for (const [command, args, expectedArgv] of [
+  ["build", ["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "--profile", "audit", "--out", join(outDir, "reroute-build"), graphTestDumpPath], ["zero", "graph", "build", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--emit", "obj", "--out", join(outDir, "reroute-build"), graphTestDumpPath]],
+  ["size", ["size", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--out", join(outDir, "reroute-size"), graphTestDumpPath], ["zero", "graph", "size", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--out", join(outDir, "reroute-size"), graphTestDumpPath]],
+  ["ship", ["ship", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--out", join(outDir, "reroute-ship"), graphTestDumpPath], ["zero", "graph", "ship", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--out", join(outDir, "reroute-ship"), graphTestDumpPath]],
+  ["test", ["test", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphTestDumpPath], ["zero", "graph", "test", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphTestDumpPath]],
+] as const) {
+  const graphArtifactMismatchJson = json(args, { allowFailure: true });
+  assert.notEqual(graphArtifactMismatchJson.code, 0);
+  assert.equal(graphArtifactMismatchJson.body.agentCommand.kind, "agent-command-failure-contract");
+  assert.equal(graphArtifactMismatchJson.body.agentCommand.failure.class, "graph-artifact-command-mismatch");
+  assert.equal(graphArtifactMismatchJson.body.agentCommand.failure.retryCommands[0].purpose, "use-graph-artifact-command");
+  assert.equal(graphArtifactMismatchJson.body.agentCommand.failure.retryCommands[0].required, true);
+  assert.deepEqual(graphArtifactMismatchJson.body.agentCommand.failure.retryCommands[0].argv, expectedArgv, command);
+  assert(graphArtifactMismatchJson.body.agentCommand.failure.retryCommands[0].resultFields.includes("agentCommand.sourceKind"));
+  assert.deepEqual(graphArtifactMismatchJson.body.agentCommand.recommendedNextCommands[0].argv, graphArtifactMismatchJson.body.agentCommand.failure.retryCommands[0].argv);
+}
 const graphTestJson = json(["graph", "test", "--json", "--filter", "addition", graphTestDumpPath]).body;
+assertAgentGraphTestCommand(graphTestJson, {
+  argv: ["zero", "graph", "test", "--json", "--target", graphTestJson.target, "--filter", "addition", graphTestDumpPath],
+  input: graphTestDumpPath,
+  target: graphTestJson.target,
+});
+const graphTestProfileJson = json(["graph", "test", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--filter", "addition", graphTestDumpPath]).body;
+assertAgentGraphTestCommand(graphTestProfileJson, {
+  argv: ["zero", "graph", "test", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--filter", "addition", graphTestDumpPath],
+  input: graphTestDumpPath,
+  target: "linux-musl-x64",
+  profile: "audit",
+});
+assert.equal(graphTestProfileJson.profile, "audit");
 assert.equal(graphTestJson.ok, true);
 assert.equal(graphTestJson.sourceFile, graphTestDumpPath);
 assert.equal(graphTestJson.graph.artifact, graphTestDumpPath);
@@ -2990,6 +4332,11 @@ assert.equal(graphTestJson.results[0].location.sourceFile, "conformance/native/p
 assert.equal(graphTestJson.results[0].location.line, 5);
 assert.equal(zero(["graph", "dump", "--out", graphPackageTestDumpPath, "conformance/packages/test-app"]).stdout, "");
 const graphPackageTestJson = json(["graph", "test", "--json", graphPackageTestDumpPath]).body;
+assertAgentGraphTestCommand(graphPackageTestJson, {
+  argv: ["zero", "graph", "test", "--json", "--target", graphPackageTestJson.target, graphPackageTestDumpPath],
+  input: graphPackageTestDumpPath,
+  target: graphPackageTestJson.target,
+});
 assert.equal(graphPackageTestJson.ok, true);
 assert.equal(graphPackageTestJson.graph.artifact, graphPackageTestDumpPath);
 assert.equal(graphPackageTestJson.graph.moduleIdentity, "package:test-app@0.1.0");
@@ -3020,7 +4367,7 @@ assert.equal(zero(["graph", "import", "--out", graphManifestArtifactPath, "confo
 assert.equal(zero(["graph", "validate", graphManifestPackageDir]).stdout, "program graph ok\n");
 const graphManifestCheckJson = json(["graph", "check", "--json", graphManifestPackageDir]).body;
 assert.equal(graphManifestCheckJson.ok, true);
-assert.equal(graphManifestCheckJson.artifact, graphManifestArtifactPath);
+assert.equal(contractPath(graphManifestCheckJson.artifact), contractPath(graphManifestArtifactPath));
 assert.equal(graphManifestCheckJson.moduleIdentity, "package:test-app@0.1.0");
 assert.equal(graphManifestCheckJson.check.lowering, "direct-program-graph");
 const graphManifestSizeJson = json(["graph", "size", "--json", "--target", "linux-musl-x64", graphManifestPackageDir]).body;
@@ -3032,11 +4379,11 @@ assert.equal(graphManifestBuildJson.graph.lowering, "typed-program-graph-mir");
 assert.equal(zero(["graph", "run", "--out", graphManifestRunPath, graphManifestPackageDir]).stdout, "package tests\n");
 const graphManifestTestJson = json(["graph", "test", "--json", graphManifestPackageDir]).body;
 assert.equal(graphManifestTestJson.ok, true);
-assert.equal(graphManifestTestJson.graph.artifact, graphManifestArtifactPath);
+assert.equal(contractPath(graphManifestTestJson.graph.artifact), contractPath(graphManifestArtifactPath));
 assert.equal(graphManifestTestJson.testDiscovery.mode, "package-graph");
 const graphManifestRoundtripJson = json(["graph", "roundtrip", "--json", graphManifestPackageDir]).body;
 assert.equal(graphManifestRoundtripJson.ok, true);
-assert.equal(graphManifestRoundtripJson.artifact, graphManifestArtifactPath);
+assert.equal(contractPath(graphManifestRoundtripJson.artifact), contractPath(graphManifestArtifactPath));
 assert.equal(graphManifestRoundtripJson.semanticStable, true);
 assert.equal(graphManifestRoundtripJson.lowering, "direct-program-graph");
 assert.equal(graphManifestRoundtripJson.moduleIdentity, "package:test-app@0.1.0");
@@ -3046,8 +4393,10 @@ const directGraphManifestCheckJson = json(["check", "--json", graphManifestPacka
 assert.equal(directGraphManifestCheckJson.ok, true);
 assertSourceGraph(directGraphManifestCheckJson, graphManifestSourcePath, "package:graph-manifest-package@0.1.0");
 assert.equal(directGraphManifestCheckJson.sourceFile, graphManifestSourcePath);
+assert.equal(contractPath(directGraphManifestCheckJson.sourceFile), contractPath(join(graphManifestPackageDir, "src", "main.0")));
+assertAgentCheckCommand(directGraphManifestCheckJson, { argv: ["zero", "check", "--json", "--target", version.host, "--profile", "release", graphManifestPackageDir] });
 assert.equal(directGraphManifestCheckJson.package.name, "graph-manifest-package");
-assert.equal(directGraphManifestCheckJson.package.manifestPath, join(graphManifestPackageDir, "zero.json"));
+assert.equal(contractPath(directGraphManifestCheckJson.package.manifestPath), contractPath(join(graphManifestPackageDir, "zero.json")));
 assert.notEqual(directGraphManifestCheckJson.package.manifestHash, "0000000000000000");
 assertProgramGraphCompilerInput(directGraphManifestCheckJson, graphManifestSourcePath);
 assert.equal(directGraphManifestCheckJson.incrementalInvalidation.changedInputs.manifestPath, join(graphManifestPackageDir, "zero.json"));
@@ -3092,7 +4441,7 @@ writeFileSync(join(directGraphTargetGatePackageDir, "zero.json"), `${JSON.string
   targets: { cli: { kind: "exe", main: "src/main.0", graph: "artifacts/app.program-graph" } },
   dependencies: {
     "target-webbits": {
-      path: "../target-webbits",
+      path: relative(directGraphTargetGatePackageDir, directGraphTargetGateDepDir),
       version: "0.1.0",
       targets: ["win32-x64.exe"],
     },
@@ -3162,6 +4511,62 @@ assert.equal(graphPatchJson.originalGraphHash, graphDumpJson.graphHash);
 assert.match(graphPatchJson.patchedGraphHash, /^graph:[0-9a-f]{16}$/);
 assert.notEqual(graphPatchJson.patchedGraphHash, graphDumpJson.graphHash);
 assert.equal(graphPatchJson.operationCount, 1);
+assert.equal(graphPatchJson.agentTransaction.kind, "compiler-mediated-graph-patch-transaction");
+assert.equal(graphPatchJson.agentTransaction.applied, true);
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.command.argv"));
+assert.deepEqual(graphPatchJson.agentTransaction.command.argv, ["zero", "graph", "patch", "--json", "--out", graphPatchedPath, graphDumpPath, graphPatchPath]);
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.originalGraphHash"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.patchedGraphHash"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.operationCount"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.patchContract"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.savedPath"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.applied"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[]"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[].kind"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[].pathField"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[].savedKind"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.verificationCommands[].purpose"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.verificationCommands[].required"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.verificationCommands[].resultFields"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.rollback.verificationCommands[].resultFields"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.failure.code"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.failure.class"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.failure.retryCommands[].purpose"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("agentTransaction.failure.retryCommands[].required"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("operations[].retryCommands"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("operations[].retryCommands[].purpose"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("saved.graphHash"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("saveProof.semanticStable"));
+assert(graphPatchJson.agentTransaction.resultFields.includes("saveProof.comparedGraphHash"));
+assert(graphPatchJson.agentTransaction.failureClasses.some((item) => item.code === "GPH001" && item.class === "invalid-patch" && item.phase === "parse" && item.retryable === true && item.retryCommand === "zero graph inspect --json <input>"));
+assert(graphPatchJson.agentTransaction.failureClasses.some((item) => item.code === "GPH006" && item.class === "invalid-result-graph" && item.phase === "validate" && item.retryable === false && item.retryCommand === null));
+assert.deepEqual(graphPatchJson.agentTransaction.retryCommandContracts.GPH001.argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graphPatchJson.agentTransaction.retryCommandContracts.GPH002.argv, ["zero", "graph", "dump", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.equal(graphPatchJson.agentTransaction.retryCommandContracts.GPH005.argvField, "operations[].retryCommands[].argv");
+assert.equal(graphPatchJson.agentTransaction.retryCommandContracts.GPH006, null);
+assert.equal(graphPatchJson.agentTransaction.patchContract.kind, "program-graph-patch-v1");
+assert.equal(graphPatchJson.agentTransaction.patchContract.items, "operations");
+assert.deepEqual(graphPatchJson.agentTransaction.patchContract.required, ["op"]);
+assert.equal(graphPatchJson.agentTransaction.patchContract.preconditions.expectValuesRecommended, true);
+assert(graphPatchJson.agentTransaction.patchContract.resultFields.includes("operations[].actual"));
+assert.equal(graphPatchJson.agentTransaction.rollback.savedKind, "artifact");
+assert.equal(graphPatchJson.agentTransaction.rollback.savedPath, graphPatchedPath);
+assert.equal(graphPatchJson.agentTransaction.rollback.applied, true);
+assert.equal(graphPatchJson.agentTransaction.rollback.actions[0].kind, "replace-or-delete-artifact");
+assert.equal(graphPatchJson.agentTransaction.rollback.actions[0].pathField, "agentTransaction.rollback.savedPath");
+assert.equal(graphPatchJson.agentTransaction.rollback.actions[0].savedKind, "artifact");
+assert.equal(graphPatchJson.agentTransaction.rollback.actions[0].condition, "created-or-replaced-by-command");
+assert.equal(graphPatchJson.agentTransaction.rollback.actions[0].requiresVerification, true);
+assert.deepEqual(graphPatchJson.agentTransaction.rollback.verificationCommands[0].resultFields, ["ok", "graphHash", "validation.ok", "agentCommand.verificationCommands"]);
+assert.deepEqual(graphPatchJson.agentTransaction.rollback.verificationCommands[1].resultFields, ["ok", "diagnostics", "graphHash", "agentCommand.verificationCommands"]);
+assert.equal(graphPatchJson.agentTransaction.verificationCommands[0].purpose, "artifact-validate");
+assert.equal(graphPatchJson.agentTransaction.verificationCommands[0].required, true);
+assert.deepEqual(graphPatchJson.agentTransaction.verificationCommands[0].argv, ["zero", "graph", "validate", "--json", graphPatchedPath]);
+assert.deepEqual(graphPatchJson.agentTransaction.verificationCommands[0].resultFields, ["ok", "graphHash", "validation.ok", "agentCommand.verificationCommands"]);
+assert.equal(graphPatchJson.agentTransaction.verificationCommands[1].purpose, "graph-check");
+assert.equal(graphPatchJson.agentTransaction.verificationCommands[1].required, true);
+assert.deepEqual(graphPatchJson.agentTransaction.verificationCommands[1].argv, ["zero", "graph", "check", "--json", graphPatchedPath]);
+assert.deepEqual(graphPatchJson.agentTransaction.verificationCommands[1].resultFields, ["ok", "diagnostics", "graphHash", "agentCommand.verificationCommands"]);
 assert.equal(graphPatchJson.operations[0].ok, true);
 assert.equal(graphPatchJson.operations[0].node, graphHelloLiteralNode.id);
 assert.equal(graphPatchJson.operations[0].field, "value");
@@ -3169,9 +4574,37 @@ assert.equal(graphPatchJson.operations[0].actual, "hello from zero\n");
 assert.equal(graphPatchJson.operations[0].value, "hello patched\n");
 assert.equal(graphPatchJson.diagnostic, null);
 assert.equal(graphPatchJson.saved.path, graphPatchedPath);
+assert.equal(graphPatchJson.saved.graphHash, graphPatchJson.patchedGraphHash);
+assert.equal(graphPatchJson.saveProof.semanticStable, true);
+assert.equal(graphPatchJson.saveProof.savedGraphHash, graphPatchJson.patchedGraphHash);
 assert.equal(zero(["graph", "validate", graphPatchedPath]).stdout, "program graph ok\n");
 assert.match(zero(["graph", "view", graphPatchedPath]).stdout, /check world\.out\.write\("hello patched\\n"\)/);
 assert.equal(zero(["graph", "check", graphPatchedPath]).stdout, "program graph check ok\n");
+const graphPatchMissingInputJson = json(["graph", "patch", "--json", graphDumpPath], { allowFailure: true }).body;
+assert.equal(graphPatchMissingInputJson.ok, false);
+assert.equal(graphPatchMissingInputJson.agentTransaction.kind, "compiler-mediated-graph-patch-transaction");
+assert.equal(graphPatchMissingInputJson.agentTransaction.failure.code, "BLD002");
+assert.equal(graphPatchMissingInputJson.agentTransaction.failure.retryable, false);
+assert.equal(graphPatchMissingInputJson.agentTransaction.applied, false);
+assert.deepEqual(graphPatchMissingInputJson.agentTransaction.verificationCommands, []);
+const graphPatchUnreadableInputJson = json(["graph", "patch", "--json", graphDumpPath, join(outDir, "missing.program-graph.patch")], { allowFailure: true }).body;
+assert.equal(graphPatchUnreadableInputJson.ok, false);
+assert.equal(graphPatchUnreadableInputJson.diagnostic.code, "GPH001");
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.code, "GPH001");
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.class, "invalid-patch");
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.phase, "parse");
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.retryable, true);
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.retryCommands[0].purpose, "graph-inspect");
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.retryCommands[0].required, true);
+assert(graphPatchUnreadableInputJson.agentTransaction.failure.retryCommands[0].argv.includes("--target"));
+assert.equal(graphPatchUnreadableInputJson.agentTransaction.failure.retryCommands[0].argv.at(-1), graphDumpPath);
+assert.deepEqual(graphPatchUnreadableInputJson.agentTransaction.verificationCommands, []);
+const graphPatchedProfilePath = join(outDir, "hello.patched-profile.program-graph");
+const graphPatchProfileJson = json(["graph", "patch", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--out", graphPatchedProfilePath, graphDumpPath, graphPatchPath]).body;
+assert.equal(graphPatchProfileJson.ok, true);
+assert.deepEqual(graphPatchProfileJson.agentTransaction.command.argv, ["zero", "graph", "patch", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--out", graphPatchedProfilePath, graphDumpPath, graphPatchPath]);
+assert.deepEqual(graphPatchProfileJson.agentTransaction.verificationCommands[0].argv, ["zero", "graph", "validate", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphPatchedProfilePath]);
+assert.deepEqual(graphPatchProfileJson.agentTransaction.verificationCommands[1].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphPatchedProfilePath]);
 const graphSourcePatchPath = join(outDir, "hello.source-backed.0");
 writeFileSync(graphSourcePatchPath, graphView);
 const graphSourcePatchDumpJson = json(["graph", "dump", "--json", graphSourcePatchPath]).body;
@@ -3191,9 +4624,55 @@ const graphSourcePatchJson = json([
 assert.equal(graphSourcePatchJson.ok, true);
 assert.equal(graphSourcePatchJson.canonicalSource, true);
 assert.equal(graphSourcePatchJson.saved.path, graphSourcePatchPath);
+assert.equal(graphSourcePatchJson.saved.kind, "source");
+assert.equal(graphSourcePatchJson.saved.graphHash, graphSourcePatchJson.patchedGraphHash);
+assert.equal(graphSourcePatchJson.saveProof.semanticStable, true);
+assert.equal(graphSourcePatchJson.saveProof.savedGraphHash, graphSourcePatchJson.patchedGraphHash);
+assert.equal(graphSourcePatchJson.agentTransaction.applied, true);
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.savedKind, "source");
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.applied, true);
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.actions[0].kind, "restore-path-from-vcs");
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.actions[0].pathField, "agentTransaction.rollback.savedPath");
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.actions[0].savedKind, "source");
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.actions[0].condition, "before-retry-or-after-failed-save-verification");
+assert.equal(graphSourcePatchJson.agentTransaction.rollback.actions[0].requiresVerification, true);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.rollback.verificationCommands[0].resultFields, ["ok", "diagnostics", "agentCommand.verificationCommands"]);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.rollback.verificationCommands[1].resultFields, ["ok", "diagnostics", "graphHash", "agentCommand.verificationCommands"]);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.command.argv, ["zero", "graph", "patch", "--json", graphSourcePatchPath, "--expect-graph-hash", graphSourcePatchDumpJson.graphHash, "--op", `set node="${graphSourceLiteralNode.id}" field="value" expect="hello from zero\\n" value="hello source-backed\\n"`]);
+assert.equal(graphSourcePatchJson.agentTransaction.verificationCommands[0].purpose, "source-check");
+assert.equal(graphSourcePatchJson.agentTransaction.verificationCommands[0].required, true);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.verificationCommands[0].argv, ["zero", "check", "--json", graphSourcePatchPath]);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.verificationCommands[0].resultFields, ["ok", "diagnostics", "agentCommand.verificationCommands"]);
+assert.equal(graphSourcePatchJson.agentTransaction.verificationCommands[1].purpose, "graph-check");
+assert.equal(graphSourcePatchJson.agentTransaction.verificationCommands[1].required, true);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.verificationCommands[1].argv, ["zero", "graph", "check", "--json", graphSourcePatchPath]);
+assert.deepEqual(graphSourcePatchJson.agentTransaction.verificationCommands[1].resultFields, ["ok", "diagnostics", "graphHash", "agentCommand.verificationCommands"]);
 assert.match(readFileSync(graphSourcePatchPath, "utf8"), /hello source-backed\\n/);
 assert.equal(zero(["check", graphSourcePatchPath]).stdout, "ok\n");
 assert.equal(zero(["graph", "check", graphSourcePatchPath]).stdout, "program graph check ok\n");
+const graphSourcePatchProfilePath = join(outDir, "hello.source-backed-profile.0");
+writeFileSync(graphSourcePatchProfilePath, graphView);
+const graphSourcePatchProfileDumpJson = json(["graph", "dump", "--json", graphSourcePatchProfilePath]).body;
+const graphSourceProfileLiteralNode = graphSourcePatchProfileDumpJson.nodes.find((node) => node.kind === "Literal" && node.type === "String" && node.value === "hello from zero\n");
+assert(graphSourceProfileLiteralNode);
+const graphSourcePatchProfileJson = json([
+  "graph",
+  "patch",
+  "--json",
+  "--target",
+  "linux-musl-x64",
+  "--profile",
+  "audit",
+  graphSourcePatchProfilePath,
+  "--expect-graph-hash",
+  graphSourcePatchProfileDumpJson.graphHash,
+  "--op",
+  `set node="${graphSourceProfileLiteralNode.id}" field="value" expect="hello from zero\\n" value="hello source-backed profile\\n"`,
+]).body;
+assert.equal(graphSourcePatchProfileJson.ok, true);
+assert.deepEqual(graphSourcePatchProfileJson.agentTransaction.command.argv, ["zero", "graph", "patch", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphSourcePatchProfilePath, "--expect-graph-hash", graphSourcePatchProfileDumpJson.graphHash, "--op", `set node="${graphSourceProfileLiteralNode.id}" field="value" expect="hello from zero\\n" value="hello source-backed profile\\n"`]);
+assert.deepEqual(graphSourcePatchProfileJson.agentTransaction.verificationCommands[0].argv, ["zero", "check", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphSourcePatchProfilePath]);
+assert.deepEqual(graphSourcePatchProfileJson.agentTransaction.verificationCommands[1].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "audit", graphSourcePatchProfilePath]);
 const graphSourcePackageDir = join(outDir, "graph-source-package");
 const graphSourcePackageMain = join(graphSourcePackageDir, "src", "main.0");
 const graphSourcePackageHelper = join(graphSourcePackageDir, "src", "helper.0");
@@ -3223,30 +4702,31 @@ writeFileSync(
     "    return value() + 1\n" +
     "}\n",
 );
-const graphSourcePackageDumpJson = json(["graph", "dump", "--json", graphSourcePackageMain]).body;
+const graphSourcePackageMainArg = contractPath(graphSourcePackageMain);
+const graphSourcePackageDumpJson = json(["graph", "dump", "--json", graphSourcePackageMainArg]).body;
 const graphSourcePackageLiteralNode = graphSourcePackageDumpJson.nodes.find(
-  (node) => node.kind === "Literal" && node.path === graphSourcePackageMain && node.value === "1",
+  (node) => node.kind === "Literal" && contractPath(node.path) === graphSourcePackageMainArg && node.value === "1",
 );
 assert(graphSourcePackageLiteralNode);
 const graphSourcePackagePatchJson = json([
   "graph",
   "patch",
   "--json",
-  graphSourcePackageMain,
+  graphSourcePackageMainArg,
   "--expect-graph-hash",
   graphSourcePackageDumpJson.graphHash,
   "--op",
   `set node="${graphSourcePackageLiteralNode.id}" field="value" expect="1" value="2"`,
 ]).body;
 assert.equal(graphSourcePackagePatchJson.ok, true);
-assert.equal(graphSourcePackagePatchJson.saved.path, graphSourcePackageMain);
+assert.equal(contractPath(graphSourcePackagePatchJson.saved.path), graphSourcePackageMainArg);
 const graphSourcePackageMainText = readFileSync(graphSourcePackageMain, "utf8");
 assert.match(graphSourcePackageMainText, /^use helper\n\n/);
 assert.match(graphSourcePackageMainText, /return value\(\) \+ 2/);
 assert.doesNotMatch(graphSourcePackageMainText, /pub fn value/);
 assert.equal(readFileSync(graphSourcePackageHelper, "utf8"), "pub fn value() -> i32 {\n    return 41\n}\n");
-assert.equal(zero(["check", graphSourcePackageMain]).stdout, "ok\n");
-assert.equal(zero(["graph", "check", graphSourcePackageMain]).stdout, "program graph check ok\n");
+assert.equal(zero(["check", graphSourcePackageMainArg]).stdout, "ok\n");
+assert.equal(zero(["graph", "check", graphSourcePackageMainArg]).stdout, "program graph check ok\n");
 const graphUserDerefSourcePath = join(outDir, "deref-member.0");
 const graphUserDerefViewPath = join(outDir, "deref-member.view.0");
 const graphPrefixDerefSourcePath = join(outDir, "prefix-deref-member.0");
@@ -3427,6 +4907,11 @@ assert.notEqual(graphCommentsPatchJson.code, 0);
 assert.equal(graphCommentsPatchJson.body.ok, false);
 assert.equal(graphCommentsPatchJson.body.diagnostics[0].code, "BLD002");
 assert.equal(graphCommentsPatchJson.body.diagnostics[0].message, "source-backed graph patch cannot preserve comments");
+assert.equal(graphCommentsPatchJson.body.agentTransaction.kind, "compiler-mediated-graph-patch-transaction");
+assert.equal(graphCommentsPatchJson.body.agentTransaction.failure.code, "BLD002");
+assert.equal(graphCommentsPatchJson.body.agentTransaction.failure.retryable, false);
+assert.equal(graphCommentsPatchJson.body.agentTransaction.applied, false);
+assert.deepEqual(graphCommentsPatchJson.body.agentTransaction.verificationCommands, []);
 assert.equal(readFileSync(graphCommentsSourcePath, "utf8"), graphCommentsOriginal);
 const graphInlinePatchJson = json([
   "graph",
@@ -3588,6 +5073,7 @@ assert.equal(graphStaleReplacePatchJson.body.ok, false);
 assert.equal(graphStaleReplacePatchJson.body.operations[0].ok, true);
 assert.equal(graphStaleReplacePatchJson.body.operations[1].ok, false);
 assert.equal(graphStaleReplacePatchJson.body.operations[1].code, "GPH005");
+assert.equal(graphStaleReplacePatchJson.body.operations[1].retryCommands[0].purpose, "graph-impact");
 assert.notEqual(graphStaleReplacePatchJson.body.operations[1].actual, graphLiteralNode.nodeHash);
 writeFileSync(graphPatchInsertEdgePath, [
   "zero-program-graph-patch v1",
@@ -3640,6 +5126,9 @@ const graphInvalidRenamePatchJson = json(["graph", "patch", "--json", graphDumpP
 assert.notEqual(graphInvalidRenamePatchJson.code, 0);
 assert.equal(graphInvalidRenamePatchJson.body.ok, false);
 assert.equal(graphInvalidRenamePatchJson.body.diagnostic.code, "GPH003");
+assert.equal(graphInvalidRenamePatchJson.body.agentTransaction.failure.class, "invalid-patch-value");
+assert.equal(graphInvalidRenamePatchJson.body.agentTransaction.failure.phase, "patch");
+assert.deepEqual(graphInvalidRenamePatchJson.body.agentTransaction.failure.retryCommands[0].argv, ["zero", "graph", "inspect", "--json", graphDumpPath]);
 assert.equal(graphInvalidRenamePatchJson.body.operations[0].actual, "bad\nname");
 assert.equal(graphInvalidRenamePatchJson.body.saved, null);
 writeFileSync(graphUncheckedPatchPath, [
@@ -3705,7 +5194,7 @@ writeFileSync(graphPatchHighBytePath, [
   `set node="${graphHelloLiteralNode.id}" field="value" expect="hello from zero\\n" value="\\u0080"`,
   "",
 ].join("\n"));
-const graphPatchHighByteStdout = execFileSync("bin/zero", ["graph", "patch", "--json", graphDumpPath, graphPatchHighBytePath], { stdio: ["ignore", "pipe", "pipe"] });
+const graphPatchHighByteStdout = execFileSync(zeroBin, ["graph", "patch", "--json", graphDumpPath, graphPatchHighBytePath], { stdio: ["ignore", "pipe", "pipe"] });
 assert.equal(graphPatchHighByteStdout.includes(Buffer.from([0x80])), false);
 const graphPatchHighByteText = graphPatchHighByteStdout.toString("utf8");
 assert.match(graphPatchHighByteText, /"value": "\\u0080"/);
@@ -3722,6 +5211,11 @@ const graphPatchBadEscape = json(["graph", "patch", "--json", graphDumpPath, gra
 assert.notEqual(graphPatchBadEscape.code, 0);
 assert.equal(graphPatchBadEscape.body.ok, false);
 assert.equal(graphPatchBadEscape.body.diagnostic.code, "GPH001");
+assert.equal(graphPatchBadEscape.body.agentTransaction.failure.class, "invalid-patch");
+assert.equal(graphPatchBadEscape.body.agentTransaction.failure.phase, "parse");
+assert.equal(graphPatchBadEscape.body.agentTransaction.failure.retryCommands[0].purpose, "graph-inspect");
+assert.equal(graphPatchBadEscape.body.agentTransaction.failure.retryCommands[0].required, true);
+assert.deepEqual(graphPatchBadEscape.body.agentTransaction.failure.retryCommands[0].argv, ["zero", "graph", "inspect", "--json", graphDumpPath]);
 writeFileSync(graphPatchNullEscapePath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${graphDumpJson.graphHash}"`,
@@ -3926,6 +5420,7 @@ assert.equal(graphPatchMismatch.body.operations[0].actual, "hello from zero\n");
 assert.equal(graphPatchMismatch.body.saved, null);
 assert.equal(zero(["graph", "roundtrip", "examples/hello.0"]).stdout, "program graph roundtrip ok\n");
 const graphRoundtripJson = json(["graph", "roundtrip", "--json", "examples/hello.0"]).body;
+assertAgentGraphRoundtripCommand(graphRoundtripJson, { argv: ["zero", "graph", "roundtrip", "--json", "examples/hello.0"], sourceKind: "source" });
 assert.equal(graphRoundtripJson.ok, true);
 assert.equal(graphRoundtripJson.canonicalSource, true);
 assert.equal(graphRoundtripJson.semanticStable, true);
@@ -3941,8 +5436,21 @@ assert.deepEqual(graphRoundtripJson.semanticCounts.roundtrip, { nodes: 13, edges
 assert.equal(graphRoundtripJson.comparison.ok, true);
 assert.equal(graphRoundtripJson.saved, null);
 assert.equal(graphRoundtripJson.view, graphView);
+const graphMemoryPackageRoundtripJson = json(["graph", "roundtrip", "--json", "examples/memory-package"]).body;
+assertAgentGraphRoundtripCommand(graphMemoryPackageRoundtripJson, { argv: ["zero", "graph", "roundtrip", "--json", "examples/memory-package"], sourceKind: "source" });
+assert(graphMemoryPackageRoundtripJson.sourceFile.endsWith("examples\\memory-package/src/main.0") || graphMemoryPackageRoundtripJson.sourceFile.endsWith("examples/memory-package/src/main.0"));
+assert.equal(graphMemoryPackageRoundtripJson.semanticStable, true);
+const graphRoundtripTargetProfileJson = json(["graph", "roundtrip", "--json", "--target", "linux-musl-x64", "--profile", "audit", "examples/memory-package"]).body;
+assertAgentGraphRoundtripCommand(graphRoundtripTargetProfileJson, {
+  argv: ["zero", "graph", "roundtrip", "--json", "--target", "linux-musl-x64", "--profile", "audit", "examples/memory-package"],
+  sourceKind: "source",
+  target: "linux-musl-x64",
+  profile: "audit",
+});
+assert.equal(graphRoundtripTargetProfileJson.semanticStable, true);
 assert.equal(zero(["graph", "roundtrip", graphDumpPath]).stdout, "program graph roundtrip ok\n");
 const graphArtifactRoundtripJson = json(["graph", "roundtrip", "--json", graphDumpPath]).body;
+assertAgentGraphRoundtripCommand(graphArtifactRoundtripJson, { argv: ["zero", "graph", "roundtrip", "--json", graphDumpPath], sourceKind: "program-graph" });
 assert.equal(graphArtifactRoundtripJson.ok, true);
 assert.equal(graphArtifactRoundtripJson.artifact, graphDumpPath);
 assert.equal(graphArtifactRoundtripJson.canonicalSource, false);
@@ -3958,6 +5466,7 @@ assert.equal(graphArtifactRoundtripJson.view, null);
 assert.equal(zero(["graph", "roundtrip", "--out", graphArtifactRoundtripPath, graphDumpPath]).stdout, "program graph roundtrip ok\n");
 assert.equal(readFileSync(graphArtifactRoundtripPath, "utf8"), graphDump);
 const graphArtifactRoundtripOutJson = json(["graph", "roundtrip", "--json", "--out", graphArtifactRoundtripPath, graphDumpPath]).body;
+assertAgentGraphRoundtripCommand(graphArtifactRoundtripOutJson, { argv: ["zero", "graph", "roundtrip", "--json", "--out", graphArtifactRoundtripPath, graphDumpPath], sourceKind: "program-graph" });
 assert.equal(graphArtifactRoundtripOutJson.ok, true);
 assert.equal(graphArtifactRoundtripOutJson.saved.path, graphArtifactRoundtripPath);
 assert.equal(graphArtifactRoundtripOutJson.saved.kind, "program-graph");
@@ -3971,6 +5480,7 @@ assert.equal(existsSync(graphArtifactRoundtripSourceTextPath), false);
 assert.equal(zero(["graph", "roundtrip", "--out", graphSourceRoundtripPath, "examples/hello.0"]).stdout, "program graph roundtrip ok\n");
 assert.equal(readFileSync(graphSourceRoundtripPath, "utf8"), graphDump);
 const graphRoundtripOutJson = json(["graph", "roundtrip", "--json", "--out", graphSourceRoundtripPath, "examples/hello.0"]).body;
+assertAgentGraphRoundtripCommand(graphRoundtripOutJson, { argv: ["zero", "graph", "roundtrip", "--json", "--out", graphSourceRoundtripPath, "examples/hello.0"], sourceKind: "source" });
 assert.equal(graphRoundtripOutJson.ok, true);
 assert.equal(graphRoundtripOutJson.saved.path, graphSourceRoundtripPath);
 assert.equal(graphRoundtripOutJson.saved.kind, "program-graph");
@@ -3982,6 +5492,7 @@ assert.equal(graphRoundtripSourceTextOutJson.body.diagnostics[0].message, "progr
 assert.equal(graphRoundtripSourceTextOutJson.body.diagnostics[0].expected, "zero graph roundtrip --out <program-graph-artifact> <input>");
 assert.equal(existsSync(graphSourceRoundtripSourceTextPath), false);
 const graphPackageRoundtripJson = json(["graph", "roundtrip", "--json", "examples/systems-package"]).body;
+assertAgentGraphRoundtripCommand(graphPackageRoundtripJson, { argv: ["zero", "graph", "roundtrip", "--json", "examples/systems-package"], sourceKind: "source" });
 assert.equal(graphPackageRoundtripJson.ok, true);
 assert.equal(graphPackageRoundtripJson.semanticStable, true);
 assert.equal(graphPackageRoundtripJson.moduleIdentity, "package:systems-package@0.1.0");
@@ -4000,6 +5511,9 @@ const sparseOrderValidate = json(["graph", "validate", "--json", graphSparseOrde
 assert.notEqual(sparseOrderValidate.code, 0);
 assert.equal(sparseOrderValidate.body.diagnostics[0].actual, "GRF013");
 assert.match(sparseOrderValidate.body.diagnostics[0].message, /ordered edge group is sparse/);
+assert.equal(zero(["graph", "validate", graphSparseOrderPath]).stdout, "program graph ok\n");
+const sparseOrderView = execFileSync(zeroBin, ["graph", "view", graphSparseOrderPath], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 1000 }).replace(/\r\n/g, "\n");
+assert.match(sparseOrderView, /pub fn main\(world: World\) -> Void raises/);
 let sparseArgGraph = graphDump.replace(/edge (#[^ ]+) arg (#[^ ]+) order:0/, "edge $1 arg $2 order:1000000000000");
 sparseArgGraph = sparseArgGraph.replace(/hash "graph:[0-9a-f]{16}"/, `hash "${recomputeGraphHash(sparseArgGraph)}"`);
 writeFileSync(graphSparseArgPath, sparseArgGraph);
@@ -4033,6 +5547,7 @@ assert.equal(graphTrailingArtifact.body.diagnostics[0].message, "unexpected cont
 
 const skillsList = json(["skills", "list", "--json"]).body;
 assert.equal(skillsList.success, true);
+assertAgentSkillsCommand(skillsList, ["zero", "skills", "list", "--json"]);
 assert(skillsList.data.some((skill) => skill.name === "zero" && /Zero/.test(skill.description)));
 const skillNames = new Set(skillsList.data.map((skill) => skill.name));
 for (const name of [
@@ -4051,32 +5566,39 @@ for (const name of [
 
 const zeroSkill = json(["skills", "get", "zero", "--full", "--json"]).body;
 assert.equal(zeroSkill.success, true);
+assertAgentSkillsCommand(zeroSkill, ["zero", "skills", "get", "--json", "zero", "--full"]);
 assert.match(zeroSkill.data[0].content, /# Zero/);
 assert.match(zeroSkill.data[0].content, /zero skills get zero --full/);
 assert.equal(zeroSkill.data[0].files, undefined);
 
 const languageSkill = json(["skills", "get", "language", "--json"]).body;
 assert.equal(languageSkill.success, true);
+assertAgentSkillsCommand(languageSkill, ["zero", "skills", "get", "--json", "language"]);
 assert.match(languageSkill.data[0].content, /# zerolang Language/);
 assert.match(languageSkill.data[0].content, /pub fn main/);
 
 const graphSkill = json(["skills", "get", "graph", "--json"]).body;
 assert.equal(graphSkill.success, true);
+assertAgentSkillsCommand(graphSkill, ["zero", "skills", "get", "--json", "graph"]);
 assert.match(graphSkill.data[0].content, /# Zero Graph Authoring/);
 assert.match(graphSkill.data[0].content, /primary agent authoring surface/);
 
 const stdlibSkill = json(["skills", "get", "stdlib", "--json"]).body;
 assert.equal(stdlibSkill.success, true);
+assertAgentSkillsCommand(stdlibSkill, ["zero", "skills", "get", "--json", "stdlib"]);
 assert.match(stdlibSkill.data[0].content, /std\.str/);
 assert.match(stdlibSkill.data[0].content, /non-overlapping reverse/);
 
 const diagnosticSkill = json(["skills", "get", "diagnostics", "--json"]).body;
 assert.equal(diagnosticSkill.success, true);
+assertAgentSkillsCommand(diagnosticSkill, ["zero", "skills", "get", "--json", "diagnostics"]);
 assert.match(diagnosticSkill.data[0].content, /fixSafety/);
 
 const missingSkill = zero(["skills", "get", "missing", "--json"], { allowFailure: true });
 assert.notEqual(missingSkill.code, 0);
-assert.equal(JSON.parse(missingSkill.stdout).success, false);
+const missingSkillJson = JSON.parse(missingSkill.stdout);
+assert.equal(missingSkillJson.success, false);
+assertAgentSkillsCommand(missingSkillJson, ["zero", "skills", "get", "--json", "missing"]);
 
 const removedSkillsPath = zero(["skills", "path", "zero", "--json"], { allowFailure: true });
 assert.notEqual(removedSkillsPath.code, 0);
@@ -4096,6 +5618,7 @@ assert.match(JSON.parse(badSkillsGetFlag.stdout).error, /Unknown skills flag: --
 
 const lexerTokens = json(["tokens", "--json", "conformance/lexer/compiler-smoke.0"]).body;
 assert.equal(lexerTokens.schemaVersion, 1);
+assertAgentTokensCommand(lexerTokens, "conformance/lexer/compiler-smoke.0");
 assert.equal(lexerTokens.syntax, "canonical");
 assert.match(lexerTokens.sourceFile, /compiler-smoke\.0$/);
 assert.deepEqual(lexerTokens.tokens.slice(0, 4).map((token) => `${token.kind}:${token.text}`), [
@@ -4113,7 +5636,8 @@ assert.equal(lexerTokens.tokens[0].line, 1);
 assert.equal(lexerTokens.tokens[0].column, 1);
 assert.equal(lexerTokens.tokens[0].offset, 0);
 assert.equal(lexerTokens.tokens[0].length, 3);
-assert.equal(lexerTokens.tokens[5].offset, 12);
+assert.equal(lexerTokens.tokens[4].offset, 12);
+assert.equal(lexerTokens.tokens[5].kind, "newline");
 assert.equal(lexerTokens.tokens[5].length, 1);
 assert.equal(lexerTokens.tokens[8].kind, "word");
 assert.equal(lexerTokens.tokens[8].text, "main");
@@ -4124,6 +5648,7 @@ assert.equal(lexerTokens.tokens.at(-1).length, 0);
 
 const parseTree = json(["parse", "--json", "conformance/parse/compiler-smoke.0"]).body;
 assert.equal(parseTree.schemaVersion, 1);
+assertAgentParseCommand(parseTree, "conformance/parse/compiler-smoke.0");
 assert.equal(parseTree.root.kind, "module");
 assert.equal(parseTree.root.shapeCount, 1);
 assert.equal(parseTree.root.enumCount, 1);
@@ -4195,6 +5720,19 @@ assert.equal(unsupportedPackageRejected.body.diagnostics[0].expected, ".0 source
 
 const testJson = json(["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.0"]).body;
 assert.equal(testJson.schemaVersion, 1);
+assertAgentTestCommand(testJson, {
+  argv: ["zero", "test", "--json", "--target", version.host, "--filter", "addition", "conformance/native/pass/test-blocks.0"],
+  input: "conformance/native/pass/test-blocks.0",
+  target: version.host,
+});
+const testProfileJson = json(["test", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--filter", "addition", "conformance/native/pass/test-blocks.0"]).body;
+assertAgentTestCommand(testProfileJson, {
+  argv: ["zero", "test", "--json", "--target", "linux-musl-x64", "--profile", "audit", "--filter", "addition", "conformance/native/pass/test-blocks.0"],
+  input: "conformance/native/pass/test-blocks.0",
+  target: "linux-musl-x64",
+  profile: "audit",
+});
+assert.equal(testProfileJson.profile, "audit");
 assert.equal(testJson.ok, true);
 assert.match(testJson.stdout, /1 test\(s\) ok/);
 assert.equal(testJson.testBackend, "direct-frontend");
@@ -4209,6 +5747,12 @@ const packageTestJson = json(["test", "--json", "conformance/packages/test-app"]
 assert.equal(packageTestJson.ok, true);
 assertSourceGraph(packageTestJson, "conformance/packages/test-app/src/main.0", "package:test-app@0.1.0");
 assert.equal(packageTestJson.testDiscovery.mode, "package-graph");
+assertAgentTestCommand(packageTestJson, {
+  argv: ["zero", "test", "--json", "--target", version.host, "conformance/packages/test-app"],
+  input: "conformance/packages/test-app",
+  target: version.host,
+});
+assert.equal(packageTestJson.testDiscovery.mode, "package");
 assert.equal(packageTestJson.discoveredTests, 3);
 assert.equal(packageTestJson.expectedFailures, 1);
 assert(packageTestJson.fixtures.sourceFiles.some((path) => path.endsWith("helper.0")));
@@ -4218,7 +5762,32 @@ assert.equal(expectedFailTestJson.ok, true);
 assert.equal(expectedFailTestJson.expectedFailures, 1);
 assert.equal(expectedFailTestJson.results[0].status, "expected-fail");
 
-assert.match(zero(["fmt", "--check", "conformance/native/pass/test-blocks.0"]).stdout, /fmt ok/);
+const fmtCheckFixture = join(outDir, "fmt-check-test-blocks.0");
+writeFileSync(fmtCheckFixture, readFileSync("conformance/native/pass/test-blocks.0", "utf8").replace(/\r\n/g, "\n"));
+assert.match(zero(["fmt", "--check", fmtCheckFixture]).stdout, /fmt ok/);
+const fmtJson = json(["fmt", "--json", fmtCheckFixture]).body;
+assertAgentFmtCommand(fmtJson, fmtCheckFixture);
+assert.equal(fmtJson.ok, true);
+assert.equal(fmtJson.check, false);
+assert.equal(fmtJson.matches, true);
+assert.equal(fmtJson.sourceBytes, fmtJson.formattedBytes);
+assert.match(fmtJson.formatted, /test "addition works"/);
+const fmtCheckJson = json(["fmt", "--json", "--check", fmtCheckFixture]).body;
+assertAgentFmtCommand(fmtCheckJson, fmtCheckFixture, true);
+assert.equal(fmtCheckJson.ok, true);
+assert.equal(fmtCheckJson.check, true);
+assert.equal(fmtCheckJson.matches, true);
+const fmtCheckFailureFixture = join(outDir, "fmt-check-failure.0");
+writeFileSync(fmtCheckFailureFixture, "pub fn main(world: World)->Void raises{check world.out.write(\"hello from zero\\n\")}\n");
+const fmtCheckFailureJson = json(["fmt", "--json", "--check", fmtCheckFailureFixture], { allowFailure: true });
+assert.notEqual(fmtCheckFailureJson.code, 0);
+assert.equal(fmtCheckFailureJson.body.ok, false);
+assert.equal(fmtCheckFailureJson.body.diagnostics[0].code, "FMT001");
+assert.equal(fmtCheckFailureJson.body.failure.class, "format-diff");
+assert.equal(fmtCheckFailureJson.body.failure.retryCommands[0].purpose, "format-preview");
+assert.deepEqual(fmtCheckFailureJson.body.failure.retryCommands[0].argv, ["zero", "fmt", "--json", fmtCheckFailureFixture]);
+assert.equal(fmtCheckFailureJson.body.failure.retryCommands[1].purpose, "source-check");
+assert.deepEqual(fmtCheckFailureJson.body.recommendedNextCommands[0].argv, fmtCheckFailureJson.body.failure.retryCommands[0].argv);
 
 const unknownFlag = zero(["check", "--jsoon", "examples/hello.0"], { allowFailure: true });
 assert.notEqual(unknownFlag.code, 0);
@@ -4233,6 +5802,52 @@ assert(existsSync(cleanProbe));
 const clean = zero(["clean"]).stdout;
 assert.match(clean, /removed:/);
 assert(!existsSync(cleanProbe));
+const cleanJsonProbe = join(".zero", "out", "contract-clean-json", "tmp.txt");
+mkdirSync(join(".zero", "out", "contract-clean-json"), { recursive: true });
+writeFileSync(cleanJsonProbe, "tmp");
+assert(existsSync(cleanJsonProbe));
+const cleanJson = json(["clean", "--json"]).body;
+assert.equal(cleanJson.ok, true);
+assert.equal(cleanJson.all, false);
+assertAgentCleanCommand(cleanJson);
+assert.equal(cleanJson.removedRoots[0].path, ".zero/out");
+assert.equal(cleanJson.removedRoots[0].existedBefore, true);
+assert.equal(cleanJson.removedRoots[0].existsAfter, false);
+assert(cleanJson.removed.some((item) => item.endsWith("contract-clean-json/tmp.txt") || item.endsWith("contract-clean-json\\tmp.txt")));
+assert(!existsSync(cleanJsonProbe));
+const cleanFailureJson = json(["clean", "--json"], { allowFailure: true, env: { ZERO_CLEAN_TEST_FAIL_PATH: ".zero/out" } });
+assert.notEqual(cleanFailureJson.code, 0);
+assert.equal(cleanFailureJson.body.failedPath, ".zero/out");
+assert.equal(cleanFailureJson.body.failure.class, "artifact-clean-failed");
+assert.equal(cleanFailureJson.body.failure.externalRestoreRequired, true);
+assert.equal(cleanFailureJson.body.failure.retryCommands[0].purpose, "clean-audit");
+assert.deepEqual(cleanFailureJson.body.failure.retryCommands[0].argv, ["zero", "clean", "--json"]);
+assert.deepEqual(cleanFailureJson.body.recommendedNextCommands[0].argv, cleanFailureJson.body.failure.retryCommands[0].argv);
+
+const newJsonProject = join(outDir, "new-json-cli");
+rmSync(newJsonProject, { recursive: true, force: true });
+const newJson = json(["new", "--json", "cli", newJsonProject]).body;
+assert.equal(newJson.ok, true);
+assert.equal(newJson.template, "cli");
+assert.equal(newJson.project.path, newJsonProject);
+assert(newJson.project.files.includes("zero.json"));
+assert(newJson.project.files.includes("src/main.0"));
+assertAgentNewCommand(newJson, { kind: "cli", path: newJsonProject });
+const newPathExistsJson = json(["new", "--json", "cli", newJsonProject], { allowFailure: true });
+assert.notEqual(newPathExistsJson.code, 0);
+assert.equal(newPathExistsJson.body.failure.class, "path-exists");
+assert.equal(newPathExistsJson.body.failure.retryCommands[0].purpose, "choose-new-project-path");
+assert.deepEqual(newPathExistsJson.body.failure.retryCommands[0].argv, ["zero", "new", "--json", "cli", "<new-project-path>"]);
+assert.deepEqual(newPathExistsJson.body.recommendedNextCommands[0].argv, newPathExistsJson.body.failure.retryCommands[0].argv);
+const newUnknownTemplateJson = json(["new", "--json", "service", join(outDir, "new-service")], { allowFailure: true });
+assert.notEqual(newUnknownTemplateJson.code, 0);
+assert.equal(newUnknownTemplateJson.body.failure.class, "unknown-template");
+assert.deepEqual(newUnknownTemplateJson.body.failure.expected, ["cli", "lib", "package"]);
+assert.equal(newUnknownTemplateJson.body.failure.retryCommands.length, 3);
+assert(newUnknownTemplateJson.body.failure.retryCommands.some((command) => JSON.stringify(command.argv) === JSON.stringify(["zero", "new", "--json", "cli", join(outDir, "new-service")])));
+assert.equal(newUnknownTemplateJson.body.recommendedNextCommands[0].purpose, "choose-template");
+zero(["check", newJsonProject]);
+zero(["test", newJsonProject]);
 
 for (const kind of ["cli", "lib", "package"]) {
   const project = join(outDir, `new-${kind}`);
@@ -4252,9 +5867,27 @@ for (const kind of ["cli", "lib", "package"]) {
   }
   const devReport = json(["dev", "--json", "--target", "linux-musl-x64", project]).body;
   assertDevReport(devReport, kind);
+  assertAgentDevCommand(devReport, { input: project, target: "linux-musl-x64" });
+  const devProfileReport = json(["dev", "--json", "--target", "linux-musl-x64", "--profile", "audit", project]).body;
+  assertAgentDevCommand(devProfileReport, { input: project, target: "linux-musl-x64", profile: "audit" });
+  assert.equal(devProfileReport.profile, "audit");
+  const timeReport = json(["time", "--json", "--target", "linux-musl-x64", project]).body;
+  assertAgentTimeCommand(timeReport, { input: project, target: "linux-musl-x64" });
+  const timeProfileReport = json(["time", "--json", "--target", "linux-musl-x64", "--profile", "audit", project]).body;
+  assertAgentTimeCommand(timeProfileReport, { input: project, target: "linux-musl-x64", profile: "audit" });
+  assert.equal(timeProfileReport.profile, "audit");
+  if (kind === "cli") {
+    const devTraceReport = json(["dev", "--json", "--trace", "--target", "linux-musl-x64", project]).body;
+    assertAgentDevCommand(devTraceReport, { input: project, target: "linux-musl-x64", trace: true });
+    assert.equal(devTraceReport.trace.requested, true);
+  }
   if (kind === "lib") {
     const docReport = json(["doc", "--json", project]).body;
     assert.equal(docReport.schemaVersion, 1);
+    assertAgentDocCommand(docReport, project, version.host);
+    const docProfileReport = json(["doc", "--json", "--target", "linux-musl-x64", "--profile", "audit", project]).body;
+    assertAgentDocCommand(docProfileReport, project, "linux-musl-x64", "audit");
+    assert.equal(docProfileReport.profile, "audit");
     assert.equal(docReport.generatedCBytes, 0);
   }
   if (kind === "lib") {
@@ -4267,9 +5900,9 @@ for (const kind of ["cli", "lib", "package"]) {
     assert.equal(templateBuild.objectBackend.objectEmission.path, "direct-elf64-exe");
     const shipOut = join(project, "ship-app");
     const firstShip = json(["ship", "--json", "--target", "linux-musl-x64", project, "--out", shipOut]).body;
-    assertShipReport(firstShip, shipOut);
+    assertShipReport(firstShip, shipOut, project);
     const secondShip = json(["ship", "--json", "--target", "linux-musl-x64", project, "--out", shipOut]).body;
-    assertShipReport(secondShip, shipOut);
+    assertShipReport(secondShip, shipOut, project);
     assert.equal(secondShip.checksum.value, firstShip.checksum.value);
     assert.equal(secondShip.artifactBytes, firstShip.artifactBytes);
   }
@@ -4291,6 +5924,12 @@ assert.equal(profileCacheCheck.incrementalInvalidation.profileDependency, "fast"
 assert.equal(existsSync(join(".zero", "cache", "native", `specialization-${profileCacheSpecialization.key}.cache`)), true);
 const buildReport = json(["build", "--json", "--target", "linux-musl-x64", "examples/hello.0", "--out", join(outDir, "hello-linux-report")]).body;
 assert.equal(buildReport.schemaVersion, 1);
+assertAgentBuildCommand(buildReport, {
+  argv: ["zero", "build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "--profile", "release", "--out", join(outDir, "hello-linux-report"), "examples/hello.0"],
+  input: "examples/hello.0",
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert.equal(buildReport.emit, "exe");
 assert.equal(buildReport.hostTarget, version.host);
 assert.equal(buildReport.target, "linux-musl-x64");
@@ -4307,6 +5946,14 @@ assert.equal(buildReport.safetyFacts.bounds.optimizerElision, false);
 assert.equal(buildReport.safetyFacts.overflow.policy, "literal-range-checked-runtime-unchecked");
 assert.equal(buildReport.safetyFacts.initialization.locals, "initializer-required");
 assert.equal(buildReport.safetyFacts.initialization.maybePayloadReads, "guard-checked");
+const packageBuildReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "--profile", "release", "examples/memory-package", "--out", join(outDir, "memory-package-build-contract.o")]).body;
+assert.equal(packageBuildReport.sourceFile.endsWith("examples\\memory-package/src/main.0") || packageBuildReport.sourceFile.endsWith("examples/memory-package/src/main.0"), true);
+assertAgentBuildCommand(packageBuildReport, {
+  argv: ["zero", "build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "--profile", "release", "--out", join(outDir, "memory-package-build-contract.o"), "examples/memory-package"],
+  input: "examples/memory-package",
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert.equal(buildReport.safetyFacts.aliasing.mutableAliases, "diagnostic");
 assert.equal(buildReport.safetyFacts.mir.invalidMemoryContractsBlockEmission, true);
 assert.equal(buildReport.profileBudget.cBridgeFallback, false);
@@ -4352,6 +5999,12 @@ for (const [requestedProfile, canonicalProfile, profileKey] of [
 }
 
 const profileSizeReport = json(["size", "--json", "--profile", "debug", "--target", "linux-musl-x64", "examples/memory-primitives.0"]).body;
+assertAgentSizeCommand(profileSizeReport, {
+  argv: ["zero", "size", "--json", "--target", "linux-musl-x64", "--profile", "debug", "examples/memory-primitives.0"],
+  input: "examples/memory-primitives.0",
+  target: "linux-musl-x64",
+  profile: "debug",
+});
 assert.equal(profileSizeReport.profileSemantics.profileKey, "debug");
 assert.equal(profileSizeReport.safetyFacts.profileKey, "debug");
 assert.equal(profileSizeReport.safetyFacts.uncheckedSurfaces[0].policy, "externally-trusted");
@@ -6002,6 +7655,30 @@ for (const key of ["code", "path", "line", "column", "length", "expected", "actu
   assert.equal(directExeBlockedBuild.body.diagnostics[0][key], directExeBlockedReadiness.targetReadiness.diagnostics[0][key]);
 }
 assert.equal(directExeBlockedBuild.body.diagnostics[0].backendBlocker.stage, "buildability");
+assert.equal(directExeBlockedBuild.body.agentCommand.kind, "agent-build-failure-command-contract");
+assert.equal(directExeBlockedBuild.body.agentCommand.failure.class, "target-buildability");
+assert.equal(directExeBlockedBuild.body.agentCommand.failure.backendBlockerField, "diagnostics[].backendBlocker");
+assert.equal(directExeBlockedBuild.body.agentCommand.recommendedNextCommands[0].purpose, "source-check");
+assert.deepEqual(directExeBlockedBuild.body.agentCommand.recommendedNextCommands[0].argv, ["zero", "check", "--json", "--emit", "exe", "--target", "linux-musl-x64", "--profile", "release", "examples/direct-call-add.0"]);
+assert.equal(directExeBlockedBuild.body.agentCommand.recommendedNextCommands[1].purpose, "target-selection");
+assert.equal(directExeBlockedBuild.body.agentCommand.recommendedNextCommands[2].purpose, "doctor");
+assert.equal(directExeBlockedBuild.body.agentCommand.recommendedNextCommands[3].purpose, "graph-inspect");
+assert(directExeBlockedBuild.body.agentCommand.recommendedNextCommands[3].resultFields.includes("programGraph.nodes[].nodeHash"));
+const directExeBlockedGraphPath = join(outDir, "direct-call-add.program-graph");
+json(["graph", "dump", "--json", "--out", directExeBlockedGraphPath, "examples/direct-call-add.0"]);
+const directExeBlockedGraphBuild = json(["graph", "build", "--json", "--emit", "exe", "--target", "linux-musl-x64", directExeBlockedGraphPath, "--out", join(outDir, "direct-call-add-graph-blocked")], { allowFailure: true });
+assert.notEqual(directExeBlockedGraphBuild.code, 0);
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.kind, "agent-graph-build-failure-command-contract");
+assert.deepEqual(directExeBlockedGraphBuild.body.agentCommand.command.argv, ["zero", "graph", "build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "--profile", "release", directExeBlockedGraphPath]);
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.failure.class, "target-buildability");
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.failure.backendBlockerField, "diagnostics[].backendBlocker");
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[0].purpose, "graph-check");
+assert.deepEqual(directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[0].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "release", directExeBlockedGraphPath]);
+assert(directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[0].resultFields.includes("programGraph.graphHash"));
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[1].purpose, "target-selection");
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[2].purpose, "doctor");
+assert.equal(directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[3].purpose, "graph-inspect");
+assert.deepEqual(directExeBlockedGraphBuild.body.agentCommand.verificationCommands[0].argv, directExeBlockedGraphBuild.body.agentCommand.recommendedNextCommands[0].argv);
 const directExeBlockedGraph = json(["graph", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-call-add.0"]).body;
 assert.equal(directExeBlockedGraph.targetReadiness.ok, false);
 assert.equal(directExeBlockedGraph.targetReadiness.diagnostics[0].code, "BLD004");
@@ -6164,9 +7841,40 @@ const diagnostics = [
   assert.equal(diagnostic.code, code);
   assert.equal(typeof diagnostic.fixSafety, "string");
   assert.equal(typeof diagnostic.repair.id, "string");
+  assert.equal(diagnostic.repair.agentRepair.kind, "diagnostic-repair-entrypoint");
+  assert.equal(diagnostic.repair.agentRepair.safeDefault, "plan");
+  assert.equal(diagnostic.repair.agentRepair.transactionContract, "agentTransaction");
+  assert.equal(diagnostic.repair.agentRepair.commands[0].purpose, "repair-plan");
+  assert.equal(diagnostic.repair.agentRepair.commands[0].required, true);
+  assert.deepEqual(diagnostic.repair.agentRepair.commands[0].argv, ["zero", "fix", "--plan", "--json", diagnostic.path]);
+  assert.equal(diagnostic.repair.agentRepair.commands[1].purpose, "repair-patch");
+  assert.equal(diagnostic.repair.agentRepair.commands[1].required, false);
+  assert.deepEqual(diagnostic.repair.agentRepair.commands[1].argv, ["zero", "fix", "--patch", "--json", diagnostic.path]);
+  assert.equal(diagnostic.repair.agentRepair.commands[2].purpose, "repair-apply");
+  assert.equal(diagnostic.repair.agentRepair.commands[2].required, false);
+  assert.deepEqual(diagnostic.repair.agentRepair.commands[2].argv, ["zero", "fix", "--apply", "--json", diagnostic.path]);
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.command.argv"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.rollback.actions[]"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.rollback.actions[].kind"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.rollback.actions[].pathField"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.rollback.verificationCommands"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.rollback.verificationCommands[].purpose"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.rollback.verificationCommands[].required"));
+  assert(diagnostic.repair.agentRepair.resultFields.includes("agentTransaction.failure.retryCommands"));
   assert.equal(typeof diagnostic.expected, "string");
   assert.equal(typeof diagnostic.actual, "string");
   assert.equal(Array.isArray(diagnostic.related), true);
+  assert.equal(diagnostic.graphLookup.kind, "diagnostic-to-program-graph-lookup");
+  assert.equal(diagnostic.graphLookup.commands[0].purpose, "graph-inspect");
+  assert.equal(diagnostic.graphLookup.commands[0].required, true);
+  assert.deepEqual(diagnostic.graphLookup.commands[0].argv, ["zero", "graph", "inspect", "--json", diagnostic.path]);
+  assert.equal(diagnostic.graphLookup.commands[1].purpose, "graph-check");
+  assert.equal(diagnostic.graphLookup.commands[1].required, true);
+  assert.deepEqual(diagnostic.graphLookup.commands[1].argv, ["zero", "graph", "check", "--json", diagnostic.path]);
+  assert.equal(diagnostic.graphLookup.spanMatch.path, diagnostic.path);
+  assert.equal(diagnostic.graphLookup.spanMatch.line, diagnostic.line);
+  assert.equal(diagnostic.graphLookup.spanMatch.column, diagnostic.column);
+  assert(diagnostic.graphLookup.spanMatch.nodeFields.includes("programGraph.nodes[].path"));
   return {
     code,
     fixSafety: diagnostic.fixSafety,
@@ -6177,11 +7885,310 @@ const diagnostics = [
     relatedCount: diagnostic.related.length,
   };
 });
+const targetGraphLookupDiagnostic = json(["check", "--json", "--target", "linux-musl-x64", "--profile", "dev", "conformance/check/fail/unknown-name.0"], { allowFailure: true }).body.diagnostics[0];
+assert.deepEqual(targetGraphLookupDiagnostic.repair.agentRepair.commands[0].argv, ["zero", "fix", "--plan", "--json", "--target", "linux-musl-x64", "--profile", "dev", targetGraphLookupDiagnostic.path]);
+assert.deepEqual(targetGraphLookupDiagnostic.repair.agentRepair.commands[1].argv, ["zero", "fix", "--patch", "--json", "--target", "linux-musl-x64", "--profile", "dev", targetGraphLookupDiagnostic.path]);
+assert.deepEqual(targetGraphLookupDiagnostic.repair.agentRepair.commands[2].argv, ["zero", "fix", "--apply", "--json", "--target", "linux-musl-x64", "--profile", "dev", targetGraphLookupDiagnostic.path]);
+assert.equal(targetGraphLookupDiagnostic.graphLookup.commands[0].purpose, "graph-inspect");
+assert.equal(targetGraphLookupDiagnostic.graphLookup.commands[0].required, true);
+assert.deepEqual(targetGraphLookupDiagnostic.graphLookup.commands[0].argv, ["zero", "graph", "inspect", "--json", "--target", "linux-musl-x64", "--profile", "dev", targetGraphLookupDiagnostic.path]);
+assert.equal(targetGraphLookupDiagnostic.graphLookup.commands[1].purpose, "graph-check");
+assert.equal(targetGraphLookupDiagnostic.graphLookup.commands[1].required, true);
+assert.deepEqual(targetGraphLookupDiagnostic.graphLookup.commands[1].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", targetGraphLookupDiagnostic.path]);
+const targetRecoverableGraph = json(["graph", "inspect", "--json", "--target", "linux-musl-x64", "--profile", "dev", "examples/agent-repair-demo/broken.0"], { allowFailure: true }).body;
+assert.equal(targetRecoverableGraph.agentRecovery.kind, "recoverable-program-graph");
+assert.equal(targetRecoverableGraph.agentRecovery.verificationCommands[0].purpose, "source-check");
+assert.equal(targetRecoverableGraph.agentRecovery.verificationCommands[0].required, true);
+assert.deepEqual(targetRecoverableGraph.agentRecovery.verificationCommands[0].argv, ["zero", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", "examples/agent-repair-demo/broken.0"]);
+assert.equal(targetRecoverableGraph.agentRecovery.verificationCommands[1].purpose, "graph-check");
+assert.equal(targetRecoverableGraph.agentRecovery.verificationCommands[1].required, true);
+assert.deepEqual(targetRecoverableGraph.agentRecovery.verificationCommands[1].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", "examples/agent-repair-demo/broken.0"]);
+
+const graphRepairContractPath = join(outDir, "agent-graph-candidate-contract.0");
+writeFileSync(graphRepairContractPath, readFileSync("examples/agent-repair-demo/broken.0", "utf8"));
+const graphRepairPlan = json(["fix", "--plan", "--json", graphRepairContractPath]).body;
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.input"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.command.argv"));
+assert.deepEqual(graphRepairPlan.agentTransaction.command.argv, ["zero", "fix", "--plan", "--json", graphRepairContractPath]);
+const graphRepairTargetPlan = json(["fix", "--plan", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath]).body;
+assert.deepEqual(graphRepairTargetPlan.agentTransaction.command.argv, ["zero", "fix", "--plan", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath]);
+assert.equal(graphRepairTargetPlan.agentTransaction.verificationCommands[0].purpose, "source-check");
+assert.equal(graphRepairTargetPlan.agentTransaction.verificationCommands[0].required, true);
+assert.deepEqual(graphRepairTargetPlan.agentTransaction.verificationCommands[0].argv, ["zero", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath]);
+assert.equal(graphRepairTargetPlan.agentTransaction.verificationCommands[1].purpose, "graph-check");
+assert.equal(graphRepairTargetPlan.agentTransaction.verificationCommands[1].required, true);
+assert.deepEqual(graphRepairTargetPlan.agentTransaction.verificationCommands[1].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath]);
+assert.deepEqual(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].command.argv, ["zero", "graph", "patch", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath, "<patch-file>"]);
+assert.equal(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].verificationCommands[0].purpose, "source-check");
+assert.equal(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].verificationCommands[0].required, true);
+assert.deepEqual(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].verificationCommands[0].argv, ["zero", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath]);
+assert.equal(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].verificationCommands[1].purpose, "graph-check");
+assert.equal(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].verificationCommands[1].required, true);
+assert.deepEqual(graphRepairTargetPlan.fixes[0].graphPatchCandidates[0].verificationCommands[1].argv, ["zero", "graph", "check", "--json", "--target", "linux-musl-x64", "--profile", "dev", graphRepairContractPath]);
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.diagnosticCode"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.repairId"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.proofLedger"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.proofLedger.phases[].phase"));
+assert(graphRepairPlan.agentTransaction.proofLedger.phaseOrder.includes("verify"));
+assert.equal(graphRepairPlan.agentTransaction.proofLedger.kind, "repair-transaction-proof-ledger");
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.failure.class"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.failure.retryable"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.failure.retryCommands"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.failure.retryCommands[].purpose"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.failure.retryCommands[].required"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.retryCommandContracts"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.failure.applied"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.rollback.restoreFields"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[]"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[].kind"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[].pathField"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.rollback.actions[].oldTextField"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.verificationCommands[].purpose"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.verificationCommands[].required"));
+assert(graphRepairPlan.agentTransaction.resultFields.includes("agentTransaction.writePolicy"));
+assert.equal(graphRepairPlan.agentTransaction.writePolicy, "preview-only");
+assert.deepEqual(graphRepairPlan.agentTransaction.rollback.restoreFields, ["patches[].path", "patches[].line", "patches[].old"]);
+assert.equal(graphRepairPlan.agentTransaction.rollback.actions[0].kind, "restore-line");
+assert.equal(graphRepairPlan.agentTransaction.rollback.actions[0].pathField, "patches[].path");
+assert.equal(graphRepairPlan.agentTransaction.rollback.actions[0].lineField, "patches[].line");
+assert.equal(graphRepairPlan.agentTransaction.rollback.actions[0].oldTextField, "patches[].old");
+assert.equal(graphRepairPlan.agentTransaction.rollback.actions[0].condition, "before-retry-or-after-failed-apply");
+assert.equal(graphRepairPlan.agentTransaction.rollback.actions[0].requiresVerification, true);
+assert(graphRepairPlan.agentTransaction.failureClasses.some((item) => item.class === "unsupported-repair" && item.phase === "patch" && item.retryable === true && item.retryCommand === "zero fix --plan --json <input>"));
+assert(graphRepairPlan.agentTransaction.failureClasses.some((item) => item.class === "write-failed" && item.phase === "rewrite" && item.retryable === true && item.retryCommand === "zero fix --apply --json <input>"));
+assert.deepEqual(graphRepairPlan.agentTransaction.retryCommandContracts["source-unavailable"].argv, ["zero", "check", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graphRepairPlan.agentTransaction.retryCommandContracts["unsupported-repair"].commands[0].argv, ["zero", "fix", "--plan", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graphRepairPlan.agentTransaction.retryCommandContracts["unsupported-repair"].commands[1].argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graphRepairPlan.agentTransaction.retryCommandContracts["write-failed"].argv, ["zero", "fix", "--apply", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+const firstGraphCandidate = graphRepairPlan.fixes[0].graphPatchCandidates[0];
+assert.equal(firstGraphCandidate.kind, "checked-graph-patch-candidate");
+assert.equal(firstGraphCandidate.repairId, "make-binding-mutable");
+assert.equal(firstGraphCandidate.diagnosticCode, "TYP009");
+assert.equal(firstGraphCandidate.source, "recoverableProgramGraph");
+assert.equal(firstGraphCandidate.candidateContract.kind, "checked-graph-patch-candidate-contract");
+assert.equal(firstGraphCandidate.candidateContract.patchKind, "program-graph-patch-v1");
+assert.equal(firstGraphCandidate.candidateContract.commandField, "command.argv");
+assert.equal(firstGraphCandidate.candidateContract.patchTextField, "patch.text");
+assert.equal(firstGraphCandidate.candidateContract.requiresPatchFile, true);
+assert(firstGraphCandidate.candidateContract.stateFields.includes("patch.graphHash"));
+assert(firstGraphCandidate.candidateContract.auditFields.includes("preconditions"));
+assert.equal(firstGraphCandidate.candidateContract.resultContract, "agentQuery.checkedEditSurface.transactionContract");
+assert.deepEqual(firstGraphCandidate.command.argv, ["zero", "graph", "patch", "--json", graphRepairContractPath, "<patch-file>"]);
+assert.equal(graphRepairPlan.fixes[0].repairContract.verification[0].purpose, "source-check");
+assert.equal(graphRepairPlan.fixes[0].repairContract.verification[0].required, true);
+assert.equal(graphRepairPlan.fixes[0].repairContract.verification[1].purpose, "graph-check");
+assert.equal(graphRepairPlan.fixes[0].repairContract.verification[1].required, true);
+assert.match(firstGraphCandidate.patch.graphHash, /^graph:/);
+assert.equal(firstGraphCandidate.patch.operations[0].op, "set");
+assert.equal(firstGraphCandidate.patch.operations[0].targetKind, "Let");
+assert.equal(firstGraphCandidate.patch.operations[0].field, "mutable");
+assert.equal(firstGraphCandidate.patch.operations[0].expect, "false");
+assert.equal(firstGraphCandidate.patch.operations[0].value, "true");
+assert.equal(firstGraphCandidate.patch.text[0], "zero-program-graph-patch v1");
+assert.equal(firstGraphCandidate.patch.text[1], `expect graphHash "${firstGraphCandidate.patch.graphHash}"`);
+assert(firstGraphCandidate.patch.text[2].includes(`node="${firstGraphCandidate.patch.operations[0].node}"`));
+assert(firstGraphCandidate.preconditions.some((item) => item.includes("TYP009")));
+assert.deepEqual(firstGraphCandidate.verificationCommands[0].argv, ["zero", "check", "--json", graphRepairContractPath]);
+assert.deepEqual(firstGraphCandidate.verificationCommands[1].argv, ["zero", "graph", "check", "--json", graphRepairContractPath]);
+
+const graphRepairContractPatch = join(outDir, "agent-graph-candidate-contract.patch");
+writeFileSync(graphRepairContractPatch, `${firstGraphCandidate.patch.text.join("\n")}\n`);
+const graphRepairPatchResult = json(["graph", "patch", "--json", graphRepairContractPath, graphRepairContractPatch]).body;
+assert.equal(graphRepairPatchResult.ok, true);
+assert.equal(graphRepairPatchResult.agentTransaction.applied, true);
+assert.equal(graphRepairPatchResult.agentTransaction.originalGraphHash, firstGraphCandidate.patch.graphHash);
+
+const secondGraphRepairPlan = json(["fix", "--plan", "--json", graphRepairContractPath]).body;
+const secondGraphCandidate = secondGraphRepairPlan.fixes[0].graphPatchCandidates[0];
+assert.equal(secondGraphCandidate.kind, "checked-graph-patch-candidate");
+assert.equal(secondGraphCandidate.repairId, "match-binding-annotation");
+assert.equal(secondGraphCandidate.diagnosticCode, "TYP002");
+assert.equal(secondGraphCandidate.patch.operations[0].op, "changeLocalType");
+assert.equal(secondGraphCandidate.patch.operations[0].targetKind, "Let");
+assert.equal(secondGraphCandidate.patch.operations[0].expect, "i32");
+assert.equal(secondGraphCandidate.patch.operations[0].value, "usize");
+assert.equal(secondGraphCandidate.patch.text[1], `expect graphHash "${secondGraphCandidate.patch.graphHash}"`);
+assert.match(secondGraphCandidate.patch.text[2], /^changeLocalType node="#/);
+assert(secondGraphCandidate.preconditions.some((item) => item.includes("TYP002")));
+assert.deepEqual(secondGraphCandidate.verificationCommands[0].argv, ["zero", "check", "--json", graphRepairContractPath]);
+assert.deepEqual(secondGraphCandidate.verificationCommands[1].argv, ["zero", "graph", "check", "--json", graphRepairContractPath]);
+
+const duplicateFunctionRepairPath = join(outDir, "duplicate-function-repair-contract.0");
+writeFileSync(duplicateFunctionRepairPath, "fn duplicate() -> i32 {\n    return 1\n}\n\nfn duplicate() -> i32 {\n    return 2\n}\n\npub fn main() -> Void {\n}\n");
+const duplicateFunctionRepairPlan = json(["fix", "--plan", "--json", duplicateFunctionRepairPath]).body;
+assert.equal(duplicateFunctionRepairPlan.diagnostics[0].code, "NAM004");
+assert.equal(duplicateFunctionRepairPlan.fixes[0].id, "remove-duplicate-declaration");
+const duplicateFunctionCandidate = duplicateFunctionRepairPlan.fixes[0].graphPatchCandidates[0];
+assert.equal(duplicateFunctionCandidate.kind, "checked-graph-patch-candidate");
+assert.equal(duplicateFunctionCandidate.repairId, "remove-duplicate-declaration");
+assert.equal(duplicateFunctionCandidate.diagnosticCode, "NAM004");
+assert.equal(duplicateFunctionCandidate.patch.operations[0].op, "removeFunction");
+assert.equal(duplicateFunctionCandidate.patch.operations[0].targetKind, "Function");
+assert.equal(duplicateFunctionCandidate.patch.operations[0].expect, "duplicate");
+assert.equal(duplicateFunctionCandidate.evidence.targetNode.kind, "Function");
+assert.equal(duplicateFunctionCandidate.evidence.typedValues.field, "name");
+assert.equal(duplicateFunctionCandidate.patch.text[1], `expect graphHash "${duplicateFunctionCandidate.patch.graphHash}"`);
+assert.match(duplicateFunctionCandidate.patch.text[2], /^removeFunction node="#/);
+assert(duplicateFunctionCandidate.preconditions.includes("removeFunction rejects direct call sites"));
 
 const graph = json(["graph", "--json", "--target", "linux-musl-x64", "examples/memory-package"]).body;
 assert.equal(graph.schemaVersion, 1);
+assertAgentGraphCommand(graph, { mode: "inspect", argv: ["zero", "graph", "inspect", "--json", "--target", "linux-musl-x64", "--profile", "release", "examples/memory-package"] });
 assert.equal(graph.targetSupport.target, "linux-musl-x64");
 assert.equal(typeof graph.targetSupport.hostTarget, "string");
+assert.equal(graph.agentQuery.kind, "agent-program-graph-query-contract");
+assert.equal(graph.agentQuery.lookupSurfaces.symbol.command, "zero graph find --json --symbol <symbol-or-name> <input>");
+assert.equal(graph.agentQuery.lookupSurfaces.symbol.followup, "zero graph slice --json --node <node-id> <input>");
+assert(graph.agentQuery.lookupSurfaces.symbol.fields.includes("matches[].symbolId"));
+assert(graph.agentQuery.lookupSurfaces.symbol.fields.includes("matches[].nodeHash"));
+assert.equal(graph.agentQuery.lookupSurfaces.editImpact.command, "zero graph impact --json --node <node-id> <input>");
+assert(graph.agentQuery.lookupSurfaces.editImpact.fields.includes("directCallSites[].id"));
+assert(graph.agentQuery.lookupSurfaces.editImpact.useBefore.includes("removeFunction"));
+assert.equal(graph.agentQuery.lookupSurfaces.nodeNeighborhood.recommendedRadius, 1);
+assert.equal(graph.agentQuery.lookupSurfaces.nodeNeighborhood.command, "zero graph slice --json --node <node-id> <input>");
+assert(graph.agentQuery.lookupSurfaces.nodeNeighborhood.fields.includes("edges[].kind"));
+assert.equal(graph.agentQuery.lookupSurfaces.capability.command, "zero graph --json <input>");
+assert(graph.agentQuery.lookupSurfaces.capability.fields.includes("functions[].requiresCapabilities"));
+assert(graph.agentQuery.lookupSurfaces.capability.fields.includes("stdlibHelpers[].capability"));
+assert(graph.agentQuery.lookupSurfaces.capability.fields.includes("agentLookupIndexes.capabilities[]"));
+assert.equal(graph.agentQuery.lookupSurfaces.capability.indexField, "agentLookupIndexes.capabilities");
+assert.equal(graph.agentQuery.lookupSurfaces.diagnostic.command, "zero check --json <input>");
+assert.equal(graph.agentQuery.lookupSurfaces.diagnostic.repairPlanCommand, "zero fix --plan --json <input>");
+assert(graph.agentQuery.lookupSurfaces.diagnostic.fields.includes("diagnostics[].repair"));
+assert(graph.agentQuery.lookupSurfaces.diagnostic.fields.includes("diagnostics[].graphLookup"));
+assert.equal(graph.agentQuery.lookupSurfaces.diagnostic.graphLookupField, "diagnostics[].graphLookup");
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.symbol.argv, ["zero", "graph", "find", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--symbol", "<symbol-or-name>", "<input>"]);
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.symbolFollowup.argv, ["zero", "graph", "slice", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<node-id>", "<input>"]);
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.editImpact.argv, ["zero", "graph", "impact", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<node-id>", "<input>"]);
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.nodeNeighborhood.argv, ["zero", "graph", "slice", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "--node", "<node-id>", "<input>"]);
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.capability.argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.diagnostic.argv, ["zero", "check", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.lookupCommandContracts.diagnosticRepairPlan.argv, ["zero", "fix", "--plan", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.equal(graph.agentQuery.tokenStrategy.readFullSourceRequired, false);
+assert.equal(graph.agentQuery.repairLoop.start, "zero check --json <input>");
+assert.equal(graph.agentQuery.repairLoop.plan, "zero fix --plan --json <input>");
+assert.equal(graph.agentQuery.repairLoop.inspect, "zero graph inspect --json <input>");
+assert.equal(graph.agentQuery.repairLoop.patch, "zero graph patch --json <input> <patch-file>");
+assert.equal(graph.agentQuery.repairLoop.verify, "agentTransaction.verificationCommands[]");
+assert.equal(graph.agentQuery.repairLoop.retry, "agentTransaction.failure.retryCommands[]");
+assert.equal(graph.agentQuery.repairLoop.operationRetry, "operations[].retryCommands[]");
+assert.deepEqual(graph.agentQuery.repairLoop.commandContracts.start.argv, ["zero", "check", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.repairLoop.commandContracts.plan.argv, ["zero", "fix", "--plan", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.repairLoop.commandContracts.inspect.argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.repairLoop.commandContracts.patch.argv, ["zero", "graph", "patch", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>", "<patch-file>"]);
+assert(graph.agentQuery.repairLoop.stateFields.includes("programGraph.graphHash"));
+assert(graph.agentQuery.repairLoop.stateFields.includes("agentTransaction.patchedGraphHash"));
+assert(graph.agentQuery.repairLoop.auditFields.includes("diagnostics[].graphLookup"));
+assert(graph.agentQuery.repairLoop.auditFields.includes("agentTransaction.phaseAudit"));
+assert(graph.agentQuery.repairLoop.auditFields.includes("agentTransaction.proofLedger"));
+assert(graph.agentQuery.repairLoop.auditFields.includes("agentTransaction.proofLedger.phases[].status"));
+assert(graph.agentQuery.repairLoop.auditFields.includes("operations[].retryCommands"));
+assert.equal(graph.agentQuery.checkedEditSurface.command, "zero graph patch --json");
+assert.equal(graph.agentQuery.checkedEditSurface.transactionContract.kind, "compiler-mediated-graph-patch-transaction");
+assert(graph.agentQuery.checkedEditSurface.transactionContract.phases.includes("verify"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.applied"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.command.argv"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.originalGraphHash"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.patchedGraphHash"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.operationCount"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.patchContract"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.savedPath"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.applied"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.actions[]"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.actions[].kind"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.actions[].pathField"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.actions[].savedKind"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.failure.code"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.failure.class"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.failure.retryCommands"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.failure.retryCommands[].purpose"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.failure.retryCommands[].required"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.verificationCommands[].resultFields"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("agentTransaction.rollback.verificationCommands[].resultFields"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("operations[].retryCommands"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.resultFields.includes("operations[].retryCommands[].purpose"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.failureClasses.some((item) => item.code === "GPH001" && item.class === "invalid-patch" && item.phase === "parse" && item.retryable === true && item.retryCommand === "zero graph inspect --json <input>"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.failureClasses.some((item) => item.code === "GPH002" && item.class === "stale-graph" && item.phase === "inspect" && item.retryable === true && item.retryCommand === "zero graph dump --json <input>"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.failureClasses.some((item) => item.code === "GPH003" && item.class === "invalid-patch-value" && item.phase === "patch" && item.retryable === true && item.retryCommand === "zero graph inspect --json <input>"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.failureClasses.some((item) => item.code === "GPH004" && item.class === "missing-graph-target" && item.phase === "patch" && item.retryable === true && item.retryCommand === "zero graph inspect --json <input>"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.failureClasses.some((item) => item.code === "GPH005" && item.class === "precondition-failed" && item.phase === "patch" && item.retryable === true && item.retryCommand === "operations[].retryCommands[] graph-impact"));
+assert(graph.agentQuery.checkedEditSurface.transactionContract.failureClasses.some((item) => item.code === "GPH006" && item.class === "invalid-result-graph" && item.phase === "validate" && item.retryable === false && item.retryCommand === null));
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.retryCommandContracts.GPH001.argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.retryCommandContracts.GPH002.argv, ["zero", "graph", "dump", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.retryCommandContracts.GPH004.argv, ["zero", "graph", "inspect", "--json", "--target", "<same-target>", "--profile", "<same-profile>", "<input>"]);
+assert.equal(graph.agentQuery.checkedEditSurface.transactionContract.retryCommandContracts.GPH005.argvField, "operations[].retryCommands[].argv");
+assert.equal(graph.agentQuery.checkedEditSurface.transactionContract.retryCommandContracts.GPH006, null);
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.savedKind, ["source", "artifact"]);
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.actions[0], {
+  kind: "restore-path-from-vcs",
+  pathField: "agentTransaction.rollback.savedPath",
+  savedKind: "source",
+  condition: "before-retry-or-after-failed-save-verification",
+  requiresVerification: true,
+});
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.actions[1], {
+  kind: "replace-or-delete-artifact",
+  pathField: "agentTransaction.rollback.savedPath",
+  savedKind: "artifact",
+  condition: "created-or-replaced-by-command",
+  requiresVerification: true,
+});
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.sourceVerification, ["zero check --json <path>", "zero graph check --json <path>"]);
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.artifactVerification, ["zero graph validate --json <path>", "zero graph check --json <path>"]);
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.sourceVerificationCommands[0], { purpose: "rollback-source-check", required: true, argv: ["zero", "check", "--json", "<path>"], resultFields: ["ok", "diagnostics", "agentCommand.verificationCommands"] });
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.sourceVerificationCommands[1], { purpose: "rollback-graph-check", required: true, argv: ["zero", "graph", "check", "--json", "<path>"], resultFields: ["ok", "diagnostics", "graphHash", "agentCommand.verificationCommands"] });
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.artifactVerificationCommands[0], { purpose: "rollback-artifact-validate", required: true, argv: ["zero", "graph", "validate", "--json", "<path>"], resultFields: ["ok", "graphHash", "validation.ok", "agentCommand.verificationCommands"] });
+assert.deepEqual(graph.agentQuery.checkedEditSurface.transactionContract.rollback.artifactVerificationCommands[1], { purpose: "rollback-graph-check", required: true, argv: ["zero", "graph", "check", "--json", "<path>"], resultFields: ["ok", "diagnostics", "graphHash", "agentCommand.verificationCommands"] });
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("addImport"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("addFunction"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("addParam"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("removeParam"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("removeFunction"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("removeImport"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("replaceImport"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("renameImportAlias"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("changeReturnType"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("changeParamType"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("renameSymbol"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("renameParam"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("renameLocal"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("renameField"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("changeFieldType"));
+assert(graph.agentQuery.checkedEditSurface.supportedOperations.includes("changeLocalType"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "addImport" && contract.required.includes("name")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "addFunction" && JSON.stringify(contract.required) === JSON.stringify(["name", "type"])));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "addFunction" && contract.creates.includes("Return and Literal child for non-Void functions")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "addParam" && JSON.stringify(contract.required) === JSON.stringify(["node", "name", "type"])));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "addParam" && contract.updates.includes("direct Call arg lists when value is supplied")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "removeParam" && JSON.stringify(contract.required) === JSON.stringify(["node"])));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "removeParam" && contract.rejects.includes("parameter still used in function body")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "removeFunction" && JSON.stringify(contract.required) === JSON.stringify(["node"])));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "removeFunction" && contract.targetKinds.includes("Function") && contract.rejects.includes("direct call sites")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "removeImport" && contract.targetKinds.includes("Import")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "removeImport" && JSON.stringify(contract.requiredAny) === JSON.stringify([["node"], ["name"]])));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "replaceImport" && contract.required.includes("value")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "replaceImport" && JSON.stringify(contract.requiredAny) === JSON.stringify([["node"], ["name"]])));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameImportAlias" && contract.expectChecks === "current import alias"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "changeReturnType" && contract.targetKinds.includes("Function")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "changeParamType" && contract.targetKinds.includes("Param")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameSymbol" && contract.targetKinds.includes("Function")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameParam" && contract.expectChecks === "current parameter name"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameLocal" && contract.targetKinds.includes("Let") && contract.expectChecks === "current local binding name"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameLocal" && contract.conflictChecks.includes("unproven shadowing boundary")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameField" && contract.targetKinds.includes("Field") && contract.expectChecks === "current shape field name"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "renameField" && contract.updates.includes("matching FieldAccess nodes with receiver type matching the owning shape")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "changeFieldType" && contract.targetKinds.includes("Field") && contract.expectChecks === "current shape field type"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "changeFieldType" && contract.updates.includes("matching FieldInit value type facts in shape literals for the owning shape")));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "changeLocalType" && contract.targetKinds.includes("Let") && contract.expectChecks === "current local binding type"));
+assert(graph.agentQuery.checkedEditSurface.operationContracts.some((contract) => contract.op === "changeLocalType" && contract.updates.includes("matching local Identifier type facts after the binding")));
+assert(graph.agentQuery.stableKeys.includes("programGraph.nodes[].symbolId"));
+const graphMemoryCapability = graph.agentLookupIndexes.capabilities.find((item) => item.name === "memory");
+assert(graphMemoryCapability);
+assert(graphMemoryCapability.functions.includes("prepare"));
+assert(graphMemoryCapability.stdlibHelpers.includes("std.mem.copy"));
+const graphWorldCapability = graph.agentLookupIndexes.capabilities.find((item) => item.name === "world");
+assert(graphWorldCapability);
+assert.deepEqual(graphWorldCapability.functions, ["main"]);
 assert.equal(graph.targetSupport.fsAvailable, true);
 assert(graph.modules.some((module) => module.name === "main"));
 assert(graph.imports.includes("buffer"));
@@ -6328,6 +8335,12 @@ assert.equal(inferredPrivate.errorSetKind, "inferred");
 
 const size = json(["size", "--json", "--target", "linux-musl-x64", "examples/memory-package"]).body;
 assert.equal(size.schemaVersion, 1);
+assertAgentSizeCommand(size, {
+  argv: ["zero", "size", "--json", "--target", "linux-musl-x64", "--profile", "release", "examples/memory-package"],
+  input: "examples/memory-package",
+  target: "linux-musl-x64",
+  profile: "release",
+});
 assert(size.stdlibHelpers.some((helper) => helper.name === "std.mem.copy"));
 assert(size.usedStdlibHelpers.some((helper) => helper.name === "std.mem.copy"));
 assert(size.usedStdlibHelpers.every((helper) => helper.module && helper.effects?.length && helper.errorBehavior && helper.ownershipNotes && helper.example && helper.apiStability));
@@ -6340,20 +8353,29 @@ assert(size.sections.some((section) => section.name === "direct-size-metadata" &
 assert(size.topLargestEmittedHelpers.some((helper) => helper.name === "std.mem.copy" && helper.estimatedDirectBytes > 0));
 assert.equal(size.objectBackend.objectEmission.path, "direct-elf64-object");
 assert(size.compilerRuntimeHelpers.every((helper) => helper.payAsUsed === true && helper.emitted === false));
+const mem = json(["mem", "--json", "--target", "linux-musl-x64", "--profile", "release", "examples/memory-package"]).body;
+assertAgentMemCommand(mem, { input: "examples/memory-package", target: "linux-musl-x64", profile: "release" });
+assert.equal(mem.generatedCBytes, 0);
+assert.equal(mem.cBridgeFallback, false);
+assert.equal(mem.memory.linearMemory, true);
+assert.equal(mem.objectBackend.objectEmission.path, "direct-elf64-object");
 const sizedArtifact = join(outDir, "sized-memory-package");
 rmSync(sizedArtifact, { force: true });
+rmSync(`${sizedArtifact}.exe`, { force: true });
 rmSync(`${sizedArtifact}.c`, { force: true });
 const sizeWithArtifact = json(["size", "--json", "--out", sizedArtifact, "examples/memory-package"]).body;
-assert.equal(sizeWithArtifact.artifactPath, sizedArtifact);
+assert(contractPath(sizeWithArtifact.artifactPath).startsWith(contractPath(sizedArtifact)));
 assert(sizeWithArtifact.artifactBytes > 0);
-assert(existsSync(sizedArtifact));
+assert.equal(sizeWithArtifact.artifactHash.algorithm, "fnv1a64");
+assert.match(sizeWithArtifact.artifactHash.value, /^[0-9a-f]{16}$/);
+assert(existsSync(sizeWithArtifact.artifactPath));
 const sizeBlockedParent = join(outDir, "size-output-not-dir");
 const sizeBlockedOut = join(sizeBlockedParent, "report.json");
 rmSync(sizeBlockedParent, { force: true, recursive: true });
 writeFileSync(sizeBlockedParent, "not a directory\n");
 const sizeBlocked = json(["size", "--json", "--out", sizeBlockedOut, "examples/hello.0"], { allowFailure: true });
 assert.notEqual(sizeBlocked.code, 0);
-assert.equal(sizeBlocked.body.diagnostics[0].path, sizeBlockedOut);
+assert(contractPath(sizeBlocked.body.diagnostics[0].path).startsWith(contractPath(sizeBlockedOut)));
 assert.equal(diagnostics.find((item) => item.code === "ERR001").repair.id, "add-fallible-marker-or-rescue");
 assert.equal(diagnostics.find((item) => item.code === "ERR003").repair.id, "check-or-rescue-fallible-call");
 assert.equal(diagnostics.find((item) => item.code === "TYP025").repair.id, "add-explicit-generic-type-arguments");
@@ -6366,6 +8388,7 @@ assert.equal(generatedCBytesAfterReadOnlyCommands, generatedCBytesBeforeReadOnly
 
 const targets = json(["targets"]).body;
 assert.equal(targets.schemaVersion, 1);
+assertAgentTargetsCommand(targets);
 assert.equal(typeof targets.host, "string");
 const publicTargetNames = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-musl-arm64", "linux-musl-x64", "linux-x64", "win32-arm64.exe", "win32-x64.exe"];
 assert.deepEqual([...targets.targets.map((target) => target.name)].sort(), [...publicTargetNames].sort());
@@ -6423,11 +8446,26 @@ assert.equal(linuxArm64Target.directBackend.exeEmitter, "zero-elf-aarch64-exe");
 assert.match(linuxArm64Target.directBackend.reason, /direct object and executable backend available/);
 const cAbiExport = zero(["check", "conformance/native/pass/c-abi-export.0"]);
 assert.match(cAbiExport.stdout, /ok/);
-const cAbiDump = json(["abi", "dump", "--json", "conformance/native/pass/c-abi-export.0"]).body;
+const cAbiDump = json(["abi", "dump", "--json", "--target", "linux-musl-x64", "conformance/native/pass/c-abi-export.0"]).body;
+assertAgentAbiCommand(cAbiDump, { input: "conformance/native/pass/c-abi-export.0", target: "linux-musl-x64", mode: "dump" });
 assert(cAbiDump.cExports.some((item) => item.name === "zero_add" && item.cReturnType === "int32_t"));
 assert.match(cAbiDump.generatedHeader.text, /int32_t zero_add\(int32_t a, int32_t b\);/);
+const cAbiDumpProfile = json(["abi", "dump", "--json", "--target", "linux-musl-x64", "--profile", "audit", "conformance/native/pass/c-abi-export.0"]).body;
+assertAgentAbiCommand(cAbiDumpProfile, { input: "conformance/native/pass/c-abi-export.0", target: "linux-musl-x64", profile: "audit", mode: "dump" });
+assert.equal(cAbiDumpProfile.profile, "audit");
+const cAbiCheck = json(["abi", "check", "--json", "--target", "linux-musl-x64", "conformance/native/pass/c-abi-export.0"]).body;
+assertAgentAbiCommand(cAbiCheck, { input: "conformance/native/pass/c-abi-export.0", target: "linux-musl-x64", mode: "check" });
+assert.deepEqual(cAbiCheck.diagnostics, []);
+const cAbiPackageCheck = json(["abi", "check", "--json", "--target", "linux-musl-x64", "examples/memory-package"]).body;
+assertAgentAbiCommand(cAbiPackageCheck, { input: "examples/memory-package", target: "linux-musl-x64", mode: "check" });
+assert(cAbiPackageCheck.sourceFile.endsWith("examples\\memory-package/src/main.0") || cAbiPackageCheck.sourceFile.endsWith("examples/memory-package/src/main.0"));
+assert.deepEqual(cAbiPackageCheck.diagnostics, []);
 const badCAbi = json(["check", "--json", "conformance/native/fail/bad-c-export.0"], { allowFailure: true }).body;
 assert.equal(badCAbi.diagnostics[0].code, "ABI001");
+
+for (const { args, body } of commandContractBodies) {
+  assertStructuredCommandArrays(body, `$ zero ${args.join(" ")}`);
+}
 
 const report = {
   generatedAt: new Date().toISOString(),

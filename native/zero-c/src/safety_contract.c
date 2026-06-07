@@ -35,5 +35,33 @@ void z_append_safety_facts_json(ZBuf *buf, const ZSafetyFactsProfile *profile) {
   zbuf_append(buf, ",\"uncheckedSurfaces\":[");
   zbuf_append(buf, "{\"surface\":\"C imports\",\"policy\":\"externally-trusted\"}");
   zbuf_append(buf, ",{\"surface\":\"host filesystem/process/network effects\",\"policy\":\"capability-gated-not-sandboxed\"}");
+  zbuf_append(buf, "],\"productionReadiness\":");
+  z_append_production_readiness_json(buf, profile);
+  zbuf_append(buf, "}");
+}
+
+void z_append_production_readiness_json(ZBuf *buf, const ZSafetyFactsProfile *profile) {
+  zbuf_append(buf, "{\"schemaVersion\":1,\"profile\":");
+  safety_append_json_string(buf, profile ? profile->canonical_profile : "release-small");
+  zbuf_append(buf, ",\"profileKey\":");
+  safety_append_json_string(buf, profile ? profile->profile_key : "small");
+  zbuf_append(buf, ",\"sensitiveEnvironmentApproved\":false");
+  zbuf_append(buf, ",\"status\":\"blocked\"");
+  zbuf_append(buf, ",\"gate\":\"sensitive-production-v1\"");
+  zbuf_append(buf, ",\"satisfiedControls\":[");
+  zbuf_append(buf, "\"compile-time-filesystem-denied\",\"compile-time-network-denied\",\"compile-time-process-denied\"");
+  zbuf_append(buf, ",\"bounds-checks-retained\",\"initializer-required\",\"borrow-and-move-diagnostics\",\"mir-contracts-block-invalid-emission\"");
+  zbuf_append(buf, "]");
+  zbuf_append(buf, ",\"blockingRisks\":[");
+  zbuf_append(buf, "{\"id\":\"runtime-integer-overflow-unchecked\",\"severity\":\"high\",\"surface\":\"runtime arithmetic\",\"requiredControl\":\"checked or explicitly proven overflow semantics\"}");
+  zbuf_append(buf, ",{\"id\":\"c-imports-externally-trusted\",\"severity\":\"high\",\"surface\":\"C imports\",\"requiredControl\":\"audited ABI boundary and dependency trust policy\"}");
+  zbuf_append(buf, ",{\"id\":\"host-effects-not-sandboxed\",\"severity\":\"high\",\"surface\":\"filesystem process network effects\",\"requiredControl\":\"runtime confinement or deployment policy bound to capabilities\"}");
+  zbuf_append(buf, ",{\"id\":\"release-sbom-placeholder\",\"severity\":\"medium\",\"surface\":\"ship artifacts\",\"requiredControl\":\"complete dependency and license SBOM\"}");
+  zbuf_append(buf, "]");
+  zbuf_append(buf, ",\"nextRequiredControls\":[");
+  zbuf_append(buf, "\"checked-runtime-overflow-or-proof-carrying-arithmetic\"");
+  zbuf_append(buf, ",\"audited-c-interop-contracts\"");
+  zbuf_append(buf, ",\"runtime-capability-confinement\"");
+  zbuf_append(buf, ",\"complete-sbom-generation\"");
   zbuf_append(buf, "]}");
 }

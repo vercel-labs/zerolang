@@ -89,7 +89,7 @@ Core examples:
 - `examples/resource-cli/`: package-local modules, resource cleanup, and hosted filesystem capability use.
 - `examples/memory-package/`: target-neutral package helper checks without hosted filesystem dependencies.
 - `examples/error-tour/`: broken examples, explanations, and canonical repairs for common diagnostics.
-- `examples/agent-repair-demo/`: a scripted agent loop that checks JSON diagnostics, explains the code, plans a repair, applies the edit, and re-runs check.
+- `examples/agent-repair-demo/`: a scripted agent loop that checks JSON diagnostics, applies compiler-mediated repairs, then uses ProgramGraph checked edits with validation and graph check.
 
 Use the index in `examples/README.md` for the full learning order and copyable commands.
 
