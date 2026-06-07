@@ -60,6 +60,7 @@ try {
 
 const zero = process.env.ZERO_BIN || (existsSync(".zero/bin/zero") ? ".zero/bin/zero" : "bin/zero");
 const checkedInBinaryRoot = "examples/binary-graph-store";
+const checkedInBinaryCrmRoot = "examples/crm-api";
 const binaryRoot = `/tmp/zero-program-graph-binary-store-${process.pid}`;
 
 async function zeroRun(args: string[]) {
@@ -75,6 +76,14 @@ assert.equal((await zeroRun(["check", checkedInBinaryRoot])).stdout, "ok\n");
 assert.equal((await zeroRun(["test", checkedInBinaryRoot])).stdout, "1 test(s) ok\n");
 assert.equal((await zeroRun(["run", checkedInBinaryRoot])).stdout, "binary graph store example\n");
 assert.equal((await zeroRun(["verify-sync", checkedInBinaryRoot])).stdout, "repository graph verify-sync ok\n");
+
+const checkedInBinaryCrmStore = await readFile(`${checkedInBinaryCrmRoot}/zero.graph`);
+assert.equal(checkedInBinaryCrmStore.subarray(0, 8).toString("binary"), "ZRGBIN1\0");
+const checkedInBinaryCrmStatus = JSON.parse((await zeroRun(["status", "--json", checkedInBinaryCrmRoot])).stdout);
+assert.equal(checkedInBinaryCrmStatus.store.encoding, "binary");
+assert.equal(checkedInBinaryCrmStatus.repositoryGraph.projectionValidity, "clean");
+assert.equal((await zeroRun(["check", checkedInBinaryCrmRoot])).stdout, "ok\n");
+assert.equal((await zeroRun(["verify-sync", checkedInBinaryCrmRoot])).stdout, "repository graph verify-sync ok\n");
 
 await rm(binaryRoot, { recursive: true, force: true });
 await mkdir(binaryRoot, { recursive: true });

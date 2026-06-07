@@ -80,7 +80,7 @@ Core examples:
 - `examples/std-http-headers.0`: hosted HTTP request envelope, response buffer, and header-value lookup.
 - `examples/json-api-client.0`: hosted JSON API client with request-envelope writing and response-body parsing.
 - `examples/json-api-router.0`: dependency-free JSON API request parsing and response-envelope writing.
-- `examples/crm-api/`: larger CRM API router package with account, contact, deal, activity, and search routes over HTTP request envelopes.
+- `examples/crm-api/`: larger CRM API router package with account, contact, deal, activity, and search routes over HTTP request envelopes, stored as a binary repository graph.
 - `examples/std-platform.0`: `std.time`, `std.rand`, `std.proc`, and `std.crypto` capability-shaped helpers.
 - `examples/cli-file.0`: args, env, file writes, stdout, and stderr.
 - `examples/cli-config.0`: option parsing, environment fallback, and JSON output checks.
@@ -171,9 +171,10 @@ Use `examples/memory-package/` for target-neutral cross-target direct builds.
 ## Larger HTTP API: `crm-api`
 
 `examples/crm-api/` is a larger graph-first API-router package. It compiles
-from `examples/crm-api/zero.graph`; the `.0` files under `src/` are synced
-source projections for human review. The package models a CRM request handler
-over Zero's HTTP envelope helpers and includes more than ten route branches:
+from the binary repository graph at `examples/crm-api/zero.graph`; the `.0`
+files under `src/` are synced source projections for human review. The package
+models a CRM request handler over Zero's HTTP envelope helpers and includes
+more than ten route branches:
 
 - account CRUD routes
 - contact CRUD routes
