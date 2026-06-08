@@ -288,7 +288,6 @@ const char *z_std_source_target_for_public_call(const char *qualified_name) {
 }
 
 bool z_std_source_module_load_graph(const ZStdSourceModule *module, ZProgramGraph *out, ZDiag *diag) {
-  if (out) z_program_graph_init(out);
   if (!module || !module->graph_bytes || module->graph_len == 0) {
     if (diag) {
       *diag = (ZDiag){0};

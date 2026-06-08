@@ -62,7 +62,7 @@ static void graph_size_seed_manifest_from_path(SourceInput *input, const char *p
   char *manifest = graph_size_manifest_for_source_path(path);
   if (!manifest) return;
   input->manifest_path = manifest;
-  input->package_root = graph_size_dirname_of(manifest);
+  if (!input->package_root) input->package_root = graph_size_dirname_of(manifest);
 }
 
 static const char *graph_size_module_path_for_name(const SourceInput *input, const char *name) {

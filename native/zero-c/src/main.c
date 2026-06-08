@@ -13783,9 +13783,8 @@ int main(int argc, char **argv) {
   if ((command.repository_graph_input || root_graph_artifact_input) &&
       (strcmp(command.command, "run") == 0 || strcmp(command.command, "build") == 0)) {
     ZProgramGraphStore listen_store;
-    ZProgramGraph artifact_listen_graph;
+    ZProgramGraph artifact_listen_graph = {0};
     z_program_graph_store_init(&listen_store);
-    z_program_graph_init(&artifact_listen_graph);
     const ZProgramGraph *listen_graph = NULL;
     if (root_graph_artifact_input) {
       if (!z_program_graph_load(command.input, &artifact_listen_graph, &diag)) {
