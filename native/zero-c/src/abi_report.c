@@ -32,13 +32,59 @@ static int abi_report_pointer_size(const ZTargetInfo *target) {
   return 8;
 }
 
+typedef struct {
+  const char *zero_type;
+  const char *c_type;
+  int fixed_size;
+  bool pointer_sized;
+  bool include_in_layout;
+} ZAbiPrimitive;
+
+static const ZAbiPrimitive abi_primitives[] = {
+  {"Void", "void", 0, false, false},
+  {"Bool", "bool", 1, false, true},
+  {"u8", "uint8_t", 1, false, true},
+  {"i8", "int8_t", 1, false, true},
+  {"char", "void *", 1, false, false},
+  {"u16", "uint16_t", 2, false, true},
+  {"i16", "int16_t", 2, false, true},
+  {"u32", "uint32_t", 4, false, true},
+  {"i32", "int32_t", 4, false, true},
+  {"u64", "uint64_t", 8, false, true},
+  {"i64", "int64_t", 8, false, true},
+  {"usize", "uintptr_t", 0, true, true},
+  {"isize", "intptr_t", 0, true, true},
+  {"f32", "float", 4, false, true},
+  {"f64", "double", 8, false, true},
+};
+
+static const size_t abi_primitives_len = sizeof(abi_primitives) / sizeof(abi_primitives[0]);
+
+static const ZAbiPrimitive *abi_report_primitive_for_type(const char *type) {
+  if (!type) return NULL;
+  for (size_t i = 0; i < abi_primitives_len; i++) {
+    if (strcmp(abi_primitives[i].zero_type, type) == 0) return &abi_primitives[i];
+  }
+  return NULL;
+}
+
+static bool abi_report_type_has_prefix(const char *type, const char *prefix) {
+  if (!type || !prefix) return false;
+  size_t prefix_len = strlen(prefix);
+  return strncmp(type, prefix, prefix_len) == 0;
+}
+
+static bool abi_report_type_is_ref_like(const char *type) {
+  return abi_report_type_has_prefix(type, "ref<") || abi_report_type_has_prefix(type, "mutref<");
+}
+
 static int abi_report_type_size(const char *type, const ZTargetInfo *target) {
   if (!type) return 0;
-  if (strcmp(type, "Bool") == 0 || strcmp(type, "u8") == 0 || strcmp(type, "i8") == 0 || strcmp(type, "char") == 0) return 1;
-  if (strcmp(type, "u16") == 0 || strcmp(type, "i16") == 0) return 2;
-  if (strcmp(type, "u32") == 0 || strcmp(type, "i32") == 0 || strcmp(type, "f32") == 0) return 4;
-  if (strcmp(type, "u64") == 0 || strcmp(type, "i64") == 0 || strcmp(type, "f64") == 0) return 8;
-  if (strcmp(type, "usize") == 0 || strcmp(type, "isize") == 0 || strncmp(type, "ref<", 4) == 0 || strncmp(type, "mutref<", 7) == 0) return abi_report_pointer_size(target);
+  const ZAbiPrimitive *primitive = abi_report_primitive_for_type(type);
+  if (primitive) {
+    return primitive->pointer_sized ? abi_report_pointer_size(target) : primitive->fixed_size;
+  }
+  if (abi_report_type_is_ref_like(type)) return abi_report_pointer_size(target);
   return 0;
 }
 
@@ -56,31 +102,23 @@ static int abi_report_align_to_int(int value, int align) {
 }
 
 static const char *abi_report_c_type_name(const char *zero_type) {
-  if (!zero_type || strcmp(zero_type, "Void") == 0) return "void";
-  if (strcmp(zero_type, "Bool") == 0) return "bool";
-  if (strcmp(zero_type, "u8") == 0) return "uint8_t";
-  if (strcmp(zero_type, "i8") == 0) return "int8_t";
-  if (strcmp(zero_type, "u16") == 0) return "uint16_t";
-  if (strcmp(zero_type, "i16") == 0) return "int16_t";
-  if (strcmp(zero_type, "u32") == 0) return "uint32_t";
-  if (strcmp(zero_type, "i32") == 0) return "int32_t";
-  if (strcmp(zero_type, "u64") == 0) return "uint64_t";
-  if (strcmp(zero_type, "i64") == 0) return "int64_t";
-  if (strcmp(zero_type, "usize") == 0) return "uintptr_t";
-  if (strcmp(zero_type, "isize") == 0) return "intptr_t";
-  if (strcmp(zero_type, "f32") == 0) return "float";
-  if (strcmp(zero_type, "f64") == 0) return "double";
+  if (!zero_type) return "void";
+  const ZAbiPrimitive *primitive = abi_report_primitive_for_type(zero_type);
+  if (primitive) return primitive->c_type;
   return "void *";
 }
 
 static void append_abi_primitives_json(ZBuf *buf, const ZTargetInfo *target) {
-  const char *types[] = {"Bool", "u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "usize", "isize", "f32", "f64", NULL};
   zbuf_append(buf, "[");
-  for (int i = 0; types[i]; i++) {
-    if (i > 0) zbuf_append(buf, ",");
+  bool wrote = false;
+  for (size_t i = 0; i < abi_primitives_len; i++) {
+    const ZAbiPrimitive *primitive = &abi_primitives[i];
+    if (!primitive->include_in_layout) continue;
+    if (wrote) zbuf_append(buf, ",");
+    wrote = true;
     zbuf_append(buf, "{\"name\":");
-    abi_append_json_string(buf, types[i]);
-    zbuf_appendf(buf, ",\"size\":%d,\"align\":%d}", abi_report_type_size(types[i], target), abi_report_type_align(types[i], target));
+    abi_append_json_string(buf, primitive->zero_type);
+    zbuf_appendf(buf, ",\"size\":%d,\"align\":%d}", abi_report_type_size(primitive->zero_type, target), abi_report_type_align(primitive->zero_type, target));
   }
   zbuf_append(buf, "]");
 }

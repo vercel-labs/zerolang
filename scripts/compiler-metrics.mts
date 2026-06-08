@@ -18,7 +18,7 @@ const fileBudgets = {
   "native/zero-c/include/zero.h": { maxLines: 1171, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 226, maxStrcmpCalls: 0 },
-  "native/zero-c/src/abi_report.c": { maxLines: 321, maxStrcmpCalls: 29 },
+  "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   "native/zero-c/src/checker.c": { maxLines: 11753, maxStrcmpCalls: 287 },
   "native/zero-c/src/main.c": { maxLines: 14600, maxStrcmpCalls: 440 },
@@ -1071,6 +1071,15 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       targetManifest: backendFormats.targetManifest,
     });
   }
+  if (!backendFormats.abiReport.primitiveTable ||
+      !backendFormats.abiReport.primitiveLookup ||
+      !backendFormats.abiReport.primitiveJsonIteratesTable ||
+      backendFormats.abiReport.rawPrimitiveStringChecks > 0) {
+    violations.push({
+      kind: "abi-report-primitive-table",
+      abiReport: backendFormats.abiReport,
+    });
+  }
   if (!backendFormats.elf.sharedWriter ||
       !backendFormats.elf.x86ObjectUsesSharedWriter ||
       !backendFormats.elf.x86ExecutableUsesSharedWriter ||
@@ -1248,6 +1257,9 @@ const targetSource = cCodeText(targetRaw);
 const targetBackendRaw = texts.get("native/zero-c/src/target_backend.c") ?? "";
 const targetBackendSource = cCodeText(targetBackendRaw);
 const directExeBackendBody = cCodeText(cBlock(targetBackendRaw, "ZDirectBackend z_direct_exe_backend"));
+const abiReportRaw = texts.get("native/zero-c/src/abi_report.c") ?? "";
+const abiReportSource = cCodeText(abiReportRaw);
+const abiReportText = cTextWithoutComments(abiReportRaw);
 
 const stdHelpers = parseStdHelpers(stdSig);
 const checkerReturnTypeInfo = parseCheckerReturnTypes(checker);
@@ -1429,6 +1441,17 @@ const backendFormats = {
     noAliasSubstringLookup: !/strstr\s*\(\s*targets\s*\[\s*i\s*\]\s*\.\s*aliases/.test(targetSource),
     noCapabilitySubstringLookup: !/strstr\s*\(\s*target\s*->\s*capabilities/.test(targetSource),
     linkerLabelHelper: /\btarget_linker_label\s*\(/.test(targetSource),
+  },
+  abiReport: {
+    primitiveTable: /\bstatic\s+const\s+ZAbiPrimitive\s+abi_primitives\[\]/.test(abiReportSource),
+    primitiveLookup: /\babi_report_primitive_for_type\s*\(/.test(abiReportSource),
+    primitiveJsonIteratesTable: /\bappend_abi_primitives_json\s*\(/.test(abiReportSource) &&
+      /\binclude_in_layout\b/.test(abiReportSource) &&
+      /\babi_primitives_len\b/.test(abiReportSource),
+    rawPrimitiveStringChecks: countMatches(
+      abiReportText,
+      /strcmp\s*\(\s*(?:type|zero_type)\s*,\s*"(?:Void|Bool|char|u8|i8|u16|i16|u32|i32|u64|i64|usize|isize|f32|f64)"\s*\)/g,
+    ),
   },
   directTarget: {
     ruleMatrix: /\bdirect_backend_rules\[\]/.test(targetBackendSource),
