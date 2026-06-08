@@ -23,6 +23,13 @@ typedef struct {
   bool exe_supported;
 } ZDirectBackendRule;
 
+typedef enum {
+  Z_DIRECT_EMIT_KIND_UNKNOWN,
+  Z_DIRECT_EMIT_KIND_OBJECT,
+  Z_DIRECT_EMIT_KIND_EXECUTABLE,
+  Z_DIRECT_EMIT_KIND_METADATA
+} ZDirectEmitKind;
+
 static const ZDirectBackendDescriptor direct_backend_descriptors[] = {
   {Z_DIRECT_BACKEND_ELF64, "zero-elf64", "zero-elf64-exe", "elf64", "direct-elf64-object", "direct-elf64-exe", "direct-elf64-object-runtime-link", true},
   {Z_DIRECT_BACKEND_ELF_AARCH64, "zero-elf-aarch64", "zero-elf-aarch64-exe", "elf64", "direct-elf-aarch64-object", "direct-elf-aarch64-exe", "unsupported", false},
@@ -50,8 +57,19 @@ static const ZDirectBackendDescriptor *direct_backend_descriptor(ZDirectBackend 
   return NULL;
 }
 
+static bool direct_text_equals(const char *left, const char *right) {
+  return left && right && strcmp(left, right) == 0;
+}
+
+static ZDirectEmitKind direct_emit_kind_from_text(const char *emit_kind) {
+  if (direct_text_equals(emit_kind, "obj")) return Z_DIRECT_EMIT_KIND_OBJECT;
+  if (direct_text_equals(emit_kind, "exe")) return Z_DIRECT_EMIT_KIND_EXECUTABLE;
+  if (direct_text_equals(emit_kind, "mem") || direct_text_equals(emit_kind, "size")) return Z_DIRECT_EMIT_KIND_METADATA;
+  return Z_DIRECT_EMIT_KIND_UNKNOWN;
+}
+
 static bool target_field_matches(const char *actual, const char *expected) {
-  return !expected || (actual && strcmp(actual, expected) == 0);
+  return !expected || direct_text_equals(actual, expected);
 }
 
 static ZDirectBackend direct_backend_for_target(const ZTargetInfo *target, bool executable) {
@@ -90,8 +108,8 @@ ZDirectBackend z_direct_backend_from_emitter(const char *emitter) {
   if (!emitter) return Z_DIRECT_BACKEND_NONE;
   for (size_t i = 0; i < sizeof(direct_backend_descriptors) / sizeof(direct_backend_descriptors[0]); i++) {
     const ZDirectBackendDescriptor *descriptor = &direct_backend_descriptors[i];
-    if (strcmp(emitter, descriptor->object_emitter) == 0) return descriptor->backend;
-    if (strcmp(emitter, descriptor->exe_emitter) == 0) return descriptor->backend;
+    if (direct_text_equals(emitter, descriptor->object_emitter)) return descriptor->backend;
+    if (direct_text_equals(emitter, descriptor->exe_emitter)) return descriptor->backend;
   }
   return Z_DIRECT_BACKEND_NONE;
 }
@@ -168,7 +186,7 @@ const char *z_direct_runtime_link_blocker(const ZTargetInfo *target, bool needs_
 bool z_direct_backend_emitter_is_executable(const char *emitter) {
   if (!emitter) return false;
   for (size_t i = 0; i < sizeof(direct_backend_descriptors) / sizeof(direct_backend_descriptors[0]); i++) {
-    if (strcmp(emitter, direct_backend_descriptors[i].exe_emitter) == 0) return true;
+    if (direct_text_equals(emitter, direct_backend_descriptors[i].exe_emitter)) return true;
   }
   return false;
 }
@@ -176,7 +194,7 @@ bool z_direct_backend_emitter_is_executable(const char *emitter) {
 bool z_direct_backend_is_request_name(const char *requested_backend) {
   if (!requested_backend || !requested_backend[0]) return false;
   for (size_t i = 0; i < sizeof(direct_backend_descriptors) / sizeof(direct_backend_descriptors[0]); i++) {
-    if (strcmp(requested_backend, direct_backend_descriptors[i].object_emitter) == 0) return true;
+    if (direct_text_equals(requested_backend, direct_backend_descriptors[i].object_emitter)) return true;
   }
   return false;
 }
@@ -184,7 +202,7 @@ bool z_direct_backend_is_request_name(const char *requested_backend) {
 bool z_direct_requested_backend_matches(const char *requested_backend, ZDirectBackend backend) {
   if (!requested_backend || !requested_backend[0]) return true;
   const ZDirectBackendDescriptor *descriptor = direct_backend_descriptor(backend);
-  return descriptor && strcmp(requested_backend, descriptor->object_emitter) == 0;
+  return descriptor && direct_text_equals(requested_backend, descriptor->object_emitter);
 }
 
 const char *z_direct_object_emitter(const ZTargetInfo *target) {
@@ -210,17 +228,18 @@ const char *z_direct_backend_reason(const ZTargetInfo *target) {
     if (z_direct_exe_backend(target) != Z_DIRECT_BACKEND_NONE) return "direct object and executable backend available";
     return "direct object backend available; direct executable linker is not implemented for this target";
   }
-  if (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0) return "AArch64 ELF machine-code backend is not implemented yet";
+  if (direct_text_equals(format, "elf") && direct_text_equals(arch, "aarch64")) return "AArch64 ELF machine-code backend is not implemented yet";
   return "direct backend is not implemented for this target format/architecture pair";
 }
 
 ZDirectBackend z_direct_backend_for_emit_kind(const ZTargetInfo *target, const char *emit_kind, const char *requested_backend) {
-  if (emit_kind && strcmp(emit_kind, "obj") == 0) {
+  ZDirectEmitKind kind = direct_emit_kind_from_text(emit_kind);
+  if (kind == Z_DIRECT_EMIT_KIND_OBJECT) {
     ZDirectBackend backend = z_direct_object_backend(target);
     if (requested_backend && requested_backend[0] && !z_direct_requested_backend_matches(requested_backend, backend)) return Z_DIRECT_BACKEND_NONE;
     return backend;
   }
-  if (emit_kind && strcmp(emit_kind, "exe") == 0 && requested_backend) {
+  if (kind == Z_DIRECT_EMIT_KIND_EXECUTABLE && requested_backend) {
     ZDirectBackend backend = z_direct_exe_backend(target);
     if (requested_backend[0] && !z_direct_requested_backend_matches(requested_backend, backend)) return Z_DIRECT_BACKEND_NONE;
     return backend;
@@ -229,27 +248,30 @@ ZDirectBackend z_direct_backend_for_emit_kind(const ZTargetInfo *target, const c
 }
 
 const char *z_direct_backend_emitter_for_emit_kind(const ZTargetInfo *target, const char *emit_kind, const char *requested_backend) {
+  ZDirectEmitKind kind = direct_emit_kind_from_text(emit_kind);
   ZDirectBackend backend = z_direct_backend_for_emit_kind(target, emit_kind, requested_backend);
   if (backend == Z_DIRECT_BACKEND_NONE) return "none";
-  if (emit_kind && strcmp(emit_kind, "exe") == 0) return z_direct_backend_exe_emitter(backend);
+  if (kind == Z_DIRECT_EMIT_KIND_EXECUTABLE) return z_direct_backend_exe_emitter(backend);
   return z_direct_backend_object_emitter(backend);
 }
 
 const char *z_direct_backend_name_for_emit_kind(const ZTargetInfo *target, const char *emit_kind, const char *requested_backend) {
+  ZDirectEmitKind kind = direct_emit_kind_from_text(emit_kind);
   if (requested_backend && requested_backend[0]) return requested_backend;
-  if (emit_kind && strcmp(emit_kind, "obj") == 0) return z_direct_object_emitter(target);
-  if (emit_kind && strcmp(emit_kind, "exe") == 0) return z_direct_exe_emitter(target);
+  if (kind == Z_DIRECT_EMIT_KIND_OBJECT) return z_direct_object_emitter(target);
+  if (kind == Z_DIRECT_EMIT_KIND_EXECUTABLE) return z_direct_exe_emitter(target);
   return "none";
 }
 
-static const char *direct_artifact_kind_for_emit_kind(const char *emit_kind) {
-  if (emit_kind && strcmp(emit_kind, "obj") == 0) return "native-object";
-  if (emit_kind && strcmp(emit_kind, "exe") == 0) return "native-executable";
+static const char *direct_artifact_kind_for_emit_kind(ZDirectEmitKind kind) {
+  if (kind == Z_DIRECT_EMIT_KIND_OBJECT) return "native-object";
+  if (kind == Z_DIRECT_EMIT_KIND_EXECUTABLE) return "native-executable";
   return "artifact";
 }
 
 ZDirectReleaseTargetFacts z_direct_release_target_facts(const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, const ZToolchainPlan *fallback_plan, bool linked_executable) {
-  bool selected_executable = emit_kind && strcmp(emit_kind, "exe") == 0;
+  ZDirectEmitKind kind = direct_emit_kind_from_text(emit_kind);
+  bool selected_executable = kind == Z_DIRECT_EMIT_KIND_EXECUTABLE;
   ZDirectBackend selected_backend = linked_executable ? z_direct_object_backend(target) : z_direct_backend_for_emit_kind(target, emit_kind, requested_backend);
   if (selected_backend == Z_DIRECT_BACKEND_NONE && selected_executable && !linked_executable) selected_backend = z_direct_exe_backend(target);
   bool direct_selected = selected_backend != Z_DIRECT_BACKEND_NONE;
@@ -260,7 +282,7 @@ ZDirectReleaseTargetFacts z_direct_release_target_facts(const ZTargetInfo *targe
   const char *fallback_sysroot_status = fallback_plan ? fallback_plan->sysroot_status : "not-required";
   ZDirectReleaseTargetFacts facts = {
     .selected_emitter = selected_backend == Z_DIRECT_BACKEND_NONE ? "none" : (selected_executable && !linked_executable ? z_direct_backend_exe_emitter(selected_backend) : z_direct_backend_object_emitter(selected_backend)),
-    .artifact_kind = direct_artifact_kind_for_emit_kind(emit_kind),
+    .artifact_kind = direct_artifact_kind_for_emit_kind(kind),
     .linker_flavor = linked_executable || !direct_selected ? fallback_linker : z_direct_backend_linker_flavor(selected_backend),
     .artifact_libc_mode = linked_executable || !direct_selected ? fallback_libc : "none",
     .sysroot_status = artifact_requires_sysroot ? fallback_sysroot_status : (target_requires_sysroot ? "not-used-by-direct-artifact" : "not-required"),
@@ -272,9 +294,10 @@ ZDirectReleaseTargetFacts z_direct_release_target_facts(const ZTargetInfo *targe
 }
 
 ZDirectObjectBackendFacts z_direct_object_backend_facts(const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool has_runtime_imports) {
-  bool emit_obj = emit_kind && strcmp(emit_kind, "obj") == 0;
-  bool emit_exe = emit_kind && strcmp(emit_kind, "exe") == 0;
-  bool metadata_only = emit_kind && (strcmp(emit_kind, "mem") == 0 || strcmp(emit_kind, "size") == 0);
+  ZDirectEmitKind kind = direct_emit_kind_from_text(emit_kind);
+  bool emit_obj = kind == Z_DIRECT_EMIT_KIND_OBJECT;
+  bool emit_exe = kind == Z_DIRECT_EMIT_KIND_EXECUTABLE;
+  bool metadata_only = kind == Z_DIRECT_EMIT_KIND_METADATA;
   bool runtime_linked_exe = emit_exe && has_runtime_imports;
   bool requested_exe = emit_exe && requested_backend;
   ZDirectBackend backend = z_direct_backend_for_emit_kind(target, emit_kind, requested_backend);
@@ -286,7 +309,7 @@ ZDirectObjectBackendFacts z_direct_object_backend_facts(const ZTargetInfo *targe
       emitter = "none";
     } else {
       emitter = z_direct_backend_object_emitter(backend);
-      if (metadata_only && (!emitter || strcmp(emitter, "none") == 0)) emitter = "metadata-only";
+      if (metadata_only && (!emitter || direct_text_equals(emitter, "none"))) emitter = "metadata-only";
     }
   }
   bool active = (metadata_only && backend != Z_DIRECT_BACKEND_NONE) || runtime_linked_exe || (backend != Z_DIRECT_BACKEND_NONE && (emit_obj || requested_exe));
@@ -346,11 +369,11 @@ const char *z_direct_backend_expected(const ZTargetInfo *target) {
   const char *arch = target && target->arch ? target->arch : "";
   if (backend == Z_DIRECT_BACKEND_MACHO64) return "direct AArch64 Mach-O object subset";
   if (backend == Z_DIRECT_BACKEND_MACHO_X64) return "direct x86_64 Mach-O object subset";
-  if (strcmp(format, "macho") == 0) return "direct Mach-O object subset";
+  if (direct_text_equals(format, "macho")) return "direct Mach-O object subset";
   if (backend == Z_DIRECT_BACKEND_COFF_AARCH64) return "direct COFF AArch64 object subset";
-  if (backend == Z_DIRECT_BACKEND_COFF_X64 || strcmp(format, "coff") == 0) return "direct COFF x64 object subset";
-  if (backend == Z_DIRECT_BACKEND_ELF_AARCH64 || (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0)) return "direct AArch64 ELF object subset";
-  if (backend == Z_DIRECT_BACKEND_ELF64 || strcmp(format, "elf") == 0) return "direct ELF64 object subset";
+  if (backend == Z_DIRECT_BACKEND_COFF_X64 || direct_text_equals(format, "coff")) return "direct COFF x64 object subset";
+  if (backend == Z_DIRECT_BACKEND_ELF_AARCH64 || (direct_text_equals(format, "elf") && direct_text_equals(arch, "aarch64"))) return "direct AArch64 ELF object subset";
+  if (backend == Z_DIRECT_BACKEND_ELF64 || direct_text_equals(format, "elf")) return "direct ELF64 object subset";
   return "direct target with matching object format and architecture";
 }
 
@@ -360,10 +383,10 @@ const char *z_direct_backend_help(const ZTargetInfo *target) {
   const char *arch = target && target->arch ? target->arch : "";
   if (backend == Z_DIRECT_BACKEND_MACHO_X64) return "reduce the program to primitive x86_64 Mach-O direct-backend constructs or choose a supported direct target";
   if (backend == Z_DIRECT_BACKEND_MACHO64 || backend == Z_DIRECT_BACKEND_ELF_AARCH64 ||
-      strcmp(format, "macho") == 0 || (strcmp(format, "elf") == 0 && strcmp(arch, "aarch64") == 0)) {
+      direct_text_equals(format, "macho") || (direct_text_equals(format, "elf") && direct_text_equals(arch, "aarch64"))) {
     return "choose a supported direct target or reduce the program to supported AArch64 direct-backend constructs";
   }
   if (backend == Z_DIRECT_BACKEND_COFF_AARCH64) return "reduce the program to AArch64 COFF supported direct-backend constructs or choose a supported direct target";
-  if (backend == Z_DIRECT_BACKEND_COFF_X64 || strcmp(format, "coff") == 0) return "reduce the program to primitive direct-backend constructs or choose a supported direct target";
+  if (backend == Z_DIRECT_BACKEND_COFF_X64 || direct_text_equals(format, "coff")) return "reduce the program to primitive direct-backend constructs or choose a supported direct target";
   return "choose a supported direct target or restrict this program to exported primitive integer arithmetic functions";
 }

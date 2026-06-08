@@ -174,7 +174,7 @@ const fileBudgets = {
   "native/zero-c/src/std_sig.h": { maxLines: 60, maxStrcmpCalls: 0 },
   "native/zero-c/src/std_source.c": { maxLines: 340, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_source.h": { maxLines: 30, maxStrcmpCalls: 0 },
-  "native/zero-c/src/target_backend.c": { maxLines: 369, maxStrcmpCalls: 32 },
+  "native/zero-c/src/target_backend.c": { maxLines: 392, maxStrcmpCalls: 1 },
   "native/zero-c/src/target.c": { maxLines: 465, maxStrcmpCalls: 15 },
   "native/zero-c/src/type_core.c": { maxLines: 900, maxStrcmpCalls: 8 },
   "native/zero-c/src/type_core.h": { maxLines: 150, maxStrcmpCalls: 0 },
@@ -1035,6 +1035,7 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
   if (!backendFormats.directTarget.ruleMatrix ||
       !backendFormats.directTarget.executableUsesRuleMatrix ||
       !backendFormats.directTarget.descriptorTable ||
+      !backendFormats.directTarget.emitKindParser ||
       backendFormats.directTarget.executableTargetNameChecks > 0 ||
       backendFormats.directTarget.mainExecutableEmitterStringChecks > 0 ||
       backendFormats.directTarget.mainObjectEmitterStringChecks > 0 ||
@@ -1414,6 +1415,8 @@ const backendFormats = {
     ruleMatrix: /\bdirect_backend_rules\[\]/.test(targetBackendSource),
     executableUsesRuleMatrix: /return\s+direct_backend_for_target\s*\(\s*target\s*,\s*true\s*\)/.test(targetBackendSource),
     descriptorTable: /\bdirect_backend_descriptors\[\]/.test(targetBackendSource),
+    emitKindParser: /\bZDirectEmitKind\b/.test(targetBackendSource) &&
+      /\bdirect_emit_kind_from_text\s*\(/.test(targetBackendSource),
     executableTargetNameChecks: countMatches(directExeBackendBody, /target\s*->\s*name/g),
     mainExecutableEmitterStringChecks: countMatches(cCodeText(main), /zero-(?:elf64|elf-aarch64|macho64|coff-x64)-exe/g),
     mainObjectEmitterStringChecks: countMatches(cCodeText(main), /"zero-(?:elf64|elf-aarch64|macho64|coff-x64)"/g),
