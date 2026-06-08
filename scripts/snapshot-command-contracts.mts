@@ -16,48 +16,15 @@ if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST
 const outDir = ".zero/command-contracts";
 const execMaxBuffer = 16 * 1024 * 1024;
 const zeroBin = process.env.ZERO_BIN || (existsSync(".zero/bin/zero") ? resolve(".zero/bin/zero") : resolve("bin/zero"));
-const compilerInputCommands = new Set(["check", "build", "run", "test", "size", "ship", "mem", "doc", "dev", "time", "fix"]);
-const compilerInputValueFlags = new Set(["--backend", "--emit", "--filter", "--out", "--profile", "--release", "--target"]);
-const abiInputSubcommands = new Set(["check", "dump"]);
 mkdirSync(outDir, { recursive: true });
 
 function graphSidecarPath(sourcePath: string) {
   return `${sourcePath.slice(0, -2)}.graph`;
 }
 
-function compilerInputPath(inputPath: string) {
-  if (typeof inputPath !== "string" || !inputPath.endsWith(".0")) return inputPath;
-  const graphPath = graphSidecarPath(inputPath);
-  if (!existsSync(graphPath)) {
-    throw new Error(`${inputPath}: compiler command requires graph input; missing graph sidecar ${graphPath}`);
-  }
-  return graphPath;
-}
-
-function normalizeZeroCompilerArgs(args: string[]) {
-  const isCompilerInputCommand = compilerInputCommands.has(args[0]);
-  const isAbiInputCommand = args[0] === "abi" && abiInputSubcommands.has(args[1]);
-  if (!isCompilerInputCommand && !isAbiInputCommand) return args;
-  let afterProgramArgs = false;
-  let skipOptionValue = false;
-  return args.map((arg) => {
-    if (afterProgramArgs) return arg;
-    if (arg === "--") afterProgramArgs = true;
-    if (skipOptionValue) {
-      skipOptionValue = false;
-      return arg;
-    }
-    if (compilerInputValueFlags.has(arg)) {
-      skipOptionValue = true;
-      return arg;
-    }
-    return afterProgramArgs ? arg : compilerInputPath(arg);
-  });
-}
-
 function zero(args, options: { allowFailure?: boolean; env?: Record<string, string> } = {}) {
   try {
-    const stdout = execFileSync(zeroBin, normalizeZeroCompilerArgs(args), { encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"], env: options.env ? { ...process.env, ...options.env } : process.env });
+    const stdout = execFileSync(zeroBin, args, { encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"], env: options.env ? { ...process.env, ...options.env } : process.env });
     return { code: 0, stdout };
   } catch (error) {
     if (!options.allowFailure) throw error;
@@ -105,8 +72,8 @@ function importProjectionSidecar(sourcePath: string) {
 }
 
 function assertProjectionCheckOk(sourcePath: string) {
-  importProjectionSidecar(sourcePath);
-  assert.equal(zero(["check", sourcePath]).stdout, "ok\n");
+  const graphPath = importProjectionSidecar(sourcePath);
+  assert.equal(zero(["check", graphPath]).stdout, "ok\n");
 }
 
 function writeProjectionFile(sourcePath: string, contents: string) {
@@ -205,7 +172,7 @@ function assertProgramGraphCompilerInput(body, artifact) {
   assert.equal(body.incrementalInvalidation.interfaceFingerprints.graphHash, body.graph.graphHash);
 }
 
-function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean", options = {}) {
+function assertRepositoryGraphNativeCheck(body, sourceProjectionState = "clean", options: { graphHirToMirUsed?: boolean } = {}) {
   const graphHirToMirUsed = options.graphHirToMirUsed === false ? false : true;
   assert.equal(body.graphCompiler.input, "repository-graph-store");
   assert.equal(body.graphCompiler.graphStoreLoaded, true);
@@ -3267,7 +3234,7 @@ assert.deepEqual(graphDirectImportCheckJson.diagnostics, []);
 const graphDirectImportView = zero(["view", "examples/direct-package-arrays"]).stdout;
 assert.match(graphDirectImportView, /fn package_sum\(\) -> i32/);
 assert.match(graphDirectImportView, /export c fn main\(\) -> i32/);
-const graphDirectStdCheckJson = json(["check", "--json", "examples/std-str.0"]).body;
+const graphDirectStdCheckJson = json(["check", "--json", "examples/std-str.graph"]).body;
 assert.equal(graphDirectStdCheckJson.ok, true);
 assert.equal(graphDirectStdCheckJson.artifact, "examples/std-str.graph");
 assert.equal(graphDirectStdCheckJson.canonicalSource, false);
@@ -3674,7 +3641,7 @@ writeProjectionFile(graphPrefixDerefSourcePath, graphDerefMemberSource.replace("
 assertProjectionCheckOk(graphPrefixDerefSourcePath);
 const graphPrefixDerefView = zero(["view", graphPrefixDerefSourcePath]).stdout;
 assert.match(graphPrefixDerefView, /return \(\*wrapped\)\.x/);
-assert.equal(zero(["check", graphPrefixDerefSourcePath]).stdout, "ok\n");
+assert.equal(zero(["check", projectionSidecarGraphPath(graphPrefixDerefSourcePath)]).stdout, "ok\n");
 writeProjectionFile(graphNestedCastSourcePath, [
   "pub fn main() -> u32 {",
   "    let x: i32 = 1",
@@ -4446,7 +4413,7 @@ const zeroSkill = json(["skills", "get", "zero", "--full", "--json"]).body;
 assert.equal(zeroSkill.success, true);
 assert.match(zeroSkill.data[0].content, /# Zero/);
 assert.match(zeroSkill.data[0].content, /zero skills get zero --full/);
-assert.match(zeroSkill.data[0].content, /zero check <graph-input>/);
+assert.match(zeroSkill.data[0].content, /zero check <graph-or-package>/);
 assert.doesNotMatch(zeroSkill.data[0].content, /<file-or-package>/);
 assert.equal(zeroSkill.data[0].files, undefined);
 
@@ -4669,7 +4636,7 @@ assert.equal(unsupportedPackageRejected.body.diagnostics[0].code, "RGP001");
 assert.equal(unsupportedPackageRejected.body.diagnostics[0].message, "repository graph store is missing");
 assert.equal(unsupportedPackageRejected.body.diagnostics[0].expected, "checked-in zero.graph repository graph store");
 
-const testJson = json(["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.0"]).body;
+const testJson = json(["test", "--json", "--filter", "addition", "conformance/native/pass/test-blocks.graph"]).body;
 assert.equal(testJson.schemaVersion, 1);
 assert.equal(testJson.ok, true);
 assert.match(testJson.stdout, /1 test\(s\) ok/);
@@ -4689,14 +4656,14 @@ assert.equal(packageTestJson.discoveredTests, 3);
 assert.equal(packageTestJson.expectedFailures, 1);
 assert(packageTestJson.fixtures.sourceFiles.some((path) => path.endsWith("helper.0")));
 
-const expectedFailTestJson = json(["test", "--json", "conformance/native/pass/test-expected-fail.0"]).body;
+const expectedFailTestJson = json(["test", "--json", "conformance/native/pass/test-expected-fail.graph"]).body;
 assert.equal(expectedFailTestJson.ok, true);
 assert.equal(expectedFailTestJson.expectedFailures, 1);
 assert.equal(expectedFailTestJson.results[0].status, "expected-fail");
 
 assert.match(zero(["fmt", "--check", "conformance/native/pass/test-blocks.0"]).stdout, /fmt ok/);
 
-const unknownFlag = zero(["check", "--jsoon", "examples/hello.0"], { allowFailure: true });
+const unknownFlag = zero(["check", "--jsoon", "examples/hello.graph"], { allowFailure: true });
 assert.notEqual(unknownFlag.code, 0);
 assert.match(unknownFlag.stderr, /unknown flag: --jsoon/);
 assert.match(unknownFlag.stderr, /--json/);
@@ -4753,7 +4720,7 @@ for (const kind of ["cli", "lib", "package"]) {
 
 const tinyHello = join(outDir, "tiny-hello");
 rmSync(tinyHello, { force: true });
-zero(["build", "--release", "tiny", "--target", "linux-musl-x64", "examples/hello.0", "--out", tinyHello]);
+zero(["build", "--release", "tiny", "--target", "linux-musl-x64", "examples/hello.graph", "--out", tinyHello]);
 assert(statSync(tinyHello).size < 10 * 1024);
 const profileCacheCheckSource = join(outDir, "profile-cache-check.0");
 writeProjectionFile(profileCacheCheckSource, `pub fn main(world: World) -> Void raises {
@@ -4761,13 +4728,13 @@ writeProjectionFile(profileCacheCheckSource, `pub fn main(world: World) -> Void 
 }
 `);
 const profileCacheCheckGraph = importProjectionSidecar(profileCacheCheckSource);
-const profileCacheCheck = json(["size", "--json", "--profile", "fast", profileCacheCheckSource]).body;
+const profileCacheCheck = json(["size", "--json", "--profile", "fast", profileCacheCheckGraph]).body;
 assert.equal(profileCacheCheck.graph.artifact, profileCacheCheckGraph);
 const profileCacheSpecialization = profileCacheCheck.compilerCaches.find((cache) => cache.name === "specialization");
 assert(profileCacheSpecialization);
 assert.equal(profileCacheCheck.incrementalInvalidation.profileDependency, "fast");
 assert.equal(existsSync(join(".zero", "cache", "native", `specialization-${profileCacheSpecialization.key}.cache`)), true);
-const buildReport = json(["build", "--json", "--target", "linux-musl-x64", "examples/hello.0", "--out", join(outDir, "hello-linux-report")]).body;
+const buildReport = json(["build", "--json", "--target", "linux-musl-x64", "examples/hello.graph", "--out", join(outDir, "hello-linux-report")]).body;
 assert.equal(buildReport.schemaVersion, 1);
 assert.equal(buildReport.emit, "exe");
 assert.equal(buildReport.hostTarget, version.host);
@@ -4798,13 +4765,13 @@ assertReleaseTargetContract(buildReport, {
   linkerFlavor: "elf64",
   targetLibcMode: "bundled-libc",
 });
-repeatBuildHash(["build", "--json", "--target", "linux-musl-x64", "examples/hello.0", "--out", join(outDir, "hello-linux-report")], join(outDir, "hello-linux-report"), join(outDir, "hello-linux-report.repeat"));
+repeatBuildHash(["build", "--json", "--target", "linux-musl-x64", "examples/hello.graph", "--out", join(outDir, "hello-linux-report")], join(outDir, "hello-linux-report"), join(outDir, "hello-linux-report.repeat"));
 
 const runArtifact = join(outDir, "run-add");
 rmSync(runArtifact, { force: true });
 rmSync(`${runArtifact}.exe`, { force: true });
 rmSync(`${runArtifact}.c`, { force: true });
-const runResult = zero(["run", "--out", runArtifact, "examples/add.0"]);
+const runResult = zero(["run", "--out", runArtifact, "examples/add.graph"]);
 assert.match(runResult.stdout, /math works\n/);
 assert(existsSync(version.host.startsWith("win32") ? `${runArtifact}.exe` : runArtifact));
 assert.equal(existsSync(`${runArtifact}.c`), false);
@@ -4816,7 +4783,7 @@ for (const [requestedProfile, canonicalProfile, profileKey] of [
   ["tiny", "tiny", "tiny"],
 ]) {
   const profileOut = join(outDir, `profile-${requestedProfile}-hello`);
-  const profileReport = json(["build", "--json", "--profile", requestedProfile, "--target", "linux-musl-x64", "examples/hello.0", "--out", profileOut]).body;
+  const profileReport = json(["build", "--json", "--profile", requestedProfile, "--target", "linux-musl-x64", "examples/hello.graph", "--out", profileOut]).body;
   assert.equal(profileReport.generatedCBytes, 0);
   assert.equal(profileReport.profileSemantics.canonical, canonicalProfile);
   assert.equal(profileReport.profileSemantics.profileKey, profileKey);
@@ -4826,10 +4793,10 @@ for (const [requestedProfile, canonicalProfile, profileKey] of [
   assert.equal(profileReport.safetyFacts.profile, canonicalProfile);
   assert.equal(profileReport.safetyFacts.profileKey, profileKey);
   assert.equal(profileReport.profileBudget.helperBudgetPolicy, profileReport.profileSemantics.profileBudget.helperBudgetPolicy);
-  repeatBuildHash(["build", "--json", "--profile", requestedProfile, "--target", "linux-musl-x64", "examples/hello.0", "--out", profileOut], profileOut, `${profileOut}.repeat`);
+  repeatBuildHash(["build", "--json", "--profile", requestedProfile, "--target", "linux-musl-x64", "examples/hello.graph", "--out", profileOut], profileOut, `${profileOut}.repeat`);
 }
 
-const profileSizeReport = json(["size", "--json", "--profile", "debug", "--target", "linux-musl-x64", "examples/hello.0"]).body;
+const profileSizeReport = json(["size", "--json", "--profile", "debug", "--target", "linux-musl-x64", "examples/hello.graph"]).body;
 assert.equal(profileSizeReport.generatedCBytes, 0);
 assert.equal(profileSizeReport.graph.artifact, "examples/hello.graph");
 assert.equal(profileSizeReport.graph.lowering, "mapped-final-mir");
@@ -4850,7 +4817,7 @@ assert.equal(profileSizeReport.profileBudget.debugMetadataAllowed, true);
 
 const directObjPath = join(outDir, "direct-obj-add.o");
 rmSync(directObjPath, { force: true });
-const directObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-obj-add.0", "--out", directObjPath]).body;
+const directObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-obj-add.graph", "--out", directObjPath]).body;
 const directObjBytes = readFileSync(directObjPath);
 assert.equal(directObjReport.emit, "obj");
 assert.equal(directObjReport.compiler, "zero-elf64");
@@ -4866,7 +4833,7 @@ assert.equal(directObjBytes.readUInt16LE(16), 1);
 assert.equal(directObjBytes.readUInt16LE(18), 62);
 const directI64ObjPath = join(outDir, "direct-i64-return.o");
 rmSync(directI64ObjPath, { force: true });
-const directI64ObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-i64-return.0", "--out", directI64ObjPath]).body;
+const directI64ObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-i64-return.graph", "--out", directI64ObjPath]).body;
 const directI64ObjBytes = readFileSync(directI64ObjPath);
 assert.equal(directI64ObjReport.emit, "obj");
 assert.equal(directI64ObjReport.compiler, "zero-elf64");
@@ -4876,7 +4843,7 @@ assert(directI64ObjBytes.includes(Buffer.from([0x48, 0xb8, 0xff, 0xff, 0xff, 0xf
 assert(directI64ObjBytes.includes(Buffer.from([0x48, 0x01, 0xc8])));
 const directShapeObjPath = join(outDir, "direct-token-shape.o");
 rmSync(directShapeObjPath, { force: true });
-const directShapeObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-token-shape.0", "--out", directShapeObjPath]).body;
+const directShapeObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-token-shape.graph", "--out", directShapeObjPath]).body;
 const directShapeObjBytes = readFileSync(directShapeObjPath);
 assert.equal(directShapeObjReport.emit, "obj");
 assert.equal(directShapeObjReport.compiler, "zero-elf64");
@@ -4886,7 +4853,7 @@ assert.equal(directShapeObjBytes[0], 0x7f);
 assert.equal(directShapeObjBytes[1], 0x45);
 const directSpanReadObjPath = join(outDir, "direct-span-read.o");
 rmSync(directSpanReadObjPath, { force: true });
-const directSpanReadObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-span-read.0", "--out", directSpanReadObjPath]).body;
+const directSpanReadObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-span-read.graph", "--out", directSpanReadObjPath]).body;
 const directSpanReadObjBytes = readFileSync(directSpanReadObjPath);
 assert.equal(directSpanReadObjReport.emit, "obj");
 assert.equal(directSpanReadObjReport.compiler, "zero-elf64");
@@ -4898,7 +4865,7 @@ assert.equal(directSpanReadObjBytes[0], 0x7f);
 assert.equal(directSpanReadObjBytes[1], 0x45);
 const directByteViewLocalsObjPath = join(outDir, "direct-byte-view-reloc.o");
 rmSync(directByteViewLocalsObjPath, { force: true });
-const directByteViewLocalsObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-byte-view-reloc.0", "--out", directByteViewLocalsObjPath]).body;
+const directByteViewLocalsObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-byte-view-reloc.graph", "--out", directByteViewLocalsObjPath]).body;
 const directByteViewLocalsObjBytes = readFileSync(directByteViewLocalsObjPath);
 assert.equal(directByteViewLocalsObjReport.emit, "obj");
 assert.equal(directByteViewLocalsObjReport.compiler, "zero-elf64");
@@ -4910,7 +4877,7 @@ assert(directByteViewLocalsObjBytes.includes(Buffer.from(".rodata\0")));
 assert(directByteViewLocalsObjBytes.includes(Buffer.from(".rela.text\0")));
 const directRescueObjPath = join(outDir, "direct-rescue-basic.o");
 rmSync(directRescueObjPath, { force: true });
-const directRescueObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-rescue-basic.0", "--out", directRescueObjPath]).body;
+const directRescueObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-rescue-basic.graph", "--out", directRescueObjPath]).body;
 const directRescueObjBytes = readFileSync(directRescueObjPath);
 assert.equal(directRescueObjReport.emit, "obj");
 assert.equal(directRescueObjReport.compiler, "zero-elf64");
@@ -4920,7 +4887,7 @@ assert.equal(directRescueObjBytes[0], 0x7f);
 assert.equal(directRescueObjBytes[1], 0x45);
 const directExePath = join(outDir, "direct-exe-return");
 rmSync(directExePath, { force: true });
-const directExeReport = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-exe-return.0", "--out", directExePath]).body;
+const directExeReport = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-exe-return.graph", "--out", directExePath]).body;
 const directExeBytes = readFileSync(directExePath);
 assert.equal(directExeReport.emit, "exe");
 assert.equal(directExeReport.compiler, "zero-elf64");
@@ -4938,17 +4905,17 @@ assert.equal(directExeBytes.readUInt16LE(16), 2);
 assert.equal(directExeBytes.readUInt16LE(18), 62);
 assert.equal(directExeBytes.readUInt16LE(54), 56);
 assert.equal(directExeBytes.readUInt16LE(56), 1);
-const removedEmitC = json(["build", "--json", "--emit", "c", "--target", "linux-musl-x64", "examples/direct-exe-return.0", "--out", join(outDir, "removed-c-backend.c")], { allowFailure: true });
+const removedEmitC = json(["build", "--json", "--emit", "c", "--target", "linux-musl-x64", "examples/direct-exe-return.graph", "--out", join(outDir, "removed-c-backend.c")], { allowFailure: true });
 assert.notEqual(removedEmitC.code, 0);
 assert.equal(removedEmitC.body.diagnostics[0].code, "BLD003");
 assert.equal(removedEmitC.body.diagnostics[0].repair.id, "use-direct-emitter");
-const removedLegacyFlag = json(["build", "--json", "--legacy-backend", "--target", "linux-musl-x64", "examples/direct-exe-return.0", "--out", join(outDir, "removed-legacy-flag")], { allowFailure: true });
+const removedLegacyFlag = json(["build", "--json", "--legacy-backend", "--target", "linux-musl-x64", "examples/direct-exe-return.graph", "--out", join(outDir, "removed-legacy-flag")], { allowFailure: true });
 assert.notEqual(removedLegacyFlag.code, 0);
 assert.equal(removedLegacyFlag.body.diagnostics[0].code, "BLD003");
 assert.equal(removedLegacyFlag.body.diagnostics[0].repair.id, "use-direct-emitter");
 const directMachOExePath = join(outDir, "direct-macho-exe-return");
 rmSync(directMachOExePath, { force: true });
-const directMachOExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-macho64", "--target", "darwin-arm64", "examples/direct-exe-return.0", "--out", directMachOExePath]).body;
+const directMachOExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-macho64", "--target", "darwin-arm64", "examples/direct-exe-return.graph", "--out", directMachOExePath]).body;
 const directMachOExeBytes = readFileSync(directMachOExePath);
 assert.equal(directMachOExeReport.emit, "exe");
 assert.equal(directMachOExeReport.compiler, "zero-macho64");
@@ -4963,7 +4930,7 @@ assertReleaseTargetContract(directMachOExeReport, {
   linkerFlavor: "macho64",
   targetLibcMode: "host-default",
 });
-repeatBuildHash(["build", "--json", "--emit", "exe", "--backend", "zero-macho64", "--target", "darwin-arm64", "examples/direct-exe-return.0", "--out", directMachOExePath], directMachOExePath, `${directMachOExePath}.repeat`);
+repeatBuildHash(["build", "--json", "--emit", "exe", "--backend", "zero-macho64", "--target", "darwin-arm64", "examples/direct-exe-return.graph", "--out", directMachOExePath], directMachOExePath, `${directMachOExePath}.repeat`);
 assert.equal(directMachOExeBytes.readUInt32LE(0), 0xfeedfacf);
 assert.equal(directMachOExeBytes.readUInt32LE(12), 2);
 const directMachOExeUuid = assertMachOLoadCommand(directMachOExeBytes, 0x1b, 24);
@@ -4972,7 +4939,7 @@ assert(directMachOExeBytes.includes(Buffer.from("/usr/lib/dyld")));
 assert(directMachOExeBytes.includes(Buffer.from("zero-direct")));
 const directMachOX64ExePath = join(outDir, "direct-macho-x64-hello");
 rmSync(directMachOX64ExePath, { force: true });
-const directMachOX64ExeReport = json(["build", "--json", "--emit", "exe", "--target", "darwin-x64", "examples/hello.0", "--out", directMachOX64ExePath]).body;
+const directMachOX64ExeReport = json(["build", "--json", "--emit", "exe", "--target", "darwin-x64", "examples/hello.graph", "--out", directMachOX64ExePath]).body;
 const directMachOX64ExeBytes = readFileSync(directMachOX64ExePath);
 assert.equal(directMachOX64ExeReport.emit, "exe");
 assert.equal(directMachOX64ExeReport.compiler, "zero-macho-x64");
@@ -4987,7 +4954,7 @@ assertReleaseTargetContract(directMachOX64ExeReport, {
   linkerFlavor: "macho64",
   targetLibcMode: "sysroot",
 });
-repeatBuildHash(["build", "--json", "--emit", "exe", "--target", "darwin-x64", "examples/hello.0", "--out", directMachOX64ExePath], directMachOX64ExePath, `${directMachOX64ExePath}.repeat`);
+repeatBuildHash(["build", "--json", "--emit", "exe", "--target", "darwin-x64", "examples/hello.graph", "--out", directMachOX64ExePath], directMachOX64ExePath, `${directMachOX64ExePath}.repeat`);
 assert.equal(directMachOX64ExeBytes.readUInt32LE(0), 0xfeedfacf);
 assert.equal(directMachOX64ExeBytes.readUInt32LE(4), 0x01000007);
 assert.equal(directMachOX64ExeBytes.readUInt32LE(8), 3);
@@ -4999,7 +4966,7 @@ assert(directMachOX64ExeBytes.includes(Buffer.from("zero-direct-x64")));
 assert(directMachOX64ExeBytes.includes(Buffer.from("hello from zero")));
 const directMachOX64UnhandledPath = join(outDir, "direct-macho-x64-unhandled-error");
 rmSync(directMachOX64UnhandledPath, { force: true });
-const directMachOX64UnhandledReport = json(["build", "--json", "--emit", "exe", "--target", "darwin-x64", "examples/direct-unhandled-error-exit.0", "--out", directMachOX64UnhandledPath]).body;
+const directMachOX64UnhandledReport = json(["build", "--json", "--emit", "exe", "--target", "darwin-x64", "examples/direct-unhandled-error-exit.graph", "--out", directMachOX64UnhandledPath]).body;
 const directMachOX64UnhandledBytes = readFileSync(directMachOX64UnhandledPath);
 assert.equal(directMachOX64UnhandledReport.emit, "exe");
 assert.equal(directMachOX64UnhandledReport.compiler, "zero-macho-x64");
@@ -5022,14 +4989,14 @@ assert(directMachOX64UnhandledBytes.includes(Buffer.from("/usr/lib/dyld")));
 assert(directMachOX64UnhandledBytes.includes(Buffer.from("zero-direct-x64")));
 const directMachOU8ExePath = join(outDir, "direct-macho-u8-return");
 rmSync(directMachOU8ExePath, { force: true });
-const directMachOU8ExeReport = json(["build", "--json", "--emit", "exe", "--target", "darwin-arm64", "examples/direct-string-literal.0", "--out", directMachOU8ExePath]).body;
+const directMachOU8ExeReport = json(["build", "--json", "--emit", "exe", "--target", "darwin-arm64", "examples/direct-string-literal.graph", "--out", directMachOU8ExePath]).body;
 assert.equal(directMachOU8ExeReport.emit, "exe");
 assert.equal(directMachOU8ExeReport.compiler, "zero-macho64");
 assert.equal(directMachOU8ExeReport.generatedCBytes, 0);
 assert.equal(directMachOU8ExeReport.objectBackend.objectEmission.path, "direct-macho64-exe");
 const directCoffExePath = join(outDir, "direct-coff-exe-return");
 rmSync(`${directCoffExePath}.exe`, { force: true });
-const directCoffExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-coff-x64", "--target", "win32-x64.exe", "examples/direct-exe-return.0", "--out", directCoffExePath]).body;
+const directCoffExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-coff-x64", "--target", "win32-x64.exe", "examples/direct-exe-return.graph", "--out", directCoffExePath]).body;
 const directCoffExeBytes = readFileSync(`${directCoffExePath}.exe`);
 const directCoffPeOffset = directCoffExeBytes.readUInt32LE(0x3c);
 assert.equal(directCoffExeReport.emit, "exe");
@@ -5047,13 +5014,13 @@ assertReleaseTargetContract(directCoffExeReport, {
 });
 assert.equal(directCoffExeReport.releaseTargetContract.sysroot.requiredByTarget, true);
 assert.equal(directCoffExeReport.releaseTargetContract.sysroot.status, "not-used-by-direct-artifact");
-repeatBuildHash(["build", "--json", "--emit", "exe", "--backend", "zero-coff-x64", "--target", "win32-x64.exe", "examples/direct-exe-return.0", "--out", directCoffExePath], `${directCoffExePath}.exe`, `${directCoffExePath}.repeat`, `${directCoffExePath}.repeat.exe`);
+repeatBuildHash(["build", "--json", "--emit", "exe", "--backend", "zero-coff-x64", "--target", "win32-x64.exe", "examples/direct-exe-return.graph", "--out", directCoffExePath], `${directCoffExePath}.exe`, `${directCoffExePath}.repeat`, `${directCoffExePath}.repeat.exe`);
 assert.equal(directCoffExeBytes.toString("ascii", directCoffPeOffset, directCoffPeOffset + 4), "PE\u0000\u0000");
 assert.equal(directCoffExeBytes.readUInt16LE(directCoffPeOffset + 4), 0x8664);
 assert(directCoffExeBytes.includes(Buffer.from("KERNEL32.dll")));
 const directCoffArm64ExePath = join(outDir, "direct-coff-arm64-exe-return");
 rmSync(`${directCoffArm64ExePath}.exe`, { force: true });
-const directCoffArm64ExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-coff-aarch64", "--target", "win32-arm64.exe", "examples/direct-exe-return.0", "--out", directCoffArm64ExePath]).body;
+const directCoffArm64ExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-coff-aarch64", "--target", "win32-arm64.exe", "examples/direct-exe-return.graph", "--out", directCoffArm64ExePath]).body;
 const directCoffArm64ExeBytes = readFileSync(`${directCoffArm64ExePath}.exe`);
 const directCoffArm64PeOffset = directCoffArm64ExeBytes.readUInt32LE(0x3c);
 assert.equal(directCoffArm64ExeReport.emit, "exe");
@@ -5076,7 +5043,7 @@ assert.equal(directCoffArm64ExeBytes.readUInt16LE(directCoffArm64PeOffset + 4), 
 assert(directCoffArm64ExeBytes.includes(Buffer.from("KERNEL32.dll")));
 const directCoffArm64HelloPath = join(outDir, "direct-coff-arm64-hello");
 rmSync(`${directCoffArm64HelloPath}.exe`, { force: true });
-const directCoffArm64HelloReport = json(["build", "--json", "--emit", "exe", "--target", "win32-arm64.exe", "examples/hello.0", "--out", directCoffArm64HelloPath]).body;
+const directCoffArm64HelloReport = json(["build", "--json", "--emit", "exe", "--target", "win32-arm64.exe", "examples/hello.graph", "--out", directCoffArm64HelloPath]).body;
 const directCoffArm64HelloBytes = readFileSync(`${directCoffArm64HelloPath}.exe`);
 assert.equal(directCoffArm64HelloReport.compiler, "zero-coff-aarch64");
 assert.equal(directCoffArm64HelloReport.generatedCBytes, 0);
@@ -5087,14 +5054,14 @@ assert(hasAarch64Instruction(directCoffArm64HelloBytes, 0xf90017fe));
 assert(hasAarch64Instruction(directCoffArm64HelloBytes, 0xf94017fe));
 const directCoffU8ExePath = join(outDir, "direct-coff-u8-return");
 rmSync(`${directCoffU8ExePath}.exe`, { force: true });
-const directCoffU8ExeReport = json(["build", "--json", "--emit", "exe", "--target", "win32-x64.exe", "examples/direct-string-literal.0", "--out", directCoffU8ExePath]).body;
+const directCoffU8ExeReport = json(["build", "--json", "--emit", "exe", "--target", "win32-x64.exe", "examples/direct-string-literal.graph", "--out", directCoffU8ExePath]).body;
 assert.equal(directCoffU8ExeReport.emit, "exe");
 assert.equal(directCoffU8ExeReport.compiler, "zero-coff-x64");
 assert.equal(directCoffU8ExeReport.generatedCBytes, 0);
 assert.equal(directCoffU8ExeReport.objectBackend.objectEmission.path, "direct-coff-x64-exe");
 const directAarch64ExePath = join(outDir, "direct-aarch64-exe-return");
 rmSync(directAarch64ExePath, { force: true });
-const directAarch64ExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf-aarch64", "--target", "linux-musl-arm64", "examples/direct-exe-return.0", "--out", directAarch64ExePath]).body;
+const directAarch64ExeReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf-aarch64", "--target", "linux-musl-arm64", "examples/direct-exe-return.graph", "--out", directAarch64ExePath]).body;
 const directAarch64ExeBytes = readFileSync(directAarch64ExePath);
 assert.equal(directAarch64ExeReport.emit, "exe");
 assert.equal(directAarch64ExeReport.compiler, "zero-elf-aarch64");
@@ -5103,7 +5070,7 @@ assert(directAarch64ExeReport.artifactBytes < 512);
 assert.equal(directAarch64ExeReport.objectBackend.objectEmission.path, "direct-elf-aarch64-exe");
 const directAarch64HelloPath = join(outDir, "direct-aarch64-hello");
 rmSync(directAarch64HelloPath, { force: true });
-const directAarch64HelloReport = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-arm64", "examples/hello.0", "--out", directAarch64HelloPath]).body;
+const directAarch64HelloReport = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-arm64", "examples/hello.graph", "--out", directAarch64HelloPath]).body;
 const directAarch64HelloBytes = readFileSync(directAarch64HelloPath);
 assert.equal(directAarch64HelloReport.compiler, "zero-elf-aarch64");
 assert.equal(directAarch64HelloReport.generatedCBytes, 0);
@@ -5117,9 +5084,9 @@ writeProjectionFile(directAarch64VoidImplicitSource, `export c fn main() -> Void
     let ok: Bool = true
 }
 `);
-importProjectionSidecar(directAarch64VoidImplicitSource);
+const directAarch64VoidImplicitGraph = importProjectionSidecar(directAarch64VoidImplicitSource);
 rmSync(directAarch64VoidImplicitPath, { force: true });
-const directAarch64VoidImplicitReport = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-arm64", directAarch64VoidImplicitSource, "--out", directAarch64VoidImplicitPath]).body;
+const directAarch64VoidImplicitReport = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-arm64", directAarch64VoidImplicitGraph, "--out", directAarch64VoidImplicitPath]).body;
 const directAarch64VoidImplicitBytes = readFileSync(directAarch64VoidImplicitPath);
 assert.equal(directAarch64VoidImplicitReport.compiler, "zero-elf-aarch64");
 assert.equal(directAarch64VoidImplicitReport.generatedCBytes, 0);
@@ -5131,7 +5098,7 @@ assert(directAarch64ExeBytes.includes(Buffer.from([0x40, 0x05, 0x80, 0x52, 0xc0,
 assert(directAarch64ExeBytes.includes(Buffer.from([0xa8, 0x0b, 0x80, 0xd2, 0x01, 0x00, 0x00, 0xd4])));
 const directCallObjPath = join(outDir, "direct-call-add.o");
 rmSync(directCallObjPath, { force: true });
-const directCallObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-call-add.0", "--out", directCallObjPath]).body;
+const directCallObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-call-add.graph", "--out", directCallObjPath]).body;
 const directCallObjBytes = readFileSync(directCallObjPath);
 assert.equal(directCallObjReport.emit, "obj");
 assert.equal(directCallObjReport.generatedCBytes, 0);
@@ -5140,7 +5107,7 @@ assert.equal(directCallObjBytes.readUInt16LE(16), 1);
 assert.equal(directCallObjBytes.readUInt16LE(18), 62);
 const directArrayObjPath = join(outDir, "direct-array-fill.o");
 rmSync(directArrayObjPath, { force: true });
-const directArrayObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-array-fill.0", "--out", directArrayObjPath]).body;
+const directArrayObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-musl-x64", "examples/direct-array-fill.graph", "--out", directArrayObjPath]).body;
 const directArrayObjBytes = readFileSync(directArrayObjPath);
 assert.equal(directArrayObjReport.emit, "obj");
 assert.equal(directArrayObjReport.generatedCBytes, 0);
@@ -5150,7 +5117,7 @@ assert.equal(directArrayObjBytes.readUInt16LE(16), 1);
 assert.equal(directArrayObjBytes.readUInt16LE(18), 62);
 const directArm64ObjPath = join(outDir, "direct-arm64-return.o");
 rmSync(directArm64ObjPath, { force: true });
-const directArm64ObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", "examples/direct-exe-return.0", "--out", directArm64ObjPath]).body;
+const directArm64ObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", "examples/direct-exe-return.graph", "--out", directArm64ObjPath]).body;
 const directArm64ObjBytes = readFileSync(directArm64ObjPath);
 assert.equal(directArm64ObjReport.emit, "obj");
 assert.equal(directArm64ObjReport.compiler, "zero-elf-aarch64");
@@ -5168,9 +5135,9 @@ writeProjectionFile(directArm64IndexStoreSource, `export c fn main() -> u32 {
     return values[1]
 }
 `);
-importProjectionSidecar(directArm64IndexStoreSource);
+const directArm64IndexStoreGraph = importProjectionSidecar(directArm64IndexStoreSource);
 rmSync(directArm64IndexStoreObjPath, { force: true });
-const directArm64IndexStoreObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", directArm64IndexStoreSource, "--out", directArm64IndexStoreObjPath]).body;
+const directArm64IndexStoreObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", directArm64IndexStoreGraph, "--out", directArm64IndexStoreObjPath]).body;
 const directArm64IndexStoreObjBytes = readFileSync(directArm64IndexStoreObjPath);
 assert.equal(directArm64IndexStoreObjReport.compiler, "zero-elf-aarch64");
 assert.equal(directArm64IndexStoreObjReport.generatedCBytes, 0);
@@ -5178,7 +5145,7 @@ assert(hasAarch64Instruction(directArm64IndexStoreObjBytes, 0xb90003ea));
 assert(hasAarch64Instruction(directArm64IndexStoreObjBytes, 0xb94003ea));
 const directWhilePath = join(outDir, "direct-while-sum");
 rmSync(directWhilePath, { force: true });
-const directWhileReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "examples/direct-while-sum.0", "--out", directWhilePath]).body;
+const directWhileReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "examples/direct-while-sum.graph", "--out", directWhilePath]).body;
 const directWhileBytes = readFileSync(directWhilePath);
 assert.equal(directWhileReport.emit, "exe");
 assert.equal(directWhileReport.compiler, "zero-elf64");
@@ -5188,7 +5155,7 @@ assert.equal(directWhileBytes.readUInt16LE(16), 2);
 assert.equal(directWhileBytes.readUInt16LE(18), 62);
 const directCallLoopPath = join(outDir, "direct-call-loop");
 rmSync(directCallLoopPath, { force: true });
-const directCallLoopReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "examples/direct-call-loop.0", "--out", directCallLoopPath]).body;
+const directCallLoopReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "examples/direct-call-loop.graph", "--out", directCallLoopPath]).body;
 const directCallLoopBytes = readFileSync(directCallLoopPath);
 assert.equal(directCallLoopReport.emit, "exe");
 assert.equal(directCallLoopReport.compiler, "zero-elf64");
@@ -5209,7 +5176,7 @@ assert.equal(directPackageBytes.readUInt16LE(16), 2);
 assert.equal(directPackageBytes.readUInt16LE(18), 62);
 const directLinuxGnuObjPath = join(outDir, "direct-linux-gnu.o");
 rmSync(directLinuxGnuObjPath, { force: true });
-const directLinuxGnuObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-x64", "examples/direct-call-add.0", "--out", directLinuxGnuObjPath]).body;
+const directLinuxGnuObjReport = json(["build", "--json", "--emit", "obj", "--target", "linux-x64", "examples/direct-call-add.graph", "--out", directLinuxGnuObjPath]).body;
 const directLinuxGnuObjBytes = readFileSync(directLinuxGnuObjPath);
 assert.equal(directLinuxGnuObjReport.target, "linux-x64");
 assert.equal(directLinuxGnuObjReport.compiler, "zero-elf64");
@@ -5232,7 +5199,7 @@ const directStringEqlTargets: Array<{ target: string; outName: string; compiler:
 for (const { target, outName, compiler, emissionPath, magic } of directStringEqlTargets) {
   const directStringEqlPath = join(outDir, outName);
   rmSync(directStringEqlPath, { force: true });
-  const directStringEqlReport = json(["build", "--json", "--emit", "obj", "--target", target, "examples/direct-string-eql.0", "--out", directStringEqlPath]).body;
+  const directStringEqlReport = json(["build", "--json", "--emit", "obj", "--target", target, "examples/direct-string-eql.graph", "--out", directStringEqlPath]).body;
   const directStringEqlBytes = readFileSync(directStringEqlPath);
   assert.equal(directStringEqlReport.compiler, compiler);
   assert.equal(directStringEqlReport.generatedCBytes, 0);
@@ -5251,7 +5218,7 @@ writeProjectionFile(directArm64DynamicStringEqlSource, `export c fn main() -> u8
     return 0_u8
 }
 `);
-importProjectionSidecar(directArm64DynamicStringEqlSource);
+const directArm64DynamicStringEqlGraph = importProjectionSidecar(directArm64DynamicStringEqlSource);
 for (const { target, outName, compiler, emissionPath, magic } of [
   { target: "linux-arm64", outName: "direct-dynamic-string-eql-linux-arm64.o", compiler: "zero-elf-aarch64", emissionPath: "direct-elf-aarch64-object", magic: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) },
   { target: "darwin-arm64", outName: "direct-dynamic-string-eql-darwin-arm64.o", compiler: "zero-macho64", emissionPath: "direct-macho64-object", magic: Buffer.from([0xcf, 0xfa, 0xed, 0xfe]) },
@@ -5259,7 +5226,7 @@ for (const { target, outName, compiler, emissionPath, magic } of [
 ]) {
   const directArm64DynamicStringEqlPath = join(outDir, outName);
   rmSync(directArm64DynamicStringEqlPath, { force: true });
-  const directArm64DynamicStringEqlReport = json(["build", "--json", "--emit", "obj", "--target", target, directArm64DynamicStringEqlSource, "--out", directArm64DynamicStringEqlPath]).body;
+  const directArm64DynamicStringEqlReport = json(["build", "--json", "--emit", "obj", "--target", target, directArm64DynamicStringEqlGraph, "--out", directArm64DynamicStringEqlPath]).body;
   const directArm64DynamicStringEqlBytes = readFileSync(directArm64DynamicStringEqlPath);
   assert.equal(directArm64DynamicStringEqlReport.compiler, compiler);
   assert.equal(directArm64DynamicStringEqlReport.generatedCBytes, 0);
@@ -5280,7 +5247,7 @@ const directByteCopyFillTargets: Array<{ target: string; outName: string; compil
 for (const { target, outName, compiler, emissionPath, magic } of directByteCopyFillTargets) {
   const directByteCopyFillPath = join(outDir, outName);
   rmSync(directByteCopyFillPath, { force: true });
-  const directByteCopyFillReport = json(["build", "--json", "--emit", "obj", "--target", target, "examples/direct-byte-copy-fill.0", "--out", directByteCopyFillPath]).body;
+  const directByteCopyFillReport = json(["build", "--json", "--emit", "obj", "--target", target, "examples/direct-byte-copy-fill.graph", "--out", directByteCopyFillPath]).body;
   const directByteCopyFillBytes = readFileSync(directByteCopyFillPath);
   assert.equal(directByteCopyFillReport.compiler, compiler);
   assert.equal(directByteCopyFillReport.generatedCBytes, 0);
@@ -5432,11 +5399,11 @@ writeProjectionFile(directStdPathSource, `export c fn main() -> u8 {
     return 0_u8
 }
 `);
-importProjectionSidecar(directStdPathSource);
+const directStdPathGraph = importProjectionSidecar(directStdPathSource);
 for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
   const directStdPathPath = join(outDir, `direct-std-path-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
   rmSync(directStdPathPath, { force: true });
-  const directStdPathReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdPathSource, "--out", directStdPathPath]).body;
+  const directStdPathReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdPathGraph, "--out", directStdPathPath]).body;
   const directStdPathBytes = readFileSync(directStdPathPath);
   assert.equal(directStdPathReport.compiler, compiler);
   assert.equal(directStdPathReport.generatedCBytes, 0);
@@ -5493,11 +5460,11 @@ writeProjectionFile(directStdStrSource, `export c fn main() -> u8 {
     return 0_u8
 }
 `);
-importProjectionSidecar(directStdStrSource);
+const directStdStrGraph = importProjectionSidecar(directStdStrSource);
 for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
   const directStdStrPath = join(outDir, `direct-std-str-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
   rmSync(directStdStrPath, { force: true });
-  const directStdStrReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdStrSource, "--out", directStdStrPath]).body;
+  const directStdStrReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdStrGraph, "--out", directStdStrPath]).body;
   const directStdStrBytes = readFileSync(directStdStrPath);
   assert.equal(directStdStrReport.compiler, compiler);
   assert.equal(directStdStrReport.generatedCBytes, 0);
@@ -5661,11 +5628,11 @@ writeProjectionFile(directStdMathSource, `export c fn main() -> u8 {
     return 0_u8
 }
 `);
-importProjectionSidecar(directStdMathSource);
+const directStdMathGraph = importProjectionSidecar(directStdMathSource);
 for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
   const directStdMathPath = join(outDir, `direct-std-math-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
   rmSync(directStdMathPath, { force: true });
-  const directStdMathReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdMathSource, "--out", directStdMathPath]).body;
+  const directStdMathReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdMathGraph, "--out", directStdMathPath]).body;
   const directStdMathBytes = readFileSync(directStdMathPath);
   assert.equal(directStdMathReport.compiler, compiler);
   assert.equal(directStdMathReport.generatedCBytes, 0);
@@ -5737,11 +5704,11 @@ writeProjectionFile(directStdTimeRandSource, `export c fn main() -> u8 {
     return 0_u8
 }
 `);
-importProjectionSidecar(directStdTimeRandSource);
+const directStdTimeRandGraph = importProjectionSidecar(directStdTimeRandSource);
 for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
   const directStdTimeRandPath = join(outDir, `direct-std-time-rand-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
   rmSync(directStdTimeRandPath, { force: true });
-  const directStdTimeRandReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdTimeRandSource, "--out", directStdTimeRandPath]).body;
+  const directStdTimeRandReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdTimeRandGraph, "--out", directStdTimeRandPath]).body;
   const directStdTimeRandBytes = readFileSync(directStdTimeRandPath);
   assert.equal(directStdTimeRandReport.compiler, compiler);
   assert.equal(directStdTimeRandReport.generatedCBytes, 0);
@@ -5798,11 +5765,11 @@ writeProjectionFile(directStdDataSource, `export c fn main() -> u8 {
     return 0_u8
 }
 `);
-importProjectionSidecar(directStdDataSource);
+const directStdDataGraph = importProjectionSidecar(directStdDataSource);
 for (const { target, compiler, emissionPath, magic } of directByteCopyFillTargets) {
   const directStdDataPath = join(outDir, `direct-std-codec-json-url-${target.replace(/[^a-z0-9]+/gi, "-")}.o`);
   rmSync(directStdDataPath, { force: true });
-  const directStdDataReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdDataSource, "--out", directStdDataPath]).body;
+  const directStdDataReport = json(["build", "--json", "--emit", "obj", "--target", target, directStdDataGraph, "--out", directStdDataPath]).body;
   const directStdDataBytes = readFileSync(directStdDataPath);
   assert.equal(directStdDataReport.compiler, compiler);
   assert.equal(directStdDataReport.generatedCBytes, 0);
@@ -5812,7 +5779,7 @@ for (const { target, compiler, emissionPath, magic } of directByteCopyFillTarget
 }
 const directMachOPath = join(outDir, "direct-darwin-arm64.o");
 rmSync(directMachOPath, { force: true });
-const directMachOReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/direct-call-add.0", "--out", directMachOPath]).body;
+const directMachOReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/direct-call-add.graph", "--out", directMachOPath]).body;
 const directMachOBytes = readFileSync(directMachOPath);
 assert.equal(directMachOReport.compiler, "zero-macho64");
 assert.equal(directMachOReport.objectBackend.objectEmission.path, "direct-macho64-object");
@@ -5832,7 +5799,7 @@ assert(directMachOBytes.readUInt32LE(directMachOSection + 60) > 0);
 assert.equal((directMachOBytes.readUInt32LE(directMachORelocOffset + 4) >>> 28) & 15, 2);
 const directMachODataPath = join(outDir, "direct-darwin-arm64-data.o");
 rmSync(directMachODataPath, { force: true });
-const directMachODataReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/direct-byte-view-reloc.0", "--out", directMachODataPath]).body;
+const directMachODataReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/direct-byte-view-reloc.graph", "--out", directMachODataPath]).body;
 const directMachODataBytes = readFileSync(directMachODataPath);
 assert.equal(directMachODataReport.compiler, "zero-macho64");
 assert.equal(directMachODataReport.objectBackend.objectEmission.path, "direct-macho64-object");
@@ -5857,7 +5824,7 @@ assert.equal(sawMachOPageReloc, true);
 assert.equal(sawMachOPageoffReloc, true);
 const directMachOWorldPath = join(outDir, "direct-darwin-arm64-world.o");
 rmSync(directMachOWorldPath, { force: true });
-const directMachOWorldReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/hello.0", "--out", directMachOWorldPath]).body;
+const directMachOWorldReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", "examples/hello.graph", "--out", directMachOWorldPath]).body;
 const directMachOWorldBytes = readFileSync(directMachOWorldPath);
 assert.equal(directMachOWorldReport.compiler, "zero-macho64");
 assert.equal(directMachOWorldReport.generatedCBytes, 0);
@@ -5882,7 +5849,7 @@ for (let i = 0; i < directMachOWorldRelocCount; i++) {
 assert.equal(sawMachOWorldBranchReloc, true);
 const directMachOX64WorldPath = join(outDir, "direct-darwin-x64-world.o");
 rmSync(directMachOX64WorldPath, { force: true });
-const directMachOX64WorldReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-x64", "examples/hello.0", "--out", directMachOX64WorldPath]).body;
+const directMachOX64WorldReport = json(["build", "--json", "--emit", "obj", "--target", "darwin-x64", "examples/hello.graph", "--out", directMachOX64WorldPath]).body;
 const directMachOX64WorldBytes = readFileSync(directMachOX64WorldPath);
 assert.equal(directMachOX64WorldReport.compiler, "zero-macho-x64");
 assert.equal(directMachOX64WorldReport.generatedCBytes, 0);
@@ -5911,7 +5878,7 @@ assert.equal(sawMachOX64SignedReloc, true);
 assert.equal(sawMachOX64BranchReloc, true);
 const directCoffPath = join(outDir, "direct-win-x64.obj");
 rmSync(directCoffPath, { force: true });
-const directCoffReport = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", "examples/direct-call-add.0", "--out", directCoffPath]).body;
+const directCoffReport = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", "examples/direct-call-add.graph", "--out", directCoffPath]).body;
 const directCoffBytes = readFileSync(directCoffPath);
 assert.equal(directCoffReport.compiler, "zero-coff-x64");
 assert.equal(directCoffReport.objectBackend.objectEmission.path, "direct-coff-x64-object");
@@ -5928,7 +5895,7 @@ assert(directCoffRelocCount > 0);
 assert.equal(directCoffBytes.readUInt16LE(directCoffRelocOffset + 8), 4);
 const directCoffDataPath = join(outDir, "direct-win-x64-data.obj");
 rmSync(directCoffDataPath, { force: true });
-const directCoffDataReport = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", "examples/direct-byte-view-reloc.0", "--out", directCoffDataPath]).body;
+const directCoffDataReport = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", "examples/direct-byte-view-reloc.graph", "--out", directCoffDataPath]).body;
 const directCoffDataBytes = readFileSync(directCoffDataPath);
 assert.equal(directCoffDataReport.compiler, "zero-coff-x64");
 assert.equal(directCoffDataReport.objectBackend.objectEmission.path, "direct-coff-x64-object");
@@ -5949,7 +5916,7 @@ for (let i = 0; i < directCoffDataRelocCount; i++) {
 assert.equal(sawCoffAddr64Reloc, true);
 const directCoffArm64DataPath = join(outDir, "direct-win-arm64-data.obj");
 rmSync(directCoffArm64DataPath, { force: true });
-const directCoffArm64DataReport = json(["build", "--json", "--emit", "obj", "--target", "win32-arm64.exe", "examples/direct-byte-view-reloc.0", "--out", directCoffArm64DataPath]).body;
+const directCoffArm64DataReport = json(["build", "--json", "--emit", "obj", "--target", "win32-arm64.exe", "examples/direct-byte-view-reloc.graph", "--out", directCoffArm64DataPath]).body;
 const directCoffArm64DataBytes = readFileSync(directCoffArm64DataPath);
 assert.equal(directCoffArm64DataReport.compiler, "zero-coff-aarch64");
 assert.equal(directCoffArm64DataReport.objectBackend.objectEmission.path, "direct-coff-aarch64-object");
@@ -5970,7 +5937,7 @@ for (let i = 0; i < directCoffArm64DataRelocCount; i++) {
 assert.equal(sawCoffArm64Addr64Reloc, true);
 const directCoffWorldPath = join(outDir, "direct-win-x64-world.obj");
 rmSync(directCoffWorldPath, { force: true });
-const directCoffWorldReport = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", "examples/hello.0", "--out", directCoffWorldPath]).body;
+const directCoffWorldReport = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", "examples/hello.graph", "--out", directCoffWorldPath]).body;
 const directCoffWorldBytes = readFileSync(directCoffWorldPath);
 assert.equal(directCoffWorldReport.compiler, "zero-coff-x64");
 assert.equal(directCoffWorldReport.generatedCBytes, 0);
@@ -5992,7 +5959,7 @@ for (let i = 0; i < directCoffWorldRelocCount; i++) {
 assert.equal(sawCoffWorldRel32Reloc, true);
 const directElfFsFallibleResourcesPath = join(outDir, "direct-std-fs-fallible-resources");
 rmSync(directElfFsFallibleResourcesPath, { force: true });
-const directElfFsFallibleResourcesReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "conformance/native/pass/std-fs-fallible-resources.0", "--out", directElfFsFallibleResourcesPath]).body;
+const directElfFsFallibleResourcesReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "conformance/native/pass/std-fs-fallible-resources.graph", "--out", directElfFsFallibleResourcesPath]).body;
 const directElfFsFallibleResourcesBytes = readFileSync(directElfFsFallibleResourcesPath);
 assert.equal(directElfFsFallibleResourcesReport.generatedCBytes, 0);
 assert.equal(directElfFsFallibleResourcesReport.objectBackend.objectEmission.path, "direct-elf64-exe");
@@ -6000,7 +5967,7 @@ assert(directElfFsFallibleResourcesBytes.includes(elfPackedErrorBytes(2)));
 assert(directElfFsFallibleResourcesBytes.includes(elfPackedErrorBytes(4)));
 const directElfFsFalliblePath = join(outDir, "direct-std-fs-fallible");
 rmSync(directElfFsFalliblePath, { force: true });
-const directElfFsFallibleReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "conformance/native/pass/std-fs-fallible.0", "--out", directElfFsFalliblePath]).body;
+const directElfFsFallibleReport = json(["build", "--json", "--emit", "exe", "--backend", "zero-elf64", "--target", "linux-musl-x64", "conformance/native/pass/std-fs-fallible.graph", "--out", directElfFsFalliblePath]).body;
 const directElfFsFallibleBytes = readFileSync(directElfFsFalliblePath);
 assert.equal(directElfFsFallibleReport.generatedCBytes, 0);
 assert.equal(directElfFsFallibleReport.objectBackend.objectEmission.path, "direct-elf64-exe");
@@ -6009,7 +5976,7 @@ assert(directElfFsFallibleBytes.includes(elfPackedErrorBytes(3)));
 assert(directElfFsFallibleBytes.includes(elfPackedErrorBytes(4)));
 const directArm64ElfPath = join(outDir, "direct-arm64.o");
 rmSync(directArm64ElfPath, { force: true });
-const directArm64ElfReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", "examples/direct-call-add.0", "--out", directArm64ElfPath]).body;
+const directArm64ElfReport = json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", "examples/direct-call-add.graph", "--out", directArm64ElfPath]).body;
 const directArm64ElfBytes = readFileSync(directArm64ElfPath);
 assert.equal(directArm64ElfReport.compiler, "zero-elf-aarch64");
 assert.equal(directArm64ElfReport.generatedCBytes, 0);
@@ -6061,22 +6028,22 @@ const zeroHashSize = json(["size", "--json", "--target", "linux-musl-x64", "exam
 assert.equal(zeroHashSize.generatedCBytes, 0);
 assert(zeroHashSize.usedStdlibHelpers.some((helper) => helper.name === "std.codec.crc32Bytes"));
 assert(zeroHashSize.artifactBytes < 100 * 1024);
-const invalidCheckEmit = json(["check", "--json", "--emit", "bogus", "examples/hello.0"], { allowFailure: true });
+const invalidCheckEmit = json(["check", "--json", "--emit", "bogus", "examples/hello.graph"], { allowFailure: true });
 assert.equal(invalidCheckEmit.code, 1);
 assert.equal(invalidCheckEmit.body.ok, false);
 assert.equal(invalidCheckEmit.body.diagnostics[0].code, "BLD002");
 assert.equal(invalidCheckEmit.body.diagnostics[0].actual, "--emit bogus");
 assert.equal(invalidCheckEmit.body.targetReadiness, undefined);
-const unknownBackend = json(["check", "--json", "--backend", "bogus", "examples/hello.0"], { allowFailure: true });
+const unknownBackend = json(["check", "--json", "--backend", "bogus", "examples/hello.graph"], { allowFailure: true });
 assert.equal(unknownBackend.code, 1);
 assert.equal(unknownBackend.body.diagnostics[0].code, "BLD002");
 assert.equal(unknownBackend.body.diagnostics[0].actual, "--backend bogus");
 assert.match(unknownBackend.body.diagnostics[0].expected, /direct, llvm/);
-const unknownBackendWithLlvmEmit = json(["check", "--json", "--emit", "llvm-ir", "--backend", "bogus", "examples/hello.0"], { allowFailure: true });
+const unknownBackendWithLlvmEmit = json(["check", "--json", "--emit", "llvm-ir", "--backend", "bogus", "examples/hello.graph"], { allowFailure: true });
 assert.equal(unknownBackendWithLlvmEmit.code, 1);
 assert.equal(unknownBackendWithLlvmEmit.body.diagnostics[0].code, "BLD002");
 assert.equal(unknownBackendWithLlvmEmit.body.diagnostics[0].actual, "--backend bogus");
-const llvmReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.0"]).body;
+const llvmReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.graph"]).body;
 assert.equal(llvmReadiness.ok, true);
 const llvmHostReady = llvmReadiness.targetReadiness.ok;
 assert.equal(llvmReadiness.targetReadiness.backend, "llvm");
@@ -6093,7 +6060,7 @@ if (llvmHostReady) {
   assert.equal(llvmReadiness.targetReadiness.diagnostics[0].backendBlocker.backend, "llvm");
   assert(["toolchain", "target-selection"].includes(llvmReadiness.targetReadiness.stage));
 }
-const llvmMissingToolReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.0"], { env: { ZERO_LLVM_CLANG: "/tmp/zero-missing-clang" } }).body;
+const llvmMissingToolReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.graph"], { env: { ZERO_LLVM_CLANG: "/tmp/zero-missing-clang" } }).body;
 assert.equal(llvmMissingToolReadiness.ok, true);
 assert.equal(llvmMissingToolReadiness.targetReadiness.ok, false);
 assert.equal(llvmMissingToolReadiness.targetReadiness.backend, "llvm");
@@ -6103,7 +6070,7 @@ assert.equal(llvmMissingToolReadiness.targetReadiness.diagnostics[0].backendBloc
 const llvmNonExecutableToolPath = join(outDir, "not-executable-clang");
 writeFileSync(llvmNonExecutableToolPath, "");
 chmodSync(llvmNonExecutableToolPath, 0o644);
-const llvmNonExecutableToolReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.0"], { env: { ZERO_LLVM_CLANG: llvmNonExecutableToolPath } }).body;
+const llvmNonExecutableToolReadiness = json(["check", "--json", "--backend", "llvm", "examples/add.graph"], { env: { ZERO_LLVM_CLANG: llvmNonExecutableToolPath } }).body;
 assert.equal(llvmNonExecutableToolReadiness.ok, true);
 assert.equal(llvmNonExecutableToolReadiness.targetReadiness.ok, false);
 assert.equal(llvmNonExecutableToolReadiness.targetReadiness.backend, "llvm");
@@ -6111,7 +6078,7 @@ assert.equal(llvmNonExecutableToolReadiness.targetReadiness.stage, "toolchain");
 assert.equal(llvmNonExecutableToolReadiness.targetReadiness.diagnostics[0].code, "BLD004");
 assert.match(llvmNonExecutableToolReadiness.targetReadiness.diagnostics[0].actual, /not executable or not found/);
 assert.equal(llvmNonExecutableToolReadiness.targetReadiness.diagnostics[0].backendBlocker.unsupportedFeature, "clang");
-const llvmIrReadiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.0"]).body;
+const llvmIrReadiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.graph"]).body;
 assert.equal(llvmIrReadiness.ok, true);
 assert.equal(llvmIrReadiness.targetReadiness.ok, true);
 assert.equal(llvmIrReadiness.targetReadiness.backend, "llvm");
@@ -6120,12 +6087,12 @@ assert.equal(llvmIrReadiness.targetReadiness.stage, "ready");
 assert.equal(llvmIrReadiness.targetReadiness.diagnostics.length, 0);
 const llvmPracticalSubsetExpected = "LLVM IR scalar, fixed-array, and byte-view MIR subset";
 for (const fixture of [
-  "examples/direct-array-sum.0",
-  "examples/direct-string-len.0",
-  "examples/direct-byte-copy-fill.0",
-  "examples/direct-string-eql.0",
-  "examples/direct-byte-view-locals.0",
-  "examples/direct-span-read.0",
+  "examples/direct-array-sum.graph",
+  "examples/direct-string-len.graph",
+  "examples/direct-byte-copy-fill.graph",
+  "examples/direct-string-eql.graph",
+  "examples/direct-byte-view-locals.graph",
+  "examples/direct-span-read.graph",
 ]) {
   const readiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", fixture]).body;
   assert.equal(readiness.ok, true);
@@ -6134,7 +6101,7 @@ for (const fixture of [
   assert.equal(readiness.targetReadiness.stage, "ready");
   assert.equal(readiness.targetReadiness.diagnostics.length, 0);
 }
-const llvmIrLoweringBlockedReadiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0"]).body;
+const llvmIrLoweringBlockedReadiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.graph"]).body;
 assert.equal(llvmIrLoweringBlockedReadiness.ok, true);
 assert.equal(llvmIrLoweringBlockedReadiness.targetReadiness.ok, false);
 assert.equal(llvmIrLoweringBlockedReadiness.targetReadiness.backend, "llvm");
@@ -6149,7 +6116,7 @@ assert.deepEqual(llvmIrLoweringBlockedReadiness.targetReadiness.diagnostics[0].b
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
-const llvmNativeLoweringBlockedReadiness = json(["check", "--json", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0"]).body;
+const llvmNativeLoweringBlockedReadiness = json(["check", "--json", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.graph"]).body;
 assert.equal(llvmNativeLoweringBlockedReadiness.ok, true);
 assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.ok, false);
 assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.backend, "llvm");
@@ -6158,7 +6125,7 @@ assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].c
 assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].expected, "typed program graph MIR subset");
 assert.equal(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].actual, "owned<Tracked>");
 assert.doesNotMatch(llvmNativeLoweringBlockedReadiness.targetReadiness.diagnostics[0].message, /direct backend/);
-const llvmBuild = json(["build", "--json", "--backend", "llvm", "examples/add.0", "--out", join(outDir, "add-llvm")], { allowFailure: !llvmHostReady });
+const llvmBuild = json(["build", "--json", "--backend", "llvm", "examples/add.graph", "--out", join(outDir, "add-llvm")], { allowFailure: !llvmHostReady });
 if (llvmHostReady) {
   assert.equal(llvmBuild.code, 0);
   assert.equal(llvmBuild.body.emit, "exe");
@@ -6194,12 +6161,12 @@ if (llvmHostReady) {
   assert.equal(llvmBuild.body.diagnostics[0].code, "BLD004");
   assert.equal(llvmBuild.body.diagnostics[0].backendBlocker.backend, "llvm");
 }
-const llvmMissingToolBuild = json(["build", "--json", "--backend", "llvm", "examples/add.0", "--out", join(outDir, "add-llvm-missing")], { allowFailure: true, env: { ZERO_LLVM_CLANG: "/tmp/zero-missing-clang" } });
+const llvmMissingToolBuild = json(["build", "--json", "--backend", "llvm", "examples/add.graph", "--out", join(outDir, "add-llvm-missing")], { allowFailure: true, env: { ZERO_LLVM_CLANG: "/tmp/zero-missing-clang" } });
 assert.notEqual(llvmMissingToolBuild.code, 0);
 assert.equal(llvmMissingToolBuild.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmMissingToolBuild.body.diagnostics[0].backendBlocker.stage, "toolchain");
 assert.equal(llvmMissingToolBuild.body.diagnostics[0].backendBlocker.unsupportedFeature, "clang");
-const llvmNativeLoweringBlockedBuild = json(["build", "--json", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0", "--out", join(outDir, "owned-drop-llvm")], { allowFailure: true });
+const llvmNativeLoweringBlockedBuild = json(["build", "--json", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.graph", "--out", join(outDir, "owned-drop-llvm")], { allowFailure: true });
 assert.notEqual(llvmNativeLoweringBlockedBuild.code, 0);
 assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].expected, "typed program graph MIR subset");
@@ -6210,14 +6177,14 @@ assert.equal(llvmNativeLoweringBlockedBuild.body.diagnostics[0].backendBlocker.s
 const llvmFailingToolPath = join(outDir, "failing-clang");
 writeFileSync(llvmFailingToolPath, "#!/bin/sh\nexit 1\n");
 chmodSync(llvmFailingToolPath, 0o755);
-const llvmFailingToolRuntimeBuild = json(["build", "--json", "--backend", "llvm", "examples/hello.0", "--out", join(outDir, "hello-llvm-failing-tool")], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmFailingToolPath } });
+const llvmFailingToolRuntimeBuild = json(["build", "--json", "--backend", "llvm", "examples/hello.graph", "--out", join(outDir, "hello-llvm-failing-tool")], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmFailingToolPath } });
 assert.notEqual(llvmFailingToolRuntimeBuild.code, 0);
 assert.equal(llvmFailingToolRuntimeBuild.body.diagnostics[0].code, "BLD004");
 assert.match(llvmFailingToolRuntimeBuild.body.diagnostics[0].message, /LLVM runtime object build failed/);
 assert.equal(llvmFailingToolRuntimeBuild.body.diagnostics[0].backendBlocker.backend, "llvm");
 assert.equal(llvmFailingToolRuntimeBuild.body.diagnostics[0].backendBlocker.stage, "toolchain");
 assert.equal(llvmFailingToolRuntimeBuild.body.diagnostics[0].backendBlocker.unsupportedFeature, "clang");
-const llvmFailingToolLinkBuild = json(["build", "--json", "--backend", "llvm", "examples/direct-exe-return.0", "--out", join(outDir, "return-llvm-failing-tool")], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmFailingToolPath } });
+const llvmFailingToolLinkBuild = json(["build", "--json", "--backend", "llvm", "examples/direct-exe-return.graph", "--out", join(outDir, "return-llvm-failing-tool")], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmFailingToolPath } });
 assert.notEqual(llvmFailingToolLinkBuild.code, 0);
 assert.equal(llvmFailingToolLinkBuild.body.diagnostics[0].code, "BLD004");
 assert.match(llvmFailingToolLinkBuild.body.diagnostics[0].message, /LLVM executable link failed/);
@@ -6229,7 +6196,7 @@ const llvmNoOutputArtifactPath = join(outDir, "return-llvm-no-output-tool");
 writeFileSync(llvmNoOutputToolPath, "#!/bin/sh\nexit 0\n");
 chmodSync(llvmNoOutputToolPath, 0o755);
 writeFileSync(llvmNoOutputArtifactPath, "stale executable\n");
-const llvmNoOutputToolBuild = json(["build", "--json", "--backend", "llvm", "examples/direct-exe-return.0", "--out", llvmNoOutputArtifactPath], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmNoOutputToolPath } });
+const llvmNoOutputToolBuild = json(["build", "--json", "--backend", "llvm", "examples/direct-exe-return.graph", "--out", llvmNoOutputArtifactPath], { allowFailure: true, env: { ZERO_LLVM_CLANG: llvmNoOutputToolPath } });
 assert.notEqual(llvmNoOutputToolBuild.code, 0);
 assert.equal(llvmNoOutputToolBuild.body.diagnostics[0].code, "BLD004");
 assert.match(llvmNoOutputToolBuild.body.diagnostics[0].message, /LLVM executable link failed/);
@@ -6237,11 +6204,11 @@ assert.equal(llvmNoOutputToolBuild.body.diagnostics[0].backendBlocker.backend, "
 assert.equal(llvmNoOutputToolBuild.body.diagnostics[0].backendBlocker.stage, "toolchain");
 assert.equal(llvmNoOutputToolBuild.body.diagnostics[0].backendBlocker.unsupportedFeature, "clang");
 assert.equal(existsSync(llvmNoOutputArtifactPath), false);
-const llvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "examples/add.0", "--out", join(outDir, "add.ll")], { allowFailure: true });
+const llvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "examples/add.graph", "--out", join(outDir, "add.ll")], { allowFailure: true });
 assert.notEqual(llvmIrBuild.code, 0);
 assert.equal(llvmIrBuild.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmIrBuild.body.diagnostics[0].actual, "backend=direct emit=llvm-ir");
-const explicitLlvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.0", "--out", join(outDir, "add-explicit.ll")]);
+const explicitLlvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.graph", "--out", join(outDir, "add-explicit.ll")]);
 assert.equal(explicitLlvmIrBuild.code, 0);
 assert.equal(explicitLlvmIrBuild.body.emit, "llvm-ir");
 assert.equal(explicitLlvmIrBuild.body.compiler, "zero-c-llvm-ir");
@@ -6282,7 +6249,7 @@ assert.match(explicitLlvmIrText, /declare i32 @zero_world_write\(i32, ptr, i32\)
 assert.match(explicitLlvmIrText, /declare void @llvm\.trap\(\)/);
 assert.match(explicitLlvmIrText, /call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i32 (?:11|%v[0-9]+)\)/);
 assert.match(explicitLlvmIrText, /%v[0-9]+ = call i32 @zero_world_write\(i32 1, ptr %v[0-9]+, i32 (?:11|%v[0-9]+)\)\n  %v[0-9]+ = icmp eq i32 %v[0-9]+, 0\n  br i1 %v[0-9]+, label %L[0-9]+, label %L[0-9]+\nL[0-9]+:\n  call void @llvm\.trap\(\)\n  unreachable\nL[0-9]+:/);
-const llvmIrLoweringBlockedBuild = json(["build", "--json", "--emit", "llvm-ir", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0", "--out", join(outDir, "owned-drop.ll")], { allowFailure: true });
+const llvmIrLoweringBlockedBuild = json(["build", "--json", "--emit", "llvm-ir", "--backend", "llvm", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.graph", "--out", join(outDir, "owned-drop.ll")], { allowFailure: true });
 assert.notEqual(llvmIrLoweringBlockedBuild.code, 0);
 assert.equal(llvmIrLoweringBlockedBuild.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmIrLoweringBlockedBuild.body.diagnostics[0].expected, "typed program graph MIR subset");
@@ -6290,23 +6257,23 @@ assert.equal(llvmIrLoweringBlockedBuild.body.diagnostics[0].actual, "owned<Track
 assert.equal(llvmIrLoweringBlockedBuild.body.diagnostics[0].backendBlocker.backend, directExeEmitterForTarget(version.host));
 assert.equal(llvmIrLoweringBlockedBuild.body.diagnostics[0].backendBlocker.stage, "lower");
 assert.equal(llvmIrLoweringBlockedBuild.body.diagnostics[0].backendBlocker.unsupportedFeature, "owned<Tracked>");
-const directLlvmIrReadiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.0"]).body;
+const directLlvmIrReadiness = json(["check", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.graph"]).body;
 assert.equal(directLlvmIrReadiness.ok, true);
 assert.equal(directLlvmIrReadiness.targetReadiness.ok, false);
 assert.equal(directLlvmIrReadiness.targetReadiness.diagnostics[0].actual, "backend=direct emit=llvm-ir");
 assert.equal(directLlvmIrReadiness.targetReadiness.diagnostics[0].backendBlocker.backend, "direct");
 assert.equal(directLlvmIrReadiness.targetReadiness.diagnostics[0].backendBlocker.stage, "buildability");
-const directLlvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.0", "--out", join(outDir, "add-direct.ll")], { allowFailure: true });
+const directLlvmIrBuild = json(["build", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.graph", "--out", join(outDir, "add-direct.ll")], { allowFailure: true });
 assert.notEqual(directLlvmIrBuild.code, 0);
 assert.equal(directLlvmIrBuild.body.diagnostics[0].actual, "backend=direct emit=llvm-ir");
-const llvmShip = json(["ship", "--json", "--backend", "llvm", "examples/add.0", "--out", join(outDir, "add-llvm-ship")], { allowFailure: true });
+const llvmShip = json(["ship", "--json", "--backend", "llvm", "examples/add.graph", "--out", join(outDir, "add-llvm-ship")], { allowFailure: true });
 assert.notEqual(llvmShip.code, 0);
 assert.equal(llvmShip.body.diagnostics[0].code, "BLD004");
 assert.match(llvmShip.body.diagnostics[0].message, /experimental/);
 assert.equal(llvmShip.body.diagnostics[0].backendBlocker.backend, "llvm");
 assert.equal(llvmShip.body.diagnostics[0].backendBlocker.stage, "buildability");
 assert.equal(llvmShip.body.diagnostics[0].backendBlocker.unsupportedFeature, "llvm ship");
-const llvmGraphCheck = json(["check", "--json", "--backend", "llvm", "examples/add.0"]).body;
+const llvmGraphCheck = json(["check", "--json", "--backend", "llvm", "examples/add.graph"]).body;
 assert.equal(llvmGraphCheck.ok, true);
 assert.equal(llvmGraphCheck.targetReadiness.ok, llvmHostReady);
 assert.equal(llvmGraphCheck.targetReadiness.backend, "llvm");
@@ -6316,16 +6283,16 @@ if (llvmHostReady) {
 } else {
   assert.equal(llvmGraphCheck.targetReadiness.diagnostics[0].backendBlocker.backend, "llvm");
 }
-const llvmIrGraphCheck = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.0"]).body;
+const llvmIrGraphCheck = json(["check", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.graph"]).body;
 assert.equal(llvmIrGraphCheck.ok, true);
 assert.equal(llvmIrGraphCheck.targetReadiness.ok, true);
 assert.equal(llvmIrGraphCheck.targetReadiness.backend, "llvm");
 assert.equal(llvmIrGraphCheck.targetReadiness.stage, "ready");
-const directLlvmIrGraphCheck = json(["check", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.0"]).body;
+const directLlvmIrGraphCheck = json(["check", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.graph"]).body;
 assert.equal(directLlvmIrGraphCheck.ok, true);
 assert.equal(directLlvmIrGraphCheck.targetReadiness.ok, false);
 assert.equal(directLlvmIrGraphCheck.targetReadiness.diagnostics[0].backendBlocker.backend, "direct");
-const llvmSize = json(["size", "--json", "--backend", "llvm", "examples/add.0"]);
+const llvmSize = json(["size", "--json", "--backend", "llvm", "examples/add.graph"]);
 assert.equal(llvmSize.body.targetSupport.backendFamily, "llvm");
 assert.equal(llvmSize.body.targetSupport.fallbackPolicy, "none");
 assert.equal(llvmSize.body.targetSupport.backendLifecycle.releaseEligible, false);
@@ -6345,7 +6312,7 @@ const llvmGraphSize = json(["size", "--json", "--backend", "llvm", graphDumpPath
 assert.equal(llvmGraphSize.body.graph.artifact, graphDumpPath);
 assert.equal(llvmGraphSize.body.targetSupport.backendFamily, "llvm");
 assert.equal(llvmGraphSize.body.backendProfile.backendFamily, "llvm");
-const llvmIrSize = json(["size", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.0"], { allowFailure: true });
+const llvmIrSize = json(["size", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(llvmIrSize.code, 0);
 assert.equal(llvmIrSize.body.diagnostics[0].code, "BLD004");
 assert.match(llvmIrSize.body.diagnostics[0].message, /writes artifacts only through zero build/);
@@ -6356,27 +6323,27 @@ assert.notEqual(llvmIrGraphSize.code, 0);
 assert.equal(llvmIrGraphSize.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmIrGraphSize.body.diagnostics[0].actual, "size --backend llvm --emit llvm-ir");
 assert.equal(llvmIrGraphSize.body.diagnostics[0].backendBlocker.unsupportedFeature, "llvm-ir command");
-const directLlvmIrSize = json(["size", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.0"], { allowFailure: true });
+const directLlvmIrSize = json(["size", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(directLlvmIrSize.code, 0);
 assert.equal(directLlvmIrSize.body.diagnostics[0].actual, "backend=direct emit=llvm-ir");
-const llvmMem = json(["mem", "--json", "--backend", "llvm", "examples/add.0"], { allowFailure: true });
+const llvmMem = json(["mem", "--json", "--backend", "llvm", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(llvmMem.code, 0);
 assert.equal(llvmMem.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmMem.body.diagnostics[0].backendBlocker.backend, "llvm");
 assert.equal(llvmMem.body.diagnostics[0].backendBlocker.stage, "buildability");
-const llvmIrMem = json(["mem", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.0"], { allowFailure: true });
+const llvmIrMem = json(["mem", "--json", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(llvmIrMem.code, 0);
 assert.equal(llvmIrMem.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmIrMem.body.diagnostics[0].actual, "mem --backend llvm --emit llvm-ir");
 assert.equal(llvmIrMem.body.diagnostics[0].backendBlocker.unsupportedFeature, "llvm-ir command");
-const directLlvmIrMem = json(["mem", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.0"], { allowFailure: true });
+const directLlvmIrMem = json(["mem", "--json", "--emit", "llvm-ir", "--backend", "direct", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(directLlvmIrMem.code, 0);
 assert.equal(directLlvmIrMem.body.diagnostics[0].actual, "backend=direct emit=llvm-ir");
-const llvmIrRun = zero(["run", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.0"], { allowFailure: true });
+const llvmIrRun = zero(["run", "--emit", "llvm-ir", "--backend", "llvm", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(llvmIrRun.code, 0);
 assert.match(llvmIrRun.stderr, /BLD004: LLVM IR emission writes artifacts only through zero build/);
 assert.match(llvmIrRun.stderr, /actual: run --backend llvm --emit llvm-ir/);
-const directLlvmIrRun = zero(["run", "--emit", "llvm-ir", "--backend", "direct", "examples/add.0"], { allowFailure: true });
+const directLlvmIrRun = zero(["run", "--emit", "llvm-ir", "--backend", "direct", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(directLlvmIrRun.code, 0);
 assert.match(directLlvmIrRun.stderr, /BLD004: direct backend does not support --emit llvm-ir/);
 assert.match(directLlvmIrRun.stderr, /actual: backend=direct emit=llvm-ir/);
@@ -6384,25 +6351,25 @@ const llvmIrGraphRun = zero(["run", "--emit", "llvm-ir", "--backend", "llvm", gr
 assert.notEqual(llvmIrGraphRun.code, 0);
 assert.match(llvmIrGraphRun.stderr, /BLD004: LLVM IR emission writes artifacts only through zero build/);
 assert.match(llvmIrGraphRun.stderr, /actual: run --backend llvm --emit llvm-ir/);
-const llvmTest = json(["test", "--json", "--backend", "llvm", "conformance/native/pass/test-blocks.0"], { allowFailure: true });
+const llvmTest = json(["test", "--json", "--backend", "llvm", "conformance/native/pass/test-blocks.graph"], { allowFailure: true });
 assert.equal(llvmTest.code, 0);
 assert.equal(llvmTest.body.ok, true);
 assert.equal(llvmTest.body.graph.artifact, "conformance/native/pass/test-blocks.graph");
 assert.equal(llvmTest.body.testBackend, "direct-program-graph");
-const llvmIrTest = json(["test", "--json", "--emit", "llvm-ir", "--backend", "llvm", "conformance/native/pass/test-blocks.0"], { allowFailure: true });
+const llvmIrTest = json(["test", "--json", "--emit", "llvm-ir", "--backend", "llvm", "conformance/native/pass/test-blocks.graph"], { allowFailure: true });
 assert.notEqual(llvmIrTest.code, 0);
 assert.equal(llvmIrTest.body.diagnostics[0].code, "BLD004");
 assert.equal(llvmIrTest.body.diagnostics[0].actual, "test --backend llvm --emit llvm-ir");
 assert.equal(llvmIrTest.body.diagnostics[0].backendBlocker.unsupportedFeature, "llvm-ir command");
-const directLlvmIrTest = json(["test", "--json", "--emit", "llvm-ir", "--backend", "direct", "conformance/native/pass/test-blocks.0"], { allowFailure: true });
+const directLlvmIrTest = json(["test", "--json", "--emit", "llvm-ir", "--backend", "direct", "conformance/native/pass/test-blocks.graph"], { allowFailure: true });
 assert.notEqual(directLlvmIrTest.code, 0);
 assert.equal(directLlvmIrTest.body.diagnostics[0].actual, "backend=direct emit=llvm-ir");
-const mismatchedDirectSize = json(["size", "--json", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.0"], { allowFailure: true });
+const mismatchedDirectSize = json(["size", "--json", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(mismatchedDirectSize.code, 0);
 assert.equal(mismatchedDirectSize.body.diagnostics[0].actual, "--backend zero-coff-x64");
 assert.equal(mismatchedDirectSize.body.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
 assert.equal(mismatchedDirectSize.body.diagnostics[0].backendBlocker.stage, "target-selection");
-const mismatchedDirectMem = json(["mem", "--json", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.0"], { allowFailure: true });
+const mismatchedDirectMem = json(["mem", "--json", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.graph"], { allowFailure: true });
 assert.notEqual(mismatchedDirectMem.code, 0);
 assert.equal(mismatchedDirectMem.body.diagnostics[0].actual, "--backend zero-coff-x64");
 assert.equal(mismatchedDirectMem.body.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
@@ -6412,7 +6379,7 @@ assert.notEqual(mismatchedDirectGraphSize.code, 0);
 assert.equal(mismatchedDirectGraphSize.body.diagnostics[0].actual, "--backend zero-coff-x64");
 assert.equal(mismatchedDirectGraphSize.body.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
 assert.equal(mismatchedDirectGraphSize.body.diagnostics[0].backendBlocker.stage, "target-selection");
-const mismatchedDirectTest = json(["test", "--json", "--backend", "zero-coff-x64", "--target", "linux-x64", "conformance/native/pass/test-blocks.0"], { allowFailure: true });
+const mismatchedDirectTest = json(["test", "--json", "--backend", "zero-coff-x64", "--target", "linux-x64", "conformance/native/pass/test-blocks.graph"], { allowFailure: true });
 assert.equal(mismatchedDirectTest.code, 0);
 assert.equal(mismatchedDirectTest.body.ok, true);
 assert.equal(mismatchedDirectTest.body.graph.artifact, "conformance/native/pass/test-blocks.graph");
@@ -6425,24 +6392,24 @@ assert.equal(llvmGraphTest.body.graph.lowering, "direct-program-graph");
 const directLlvmIrGraphTest = json(["test", "--json", "--emit", "llvm-ir", "--backend", "direct", graphTestDumpPath], { allowFailure: true });
 assert.notEqual(directLlvmIrGraphTest.code, 0);
 assert.equal(directLlvmIrGraphTest.body.diagnostics[0].actual, "backend=direct emit=llvm-ir");
-const mismatchedDirectObjReadiness = json(["check", "--json", "--emit", "obj", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.0"]).body;
+const mismatchedDirectObjReadiness = json(["check", "--json", "--emit", "obj", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.graph"]).body;
 assert.equal(mismatchedDirectObjReadiness.ok, true);
 assert.equal(mismatchedDirectObjReadiness.targetReadiness.ok, false);
 assert.equal(mismatchedDirectObjReadiness.targetReadiness.diagnostics[0].actual, "--backend zero-coff-x64");
 assert.equal(mismatchedDirectObjReadiness.targetReadiness.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
 assert.equal(mismatchedDirectObjReadiness.targetReadiness.diagnostics[0].backendBlocker.stage, "target-selection");
-const mismatchedDirectObjBuild = json(["build", "--json", "--emit", "obj", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.0", "--out", join(outDir, "mismatch.obj")], { allowFailure: true });
+const mismatchedDirectObjBuild = json(["build", "--json", "--emit", "obj", "--backend", "zero-coff-x64", "--target", "linux-x64", "examples/add.graph", "--out", join(outDir, "mismatch.obj")], { allowFailure: true });
 assert.notEqual(mismatchedDirectObjBuild.code, 0);
 assert.equal(mismatchedDirectObjBuild.body.diagnostics[0].actual, "--backend zero-coff-x64");
 assert.equal(mismatchedDirectObjBuild.body.diagnostics[0].backendBlocker.backend, "zero-coff-x64");
 assert.equal(mismatchedDirectObjBuild.body.diagnostics[0].backendBlocker.stage, "target-selection");
-const mismatchedDirectExeBuild = json(["build", "--json", "--emit", "exe", "--backend", "zero-coff-x64", "--target", "linux-musl-x64", "examples/direct-exe-return.0", "--out", join(outDir, "mismatch-exe")], { allowFailure: true });
+const mismatchedDirectExeBuild = json(["build", "--json", "--emit", "exe", "--backend", "zero-coff-x64", "--target", "linux-musl-x64", "examples/direct-exe-return.graph", "--out", join(outDir, "mismatch-exe")], { allowFailure: true });
 assert.notEqual(mismatchedDirectExeBuild.code, 0);
 assert.equal(mismatchedDirectExeBuild.body.diagnostics[0].actual, "--backend zero-coff-x64");
 assert.equal(mismatchedDirectExeBuild.body.diagnostics[0].expected, "direct emitter zero-elf64 for target linux-musl-x64");
 assert.match(mismatchedDirectExeBuild.body.diagnostics[0].help, /--backend zero-elf64/);
 assert.equal(mismatchedDirectExeBuild.body.diagnostics[0].backendBlocker.stage, "target-selection");
-const backendBlockedReadiness = json(["check", "--json", "--emit", "obj", "--target", "linux-musl-x64", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.0"]).body;
+const backendBlockedReadiness = json(["check", "--json", "--emit", "obj", "--target", "linux-musl-x64", "conformance/agent-surface/fixtures/owned-drop-direct-backend-unsupported.graph"]).body;
 assert.equal(backendBlockedReadiness.ok, true);
 assert.equal(backendBlockedReadiness.diagnostics.length, 0);
 assert.equal(backendBlockedReadiness.targetReadiness.ok, false);
@@ -6458,7 +6425,7 @@ assert.deepEqual(backendBlockedReadiness.targetReadiness.diagnostics[0].backendB
   stage: "lower",
   unsupportedFeature: "owned<Tracked>",
 });
-const directExeBlockedReadiness = json(["check", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-call-add.0"]).body;
+const directExeBlockedReadiness = json(["check", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-call-add.graph"]).body;
 assert.equal(directExeBlockedReadiness.ok, true);
 assert.equal(directExeBlockedReadiness.diagnostics.length, 0);
 assert.equal(directExeBlockedReadiness.targetReadiness.ok, false);
@@ -6469,7 +6436,7 @@ assert.equal(directExeBlockedReadiness.targetReadiness.target, "linux-musl-x64")
 assert.equal(directExeBlockedReadiness.targetReadiness.diagnostics[0].code, "BLD004");
 assert.equal(directExeBlockedReadiness.targetReadiness.diagnostics[0].backendBlocker.stage, "buildability");
 assert.match(directExeBlockedReadiness.targetReadiness.diagnostics[0].message, /main must not take parameters/);
-const directExeBlockedBuild = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-call-add.0", "--out", join(outDir, "direct-call-add-blocked")], { allowFailure: true });
+const directExeBlockedBuild = json(["build", "--json", "--emit", "exe", "--target", "linux-musl-x64", "examples/direct-call-add.graph", "--out", join(outDir, "direct-call-add-blocked")], { allowFailure: true });
 assert.notEqual(directExeBlockedBuild.code, 0);
 for (const key of ["code", "path", "line", "column", "length", "expected", "actual", "help"]) {
   assert.equal(directExeBlockedBuild.body.diagnostics[0][key], directExeBlockedReadiness.targetReadiness.diagnostics[0][key]);
@@ -6481,7 +6448,7 @@ assert.equal(directExeBlockedGraph.targetReadiness.diagnostics[0].code, "BLD004"
 assert.equal(directExeBlockedGraph.targetReadiness.diagnostics[0].path, "direct-call-add.0");
 assert.equal(directExeBlockedGraph.targetReadiness.diagnostics[0].actual, "unsupported construct");
 assert.equal(directExeBlockedGraph.targetReadiness.diagnostics[0].backendBlocker.stage, "lower");
-const coffMaybeByteViewFixture = "conformance/native/pass/coff-maybe-byte-view-buildable.0";
+const coffMaybeByteViewFixture = "conformance/native/pass/coff-maybe-byte-view-buildable.graph";
 const coffMaybeByteViewReadiness = json(["check", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffMaybeByteViewFixture]).body;
 assert.equal(coffMaybeByteViewReadiness.ok, true);
 assert.equal(coffMaybeByteViewReadiness.targetReadiness.ok, true);
@@ -6490,7 +6457,7 @@ assert.equal(coffMaybeByteViewReadiness.targetReadiness.backend, "zero-coff-x64"
 const coffMaybeByteViewBuild = json(["build", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffMaybeByteViewFixture, "--out", join(outDir, "coff-maybe-byte-view.obj")]).body;
 assert.equal(coffMaybeByteViewBuild.objectBackend.objectEmission.path, "direct-coff-x64-object");
 assert.equal(coffMaybeByteViewBuild.generatedCBytes, 0);
-const coffDynamicSliceFixture = "conformance/native/pass/coff-dynamic-byte-slice.0";
+const coffDynamicSliceFixture = "conformance/native/pass/coff-dynamic-byte-slice.graph";
 const coffDynamicSliceReadiness = json(["check", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffDynamicSliceFixture]).body;
 assert.equal(coffDynamicSliceReadiness.ok, true);
 assert.equal(coffDynamicSliceReadiness.diagnostics.length, 0);
@@ -6506,7 +6473,7 @@ assert.equal(coffDynamicSliceBuild.objectBackend.objectEmission.path, "direct-co
 assert.equal(coffDynamicSliceBuild.generatedCBytes, 0);
 const coffDynamicSliceBytes = readFileSync(coffDynamicSlicePath);
 assert.equal(coffDynamicSliceBytes.readUInt16LE(0), 0x8664);
-const coffBoolCopyFixture = "conformance/native/pass/std-mem-bool-copy-items.0";
+const coffBoolCopyFixture = "conformance/native/pass/std-mem-bool-copy-items.graph";
 const coffBoolCopyReadiness = json(["check", "--json", "--emit", "obj", "--target", "win32-x64.exe", coffBoolCopyFixture]).body;
 assert.equal(coffBoolCopyReadiness.ok, true);
 assert.equal(coffBoolCopyReadiness.targetReadiness.ok, true);
@@ -6540,16 +6507,16 @@ function assertMachOObjectBuildabilityBlocked(fixture: string, outName: string, 
   assert.equal(build.body.diagnostics[0].backendBlocker.stage, "buildability");
 }
 assertMachOObjectBuildabilityBlocked(
-  "conformance/native/pass/macho-large-byte-slice-blocked.0",
+  "conformance/native/pass/macho-large-byte-slice-blocked.graph",
   "macho-large-byte-slice.o",
   /constant start/,
 );
 assertMachOObjectBuildabilityBlocked(
-  "conformance/native/pass/macho-nested-call-scratch-blocked.0",
+  "conformance/native/pass/macho-nested-call-scratch-blocked.graph",
   "macho-nested-call-scratch.o",
   /scratch spill capacity/,
 );
-const machoOpenByteSliceFixture = "conformance/native/pass/macho-open-byte-slice.0";
+const machoOpenByteSliceFixture = "conformance/native/pass/macho-open-byte-slice.graph";
 const machoOpenByteSliceReadiness = json(["check", "--json", "--emit", "obj", "--target", "darwin-arm64", machoOpenByteSliceFixture]).body;
 assert.equal(machoOpenByteSliceReadiness.ok, true);
 assert.equal(machoOpenByteSliceReadiness.diagnostics.length, 0);
@@ -6570,16 +6537,16 @@ writeProjectionFile(aarch64OpenSliceBoundsFixture, `export c fn main() -> u32 {
     return (std.mem.len(suffix)) as u32
 }
 `);
-importProjectionSidecar(aarch64OpenSliceBoundsFixture);
+const aarch64OpenSliceBoundsGraph = importProjectionSidecar(aarch64OpenSliceBoundsFixture);
 const aarch64OpenSliceBoundsPath = join(outDir, "aarch64-open-byte-slice-bounds.o");
-json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", aarch64OpenSliceBoundsFixture, "--out", aarch64OpenSliceBoundsPath]);
+json(["build", "--json", "--emit", "obj", "--target", "linux-arm64", aarch64OpenSliceBoundsGraph, "--out", aarch64OpenSliceBoundsPath]);
 const aarch64OpenSliceBoundsBytes = readFileSync(aarch64OpenSliceBoundsPath);
 assert.equal(aarch64OpenSliceBoundsBytes.readUInt16LE(16), 1);
 assert.equal(aarch64OpenSliceBoundsBytes.readUInt16LE(18), 183);
 assert(hasAarch64CondBranch(aarch64OpenSliceBoundsBytes, 9));
 assert(hasAarch64Instruction(aarch64OpenSliceBoundsBytes, 0xd4200000));
 const machoOpenSliceBoundsPath = join(outDir, "macho-open-byte-slice-bounds.o");
-json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", aarch64OpenSliceBoundsFixture, "--out", machoOpenSliceBoundsPath]);
+json(["build", "--json", "--emit", "obj", "--target", "darwin-arm64", aarch64OpenSliceBoundsGraph, "--out", machoOpenSliceBoundsPath]);
 const machoOpenSliceBoundsBytes = readFileSync(machoOpenSliceBoundsPath);
 assert.equal(machoOpenSliceBoundsBytes.readUInt32LE(0), 0xfeedfacf);
 assert(hasAarch64CondBranch(machoOpenSliceBoundsBytes, 9));
@@ -6640,17 +6607,17 @@ assert.equal(graphLogHelper.errorBehavior, "returns null on failure");
 assert.match(graphLogHelper.ownershipNotes, /caller-owned storage/);
 assert.equal(graphLogHelper.example, "examples/std-testing-log.0");
 
-const stdDataSize = json(["size", "--json", "conformance/native/pass/std-codec-json-url.0"]).body;
+const stdDataSize = json(["size", "--json", "conformance/native/pass/std-codec-json-url.graph"]).body;
 const sizeUrlHostHelper = stdDataSize.stdlibHelpers.find((helper) => helper.name === "std.url.host");
 assert.equal(sizeUrlHostHelper.module, "std.url");
 assert.equal(sizeUrlHostHelper.example, "conformance/native/pass/std-codec-json-url.0");
 
-const agentToolsSize = json(["size", "--json", "examples/std-testing-log.0"]).body;
+const agentToolsSize = json(["size", "--json", "examples/std-testing-log.graph"]).body;
 assert(agentToolsSize.usedStdlibHelpers.some((helper) => helper.name === "std.log.keyValue" && helper.module === "std.log"));
 assert(agentToolsSize.usedStdlibHelpers.some((helper) => helper.name === "std.testing.containsBytes" && helper.module === "std.testing"));
 assert(agentToolsSize.usedStdlibHelpers.every((helper) => helper.module && helper.effects && helper.allocationBehavior && helper.targetSupport && helper.errorBehavior && helper.ownershipNotes && helper.example && helper.apiStability));
 
-const stdTestingTestJson = json(["test", "--json", "conformance/native/pass/std-testing-helpers-test.0"]).body;
+const stdTestingTestJson = json(["test", "--json", "conformance/native/pass/std-testing-helpers-test.graph"]).body;
 assert.equal(stdTestingTestJson.ok, true);
 assert.equal(stdTestingTestJson.passedTests, 1);
 
@@ -6659,11 +6626,11 @@ writeProjectionFile(crcOnlySource, `export c fn main() -> u32 {
     return std.codec.crc32("zero")
 }
 `);
-importProjectionSidecar(crcOnlySource);
+const crcOnlySourceGraph = importProjectionSidecar(crcOnlySource);
 const crcOnlyGraph = json(["inspect", "--json", crcOnlySource]).body;
 assert(!crcOnlyGraph.sourceFiles.some((path) => path.endsWith("std/codec.0")));
 assert(!crcOnlyGraph.requiresCapabilities.includes("parse"));
-const crcOnlySize = json(["size", "--json", crcOnlySource]).body;
+const crcOnlySize = json(["size", "--json", crcOnlySourceGraph]).body;
 assert(!crcOnlySize.incrementalInvalidation.changedInputs.sourceFiles.some((path) => path.endsWith("std/codec.0")));
 assert(!crcOnlySize.retentionReasons.some((item) => item.name === "__zero_std_codec_hex_decode"));
 
@@ -6676,12 +6643,12 @@ writeProjectionFile(codecReadOnlySource, `export c fn main() -> i32 {
     return 1
 }
 `);
-importProjectionSidecar(codecReadOnlySource);
+const codecReadOnlySourceGraph = importProjectionSidecar(codecReadOnlySource);
 const codecReadOnlyGraph = json(["inspect", "--json", codecReadOnlySource]).body;
 assert(codecReadOnlyGraph.sourceFiles.some((path) => path.endsWith("std/codec.0")));
 assert(!codecReadOnlyGraph.sourceFiles.some((path) => path.endsWith("std/ascii.0")));
 assert(codecReadOnlyGraph.requiresCapabilities.includes("parse"));
-const codecReadOnlySize = json(["size", "--json", codecReadOnlySource]).body;
+const codecReadOnlySize = json(["size", "--json", codecReadOnlySourceGraph]).body;
 assert.equal(codecReadOnlySize.sizeBreakdown.summary.functionCount, 2);
 assert.equal(codecReadOnlySize.sizeBreakdown.summary.stdlibHelperCount, 6);
 assert(codecReadOnlySize.topLargestEmittedHelpers.some((helper) => helper.name === "std.codec.readU16Le"));
@@ -6697,14 +6664,14 @@ writeProjectionFile(jsonStatusOnlySource, `export c fn main() -> i32 {
     return 1
 }
 `);
-importProjectionSidecar(jsonStatusOnlySource);
+const jsonStatusOnlySourceGraph = importProjectionSidecar(jsonStatusOnlySource);
 const jsonStatusOnlyGraph = json(["inspect", "--json", jsonStatusOnlySource]).body;
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/json.0")));
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/ascii.0")));
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/fmt.0")));
 assert(!jsonStatusOnlyGraph.sourceFiles.some((path) => path.endsWith("std/parse.0")));
 assert(jsonStatusOnlyGraph.callResolution.calls.some((call) => call.kind === "stdlib" && call.calleeName === "std.json.errorNone"));
-const jsonStatusOnlySize = json(["size", "--json", jsonStatusOnlySource]).body;
+const jsonStatusOnlySize = json(["size", "--json", jsonStatusOnlySourceGraph]).body;
 assert.equal(jsonStatusOnlySize.objectBackend.directFacts.functionCount, 1);
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "__zero_std_json_validate_error"));
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "std.parse.parseU32"));
@@ -6782,7 +6749,7 @@ const sizeBlockedParent = join(outDir, "size-output-not-dir");
 const sizeBlockedOut = join(sizeBlockedParent, "report.json");
 rmSync(sizeBlockedParent, { force: true, recursive: true });
 writeFileSync(sizeBlockedParent, "not a directory\n");
-const sizeBlocked = json(["size", "--json", "--out", sizeBlockedOut, "examples/hello.0"], { allowFailure: true });
+const sizeBlocked = json(["size", "--json", "--out", sizeBlockedOut, "examples/hello.graph"], { allowFailure: true });
 assert.notEqual(sizeBlocked.code, 0);
 assert.equal(sizeBlocked.body.diagnostics[0].path, sizeBlockedOut);
 const explainRepairId = (code: string) => json(["explain", "--json", code]).body.repair.id;
@@ -6860,9 +6827,9 @@ assert.equal(linuxArm64Target.directBackend.status, "native-exe");
 assert.equal(linuxArm64Target.directBackend.objectEmitter, "zero-elf-aarch64");
 assert.equal(linuxArm64Target.directBackend.exeEmitter, "zero-elf-aarch64-exe");
 assert.match(linuxArm64Target.directBackend.reason, /direct object and executable backend available/);
-const cAbiExport = zero(["check", "conformance/native/pass/c-abi-export.0"]);
+const cAbiExport = zero(["check", "conformance/native/pass/c-abi-export.graph"]);
 assert.match(cAbiExport.stdout, /ok/);
-const cAbiDump = json(["abi", "dump", "--json", "conformance/native/pass/c-abi-export.0"]).body;
+const cAbiDump = json(["abi", "dump", "--json", "conformance/native/pass/c-abi-export.graph"]).body;
 assert(cAbiDump.cExports.some((item) => item.name === "zero_add" && item.cReturnType === "int32_t"));
 assert.match(cAbiDump.generatedHeader.text, /int32_t zero_add\(int32_t a, int32_t b\);/);
 const report = {

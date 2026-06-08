@@ -67,14 +67,14 @@ describe("native zero CLI", () => {
   });
 
   it("checks directly and rejects removed legacy build flags", async () => {
-    const check = await runZero(["check", "examples/hello.0"]);
+    const check = await runZero(["check", "examples/hello.graph"]);
     assert.match(check.stdout, /ok/);
 
-    const removedEmit = await runZero(["build", "--json", "--emit", "c", "examples/hello.0"]).catch((error) => error);
+    const removedEmit = await runZero(["build", "--json", "--emit", "c", "examples/hello.graph"]).catch((error) => error);
     assert.notEqual(removedEmit.code, 0);
     assert.equal(JSON.parse(removedEmit.stdout).diagnostics[0].code, "BLD003");
 
-    const removedFlag = await runZero(["build", "--json", "--legacy-backend", "examples/hello.0"]).catch((error) => error);
+    const removedFlag = await runZero(["build", "--json", "--legacy-backend", "examples/hello.graph"]).catch((error) => error);
     assert.notEqual(removedFlag.code, 0);
     assert.equal(JSON.parse(removedFlag.stdout).diagnostics[0].code, "BLD003");
   });
@@ -84,7 +84,7 @@ describe("native zero CLI", () => {
     const exe = join(cwd, "add");
 
     try {
-      const build = await runZero(runnableBuildArgs("examples/add.0", exe));
+      const build = await runZero(runnableBuildArgs("examples/add.graph", exe));
       assert.ok(build.stdout.includes(`${exe} (`));
       assert.match(build.stdout, artifactSummaryPattern);
       const run = await execFileAsync(exe, []);
@@ -92,15 +92,15 @@ describe("native zero CLI", () => {
       await assert.rejects(access(`${exe}.c`));
 
       const runExe = join(cwd, "add-run");
-      const zeroRun = await runZero(["run", "--out", runExe, "examples/add.0"]);
+      const zeroRun = await runZero(["run", "--out", runExe, "examples/add.graph"]);
       assert.match(zeroRun.stdout, /math works/);
       assert.equal(zeroRun.stderr, "");
       await assert.rejects(access(`${runExe}.c`));
 
-      const zeroRunWithArgs = await runZero(["run", "--out", join(cwd, "add-run-args"), "examples/add.0", "--", "--emit", "c"]);
+      const zeroRunWithArgs = await runZero(["run", "--out", join(cwd, "add-run-args"), "examples/add.graph", "--", "--emit", "c"]);
       assert.match(zeroRunWithArgs.stdout, /math works/);
 
-      const exitCodeRun = await runZero(["run", "--out", join(cwd, "return42"), "examples/direct-exe-return.0"]).catch((error) => error);
+      const exitCodeRun = await runZero(["run", "--out", join(cwd, "return42"), "examples/direct-exe-return.graph"]).catch((error) => error);
       assert.equal(exitCodeRun.code, 42);
     } finally {
       await rm(cwd, { force: true, recursive: true });
@@ -130,6 +130,7 @@ describe("native zero CLI", () => {
 }
 `,
       );
+      await runZero(["import", project]);
 
       assert.match((await runZero(["check", project])).stdout, /ok/);
       await runZero(runnableBuildArgs(project, exe));
@@ -140,17 +141,17 @@ describe("native zero CLI", () => {
   });
 
   it("reports graph, size, objects, and targets", async () => {
-    const graph = JSON.parse((await runZero(["graph", "--json", "examples/point.0"])).stdout);
+    const graph = JSON.parse((await runZero(["inspect", "--json", "examples/point.graph"])).stdout);
     assert.equal(graph.shapes[0].name, "Point");
     assert.equal(graph.functions.some((item: { name: string }) => item.name === "main"), true);
 
-    const size = JSON.parse((await runZero(["size", "--json", "examples/point.0"])).stdout);
+    const size = JSON.parse((await runZero(["size", "--json", "examples/hello.graph"])).stdout);
     assert.equal(size.schemaVersion, 1);
     assert.equal(size.generatedCBytes, 0);
 
     const objOut = join(tmpdir(), `zero-target-${Date.now()}.o`);
     try {
-      const objBuild = await runZero(["build", "--emit", "obj", "--target", "linux-musl-arm64", "examples/direct-exe-return.0", "--out", objOut]);
+      const objBuild = await runZero(["build", "--emit", "obj", "--target", "linux-musl-arm64", "examples/direct-exe-return.graph", "--out", objOut]);
       assert.ok(objBuild.stdout.includes(`${objOut} (`));
       assert.match(objBuild.stdout, artifactSummaryPattern);
       const bytes = await readFile(objOut);
@@ -237,7 +238,7 @@ describe("native zero CLI", () => {
     const out = join(cwd, "hello-windows");
 
     try {
-      const result = await runZero(["build", "--emit", "exe", "--target", "win32-x64.exe", "examples/hello.0", "--out", out], {
+      const result = await runZero(["build", "--emit", "exe", "--target", "win32-x64.exe", "examples/hello.graph", "--out", out], {
         env: { ...process.env, ZERO_CC: "/usr/bin/false" },
       });
       assert.match(result.stdout, /hello-windows\.exe/);
@@ -251,7 +252,7 @@ describe("native zero CLI", () => {
   });
 
   it("rejects unsupported target triples", async () => {
-    const result = await runZero(["check", "--target", "mips-unknown-none", "examples/hello.0"]).catch((error) => error);
+    const result = await runZero(["check", "--target", "mips-unknown-none", "examples/hello.graph"]).catch((error) => error);
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /unknown target 'mips-unknown-none'/);
   });
@@ -261,7 +262,7 @@ describe("native zero CLI", () => {
     const out = join(cwd, "hello-linux-musl");
 
     try {
-      const build = await runZero(["build", "--emit", "exe", "--target", "linux-musl-x64", "examples/hello.0", "--out", out]);
+      const build = await runZero(["build", "--emit", "exe", "--target", "linux-musl-x64", "examples/hello.graph", "--out", out]);
       assert.match(build.stdout, /hello-linux-musl/);
       assert.ok((await readFile(out)).includes(Buffer.from("hello from zero\n")));
     } finally {
@@ -270,9 +271,11 @@ describe("native zero CLI", () => {
   });
 
   it("emits native diagnostic codes", async () => {
-    const result = await runZero(["check", "conformance/native/fail/unknown-field.0"]).catch((error) => error);
+    const out = join(tmpdir(), `zero-backend-blocked-${Date.now()}`);
+    const result = await runZero(["build", "--json", "--target", "linux-musl-x64", "conformance/common/fail/unsupported-target-feature.graph", "--out", out]).catch((error) => error);
     assert.notEqual(result.code, 0);
-    assert.match(result.stderr, /FLD001/);
-    assert.match(result.stderr, /explain: zero explain FLD001/);
+    const diagnostic = JSON.parse(result.stdout).diagnostics[0];
+    assert.equal(diagnostic.code, "BLD004");
+    assert.match(diagnostic.help, /use zero check/);
   });
 });

@@ -12,9 +12,6 @@ const outDir = `/tmp/zero-program-graph-parity-${process.pid}`;
 const requireStableNodeIds = process.argv.includes("--require-stable-node-ids");
 const graphHashPrime = 1099511628211n;
 const graphHashMask = (1n << 64n) - 1n;
-const compilerInputCommands = new Set(["check", "build", "run", "test", "size", "ship", "mem", "doc", "dev", "time", "fix"]);
-const compilerInputValueFlags = new Set(["--backend", "--emit", "--filter", "--out", "--profile", "--release", "--target"]);
-const abiInputSubcommands = new Set(["check", "dump"]);
 
 function firstDiagnosticCode(diagnostics) {
   return Array.isArray(diagnostics) && diagnostics.length > 0 ? diagnostics[0].code ?? null : null;
@@ -31,13 +28,13 @@ function targetReadinessSummary(readiness) {
 }
 
 async function zeroJson(args) {
-  const result = await execFileAsync(zero, normalizeZeroCompilerArgs(args), { maxBuffer: execMaxBuffer });
+  const result = await execFileAsync(zero, args, { maxBuffer: execMaxBuffer });
   return JSON.parse(result.stdout);
 }
 
 async function zeroJsonFailure(args) {
   try {
-    await execFileAsync(zero, normalizeZeroCompilerArgs(args), { maxBuffer: execMaxBuffer });
+    await execFileAsync(zero, args, { maxBuffer: execMaxBuffer });
   } catch (error) {
     return JSON.parse(error.stdout);
   }
@@ -45,7 +42,7 @@ async function zeroJsonFailure(args) {
 }
 
 async function zeroText(args) {
-  const result = await execFileAsync(zero, normalizeZeroCompilerArgs(args), { maxBuffer: execMaxBuffer });
+  const result = await execFileAsync(zero, args, { maxBuffer: execMaxBuffer });
   return result.stdout;
 }
 
@@ -63,40 +60,16 @@ function projectionSidecarPath(sourcePath) {
   return `${sourcePath.slice(0, -2)}.graph`;
 }
 
-function compilerInputPath(inputPath) {
-  if (typeof inputPath !== "string" || !inputPath.endsWith(".0")) return inputPath;
-  const graphPath = projectionSidecarPath(inputPath);
-  if (!existsSync(graphPath)) {
-    throw new Error(`${inputPath}: compiler command requires graph input; missing graph sidecar ${graphPath}`);
-  }
-  return graphPath;
-}
-
-function normalizeZeroCompilerArgs(args) {
-  if (!Array.isArray(args)) return args;
-  const isCompilerInputCommand = compilerInputCommands.has(args[0]);
-  const isAbiInputCommand = args[0] === "abi" && abiInputSubcommands.has(args[1]);
-  if (!isCompilerInputCommand && !isAbiInputCommand) return args;
-  let afterProgramArgs = false;
-  let skipOptionValue = false;
-  return args.map((arg) => {
-    if (afterProgramArgs) return arg;
-    if (arg === "--") afterProgramArgs = true;
-    if (skipOptionValue) {
-      skipOptionValue = false;
-      return arg;
-    }
-    if (compilerInputValueFlags.has(arg)) {
-      skipOptionValue = true;
-      return arg;
-    }
-    return afterProgramArgs ? arg : compilerInputPath(arg);
-  });
-}
-
 async function importProjectionSidecar(sourcePath) {
   const sidecar = projectionSidecarPath(sourcePath);
   await zeroText(["import", "--format", "binary", "--out", sidecar, sourcePath]);
+  return sidecar;
+}
+
+async function graphCompilerInputForFixture(fixture) {
+  if (!fixture.endsWith(".0")) return fixture;
+  const sidecar = projectionSidecarPath(fixture);
+  if (!existsSync(sidecar)) await importProjectionSidecar(fixture);
   return sidecar;
 }
 
@@ -411,7 +384,8 @@ function graphDumpText(graph) {
 }
 
 async function assertCheckParity(fixture) {
-  const source = await zeroJson(["check", "--json", fixture]);
+  const sourceInput = await graphCompilerInputForFixture(fixture);
+  const source = await zeroJson(["check", "--json", sourceInput]);
   const artifact = await dumpGraphArtifact(fixture, artifactNameForFixture("check", fixture));
   const graph = await zeroJson(["check", "--json", artifact]);
 
@@ -430,7 +404,8 @@ async function assertCheckParity(fixture) {
 }
 
 async function assertCheckFailureParity(fixture) {
-  const source = await zeroJsonFailure(["check", "--json", fixture]);
+  const sourceInput = await graphCompilerInputForFixture(fixture);
+  const source = await zeroJsonFailure(["check", "--json", sourceInput]);
   const artifact = await dumpGraphArtifact(fixture, artifactNameForFixture("check-fail", fixture));
   const graph = await zeroJsonFailure(["check", "--json", artifact]);
   assert.equal(graph.canonicalSource, false, `${fixture}: graph artifact check failure should report artifact input`);
@@ -818,7 +793,7 @@ async function assertStdGraphDependencyMerge() {
   assert.equal(graph.validation.ok, true, "merged std dependency graph dump validation");
   const stdUrl = graph.nodes.find((node) => node.kind === "Module" && node.name === "std.url");
   assert(stdUrl, "std graph dependency merge should retain the shared std.url module");
-  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const nodeById = new Map<string, any>(graph.nodes.map((node: any) => [node.id, node]));
   const functionEdges = graph.edges.filter((edge) => edge.target === "node" && edge.from === stdUrl.id && edge.kind === "function");
   const orders = functionEdges.map((edge) => edge.order).sort((a, b) => a - b);
   assert.deepEqual(orders, [...orders.keys()], "shared std module function edges should be compact after merging partial std graphs");
@@ -1008,8 +983,8 @@ async function assertUnconstrainedGenericTypeParams() {
     "}",
     "",
   ].join("\n"));
-  await importProjectionSidecar(fixture);
-  const check = await zeroJson(["check", "--json", fixture]);
+  const fixtureGraph = await importProjectionSidecar(fixture);
+  const check = await zeroJson(["check", "--json", fixtureGraph]);
   assert.equal(check.ok, true, "source check should accept unconstrained generic parameters");
   const dump = await zeroJson(["dump", "--json", fixture]);
   assert.equal(dump.validation.ok, true, "graph dump should validate unconstrained generic parameters");
@@ -1020,10 +995,11 @@ async function assertUnconstrainedGenericTypeParams() {
 }
 
 async function assertBuildParity(fixture, name) {
+  const sourceInput = await graphCompilerInputForFixture(fixture);
   const artifact = await dumpGraphArtifact(fixture, `${name}-build-input`);
   const sourceOut = `${outDir}/${name}.source-build`;
   const graphOut = `${outDir}/${name}.graph-build`;
-  const source = await zeroJson(["build", "--json", "--target", "linux-musl-x64", "--out", sourceOut, fixture]);
+  const source = await zeroJson(["build", "--json", "--target", "linux-musl-x64", "--out", sourceOut, sourceInput]);
   const graph = await zeroJson(["build", "--json", "--target", "linux-musl-x64", "--out", graphOut, artifact]);
 
   assert.equal(graph.graph.artifact, artifact, `${fixture}: graph build artifact`);
@@ -1035,24 +1011,26 @@ async function assertBuildParity(fixture, name) {
 }
 
 async function assertRunParity(fixture, name, args = []) {
+  const sourceInput = await graphCompilerInputForFixture(fixture);
   const artifact = await dumpGraphArtifact(fixture, `${name}-run-input`);
   const sourceOut = `${outDir}/${name}.source-run`;
   const graphOut = `${outDir}/${name}.graph-run`;
-  const source = await zeroText(["run", "--out", sourceOut, fixture, "--", ...args]);
+  const source = await zeroText(["run", "--out", sourceOut, sourceInput, "--", ...args]);
   const graph = await zeroText(["run", "--out", graphOut, artifact, "--", ...args]);
 
   assert.equal(graph, source, `${fixture}: source and graph run output should agree`);
 }
 
 async function assertTestParity(fixture, name) {
+  const sourceInput = await graphCompilerInputForFixture(fixture);
   const artifact = await dumpGraphArtifact(fixture, `${name}-test-input`);
-  const source = await zeroJson(["test", "--json", fixture]);
+  const source = await zeroJson(["test", "--json", sourceInput]);
   const graph = await zeroJson(["test", "--json", artifact]);
 
   assert.equal(graph.graph.artifact, artifact, `${fixture}: graph test artifact`);
   assert.equal(graph.graph.canonicalSource, false, `${fixture}: graph test should use artifact input`);
   assert.equal(graph.graph.lowering, "direct-program-graph", `${fixture}: graph test lowering`);
-  assertGraphCompilerRoute(source, compilerInputPath(fixture), "direct-program-graph");
+  assertGraphCompilerRoute(source, sourceInput, "direct-program-graph");
   assert.equal(source.testBackend, "direct-program-graph", `${fixture}: source test backend`);
   assert.equal(graph.testBackend, "direct-program-graph", `${fixture}: graph test backend`);
   assert.deepEqual(testSummary(graph), testSummary(source), `${fixture}: source and graph test summaries should agree`);
@@ -1211,12 +1189,12 @@ async function assertGraphSidecarPatchParity() {
   await zeroText(["view", "--out", fixture, sidecar]);
   const patchedSource = await readFile(fixture, "utf8");
   assert.match(patchedSource, /hello sidecar graph\\n/, "graph sidecar patch should export updated source text");
-  assert.equal(await zeroText(["check", fixture]), "ok\n", "patched sidecar should check through first-class check command");
+  assert.equal(await zeroText(["check", sidecar]), "ok\n", "patched sidecar should check through first-class check command");
 
   const artifact = await dumpGraphArtifact(fixture, "graph-sidecar-patch-run");
   const sourceOut = `${outDir}/graph-sidecar-patch.source-run`;
   const graphOut = `${outDir}/graph-sidecar-patch.graph-run`;
-  const source = await zeroText(["run", "--out", sourceOut, fixture]);
+  const source = await zeroText(["run", "--out", sourceOut, sidecar]);
   const graph = await zeroText(["run", "--out", graphOut, artifact]);
   assert.equal(source, "hello sidecar graph\n", "patched projection handle run output");
   assert.equal(graph, source, "patched graph artifact run output should match source");

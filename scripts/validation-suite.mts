@@ -19,12 +19,24 @@ type Suite = {
   defaultJobs?: number;
 };
 
+type PhaseResult = {
+  name: string;
+  command: string;
+  ok: boolean;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+};
+
 const suites: Record<string, Suite> = {
   conformance: {
     setup: [
       { name: "native-build", command: "make", args: ["-C", "native/zero-c"], setup: true },
     ],
     phases: [
+      { name: "graph-input-policy", command: process.execPath, args: [...nodeArgs, "scripts/graph-input-policy.mts"] },
       { name: "native-contracts", command: process.execPath, args: [...nodeArgs, "scripts/native-contracts.mts"] },
       { name: "provenance-guardrails", command: process.execPath, args: [...nodeArgs, "scripts/provenance-guardrails.mts"] },
       { name: "type-core-smoke", command: process.execPath, args: [...nodeArgs, "scripts/type-core-smoke.mts"] },
@@ -38,6 +50,7 @@ const suites: Record<string, Suite> = {
   "command-contracts": {
     setup: [],
     phases: [
+      { name: "graph-input-policy", command: process.execPath, args: [...nodeArgs, "scripts/graph-input-policy.mts"] },
       { name: "snapshot-command-contracts", command: process.execPath, args: [...nodeArgs, "scripts/snapshot-command-contracts.mts"] },
     ],
   },
@@ -114,7 +127,7 @@ if (listOnly) {
   process.exit(0);
 }
 
-function runPhase(phase: Phase) {
+function runPhase(phase: Phase): Promise<PhaseResult> {
   const startedAt = Date.now();
   process.stderr.write(`validation phase start: ${phase.name}\n`);
   return new Promise((resolve) => {
@@ -157,7 +170,7 @@ function runPhase(phase: Phase) {
 }
 
 async function runSequential(phases: Phase[]) {
-  const results = [];
+  const results: PhaseResult[] = [];
   for (const phase of phases) {
     const result = await runPhase(phase);
     results.push(result);
@@ -167,7 +180,7 @@ async function runSequential(phases: Phase[]) {
 }
 
 async function runConcurrent(phases: Phase[]) {
-  const results = [];
+  const results: PhaseResult[] = [];
   for (let start = 0; start < phases.length; start += jobs) {
     const batch = phases.slice(start, start + jobs);
     const batchResults = await Promise.all(batch.map(runPhase));

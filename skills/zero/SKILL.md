@@ -5,7 +5,8 @@ description: Install Zero and load version-matched workflows with zero skills.
 
 # Zero
 
-Zero is the programming language for agents.
+Zero is an agent-first programming language where the graph is the program
+database and `.0` files are human-readable projections.
 
 Install this skill once in an agent's skill manager. Keep it thin; Zero's own CLI serves the version-matched workflow for each installed compiler.
 
@@ -19,12 +20,13 @@ zero --version
 
 ## Version-Matched Skills
 
-This file is a discovery stub. Do not treat it as the full Zero workflow.
+This file is only a discovery stub. Do not treat it as the full Zero workflow
+or as command reference.
 
 Before editing, checking, testing, or repairing Zero code, ask the installed compiler for the skill content that matches that exact binary:
 
 ```sh
-zero skills list
+zero skills
 zero skills get zero
 zero skills get zero --full
 ```
@@ -32,25 +34,30 @@ zero skills get zero --full
 If the user has multiple Zero binaries, use the same binary that will run the project:
 
 ```sh
-/path/to/zero skills list
+/path/to/zero skills
 /path/to/zero skills get zero --full
 ```
 
-Use `zero skills list` to discover additional skills bundled with that Zero version. Use `zero skills get <name>` to load the one relevant to the task. Common inner skills include `agent`, `graph`, `language`, `diagnostics`, `packages`, `builds`, `testing`, and `stdlib`.
+Use `zero skills` to discover additional skills bundled with that Zero version.
+Use `zero skills get <name>` to load only what is relevant to the task. Common
+inner skills include `agent`, `language`, `graph`, `diagnostics`, `packages`,
+`builds`, `testing`, and `stdlib`.
+
+Agents should normally author through the graph and use `.0` projections only
+for human review or explicit import/export work. Prefer concise text output
+during interactive agent work; use `--json` only for automation, exact spans,
+contracts, or machine-readable diagnostics.
 
 ## Common Entry Points
 
 ```sh
-zero check <graph-input>
-zero query <graph-input>
-zero view <graph-input>
-zero patch <graph-input>
-zero size <graph-input>
+zero query <graph-or-package>
+zero patch <graph-or-package> --op '<operation>'
+zero check <graph-or-package>
+zero test <graph-or-package>
+zero run <graph-or-package> -- <args>
 zero explain <diagnostic-code>
+zero fix --plan <graph-or-package>
 ```
-
-Use `--json` when another tool must parse stable fields, compare contracts, or
-a debugging session needs the full machine contract. `zero fix --plan --json` is
-intentionally machine-readable.
 
 In a Zero repository checkout, prefer `bin/zero` when the task is about that checkout rather than the globally installed compiler.
