@@ -4,7 +4,6 @@
 #include "program_graph_resolve.h"
 #include "program_graph_semantics.h"
 #include "program_graph_store.h"
-#include "std_source.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -19,73 +18,6 @@ static bool graph_format_text_eq(const char *left, const char *right) {
 
 static bool graph_format_text_present(const char *text) {
   return text && text[0];
-}
-
-static bool graph_format_starts_with(const char *text, const char *prefix) {
-  size_t len = prefix ? strlen(prefix) : 0;
-  return text && prefix && strncmp(text, prefix, len) == 0;
-}
-
-static char *graph_format_strdup(const char *text) { return text ? z_strdup(text) : NULL; }
-
-static const char *graph_format_basename(const char *path) {
-  const char *slash = path ? strrchr(path, '/') : NULL;
-  return slash ? slash + 1 : (path ? path : "");
-}
-
-static bool graph_format_has_node_id(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (graph_format_text_eq(graph->nodes[i].id, id)) return true;
-  }
-  return false;
-}
-
-static bool graph_format_edge_equal(const ZProgramGraphEdge *left, const ZProgramGraphEdge *right) {
-  return left && right &&
-         left->target == right->target &&
-         left->order == right->order &&
-         graph_format_text_eq(left->from, right->from) &&
-         graph_format_text_eq(left->to, right->to) &&
-         graph_format_text_eq(left->kind, right->kind);
-}
-
-static bool graph_format_has_edge(const ZProgramGraph *graph, const ZProgramGraphEdge *edge) {
-  for (size_t i = 0; graph && edge && i < graph->edge_len; i++) {
-    if (graph_format_edge_equal(&graph->edges[i], edge)) return true;
-  }
-  return false;
-}
-
-static void graph_format_copy_node(const ZProgramGraphNode *from, ZProgramGraphNode *to) {
-  *to = (ZProgramGraphNode){
-    .id = graph_format_strdup(from->id),
-    .kind = from->kind,
-    .name = graph_format_strdup(from->name),
-    .type = graph_format_strdup(from->type),
-    .value = graph_format_strdup(from->value),
-    .path = graph_format_strdup(from->path),
-    .symbol_id = graph_format_strdup(from->symbol_id),
-    .type_id = graph_format_strdup(from->type_id),
-    .effect_id = graph_format_strdup(from->effect_id),
-    .node_hash = graph_format_strdup(from->node_hash),
-    .line = from->line,
-    .column = from->column,
-    .is_public = from->is_public,
-    .is_mutable = from->is_mutable,
-    .is_static = from->is_static,
-    .fallible = from->fallible,
-    .export_c = from->export_c,
-  };
-}
-
-static void graph_format_copy_edge(const ZProgramGraphEdge *from, ZProgramGraphEdge *to) {
-  *to = (ZProgramGraphEdge){
-    .from = graph_format_strdup(from->from),
-    .to = graph_format_strdup(from->to),
-    .kind = graph_format_strdup(from->kind),
-    .target = from->target,
-    .order = from->order,
-  };
 }
 
 static void graph_format_free_node_fields(ZProgramGraphNode *node) {
@@ -108,139 +40,6 @@ static void graph_format_free_edge_fields(ZProgramGraphEdge *edge) {
   free(edge->to);
   free(edge->kind);
   *edge = (ZProgramGraphEdge){0};
-}
-
-static bool graph_format_id_in_list(char **ids, size_t len, const char *id) {
-  for (size_t i = 0; id && i < len; i++) {
-    if (graph_format_text_eq(ids[i], id)) return true;
-  }
-  return false;
-}
-
-static bool graph_format_path_matches_module(const char *path, const ZStdSourceModule *module) {
-  return module && path &&
-         (graph_format_text_eq(path, module->path) ||
-          graph_format_text_eq(graph_format_basename(path), graph_format_basename(module->path)));
-}
-
-static void graph_format_remove_module_path_nodes(ZProgramGraph *graph, const ZStdSourceModule *module) {
-  if (!graph || !module || graph->node_len == 0) return;
-  bool *remove = z_checked_calloc(graph->node_len, sizeof(bool));
-  char **removed_ids = z_checked_calloc(graph->node_len, sizeof(char *));
-  size_t removed_len = 0;
-  for (size_t i = 0; i < graph->node_len; i++) {
-    if (!graph_format_path_matches_module(graph->nodes[i].path, module)) continue;
-    remove[i] = true;
-    removed_ids[removed_len++] = graph_format_strdup(graph->nodes[i].id);
-  }
-  if (removed_len > 0) {
-    size_t edge_write = 0;
-    for (size_t i = 0; i < graph->edge_len; i++) {
-      bool drop = graph_format_id_in_list(removed_ids, removed_len, graph->edges[i].from) ||
-                  (graph->edges[i].target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE &&
-                   graph_format_id_in_list(removed_ids, removed_len, graph->edges[i].to));
-      if (drop) {
-        graph_format_free_edge_fields(&graph->edges[i]);
-        continue;
-      }
-      if (edge_write != i) {
-        graph->edges[edge_write] = graph->edges[i];
-        graph->edges[i] = (ZProgramGraphEdge){0};
-      }
-      edge_write++;
-    }
-    graph->edge_len = edge_write;
-
-    size_t node_write = 0;
-    for (size_t i = 0; i < graph->node_len; i++) {
-      if (remove[i]) {
-        graph_format_free_node_fields(&graph->nodes[i]);
-        continue;
-      }
-      if (node_write != i) {
-        graph->nodes[node_write] = graph->nodes[i];
-        graph->nodes[i] = (ZProgramGraphNode){0};
-      }
-      node_write++;
-    }
-    graph->node_len = node_write;
-  }
-  for (size_t i = 0; i < removed_len; i++) free(removed_ids[i]);
-  free(removed_ids);
-  free(remove);
-}
-
-static void graph_format_append_node_copy(ZProgramGraph *graph, const ZProgramGraphNode *node) {
-  if (graph->node_len + 1 > graph->node_cap) {
-    graph->node_cap = z_grow_capacity(graph->node_cap, graph->node_len + 1, 64);
-    graph->nodes = z_checked_reallocarray(graph->nodes, graph->node_cap, sizeof(ZProgramGraphNode));
-  }
-  graph_format_copy_node(node, &graph->nodes[graph->node_len++]);
-}
-
-static void graph_format_append_edge_copy(ZProgramGraph *graph, const ZProgramGraphEdge *edge) {
-  if (graph->edge_len + 1 > graph->edge_cap) {
-    graph->edge_cap = z_grow_capacity(graph->edge_cap, graph->edge_len + 1, 64);
-    graph->edges = z_checked_reallocarray(graph->edges, graph->edge_cap, sizeof(ZProgramGraphEdge));
-  }
-  graph_format_copy_edge(edge, &graph->edges[graph->edge_len++]);
-}
-
-static void graph_format_merge_graph(ZProgramGraph *graph, const ZProgramGraph *module_graph) {
-  for (size_t i = 0; graph && module_graph && i < module_graph->node_len; i++) {
-    const ZProgramGraphNode *node = &module_graph->nodes[i];
-    if (graph_format_has_node_id(graph, node->id)) continue;
-    graph_format_append_node_copy(graph, node);
-  }
-  for (size_t i = 0; graph && module_graph && i < module_graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &module_graph->edges[i];
-    if (graph_format_has_edge(graph, edge)) continue;
-    graph_format_append_edge_copy(graph, edge);
-  }
-}
-
-static bool graph_format_source_imports_std_module(const SourceInput *input, const char *module) {
-  for (size_t i = 0; input && module && i < input->module_count; i++) {
-    if (graph_format_text_eq(input->module_names[i], module)) return true;
-  }
-  return false;
-}
-
-static bool graph_format_module_name_seen(char **items, size_t len, const char *module) {
-  for (size_t i = 0; module && i < len; i++) {
-    if (graph_format_text_eq(items[i], module)) return true;
-  }
-  return false;
-}
-
-bool z_program_graph_merge_embedded_std_graph_modules(ZProgramGraph *graph, const SourceInput *input, ZDiag *diag) {
-  bool merged = false;
-  char **merged_modules = z_checked_calloc(input && input->module_count ? input->module_count : 1, sizeof(char *));
-  size_t merged_module_len = 0;
-  for (size_t i = 0; input && i < input->module_count; i++) {
-    const char *module_name = input->module_names[i];
-    if (!graph_format_starts_with(module_name, "std.")) continue;
-    const ZStdSourceModule *module = z_std_source_module_for_name(module_name);
-    if (!module || !graph_format_source_imports_std_module(input, module->module)) continue;
-    if (graph_format_module_name_seen(merged_modules, merged_module_len, module->module)) continue;
-    merged_modules[merged_module_len++] = graph_format_strdup(module->module);
-    graph_format_remove_module_path_nodes(graph, module);
-    ZProgramGraph module_graph = {0};
-    bool ok = z_std_source_module_load_graph(module, &module_graph, diag);
-    if (!ok) {
-      if (diag && !diag->path) diag->path = module->path;
-      for (size_t j = 0; j < merged_module_len; j++) free(merged_modules[j]);
-      free(merged_modules);
-      return false;
-    }
-    graph_format_merge_graph(graph, &module_graph);
-    z_program_graph_free(&module_graph);
-    merged = true;
-  }
-  for (size_t i = 0; i < merged_module_len; i++) free(merged_modules[i]);
-  free(merged_modules);
-  if (merged) z_program_graph_finalize_identities(graph);
-  return true;
 }
 
 static void graph_format_append_quoted(ZBuf *buf, const char *text) {
@@ -839,7 +638,15 @@ static bool graph_format_storage_validation_fail(const char *path, const ZProgra
     snprintf(diag->message, sizeof(diag->message), "stored program graph failed validation: %s",
              validation && validation->message[0] ? validation->message : "invalid graph shape");
     snprintf(diag->expected, sizeof(diag->expected), "shape-valid program graph");
-    snprintf(diag->actual, sizeof(diag->actual), "%s", validation && validation->code[0] ? validation->code : "invalid graph");
+    if (validation && validation->edge_from[0]) {
+      snprintf(diag->actual, sizeof(diag->actual), "%.16s from:%.32s to:%.32s target:%.16s",
+               validation->code[0] ? validation->code : "invalid graph",
+               validation->edge_from,
+               validation->edge_to,
+               validation->edge_target);
+    } else {
+      snprintf(diag->actual, sizeof(diag->actual), "%s", validation && validation->code[0] ? validation->code : "invalid graph");
+    }
   }
   return false;
 }

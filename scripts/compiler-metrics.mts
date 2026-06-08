@@ -96,6 +96,7 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_compare.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_format.c": { maxLines: 1085, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_format.h": { maxLines: 21, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_std_merge.c": { maxLines: 380, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph.h": { maxLines: 135, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_identity.c": { maxLines: 500, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_import.c": { maxLines: 496, maxStrcmpCalls: 4 },

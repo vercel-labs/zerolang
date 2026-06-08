@@ -745,6 +745,54 @@ async function assertResolutionFacts() {
   assert.match(stdRef.symbolId, /local\.std@/, "local std shadow symbol");
 }
 
+async function assertStdGraphDependencyMerge() {
+  const fixture = `${outDir}/stdlib-codec-http-merge.0`;
+  const artifact = `${outDir}/stdlib-codec-http-merge.graph`;
+  await writeFile(fixture, [
+    "export c fn main() -> i32 {",
+    "    var ok: Bool = true",
+    "",
+    "    let bad_hex: Maybe<usize> = std.codec.hexDecodedLen(\"41z\")",
+    "    var base64_buf: [2]u8 = [0_u8; 2]",
+    "    let bad_base64: Maybe<Span<u8>> = std.codec.base64Decode(base64_buf, \"AAB=\")",
+    "    if bad_hex.has || bad_base64.has {",
+    "        ok = false",
+    "    }",
+    "",
+    "    var request_buf: [128]u8 = [0_u8; 128]",
+    "    let request: Maybe<Span<u8>> = std.http.writeJsonRequest(request_buf, \"POST https://example.com/api?name=zero\", \"{\\\"ping\\\":1}\")",
+    "    if request.has {",
+    "        let missing: Maybe<Span<u8>> = std.http.requestQueryValue(request.value, \"missing\")",
+    "        if missing.has {",
+    "            ok = false",
+    "        }",
+    "    }",
+    "",
+    "    if ok {",
+    "        return 0",
+    "    }",
+    "    return 1",
+    "}",
+    "",
+  ].join("\n"));
+
+  await zeroText(["import", "--format", "text", "--out", artifact, fixture]);
+  assert.equal(await zeroText(["validate", artifact]), "program graph ok\n", "merged std dependency graph should validate");
+  assert.equal(await zeroText(["check", artifact]), "ok\n", "merged std dependency graph should check");
+
+  const graph = await zeroJson(["dump", "--json", artifact]);
+  assert.equal(graph.validation.ok, true, "merged std dependency graph dump validation");
+  const stdUrl = graph.nodes.find((node) => node.kind === "Module" && node.name === "std.url");
+  assert(stdUrl, "std graph dependency merge should retain the shared std.url module");
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const functionEdges = graph.edges.filter((edge) => edge.target === "node" && edge.from === stdUrl.id && edge.kind === "function");
+  const orders = functionEdges.map((edge) => edge.order).sort((a, b) => a - b);
+  assert.deepEqual(orders, [...orders.keys()], "shared std module function edges should be compact after merging partial std graphs");
+  const functionNames = new Set(functionEdges.map((edge) => nodeById.get(edge.to)?.name));
+  assert(functionNames.has("__zero_std_url_percent_encode"), "std.codec dependency should contribute URL encoding helpers");
+  assert(functionNames.has("__zero_std_url_query_value"), "std.http dependency should contribute URL query helpers");
+}
+
 async function assertSemanticFacts() {
   const hello = await zeroJson(["dump", "--json", "examples/hello.0"]);
   assert.equal(hello.semantics.state, "typed-facts", "hello graph semantic fact state");
@@ -1453,6 +1501,7 @@ try {
 
   await assertCommandStateContracts();
   await assertResolutionFacts();
+  await assertStdGraphDependencyMerge();
   await assertSemanticFacts();
   await assertUnconstrainedGenericTypeParams();
   await assertSourceCommandGraphCompilerPath();

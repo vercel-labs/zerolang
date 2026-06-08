@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -35,6 +36,7 @@ try {
     "native/zero-c/src/program_graph_store_binary.c",
     "native/zero-c/src/program_graph_store_prune.c",
     "native/zero-c/src/program_graph_store_tables.c",
+    "native/zero-c/src/program_graph_std_merge.c",
     "native/zero-c/src/program_graph_validate.c",
     "native/zero-c/src/program_graph_view.c",
     "native/zero-c/src/c_import.c",
@@ -84,6 +86,31 @@ async function findCheckedInGraphStores(root: string, stores: string[] = []) {
   return stores;
 }
 
+async function findCheckedInFiles(root: string, suffix: string, files: string[] = []) {
+  if (!existsSync(root)) return files;
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = `${root}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name === ".zero" || entry.name === "node_modules") continue;
+      await findCheckedInFiles(path, suffix, files);
+    } else if (entry.isFile() && entry.name.endsWith(suffix)) {
+      files.push(path);
+    } else if (entry.isSymbolicLink()) {
+      const stat = await lstat(path);
+      if (stat.isFile() && entry.name.endsWith(suffix)) files.push(path);
+    }
+  }
+  return files;
+}
+
+function projectionHasGraphAuthority(path: string) {
+  if (existsSync(path.replace(/\.0$/, ".graph"))) return true;
+  for (let current = dirname(path); current !== "." && current !== "/"; current = dirname(current)) {
+    if (existsSync(join(current, "zero.graph"))) return true;
+  }
+  return false;
+}
+
 function assertBinaryGraphStore(path: string, bytes: Buffer) {
   assert.equal(bytes.subarray(0, 8).toString("binary"), "ZRGBIN1\0", `${path} should be a binary repository graph store`);
 }
@@ -96,6 +123,26 @@ const checkedInStores = [
 assert(checkedInStores.length > 0, "expected checked-in repository graph stores");
 for (const store of checkedInStores) {
   assertBinaryGraphStore(store, await readFile(store));
+}
+
+const checkedInGraphArtifacts = [
+  ...(await findCheckedInFiles("examples", ".graph")),
+  ...(await findCheckedInFiles("conformance", ".graph")),
+  ...(await findCheckedInFiles("benchmarks", ".graph")),
+].sort();
+assert(checkedInGraphArtifacts.length > 0, "expected checked-in graph artifacts");
+for (const graph of checkedInGraphArtifacts) {
+  assertBinaryGraphStore(graph, await readFile(graph));
+}
+
+const checkedInProjections = [
+  ...(await findCheckedInFiles("examples", ".0")),
+  ...(await findCheckedInFiles("conformance", ".0")),
+  ...(await findCheckedInFiles("benchmarks", ".0")),
+].sort();
+assert(checkedInProjections.length > 0, "expected checked-in source projections");
+for (const projection of checkedInProjections) {
+  assert.equal(projectionHasGraphAuthority(projection), true, `${projection} must have a graph authority`);
 }
 
 const checkedInBinaryStore = await readFile(`${checkedInBinaryRoot}/zero.graph`);

@@ -511,7 +511,9 @@ bool z_program_graph_validate(const ZProgramGraph *graph, ZProgramGraphValidatio
       const ZProgramGraphEdge *other = &graph->edges[j];
       if (edge->from && other->from && edge->kind && other->kind &&
           edge->target == other->target && strcmp(edge->from, other->from) == 0 && strcmp(edge->kind, other->kind) == 0 && edge->order == other->order) {
-        return graph_validation_fail(validation, "GRF006", "duplicate ordered edge", NULL, edge->from, edge->to, edge_target);
+        char message[160];
+        snprintf(message, sizeof(message), "duplicate ordered edge: %s[%zu]", edge->kind, edge->order);
+        return graph_validation_fail(validation, "GRF006", message, NULL, edge->from, edge->to, edge_target);
       }
     }
   }
