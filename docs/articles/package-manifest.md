@@ -9,7 +9,9 @@ that compatibility manifest directly.
 
 The current compiler supports local packages and executable targets.
 
-TOML is the preferred graph-first manifest format:
+TOML is the preferred graph-first manifest format. The target still names a
+projection path so humans have stable spans and review files, but agents should
+create and evolve the package with `zero init`, `zero query`, and `zero patch`:
 
 ```toml
 [package]

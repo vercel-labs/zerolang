@@ -26,7 +26,9 @@ Read it from top to bottom:
 - `fix` gives the safest repair shape.
 - `explain` points to deeper help.
 
-In this case, the program tried to write `message` without declaring it. A local binding fixes it:
+In this case, the graph tried to write `message` without declaring it. A local
+binding fixes it; agents should apply that repair with `zero patch`, while the
+snippet shows the projection a human would review:
 
 ```zero
 pub fn main(world: World) -> Void raises {

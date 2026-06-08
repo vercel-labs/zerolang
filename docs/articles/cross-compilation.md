@@ -1,6 +1,8 @@
 ## Cross-Compilation Guide
 
-Zero target names are explicit and target facts are visible through `zero targets`.
+Zero target names are explicit, and target facts are visible before codegen.
+Run checks against graph inputs or graph-first packages so agents can inspect
+capability denial without touching projections.
 
 ```sh
 bin/zero targets
@@ -8,9 +10,10 @@ bin/zero check --target linux-musl-x64 examples/memory-package
 bin/zero build --target linux-musl-x64 examples/memory-package --out .zero/out/memory-package
 ```
 
-The compiler separates checking from executable linking. Target-neutral code can
-check for non-host targets, while hosted APIs such as `std.fs` are rejected when
-the selected target or direct backend cannot provide that capability.
+The compiler separates graph checking from executable linking. Target-neutral
+graph inputs can check for non-host targets, while hosted APIs such as `std.fs`
+are rejected when the selected target or direct backend cannot provide that
+capability.
 
 For dependency target compatibility, use `check --json --target <target>` on the
 graph-first package being reviewed; diagnostics report incompatible dependency
@@ -54,8 +57,9 @@ Zero reports sysroot and C ABI facts in JSON so cross-target builds do not
 silently reuse host SDK paths. When a target requires an explicit SDK/sysroot,
 use the environment variable named by `zero targets --json`.
 
-C interop is still early. Keep C-facing code small, inspect `zero abi --json`
-where applicable, and prefer examples that make target assumptions explicit.
+C interop is still early. Keep C-facing graph surfaces small, inspect
+`zero abi --json` where applicable, and prefer examples that make target
+assumptions explicit.
 
 ## Current Boundary
 

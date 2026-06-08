@@ -110,6 +110,15 @@ describe("docs registry", () => {
     for (const topic of ["main", "let", "Write Functions", "type", "Field Defaults", "Span", "check", "Run Tests", "Cross Targets", "Diagnostics"]) {
       assert.match(learnZero, new RegExp(topic));
     }
+    assert.match(learnZero, /Learn From The Graph First/);
+    assert.match(learnZero, /zero query examples\/hello\.graph/);
+    assert.match(learnZero, /replaceFunctionBody main/);
+    assert.match(learnZero, /Agents should prefer `zero query`, `zero patch`, `zero check`, `zero test`, and\s+`zero run`/);
+    for (const slug of ["language-reference", "primitives", "examples", "testing", "diagnostics", "package-manifest"]) {
+      const source = await readDoc(slug);
+      assert.match(source, /graph/i, `${slug} should frame the page around graph inputs or graph facts`);
+      assert.match(source, /projection/i, `${slug} should explain dot-zero snippets as projections where syntax appears`);
+    }
     const diagnostics = await readDoc("diagnostics");
     assert.match(diagnostics, /JSON For Tools/);
     assert.match(diagnostics, /Agents should start with normal command output/);
@@ -330,6 +339,22 @@ describe("docs registry", () => {
       assert.doesNotMatch(source, internalNarrative, `${doc.sourcePath} should read like public docs`);
     }
   });
+
+  it("keeps docs chat graph-first when showing snippets", async () => {
+    const routeSource = await readFile(join(docsSiteRoot, "app/api/docs-chat/route.ts"), "utf8");
+    assert.match(routeSource, /Zero projection syntax/);
+    assert.match(routeSource, /human-readable projection of the graph/);
+    assert.doesNotMatch(routeSource, /Zero source code/);
+  });
+
+  it("uses specific first section headings for module pages", async () => {
+    const moduleDocs = docs.filter((doc) => doc.section === "Modules");
+    for (const doc of moduleDocs) {
+      const source = await readFile(join(docsSiteRoot, doc.sourcePath.slice(1)), "utf8");
+      const firstHeading = source.match(/^## .+$/m)?.[0] ?? "";
+      assert.notEqual(firstHeading, "## Status", `${doc.sourcePath} should not start with a generic Status heading`);
+    }
+  });
 });
 
 describe("docs highlighter", () => {
@@ -338,5 +363,28 @@ describe("docs highlighter", () => {
     const html = highlight("fn bump(value: &mut i32) -> Void {}", "zero");
 
     assert.match(html, /<span class="hl-keyword">mut<\/span>/);
+  });
+
+  it("highlights graph dumps and graph patch text", () => {
+    const { highlight } = loadDocsModule("lib/highlight.ts");
+    const graphHtml = highlight('node #decl_ad8d9028 Function name:"main" public:true', "zero-graph");
+    const patchHtml = highlight('zero-program-graph-patch v1\nreplaceFunctionBody main\n  check world.out.write "hello\\n"\nend', "text");
+
+    assert.match(graphHtml, /<span class="hl-keyword">node<\/span>/);
+    assert.match(graphHtml, /<span class="hl-id">#decl_ad8d9028<\/span>/);
+    assert.match(graphHtml, /<span class="hl-key">name<\/span>/);
+    assert.match(graphHtml, /<span class="hl-boolean">true<\/span>/);
+    assert.match(patchHtml, /<span class="hl-keyword">zero-program-graph-patch<\/span>/);
+    assert.match(patchHtml, /<span class="hl-keyword">replaceFunctionBody<\/span>/);
+  });
+
+  it("highlights homepage patch commands as shell", () => {
+    const { highlight } = loadDocsModule("lib/highlight.ts");
+    const html = highlight("zero patch examples/hello.graph \\\n  --expect-graph-hash graph:a7f7 \\\n  --op 'set node=\"#expr\" value=\"hello\"'", "sh");
+
+    assert.match(html, /<span class="hl-keyword">zero<\/span>/);
+    assert.match(html, /<span class="hl-key">--expect-graph-hash<\/span>/);
+    assert.match(html, /<span class="hl-operator">\\<\/span>/);
+    assert.match(html, /<span class="hl-string">&#039;set node=&quot;#expr&quot; value=&quot;hello&quot;&#039;<\/span>/);
   });
 });

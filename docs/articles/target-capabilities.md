@@ -1,6 +1,7 @@
 ## What Targets Mean Today
 
-The current compiler has a small explicit target table. Inspect it with:
+The current compiler has a small explicit target table. Agents should inspect
+target facts before patching capability-sensitive graph programs:
 
 ```sh
 zero targets
@@ -50,7 +51,7 @@ The smallest common target-neutral subset remains:
 - `stdio`
 
 This means hosted `std.fs` examples are valid on targets that declare `fs`.
-Memory-only packages can still build for target-neutral outputs.
+Memory-only graph-first packages can still build for target-neutral outputs.
 
 ## Hosted File I/O
 

@@ -1,5 +1,3 @@
-## Status
-
 ## Graph Surface
 
 This module is graph-backed. The compiler uses its standard-library graph store,

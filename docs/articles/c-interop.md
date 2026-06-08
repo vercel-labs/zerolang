@@ -1,8 +1,9 @@
 ## C Interop Guide
 
-Zero supports a small, explicit C ABI export surface. Exported C functions use
-primitive scalar parameters or explicit references accepted by the native
-checker.
+Zero supports a small, explicit C ABI export surface in graph inputs. Exported
+C functions are graph declarations that may render as the projection snippet
+below; agents should inspect ABI facts with `zero abi`, `zero inspect`, and
+diagnostics before patching the graph.
 
 ```zero
 export c fn add(a: i32, b: i32) -> i32 {

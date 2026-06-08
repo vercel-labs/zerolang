@@ -33,6 +33,11 @@ small and pay-as-used.
 `World` is a capability object created by the selected runtime. It is not a
 global singleton.
 
+The snippets in this reference are human-readable projection syntax. For
+agent-authored packages, inspect and patch the graph with `zero query` and
+`zero patch`; export or import `.0` projections only for human review or
+reviewed manual edits.
+
 Targets can reject unavailable capabilities. In the current compiler:
 
 - hosted `std.fs` helpers are accepted for the host target
@@ -41,8 +46,8 @@ Targets can reject unavailable capabilities. In the current compiler:
 
 ## Lexical Basics
 
-Zero source uses UTF-8 text. Identifiers are case-sensitive. Top-level names
-starting with `__zero_` are reserved for compiler-provided helpers. Line
+Zero projection text uses UTF-8. Identifiers are case-sensitive. Top-level
+names starting with `__zero_` are reserved for compiler-provided helpers. Line
 comments start with `//`.
 
 Common literal forms include:

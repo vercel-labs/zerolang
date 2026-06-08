@@ -1,4 +1,4 @@
-import { highlight } from "./highlight";
+import { highlight, highlightLanguage } from "./highlight";
 
 type HastNode = {
   type?: string;
@@ -20,6 +20,9 @@ const ZERO_TOKEN_COLORS: Record<string, { light: string; dark: string }> = {
   function: { light: "#6F42C1", dark: "#B392F0" },
   number: { light: "#005CC5", dark: "#79B8FF" },
   variable: { light: "#24292E", dark: "#E1E4E8" },
+  id: { light: "#6F42C1", dark: "#B392F0" },
+  key: { light: "#D73A49", dark: "#F97583" },
+  boolean: { light: "#005CC5", dark: "#79B8FF" },
   punctuation: { light: "#24292E", dark: "#E1E4E8" },
   operator: { light: "#D73A49", dark: "#F97583" },
 };
@@ -32,8 +35,8 @@ function visit(node: HastNode | undefined, predicate: NodePredicate, callback: N
   }
 }
 
-function highlightZeroToHast(code: string): HastNode[] {
-  const parts = highlight(code, "zero").split("\n");
+function highlightToHast(code: string, language: string): HastNode[] {
+  const parts = highlight(code, language).split("\n");
   const lines = [];
   for (let li = 0; li < parts.length; li++) {
     const lineHtml = parts[li];
@@ -82,18 +85,27 @@ function getNodeText(node: HastNode | undefined): string {
   return node.children.map(getNodeText).join("");
 }
 
+function getCodeLanguage(node: HastNode): string {
+  const dataLanguage = node.properties?.dataLanguage ?? node.properties?.["data-language"];
+  if (typeof dataLanguage === "string") return dataLanguage;
+  const className = node.properties?.className;
+  const classes = Array.isArray(className) ? className : typeof className === "string" ? className.split(/\s+/) : [];
+  const languageClass = classes.find((value) => typeof value === "string" && value.startsWith("language-"));
+  return typeof languageClass === "string" ? languageClass.slice("language-".length) : "";
+}
+
 export function rehypeZeroHighlight(): (tree: HastNode) => void {
   return (tree: HastNode) => {
     visit(
       tree,
       (node) =>
         node.type === "element" &&
-        node.tagName === "code" &&
-        (node.properties?.dataLanguage === "zero" ||
-          node.properties?.["data-language"] === "zero"),
+        node.tagName === "code",
       (codeNode) => {
         const text = getNodeText(codeNode).replace(/\n$/, "");
-        codeNode.children = highlightZeroToHast(text);
+        const language = highlightLanguage(getCodeLanguage(codeNode), text);
+        if (!language) return;
+        codeNode.children = highlightToHast(text, language);
         codeNode.properties = {
           ...codeNode.properties,
           style: "display:grid",

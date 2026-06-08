@@ -30,7 +30,7 @@ When answering questions:
 - If the docs don't cover a topic, say so honestly
 - Do NOT include source references or file paths in your response
 - Do NOT use emojis in your responses
-- When showing Zero source code, use \`\`\`zero fenced blocks. When showing shell commands, use \`\`\`sh.`;
+- When showing Zero projection syntax, use \`\`\`zero fenced blocks and say it is a human-readable projection of the graph. When showing shell commands, use \`\`\`sh.`;
 
 type DocsFiles = Record<string, string>;
 

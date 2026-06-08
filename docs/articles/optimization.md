@@ -2,7 +2,9 @@
 
 Zero profiles are product contracts, not hidden compiler moods. Build and size
 JSON expose the selected profile so CI and agents can explain why bytes were
-retained.
+retained from a graph input. Run `zero size`, `zero inspect`, and `zero mem`
+against graph stores or graph-first packages; `.0` projections are only a human
+review view of the program being measured.
 
 Common profile choices:
 
@@ -50,7 +52,7 @@ is larger than expected.
 - `sections`: code, readonly literals, stack, debug metadata, and optional output artifact sections.
 - `literals`: readonly string and byte literal cost.
 - `stdlibHelpers`: pay-as-used helper cost and capability attribution.
-- `imports`: capability imports retained by the selected program.
+- `imports`: capability imports retained by the selected graph input.
 - `runtimeShims`: target/runtime shims retained by capabilities or bounds checks.
 - `debugMetadata`: bytes and policy for profile-retained metadata.
 

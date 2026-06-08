@@ -190,10 +190,10 @@ linking facts such as retained runtime objects, provider libraries, and
 `zero ship --json` nests the same contract under
 `releasePreview.targetContract`.
 
-`.0` files are human-readable source text. For graph-first packages,
+`.0` files are human-readable projection text. For graph-first packages,
 `zero.graph` is the agent write surface and normal compiler input; `.0` files
 are projections for human review and direct human edits. ProgramGraph commands
-that write derived graph artifacts must use a non-source output path, such as
+that write derived graph artifacts must use a non-projection output path, such as
 `.zero/out/app.program-graph`. ProgramGraph artifacts remain optional debug and
 interchange files.
 
@@ -206,9 +206,10 @@ patch the package with
 `zero patch --op ...` defaults to the current directory. Then normal
 `zero check`, `zero run`, and `zero test` run against the graph store.
 `zero import` writes a deterministic `zero.graph` repository
-store from current `.0` source, preserves existing graph node handles where the
-source edit is unambiguous, and stores exact checked-in source projection bytes
-for tracked local files. Ambiguous identity changes fail instead of guessing.
+store from current `.0` projection text, preserves existing graph node handles
+where the projection edit is unambiguous, and stores exact checked-in projection
+bytes for tracked local files. Ambiguous identity changes fail instead of
+guessing.
 Binary is the default `zero.graph` encoding. `zero init`, `zero patch`,
 `zero import`, and `zero merge` write a binary repository graph
 store unless an existing text store is being preserved or `--format text` is

@@ -146,19 +146,27 @@ body {
 .hl-string { color: #067a6e; }
 .hl-keyword { color: #d6409f; }
 .hl-type { color: #0070c0; }
+.hl-function { color: #6f42c1; }
 .hl-number { color: #0070c0; }
 .hl-variable { color: var(--color-fg); }
+.hl-id { color: #6f42c1; }
 .hl-key { color: #d6409f; }
 .hl-boolean { color: #0070c0; }
+.hl-punctuation { color: var(--color-fg); }
+.hl-operator { color: #d6409f; }
 
 .dark .hl-comment { color: #a1a1a1; }
 .dark .hl-string { color: #00ca50; }
 .dark .hl-keyword { color: #ff4d8d; }
 .dark .hl-type { color: #c472fb; }
+.dark .hl-function { color: #c472fb; }
 .dark .hl-number { color: #47a8ff; }
 .dark .hl-variable { color: #47a8ff; }
+.dark .hl-id { color: #c472fb; }
 .dark .hl-key { color: #ff4d8d; }
 .dark .hl-boolean { color: #47a8ff; }
+.dark .hl-punctuation { color: #ededed; }
+.dark .hl-operator { color: #ff4d8d; }
 
 /* ─── Prose adjustments ────────────────────────────── */
 

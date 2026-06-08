@@ -1,12 +1,17 @@
 ## Examples
 
-The examples directory is the best hands-on path through Zero. Each example is
-small, deterministic, and intended to be checked or built from the repository
-root.
+The examples directory is the best hands-on path through graph-first Zero. Most
+examples are checked-in `.graph` inputs or graph-first packages with
+`zero.graph` stores; sibling `.0` files, when present, are human-readable
+projections for review. Run, inspect, and patch the graph input from the
+repository root instead of editing projection files.
+
+Start by inspecting the graph, then check or build it:
 
 Start here:
 
 ```sh
+bin/zero query examples/hello.graph
 bin/zero check examples/hello.graph
 bin/zero build --emit exe --target linux-musl-x64 examples/add.graph --out .zero/out/add
 ./.zero/out/add
@@ -56,7 +61,7 @@ On macOS hosts these commands produce Linux and Windows-style output artifacts
 through direct emitters. `zero size --json` provides the target report and
 artifact size without executing the foreign binary.
 
-Core examples:
+Core graph examples:
 
 - `examples/hello.graph`: `World`, stdout, `check`, and `raises`.
 - `examples/point.graph`: types, literals, fields, and helper functions.

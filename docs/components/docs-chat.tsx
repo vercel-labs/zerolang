@@ -54,7 +54,7 @@ function ChatCodeBlock({
   const className = isValidElement<{ className?: string }>(codeEl)
     ? codeEl.props.className ?? ""
     : "";
-  const language = /language-(\w+)/.exec(className)?.[1] ?? "";
+  const language = /language-([A-Za-z0-9_-]+)/.exec(className)?.[1] ?? "";
   const code = extractCodeText(
     isValidElement<{ children?: ReactNode }>(codeEl) ? codeEl.props.children : codeEl,
   ).replace(/\n$/, "");

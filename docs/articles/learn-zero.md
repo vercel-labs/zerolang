@@ -1,8 +1,43 @@
-## A Program Starts With `main`
+## Learn From The Graph First
 
-This tour shows the readable projection syntax for graph examples. Use the
-`.graph` inputs in commands and ask agents to patch graph stores; the snippets
-explain what humans will see after export.
+Zero is learned through the same path agents should use: inspect the graph,
+patch the graph, validate the graph, and export `.0` only when a human wants a
+readable projection. The code snippets on this page show projection syntax so
+you can understand reviews and examples, not because source text is the normal
+agent write surface.
+
+Start a learning session by asking the agent to load the compiler-matched
+skills and stay graph-first:
+
+```text
+Use Zero's bundled agent, graph, language, and stdlib skills.
+Teach me with graph inputs and zero patch. Do not hand-edit `.0` files.
+Only export a source projection when I ask to review it.
+```
+
+Useful graph-first commands:
+
+```sh
+zero init
+zero query
+zero patch --op 'addMain' --op 'addCheckWrite fn="main" text="hello from zero\n"'
+zero check
+zero run
+```
+
+For checked-in examples, use their `.graph` inputs:
+
+```sh
+zero query examples/hello.graph
+zero check examples/hello.graph
+zero run examples/hello.graph
+```
+
+When a page shows `.0` syntax, read it as the human projection of the graph.
+Agents should prefer `zero query`, `zero patch`, `zero check`, `zero test`, and
+`zero run` against graph inputs or package directories.
+
+## A Program Starts With `main`
 
 The smallest example is `examples/hello.graph`:
 
@@ -17,11 +52,48 @@ pub fn main(world: World) -> Void raises {
 
 `Void` is the return type, and `raises` means the function can fail.
 
-Run:
+Run the graph input:
 
 ```sh
 zero check examples/hello.graph
+zero run examples/hello.graph
 ```
+
+The exported projection would be `src/main.0` inside a package, but that file is
+for human review and occasional manual edits. A graph-first agent should not
+open or rewrite it unless the task asks for a projection.
+
+## Patch Programs Through The Graph
+
+Small edits can use structured operations:
+
+```sh
+zero patch examples/hello.graph \
+  --op 'set node="#expr_653eeb6e" field="value" expect="hello from zero\n" value="hello graph\n"'
+```
+
+Larger edits can use a patch document. `replaceFunctionBody` and
+`replaceBlockBody` accept compact row syntax so agents can replace behavior
+without hand-authoring every node edge:
+
+```text
+zero-program-graph-patch v1
+expect graphHash "graph:a7f7e6899a73f3b4"
+replaceFunctionBody main
+  let name Maybe<String> = std.args.get 1
+  if name.has
+    check world.out.write "hello "
+    check world.out.write name.value
+    check world.out.write "\n"
+  else
+    check world.out.write "hello anonymous\n"
+end
+```
+
+Run `zero patch --check-only` before applying a larger patch when the agent is
+assembling it from multiple observations. A successful patch validates the graph
+and reports the updated graph hash, so agents usually do not need a separate
+`zero check` just to know whether the edit was accepted.
 
 ## Effects Use Capabilities
 
@@ -48,7 +120,9 @@ Use `let` when a value should not change. Use `var` only when the value is inten
 
 ## Write Functions
 
-`examples/add.graph` defines a helper function and calls it from `main`:
+`examples/add.graph` defines a helper function and calls it from `main`. Inspect
+the callable surface with `zero query examples/add.graph`; read the projection
+only when you want to understand how the graph renders:
 
 ```zero
 fn answer() -> i32 {
@@ -157,7 +231,8 @@ mutates state.
 
 ## Model Data With `type`
 
-Use `type` for named records. `examples/point.graph` defines a point and passes it to a helper:
+Use `type` for named records. `examples/point.graph` defines a point and passes
+it to a helper:
 
 ```zero
 type Point {
@@ -234,8 +309,9 @@ Matches must be exhaustive. If a choice has `ok` and `err`, handle both. Put the
 
 ## Import Standard Library Modules
 
-Use `use` to import standard library modules. `examples/codec-varint.graph`
-uses `std.codec`:
+Use `use` to import standard library modules. Agents should learn the callable
+stdlib surface with `zero skills get stdlib`, then patch user programs through
+the graph. `examples/codec-varint.graph` uses `std.codec`:
 
 ```zero
 use std.codec
@@ -289,7 +365,7 @@ exist.
 The current `std.fs` helpers are hosted APIs. Use the standard library reference
 when you need explicit `Fs`, `File`, and `owned<File>` resource examples.
 
-## Organize A Package
+## Organize A Graph-First Package
 
 A package has a `zero.toml` manifest, a checked-in `zero.graph` store, and
 source projections under `src/`.
@@ -307,6 +383,19 @@ main = "src/main.0"
 The `main` path names the projection used for source spans and human
 import/export. It does not make `src/main.0` the normal package compile input;
 `zero check examples/systems-package` reads the package graph store.
+
+The usual package loop is:
+
+```sh
+zero query examples/systems-package
+zero patch --check-only examples/systems-package --op 'addFunction name="helper" ret="i32"'
+zero check examples/systems-package
+```
+
+If a human reviews or edits a projection, run `zero import` from the package
+root to rebuild `zero.graph`. If a human only wants to see the current
+projection, run `zero export`; agents should not export just to continue their
+own edit loop.
 
 `examples/systems-package/src/main.0` imports modules and local declarations:
 
@@ -338,7 +427,7 @@ zero check examples/systems-package
 
 ## Run Tests
 
-Zero test blocks live next to source code:
+Zero test blocks live in the graph and export next to source projection code:
 
 ```zero
 test "addition is stable" {
@@ -369,7 +458,8 @@ The checker rejects unavailable capabilities, such as hosted `std.fs` on target-
 
 ## Use Diagnostics
 
-Diagnostics are stable enough for humans and agents:
+Diagnostics are stable enough for humans and agents. Start with readable output
+and use `--json` only when automation needs exact spans or stable fields:
 
 ```sh
 zero explain --json NAM003
@@ -449,7 +539,7 @@ Interop types should make layout and ABI boundaries clear. Use `extern type` for
 ## What To Read Next
 
 - The examples index lists examples in a learning order.
-- The language reference documents syntax and semantics.
-- The native compiler guide explains source builds and compiler validation.
-- Diagnostics explains how to read and use errors.
-- Implementation status explains current limits.
+- The CLI reference documents graph query, patch, import, export, and diff.
+- The language reference documents projection syntax and semantics.
+- The standard library reference documents graph-backed module surfaces.
+- Diagnostics explains how humans and agents should use errors.

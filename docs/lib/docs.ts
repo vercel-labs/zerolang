@@ -20,7 +20,7 @@ export const docs: Doc[] = [
   {
     slug: "learn-zero",
     title: "Learn Zero",
-    description: "A practical language tour using the repository's runnable examples.",
+    description: "A graph-first language tour using runnable graph examples and projection snippets.",
     path: "/learn",
     sourcePath: "/articles/learn-zero.md",
     section: "Learn",
@@ -28,7 +28,7 @@ export const docs: Doc[] = [
   {
     slug: "language-reference",
     title: "Language Reference",
-    description: "Syntax, program model, types, control flow, packages, stdlib, and tooling.",
+    description: "Projection syntax, graph program model, types, control flow, packages, stdlib, and tooling.",
     path: "/reference",
     sourcePath: "/articles/language-reference.md",
     section: "Reference",
@@ -44,7 +44,7 @@ export const docs: Doc[] = [
   {
     slug: "cli-reference",
     title: "CLI Reference",
-    description: "Commands, flags, JSON modes, and project workflows.",
+    description: "Graph commands, flags, JSON modes, and project workflows.",
     path: "/cli",
     sourcePath: "/articles/cli-reference.md",
     section: "Reference",
@@ -52,7 +52,7 @@ export const docs: Doc[] = [
   {
     slug: "testing",
     title: "Testing And Reliability",
-    description: "zero test JSON, package tests, expected-fail tests, snapshots, fuzzing, and hardening gates.",
+    description: "Graph-backed zero test workflows, package tests, snapshots, fuzzing, and hardening gates.",
     path: "/testing",
     sourcePath: "/articles/testing.md",
     section: "Reference",
@@ -84,7 +84,7 @@ export const docs: Doc[] = [
   {
     slug: "c-interop",
     title: "C Interop Guide",
-    description: "Current C ABI export support and target library audit facts.",
+    description: "Graph-backed C ABI export support and target library audit facts.",
     path: "/c-interop",
     sourcePath: "/articles/c-interop.md",
     section: "Reference",
@@ -124,7 +124,7 @@ export const docs: Doc[] = [
   {
     slug: "examples",
     title: "Examples",
-    description: "Runnable examples in learning order with copyable commands.",
+    description: "Runnable graph examples in learning order with copyable commands.",
     path: "/examples",
     sourcePath: "/articles/examples.md",
     section: "Learn",
@@ -132,7 +132,7 @@ export const docs: Doc[] = [
   {
     slug: "primitives",
     title: "Primitives",
-    description: "Language and type primitives for values, memory views, ownership, layout, and absence.",
+    description: "Graph-visible language and type primitives for values, memory views, ownership, layout, and absence.",
     path: "/primitives",
     sourcePath: "/articles/primitives.md",
     section: "Reference",

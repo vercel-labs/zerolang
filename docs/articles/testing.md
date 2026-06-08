@@ -4,6 +4,10 @@
 and `.graph` artifacts. The test runner is part of the main CLI workflow and
 reports structured JSON for supported test workflows.
 
+When this page shows a `test` block or fixture content, read it as projection
+syntax for humans. Agents should add or update tests through graph patches and
+run `zero test` against the graph input or package.
+
 Common commands:
 
 ```sh
@@ -56,9 +60,9 @@ results
 - source file count and module count
 - discovered and selected counts
 
-`fixtures.sourceFiles` lists the loaded source files. `fixtures.goldenOutput`
-records deterministic text output. `fixtures.snapshotKey` identifies the
-snapshot contract for review.
+`fixtures.sourceFiles` is the stable JSON field for loaded projection paths.
+`fixtures.goldenOutput` records deterministic text output.
+`fixtures.snapshotKey` identifies the snapshot contract for review.
 
 Each result contains the test name, status, expected-fail flag, duration, source
 location, and failure span when a failure is available.

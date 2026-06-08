@@ -1,5 +1,11 @@
 ## Scalar Values
 
+Primitive types are graph facts first: `zero query`, `zero inspect --json`, and
+diagnostics expose these names and layouts from graph inputs. The snippets below
+use Zero projection syntax so humans can read the values the graph represents.
+Agents should patch programs through `zero patch` and treat these snippets as
+reviewable projections.
+
 | Primitive | Purpose | Current status |
 | --- | --- | --- |
 | `Bool` | Conditions and logical results. Only `Bool` is accepted in `if` and `while` conditions. | Runnable |
