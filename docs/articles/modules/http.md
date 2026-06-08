@@ -65,6 +65,8 @@ Runnable today:
 | `std.http.requestQuery(request)` | `Maybe<Span<u8>>` | Borrows the query string from a request target. |
 | `std.http.requestQueryValue(request, name)` | `Maybe<Span<u8>>` | Borrows a query value by name from a request envelope. |
 | `std.http.requestHeader(request, name)` | `Maybe<Span<u8>>` | Borrows a case-insensitive request header value. |
+| `std.http.requestBearerToken(request)` | `Maybe<Span<u8>>` | Borrows the bearer token from the `Authorization` request header. |
+| `std.http.requestCookie(request, name)` | `Maybe<Span<u8>>` | Borrows a named cookie value from the `Cookie` request header. |
 | `std.http.requestBody(request)` | `Maybe<Span<u8>>` | Borrows the request body after the blank line. |
 | `std.http.requestBodyWithin(request, max)` | `Maybe<Span<u8>>` | Borrows the request body only when it is at most `max` bytes. |
 | `std.http.requestHasJsonContentType(request)` | `Bool` | True when the request content type is `application/json`, ignoring ASCII case and allowing parameters. |
@@ -103,6 +105,7 @@ Metadata labels:
   `conformance/native/pass/std-http-response-helpers.0`,
   `conformance/native/pass/std-http-api-helpers.0`,
   `conformance/native/pass/std-http-cors-helpers.0`,
+  `conformance/native/pass/std-http-auth-helpers.0`,
   `conformance/native/pass/std-http-path-segments.0`,
   `examples/json-api-client.0`,
   `examples/json-api-router.0`,
@@ -203,6 +206,19 @@ pub fn main(world: World) -> Void raises {
     let failed: Maybe<Span<u8>> = std.http.writeCorsJsonResponse(response, "400 Bad Request", "{\"error\":\"bad_request\"}", "*")
     if failed.has {
         check world.err.write("http cors failed\n")
+    }
+}
+```
+
+Authorization and session cookie helpers:
+
+```zero
+pub fn main(world: World) -> Void raises {
+    let request: Span<u8> = std.mem.span("GET /me\nauthorization: Bearer token-123\ncookie: sid=abc; theme=dark\n\n")
+    let token: Maybe<Span<u8>> = std.http.requestBearerToken(request)
+    let session: Maybe<Span<u8>> = std.http.requestCookie(request, "sid")
+    if token.has && session.has {
+        check world.out.write("http auth ok\n")
     }
 }
 ```

@@ -970,3 +970,57 @@ fn __zero_std_http_write_cors_json_response(buffer: MutSpan<u8>, status_line: Sp
     }
     return buffer[..wrote_body.value]
 }
+
+fn __zero_std_http_request_bearer_token(request: Span<u8>) -> Maybe<Span<u8>> {
+    let authorization: Maybe<Span<u8>> = std.http.requestHeader(request, "authorization")
+    if !authorization.has {
+        return null
+    }
+    let value: Span<u8> = std.str.trimAscii(authorization.value)
+    if std.mem.len(value) <= 7 {
+        return null
+    }
+    let scheme: Span<u8> = value[..7]
+    if !std.str.eqlIgnoreAsciiCase(scheme, "Bearer ") {
+        return null
+    }
+    let token: Span<u8> = std.str.trimAscii(value[7..])
+    if std.mem.len(token) == 0 {
+        return null
+    }
+    return token
+}
+
+fn __zero_std_http_request_cookie(request: Span<u8>, name: Span<u8>) -> Maybe<Span<u8>> {
+    if std.mem.len(name) == 0 {
+        return null
+    }
+    let cookie: Maybe<Span<u8>> = std.http.requestHeader(request, "cookie")
+    if !cookie.has {
+        return null
+    }
+    var start: usize = 0
+    while start <= std.mem.len(cookie.value) {
+        var end: usize = start
+        while end < std.mem.len(cookie.value) && cookie.value[end] != 59_u8 {
+            end = end + 1
+        }
+        var eq: usize = start
+        while eq < end && cookie.value[eq] != 61_u8 {
+            eq = eq + 1
+        }
+        let cookie_name: Span<u8> = std.str.trimAscii(cookie.value[start..eq])
+        if std.mem.eql(cookie_name, name) {
+            if eq < end {
+                let value_start: usize = eq + 1
+                return std.str.trimAscii(cookie.value[value_start..end])
+            }
+            return cookie.value[end..end]
+        }
+        if end == std.mem.len(cookie.value) {
+            return null
+        }
+        start = end + 1
+    }
+    return null
+}

@@ -1,0 +1,48 @@
+export c fn main() -> i32 {
+    let request: Span<u8> = "GET /me\nauthorization: Bearer token-123\ncookie: sid=abc; theme=dark; empty=\n\n"
+    let token: Maybe<Span<u8>> = std.http.requestBearerToken(request)
+    if !token.has {
+        return 11
+    }
+    if !std.mem.eql(token.value, "token-123") {
+        return 12
+    }
+    let lower_request: Span<u8> = "GET /me\nauthorization: bearer lower-token\n\n"
+    let lower_token: Maybe<Span<u8>> = std.http.requestBearerToken(lower_request)
+    if !lower_token.has {
+        return 13
+    }
+    if !std.mem.eql(lower_token.value, "lower-token") {
+        return 14
+    }
+    let missing_token: Maybe<Span<u8>> = std.http.requestBearerToken("GET /me\nauthorization: Basic nope\n\n")
+    if missing_token.has {
+        return 15
+    }
+    let sid: Maybe<Span<u8>> = std.http.requestCookie(request, "sid")
+    if !sid.has {
+        return 16
+    }
+    if !std.mem.eql(sid.value, "abc") {
+        return 17
+    }
+    let theme: Maybe<Span<u8>> = std.http.requestCookie(request, "theme")
+    if !theme.has {
+        return 18
+    }
+    if !std.mem.eql(theme.value, "dark") {
+        return 19
+    }
+    let empty: Maybe<Span<u8>> = std.http.requestCookie(request, "empty")
+    if !empty.has {
+        return 20
+    }
+    if std.mem.len(empty.value) != 0 {
+        return 21
+    }
+    let absent: Maybe<Span<u8>> = std.http.requestCookie(request, "missing")
+    if absent.has {
+        return 22
+    }
+    return 32
+}

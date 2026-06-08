@@ -446,6 +446,8 @@ requestPathSegment(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
 requestQuery(arg0: Span<u8>) -> Maybe<Span<u8>>
 requestQueryValue(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 requestHeader(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+requestBearerToken(arg0: Span<u8>) -> Maybe<Span<u8>>
+requestCookie(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 requestBody(arg0: Span<u8>) -> Maybe<Span<u8>>
 requestBodyWithin(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
 requestHasJsonContentType(arg0: Span<u8>) -> Bool
@@ -839,6 +841,7 @@ For API-style handlers, parse the request envelope with route helpers such as
 `std.http.pathSegmentCount`, `std.http.pathSegment`,
 `std.http.requestPathSegmentCount`, `std.http.requestPathSegment`,
 `std.http.requestQueryValue`, `std.http.requestHeader`,
+`std.http.requestBearerToken`, `std.http.requestCookie`,
 `std.http.requestHasJsonContentType`, and `std.http.requestJsonBodyWithin`.
 Use path segment helpers for resource routes such as `/users/7`; they borrow
 zero-based, non-empty segments and ignore leading, trailing, or repeated `/`.
@@ -881,6 +884,18 @@ pub fn main() -> Void {
         let response: Maybe<Span<u8>> = std.http.writeCorsPreflight(response_buf, "*", "GET, POST, OPTIONS", "content-type, authorization")
         expect response.has
     }
+}
+```
+
+For authenticated APIs, use header-specific helpers rather than parsing
+`authorization` or `cookie` by hand:
+
+```zero
+pub fn main() -> Void {
+    let request: Span<u8> = "GET /me\nauthorization: Bearer token-123\ncookie: sid=abc; theme=dark\n\n"
+    let token: Maybe<Span<u8>> = std.http.requestBearerToken(request)
+    let session: Maybe<Span<u8>> = std.http.requestCookie(request, "sid")
+    expect token.has && session.has
 }
 ```
 

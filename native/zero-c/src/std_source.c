@@ -82,6 +82,8 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.http.pathSegmentCount", "__zero_std_http_path_segment_count", "std.http"},
   {"std.http.requestBody", "__zero_std_http_request_body", "std.http"},
   {"std.http.requestBodyWithin", "__zero_std_http_request_body_within", "std.http"},
+  {"std.http.requestBearerToken", "__zero_std_http_request_bearer_token", "std.http"},
+  {"std.http.requestCookie", "__zero_std_http_request_cookie", "std.http"},
   {"std.http.requestHeader", "__zero_std_http_request_header", "std.http"},
   {"std.http.requestHasJsonContentType", "__zero_std_http_request_has_json_content_type", "std.http"},
   {"std.http.requestJsonBodyWithin", "__zero_std_http_request_json_body_within", "std.http"},
