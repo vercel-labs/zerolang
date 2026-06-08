@@ -61,7 +61,7 @@ const WHY_GRAPH = [
   {
     title: "Shorter feedback loop",
     description:
-      "A graph patch can validate, lower, write, format, reparse, and check through the compiler instead of leaving agents to chain text edits and cleanup commands.",
+      "A graph patch can validate, lower, update the graph store, export projections when needed, and check through the compiler instead of leaving agents to chain text edits and cleanup commands.",
   },
 ];
 

@@ -35,6 +35,12 @@ pub fn main(world: World) -> Void raises {
 }
 ```
 
+For graph-first packages, diagnostic paths often name a `.0` projection because
+source maps use the readable projection for spans. Treat that path as a human
+review location, not as the agent write surface. Agents should inspect the
+package graph with `zero query`, apply a checked `zero patch`, then export the
+projection only when humans need to review the result.
+
 ## Plain Text By Default
 
 Default diagnostics should be short and useful in terminal logs.
@@ -106,7 +112,8 @@ The native compiler keeps stable codes for implemented control-flow and type rul
 - `IMP001`: unknown package-local imports, with repair id `fix-import-path`
 - `IMP002`: package-local import cycles
 - `IMP003`: duplicate public exports across imported modules
-- `PKG001`: a local package dependency path does not contain `zero.toml` or `zero.json`
+- `PKG001`: a local package dependency path does not contain `zero.toml` or a
+  compatibility `zero.json`
 - `PKG002`: package dependencies form a cycle
 - `PKG003`: one package name resolves to conflicting versions
 - `PKG004`: a package dependency does not support the selected target

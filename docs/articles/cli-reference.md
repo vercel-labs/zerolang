@@ -10,7 +10,7 @@ Most commands accept the same input forms:
 | `file.0` | Human-readable Zero projection text for review, formatting, and human import/export workflows. It is not a compiler input; pass the package or `.graph` store instead. |
 | `project/` | A package directory containing `zero.toml` or `zero.json`; graph-first packages compile from `zero.graph`. |
 | `zero.toml` | A TOML package manifest. Takes precedence for directory inputs when both manifests exist. |
-| `zero.json` | A JSON package manifest. |
+| `zero.json` | Compatibility JSON package manifest. Prefer `zero.toml` for new packages. |
 
 ## Daily Commands
 
@@ -205,9 +205,10 @@ rewrite `.0` files; run `zero verify-projection` when checked-in projection
 drift must fail the workflow. Packages without `zero.graph` are missing their
 compiler input.
 `zero merge --base <base-zero.graph> --left <left-zero.graph> --right
-<right-zero.graph> <project|zero.toml|zero.json|file.0>` combines independent repository graph store edits by
-durable node ID and node hash, writes the target `zero.graph` on success, and
-reports conflicts by graph node, source projection, semantic object, and field.
+<right-zero.graph> <project|zero.toml|zero.json|file.0>` combines independent
+repository graph store edits by durable node ID and node hash, writes the
+target `zero.graph` on success, and reports conflicts by graph node, source
+projection, semantic object, and field.
 It does not rewrite `.0` projections; run `zero export` after a
 successful merge when the checked-in source projection should be refreshed.
 In this repository, `pnpm run repository-graph:check` verifies checked-in

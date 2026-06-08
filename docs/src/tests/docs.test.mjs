@@ -114,6 +114,8 @@ describe("docs registry", () => {
     assert.match(diagnostics, /Agents should start with normal command output/);
     assert.doesNotMatch(diagnostics, /Use `--json` for agents/);
     assert.match(diagnostics, /direct `\.0` projection input to a graph-only compiler command/);
+    assert.match(diagnostics, /diagnostic paths often name a `\.0` projection/);
+    assert.match(diagnostics, /not as the agent write surface/);
     assert.match(diagnostics, /CIMP003/);
     assert.match(diagnostics, /configure-target-c-dependency/);
     assert.match(await readDoc("standard-library"), /zero inspect --json/);
@@ -174,6 +176,8 @@ describe("docs registry", () => {
     for (const packageTerm of ["dependencies", "package.lockfile", "packageCache.cacheKeyInputs", "PKG001", "PKG004", "publicationGate"]) {
       assert.match(packageManifest, new RegExp(packageTerm));
     }
+    assert.match(packageManifest, /checked-in\s+`zero\.graph` repository graph store/);
+    assert.match(packageManifest, /compatibility manifest format/);
     const crossCompilation = await readDoc("cross-compilation");
     for (const runtimeTerm of ["Direct Artifacts", "Sysroots And C Boundaries", "Current Boundary"]) {
       assert.match(crossCompilation, new RegExp(runtimeTerm));
@@ -251,6 +255,7 @@ describe("docs registry", () => {
     assert.match(homePage, /Validated refactors/);
     assert.match(homePage, /Shorter feedback loop/);
     assert.match(homePage, /Token efficiency, low memory usage, fast startup, fast builds, low runtime latency, and zero dependencies/);
+    assert.doesNotMatch(homePage, /format, reparse/);
     assert.match(homePage, /InstallCopy/);
     const installCopy = await readFile(join(docsSiteRoot, "components/install-copy.tsx"), "utf8");
     assert.match(installCopy, /curl -fsSL https:\/\/zerolang\.ai\/install\.sh \| bash/);

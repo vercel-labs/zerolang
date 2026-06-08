@@ -1,10 +1,11 @@
 ## Package And Manifest Reference
 
-Zero packages normally use `zero.toml` as the package manifest. `zero.json` is
-still accepted for compatibility, but examples and fixtures use TOML. Use one
-manifest per package in normal projects. If both files exist, `zero.toml` takes
-precedence for directory inputs; an explicit `zero.json` path still checks that
-JSON manifest directly.
+Zero packages normally use `zero.toml` as the package manifest plus a checked-in
+`zero.graph` repository graph store as compiler input. `zero.json` is accepted
+only as a compatibility manifest format; examples and fixtures use TOML. Use
+one manifest per package in normal projects. If both files exist, `zero.toml`
+takes precedence for directory inputs; an explicit `zero.json` path still checks
+that compatibility manifest directly.
 
 The current compiler supports local packages and executable targets.
 
@@ -25,7 +26,8 @@ path = "../local-tools"
 version = "0.1.0"
 ```
 
-The equivalent JSON shape is accepted for compatibility:
+The equivalent JSON shape is accepted for compatibility, but new agent-authored
+packages should not start from it:
 
 ```json
 {
@@ -85,7 +87,8 @@ target, package version, manifest hash, dependency graph hash, and lockfile hash
 
 Package graph failures use stable diagnostics:
 
-- `PKG001`: a local dependency path does not contain `zero.toml` or `zero.json`
+- `PKG001`: a local dependency path does not contain `zero.toml` or a
+  compatibility `zero.json`
 - `PKG002`: package dependencies form a cycle
 - `PKG003`: the graph resolves one package name to conflicting versions
 - `PKG004`: the selected target is not listed in a dependency's target metadata

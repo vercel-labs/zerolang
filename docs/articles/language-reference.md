@@ -1,7 +1,10 @@
 ## Program Model
 
-A Zero program can be a single `.0` file or a package with a `zero.toml`
-manifest. `zero.json` is still accepted for explicit compatibility cases.
+A Zero program is normally a graph input or a package with a `zero.toml`
+manifest and checked-in `zero.graph` store. `.0` files are readable projections
+used for human review and occasional import back into the graph. `zero.json` is
+still accepted for explicit compatibility cases, but new packages should use
+TOML and graph-first authoring.
 
 ```toml
 [package]

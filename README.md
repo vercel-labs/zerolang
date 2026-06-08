@@ -10,7 +10,7 @@ The current model:
 - `zero.graph` is the checked repository graph store for opted-in packages.
 - Agents inspect graph facts such as node IDs, graph hashes, types, effects, ownership facts, capabilities, helper use, and module edges.
 - Agents submit checked graph edits instead of patching source text ranges.
-- Humans can edit `.0` when needed, then sync the reviewed projection back to the graph.
+- Humans can edit `.0` when needed, then import the reviewed projection back to the graph.
 
 Design goals:
 
@@ -31,11 +31,20 @@ Agents can edit source text, but source text is a lossy interface for program un
 
 The ProgramGraph is zerolang's compiler-owned structure for that work. It is meant to give agents a map they can navigate in slices: start from a symbol, diagnostic, call, capability, module, or node ID, then ask for the surrounding semantic facts instead of loading unrelated source. That keeps context gathering focused while leaving `.0` projections as the durable artifact humans review.
 
-The edit loop is also different. A graph edit can target `node #expr_653eeb6e` instead of a line range, require the inspected `graphHash`, require an expected field value, and let the compiler validate, lower, write, format, reparse, and check the result as one path. Refactors can be expressed as semantic operations such as renaming a function node or replacing a resolved callee, rather than search-and-replace over text followed by separate cleanup commands.
+The edit loop is also different. A graph edit can target `node #expr_653eeb6e`
+instead of a line range, require the inspected `graphHash`, require an expected
+field value, and let the compiler validate, lower, write the graph store,
+export projections when needed, and check the result as one path. Refactors can
+be expressed as semantic operations such as renaming a function node or
+replacing a resolved callee, rather than search-and-replace over text followed
+by separate cleanup commands.
 
 ## Source Text
 
-`.0` source is intentionally regular. In graph-first packages it is a human-readable projection that behaves like durable data: easy to index, compare, format, audit, regenerate, and sync back to the graph after a human edit.
+`.0` source is intentionally regular. In graph-first packages it is a
+human-readable projection that behaves like durable data: easy to index,
+compare, format, audit, regenerate, and import back to the graph after a human
+edit.
 
 A small program shows typed signatures, infix expressions, fallibility, and explicit capability passing:
 
@@ -81,7 +90,11 @@ The graph gives agents explicit handles such as node IDs, graph hashes, resolved
 
 ## Checked Graph Edits
 
-For graph-first packages, graph artifacts, and projections with graph sidecars, `zero patch` applies checked edits to the graph and rewrites the target only after validation. The command is intended to collapse the normal agent loop of edit, format, reparse, check, and fix into a compiler-mediated operation:
+For graph-first packages, graph artifacts, and projections with graph sidecars,
+`zero patch` applies checked edits to the graph and rewrites the target only
+after validation. The command is intended to collapse the normal agent loop of
+edit, validate, export projections when needed, check, and fix into a
+compiler-mediated operation:
 
 ```bash
 zero patch examples/hello.graph \
