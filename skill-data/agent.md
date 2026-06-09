@@ -105,10 +105,16 @@ reusable graph surface agents should learn.
 zero-program-graph-patch v1
 replaceFunctionBody main
   let name Maybe<String> = std.args.get 1
-  if name.has
+  let excited Bool = std.args.has 2 || !name.has
+  if name.has && !excited
     check world.out.write "hello "
     check world.out.write name.value
     check world.out.write "\n"
+  else if name.has
+    check world.out.write "hello! "
+    check world.out.write name.value
+    check world.out.write "\n"
+    return
   else
     check world.out.write "hello anonymous\n"
 end

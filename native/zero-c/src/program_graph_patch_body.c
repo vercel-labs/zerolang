@@ -174,8 +174,7 @@ static char *body_call_source(char **tokens, size_t len) {
   return out.data ? out.data : z_strdup("");
 }
 
-static char *body_find_infix(char *expr, const char **out_op) {
-  const char *ops[] = {" == ", " != ", " <= ", " >= ", " as ", " < ", " > ", " + ", " - ", " * ", " / ", " % "};
+static char *body_find_operator(char *expr, const char *const *ops, size_t op_len, const char **out_op) {
   bool quoted = false;
   size_t depth = 0;
   for (char *cursor = expr; cursor && *cursor; cursor++) {
@@ -184,11 +183,30 @@ static char *body_find_infix(char *expr, const char **out_op) {
     if (*cursor == '(' || *cursor == '[') { depth++; continue; }
     if ((*cursor == ')' || *cursor == ']') && depth) { depth--; continue; }
     if (depth) continue;
-    for (size_t i = 0; i < sizeof(ops) / sizeof(ops[0]); i++) {
+    for (size_t i = 0; i < op_len; i++) {
       if (strncmp(cursor, ops[i], strlen(ops[i])) == 0) { *out_op = ops[i]; return cursor; }
     }
   }
   return NULL;
+}
+
+static char *body_infix_source(char *trimmed, const char *const *ops, size_t op_len) {
+  const char *op = NULL;
+  char *found = body_find_operator(trimmed, ops, op_len, &op);
+  if (!found) return NULL;
+  *found = '\0';
+  char *left = body_expr_source(trimmed);
+  char *right = body_expr_source(found + strlen(op));
+  ZBuf out;
+  zbuf_init(&out);
+  zbuf_append(&out, left);
+  zbuf_append_char(&out, ' ');
+  zbuf_appendf(&out, "%.*s", (int)(strlen(op) - 2), op + 1);
+  zbuf_append_char(&out, ' ');
+  zbuf_append(&out, right);
+  free(left);
+  free(right);
+  return out.data ? out.data : z_strdup("");
 }
 
 static bool body_outer_parens_wrap(const char *text) {
@@ -246,39 +264,19 @@ static char *body_expr_source(const char *expr) {
     free(copy);
     return out.data ? out.data : z_strdup("");
   }
-  char *and = strstr(trimmed, " && ");
-  if (and) {
-    *and = '\0';
-    char *left = body_expr_source(trimmed);
-    char *right = body_expr_source(and + 4);
-    ZBuf out;
-    zbuf_init(&out);
-    zbuf_append(&out, left);
-    zbuf_append(&out, " && ");
-    zbuf_append(&out, right);
-    free(left);
-    free(right);
-    free(copy);
-    return out.data ? out.data : z_strdup("");
-  }
-  const char *op = NULL;
-  char *found = body_find_infix(trimmed, &op);
-  if (found) {
-    *found = '\0';
-    char *left = body_expr_source(trimmed);
-    char *right = body_expr_source(found + strlen(op));
-    ZBuf out;
-    zbuf_init(&out);
-    zbuf_append(&out, left);
-    zbuf_append_char(&out, ' ');
-    zbuf_appendf(&out, "%.*s", (int)(strlen(op) - 2), op + 1);
-    zbuf_append_char(&out, ' ');
-    zbuf_append(&out, right);
-    free(left);
-    free(right);
-    free(copy);
-    return out.data ? out.data : z_strdup("");
-  }
+  const char *or_ops[] = {" || "};
+  const char *and_ops[] = {" && "};
+  const char *compare_ops[] = {" == ", " != ", " <= ", " >= ", " < ", " > "};
+  const char *cast_ops[] = {" as "};
+  const char *add_ops[] = {" + ", " - "};
+  const char *mul_ops[] = {" * ", " / ", " % "};
+  char *infix = body_infix_source(trimmed, or_ops, sizeof(or_ops) / sizeof(or_ops[0]));
+  if (!infix) infix = body_infix_source(trimmed, and_ops, sizeof(and_ops) / sizeof(and_ops[0]));
+  if (!infix) infix = body_infix_source(trimmed, compare_ops, sizeof(compare_ops) / sizeof(compare_ops[0]));
+  if (!infix) infix = body_infix_source(trimmed, cast_ops, sizeof(cast_ops) / sizeof(cast_ops[0]));
+  if (!infix) infix = body_infix_source(trimmed, add_ops, sizeof(add_ops) / sizeof(add_ops[0]));
+  if (!infix) infix = body_infix_source(trimmed, mul_ops, sizeof(mul_ops) / sizeof(mul_ops[0]));
+  if (infix) { free(copy); return infix; }
   if (trimmed[0] == '"' || trimmed[0] == '[' || trimmed[0] == 0) {
     char *out = z_strdup(trimmed);
     free(copy);
@@ -386,6 +384,11 @@ static bool body_translate_row(const char *row, ZBuf *source, ZProgramGraphPatch
     free(copy);
     return true;
   }
+  if (strcmp(line, "return") == 0) {
+    zbuf_append(source, "return");
+    free(copy);
+    return true;
+  }
   char *expr = body_expr_source(line);
   zbuf_append(source, expr);
   free(expr);
@@ -419,6 +422,21 @@ static bool body_append_source_rows(ZBuf *source, const char *rows, ZProgramGrap
       }
       body_append_indent(source, indent + 1);
       zbuf_append(source, "} else {\n");
+      open = indent + 1;
+      continue;
+    }
+    if (strncmp(trimmed, "else if ", 8) == 0) {
+      while (open > indent + 1) {
+        body_append_indent(source, open);
+        zbuf_append(source, "}\n");
+        open--;
+      }
+      char *expr = body_expr_source(trimmed + 8);
+      body_append_indent(source, indent + 1);
+      zbuf_append(source, "} else if ");
+      zbuf_append(source, expr);
+      zbuf_append(source, " {\n");
+      free(expr);
       open = indent + 1;
       continue;
     }

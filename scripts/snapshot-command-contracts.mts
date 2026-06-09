@@ -2735,11 +2735,15 @@ writeFileSync(graphRepositoryRowErgonomicsPatchPath, [
   "  let name String = \".zero/row-ergonomics\"",
   "  let same Bool = std.mem.eql (std.mem.span name) \".zero/row-ergonomics\"",
   "  let status i32 = 200_u16 as i32",
-  "  if !same",
+  "  let count i32 = 2",
+  "  let math Bool = count + 1 > 2",
+  "  if !same || status != 200",
   "    check world.err.write \"wrong name\\n\"",
+  "  else if math || status == 200",
+  "    check world.out.write \"row ergonomics ok\\n\"",
+  "    return",
   "  else",
-  "    if status == 200",
-  "      check world.out.write \"row ergonomics ok\\n\"",
+  "    return",
   "end",
   "",
 ].join("\n"));
@@ -2754,7 +2758,10 @@ const repositoryRowErgonomicsView = zero(["view", graphRepositoryPatchPackageDir
 assert.match(repositoryRowErgonomicsView, /let name: String = "\.zero\/row-ergonomics"/);
 assert.match(repositoryRowErgonomicsView, /let same: Bool = std\.mem\.eql\(std\.mem\.span\(name\), "\.zero\/row-ergonomics"\)/);
 assert.match(repositoryRowErgonomicsView, /let status: i32 = 200_u16 as i32/);
-assert.match(repositoryRowErgonomicsView, /if !same/);
+assert.match(repositoryRowErgonomicsView, /let math: Bool = count \+ 1 > 2/);
+assert.match(repositoryRowErgonomicsView, /if !same \|\| status != 200/);
+assert.match(repositoryRowErgonomicsView, /else if math \|\| status == 200/);
+assert.match(repositoryRowErgonomicsView, /return/);
 assert.equal(zero(["check", graphRepositoryPatchPackageDir]).stdout, "ok\n");
 assert.equal(zero(["run", graphRepositoryPatchPackageDir]).stdout, "row ergonomics ok\n");
 assert.match(zero(["export", graphRepositoryPatchPackageDir]).stdout, /repository graph export ok/);
