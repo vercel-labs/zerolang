@@ -1,5 +1,6 @@
 #include "zero.h"
 #include "manifest_toml.h"
+#include "process_exec.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -1129,15 +1130,6 @@ char *z_default_out_path(const char *source_file) {
   return buf.data;
 }
 
-static void append_shell_quoted_arg(ZBuf *cmd, const char *value) {
-  zbuf_append_char(cmd, '\'');
-  for (size_t i = 0; value && value[i]; i++) {
-    if (value[i] == '\'') zbuf_append(cmd, "'\\''");
-    else zbuf_append_char(cmd, value[i]);
-  }
-  zbuf_append_char(cmd, '\'');
-}
-
 static bool path_exists_for_cc(const char *path, bool directory) {
   struct stat st;
   return path && path[0] && stat(path, &st) == 0 && (directory ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode));
@@ -1221,6 +1213,25 @@ static bool remove_existing_tool_output(const char *path) {
   if (!path || !path[0]) return false;
   if (remove(path) == 0) return true;
   return errno == ENOENT;
+}
+
+static bool zargv_append_toolchain_driver(ZProcessArgv *argv, const ZToolchainPlan *plan, bool *uses_zig_env) {
+  if (!argv || !plan) return false;
+  if (uses_zig_env) *uses_zig_env = false;
+  if (strcmp(plan->driver_kind, "override-cc") == 0) {
+    return z_process_argv_push(argv, plan->compiler);
+  }
+  if (strcmp(plan->driver_kind, "host-cc") == 0) {
+    return z_process_argv_push(argv, "cc");
+  }
+  if (!z_process_ensure_dir(".zero") ||
+      !z_process_ensure_dir(".zero/zig-global-cache") ||
+      !z_process_ensure_dir(".zero/zig-local-cache")) return false;
+  if (uses_zig_env) *uses_zig_env = true;
+  return z_process_argv_push(argv, "zig") &&
+         z_process_argv_push(argv, "cc") &&
+         z_process_argv_push(argv, "-target") &&
+         z_process_argv_push(argv, plan->target_triple);
 }
 
 static bool profile_should_strip_artifact(const char *profile);
@@ -1327,38 +1338,22 @@ static bool profile_should_strip_artifact(const char *profile) {
   return !profile || strcmp(profile, "release") == 0 || strcmp(profile, "release-small") == 0 || strcmp(profile, "small") == 0 || strcmp(profile, "tiny") == 0;
 }
 
-static void append_toolchain_driver_command(ZBuf *cmd, const ZToolchainPlan *plan) {
-  if (strcmp(plan->driver_kind, "override-cc") == 0) {
-    append_shell_quoted_arg(cmd, plan->compiler);
-  } else if (strcmp(plan->driver_kind, "host-cc") == 0) {
-    zbuf_append(cmd, "cc");
-  } else {
-    zbuf_append(cmd, "mkdir -p .zero/zig-global-cache .zero/zig-local-cache && ZIG_GLOBAL_CACHE_DIR=.zero/zig-global-cache ZIG_LOCAL_CACHE_DIR=.zero/zig-local-cache zig cc");
-    zbuf_append(cmd, " -target ");
-    append_shell_quoted_arg(cmd, plan->target_triple);
-  }
-}
-
 bool z_toolchain_compile_c_object(const ZToolchainPlan *plan, const char *profile, const ZTargetInfo *target, const char *c_file, const char *object_file, const char *include_dir, const char *extra_c_flags) {
   if (!validate_toolchain_plan(plan, target)) return false;
   if (!c_file || !object_file || strcmp(c_file, object_file) == 0) return false;
   if (!remove_existing_tool_output(object_file)) return false;
 
-  ZBuf cmd;
-  zbuf_init(&cmd);
-  append_toolchain_driver_command(&cmd, plan);
-  zbuf_appendf(&cmd, " %s", profile_c_flags(profile));
-  if (extra_c_flags && extra_c_flags[0]) zbuf_appendf(&cmd, " %s", extra_c_flags);
-  if (include_dir && include_dir[0]) {
-    zbuf_append(&cmd, " -I ");
-    append_shell_quoted_arg(&cmd, include_dir);
-  }
-  zbuf_append(&cmd, " -c ");
-  append_shell_quoted_arg(&cmd, c_file);
-  zbuf_append(&cmd, " -o ");
-  append_shell_quoted_arg(&cmd, object_file);
-  bool ok = system(cmd.data) == 0 && path_exists_for_cc(object_file, false);
-  zbuf_free(&cmd);
+  ZProcessArgv argv;
+  z_process_argv_init(&argv);
+  bool suppress_stderr = false;
+  bool uses_zig_env = false;
+  bool ok = zargv_append_toolchain_driver(&argv, plan, &uses_zig_env) &&
+            z_process_argv_append_flag_text(&argv, profile_c_flags(profile), &suppress_stderr) &&
+            z_process_argv_append_flag_text(&argv, extra_c_flags, &suppress_stderr);
+  if (ok && include_dir && include_dir[0]) ok = z_process_argv_push(&argv, "-I") && z_process_argv_push(&argv, include_dir);
+  if (ok) ok = z_process_argv_push(&argv, "-c") && z_process_argv_push(&argv, c_file) && z_process_argv_push(&argv, "-o") && z_process_argv_push(&argv, object_file);
+  if (ok) ok = z_process_run_argv(&argv, false, suppress_stderr, uses_zig_env) && path_exists_for_cc(object_file, false);
+  z_process_argv_free(&argv);
   return ok;
 }
 
@@ -1370,21 +1365,18 @@ bool z_toolchain_link_objects(const ZToolchainPlan *plan, const ZTargetInfo *tar
   }
   if (!remove_existing_tool_output(exe_file)) return false;
 
-  ZBuf cmd;
-  zbuf_init(&cmd);
-  append_toolchain_driver_command(&cmd, plan);
-  if (pre_link_flags && pre_link_flags[0]) zbuf_appendf(&cmd, " %s", pre_link_flags);
+  ZProcessArgv argv;
+  z_process_argv_init(&argv);
+  bool suppress_stderr = false;
+  bool uses_zig_env = false;
+  bool ok = zargv_append_toolchain_driver(&argv, plan, &uses_zig_env) &&
+            z_process_argv_append_flag_text(&argv, pre_link_flags, &suppress_stderr);
   for (size_t i = 0; i < object_count; i++) {
-    if (object_files[i] && object_files[i][0]) {
-      zbuf_append_char(&cmd, ' ');
-      append_shell_quoted_arg(&cmd, object_files[i]);
-    }
+    if (ok && object_files[i] && object_files[i][0]) ok = z_process_argv_push(&argv, object_files[i]);
   }
-  zbuf_append(&cmd, " -o ");
-  append_shell_quoted_arg(&cmd, exe_file);
-  if (post_object_flags && post_object_flags[0]) zbuf_appendf(&cmd, " %s", post_object_flags);
-  bool ok = system(cmd.data) == 0 && path_exists_for_cc(exe_file, false);
-  zbuf_free(&cmd);
+  if (ok) ok = z_process_argv_push(&argv, "-o") && z_process_argv_push(&argv, exe_file) && z_process_argv_append_flag_text(&argv, post_object_flags, &suppress_stderr);
+  if (ok) ok = z_process_run_argv(&argv, false, suppress_stderr, uses_zig_env) && path_exists_for_cc(exe_file, false);
+  z_process_argv_free(&argv);
   return ok;
 }
 
@@ -1394,15 +1386,17 @@ bool z_run_cc(const char *c_file, const char *exe_file, const char *cc, const ch
   if (!c_file || !exe_file || strcmp(c_file, exe_file) == 0) return false;
   if (!remove_existing_tool_output(exe_file)) return false;
 
-  ZBuf cmd;
-  zbuf_init(&cmd);
-  append_toolchain_driver_command(&cmd, &plan);
-  zbuf_appendf(&cmd, " %s ", profile_c_flags(profile));
-  append_shell_quoted_arg(&cmd, c_file);
-  zbuf_append(&cmd, " -o ");
-  append_shell_quoted_arg(&cmd, exe_file);
-  bool ok = system(cmd.data) == 0 && path_exists_for_cc(exe_file, false);
-  zbuf_free(&cmd);
+  ZProcessArgv argv;
+  z_process_argv_init(&argv);
+  bool suppress_stderr = false;
+  bool uses_zig_env = false;
+  bool ok = zargv_append_toolchain_driver(&argv, &plan, &uses_zig_env) &&
+            z_process_argv_append_flag_text(&argv, profile_c_flags(profile), &suppress_stderr) &&
+            z_process_argv_push(&argv, c_file) &&
+            z_process_argv_push(&argv, "-o") &&
+            z_process_argv_push(&argv, exe_file);
+  if (ok) ok = z_process_run_argv(&argv, false, suppress_stderr, uses_zig_env) && path_exists_for_cc(exe_file, false);
+  z_process_argv_free(&argv);
   if (!ok) {
     fprintf(
       stderr,
