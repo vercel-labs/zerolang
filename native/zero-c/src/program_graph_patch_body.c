@@ -56,6 +56,42 @@ static bool body_identifier(const char *text) {
   return true;
 }
 
+static char *body_diag_row_actual(const char *rows, const ZDiag *diag, const char *fallback) {
+  int wanted = diag && diag->line > 1 ? diag->line - 1 : 0;
+  char *copy = z_strdup(rows ? rows : "");
+  char *cursor = copy;
+  int emitted = 0;
+  int physical = 0;
+  char *last = NULL;
+  while (*cursor) {
+    char *line = cursor;
+    char *end = strchr(cursor, '\n');
+    if (end) {
+      *end = '\0';
+      cursor = end + 1;
+    } else {
+      cursor += strlen(cursor);
+    }
+    physical++;
+    char *trimmed = body_trim(line);
+    if (!trimmed[0] || trimmed[0] == '#') continue;
+    emitted++;
+    free(last);
+    ZBuf row;
+    zbuf_init(&row);
+    zbuf_appendf(&row, "row %d: ", physical);
+    zbuf_append(&row, trimmed);
+    last = row.data ? row.data : z_strdup("");
+    if (emitted == wanted) {
+      free(copy);
+      return last;
+    }
+  }
+  free(copy);
+  if (last) return last;
+  return z_strdup(fallback ? fallback : "");
+}
+
 static bool body_tokenize(const char *text, char ***out, size_t *out_len) {
   char **items = NULL;
   size_t len = 0, cap = 0;
@@ -670,7 +706,9 @@ bool z_program_graph_patch_apply_replace_function_body(ZProgramGraph *graph, ZPr
   ZDiag diag = {0};
   bool ok = z_parse_canonical_text_program_source(source.data ? source.data : "", &program, &diag);
   if (!ok) {
-    body_fail(result, op, "GPH001", "replaceFunctionBody rows did not parse as a Zero function body", diag.expected[0] ? diag.expected : "valid body rows", diag.message[0] ? diag.message : (source.data ? source.data : ""));
+    char *actual = body_diag_row_actual(op ? op->value : "", &diag, diag.message[0] ? diag.message : (source.data ? source.data : ""));
+    body_fail(result, op, "GPH001", "replaceFunctionBody rows did not parse as a Zero function body", diag.expected[0] ? diag.expected : "valid body rows", actual);
+    free(actual);
     zbuf_free(&source);
     return false;
   }
@@ -707,7 +745,9 @@ bool z_program_graph_patch_apply_replace_block_body(ZProgramGraph *graph, ZProgr
   ZDiag diag = {0};
   bool ok = z_parse_canonical_text_program_source(source.data ? source.data : "", &program, &diag);
   if (!ok) {
-    body_fail(result, op, "GPH001", "replaceBlockBody rows did not parse as a Zero block body", diag.expected[0] ? diag.expected : "valid body rows", diag.message[0] ? diag.message : (source.data ? source.data : ""));
+    char *actual = body_diag_row_actual(op ? op->value : "", &diag, diag.message[0] ? diag.message : (source.data ? source.data : ""));
+    body_fail(result, op, "GPH001", "replaceBlockBody rows did not parse as a Zero block body", diag.expected[0] ? diag.expected : "valid body rows", actual);
+    free(actual);
     free(target_body_id); free(target_path); zbuf_free(&source);
     return false;
   }

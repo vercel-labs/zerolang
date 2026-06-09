@@ -2363,8 +2363,10 @@ const graphDeletedNodeFactPath = join(outDir, "hello.delete-node-fact.program-gr
 const graphRepositoryPatchPackageDir = join(outDir, "repository-graph-patch-package");
 const graphRepositoryBodyPatchPath = join(outDir, "repository-graph.replace-body.patch");
 const graphRepositoryBlockPatchPath = join(outDir, "repository-graph.replace-block.patch");
+const graphRepositoryInvalidBlockRowsPatchPath = join(outDir, "repository-graph.invalid-block-rows.patch");
 const graphRepositoryCheckExprPatchPath = join(outDir, "repository-graph.check-expr.patch");
 const graphRepositoryRowErgonomicsPatchPath = join(outDir, "repository-graph.row-ergonomics.patch");
+const graphRepositoryInvalidRowsPatchPath = join(outDir, "repository-graph.invalid-rows.patch");
 const graphRepositoryInvalidBodyPatchPath = join(outDir, "repository-graph.invalid-body.patch");
 const graphPatchDeleteExternalRootRefPath = join(outDir, "hello.delete-external-root-ref.program-graph.patch");
 const graphPatchDeleteExtraOwnerPath = join(outDir, "hello.delete-extra-owner.program-graph.patch");
@@ -2670,6 +2672,19 @@ assert.equal(zero(["run", graphRepositoryPatchPackageDir, "--", "Ada"]).stdout, 
 const repositoryBlockQueryJson = json(["query", "--json", "--find", "Block", graphRepositoryPatchPackageDir]).body;
 const repositoryThenBlock = repositoryBlockQueryJson.matches.find((node) => node.kind === "Block" && node.name === "then");
 assert(repositoryThenBlock, "expected replaceFunctionBody patch to expose a then block handle");
+writeFileSync(graphRepositoryInvalidBlockRowsPatchPath, [
+  "zero-program-graph-patch v1",
+  `expect graphHash "${repositoryBlockQueryJson.graphHash}"`,
+  `replaceBlockBody ${repositoryThenBlock.id}`,
+  "  check world.out.write \"name: \"",
+  "  let same Bool = std.mem.eql (std.mem.span name \"Ada\"",
+  "end",
+  "",
+].join("\n"));
+const repositoryInvalidBlockRowsDryRun = json(["patch", "--json", "--check-only", graphRepositoryPatchPackageDir, graphRepositoryInvalidBlockRowsPatchPath], { allowFailure: true });
+assert.notEqual(repositoryInvalidBlockRowsDryRun.code, 0);
+assert.equal(repositoryInvalidBlockRowsDryRun.body.diagnostic.code, "GPH001");
+assert.match(repositoryInvalidBlockRowsDryRun.body.diagnostic.actual, /row 2: let same Bool = std\.mem\.eql/);
 writeFileSync(graphRepositoryBlockPatchPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${repositoryBlockQueryJson.graphHash}"`,
@@ -2745,6 +2760,19 @@ assert.equal(zero(["run", graphRepositoryPatchPackageDir]).stdout, "row ergonomi
 assert.match(zero(["export", graphRepositoryPatchPackageDir]).stdout, /repository graph export ok/);
 assert.equal(zero(["verify-projection", graphRepositoryPatchPackageDir]).stdout, "repository graph verify-projection ok\n");
 const repositorySyncedQueryJson = json(["query", "--json", graphRepositoryPatchPackageDir]).body;
+writeFileSync(graphRepositoryInvalidRowsPatchPath, [
+  "zero-program-graph-patch v1",
+  `expect graphHash "${repositorySyncedQueryJson.graphHash}"`,
+  "replaceFunctionBody main",
+  "  let name String = \"Ada\"",
+  "  let same Bool = std.mem.eql (std.mem.span name \"Ada\"",
+  "end",
+  "",
+].join("\n"));
+const repositoryInvalidRowsDryRun = json(["patch", "--json", "--check-only", graphRepositoryPatchPackageDir, graphRepositoryInvalidRowsPatchPath], { allowFailure: true });
+assert.notEqual(repositoryInvalidRowsDryRun.code, 0);
+assert.equal(repositoryInvalidRowsDryRun.body.diagnostic.code, "GPH001");
+assert.match(repositoryInvalidRowsDryRun.body.diagnostic.actual, /row 2: let same Bool = std\.mem\.eql/);
 writeFileSync(graphRepositoryInvalidBodyPatchPath, [
   "zero-program-graph-patch v1",
   `expect graphHash "${repositorySyncedQueryJson.graphHash}"`,
