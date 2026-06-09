@@ -228,16 +228,17 @@ function requestZeroListener(port, method, path, body = "", headers = {}) {
   });
 }
 
-function rawZeroListenerRequest(port, payload) {
+function rawZeroListenerRequest(port, payload, options = {}) {
   return new Promise<string>((resolve, reject) => {
     const chunks = [];
     let settled = false;
     const socket = connectTcp({ host: "127.0.0.1", port }, () => {
-      socket.end(payload);
+      if (options.end === false) socket.write(payload);
+      else socket.end(payload);
     });
     const timeout = setTimeout(() => {
       finish(new Error("raw HTTP request timed out"));
-    }, 5000);
+    }, options.timeoutMs ?? 5000);
     function finish(error = null) {
       if (settled) return;
       settled = true;
@@ -334,6 +335,9 @@ async function runHttpListenExample() {
     const tooLarge = await rawZeroListenerRequest(port, "POST /echo\r\ncontent-length: 999999\r\n\r\n");
     assert.match(tooLarge, /^HTTP\/1\.1 413 Payload Too Large/);
     assert.match(tooLarge, /\{"error":"payload_too_large"\}/);
+    const incomplete = await rawZeroListenerRequest(port, "POST /echo\r\ncontent-length: 4\r\n\r\nx", { end: false, timeoutMs: 8000 });
+    assert.match(incomplete, /^HTTP\/1\.1 408 Request Timeout/);
+    assert.match(incomplete, /\{"error":"request_timeout"\}/);
     if (port3000Occupied) await assertExplicitPortConflict();
   } finally {
     await stopZeroListener(child);

@@ -32,6 +32,7 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -43,6 +44,7 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
 #define Z_HTTP_LISTEN_REQUEST_CAP 4096
 #define Z_HTTP_LISTEN_RESPONSE_CAP 262144
 #define Z_HTTP_LISTEN_HANDLER_RESPONSE_CAP 4096
+#define Z_HTTP_LISTEN_CLIENT_TIMEOUT_SECONDS 2
 
 static void listen_diag(ZDiag *diag, const char *message, const char *expected, const char *actual, const char *help) {
   if (!diag) return;
@@ -188,6 +190,14 @@ static ssize_t send_all(int fd, const char *data, size_t len) {
   return (ssize_t)sent;
 }
 
+static void configure_client_socket(int fd) {
+  struct timeval timeout;
+  timeout.tv_sec = Z_HTTP_LISTEN_CLIENT_TIMEOUT_SECONDS;
+  timeout.tv_usec = 0;
+  (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+}
+
 static size_t header_end_offset(const char *buf, size_t len) {
   for (size_t i = 0; i + 3 < len; i++) {
     if (buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n') return i + 4;
@@ -264,6 +274,9 @@ static bool read_http_request(int fd, char *buf, size_t cap, size_t *out_len, un
     ssize_t n = recv(fd, buf + total, cap - total - 1, 0);
     if (n < 0) {
       if (errno == EINTR) continue;
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        if (out_status) *out_status = 408;
+      }
       return false;
     }
     if (n == 0) break;
@@ -432,11 +445,14 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
       perror("zero listen accept");
       break;
     }
+    configure_client_socket(client_fd);
     char request[Z_HTTP_LISTEN_REQUEST_CAP];
     size_t request_len = 0;
     unsigned request_status = 400;
     if (!read_http_request(client_fd, request, sizeof(request), &request_len, &request_status)) {
-      send_json_error(client_fd, request_status, request_status == 413 ? "Payload Too Large" : "Bad Request", request_status == 413 ? "{\"error\":\"payload_too_large\"}" : "{\"error\":\"bad_request\"}");
+      const char *reason = request_status == 413 ? "Payload Too Large" : request_status == 408 ? "Request Timeout" : "Bad Request";
+      const char *body = request_status == 413 ? "{\"error\":\"payload_too_large\"}" : request_status == 408 ? "{\"error\":\"request_timeout\"}" : "{\"error\":\"bad_request\"}";
+      send_json_error(client_fd, request_status, reason, body);
       close(client_fd);
       continue;
     }
