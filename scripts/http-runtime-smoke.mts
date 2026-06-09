@@ -17,6 +17,11 @@ const target =
   process.platform === "linux" && process.arch === "x64" ? "linux-x64" :
   null;
 
+type RawZeroListenerRequestOptions = {
+  end?: boolean;
+  timeoutMs?: number;
+};
+
 function zeroArray(count) {
   return `0_u8; ${count}`;
 }
@@ -228,7 +233,7 @@ function requestZeroListener(port, method, path, body = "", headers = {}) {
   });
 }
 
-function rawZeroListenerRequest(port, payload, options = {}) {
+function rawZeroListenerRequest(port, payload, options: RawZeroListenerRequestOptions = {}) {
   return new Promise<string>((resolve, reject) => {
     const chunks = [];
     let settled = false;

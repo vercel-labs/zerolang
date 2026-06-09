@@ -18,7 +18,13 @@ type CScanState = {
   quote: "\"" | "'" | null;
 };
 
-const fileBudgets = {
+type FileBudget = {
+  maxLines: number;
+  maxStrcmpCalls: number;
+  maxShellCalls?: number;
+};
+
+const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/include/zero.h": { maxLines: 1178, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 230, maxStrcmpCalls: 0 },
