@@ -4390,15 +4390,27 @@ static bool is_existing_directory_path(const char *path) {
   return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+static bool read_file_prefix(const char *path, void *bytes, size_t len, size_t *out_read) {
+  if (out_read) *out_read = 0;
+  if (!path || !path[0] || !bytes || len == 0) return false;
+  FILE *file = fopen(path, "rb");
+  if (!file) return false;
+  size_t read = fread(bytes, 1, len, file);
+  if (out_read) *out_read = read;
+  if (ferror(file)) {
+    fclose(file);
+    return false;
+  }
+  if (fclose(file) != 0) return false;
+  return true;
+}
+
 static bool path_has_program_graph_storage_header(const char *path) {
   static const char graph_header[] = "zero-graph v";
   static const char repository_header[] = "zero-repository-graph v";
-  if (!path || !path[0]) return false;
-  FILE *file = fopen(path, "rb");
-  if (!file) return false;
   unsigned char bytes[32];
-  size_t read = fread(bytes, 1, sizeof(bytes), file);
-  fclose(file);
+  size_t read = 0;
+  if (!read_file_prefix(path, bytes, sizeof(bytes), &read)) return false;
   return (read >= sizeof(graph_header) - 1 && memcmp(bytes, graph_header, sizeof(graph_header) - 1) == 0) ||
          (read >= sizeof(repository_header) - 1 && memcmp(bytes, repository_header, sizeof(repository_header) - 1) == 0) ||
          z_program_graph_store_bytes_are_binary(bytes, read);
@@ -4442,12 +4454,9 @@ static void set_graph_patch_projection_input_diag(const char *input_path, const 
 
 static bool path_has_program_graph_patch_header(const char *path) {
   static const char header[] = "zero-program-graph-patch v1";
-  if (!path || !path[0]) return false;
-  FILE *file = fopen(path, "rb");
-  if (!file) return false;
   char bytes[sizeof(header) - 1];
-  size_t read = fread(bytes, 1, sizeof(bytes), file);
-  fclose(file);
+  size_t read = 0;
+  if (!read_file_prefix(path, bytes, sizeof(bytes), &read)) return false;
   return read == sizeof(bytes) && memcmp(bytes, header, sizeof(bytes)) == 0;
 }
 
@@ -4488,10 +4497,8 @@ static char *direct_join_path(const char *left, const char *right) {
 }
 
 static bool direct_file_exists(const char *path) {
-  FILE *file = fopen(path, "rb");
-  if (!file) return false;
-  fclose(file);
-  return true;
+  struct stat st;
+  return path && stat(path, &st) == 0;
 }
 
 static bool direct_input_has_file(const SourceInput *input, const char *path) {

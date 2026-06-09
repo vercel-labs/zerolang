@@ -1095,6 +1095,7 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       !backendFormats.fileIo.readSizeChecked ||
       !backendFormats.fileIo.readShortReadChecked ||
       !backendFormats.fileIo.optionalReadChecked ||
+      !backendFormats.fileIo.inputProbeReadChecked ||
       !backendFormats.fileIo.textWriteChecked ||
       !backendFormats.fileIo.binaryWriteChecked ||
       !backendFormats.fileIo.closeChecked ||
@@ -1478,6 +1479,10 @@ const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
 const directManifestGraphInputBody = cCodeText(cBlock(main, "static int resolve_direct_command_manifest_graph_input"));
 const readOptionalFileBody = cCodeText(cBlock(main, "static char *read_optional_file"));
+const readFilePrefixBody = cCodeText(cBlock(main, "static bool read_file_prefix"));
+const programGraphStorageHeaderBody = cCodeText(cBlock(main, "static bool path_has_program_graph_storage_header"));
+const programGraphPatchHeaderBody = cCodeText(cBlock(main, "static bool path_has_program_graph_patch_header"));
+const directFileExistsBody = cCodeText(cBlock(main, "static bool direct_file_exists"));
 const readFileBody = cCodeText(cBlock(fsRaw, "char *z_read_file"));
 const writeFileBody = cCodeText(cBlock(fsRaw, "bool z_write_file"));
 const writeBinaryFileBody = cCodeText(cBlock(fsRaw, "bool z_write_binary_file"));
@@ -1550,6 +1555,15 @@ const backendFormats = {
       /fread\s*\(\s*data\s*,\s*1\s*,\s*\(size_t\)\s*size\s*,\s*file\s*\)\s*!=\s*\(size_t\)\s*size/.test(readOptionalFileBody) &&
       /fclose\s*\(\s*file\s*\)\s*!=\s*0/.test(readOptionalFileBody) &&
       !/\brewind\s*\(\s*file\s*\)\s*;/.test(readOptionalFileBody),
+    inputProbeReadChecked: /fread\s*\(\s*bytes\s*,\s*1\s*,\s*len\s*,\s*file\s*\)/.test(readFilePrefixBody) &&
+      /ferror\s*\(\s*file\s*\)/.test(readFilePrefixBody) &&
+      /fclose\s*\(\s*file\s*\)\s*!=\s*0/.test(readFilePrefixBody) &&
+      /read_file_prefix\s*\(\s*path\s*,\s*bytes\s*,\s*sizeof\s*\(\s*bytes\s*\)\s*,\s*&read\s*\)/.test(programGraphStorageHeaderBody) &&
+      /read_file_prefix\s*\(\s*path\s*,\s*bytes\s*,\s*sizeof\s*\(\s*bytes\s*\)\s*,\s*&read\s*\)/.test(programGraphPatchHeaderBody) &&
+      !/\bfopen\s*\(/.test(programGraphStorageHeaderBody) &&
+      !/\bfopen\s*\(/.test(programGraphPatchHeaderBody) &&
+      /stat\s*\(\s*path\s*,\s*&st\s*\)\s*==\s*0/.test(directFileExistsBody) &&
+      !/\bfopen\s*\(/.test(directFileExistsBody),
     textWriteChecked: /fwrite\s*\(\s*data\s*,\s*1\s*,\s*len\s*,\s*file\s*\)\s*!=\s*len/.test(writeFileBody) &&
       !/\bfputs\s*\(\s*text\s*,\s*file\s*\)\s*;/.test(writeFileBody),
     binaryWriteChecked: /fwrite\s*\(\s*data\s*,\s*1\s*,\s*len\s*,\s*file\s*\)\s*!=\s*len/.test(writeBinaryFileBody),
