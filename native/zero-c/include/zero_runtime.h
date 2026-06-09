@@ -173,6 +173,8 @@ typedef enum {
 
 int zero_world_write(int fd, const char *buf, unsigned len);
 
+ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
+
 int64_t zero_json_parse_bytes(ZeroByteView input);
 uint32_t zero_ascii_op(uint32_t byte, uint32_t op);
 uint64_t zero_text_op(ZeroByteView text, uint32_t op);
@@ -222,5 +224,7 @@ uint32_t zero_http_header_len(uint64_t value);
 uint32_t zero_http_write_json_response(ZeroMutByteView buffer, uint32_t status, ZeroByteView body);
 uint64_t zero_http_request_method_name(ZeroByteView request);
 uint64_t zero_http_request_path(ZeroByteView request);
+uint32_t zero_http_request_matches(ZeroByteView request, ZeroByteView method, ZeroByteView path);
+uint64_t zero_http_request_body_within(ZeroByteView request, uint64_t max, uint32_t require_json);
 
 #endif

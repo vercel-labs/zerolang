@@ -5,6 +5,7 @@
 #include "http_listen_runner.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,8 +40,9 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
 #define PATH_MAX 4096
 #endif
 
-#define Z_HTTP_LISTEN_REQUEST_CAP 65536
+#define Z_HTTP_LISTEN_REQUEST_CAP 4096
 #define Z_HTTP_LISTEN_RESPONSE_CAP 262144
+#define Z_HTTP_LISTEN_HANDLER_RESPONSE_CAP 4096
 
 static void listen_diag(ZDiag *diag, const char *message, const char *expected, const char *actual, const char *help) {
   if (!diag) return;
@@ -108,12 +110,18 @@ static bool build_handler_graph(const ZHttpListenRunConfig *config, char *handle
   zbuf_init(&patch);
   zbuf_append(&patch, "zero-program-graph-patch v1\n");
   zbuf_append(&patch, "replaceFunctionBody main\n");
-  zbuf_append(&patch, "  let maybe_request Maybe<String> = std.args.get 1\n");
-  zbuf_append(&patch, "  if !maybe_request.has\n");
-  zbuf_append(&patch, "    check world.err.write \"usage: pass one HTTP request envelope\\n\"\n");
+  zbuf_append(&patch, "  let maybe_request_path Maybe<String> = std.args.get 1\n");
+  zbuf_append(&patch, "  if !maybe_request_path.has\n");
+  zbuf_append(&patch, "    check world.err.write \"usage: pass one HTTP request path\\n\"\n");
   zbuf_append(&patch, "    return\n");
-  zbuf_append(&patch, "  var response [4096]u8 = [0_u8; 4096]\n");
-  zbuf_appendf(&patch, "  let output Maybe<Span<u8>> = %s(std.mem.span(maybe_request.value), response)\n", config->handler);
+  zbuf_appendf(&patch, "  var request [%" PRIu64 "]u8 = [0_u8; %" PRIu64 "]\n", (uint64_t)Z_HTTP_LISTEN_REQUEST_CAP, (uint64_t)Z_HTTP_LISTEN_REQUEST_CAP);
+  zbuf_append(&patch, "  let maybe_request_len Maybe<usize> = std.fs.readBytes(maybe_request_path.value, request)\n");
+  zbuf_append(&patch, "  if !maybe_request_len.has\n");
+  zbuf_append(&patch, "    check world.err.write \"http request read failed\\n\"\n");
+  zbuf_append(&patch, "    return\n");
+  zbuf_append(&patch, "  let request_span Span<u8> = request[..maybe_request_len.value]\n");
+  zbuf_appendf(&patch, "  var response [%" PRIu64 "]u8 = [0_u8; %" PRIu64 "]\n", (uint64_t)Z_HTTP_LISTEN_HANDLER_RESPONSE_CAP, (uint64_t)Z_HTTP_LISTEN_HANDLER_RESPONSE_CAP);
+  zbuf_appendf(&patch, "  let output Maybe<Span<u8>> = %s(request_span, response)\n", config->handler);
   zbuf_append(&patch, "  if output.has\n");
   zbuf_append(&patch, "    check world.out.write output.value\n");
   zbuf_append(&patch, "    return\n");
@@ -201,7 +209,14 @@ static bool ascii_ieq_n(const char *left, const char *right, size_t len) {
   return true;
 }
 
-static size_t parse_content_length(const char *buf, size_t header_len) {
+typedef struct {
+  bool present;
+  bool valid;
+  size_t value;
+} ParsedContentLength;
+
+static ParsedContentLength parse_content_length(const char *buf, size_t header_len) {
+  ParsedContentLength result = {.present = false, .valid = true, .value = 0};
   const char key[] = "content-length:";
   size_t key_len = sizeof(key) - 1;
   size_t line_start = 0;
@@ -211,18 +226,31 @@ static size_t parse_content_length(const char *buf, size_t header_len) {
     size_t line_len = line_end - line_start;
     if (line_len > 0 && buf[line_start + line_len - 1] == '\r') line_len--;
     if (line_len >= key_len && ascii_ieq_n(buf + line_start, key, key_len)) {
+      result.present = true;
       size_t i = line_start + key_len;
       while (i < line_start + line_len && (buf[i] == ' ' || buf[i] == '\t')) i++;
       size_t value = 0;
+      size_t digits = 0;
       while (i < line_start + line_len && buf[i] >= '0' && buf[i] <= '9') {
+        if (value > (SIZE_MAX - (size_t)(buf[i] - '0')) / 10u) {
+          result.valid = false;
+          return result;
+        }
         value = value * 10 + (size_t)(buf[i] - '0');
         i++;
+        digits++;
       }
-      return value;
+      while (i < line_start + line_len && (buf[i] == ' ' || buf[i] == '\t')) i++;
+      if (digits == 0 || i != line_start + line_len) {
+        result.valid = false;
+        return result;
+      }
+      result.value = value;
+      return result;
     }
     line_start = line_end + 1;
   }
-  return 0;
+  return result;
 }
 
 static bool read_http_request(int fd, char *buf, size_t cap, size_t *out_len) {
@@ -242,15 +270,42 @@ static bool read_http_request(int fd, char *buf, size_t cap, size_t *out_len) {
     buf[total] = '\0';
     if (header_end == 0) {
       header_end = header_end_offset(buf, total);
-      if (header_end > 0) content_len = parse_content_length(buf, header_end);
+      if (header_end > 0) {
+        ParsedContentLength parsed = parse_content_length(buf, header_end);
+        if (!parsed.valid) return false;
+        content_len = parsed.present ? parsed.value : 0;
+        if (content_len > cap - header_end - 1) return false;
+      }
     }
     if (header_end > 0 && total >= header_end + content_len) break;
   }
   if (out_len) *out_len = total;
-  return total > 0 && header_end_offset(buf, total) > 0;
+  return total > 0 && header_end_offset(buf, total) > 0 && total >= header_end + content_len;
 }
 
-static bool run_handler_capture(const char *handler_exe, const char *request, char **out_data, size_t *out_len) {
+static bool write_request_file(const char *path, const char *request, size_t request_len) {
+  if (!path || !request) return false;
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return false;
+  size_t written = 0;
+  while (written < request_len) {
+    ssize_t n = write(fd, request + written, request_len - written);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      close(fd);
+      return false;
+    }
+    if (n == 0) {
+      close(fd);
+      return false;
+    }
+    written += (size_t)n;
+  }
+  if (close(fd) != 0) return false;
+  return true;
+}
+
+static bool run_handler_capture(const char *handler_exe, const char *request_path, char **out_data, size_t *out_len) {
   if (out_data) *out_data = NULL;
   if (out_len) *out_len = 0;
   int fds[2];
@@ -260,7 +315,7 @@ static bool run_handler_capture(const char *handler_exe, const char *request, ch
     close(fds[0]);
     dup2(fds[1], STDOUT_FILENO);
     close(fds[1]);
-    char *const argv[] = {(char *)handler_exe, (char *)request, NULL};
+    char *const argv[] = {(char *)handler_exe, (char *)request_path, NULL};
     execv(handler_exe, argv);
     perror("zero listen handler");
     _exit(127);
@@ -319,6 +374,8 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
 
   char handler_exe[PATH_MAX];
   if (!build_handler_graph(config, handler_exe, sizeof(handler_exe), diag)) return 1;
+  char request_path[PATH_MAX];
+  snprintf(request_path, sizeof(request_path), "/tmp/zero-listen-%ld-request.http", (long)getpid());
 
   signal(SIGPIPE, SIG_IGN);
   int server_fd = -1;
@@ -380,10 +437,15 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
       continue;
     }
     request[request_len] = '\0';
+    if (!write_request_file(request_path, request, request_len)) {
+      send_json_error(client_fd, 500, "Internal Server Error", "{\"error\":\"request_spool_failed\"}");
+      close(client_fd);
+      continue;
+    }
 
     char *response = NULL;
     size_t response_len = 0;
-    if (run_handler_capture(handler_exe, request, &response, &response_len)) {
+    if (run_handler_capture(handler_exe, request_path, &response, &response_len)) {
       (void)send_all(client_fd, response, response_len);
       free(response);
     } else {
@@ -393,6 +455,7 @@ int z_http_listen_run(const ZHttpListenRunConfig *config, ZDiag *diag) {
   }
 
   close(server_fd);
+  unlink(request_path);
   return 1;
 }
 

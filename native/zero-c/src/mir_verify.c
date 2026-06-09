@@ -148,6 +148,7 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
           value->kind == IR_VALUE_FS_TEMP_NAME ||
           value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
           value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
+          value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
           value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
           value->kind == IR_VALUE_STR_RUNTIME ||
           value->kind == IR_VALUE_FMT_BOOL ||
@@ -568,6 +569,32 @@ static bool mir_verify_mutable_typed_span_storage(IrProgram *ir, const IrFunctio
   return false;
 }
 
+static bool mir_verify_http_request_matches_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {
+  mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.http.requestMatches");
+  mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.http.requestMatches");
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "HTTP request matcher result")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid HTTP request matcher input", "HTTP request")) return false;
+  if (!mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid HTTP request matcher method", "HTTP method")) return false;
+  return mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid HTTP request matcher path", "HTTP path");
+}
+
+static bool mir_verify_http_request_span_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {
+  const char *helper = value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ? "std.http.requestMethodName" : "std.http.requestPath";
+  mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, helper);
+  mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, helper);
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "HTTP request span result")) return false;
+  return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid HTTP request helper input", "HTTP request");
+}
+
+static bool mir_verify_http_request_body_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {
+  const char *helper = value->int_value ? "std.http.requestJsonBodyWithin" : "std.http.requestBodyWithin";
+  mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, helper);
+  mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, helper);
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "HTTP request body result")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid HTTP request body input", "HTTP request")) return false;
+  return mir_verify_value_type(ir, value->index, IR_TYPE_USIZE, "MIR verifier found invalid HTTP request body limit", "HTTP body limit");
+}
+
 static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {
   if (!ir || !ir->mir_valid || !value) return ir && ir->mir_valid;
   switch (value->kind) {
@@ -643,12 +670,10 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.http header result helper");
       if (!mir_verify_helper_result_type(ir, value, value->kind == IR_VALUE_HTTP_HEADER_FOUND ? IR_TYPE_BOOL : IR_TYPE_USIZE, "HTTP header result helper result")) return false;
       return mir_verify_value_type(ir, value->left, IR_TYPE_U64, "MIR verifier found invalid HTTP header result helper input", "HTTP header result");
-    case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
-    case IR_VALUE_HTTP_REQUEST_PATH:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ? "std.http.requestMethodName" : "std.http.requestPath");
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ? "std.http.requestMethodName" : "std.http.requestPath");
-      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "HTTP request span result")) return false;
-      return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid HTTP request helper input", "HTTP request");
+    case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
+      return mir_verify_http_request_span_contract(ir, value, requirements);
+    case IR_VALUE_HTTP_REQUEST_MATCHES: return mir_verify_http_request_matches_contract(ir, value, requirements);
+    case IR_VALUE_HTTP_REQUEST_BODY_WITHIN: return mir_verify_http_request_body_contract(ir, value, requirements);
     case IR_VALUE_HTTP_WRITE_JSON_RESPONSE:
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.http.writeJsonResponse");
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.http.writeJsonResponse");
@@ -1962,7 +1987,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_HTTP_HEADER_FOUND:
     case IR_VALUE_HTTP_HEADER_OFFSET:
     case IR_VALUE_HTTP_HEADER_LEN:
-    case IR_VALUE_HTTP_WRITE_JSON_RESPONSE: case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
+    case IR_VALUE_HTTP_WRITE_JSON_RESPONSE: case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH: case IR_VALUE_HTTP_REQUEST_MATCHES: case IR_VALUE_HTTP_REQUEST_BODY_WITHIN:
     case IR_VALUE_HTTP_STATUS_CLASS:
     case IR_VALUE_PARSE_RUNTIME: case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32: case IR_VALUE_ARGS_PARSE_U32: case IR_VALUE_ARGS_FIND: case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER: case IR_VALUE_ARGS_VALUE_AFTER_OR: case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:

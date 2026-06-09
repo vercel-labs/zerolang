@@ -1,6 +1,7 @@
 #include "zero_runtime.h"
 
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #if defined(_WIN32)
@@ -29,6 +30,24 @@ int zero_world_write(int fd, const char *buf, unsigned len) {
     remaining -= (unsigned)written;
   }
   return 0;
+}
+
+ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer) {
+  if ((!path.ptr && path.len > 0) || !buffer.ptr || path.len == 0 || path.len >= 4096) {
+    return (ZeroMaybeUsize){0, 0};
+  }
+  char path_buf[4096];
+  memcpy(path_buf, path.ptr, path.len);
+  path_buf[path.len] = '\0';
+  FILE *file = fopen(path_buf, "rb");
+  if (!file) return (ZeroMaybeUsize){0, 0};
+  size_t read_len = fread(buffer.ptr, 1, buffer.len, file);
+  if (ferror(file)) {
+    fclose(file);
+    return (ZeroMaybeUsize){0, 0};
+  }
+  if (fclose(file) != 0) return (ZeroMaybeUsize){0, 0};
+  return (ZeroMaybeUsize){1, (uint64_t)read_len};
 }
 
 uint64_t zero_parse_u32(ZeroByteView text) {
@@ -1505,6 +1524,77 @@ uint64_t zero_http_request_path(ZeroByteView request) {
   return zero_http_span_pack(target_offset + path_start, path_end - path_start);
 }
 
+uint32_t zero_http_request_matches(ZeroByteView request, ZeroByteView method, ZeroByteView path) {
+  if ((!method.ptr && method.len > 0) || (!path.ptr && path.len > 0)) return 0;
+  uint64_t method_span = zero_http_request_method_name(request);
+  if ((method_span >> 63) == 0) return 0;
+  size_t method_len = (size_t)((method_span >> 32) & 0x7fffffffu);
+  size_t method_offset = (size_t)(method_span & 0xffffffffu);
+  if (method_offset > request.len || method_len > request.len - method_offset) return 0;
+  if (method_len != method.len || (method_len > 0 && memcmp(request.ptr + method_offset, method.ptr, method_len) != 0)) return 0;
+
+  uint64_t path_span = zero_http_request_path(request);
+  if ((path_span >> 63) == 0) return 0;
+  size_t path_len = (size_t)((path_span >> 32) & 0x7fffffffu);
+  size_t path_offset = (size_t)(path_span & 0xffffffffu);
+  if (path_offset > request.len || path_len > request.len - path_offset) return 0;
+  return path_len == path.len && (path_len == 0 || memcmp(request.ptr + path_offset, path.ptr, path_len) == 0);
+}
+
+static int zero_http_body_start(ZeroByteView request, size_t *start_out) {
+  if (start_out) *start_out = 0;
+  if (!request.ptr) return 0;
+  size_t start = 0;
+  while (start < request.len) {
+    size_t end = start;
+    while (end < request.len && request.ptr[end] != '\n') end++;
+    size_t line_end = end;
+    if (line_end > start && request.ptr[line_end - 1] == '\r') line_end--;
+    size_t next = end < request.len ? end + 1 : end;
+    if (line_end == start) {
+      if (start_out) *start_out = next;
+      return 1;
+    }
+    start = next;
+  }
+  return 0;
+}
+
+static int zero_http_value_starts_with_ignore_ascii_case(ZeroByteView value, const char *prefix, size_t prefix_len) {
+  if (!prefix || value.len < prefix_len) return 0;
+  for (size_t i = 0; i < prefix_len; i++) {
+    if (zero_http_header_lower(value.ptr[i]) != zero_http_header_lower((unsigned char)prefix[i])) return 0;
+  }
+  return 1;
+}
+
+static int zero_http_request_has_json_content_type(ZeroByteView request) {
+  static const unsigned char header_name[] = "content-type";
+  static const char json_prefix[] = "application/json";
+  uint64_t header = zero_http_header_value(request, (ZeroByteView){header_name, sizeof(header_name) - 1});
+  if ((header >> 63) == 0) return 0;
+  size_t offset = (size_t)((header >> 32) & 0x7fffffffu);
+  size_t len = (size_t)(header & 0xffffffffu);
+  if (offset > request.len || len > request.len - offset) return 0;
+  ZeroByteView value = {request.ptr + offset, len};
+  if (!zero_http_value_starts_with_ignore_ascii_case(value, json_prefix, sizeof(json_prefix) - 1)) return 0;
+  return value.len == sizeof(json_prefix) - 1 || value.ptr[sizeof(json_prefix) - 1] == ';';
+}
+
+uint64_t zero_http_request_body_within(ZeroByteView request, uint64_t max, uint32_t require_json) {
+  size_t body_start = 0;
+  if (!zero_http_body_start(request, &body_start)) return 0;
+  if (body_start > request.len) return 0;
+  size_t body_len = request.len - body_start;
+  if (body_len > max) return 0;
+  ZeroByteView body = {request.ptr + body_start, body_len};
+  if (require_json) {
+    if (!zero_http_request_has_json_content_type(request)) return 0;
+    if (zero_json_parse_bytes(body) < 0) return 0;
+  }
+  return zero_http_span_pack(body_start, body_len);
+}
+
 static const char *zero_http_status_reason(uint32_t status) {
   switch (status) {
     case 100: return "Continue";
@@ -1563,9 +1653,9 @@ uint32_t zero_http_write_json_response(ZeroMutByteView buffer, uint32_t status, 
       !zero_http_write_u32_decimal(buffer, &offset, status) ||
       !zero_http_write_literal(buffer, &offset, " ") ||
       !zero_http_write_literal(buffer, &offset, reason) ||
-      !zero_http_write_literal(buffer, &offset, "\ncontent-type: application/json\ncontent-length: ") ||
+      !zero_http_write_literal(buffer, &offset, "\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: ") ||
       !zero_http_write_u32_decimal(buffer, &offset, (uint32_t)body.len) ||
-      !zero_http_write_literal(buffer, &offset, "\n\n") ||
+      !zero_http_write_literal(buffer, &offset, "\r\n\r\n") ||
       !zero_http_write_bytes(buffer, &offset, body.ptr, body.len) ||
       offset > 0xffffffffu) {
     return 0;

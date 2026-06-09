@@ -5840,6 +5840,8 @@ typedef struct {
   bool zero_http_write_json_response;
   bool zero_http_request_method_name;
   bool zero_http_request_path;
+  bool zero_http_request_matches;
+  bool zero_http_request_body_within;
 } RuntimeImportAudit;
 
 static void runtime_import_audit_mark_fs_base(RuntimeImportAudit *audit) {
@@ -6039,12 +6041,10 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_HTTP_WRITE_JSON_RESPONSE:
       audit->zero_http_write_json_response = true;
       break;
-    case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
-      audit->zero_http_request_method_name = true;
-      break;
-    case IR_VALUE_HTTP_REQUEST_PATH:
-      audit->zero_http_request_path = true;
-      break;
+    case IR_VALUE_HTTP_REQUEST_METHOD_NAME: audit->zero_http_request_method_name = true; break;
+    case IR_VALUE_HTTP_REQUEST_PATH: audit->zero_http_request_path = true; break;
+    case IR_VALUE_HTTP_REQUEST_MATCHES: audit->zero_http_request_matches = true; break;
+    case IR_VALUE_HTTP_REQUEST_BODY_WITHIN: audit->zero_http_request_body_within = true; break;
     default:
       break;
   }
@@ -6126,6 +6126,8 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
       value->kind == IR_VALUE_HTTP_HEADER_LEN ||
       value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
       value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
+      value->kind == IR_VALUE_HTTP_REQUEST_MATCHES ||
+      value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
       value->kind == IR_VALUE_HTTP_REQUEST_PATH) return true;
   if (ir_value_needs_zero_runtime_object(value->index) ||
       ir_value_needs_zero_runtime_object(value->left) ||
@@ -6206,6 +6208,8 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_http_write_json_response) count++;
   if (audit->zero_http_request_method_name) count++;
   if (audit->zero_http_request_path) count++;
+  if (audit->zero_http_request_matches) count++;
+  if (audit->zero_http_request_body_within) count++;
   return count;
 }
 
@@ -6271,6 +6275,8 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_http_write_json_response) append_json_string_array_item(buf, &first, "zero_http_write_json_response");
   if (audit && audit->zero_http_request_method_name) append_json_string_array_item(buf, &first, "zero_http_request_method_name");
   if (audit && audit->zero_http_request_path) append_json_string_array_item(buf, &first, "zero_http_request_path");
+  if (audit && audit->zero_http_request_matches) append_json_string_array_item(buf, &first, "zero_http_request_matches");
+  if (audit && audit->zero_http_request_body_within) append_json_string_array_item(buf, &first, "zero_http_request_body_within");
   zbuf_append(buf, "]");
   return !first;
 }

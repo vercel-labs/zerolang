@@ -3842,10 +3842,10 @@ assertSourceGraph(programGraphCrmApiBuildJson, "examples/crm-api/zero.graph", "p
 assert.equal(programGraphCrmApiBuildJson.generatedCBytes, 0);
 assert.equal(programGraphCrmApiBuildJson.incrementalInvalidation.sourceKind, "program-graph");
 assert.equal(programGraphCrmApiBuildJson.incrementalInvalidation.graphInput.parserArtifactsInKey, false);
-assert.equal(programGraphCrmApiHealth.stdout, "HTTP/1.1 200 OK\ncontent-type: application/json\ncontent-length: 27\n\n{\"ok\":true,\"service\":\"crm\"}");
+assert.equal(programGraphCrmApiHealth.stdout, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: 27\r\n\r\n{\"ok\":true,\"service\":\"crm\"}");
 assert.match(programGraphCrmApiAccounts.stdout, /"accounts":\[/);
 assert.match(programGraphCrmApiDealUpdate.stdout, /"updated":true/);
-assert.match(programGraphCrmApiMissing.stdout, /^HTTP\/1\.1 404 Not Found\n/);
+assert.match(programGraphCrmApiMissing.stdout, /^HTTP\/1\.1 404 Not Found\r\n/);
 assert.equal(programGraphAuthoringInit.ok, true);
 assert.equal(programGraphAuthoringInit.compilerInput, "repository-graph");
 assert.equal(programGraphAuthoringInit.sourceProjection.path, "src/main.0");

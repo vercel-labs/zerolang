@@ -9,5 +9,12 @@ fn handle(request: Span<u8>, response: MutSpan<u8>) -> Maybe<Span<u8>> {
     if std.http.requestIsGet(request, "/health") {
         return std.http.writeJsonOk(response, "{\"ok\":true}")
     }
+    if std.http.requestIsPost(request, "/echo") {
+        let body: Maybe<Span<u8>> = std.http.requestJsonBodyWithin(request, 128)
+        if body.has {
+            return std.http.writeJsonCreated(response, body.value)
+        }
+        return std.http.writeJsonBadRequest(response, "{\"error\":\"bad_request\"}")
+    }
     return std.http.writeJsonNotFound(response, "{\"error\":\"not_found\"}")
 }

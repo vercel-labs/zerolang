@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { createServer as createHttpServer } from "node:http";
+import { execFile, spawn } from "node:child_process";
+import { createServer as createHttpServer, request as createHttpRequest } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { createServer as createTcpServer } from "node:net";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -128,6 +128,119 @@ function close(server) {
   return new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
   });
+}
+
+function waitForZeroListener(child, timeoutMs = 30000) {
+  return new Promise<{ port: number; stdout: string; stderr: string }>((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    const maybeReady = () => {
+      const match = `${stdout}\n${stderr}`.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve({ port: Number(match[1]), stdout, stderr });
+      }
+    };
+    const timer = setTimeout(() => {
+      reject(new Error(`timed out waiting for zero listener\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+      maybeReady();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+      maybeReady();
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      reject(new Error(`zero listener exited before ready: code=${code} signal=${signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    });
+  });
+}
+
+function stopZeroListener(child) {
+  return new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve();
+      return;
+    }
+    const killTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, 1000);
+    child.once("exit", () => {
+      clearTimeout(killTimer);
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
+}
+
+function requestZeroListener(port, method, path, body = "", headers = {}) {
+  const bodyBuffer = Buffer.from(body);
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      request.destroy(new Error(`${method} ${path} timed out`));
+    }, 5000);
+    const request = createHttpRequest({
+      host: "127.0.0.1",
+      port,
+      path,
+      method,
+      headers: {
+        ...headers,
+        ...(bodyBuffer.length > 0 ? { "content-length": String(bodyBuffer.length) } : {}),
+      },
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        clearTimeout(timeout);
+        resolve({
+          status: response.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString("utf8"),
+        });
+      });
+    });
+    request.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(new Error(`${method} ${path} failed: ${error.message}`));
+    });
+    if (bodyBuffer.length > 0) request.write(bodyBuffer);
+    request.end();
+  });
+}
+
+async function runHttpListenExample() {
+  const child = spawn(zero, ["run", "examples/ping-pong-api"], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    const { port } = await waitForZeroListener(child);
+    assert.deepEqual(await requestZeroListener(port, "GET", "/ping"), {
+      status: 200,
+      body: "{\"message\":\"pong\"}",
+    });
+    assert.deepEqual(await requestZeroListener(port, "GET", "/health"), {
+      status: 200,
+      body: "{\"ok\":true}",
+    });
+    assert.deepEqual(await requestZeroListener(port, "GET", "/missing"), {
+      status: 404,
+      body: "{\"error\":\"not_found\"}",
+    });
+    assert.deepEqual(await requestZeroListener(port, "POST", "/echo", "{\"ping\":1}", { "content-type": "application/json" }), {
+      status: 201,
+      body: "{\"ping\":1}",
+    });
+    assert.deepEqual(await requestZeroListener(port, "POST", "/echo", "not-json"), {
+      status: 400,
+      body: "{\"error\":\"bad_request\"}",
+    });
+  } finally {
+    await stopZeroListener(child);
+  }
 }
 
 async function runExitCode(path, env = {}) {
@@ -597,6 +710,7 @@ if (!(await canLinkCurl())) {
 
 await mkdir(outDir, { recursive: true });
 await assertProviderUnavailableRuntime();
+await runHttpListenExample();
 
 function handleRequest(request, response) {
   if (request.url === "/headers") {

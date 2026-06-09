@@ -481,6 +481,16 @@ static bool build_check_macho64_json_http(const ZBuildability *ctx, const IrFunc
   if ((value->kind == IR_VALUE_HTTP_RESPONSE_LEN || value->kind == IR_VALUE_HTTP_RESPONSE_HEADERS_LEN || value->kind == IR_VALUE_HTTP_RESPONSE_BODY_OFFSET) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
   if (value->kind == IR_VALUE_HTTP_HEADER_VALUE && !build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag)) return false;
   if ((value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME || value->kind == IR_VALUE_HTTP_REQUEST_PATH) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+  if (value->kind == IR_VALUE_HTTP_REQUEST_MATCHES) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 6, "direct AArch64 Mach-O HTTP request matcher exceeds scratch register spill capacity", diag)) return false;
+    if (!z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+    if (!z_build_check_macho_byte_view(ctx, fun, value->index, diag)) return false;
+    return z_build_check_macho_byte_view(ctx, fun, value->right, diag);
+  }
+  if (value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 4, "direct AArch64 Mach-O HTTP request body helper exceeds scratch register spill capacity", diag)) return false;
+    if (!z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+  }
   if (value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE) {
     if (!build_check_macho64_capacity(ctx, value, scratch_slot, 4, "direct AArch64 Mach-O HTTP JSON response helper exceeds scratch register spill capacity", diag)) return false;
     return build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag);

@@ -213,6 +213,8 @@ static ElfRuntimeHelper elf_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_HTTP_WRITE_JSON_RESPONSE: return ELF_RUNTIME_HTTP_WRITE_JSON_RESPONSE;
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME: return ELF_RUNTIME_HTTP_REQUEST_METHOD_NAME;
     case IR_VALUE_HTTP_REQUEST_PATH: return ELF_RUNTIME_HTTP_REQUEST_PATH;
+    case IR_VALUE_HTTP_REQUEST_MATCHES: return ELF_RUNTIME_HTTP_REQUEST_MATCHES;
+    case IR_VALUE_HTTP_REQUEST_BODY_WITHIN: return ELF_RUNTIME_HTTP_REQUEST_BODY_WITHIN;
     case IR_VALUE_STR_CONTAINS: return ELF_RUNTIME_STR_CONTAINS;
     case IR_VALUE_ASCII_RUNTIME: return ELF_RUNTIME_ASCII_OP;
     case IR_VALUE_TEXT_RUNTIME: return ELF_RUNTIME_TEXT_OP;
@@ -996,6 +998,60 @@ static bool elf_emit_http_status_class_value(ZBuf *code, const IrFunction *fun, 
   return true;
 }
 
+static void elf_emit_http_packed_span_result(ZBuf *code) {
+  z_x64_emit_mov_reg_from_reg(code, 8, 0, true);
+  z_x64_emit_mov_reg_from_reg(code, 0, 8, true);
+  z_x64_emit_shr_reg_imm8(code, 0, 32, true);
+  z_x64_emit_and_reg_u32(code, 0, 0x7fffffffu, false);
+  z_x64_emit_mov_rcx_from_rax(code, false);
+  z_x64_emit_mov_reg_from_reg(code, 0, 8, false);
+  z_x64_emit_add_reg_reg(code, 2, 0, true);
+  z_x64_emit_mov_reg_from_reg(code, 0, 8, true);
+  z_x64_emit_shr_reg_imm8(code, 0, 63, true);
+}
+
+static bool elf_emit_http_request_matches_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 0, 2, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  z_x64_emit_push_reg64(code, 2);
+  if (!elf_emit_byte_view_pair(code, fun, value->index, 0, 2, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  z_x64_emit_push_reg64(code, 2);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 0, 2, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  z_x64_emit_push_reg64(code, 2);
+  z_x64_emit_pop_reg64(code, 9);
+  z_x64_emit_pop_reg64(code, 8);
+  z_x64_emit_pop_reg64(code, 1);
+  z_x64_emit_pop_reg64(code, 2);
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_HTTP_REQUEST_MATCHES, patch, diag, value)) return false;
+  z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
+  return true;
+}
+
+static bool elf_emit_http_request_body_within_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 0, 2, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  elf_emit_push_rax(code);
+  elf_emit_push_rax(code);
+  z_x64_emit_push_reg64(code, 2);
+  if (!elf_emit_value(code, fun, value->index, ctx, diag)) return false;
+  elf_emit_push_rax(code);
+  z_x64_emit_mov_reg_u32(code, 1, value->int_value ? 1u : 0u);
+  z_x64_emit_pop_reg64(code, 2);
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_HTTP_REQUEST_BODY_WITHIN, patch, diag, value)) return false;
+  z_x64_emit_pop_reg64(code, 2);
+  z_x64_emit_pop_reg64(code, 2);
+  elf_emit_http_packed_span_result(code);
+  return true;
+}
+
 static bool elf_emit_http_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_HTTP_STATUS_CLASS:
@@ -1065,17 +1121,13 @@ static bool elf_emit_http_value(ZBuf *code, const IrFunction *fun, const IrValue
       if (!z_elf_record_value_runtime_patch(ctx, elf_runtime_helper_for_value(value->kind), patch, diag, value)) return false;
       z_x64_emit_pop_reg64(code, 2);
       z_x64_emit_pop_reg64(code, 2);
-      z_x64_emit_mov_reg_from_reg(code, 8, 0, true);
-      z_x64_emit_mov_reg_from_reg(code, 0, 8, true);
-      z_x64_emit_shr_reg_imm8(code, 0, 32, true);
-      z_x64_emit_and_reg_u32(code, 0, 0x7fffffffu, false);
-      z_x64_emit_mov_rcx_from_rax(code, false);
-      z_x64_emit_mov_reg_from_reg(code, 0, 8, false);
-      z_x64_emit_add_reg_reg(code, 2, 0, true);
-      z_x64_emit_mov_reg_from_reg(code, 0, 8, true);
-      z_x64_emit_shr_reg_imm8(code, 0, 63, true);
+      elf_emit_http_packed_span_result(code);
       return true;
     }
+    case IR_VALUE_HTTP_REQUEST_MATCHES:
+      return elf_emit_http_request_matches_value(code, fun, value, ctx, diag);
+    case IR_VALUE_HTTP_REQUEST_BODY_WITHIN:
+      return elf_emit_http_request_body_within_value(code, fun, value, ctx, diag);
     case IR_VALUE_HTTP_WRITE_JSON_RESPONSE: {
       if (!elf_emit_byte_view_pair(code, fun, value->left, 0, 2, ctx, diag)) return false;
       elf_emit_push_rax(code);
@@ -2186,7 +2238,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
   if (!elf_type_is_supported_scalar(value->type) && !((value->kind == IR_VALUE_CALL || value->kind == IR_VALUE_CHECK) && value->type == IR_TYPE_VOID) &&
       !((value->kind == IR_VALUE_CALL || value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) &&
         (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
-      !((value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME || value->kind == IR_VALUE_HTTP_REQUEST_PATH || value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE) &&
+      !((value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME || value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
+         value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN || value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       !((value->kind == IR_VALUE_STR_RUNTIME) && (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
       !((value->kind == IR_VALUE_SORT_RUNTIME) && value->type == IR_TYPE_VOID) &&
@@ -2206,7 +2259,9 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
     case IR_VALUE_HTTP_FETCH: case IR_VALUE_HTTP_RESULT_OK: case IR_VALUE_HTTP_RESULT_STATUS: case IR_VALUE_HTTP_RESULT_BODY_LEN: case IR_VALUE_HTTP_RESULT_ERROR:
     case IR_VALUE_HTTP_HEADER_FOUND: case IR_VALUE_HTTP_HEADER_OFFSET: case IR_VALUE_HTTP_HEADER_LEN: case IR_VALUE_HTTP_RESPONSE_LEN:
     case IR_VALUE_HTTP_RESPONSE_HEADERS_LEN: case IR_VALUE_HTTP_RESPONSE_BODY_OFFSET: case IR_VALUE_HTTP_HEADER_VALUE:
-    case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH: case IR_VALUE_HTTP_WRITE_JSON_RESPONSE:
+    case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH: case IR_VALUE_HTTP_REQUEST_MATCHES:
+    case IR_VALUE_HTTP_REQUEST_BODY_WITHIN:
+    case IR_VALUE_HTTP_WRITE_JSON_RESPONSE:
     case IR_VALUE_HTTP_STATUS_CLASS:
       return elf_emit_http_value(code, fun, value, ctx, diag);
     case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32: case IR_VALUE_ARGS_PARSE_U32: case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:
@@ -2638,6 +2693,7 @@ static bool elf_emit_maybe_byte_view_local_set(ZBuf *text, const IrFunction *fun
   }
   if (instr->value && (instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
                        instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
+                       instr->value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
                        instr->value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
                        instr->value->kind == IR_VALUE_STR_RUNTIME ||
                        instr->value->kind == IR_VALUE_FMT_BOOL ||
@@ -2813,6 +2869,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
                    instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
+                   instr->value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
                    instr->value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
                    instr->value->kind == IR_VALUE_STR_RUNTIME ||
                    instr->value->kind == IR_VALUE_FMT_BOOL ||

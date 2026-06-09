@@ -41,6 +41,11 @@ void z_aarch64_patch_u64(ZBuf *buf, size_t offset, uint64_t value) {
   z_aarch64_patch_u32(buf, offset + 4, (uint32_t)(value >> 32));
 }
 
+static uint32_t z_aarch64_read_u32(const ZBuf *buf, size_t offset) {
+  const unsigned char *data = (const unsigned char *)&buf->data[offset];
+  return (uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
 void z_aarch64_emit_ret(ZBuf *text) {
   z_aarch64_append_u32(text, 0xd65f03c0u);
 }
@@ -142,13 +147,17 @@ void z_aarch64_emit_sub_sp_imm(ZBuf *text, unsigned imm) {
   }
 }
 
-void z_aarch64_emit_add_x_sp_imm(ZBuf *text, unsigned dst, unsigned imm) {
-  z_aarch64_append_u32(text, 0x910003e0u | ((imm & 0xfffu) << 10) | (dst & 31u));
+static void z_aarch64_emit_add_x_base_imm(ZBuf *text, unsigned dst, unsigned base, unsigned imm) {
+  do {
+    unsigned chunk = imm > 4095u ? 4095u : imm;
+    z_aarch64_append_u32(text, 0x91000000u | ((chunk & 0xfffu) << 10) | ((base & 31u) << 5) | (dst & 31u));
+    imm -= chunk;
+    base = dst;
+  } while (imm > 0);
 }
 
-void z_aarch64_emit_add_x_imm(ZBuf *text, unsigned dst, unsigned src, unsigned imm) {
-  z_aarch64_append_u32(text, 0x91000000u | ((imm & 0xfffu) << 10) | ((src & 31u) << 5) | (dst & 31u));
-}
+void z_aarch64_emit_add_x_sp_imm(ZBuf *text, unsigned dst, unsigned imm) { z_aarch64_emit_add_x_base_imm(text, dst, 31u, imm); }
+void z_aarch64_emit_add_x_imm(ZBuf *text, unsigned dst, unsigned src, unsigned imm) { z_aarch64_emit_add_x_base_imm(text, dst, src, imm); }
 
 void z_aarch64_emit_add_w_imm(ZBuf *text, unsigned dst, unsigned src, unsigned imm) {
   z_aarch64_append_u32(text, 0x11000000u | ((imm & 0xfffu) << 10) | ((src & 31u) << 5) | (dst & 31u));
@@ -408,30 +417,21 @@ size_t z_aarch64_emit_cbz_w_placeholder(ZBuf *text, unsigned reg) {
 }
 
 void z_aarch64_patch_branch26(ZBuf *text, size_t patch_offset, size_t target_offset) {
-  uint32_t old_instr = ((unsigned char)text->data[patch_offset]) |
-                       ((uint32_t)(unsigned char)text->data[patch_offset + 1] << 8) |
-                       ((uint32_t)(unsigned char)text->data[patch_offset + 2] << 16) |
-                       ((uint32_t)(unsigned char)text->data[patch_offset + 3] << 24);
+  uint32_t old_instr = z_aarch64_read_u32(text, patch_offset);
   int64_t delta = (int64_t)target_offset - (int64_t)patch_offset;
   int64_t words = delta / 4;
   z_aarch64_patch_u32(text, patch_offset, (old_instr & 0xfc000000u) | ((uint32_t)words & 0x03ffffffu));
 }
 
 void z_aarch64_patch_cond19(ZBuf *text, size_t patch_offset, size_t target_offset) {
-  uint32_t instr = ((unsigned char)text->data[patch_offset]) |
-                   ((uint32_t)(unsigned char)text->data[patch_offset + 1] << 8) |
-                   ((uint32_t)(unsigned char)text->data[patch_offset + 2] << 16) |
-                   ((uint32_t)(unsigned char)text->data[patch_offset + 3] << 24);
+  uint32_t instr = z_aarch64_read_u32(text, patch_offset);
   int64_t delta = (int64_t)target_offset - (int64_t)patch_offset;
   int64_t words = delta / 4;
   z_aarch64_patch_u32(text, patch_offset, (instr & 0xff00001fu) | (((uint32_t)words & 0x7ffffu) << 5));
 }
 
 void z_aarch64_patch_adrp_add(ZBuf *text, size_t patch_offset, uint64_t instr_addr, uint64_t target_addr) {
-  uint32_t adrp = ((unsigned char)text->data[patch_offset]) |
-                  ((uint32_t)(unsigned char)text->data[patch_offset + 1] << 8) |
-                  ((uint32_t)(unsigned char)text->data[patch_offset + 2] << 16) |
-                  ((uint32_t)(unsigned char)text->data[patch_offset + 3] << 24);
+  uint32_t adrp = z_aarch64_read_u32(text, patch_offset);
   unsigned reg = adrp & 31u;
   int64_t instr_page = (int64_t)(instr_addr & ~0xfffull);
   int64_t target_page = (int64_t)(target_addr & ~0xfffull);

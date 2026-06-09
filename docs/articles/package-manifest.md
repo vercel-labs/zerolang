@@ -26,7 +26,7 @@ In Zerolang, a human usually starts with the package they want, not the manifest
         },
         {
           "command": "zero run -- $'GET /health\\n\\n'",
-          "output": "HTTP/1.1 200 OK\ncontent-type: application/json"
+          "output": "HTTP/1.1 200 OK\ncontent-type: application/json\nconnection: close"
         }
       ]
     }

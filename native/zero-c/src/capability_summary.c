@@ -129,8 +129,8 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_HTTP_HEADER_OFFSET:
     case IR_VALUE_HTTP_HEADER_LEN:
     case IR_VALUE_HTTP_WRITE_JSON_RESPONSE:
-    case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
-    case IR_VALUE_HTTP_REQUEST_PATH:
+    case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
+    case IR_VALUE_HTTP_REQUEST_MATCHES: case IR_VALUE_HTTP_REQUEST_BODY_WITHIN:
     case IR_VALUE_HTTP_STATUS_CLASS:
       caps->net = true;
       caps->web = true;

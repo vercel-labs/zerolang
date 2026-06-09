@@ -22,6 +22,8 @@ static const char *const runtime_helper_symbols[ELF_RUNTIME_HELPER_COUNT] = {
   "zero_http_write_json_response",
   "zero_http_request_method_name",
   "zero_http_request_path",
+  "zero_http_request_matches",
+  "zero_http_request_body_within",
   "zero_ascii_op",
   "zero_text_op",
   "zero_parse_op",

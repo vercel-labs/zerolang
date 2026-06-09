@@ -1976,6 +1976,63 @@ static int ir_graph_http_error_code(const char *name) {
   return -1;
 }
 
+static bool ir_graph_http_request_matches_name(const char *name) {
+  return ir_text_eq(name, "std.http.requestMatches") ||
+         ir_text_eq(name, "__zero_std_http_request_matches");
+}
+
+static const char *ir_graph_http_route_method_name(const char *name) {
+  if (ir_text_eq(name, "std.http.requestIsGet") || ir_text_eq(name, "__zero_std_http_request_is_get")) return "GET";
+  if (ir_text_eq(name, "std.http.requestIsPost") || ir_text_eq(name, "__zero_std_http_request_is_post")) return "POST";
+  if (ir_text_eq(name, "std.http.requestIsPut") || ir_text_eq(name, "__zero_std_http_request_is_put")) return "PUT";
+  if (ir_text_eq(name, "std.http.requestIsPatch") || ir_text_eq(name, "__zero_std_http_request_is_patch")) return "PATCH";
+  if (ir_text_eq(name, "std.http.requestIsDelete") || ir_text_eq(name, "__zero_std_http_request_is_delete")) return "DELETE";
+  if (ir_text_eq(name, "std.http.requestIsHead") || ir_text_eq(name, "__zero_std_http_request_is_head")) return "HEAD";
+  if (ir_text_eq(name, "std.http.requestIsOptions") || ir_text_eq(name, "__zero_std_http_request_is_options")) return "OPTIONS";
+  return NULL;
+}
+
+static bool ir_graph_http_request_method_name_call(const char *name) {
+  return ir_text_eq(name, "std.http.requestMethodName") ||
+         ir_text_eq(name, "__zero_std_http_request_method_name");
+}
+
+static bool ir_graph_http_request_path_call(const char *name) {
+  return ir_text_eq(name, "std.http.requestPath") ||
+         ir_text_eq(name, "__zero_std_http_request_path");
+}
+
+static bool ir_graph_http_request_body_within_call(const char *name, bool *require_json) {
+  if (!name || !require_json) return false;
+  if (ir_text_eq(name, "std.http.requestBodyWithin") ||
+      ir_text_eq(name, "__zero_std_http_request_body_within")) {
+    *require_json = false;
+    return true;
+  }
+  if (ir_text_eq(name, "std.http.requestJsonBodyWithin") ||
+      ir_text_eq(name, "__zero_std_http_request_json_body_within")) {
+    *require_json = true;
+    return true;
+  }
+  return false;
+}
+
+static bool ir_graph_http_json_status_writer(const char *name, unsigned *status) {
+  if (!name || !status) return false;
+  if (ir_text_eq(name, "std.http.writeJsonOk") || ir_text_eq(name, "__zero_std_http_write_json_ok")) { *status = 200; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonCreated") || ir_text_eq(name, "__zero_std_http_write_json_created")) { *status = 201; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonBadRequest") || ir_text_eq(name, "__zero_std_http_write_json_bad_request")) { *status = 400; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonUnauthorized") || ir_text_eq(name, "__zero_std_http_write_json_unauthorized")) { *status = 401; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonForbidden") || ir_text_eq(name, "__zero_std_http_write_json_forbidden")) { *status = 403; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonNotFound") || ir_text_eq(name, "__zero_std_http_write_json_not_found")) { *status = 404; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonMethodNotAllowed") || ir_text_eq(name, "__zero_std_http_write_json_method_not_allowed")) { *status = 405; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonConflict") || ir_text_eq(name, "__zero_std_http_write_json_conflict")) { *status = 409; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonUnprocessable") || ir_text_eq(name, "__zero_std_http_write_json_unprocessable")) { *status = 422; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonTooManyRequests") || ir_text_eq(name, "__zero_std_http_write_json_too_many_requests")) { *status = 429; return true; }
+  if (ir_text_eq(name, "std.http.writeJsonInternalServerError") || ir_text_eq(name, "__zero_std_http_write_json_internal_server_error")) { *status = 500; return true; }
+  return false;
+}
+
 static unsigned ir_graph_http_method_code(const char *name) {
   static const char *methods[] = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"};
   for (unsigned i = 0; name && i < (unsigned)(sizeof(methods) / sizeof(methods[0])); i++) if (ir_text_eq(name, methods[i])) return i + 1;
@@ -2087,6 +2144,64 @@ static bool ir_graph_lower_http_fetch_call(const ZProgramGraph *graph, IrProgram
   return true;
 }
 
+static bool ir_graph_lower_http_request_match_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = false;
+  const char *route_method = ir_graph_http_route_method_name(callee_name);
+  if (!ir_graph_http_request_matches_name(callee_name) && !route_method) return true;
+  if ((!route_method && arg_count != 3) || (route_method && arg_count != 2)) return true;
+  *handled = true;
+  IrValue *request = NULL; IrValue *method = NULL; IrValue *path = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &request) ||
+      !(route_method ? ir_make_string_literal_value(ir, route_method, ir_graph_line(expr), ir_graph_column(expr), &method) :
+                       ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &method)) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", route_method ? 1 : 2), &path)) {
+    ir_free_value(request); ir_free_value(method); ir_free_value(path);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_REQUEST_MATCHES, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = request; value->index = method; value->right = path;
+  ir_graph_require_runtime_helper(ir); *out = value; return true;
+}
+
+static bool ir_graph_lower_http_request_body_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = false;
+  bool require_json = false;
+  if (!ir_graph_http_request_body_within_call(callee_name, &require_json) || arg_count != 2) return true;
+  *handled = true;
+  IrValue *request = NULL;
+  IrValue *max = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &request) ||
+      !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_USIZE, &max)) {
+    ir_free_value(request); ir_free_value(max);
+    return false;
+  }
+  if (!max || max->type != IR_TYPE_USIZE) {
+    ir_free_value(request); ir_free_value(max);
+    ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 1), "typed graph MIR std.http request body limit must be usize", "non-usize body limit");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_REQUEST_BODY_WITHIN, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = request; value->index = max; value->int_value = require_json ? 1 : 0;
+  ir_graph_require_runtime_helper(ir); *out = value; return true;
+}
+
+static bool ir_graph_lower_http_json_status_writer_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = false;
+  unsigned json_status = 0;
+  if (!ir_graph_http_json_status_writer(callee_name, &json_status) || arg_count != 2) return true;
+  *handled = true;
+  IrValue *buffer = NULL;
+  IrValue *body = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buffer) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &body)) {
+    ir_free_value(buffer); ir_free_value(body);
+    return false;
+  }
+  IrValue *status = ir_new_integer_literal_value(ir, IR_TYPE_U16, json_status, ir_graph_line(expr), ir_graph_column(expr));
+  IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_WRITE_JSON_RESPONSE, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = buffer; value->index = status; value->right = body; ir_graph_require_runtime_helper(ir); *out = value; return true;
+}
+
 static bool ir_graph_lower_http_std_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
   *handled = true;
   bool local_handled = false;
@@ -2145,12 +2260,16 @@ static bool ir_graph_lower_http_std_call(const ZProgramGraph *graph, IrProgram *
     IrValue *value = ir_new_value(ir, IR_VALUE_HTTP_HEADER_VALUE, IR_TYPE_U64, ir_graph_line(expr), ir_graph_column(expr));
     value->left = headers; value->right = name; ir_graph_require_runtime_helper(ir); *out = value; return true;
   }
-  if ((ir_text_eq(callee_name, "std.http.requestMethodName") || ir_text_eq(callee_name, "std.http.requestPath")) && arg_count == 1) {
+  if (!ir_graph_lower_http_request_match_call(graph, ir, fun, expr, callee_name, arg_count, &local_handled, out)) return false;
+  if (local_handled) return true;
+  if ((ir_graph_http_request_method_name_call(callee_name) || ir_graph_http_request_path_call(callee_name)) && arg_count == 1) {
     IrValue *request = NULL;
     if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &request)) return false;
-    IrValue *value = ir_new_value(ir, ir_text_eq(callee_name, "std.http.requestMethodName") ? IR_VALUE_HTTP_REQUEST_METHOD_NAME : IR_VALUE_HTTP_REQUEST_PATH, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    IrValue *value = ir_new_value(ir, ir_graph_http_request_method_name_call(callee_name) ? IR_VALUE_HTTP_REQUEST_METHOD_NAME : IR_VALUE_HTTP_REQUEST_PATH, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
     value->left = request; ir_graph_require_runtime_helper(ir); *out = value; return true;
   }
+  if (!ir_graph_lower_http_request_body_call(graph, ir, fun, expr, callee_name, arg_count, &local_handled, out)) return false;
+  if (local_handled) return true;
   if ((ir_text_eq(callee_name, "std.http.headerFound") || ir_text_eq(callee_name, "std.http.headerOffset") || ir_text_eq(callee_name, "std.http.headerLen")) && arg_count == 1) {
     IrValue *header = NULL;
     if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_U64, &header)) return false;
@@ -2166,6 +2285,8 @@ static bool ir_graph_lower_http_std_call(const ZProgramGraph *graph, IrProgram *
     IrValue *value = ir_new_value(ir, kind, type, ir_graph_line(expr), ir_graph_column(expr));
     value->left = header; ir_graph_require_runtime_helper(ir); *out = value; return true;
   }
+  if (!ir_graph_lower_http_json_status_writer_call(graph, ir, fun, expr, callee_name, arg_count, &local_handled, out)) return false;
+  if (local_handled) return true;
   if (ir_text_eq(callee_name, "std.http.writeJsonResponse") && arg_count == 3) {
     IrValue *buffer = NULL;
     IrValue *status = NULL;

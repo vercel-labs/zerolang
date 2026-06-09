@@ -107,6 +107,8 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.http.requestJsonBodyWithin", "__zero_std_http_request_json_body_within", "std.http"},
   {"std.http.requestMatches", "__zero_std_http_request_matches", "std.http"},
   {"std.http.requestMethodIs", "__zero_std_http_request_method_is", "std.http"},
+  {"std.http.requestMethodName", "__zero_std_http_request_method_name", "std.http"},
+  {"std.http.requestPath", "__zero_std_http_request_path", "std.http"},
   {"std.http.requestQuery", "__zero_std_http_request_query", "std.http"},
   {"std.http.requestQueryValue", "__zero_std_http_request_query_value", "std.http"},
   {"std.http.requestIsDelete", "__zero_std_http_request_is_delete", "std.http"},
