@@ -871,6 +871,13 @@ typedef struct {
   long long codegen_ms;
   long long object_ms;
   long long link_ms;
+  long long graph_load_ms;
+  long long graph_stdlib_merge_ms;
+  long long graph_readiness_check_ms;
+  long long graph_mir_cache_load_ms;
+  long long graph_mir_lower_ms;
+  long long graph_mir_cache_write_ms;
+  long long graph_mir_cache_reload_ms;
   size_t lowered_ir_bytes;
   char *mapped_mir_cache_path;
   size_t mapped_mir_cache_bytes;

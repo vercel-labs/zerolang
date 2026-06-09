@@ -188,6 +188,29 @@ jobs:
       - name: Command contract snapshots
         run: pnpm run command-contracts:local
 
+  graph-build-perf:
+    name: Graph Build Perf
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.3 --activate
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Graph build perf report
+        run: |
+          mkdir -p .zero
+          pnpm run graph:perf > .zero/graph-build-perf.json
+          cat .zero/graph-build-perf.json
+
   workspace-checks:
     name: Workspace Checks
     runs-on: ubuntu-latest

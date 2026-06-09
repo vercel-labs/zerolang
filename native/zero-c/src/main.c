@@ -2212,6 +2212,45 @@ static void append_compiler_phases_json(ZBuf *buf, const SourceInput *input) {
   zbuf_append(buf, "]");
 }
 
+static void append_graph_build_timing_facts_json(ZBuf *buf, const SourceInput *input) {
+  long long mir_load_or_lower_ms = 0;
+  if (input) {
+    mir_load_or_lower_ms =
+      input->graph_mir_cache_load_ms +
+      input->graph_mir_lower_ms +
+      input->graph_mir_cache_write_ms +
+      input->graph_mir_cache_reload_ms;
+  }
+  zbuf_append(buf, "{\"schemaVersion\":1,\"sourceKind\":\"program-graph\",\"unit\":\"ms\",\"phaseTiming\":true");
+  zbuf_append(buf, ",\"timings\":{");
+  zbuf_appendf(buf, "\"graphLoadMs\":%lld", input ? input->graph_load_ms : 0);
+  zbuf_appendf(buf, ",\"stdlibMergeMs\":%lld", input ? input->graph_stdlib_merge_ms : 0);
+  zbuf_appendf(buf, ",\"readinessCheckMs\":%lld", input ? input->graph_readiness_check_ms : 0);
+  zbuf_appendf(buf, ",\"mirCacheLoadMs\":%lld", input ? input->graph_mir_cache_load_ms : 0);
+  zbuf_appendf(buf, ",\"mirLowerMs\":%lld", input ? input->graph_mir_lower_ms : 0);
+  zbuf_appendf(buf, ",\"mirCacheWriteMs\":%lld", input ? input->graph_mir_cache_write_ms : 0);
+  zbuf_appendf(buf, ",\"mirCacheReloadMs\":%lld", input ? input->graph_mir_cache_reload_ms : 0);
+  zbuf_appendf(buf, ",\"mirLoadOrLowerMs\":%lld", mir_load_or_lower_ms);
+  zbuf_appendf(buf, ",\"lowerPhaseMs\":%lld", input ? input->lower_ms : 0);
+  zbuf_appendf(buf, ",\"codegenMs\":%lld", input ? input->codegen_ms : 0);
+  zbuf_appendf(buf, ",\"objectMs\":%lld", input ? input->object_ms : 0);
+  zbuf_appendf(buf, ",\"linkMs\":%lld", input ? input->link_ms : 0);
+  zbuf_append(buf, "}");
+  if (input && input->mapped_mir_cache_path) {
+    zbuf_append(buf, ",\"mappedFinalMir\":{\"path\":");
+    append_json_string(buf, input->mapped_mir_cache_path);
+    zbuf_appendf(buf, ",\"byteLength\":%zu,\"hit\":%s,\"written\":%s,\"memoryMapped\":%s,\"borrowedStorage\":%s,\"codegenImmediate\":%s,\"programReconstructed\":%s}",
+                 input->mapped_mir_cache_bytes,
+                 input->mapped_mir_cache_hit ? "true" : "false",
+                 input->mapped_mir_cache_written ? "true" : "false",
+                 input->mapped_mir_memory_mapped ? "true" : "false",
+                 input->mapped_mir_borrowed_storage ? "true" : "false",
+                 input->mapped_mir_codegen_immediate ? "true" : "false",
+                 input->mapped_mir_program_reconstructed ? "true" : "false");
+  }
+  zbuf_append(buf, "}");
+}
+
 static const char *GRAPH_CACHE_INPUTS_PARSE = "[\"graphHash\",\"stdlibGraph\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"importPaths\",\"compilerVersion\",\"packageDependencies\"]";
 static const char *GRAPH_CACHE_INPUTS_INTERFACE = "[\"graphHash\",\"stdlibGraph\",\"moduleHash\",\"modulePaths\",\"symbolFacts\",\"importGraph\"]";
 static const char *GRAPH_CACHE_INPUTS_CHECK = "[\"graphHash\",\"stdlibGraph\",\"moduleHash\",\"nodeHashes\",\"typeFacts\",\"symbolFacts\",\"importGraph\",\"importPaths\",\"targetFacts\",\"compilerVersion\",\"packageDependencies\"]";
@@ -6884,6 +6923,10 @@ static void print_build_json(const Command *command, const SourceInput *input, c
   zbuf_init(&extra);
   zbuf_append(&extra, ",\n  \"compilerPhases\": ");
   append_compiler_phases_json(&extra, input);
+  if (command && z_program_graph_artifact_source_present(&command->graph_source)) {
+    zbuf_append(&extra, ",\n  \"graphBuild\": ");
+    append_graph_build_timing_facts_json(&extra, input);
+  }
   zbuf_append(&extra, ",\n  \"compilerCaches\": ");
   if (command && z_program_graph_artifact_source_present(&command->graph_source)) append_compiler_caches_json_ex(&extra, input, target, command->profile, "program-graph", command->graph_source.graph_hash);
   else append_compiler_caches_json(&extra, input, target, command->profile);

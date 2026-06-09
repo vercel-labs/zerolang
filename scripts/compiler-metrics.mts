@@ -15,7 +15,7 @@ type CScanState = {
 };
 
 const fileBudgets = {
-  "native/zero-c/include/zero.h": { maxLines: 1171, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 1178, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 226, maxStrcmpCalls: 0 },
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
@@ -116,7 +116,7 @@ const fileBudgets = {
   "native/zero-c/src/program_graph_manifest.c": { maxLines: 240, maxStrcmpCalls: 8 },
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 4631, maxStrcmpCalls: 5 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 4687, maxStrcmpCalls: 5 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 350, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -1975,7 +1975,7 @@ const programGraph = {
     /source\s*->\s*lowering\s*=\s*"mapped-final-mir"/.test(repositoryGraphMirPrepRawBody) &&
     /ir_graph_set_mapped_mir_cache_facts\s*\(/.test(repositoryGraphMirPrepRawBody),
   repositoryGraphMirPrepImmediateCacheHit: /require_checked_program/.test(repositoryGraphMirPrepRawBody) &&
-    /require_checked_program\s*&&\s*!ir_graph_lower_checked_program\s*\(/.test(repositoryGraphMirPrepRawBody) &&
+    /bool\s+checked\s*=\s*ir_graph_lower_checked_program\s*\(/.test(repositoryGraphMirPrepRawBody) &&
     /ir_graph_set_mapped_mir_cache_facts\s*\(\s*input,\s*&mir_cache,\s*true,\s*false,\s*!require_checked_program,\s*require_checked_program\s*\)/.test(repositoryGraphMirPrepRawBody),
   artifactGraphMirPrepMappedFinalMir: /z_mir_binary_load_path\s*\(/.test(artifactGraphMirPrepBody) &&
     /z_mir_binary_write_path\s*\(/.test(artifactGraphMirPrepBody) &&

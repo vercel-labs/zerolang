@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 enum { IR_READONLY_DATA_BASE = 1024u, IR_READONLY_DATA_LIMIT = 65536u };
 
 static void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
@@ -31,6 +32,12 @@ static void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_
 static IrTypeKind ir_type_kind(const char *type);
 static bool ir_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
+}
+
+static long long ir_graph_now_ms(void) {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
 static void ir_graph_set_mapped_mir_cache_facts(SourceInput *input, const ZMirBinaryCacheFacts *facts, bool reused, bool written, bool codegen_immediate, bool program_reconstructed) {
@@ -4476,16 +4483,23 @@ bool z_program_graph_prepare_artifact_mir_input(const char *artifact_path, const
   (void)program;
   if (!ir) return false;
   ZProgramGraph graph = {0};
+  long long phase_started = ir_graph_now_ms();
   if (!z_program_graph_load(artifact_path, &graph, diag)) return false;
+  if (input) input->graph_load_ms += ir_graph_now_ms() - phase_started;
 
+  phase_started = ir_graph_now_ms();
   if (!z_std_source_path_is_module_artifact(artifact_path) && !z_program_graph_merge_embedded_std_graph_modules(&graph, input, diag)) {
+    if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
     z_program_graph_free(&graph);
     return false;
   }
+  if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
   z_program_graph_seed_source_metadata(input, &graph);
   char *mir_cache_path = z_mir_binary_cache_path_for_graph_store(artifact_path, graph.graph_hash, target, emit_kind, requested_backend);
   ZMirBinaryCacheFacts mir_cache = {0};
+  phase_started = ir_graph_now_ms();
   if (mir_cache_path && z_mir_binary_load_path(mir_cache_path, graph.graph_hash, target, emit_kind, requested_backend, ir, &mir_cache, NULL)) {
+    if (input) input->graph_mir_cache_load_ms += ir_graph_now_ms() - phase_started;
     if (input) {
       z_program_graph_seed_artifact_source_paths(input, &graph, artifact_path);
       z_program_graph_seed_source_metadata_facts(input, &graph);
@@ -4504,19 +4518,30 @@ bool z_program_graph_prepare_artifact_mir_input(const char *artifact_path, const
     z_program_graph_free(&graph);
     return true;
   }
+  if (input) input->graph_mir_cache_load_ms += ir_graph_now_ms() - phase_started;
 
+  phase_started = ir_graph_now_ms();
   IrProgram graph_ir = z_lower_program_graph_with_source(&graph, input, target);
+  if (input) input->graph_mir_lower_ms += ir_graph_now_ms() - phase_started;
   if (graph_ir.mir_valid) {
     if (input) z_program_graph_seed_artifact_source_paths(input, &graph, artifact_path);
     if (mir_cache_path) {
       ZDiag cache_diag = {0};
+      phase_started = ir_graph_now_ms();
       if (z_mir_binary_write_path(mir_cache_path, &graph_ir, graph.graph_hash, target, emit_kind, requested_backend, &cache_diag)) {
+        if (input) input->graph_mir_cache_write_ms += ir_graph_now_ms() - phase_started;
         IrProgram mapped_ir = {0};
+        phase_started = ir_graph_now_ms();
         if (z_mir_binary_load_path(mir_cache_path, graph.graph_hash, target, emit_kind, requested_backend, &mapped_ir, &mir_cache, NULL)) {
+          if (input) input->graph_mir_cache_reload_ms += ir_graph_now_ms() - phase_started;
           z_free_ir_program(&graph_ir);
           graph_ir = mapped_ir;
           ir_graph_set_mapped_mir_cache_facts(input, &mir_cache, false, true, false, false);
+        } else if (input) {
+          input->graph_mir_cache_reload_ms += ir_graph_now_ms() - phase_started;
         }
+      } else if (input) {
+        input->graph_mir_cache_write_ms += ir_graph_now_ms() - phase_started;
       }
     }
     *ir = graph_ir;
@@ -4549,19 +4574,34 @@ bool z_program_graph_prepare_artifact_mir_input(const char *artifact_path, const
 bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {
   if (!ir) return false;
   ZProgramGraphStore store;
+  long long phase_started = ir_graph_now_ms();
   if (!z_program_graph_store_load_path(store_path, &store, diag)) return false;
-  if (!z_program_graph_merge_embedded_std_graph_modules(&store.graph, input, diag)) { z_program_graph_store_free(&store); return false; }
+  if (input) input->graph_load_ms += ir_graph_now_ms() - phase_started;
+  phase_started = ir_graph_now_ms();
+  if (!z_program_graph_merge_embedded_std_graph_modules(&store.graph, input, diag)) {
+    if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
+    z_program_graph_store_free(&store);
+    return false;
+  }
+  if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
   z_program_graph_seed_source_metadata(input, &store.graph);
   if (input && !input->package_root && store.root) input->package_root = z_strdup(store.root);
   if (!require_checked_program) z_program_graph_seed_artifact_source_paths(input, &store.graph, store_path);
   char *mir_cache_path = z_mir_binary_cache_path_for_graph_store(store_path, store.graph.graph_hash, target, emit_kind, requested_backend);
   ZMirBinaryCacheFacts mir_cache = {0};
+  phase_started = ir_graph_now_ms();
   if (mir_cache_path && z_mir_binary_load_path(mir_cache_path, store.graph.graph_hash, target, emit_kind, requested_backend, ir, &mir_cache, NULL)) {
-    if (require_checked_program && !ir_graph_lower_checked_program(&store.graph, store_path, target, program, input, diag)) {
-      z_free_ir_program(ir);
-      free(mir_cache_path);
-      z_program_graph_store_free(&store);
-      return false;
+    if (input) input->graph_mir_cache_load_ms += ir_graph_now_ms() - phase_started;
+    if (require_checked_program) {
+      phase_started = ir_graph_now_ms();
+      bool checked = ir_graph_lower_checked_program(&store.graph, store_path, target, program, input, diag);
+      if (input) input->graph_readiness_check_ms += ir_graph_now_ms() - phase_started;
+      if (!checked) {
+        z_free_ir_program(ir);
+        free(mir_cache_path);
+        z_program_graph_store_free(&store);
+        return false;
+      }
     }
     if (input) {
       z_program_graph_seed_source_metadata_facts(input, &store.graph);
@@ -4581,27 +4621,43 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
     z_program_graph_store_free(&store);
     return true;
   }
+  if (input) input->graph_mir_cache_load_ms += ir_graph_now_ms() - phase_started;
 
+  phase_started = ir_graph_now_ms();
   IrProgram graph_ir = z_lower_program_graph_with_source(&store.graph, input, target);
+  if (input) input->graph_mir_lower_ms += ir_graph_now_ms() - phase_started;
   bool graph_mir_valid = graph_ir.mir_valid;
   if (graph_mir_valid) {
     if (mir_cache_path) {
       ZDiag cache_diag = {0};
+      phase_started = ir_graph_now_ms();
       if (z_mir_binary_write_path(mir_cache_path, &graph_ir, store.graph.graph_hash, target, emit_kind, requested_backend, &cache_diag)) {
+        if (input) input->graph_mir_cache_write_ms += ir_graph_now_ms() - phase_started;
         IrProgram mapped_ir = {0};
+        phase_started = ir_graph_now_ms();
         if (z_mir_binary_load_path(mir_cache_path, store.graph.graph_hash, target, emit_kind, requested_backend, &mapped_ir, &mir_cache, NULL)) {
+          if (input) input->graph_mir_cache_reload_ms += ir_graph_now_ms() - phase_started;
           z_free_ir_program(&graph_ir);
           graph_ir = mapped_ir;
           ir_graph_set_mapped_mir_cache_facts(input, &mir_cache, false, true, false, require_checked_program);
+        } else if (input) {
+          input->graph_mir_cache_reload_ms += ir_graph_now_ms() - phase_started;
         }
+      } else if (input) {
+        input->graph_mir_cache_write_ms += ir_graph_now_ms() - phase_started;
       }
     }
     *ir = graph_ir;
-    if (require_checked_program && !ir_graph_lower_checked_program(&store.graph, store_path, target, program, input, diag)) {
-      z_free_ir_program(ir);
-      free(mir_cache_path);
-      z_program_graph_store_free(&store);
-      return false;
+    if (require_checked_program) {
+      phase_started = ir_graph_now_ms();
+      bool checked = ir_graph_lower_checked_program(&store.graph, store_path, target, program, input, diag);
+      if (input) input->graph_readiness_check_ms += ir_graph_now_ms() - phase_started;
+      if (!checked) {
+        z_free_ir_program(ir);
+        free(mir_cache_path);
+        z_program_graph_store_free(&store);
+        return false;
+      }
     }
   } else {
     if (diag && diag->code == 0) ir_graph_init_lowering_diag(diag, input, target, emit_kind, requested_backend, &graph_ir, store_path);
