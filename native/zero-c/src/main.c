@@ -71,6 +71,7 @@ typedef struct {
   const char *command;
   const char *kind;
   const char *input;
+  char *owned_input;
   const char *repository_graph_source_input;
   const char *out;
   const char *patch_file;
@@ -118,6 +119,45 @@ typedef struct {
   bool graph_patch_check_only;
   EmitKind emit;
 } Command;
+
+static char *command_process_owned_input = NULL;
+
+static void command_free_process_owned_input(void) {
+  free(command_process_owned_input);
+  command_process_owned_input = NULL;
+}
+
+static void command_register_owned_input_cleanup(void) {
+  static bool registered = false;
+  if (registered) return;
+  atexit(command_free_process_owned_input);
+  registered = true;
+}
+
+static void command_set_owned_input(Command *command, char *input) {
+  if (!command) {
+    free(input);
+    return;
+  }
+  command_register_owned_input_cleanup();
+  if (command->owned_input && command->owned_input != input) {
+    if (command_process_owned_input == command->owned_input) command_process_owned_input = NULL;
+    free(command->owned_input);
+  }
+  if (command_process_owned_input && command_process_owned_input != input) free(command_process_owned_input);
+  command_process_owned_input = input;
+  command->owned_input = input;
+  command->input = input;
+}
+
+static int command_return(Command *command, int rc) {
+  if (command) {
+    if (command_process_owned_input == command->owned_input) command_process_owned_input = NULL;
+    free(command->owned_input);
+    command->owned_input = NULL;
+  }
+  return rc;
+}
 
 static void manifest_path_for_input(const SourceInput *input, char *manifest_path, size_t manifest_path_len);
 static bool is_program_graph_root_command(const char *command);
@@ -12889,7 +12929,7 @@ static bool resolve_graph_repository_store_input(Command *command, bool *artifac
   }
   free(root);
   command->repository_graph_source_input = command->input;
-  command->input = store_path;
+  command_set_owned_input(command, store_path);
   command->repository_graph_input = true;
   if (artifact_input) *artifact_input = true;
   return true;
@@ -12922,7 +12962,7 @@ static bool resolve_graph_command_manifest_input(Command *command, bool *artifac
     }
     if (sidecar && path_has_program_graph_storage_header(sidecar)) {
       command->repository_graph_source_input = command->input;
-      command->input = sidecar;
+      command_set_owned_input(command, sidecar);
       if (artifact_input) *artifact_input = true;
       return true;
     }
@@ -12955,7 +12995,7 @@ static bool resolve_graph_command_manifest_input(Command *command, bool *artifac
   bool require_graph = input_mode == Z_PROGRAM_GRAPH_INPUT_ARTIFACT;
   if (!z_resolve_manifest_graph_artifact_path(command->input, &artifact_path, &handled, require_graph, diag)) return false;
   if (handled) {
-    command->input = artifact_path;
+    command_set_owned_input(command, artifact_path);
     if (artifact_input) *artifact_input = true;
     return true;
   }
@@ -12994,7 +13034,7 @@ static int resolve_direct_command_manifest_graph_input(Command *command, const Z
   }
 
   command->repository_graph_source_input = command->input;
-  command->input = store_path;
+  command_set_owned_input(command, store_path);
   command->repository_graph_input = true;
   if (handled) *handled = true;
   return 0;
@@ -13605,16 +13645,17 @@ int main(int argc, char **argv) {
 
   bool graph_subcommand_handled = false;
   int graph_subcommand_rc = run_graph_subcommand_dispatch(&command, target, graph_command_artifact_input, &diag, &graph_subcommand_handled);
-  if (graph_subcommand_handled) return graph_subcommand_rc;
+  if (graph_subcommand_handled) return command_return(&command, graph_subcommand_rc);
 
   if (graph_check_text_eq(command.command, "patch")) {
     bool top_patch_artifact_input = false;
     if (!resolve_graph_repository_store_input(&command, &top_patch_artifact_input, &diag)) {
       if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
-      return 1;
+      return command_return(&command, 1);
     }
-    return run_graph_patch_command(&command, target, &diag);
+    int patch_rc = run_graph_patch_command(&command, target, &diag);
+    return command_return(&command, patch_rc);
   }
 
   if (strcmp(command.command, "fmt") == 0) {
