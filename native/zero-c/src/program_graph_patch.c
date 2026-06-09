@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static void patch_free_text(char **slot) {
   if (!slot) return;
@@ -48,6 +49,11 @@ static bool patch_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
 }
 
+static bool patch_path_is_dir(const char *path) {
+  struct stat st;
+  return path && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
 static bool patch_io_fail(ZDiag *diag, const char *path, const char *action) {
   if (diag) {
     diag->code = 1;
@@ -61,6 +67,11 @@ static bool patch_io_fail(ZDiag *diag, const char *path, const char *action) {
 }
 
 static char *patch_read_file(const char *path, size_t *out_len, ZDiag *diag) {
+  if (patch_path_is_dir(path)) {
+    errno = EACCES;
+    patch_io_fail(diag, path, "read");
+    return NULL;
+  }
   FILE *file = fopen(path, "rb");
   if (!file) {
     patch_io_fail(diag, path, "read");
