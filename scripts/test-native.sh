@@ -432,6 +432,19 @@ if [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
   test ! -f .zero/native-test/std-http-api-helpers-linux.zero.o
   test ! -f .zero/native-test/std-http-api-helpers-linux.zero-runtime.o
   node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync(".zero/native-test/std-http-api-helpers-linux.json","utf8")); if (report.generatedCBytes!==0 || report.objectBackend.objectEmission.path!=="direct-elf64-object" || report.objectBackend.linking.targetLibraries!=="zero-runtime" || report.objectBackend.linking.externalToolchain!=="cc" || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_runtime.o") || report.objectBackend.directFacts.runtimeHelperCount!==1) process.exit(1);'
+  rm -f .zero/native-test/std-http-cors-helpers-linux .zero/native-test/std-http-cors-helpers-linux.json .zero/native-test/std-http-cors-helpers-linux.zero.o .zero/native-test/std-http-cors-helpers-linux.zero-runtime.o
+  if ! bin/zero build --json --emit exe --target linux-x64 conformance/native/pass/std-http-cors-helpers.graph --out .zero/native-test/std-http-cors-helpers-linux > .zero/native-test/std-http-cors-helpers-linux.json; then
+    cat .zero/native-test/std-http-cors-helpers-linux.json >&2
+    exit 1
+  fi
+  set +e
+  .zero/native-test/std-http-cors-helpers-linux
+  std_http_cors_helpers_linux_status=$?
+  set -e
+  test "$std_http_cors_helpers_linux_status" = "32"
+  test ! -f .zero/native-test/std-http-cors-helpers-linux.zero.o
+  test ! -f .zero/native-test/std-http-cors-helpers-linux.zero-runtime.o
+  node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync(".zero/native-test/std-http-cors-helpers-linux.json","utf8")); if (report.generatedCBytes!==0 || report.objectBackend.objectEmission.path!=="direct-elf64-object" || report.objectBackend.linking.targetLibraries!=="zero-runtime" || report.objectBackend.linking.externalToolchain!=="cc" || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_runtime.o") || report.objectBackend.directFacts.runtimeHelperCount!==1) process.exit(1);'
   curl_link_smoke_src="/tmp/zero-curl-link-smoke-$$.c"
   curl_link_smoke_exe="/tmp/zero-curl-link-smoke-$$"
   cat > "$curl_link_smoke_src" <<'SOURCE'
@@ -850,6 +863,16 @@ SOURCE
   test ! -f .zero/native-test/std-http-api-helpers.zero.o
   test ! -f .zero/native-test/std-http-api-helpers.zero-runtime.o
   node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync(".zero/native-test/std-http-api-helpers.json","utf8")); if (report.generatedCBytes!==0 || report.objectBackend.linking.targetLibraries!=="zero-runtime" || report.objectBackend.linking.externalToolchain!=="cc" || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_runtime.o") || report.objectBackend.directFacts.runtimeHelperCount!==1) process.exit(1);'
+  rm -f .zero/native-test/std-http-cors-helpers .zero/native-test/std-http-cors-helpers.json .zero/native-test/std-http-cors-helpers.zero.o .zero/native-test/std-http-cors-helpers.zero-runtime.o
+  bin/zero build --json --emit exe --target darwin-arm64 conformance/native/pass/std-http-cors-helpers.graph --out .zero/native-test/std-http-cors-helpers > .zero/native-test/std-http-cors-helpers.json
+  set +e
+  .zero/native-test/std-http-cors-helpers
+  std_http_cors_helpers_status=$?
+  set -e
+  test "$std_http_cors_helpers_status" = "32"
+  test ! -f .zero/native-test/std-http-cors-helpers.zero.o
+  test ! -f .zero/native-test/std-http-cors-helpers.zero-runtime.o
+  node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync(".zero/native-test/std-http-cors-helpers.json","utf8")); if (report.generatedCBytes!==0 || report.objectBackend.linking.targetLibraries!=="zero-runtime" || report.objectBackend.linking.externalToolchain!=="cc" || !report.objectBackend.linkerPlan.staticLibraries.includes("zero_runtime.o") || report.objectBackend.directFacts.runtimeHelperCount!==1) process.exit(1);'
   rm -f .zero/native-test/std-http-fetch .zero/native-test/std-http-fetch.json .zero/native-test/std-http-fetch.zero.o .zero/native-test/std-http-fetch.zero-runtime.o .zero/native-test/std-http-fetch.zero-http-curl.o
   if bin/zero build --json --emit exe --target darwin-arm64 conformance/native/pass/std-http-fetch.graph --out .zero/native-test/std-http-fetch > .zero/native-test/std-http-fetch.json; then
     set +e

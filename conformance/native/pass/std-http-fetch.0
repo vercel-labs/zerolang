@@ -8,6 +8,24 @@ export c fn main() -> i32 {
         return 99
     }
     if std.http.resultStatus(result) == 0 && std.http.resultBodyLen(result) == 0 && std.http.resultError(result) == std.http.errorUnsupportedProtocol() && std.http.responseLen(response) == 0 && std.http.responseHeadersLen(response) == 0 {
+        var invalid_response: [128]u8 = [0_u8; 128]
+        let invalid_request: Span<u8> = std.mem.span("GET http://example.invalid\nbad-header\n\n")
+        let invalid_result: HttpResult = std.http.fetch(client, invalid_request, invalid_response, std.time.ms(250))
+        if std.http.resultOk(invalid_result) {
+            return 24
+        }
+        if std.http.resultStatus(invalid_result) != 0 {
+            return 25
+        }
+        if std.http.resultBodyLen(invalid_result) != 0 {
+            return 26
+        }
+        if std.http.resultError(invalid_result) != std.http.errorInvalidRequest() {
+            return 27
+        }
+        if std.http.responseLen(invalid_response) != 0 {
+            return 28
+        }
         return 23
     }
     return 98

@@ -742,6 +742,7 @@ const passCheckFixtures = [
   "conformance/native/pass/std-http-errors.0",
   "conformance/native/pass/std-http-response-helpers.0",
   "conformance/native/pass/std-http-api-helpers.0",
+  "conformance/native/pass/std-http-cors-helpers.0",
   "conformance/native/pass/std-http-auth-helpers.0",
   "conformance/native/pass/std-data-formats.0",
   "conformance/native/pass/std-codec-json-url.0",

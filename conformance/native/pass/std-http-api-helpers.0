@@ -96,7 +96,7 @@ export c fn main() -> i32 {
     }
     var get_buf: [64]u8 = [0_u8; 64]
     let get_request: Maybe<Span<u8>> = std.http.writeRequest(get_buf, "GET /health", "")
-    if !get_request.has || !std.mem.eql(get_request.value, "GET /health\n\n") {
+    if !get_request.has || !std.mem.eql(get_request.value, "GET /health\r\n\r\n") {
         return 23
     }
     var absolute_buf: [64]u8 = [0_u8; 64]
@@ -155,7 +155,7 @@ export c fn main() -> i32 {
     if !not_found_response.has || !std.str.contains(not_found_response.value, "404 Not Found") {
         return 42
     }
-    var method_buf: [128]u8 = [0_u8; 128]
+    var method_buf: [160]u8 = [0_u8; 160]
     let method_response: Maybe<Span<u8>> = std.http.writeJsonMethodNotAllowed(method_buf, "{\"error\":\"method_not_allowed\"}")
     if !method_response.has || !std.str.contains(method_response.value, "405 Method Not Allowed") {
         return 43

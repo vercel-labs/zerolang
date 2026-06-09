@@ -21,6 +21,9 @@ export c fn main() -> i32 {
     if !std.str.contains(preflight.value, "204 No Content") {
         return 16
     }
+    if !std.str.contains(preflight.value, "HTTP/1.1 204 No Content\r\nconnection: close\r\n") {
+        return 27
+    }
     if !std.str.contains(preflight.value, "access-control-allow-origin: *") {
         return 17
     }
@@ -43,6 +46,9 @@ export c fn main() -> i32 {
     }
     if !std.str.contains(json.value, "content-type: application/json") {
         return 23
+    }
+    if !std.str.contains(json.value, "\r\nconnection: close\r\n") {
+        return 29
     }
     if !std.str.contains(json.value, "access-control-allow-origin: https://app.example") {
         return 24
