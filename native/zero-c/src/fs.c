@@ -1184,6 +1184,15 @@ static bool command_exists(const char *command) {
   return false;
 }
 
+bool z_toolchain_compiler_override_safe(const char *compiler) {
+  if (!compiler || !compiler[0]) return false;
+  for (size_t i = 0; compiler[i]; i++) {
+    unsigned char ch = (unsigned char)compiler[i];
+    if (!(isalnum(ch) || ch == '_' || ch == '-' || ch == '.' || ch == '+' || ch == '/' || ch == '\\' || ch == ':' || ch == '@')) return false;
+  }
+  return true;
+}
+
 static bool run_tool_silent(const char *tool, const char *arg) {
   if (!command_name_safe(tool) || !arg || !arg[0]) return false;
 #if defined(_WIN32)
@@ -1275,7 +1284,11 @@ ZToolchainPlan z_plan_toolchain(const char *cc, const char *profile, const ZTarg
 }
 
 static bool validate_toolchain_plan(const ZToolchainPlan *plan, const ZTargetInfo *target) {
-  if (strcmp(plan->driver_kind, "override-cc") == 0) return true;
+  if (strcmp(plan->driver_kind, "override-cc") == 0) {
+    if (z_toolchain_compiler_override_safe(plan->compiler)) return true;
+    fprintf(stderr, "compiler override contains unsafe shell characters; pass a compiler path or command name without flags or shell syntax\n");
+    return false;
+  }
 
   if (plan->requires_sysroot && strcmp(plan->sysroot_status, "present") != 0) {
     if (strcmp(plan->sysroot_status, "host-leakage") == 0) {

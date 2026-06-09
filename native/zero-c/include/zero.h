@@ -1069,6 +1069,7 @@ ZToolchainPlan z_direct_backend_toolchain_plan(ZDirectBackend backend, Z_IN cons
 bool z_direct_backend_toolchain_plan_for_emit_kind(Z_IN const ZTargetInfo *target, Z_IN const char *emit_kind, Z_IN const char *requested_backend, Z_OUT ZToolchainPlan *out);
 size_t z_direct_target_stack_bytes(Z_IN const ZTargetInfo *target, Z_IN const IrProgram *program);
 size_t z_direct_target_max_frame_bytes(Z_IN const ZTargetInfo *target, Z_IN const IrProgram *program);
+bool z_toolchain_compiler_override_safe(Z_IN const char *compiler);
 bool z_toolchain_compile_c_object(Z_IN const ZToolchainPlan *plan, Z_IN const char *profile, Z_IN const ZTargetInfo *target, Z_IN const char *c_file, Z_IN const char *object_file, Z_IN const char *include_dir, Z_IN const char *extra_c_flags);
 bool z_toolchain_link_objects(Z_IN const ZToolchainPlan *plan, Z_IN const ZTargetInfo *target, Z_IN const char *const *object_files, size_t object_count, Z_IN const char *exe_file, Z_IN const char *pre_link_flags, Z_IN const char *post_object_flags);
 bool z_run_cc(Z_IN const char *c_file, Z_IN const char *exe_file, Z_IN const char *cc, Z_IN const char *profile, Z_IN const ZTargetInfo *target);

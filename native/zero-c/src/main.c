@@ -726,18 +726,27 @@ static bool write_runtime_compile_inputs(
   return true;
 }
 
+static const char *unsafe_cc_override_for_command(const Command *command) {
+  const char *cli = command && command->cc && command->cc[0] ? command->cc : NULL;
+  if (cli && !z_toolchain_compiler_override_safe(cli)) return cli;
+  const char *env = getenv("ZERO_CC");
+  if (env && env[0] && !z_toolchain_compiler_override_safe(env)) return env;
+  return NULL;
+}
+
 static bool compile_zero_runtime_object(const char *runtime_object_file, const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target, bool llvm_backend, ZDiag *diag) {
   RuntimeCompileInputs inputs = {0};
   if (!write_runtime_compile_inputs(runtime_object_file, ".zero_runtime.c", zero_embedded_zero_runtime_c, &inputs, diag)) return false;
   bool ok = z_toolchain_compile_c_object(plan, command ? command->profile : NULL, target, inputs.source_file, runtime_object_file, inputs.include_dir, "-std=c11 -Wall -Wextra -Wpedantic");
   runtime_compile_inputs_free(&inputs);
   if (!ok && diag) {
+    const char *unsafe_cc = unsafe_cc_override_for_command(command);
     diag->code = llvm_backend ? 2004 : 2003;
     diag->line = diag->column = diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "%s runtime object build failed", llvm_backend ? "LLVM" : "host");
     snprintf(diag->expected, sizeof(diag->expected), "%s", llvm_backend ? "clang can compile the embedded Zero runtime source for the LLVM executable link" : "C compiler can compile the embedded Zero runtime source");
-    snprintf(diag->actual, sizeof(diag->actual), "%s", llvm_backend ? "clang runtime object compile command failed" : "runtime object compile command failed");
-    snprintf(diag->help, sizeof(diag->help), "%s", llvm_backend ? "inspect the emitted LLVM IR, runtime object, and clang installation; use --emit llvm-ir to write the IR only" : "install a host C compiler or pass --cc for the runtime link plan");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", unsafe_cc ? "compiler override contains unsafe shell characters" : (llvm_backend ? "clang runtime object compile command failed" : "runtime object compile command failed"));
+    snprintf(diag->help, sizeof(diag->help), "%s", unsafe_cc ? "pass a compiler path or command name without flags, whitespace, or shell syntax" : (llvm_backend ? "inspect the emitted LLVM IR, runtime object, and clang installation; use --emit llvm-ir to write the IR only" : "install a host C compiler or pass --cc for the runtime link plan"));
     if (llvm_backend) z_backend_blocker_set(&diag->backend_blocker, target && target->name ? target->name : "unknown", target && target->object_format ? target->object_format : "unknown", "llvm", "toolchain", "clang");
   }
   return ok;
@@ -749,14 +758,15 @@ static bool compile_zero_http_curl_object(const char *runtime_object_file, const
   bool ok = z_toolchain_compile_c_object(plan, command ? command->profile : NULL, target, inputs.source_file, runtime_object_file, inputs.include_dir, "-std=c11 -Wall -Wextra -Wpedantic");
   runtime_compile_inputs_free(&inputs);
   if (!ok && diag) {
+    const char *unsafe_cc = unsafe_cc_override_for_command(command);
     diag->code = 2003;
     diag->line = 1;
     diag->column = 1;
     diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "HTTP runtime provider build failed");
     snprintf(diag->expected, sizeof(diag->expected), "C compiler can compile the embedded HTTP provider source");
-    snprintf(diag->actual, sizeof(diag->actual), "HTTP provider compile command failed");
-    snprintf(diag->help, sizeof(diag->help), "install libcurl headers or pass --cc for the runtime link plan");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", unsafe_cc ? "compiler override contains unsafe shell characters" : "HTTP provider compile command failed");
+    snprintf(diag->help, sizeof(diag->help), "%s", unsafe_cc ? "pass a compiler path or command name without flags, whitespace, or shell syntax" : "install libcurl headers or pass --cc for the runtime link plan");
   }
   return ok;
 }

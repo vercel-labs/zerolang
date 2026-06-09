@@ -1082,6 +1082,21 @@ for (const item of compilerMetricsBody.largeFunctions) {
   assert(item.lines >= compilerMetricsBody.budget.reportThreshold);
 }
 
+const unsafeCompilerOverrideBuild = await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--out",
+  `${outDir}/unsafe-cc-override`,
+  "examples/json-api-client.graph",
+], { env: { ...process.env, ZERO_CC: "cc;touch" } }).catch((error) => error);
+assert.notEqual(unsafeCompilerOverrideBuild.code, 0);
+assert.match(unsafeCompilerOverrideBuild.stderr, /compiler override contains unsafe shell characters/);
+const unsafeCompilerOverrideBody = JSON.parse(unsafeCompilerOverrideBuild.stdout);
+assert.equal(unsafeCompilerOverrideBody.ok, false);
+assert.equal(unsafeCompilerOverrideBody.diagnostics[0].code, "BLD003");
+assert.equal(unsafeCompilerOverrideBody.diagnostics[0].actual, "compiler override contains unsafe shell characters");
+assert.match(unsafeCompilerOverrideBody.diagnostics[0].help, /without flags, whitespace, or shell syntax/);
+
 const agentSurfaceBorrowExplain = await execFileAsync(zero, ["explain", "--json", "BOR001"]);
 const agentSurfaceBorrowExplainBody = JSON.parse(agentSurfaceBorrowExplain.stdout);
 assert.equal(agentSurfaceBorrowExplainBody.code, "BOR001");

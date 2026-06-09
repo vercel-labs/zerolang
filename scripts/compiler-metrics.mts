@@ -83,7 +83,7 @@ const fileBudgets = {
   "native/zero-c/src/emit_llvm_ir.c": { maxLines: 944, maxStrcmpCalls: 9 },
   "native/zero-c/src/emit_coff.c": { maxLines: 1974, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 490, maxStrcmpCalls: 0 },
-  "native/zero-c/src/fs.c": { maxLines: 1405, maxStrcmpCalls: 36, maxShellCalls: 3 },
+  "native/zero-c/src/fs.c": { maxLines: 1420, maxStrcmpCalls: 36, maxShellCalls: 3 },
   "native/zero-c/src/mir_verify.c": { maxLines: 2331, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
