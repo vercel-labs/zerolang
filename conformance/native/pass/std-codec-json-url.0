@@ -236,6 +236,11 @@ pub fn main(world: World) -> Void raises {
     if name_field.has && role_field.has {
         object_strings = std.json.writeObject2Fields(object_strings_buf, name_field.value, role_field.value)
     }
+    var object_strings_direct_buf: [64]u8 = [0_u8; 64]
+    var object_strings_direct: Maybe<Span<u8>> = null
+    if role_field.has {
+        object_strings_direct = std.json.writeObject2StringField(object_strings_direct_buf, "name", "zero\nlang", role_field.value)
+    }
     var name_plain_field_buf: [24]u8 = [0_u8; 24]
     let name_plain_field: Maybe<Span<u8>> = std.json.writeFieldString(name_plain_field_buf, "name", "zero")
     var count_json_field_buf: [24]u8 = [0_u8; 24]
@@ -247,15 +252,35 @@ pub fn main(world: World) -> Void raises {
     if name_plain_field.has && count_json_field.has {
         object_string_u32 = std.json.writeObject2Fields(object_string_u32_buf, name_plain_field.value, count_json_field.value)
     }
+    var object_string_u32_direct_buf: [48]u8 = [0_u8; 48]
+    var object_string_u32_direct: Maybe<Span<u8>> = null
+    if count_json_field.has {
+        object_string_u32_direct = std.json.writeObject2StringField(object_string_u32_direct_buf, "name", "zero", count_json_field.value)
+    }
     var object_string_bool_buf: [48]u8 = [0_u8; 48]
     var object_string_bool: Maybe<Span<u8>> = null
     if name_plain_field.has && ok_field.has {
         object_string_bool = std.json.writeObject2Fields(object_string_bool_buf, name_plain_field.value, ok_field.value)
     }
+    var object_string_bool_direct_buf: [48]u8 = [0_u8; 48]
+    var object_string_bool_direct: Maybe<Span<u8>> = null
+    if ok_field.has {
+        object_string_bool_direct = std.json.writeObject2StringField(object_string_bool_direct_buf, "name", "zero", ok_field.value)
+    }
     var object_u32_bool_buf: [32]u8 = [0_u8; 32]
     var object_u32_bool: Maybe<Span<u8>> = null
     if count_json_field.has && ok_field.has {
         object_u32_bool = std.json.writeObject2Fields(object_u32_bool_buf, count_json_field.value, ok_field.value)
+    }
+    var object_u32_bool_direct_buf: [32]u8 = [0_u8; 32]
+    var object_u32_bool_direct: Maybe<Span<u8>> = null
+    if ok_field.has {
+        object_u32_bool_direct = std.json.writeObject2U32Field(object_u32_bool_direct_buf, "count", 42_u32, ok_field.value)
+    }
+    var object_bool_u32_direct_buf: [32]u8 = [0_u8; 32]
+    var object_bool_u32_direct: Maybe<Span<u8>> = null
+    if count_json_field.has {
+        object_bool_u32_direct = std.json.writeObject2BoolField(object_bool_u32_direct_buf, "ok", true, count_json_field.value)
     }
     var object_bad_raw_buf: [48]u8 = [0_u8; 48]
     let object_bad_raw: Maybe<Span<u8>> = std.json.writeFieldRaw(object_bad_raw_buf, "bad", "{")
@@ -264,7 +289,12 @@ pub fn main(world: World) -> Void raises {
     if name_plain_field.has && role_field.has {
         object_small = std.json.writeObject2Fields(object_small_buf, name_plain_field.value, role_field.value)
     }
-    if !object_string.has || !std.mem.eql(object_string.value, "{\"name\":\"zero\"}") || !object_u32.has || !std.mem.eql(object_u32.value, "{\"count\":42}") || !object_bool.has || !std.mem.eql(object_bool.value, "{\"ok\":true}") || !raw_user_field.has || !raw_tags_field.has || !object_raw.has || !std.mem.eql(object_raw.value, "{\"user\":{\"name\":\"zero\"},\"tags\":[\"api\",true]}") || !name_field.has || !role_field.has || !object_strings.has || !std.mem.eql(object_strings.value, "{\"name\":\"zero\\nlang\",\"role\":\"agent\"}") || !name_plain_field.has || !count_json_field.has || !ok_field.has || !object_string_u32.has || !std.mem.eql(object_string_u32.value, "{\"name\":\"zero\",\"count\":42}") || !object_string_bool.has || !std.mem.eql(object_string_bool.value, "{\"name\":\"zero\",\"ok\":true}") || !object_u32_bool.has || !std.mem.eql(object_u32_bool.value, "{\"count\":42,\"ok\":true}") || object_bad_raw.has || object_small.has {
+    var object2_direct_small_buf: [16]u8 = [0_u8; 16]
+    var object2_direct_small: Maybe<Span<u8>> = null
+    if count_json_field.has {
+        object2_direct_small = std.json.writeObject2StringField(object2_direct_small_buf, "name", "zero", count_json_field.value)
+    }
+    if !object_string.has || !std.mem.eql(object_string.value, "{\"name\":\"zero\"}") || !object_u32.has || !std.mem.eql(object_u32.value, "{\"count\":42}") || !object_bool.has || !std.mem.eql(object_bool.value, "{\"ok\":true}") || !raw_user_field.has || !raw_tags_field.has || !object_raw.has || !std.mem.eql(object_raw.value, "{\"user\":{\"name\":\"zero\"},\"tags\":[\"api\",true]}") || !name_field.has || !role_field.has || !object_strings.has || !std.mem.eql(object_strings.value, "{\"name\":\"zero\\nlang\",\"role\":\"agent\"}") || !object_strings_direct.has || !std.mem.eql(object_strings_direct.value, "{\"name\":\"zero\\nlang\",\"role\":\"agent\"}") || !name_plain_field.has || !count_json_field.has || !ok_field.has || !object_string_u32.has || !std.mem.eql(object_string_u32.value, "{\"name\":\"zero\",\"count\":42}") || !object_string_u32_direct.has || !std.mem.eql(object_string_u32_direct.value, "{\"name\":\"zero\",\"count\":42}") || !object_string_bool.has || !std.mem.eql(object_string_bool.value, "{\"name\":\"zero\",\"ok\":true}") || !object_string_bool_direct.has || !std.mem.eql(object_string_bool_direct.value, "{\"name\":\"zero\",\"ok\":true}") || !object_u32_bool.has || !std.mem.eql(object_u32_bool.value, "{\"count\":42,\"ok\":true}") || !object_u32_bool_direct.has || !std.mem.eql(object_u32_bool_direct.value, "{\"count\":42,\"ok\":true}") || !object_bool_u32_direct.has || !std.mem.eql(object_bool_u32_direct.value, "{\"ok\":true,\"count\":42}") || object_bad_raw.has || object_small.has || object2_direct_small.has {
         ok = false
     }
     if object_raw.has && std.json.validateError(object_raw.value) != std.json.errorNone() {

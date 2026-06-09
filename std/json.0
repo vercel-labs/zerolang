@@ -79,7 +79,7 @@ fn __zero_std_json_hex_u16(bytes: Span<u8>, start: usize) -> Maybe<u16> {
     if !h0.has || !h1.has || !h2.has || !h3.has {
         return null
     }
-    return ((h0.value as u16) * 4096_u16) + ((h1.value as u16) * 256_u16) + ((h2.value as u16) * 16_u16) + (h3.value as u16)
+    return h0.value as u16 * 4096_u16 + h1.value as u16 * 256_u16 + h2.value as u16 * 16_u16 + h3.value as u16
 }
 
 fn __zero_std_json_is_high_surrogate(value: u16) -> Bool {
@@ -91,7 +91,7 @@ fn __zero_std_json_is_low_surrogate(value: u16) -> Bool {
 }
 
 fn __zero_std_json_surrogate_codepoint(high: u16, low: u16) -> u32 {
-    return 65536_u32 + (((high as u32) - 55296_u32) * 1024_u32) + ((low as u32) - 56320_u32)
+    return 65536_u32 + (high as u32 - 55296_u32) * 1024_u32 + (low as u32 - 56320_u32)
 }
 
 fn __zero_std_json_utf8_sequence_len(first: u8) -> usize {
@@ -169,8 +169,8 @@ fn __zero_std_json_write_utf8(buffer: MutSpan<u8>, output: usize, codepoint: u32
         if output + 2 > std.mem.len(buffer) {
             return null
         }
-        buffer[output] = 192_u8 + ((codepoint / 64_u32) as u8)
-        buffer[output + 1] = 128_u8 + ((codepoint % 64_u32) as u8)
+        buffer[output] = 192_u8 + (codepoint / 64_u32) as u8
+        buffer[output + 1] = 128_u8 + (codepoint % 64_u32) as u8
         return output + 2
     }
     if codepoint <= 65535_u32 {
@@ -180,19 +180,19 @@ fn __zero_std_json_write_utf8(buffer: MutSpan<u8>, output: usize, codepoint: u32
         if output + 3 > std.mem.len(buffer) {
             return null
         }
-        buffer[output] = 224_u8 + ((codepoint / 4096_u32) as u8)
-        buffer[output + 1] = 128_u8 + (((codepoint / 64_u32) % 64_u32) as u8)
-        buffer[output + 2] = 128_u8 + ((codepoint % 64_u32) as u8)
+        buffer[output] = 224_u8 + (codepoint / 4096_u32) as u8
+        buffer[output + 1] = 128_u8 + (codepoint / 64_u32 % 64_u32) as u8
+        buffer[output + 2] = 128_u8 + (codepoint % 64_u32) as u8
         return output + 3
     }
     if codepoint <= 1114111_u32 {
         if output + 4 > std.mem.len(buffer) {
             return null
         }
-        buffer[output] = 240_u8 + ((codepoint / 262144_u32) as u8)
-        buffer[output + 1] = 128_u8 + (((codepoint / 4096_u32) % 64_u32) as u8)
-        buffer[output + 2] = 128_u8 + (((codepoint / 64_u32) % 64_u32) as u8)
-        buffer[output + 3] = 128_u8 + ((codepoint % 64_u32) as u8)
+        buffer[output] = 240_u8 + (codepoint / 262144_u32) as u8
+        buffer[output + 1] = 128_u8 + (codepoint / 4096_u32 % 64_u32) as u8
+        buffer[output + 2] = 128_u8 + (codepoint / 64_u32 % 64_u32) as u8
+        buffer[output + 3] = 128_u8 + (codepoint % 64_u32) as u8
         return output + 4
     }
     return null
@@ -1256,6 +1256,90 @@ fn __zero_std_json_write_object2_fields(buffer: MutSpan<u8>, field0: Span<u8>, f
     }
     buffer[cursor0.value] = 44_u8
     let cursor1: Maybe<usize> = __zero_std_json_write_span(buffer, cursor0.value + 1, field1)
+    if !cursor1.has {
+        return null
+    }
+    let written: Maybe<Span<u8>> = __zero_std_json_write_object_close(buffer, cursor1.value)
+    if !written.has {
+        return null
+    }
+    if __zero_std_json_validate_error(written.value) != __zero_std_json_error_none() {
+        return null
+    }
+    return written.value
+}
+
+fn __zero_std_json_write_object2_string_field(buffer: MutSpan<u8>, key: Span<u8>, value: Span<u8>, field1: Span<u8>) -> Maybe<Span<u8>> {
+    let cursor0: Maybe<usize> = __zero_std_json_write_object_key(buffer, key)
+    if !cursor0.has {
+        return null
+    }
+    let value0_end: Maybe<usize> = __zero_std_json_write_value_string(buffer, cursor0.value, value)
+    if !value0_end.has {
+        return null
+    }
+    if value0_end.value >= std.mem.len(buffer) {
+        return null
+    }
+    buffer[value0_end.value] = 44_u8
+    let field1_start: usize = value0_end.value + 1
+    let cursor1: Maybe<usize> = __zero_std_json_write_span(buffer, field1_start, field1)
+    if !cursor1.has {
+        return null
+    }
+    let written: Maybe<Span<u8>> = __zero_std_json_write_object_close(buffer, cursor1.value)
+    if !written.has {
+        return null
+    }
+    if __zero_std_json_validate_error(written.value) != __zero_std_json_error_none() {
+        return null
+    }
+    return written.value
+}
+
+fn __zero_std_json_write_object2_u32_field(buffer: MutSpan<u8>, key: Span<u8>, value: u32, field1: Span<u8>) -> Maybe<Span<u8>> {
+    let cursor0: Maybe<usize> = __zero_std_json_write_object_key(buffer, key)
+    if !cursor0.has {
+        return null
+    }
+    let value0_end: Maybe<usize> = __zero_std_json_write_value_u32(buffer, cursor0.value, value)
+    if !value0_end.has {
+        return null
+    }
+    if value0_end.value >= std.mem.len(buffer) {
+        return null
+    }
+    buffer[value0_end.value] = 44_u8
+    let field1_start: usize = value0_end.value + 1
+    let cursor1: Maybe<usize> = __zero_std_json_write_span(buffer, field1_start, field1)
+    if !cursor1.has {
+        return null
+    }
+    let written: Maybe<Span<u8>> = __zero_std_json_write_object_close(buffer, cursor1.value)
+    if !written.has {
+        return null
+    }
+    if __zero_std_json_validate_error(written.value) != __zero_std_json_error_none() {
+        return null
+    }
+    return written.value
+}
+
+fn __zero_std_json_write_object2_bool_field(buffer: MutSpan<u8>, key: Span<u8>, value: Bool, field1: Span<u8>) -> Maybe<Span<u8>> {
+    let cursor0: Maybe<usize> = __zero_std_json_write_object_key(buffer, key)
+    if !cursor0.has {
+        return null
+    }
+    let value0_end: Maybe<usize> = __zero_std_json_write_value_bool(buffer, cursor0.value, value)
+    if !value0_end.has {
+        return null
+    }
+    if value0_end.value >= std.mem.len(buffer) {
+        return null
+    }
+    buffer[value0_end.value] = 44_u8
+    let field1_start: usize = value0_end.value + 1
+    let cursor1: Maybe<usize> = __zero_std_json_write_span(buffer, field1_start, field1)
     if !cursor1.has {
         return null
     }
