@@ -170,18 +170,39 @@ char *z_read_file(const char *path, ZDiag *diag) {
     diag_io(diag, path, "read");
     return NULL;
   }
-  fseek(file, 0, SEEK_END);
-  long size = ftell(file);
-  if (size < 0) {
+  if (fseek(file, 0, SEEK_END) != 0) {
+    if (errno == 0) errno = EIO;
     diag_io(diag, path, "read");
     fclose(file);
     return NULL;
   }
-  rewind(file);
+  long size = ftell(file);
+  if (size < 0 || (size_t)size > SIZE_MAX - 1) {
+    if (errno == 0) errno = EIO;
+    diag_io(diag, path, "read");
+    fclose(file);
+    return NULL;
+  }
+  if (fseek(file, 0, SEEK_SET) != 0) {
+    if (errno == 0) errno = EIO;
+    diag_io(diag, path, "read");
+    fclose(file);
+    return NULL;
+  }
   char *data = z_checked_malloc((size_t)size + 1);
-  size_t read = fread(data, 1, (size_t)size, file);
-  fclose(file);
-  data[read] = 0;
+  if (size > 0 && fread(data, 1, (size_t)size, file) != (size_t)size) {
+    if (errno == 0) errno = EIO;
+    diag_io(diag, path, "read");
+    free(data);
+    fclose(file);
+    return NULL;
+  }
+  data[(size_t)size] = 0;
+  if (fclose(file) != 0) {
+    diag_io(diag, path, "read");
+    free(data);
+    return NULL;
+  }
   return data;
 }
 

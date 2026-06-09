@@ -85,7 +85,7 @@ const fileBudgets = {
   "native/zero-c/src/emit_llvm_ir.c": { maxLines: 944, maxStrcmpCalls: 9 },
   "native/zero-c/src/emit_coff.c": { maxLines: 1974, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 490, maxStrcmpCalls: 0 },
-  "native/zero-c/src/fs.c": { maxLines: 1420, maxStrcmpCalls: 36, maxShellCalls: 0 },
+  "native/zero-c/src/fs.c": { maxLines: 1440, maxStrcmpCalls: 36, maxShellCalls: 0 },
   "native/zero-c/src/process_exec.c": { maxLines: 225, maxStrcmpCalls: 1, maxShellCalls: 0 },
   "native/zero-c/src/process_exec.h": { maxLines: 25, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.c": { maxLines: 110, maxStrcmpCalls: 0, maxShellCalls: 0 },
@@ -1088,12 +1088,15 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
     });
   }
   if (!backendFormats.fileIo.parentCreationChecked ||
+      !backendFormats.fileIo.readSeekChecked ||
+      !backendFormats.fileIo.readSizeChecked ||
+      !backendFormats.fileIo.readShortReadChecked ||
       !backendFormats.fileIo.textWriteChecked ||
       !backendFormats.fileIo.binaryWriteChecked ||
       !backendFormats.fileIo.closeChecked ||
       !backendFormats.fileIo.diagnosticsNullSafe) {
     violations.push({
-      kind: "file-io-write-hardening",
+      kind: "file-io-hardening",
       fileIo: backendFormats.fileIo,
     });
   }
@@ -1465,6 +1468,7 @@ const repositoryGraphCheckJsonRawBody = cBlock(main, "static void append_reposit
 const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_repository_graph_compiler_path_json"));
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
 const directManifestGraphInputBody = cCodeText(cBlock(main, "static int resolve_direct_command_manifest_graph_input"));
+const readFileBody = cCodeText(cBlock(fsRaw, "char *z_read_file"));
 const writeFileBody = cCodeText(cBlock(fsRaw, "bool z_write_file"));
 const writeBinaryFileBody = cCodeText(cBlock(fsRaw, "bool z_write_binary_file"));
 const artifactGraphMirPrepRawBody = cTextWithoutComments(cBlock(programGraphMirRaw, "bool z_program_graph_prepare_artifact_mir_input"));
@@ -1523,6 +1527,12 @@ const backendFormats = {
       /if\s*\(\s*!mkdir_parents\s*\(\s*path\s*,\s*diag\s*\)\s*\)\s*return\s+false/.test(writeFileBody) &&
       /if\s*\(\s*!mkdir_parents\s*\(\s*path\s*,\s*diag\s*\)\s*\)\s*return\s+false/.test(writeBinaryFileBody) &&
       !/\bzero_mkdir\s*\(\s*copy\s*\)\s*;/.test(fsSource),
+    readSeekChecked: /fseek\s*\(\s*file\s*,\s*0\s*,\s*SEEK_END\s*\)\s*!=\s*0/.test(readFileBody) &&
+      /fseek\s*\(\s*file\s*,\s*0\s*,\s*SEEK_SET\s*\)\s*!=\s*0/.test(readFileBody) &&
+      !/\brewind\s*\(\s*file\s*\)\s*;/.test(readFileBody),
+    readSizeChecked: /size\s*<\s*0\s*\|\|\s*\(size_t\)\s*size\s*>\s*SIZE_MAX\s*-\s*1/.test(readFileBody),
+    readShortReadChecked: /fread\s*\(\s*data\s*,\s*1\s*,\s*\(size_t\)\s*size\s*,\s*file\s*\)\s*!=\s*\(size_t\)\s*size/.test(readFileBody) &&
+      /free\s*\(\s*data\s*\)/.test(readFileBody),
     textWriteChecked: /fwrite\s*\(\s*data\s*,\s*1\s*,\s*len\s*,\s*file\s*\)\s*!=\s*len/.test(writeFileBody) &&
       !/\bfputs\s*\(\s*text\s*,\s*file\s*\)\s*;/.test(writeFileBody),
     binaryWriteChecked: /fwrite\s*\(\s*data\s*,\s*1\s*,\s*len\s*,\s*file\s*\)\s*!=\s*len/.test(writeBinaryFileBody),
