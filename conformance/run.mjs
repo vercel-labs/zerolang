@@ -711,6 +711,7 @@ const passCheckFixtures = [
   "conformance/native/pass/payload-match.0",
   "conformance/native/pass/break-continue.0",
   "conformance/native/pass/nested-break-continue.0",
+  "conformance/native/pass/untyped-literal-adoption.0",
   "conformance/native/pass/for-range.0",
   "conformance/native/pass/match-payload-binding.0",
   "conformance/native/pass/choice-payload-reference-return.0",
@@ -4809,6 +4810,7 @@ assert.equal(packageGraph.selfHostRouting.cBridge.policy, "removed");
 for (const runtimeFixture of [
   ["conformance/native/pass/break-continue.0", "break-continue", { stdout: "loop tick\nloop tick\n" }],
   ["conformance/native/pass/nested-break-continue.0", "nested-break-continue", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" }],
+  ["conformance/native/pass/untyped-literal-adoption.0", "untyped-literal-adoption", { stdout: "usize literal adoption ok\nflipped literal adoption ok\nliteral arithmetic adoption ok\nu8 literal adoption ok\n" }],
   ["conformance/native/pass/for-range.0", "for-range", { stdout: "range tick\nrange tick\nrange tick\n" }],
   ["conformance/native/pass/match-payload-binding.0", "match-payload-binding", { stdout: /payload binding ok/ }],
   ["conformance/native/pass/match-fallback.0", "match-fallback", { stdout: "match fallback ok\n" }],
@@ -4848,6 +4850,31 @@ for (const runtimeFixture of [
 ]) {
   await assertDirectRuntimeOrUnsupported(...runtimeFixture);
 }
+
+await assertDirectRuntimeRequired("conformance/native/pass/untyped-literal-adoption.0", "untyped-literal-adoption-required", { stdout: "usize literal adoption ok\nflipped literal adoption ok\nliteral arithmetic adoption ok\nu8 literal adoption ok\n" });
+
+const literalAdoptionInitOverflowFixture = `${outDir}/untyped-literal-adoption-init-overflow.0`;
+const literalAdoptionInitOverflowBody = await writeImportFailureFixture(literalAdoptionInitOverflowFixture, `pub fn main(world: World) -> Void raises {
+    var small: u8 = 300
+    check world.out.write("unreachable\\n")
+}
+`);
+assert.equal(literalAdoptionInitOverflowBody.diagnostics[0].code, "TYP016");
+assert.equal(literalAdoptionInitOverflowBody.diagnostics[0].expected, "u8");
+assert.equal(literalAdoptionInitOverflowBody.diagnostics[0].actual, "300 overflows u8");
+
+const literalAdoptionCompareOverflowFixture = `${outDir}/untyped-literal-adoption-compare-overflow.0`;
+const literalAdoptionCompareOverflowBody = await writeImportFailureFixture(literalAdoptionCompareOverflowFixture, `pub fn main(world: World) -> Void raises {
+    var small: u8 = 7
+    if 300 > small {
+        check world.out.write("unreachable\\n")
+    }
+}
+`);
+assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].code, "TYP016");
+assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].expected, "u8");
+assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].actual, "300 overflows u8");
+assert.match(literalAdoptionCompareOverflowBody.diagnostics[0].help, /smaller literal or a wider integer type/);
 
 await assertDirectRuntimeRequired("conformance/native/pass/break-continue.0", "break-continue-required", { stdout: "loop tick\nloop tick\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/nested-break-continue.0", "nested-break-continue-required", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" });

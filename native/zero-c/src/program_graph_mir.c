@@ -1795,6 +1795,14 @@ static bool ir_graph_lower_binary_call(const ZProgramGraph *graph, IrProgram *ir
       ir_free_value(right);
       return false;
     }
+  } else if (ir_graph_node_is_untyped_literal(left_node) && !ir_graph_node_is_untyped_literal(right_node)) {
+    if (!ir_graph_lower_expr(graph, ir, fun, right_node, &right) ||
+        !ir_graph_lower_expr_for_type(graph, ir, fun, left_node, right ? right->type : IR_TYPE_UNSUPPORTED, IR_TYPE_UNSUPPORTED, false, ir_graph_line(left_node), ir_graph_column(left_node), &left)) {
+      ir_free_value(left);
+      ir_free_value(right);
+      return false;
+    }
+    type = right->type;
   } else {
     if (!ir_graph_lower_expr(graph, ir, fun, left_node, &left) ||
         !ir_graph_lower_expr_for_type(graph, ir, fun, right_node, left ? left->type : IR_TYPE_UNSUPPORTED, IR_TYPE_UNSUPPORTED, false, ir_graph_line(right_node), ir_graph_column(right_node), &right)) {

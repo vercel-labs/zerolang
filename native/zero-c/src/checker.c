@@ -5498,6 +5498,13 @@ static bool validate_integer_literal_for_type(const Expr *expr, const char *expe
   return true;
 }
 
+static bool expr_is_untyped_int_literal(const Expr *expr) {
+  if (!expr || expr->kind != EXPR_NUMBER || !expr->text) return false;
+  if (is_float_literal_text(expr->text)) return false;
+  ParsedIntegerLiteral parsed = {0};
+  return parse_integer_literal(expr->text, &parsed) && !parsed.suffix;
+}
+
 static bool parse_float_literal(const char *text, double *out, bool *out_of_range) {
   if (!text || !text[0]) return false;
   if (strchr(text, '_')) return false;
@@ -7855,6 +7862,11 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
       const char *right_expected = (is_int_type(left_type) || is_float_type(left_type)) ? left_type : NULL;
       if (!check_expr_expected(ctx, program, expr->right, scope, diag, right_expected)) return false;
       const char *right_type = expr_type(ctx, program, expr->right, scope);
+      if (is_int_type(right_type) && strcmp(left_type, right_type) != 0 &&
+          expr_is_untyped_int_literal(expr->left) && !expr_is_untyped_int_literal(expr->right)) {
+        if (!validate_integer_literal_for_type(expr->left, right_type, diag)) return false;
+        left_type = expr_type(ctx, program, expr->left, scope);
+      }
       if (comparison) {
         if (!types_compatible_in_scope(program, scope, left_type, right_type)) {
           return set_diag_detail(diag, 3006, "comparison operands must have matching types", expr->line, expr->column, left_type, right_type, "compare values with the same type");

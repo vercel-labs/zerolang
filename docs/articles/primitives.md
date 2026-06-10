@@ -18,7 +18,10 @@ lets humans read them.
 | `Void` | Return type for functions that produce no useful value. |
 
 Integer literals support decimal, hexadecimal, binary, octal, `_` separators,
-and optional suffixes such as `_u8` or `_usize`.
+and optional suffixes such as `_u8` or `_usize`. An unsuffixed integer literal
+adopts the type of a typed integer operand in arithmetic and comparisons when
+the value fits, so `index + 1` and `index < 10` work when `index` is `usize`.
+Out-of-range literals are rejected, so `byte > 300` fails for a `u8` operand.
 
 ```zero
 let count: u32 = 0x12c_u32

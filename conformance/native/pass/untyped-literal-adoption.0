@@ -1,0 +1,28 @@
+pub fn main(world: World) -> Void raises {
+    var i: usize = 0
+    var total: usize = 0
+    while i < 10 {
+        let offset: usize = i * 12
+        total = total + offset
+        i = i + 1
+    }
+    if total == 540 {
+        check world.out.write("usize literal adoption ok\n")
+    }
+    var j: usize = 0
+    while 10 > j {
+        j = 1 + j
+    }
+    if 10 == j {
+        check world.out.write("flipped literal adoption ok\n")
+    }
+    if 12 * i == 120 {
+        check world.out.write("literal arithmetic adoption ok\n")
+    }
+    var b: u8 = 7
+    b = b + 3
+    b = 3 + b
+    if 200 > b {
+        check world.out.write("u8 literal adoption ok\n")
+    }
+}
