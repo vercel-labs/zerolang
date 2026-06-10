@@ -876,11 +876,11 @@ function directExeEmitterForTarget(target: string) {
 
 const generatedCBytesBeforeReadOnlyCommands = json(["size", "--json", "examples/memory-package"]).body.generatedCBytes;
 
-assert.equal(zero(["--version"]).stdout, "zero 0.3.0\n");
+assert.equal(zero(["--version"]).stdout, "zero 0.3.1\n");
 
 const version = json(["--version", "--json"]).body;
 assert.equal(version.schemaVersion, 1);
-assert.equal(version.version, "0.3.0");
+assert.equal(version.version, "0.3.1");
 assert.equal(version.backend, "zero-c");
 assert.equal(typeof version.host, "string");
 assert(version.targets.includes("darwin-arm64"));
@@ -6114,7 +6114,7 @@ assert.equal(depDoc.package.name, "dep-app");
 assert.equal(depDoc.publicationGate.requiresExamplesForPublicApi, true);
 const depBuild = json(["build", "--json", "--target", "linux-musl-x64", "conformance/packages/dep-app", "--out", join(outDir, "dep-app")]).body;
 assert.equal(depBuild.packageCache.invalidationReasons.includes("dependency graph changed"), true);
-assert.equal(depBuild.compilerCaches.every((item) => item.compilerVersion === "0.3.0" && item.packageVersion === "0.1.0"), true);
+assert.equal(depBuild.compilerCaches.every((item) => item.compilerVersion === "0.3.1" && item.packageVersion === "0.1.0"), true);
 const depDevTrace = json(["dev", "--json", "--trace", "--target", "linux-musl-x64", "conformance/packages/dep-app"]).body;
 assert.equal(depDevTrace.trace.requested, true);
 assert.equal(depDevTrace.partialDiagnostics.stable, true);

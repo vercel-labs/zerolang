@@ -4680,7 +4680,7 @@ assert.equal(depGraphBody.package.resolver.deterministic, true);
 assert.match(depGraphBody.package.lockfile.path, /\.zero\/package-locks\/[0-9a-f]+\.lock\.json/);
 assert(depGraphBody.package.dependencies.some((item) => item.name === "dep-lib" && item.status === "path-resolved" && item.targetCompatible === true));
 assert(depGraphBody.package.dependencies.some((item) => item.name === "remote-tools" && item.status === "registry-reference" && item.version === "1.2.3"));
-assert.equal(depGraphBody.packageCache.cacheKeyInputs.compilerVersion, "0.3.0");
+assert.equal(depGraphBody.packageCache.cacheKeyInputs.compilerVersion, "0.3.1");
 assert.equal(depGraphBody.packageCache.cacheKeyInputs.packageVersion, "0.1.0");
 assert.match(depGraphBody.packageCache.cacheKeyInputs.dependencyGraphHash, /^[0-9a-f]{16}$/);
 const depDoc = await execFileAsync(zero, ["doc", "--json", "conformance/packages/dep-app"]);

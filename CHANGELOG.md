@@ -1,8 +1,23 @@
 # Changelog
 
-## 0.3.0
+## 0.3.1
 
 <!-- release:start -->
+
+- Hardens compiler, runtime, and toolchain I/O boundaries with checked file reads and writes, directory rejection, atomic output staging, safer executable finalization, mapped-MIR and binary graph parser validation, and regular-file checks for generated compiler/linker outputs.
+- Removes remaining shell-based native execution surfaces in favor of argv-based process helpers, safer tool resolution, guarded child setup, validated compiler overrides, and explicit metrics coverage for process and shell-call regressions.
+- Expands and hardens the real `std.http.listen` runtime with per-request spooling, private temp lifecycles, oversized request handling, socket deadlines, structured JSON error responses, and native smoke coverage for listener behavior.
+- Grows graph-backed standard-library coverage with environment, filesystem, process, time, random, crypto, URL, JSON, HTTP text/HTML, redirect, array writer, object writer, CLI argument, and HTTP JSON error helpers.
+- Improves graph row patch authoring with grouped expressions, compact casts and checks, logical OR, else-if branches, bare returns, natural call arguments, stronger invalid-row diagnostics, and refreshed bundled skill guidance.
+- Adds graph build performance instrumentation and budgets, stdlib graph merge caching, agent-scale and Rosetta challenge evals, parallel CI validation jobs, sharded native checks, deep validation profiles, and local aggregate agent checks.
+
+### Contributors
+
+- @ctate
+
+<!-- release:end -->
+
+## 0.3.0
 
 - Makes graph-first package authoring the normal workflow: repository `zero.graph` stores are the compiler input, `.0` files are human-readable projections, `zero init` owns project creation, `zero diff` supports graph review, and source projection inputs are rejected at the compiler boundary.
 - Adds binary repository graph stores and graph-backed standard-library modules, with source-free status/verify, import/export, merge, query, patch, source-map, reconciliation, metadata, drift detection, and checked-in binary graph fixtures for examples, stdlib, and conformance.
@@ -15,8 +30,6 @@
 ### Contributors
 
 - @ctate
-
-<!-- release:end -->
 
 ## 0.2.1
 
