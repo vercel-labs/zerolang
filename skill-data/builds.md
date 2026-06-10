@@ -19,14 +19,13 @@ When both manifests are present in the same package root, Zero uses
 `zero.toml`. Prefer one checked-in manifest unless testing precedence.
 
 For packages, normal check, build, run, test, size, and mem commands
-compile from the checked-in `zero.graph` store. Source projections may be
-clean, missing, stale, or in conflict; commands report that state and do not
-rewrite `.0` files. Use `zero verify-projection` when CI or review needs
-projection drift to fail, and `zero export` only when a human-readable
-projection needs regeneration. `.0` files are projection/import inputs, not
-compiler inputs; pass the package, manifest, `.graph` store, or
-`.program-graph` artifact instead. When already inside a package, omit the input
-and commands default to the current directory.
+compile from the checked-in `zero.graph` store. When the `.0` source
+projection was edited, those commands refresh the stale store from source
+first and note it on stderr; set `ZERO_STALE=fail` to make staleness an error
+(RGP008) instead. They never rewrite `.0` files. Use `zero verify-projection`
+when CI or review needs projection drift to fail, and `zero export` only when
+a human-readable projection needs regeneration. When already inside a package,
+omit the input and commands default to the current directory.
 
 ## Run
 
@@ -86,29 +85,15 @@ zero run
 zero build --out .zero/out/app
 ```
 
-Use `zero export` when humans need checked-in `.0` projections. If a human
-edits a projection, run `zero import` before the next graph-store compile.
-Normal build and run commands read binary `zero.graph` stores directly by
-default; `zero status` reports the active store format.
+Use `zero export` when humans need checked-in `.0` projections. After a human
+edits a projection, the next graph-store compile refreshes the store
+automatically, or run `zero import` to refresh it explicitly. `zero status`
+reports the active store format.
 
-Repository graph build/run/test/size/mem commands and standalone
-`.program-graph` build, run, and size artifact commands also maintain a final
-MIR cache under
-`.zero/cache/native/mir-*.zmir`. The cache is keyed by graph hash, compiler
-version, target, emit kind, and backend request. On a miss, the compiler lowers
-the graph once, writes compact final MIR, memory-maps and verifies that cache,
-borrows stable string and readonly-data storage from the mapped file, then sends
-the verified MIR to codegen. On warm repository `zero.graph` build/run hits and
-warm standalone `.program-graph` build/run hits, the mapped final MIR is the
-immediate codegen input: the compiler skips graph-to-MIR lowering and checked
-Program reconstruction. Graph-backed `zero size` derives helper and capability
-summaries from graph/IR facts instead of reconstructing checked Program facts.
-JSON outputs report graph `lowering: "mapped-final-mir"` when this path is used
-and include a `mappedFinalMir` compiler cache row with `path`, `hit`,
-`written`, `memoryMapped`, `borrowedStorage`, `byteLength`,
-`codegenImmediate`, and `programReconstructed` facts. Do not assume standalone
-artifact commands outside build/run/size use the mapped MIR path unless their
-JSON output reports it.
+Build, run, test, size, and mem commands maintain a derived final-MIR cache
+under `.zero/cache/native/mir-*.zmir`, keyed by graph hash, compiler version,
+target, emit kind, and backend request. Agents should not patch `.zmir` files;
+JSON outputs report cache reuse in a `mappedFinalMir` row.
 
 If another tool hands you a standalone `.program-graph`, normal `zero build`
 and `zero run` can validate it as an interchange artifact. Do not create a

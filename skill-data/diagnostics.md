@@ -70,6 +70,9 @@ Apply only the edit you can justify from the source and fix plan. Treat `require
 - `STD002`: unknown standard-library helper; use a documented `std.<module>.<helper>` name.
 - `STD003`: standard-library capability or contract mismatch; inspect the helper signature and required capability.
 - `TYP009`: immutable value used where a mutable destination is required; make the binding `var` or pass mutable storage.
+- `MEM003`: one function's fixed locals exceed the 128 KiB frame limit; split the buffer into smaller buffers in helper functions, or process the data in fixed-size chunks.
+- `RGP007`: ambiguous source identity during import; split the text edit into smaller passes or make the change with `zero patch`.
+- `RGP008`: stale package projection while `ZERO_STALE=fail` is set; run `zero import`, or unset the variable to let the command refresh automatically.
 
 ## Agent Triage
 

@@ -112,9 +112,11 @@ The resolver is declarative; it records deterministic lock facts under `.zero/pa
 
 Package compiler commands validate and compile from a checked-in `zero.graph`
 store, including target and package metadata, and can operate when `.0` source
-projections are missing. Commands report projection state and never rewrite
-`.0` files. Use `zero verify-projection` when drift must fail the workflow, and
-`zero export` only when a human-readable projection needs regeneration.
+projections are missing. When the projection was edited, compiler-input
+commands refresh the stale store from source and note it on stderr
+(`ZERO_STALE=fail` makes that an error); they never rewrite `.0` files. Use
+`zero verify-projection` when drift must fail the workflow, and `zero export`
+only when a human-readable projection needs regeneration.
 
 ## Inspect
 
@@ -148,9 +150,10 @@ zero patch --op 'addMain'
 
 Package-level patches write `zero.graph`; successful patch output includes the
 new graph hash and top-level symbols. Use `zero export` only to materialize
-`.0` for human review, and `zero import` after humans edit that projection. Keep
-derived graph artifacts out of the package source unless the user explicitly
-asks for them.
+`.0` for human review, and `zero import` after humans edit that projection;
+import accepts the package root or any source path inside it and updates the
+existing store in place. Keep derived graph artifacts out of the package
+source unless the user explicitly asks for them.
 
 Repository graph stores are binary by default. Use `zero init --format text` or
 `zero import --format text [package]` only when the package

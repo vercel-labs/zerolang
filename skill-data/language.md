@@ -5,10 +5,10 @@ description: Compact zerolang syntax and semantics guide for agents.
 
 # zerolang Language
 
-Use this when reading Zero projection syntax, reviewing exported `.0` files, or
-explaining code that humans may edit. For agent-authored changes, use the graph
-workflow and patch `zero.graph`; `.0` is the human-readable projection syntax,
-not the package compiler input.
+Use this when reading or writing Zero source. `.0` files are the
+human-readable projection syntax, not the package compiler input: package
+commands compile from `zero.graph` and refresh it automatically after `.0`
+edits. Read one function with `zero view --fn <name>` instead of whole files.
 
 ## Minimal Program
 
@@ -22,11 +22,8 @@ pub fn main(world: World) -> Void raises {
 
 ## Declarations
 
-Top-level declarations include:
-
 - `use std.mem` or `use helpers`
-- `const answer: i32 = 42`
-- `const inferred = 42`
+- `const answer: i32 = 42` (top-level consts work in functions and tests)
 - `type Point { x: i32, y: i32, }`
 - `enum Mode { fast, small, }`
 - `choice Result { ok: i32, err: String, }`
@@ -34,40 +31,29 @@ Top-level declarations include:
 - `pub fn main(world: World) -> Void raises { ... }`
 - `test "name" { expect true }`
 
-Use `.0` for human-readable projection files. For package checks, runs, builds,
-and tests, pass the package, manifest, `.graph` store, or derived graph artifact
-instead of treating `.0` as the normal compiler input.
-
 ## Values, Mutation, And Control Flow
 
-```zero
-fn answer() -> i32 {
-    return 40 + 2
-}
-
-pub fn main(world: World) -> Void raises {
-    let value: i32 = answer()
-    if value == 42 {
-        check world.out.write("math works\n")
-    } else {
-        check world.out.write("math broke\n")
-    }
-}
-```
-
-Use `let` by default and `var` only when a binding changes. Conditions are `Bool`; do not rely on truthy integers or strings.
+Use `let` by default and `var` only when a binding changes. Conditions are `Bool`; do not rely on truthy integers or strings. Operators are normal infix expressions: `a + b`, `a % b`, `a == b`, `a < b`, `a && b`. Comments start with `//`.
 
 ```zero
-fn count(n: usize) -> usize {
-    var i: usize = 0
+fn sum_odds(n: i32) -> i32 {
+    var i: i32 = 0
+    var total: i32 = 0
     while i < n {
         i = i + 1
+        if i % 2 == 0 {
+            continue
+        }
+        if total > 100 {
+            break
+        }
+        total = total + i
     }
-    return i
+    return total
 }
 ```
 
-Operators are normal infix expressions: `a + b`, `a - b`, `a * b`, `a % b`, `a == b`, `a < b`, `a && b`. Use parentheses for grouping. Comments start with `//`.
+`break` exits the nearest loop and `continue` skips to its next iteration.
 
 ## Types
 
@@ -80,7 +66,7 @@ u8 u16 u32 u64 usize
 f32 f64
 ```
 
-Integer literals are checked against context. Use suffixes such as `_u8` or `_usize` when needed. Use `as` for intentional integer casts.
+Bare integer literals adopt the other operand's integer type when in range, so `i * 12` works for `i: usize`. Use suffixes such as `_u8` or `_usize` only when no operand gives context, and `as` for intentional casts.
 
 Core capability, resource, and helper types recognized by the compiler:
 
@@ -100,31 +86,7 @@ ref<T> mutref<T> owned<T>
 ## Shapes, Enums, And Choices
 
 ```zero
-type Point {
-    x: i32,
-    y: i32,
-}
-
-enum Mode {
-    fast,
-    small,
-}
-
-choice Result {
-    ok: i32,
-    err: String,
-}
-```
-
-Construct a shape with field names:
-
-```zero
 let point: Point = Point { x: 1, y: 2 }
-```
-
-Choice payload cases use the choice name:
-
-```zero
 let result: Result = Result.ok(42)
 ```
 
@@ -164,23 +126,18 @@ pub fn main(world: World) -> Void raises {
 ## Borrowing And Memory Views
 
 - `ref<T>` is a read-only borrow, passed with `&value`.
-- `mutref<T>` is a mutable borrow, passed with `&mut value`.
-- `[N]T` is a fixed array.
-- `Span<T>` is a read-only contiguous view.
-- `MutSpan<T>` is a writable contiguous view.
+- `mutref<T>` is a mutable borrow, passed with `&mut value`. Shape parameters such as `mutref<Point>` work, including field mutation and nested calls.
+- `[N]T` is a fixed array; `Span<T>` is a read-only view; `MutSpan<T>` is a writable view.
 - Returning a span backed by local fixed-array storage is rejected; return an owned value or keep the view local.
-- `Maybe<T>` represents absence; read `.value` only inside a visible `.has` guard, or use `check` / `rescue`.
+- `Maybe<T>` represents absence; read `.value` only inside a visible `.has` guard, or use `check` / `rescue`. `var name: Maybe<String> = null` declares an absent local to assign or return later.
 - `owned<T>` marks explicit resource ownership.
+- One function's fixed locals are limited to 128 KiB (MEM003). Split large buffers into smaller buffers in helper functions, or process data in fixed-size chunks.
 
 ```zero
 fn bump(point: mutref<Point>) -> Void {
     point.x = point.x + 1
 }
-```
 
-Arrays and views:
-
-```zero
 pub fn main() -> Void {
     var storage: [4]u8 = [1, 2, 3, 4]
     let view: MutSpan<u8> = storage
@@ -188,6 +145,8 @@ pub fn main() -> Void {
     storage[0] = 9
 }
 ```
+
+Array and span indexing is bounds-checked at runtime; an out-of-range index traps with a signal exit and no output, so exercise boundary inputs before declaring a change done.
 
 ## Generics
 
@@ -199,11 +158,7 @@ type Box<T: Type> {
 fn id<T: Type>(value: T) -> T {
     return value
 }
-```
 
-Static generic values are declared with `static`:
-
-```zero
 type FixedVec<T: Type, static N: usize> {
     len: usize,
     items: [N]T,
@@ -212,7 +167,7 @@ type FixedVec<T: Type, static N: usize> {
 
 ## Standard Library Call Shapes
 
-Common target-neutral helpers:
+Load `zero skills get stdlib` for the full signature catalog. Target-neutral helpers follow these shapes:
 
 ```zero
 pub fn main() -> Void {
@@ -220,45 +175,22 @@ pub fn main() -> Void {
     let n: usize = std.mem.len(bytes)
     let same: Bool = std.mem.eql("zero", "zero")
 
-    var dst: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
-    let writable: MutSpan<u8> = dst
-    let copied: usize = std.mem.copy(writable, bytes)
-
     let parsed: Maybe<u16> = std.parse.parseU16("8080")
     if parsed.has {
         expect parsed.value == 8080
     }
 
-    let checksum: u32 = std.codec.crc32("zero")
-    let crc: u32 = std.codec.crc32Bytes(bytes)
-    var decoded: [4]u8 = [0_u8; 4]
-    let base64: Maybe<Span<u8>> = std.codec.base64Decode(decoded, "emVybw==")
-    let hash: u32 = std.crypto.hash32(bytes)
-    let hmac: u32 = std.crypto.hmac32(std.mem.span("key"), std.mem.span("message"))
-
-    var reversed: [4]u8 = [0, 0, 0, 0]
-    let reversed_text: Maybe<Span<u8>> = std.str.reverse(reversed, "zero")
-    if reversed_text.has {
-        expect std.mem.eql(reversed_text.value, "orez")
-    }
-
     var rng: RandSource = std.rand.seed(7_u32)
     let random: u32 = std.rand.nextU32(&mut rng)
-    let bit: Bool = std.rand.nextBool(&mut rng)
-
-    let duration: Duration = std.time.add(std.time.ms(250), std.time.seconds(1))
     let count: Maybe<u32> = std.json.u32("{\"count\":42}", "count")
-    let host: Maybe<Span<u8>> = std.url.host("https://example.com/path")
-
-    expect random == 1025555898_u32 && bit && std.time.asMsFloor(duration) == 1250 && base64.has && count.has && host.has
+    expect same && random == 1025555898_u32 && count.has
 }
 ```
 
-Hosted helpers are capability-gated by target:
+Hosted helpers are capability-gated by target. There is no stdin; hosted programs take input from `std.args` and files through `std.fs`:
 
 ```zero
 pub fn main(world: World) -> Void raises {
-    let count: usize = std.args.len()
     let first: Maybe<String> = std.args.get(1)
     if first.has {
         check world.out.write(first.value)
@@ -266,84 +198,15 @@ pub fn main(world: World) -> Void raises {
 
     var path_storage: [16]u8 = [0; 16]
     let path: String = check std.path.join(path_storage, ".zero", "x")
-
     let fs: Fs = std.fs.host()
     var file: owned<File> = check std.fs.createOrRaise(fs, path)
     check std.fs.writeAllOrRaise(&mut file, std.mem.span("hello\n"))
-
-    let status: ProcStatus = std.proc.spawn("zero-noop")
-    if std.proc.exitCode(status) == 0 {
-        check world.out.write("proc ok\n")
-    }
 }
 ```
 
-## Compact Examples
-
-Use these as small pattern anchors when generating code:
+If unsure, run `zero check` instead of inventing syntax, and pair behavior changes with a `test` block:
 
 ```zero
-type Point {
-    x: i32,
-    y: i32,
-}
-
-fn one() -> i32 {
-    return 1
-}
-
-fn two() -> i32 {
-    return 1 + 1
-}
-
-fn sub(a: i32, b: i32) -> i32 {
-    return a - b
-}
-
-fn even(n: i32) -> Bool {
-    return n % 2 == 0
-}
-
-fn max(a: i32, b: i32) -> i32 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-fn sum_to(n: i32) -> i32 {
-    var i: i32 = 0
-    var total: i32 = 0
-    while i <= n {
-        total = total + i
-        i = i + 1
-    }
-    return total
-}
-
-fn fib(n: u32) -> u32 {
-    var i: u32 = 0
-    var a: u32 = 0
-    var b: u32 = 1
-    while i < n {
-        let next: u32 = a + b
-        a = b
-        b = next
-        i = i + 1
-    }
-    return a
-}
-
-fn factorial(n: u32) -> u32 {
-    var i: u32 = 2
-    var total: u32 = 1
-    while i <= n {
-        total = total * i
-        i = i + 1
-    }
-    return total
-}
-
 fn point_sum(point: Point) -> i32 {
     return point.x + point.y
 }
@@ -353,5 +216,3 @@ test "shape" {
     expect point_sum(point) == 42
 }
 ```
-
-If unsure, run `zero check <file>` instead of inventing syntax. Add `--json` only when you need the exact diagnostic span or structured fields.
