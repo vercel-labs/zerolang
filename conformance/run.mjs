@@ -721,6 +721,7 @@ const passCheckFixtures = [
   "conformance/native/pass/choice-match-payload-return-origin.0",
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/native/pass/null-maybe.0",
+  "conformance/native/pass/maybe-local-null-init-return.0",
   "conformance/native/pass/meta-typed-target-type.0",
   "conformance/native/pass/std-args.0",
   "conformance/native/pass/std-env.0",
@@ -4824,6 +4825,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/match-fallback.0", "match-fallback", { stdout: "match fallback ok\n" }],
   ["conformance/native/pass/match-choice-fallback.0", "match-choice-fallback", { stdout: "choice fallback ok\n" }],
   ["conformance/native/pass/null-maybe.0", "null-maybe", { stdout: /null maybe ok/ }],
+  ["conformance/native/pass/maybe-local-null-init-return.0", "maybe-local-null-init-return", { stdout: "maybe local found 42\nmaybe local none\nmaybe local sum 5\n" }],
   ["conformance/native/pass/std-args.0", "std-args", { stdout: "alpha\n", args: ["alpha", "beta"] }],
   ["conformance/native/pass/std-env.0", "std-env", { stdout: "env ok\n", env: { ZERO_CONFORMANCE_ENV: "agent-env" } }],
   ["conformance/native/pass/std-hosted-cli.0", "std-hosted-cli", { stdout: "std hosted cli ok\n", args: ["run", "7", "--json", "--name", "agent", "--count", "3"], env: { ZERO_CONFORMANCE_MODE: "test", ZERO_CONFORMANCE_VERBOSE: "true", ZERO_CONFORMANCE_LIMIT: "9" } }],
@@ -4887,6 +4889,7 @@ assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].actual, "300 over
 assert.match(literalAdoptionCompareOverflowBody.diagnostics[0].help, /smaller literal or a wider integer type/);
 
 await assertDirectRuntimeRequired("conformance/native/pass/break-continue.0", "break-continue-required", { stdout: "loop tick\nloop tick\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/maybe-local-null-init-return.0", "maybe-local-null-init-return-required", { stdout: "maybe local found 42\nmaybe local none\nmaybe local sum 5\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/nested-break-continue.0", "nested-break-continue-required", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/mutref-shape-param.0", "mutref-shape-param-required", { stdout: "mutref x ok\nmutref y ok\nref sum ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/mutref-shape-param-nested.0", "mutref-shape-param-nested-required", { stdout: "nested count ok\nnested total ok\nnested flag ok\nnested copy ok\nnested bytes ok\ngeneric mutref ok\n" });

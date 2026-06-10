@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/main.c": { maxLines: 14896, maxStrcmpCalls: 440, maxShellCalls: 0 },
-  "native/zero-c/src/ir.c": { maxLines: 5568, maxStrcmpCalls: 273 },
+  "native/zero-c/src/ir.c": { maxLines: 5569, maxStrcmpCalls: 273 },
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
   "native/zero-c/src/manifest_toml.c": { maxLines: 430, maxStrcmpCalls: 4 },
@@ -143,7 +143,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.c": { maxLines: 240, maxStrcmpCalls: 8 },
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 4923, maxStrcmpCalls: 5 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 4924, maxStrcmpCalls: 5 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -223,7 +223,7 @@ const fileBudgets: Record<string, FileBudget> = {
 };
 
 const knownLargeFunctionLimits = new Map([
-  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1641],
+  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1642],
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1016],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 386],

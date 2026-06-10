@@ -1,0 +1,35 @@
+fn pickUsize(input: String, flag: Bool) -> Maybe<usize> {
+    var result: Maybe<usize> = null
+    if flag {
+        result = std.parse.parseUsize(input)
+    }
+    return result
+}
+
+fn pickU32(flag: Bool) -> Maybe<u32> {
+    var result: Maybe<u32> = null
+    if flag {
+        result = std.math.checkedAddU32(2, 3)
+    }
+    let copied: Maybe<u32> = result
+    return copied
+}
+
+pub fn main(world: World) -> Void raises {
+    let found: Maybe<usize> = pickUsize("42", true)
+    if found.has {
+        if found.value == 42 {
+            check world.out.write("maybe local found 42\n")
+        }
+    }
+    let missed: Maybe<usize> = pickUsize("42", false)
+    if !missed.has {
+        check world.out.write("maybe local none\n")
+    }
+    let summed: Maybe<u32> = pickU32(true)
+    if summed.has {
+        if summed.value == 5 {
+            check world.out.write("maybe local sum 5\n")
+        }
+    }
+}

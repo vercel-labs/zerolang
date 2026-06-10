@@ -2798,6 +2798,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       if (local->type == IR_TYPE_BYTE_VIEW) return ir_lower_byte_view(program, ir, fun, expr, out);
       IrValue *value = ir_new_value(ir, IR_VALUE_LOCAL, local->type, expr->line, expr->column);
       value->local_index = local->index;
+      value->element_type = local->element_type;
       *out = value;
       return true;
     }

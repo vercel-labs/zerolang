@@ -1672,6 +1672,7 @@ static bool ir_graph_lower_identifier(const ZProgramGraphNode *expr, IrProgram *
   IrValue *value = ir_new_value(ir, IR_VALUE_LOCAL, local->type, ir_graph_line(expr), ir_graph_column(expr));
   value->local_index = local->index;
   if (local->type == IR_TYPE_BYTE_VIEW) value->element_type = local->element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : local->element_type;
+  else value->element_type = local->element_type;
   *out = value;
   return true;
 }
