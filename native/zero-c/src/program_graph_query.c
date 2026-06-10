@@ -193,7 +193,9 @@ static void query_append_matches_json(ZBuf *buf, const ZProgramGraph *graph, con
   zbuf_append_char(buf, ']');
 }
 
-static void query_append_edge_ref_json(ZBuf *buf, const ZProgramGraph *graph, const ZProgramGraphEdge *edge, bool parent_edge) {
+static void query_append_child_edges_json(ZBuf *buf, const ZProgramGraph *graph, const char *node_id, size_t depth);
+
+static void query_append_edge_ref_json(ZBuf *buf, const ZProgramGraph *graph, const ZProgramGraphEdge *edge, bool parent_edge, size_t depth) {
   zbuf_append(buf, "{\"kind\":");
   query_append_json_string(buf, edge ? edge->kind : "");
   zbuf_appendf(buf, ",\"order\":%zu,\"target\":", edge ? edge->order : 0);
@@ -207,10 +209,27 @@ static void query_append_edge_ref_json(ZBuf *buf, const ZProgramGraph *graph, co
   zbuf_append(buf, ",\"node\":");
   if (other) query_append_match_json(buf, other);
   else zbuf_append(buf, "null");
+  if (!parent_edge && depth > 1 && other) {
+    zbuf_append(buf, ",\"children\":");
+    query_append_child_edges_json(buf, graph, other->id, depth - 1);
+  }
   zbuf_append_char(buf, '}');
 }
 
-static void query_append_node_neighborhood_json(ZBuf *buf, const ZProgramGraph *graph, const char *node_id) {
+static void query_append_child_edges_json(ZBuf *buf, const ZProgramGraph *graph, const char *node_id, size_t depth) {
+  zbuf_append_char(buf, '[');
+  bool first = true;
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (!z_program_graph_query_text_eq(edge->from, node_id)) continue;
+    if (!first) zbuf_append(buf, ", ");
+    first = false;
+    query_append_edge_ref_json(buf, graph, edge, false, depth);
+  }
+  zbuf_append_char(buf, ']');
+}
+
+static void query_append_node_neighborhood_json(ZBuf *buf, const ZProgramGraph *graph, const char *node_id, size_t depth) {
   const ZProgramGraphNode *node = z_program_graph_query_node_by_id(graph, node_id);
   if (!node) {
     zbuf_append(buf, "null");
@@ -218,6 +237,14 @@ static void query_append_node_neighborhood_json(ZBuf *buf, const ZProgramGraph *
   }
   zbuf_append(buf, "{\"selected\":");
   query_append_match_json(buf, node);
+  zbuf_append(buf, ",\"span\":");
+  if (node->path && node->path[0]) {
+    zbuf_append(buf, "{\"path\":");
+    query_append_json_string(buf, node->path);
+    zbuf_appendf(buf, ",\"line\":%d,\"column\":%d}", node->line, node->column);
+  } else {
+    zbuf_append(buf, "null");
+  }
   zbuf_append(buf, ",\"parents\":[");
   bool first = true;
   for (size_t i = 0; graph && i < graph->edge_len; i++) {
@@ -225,21 +252,64 @@ static void query_append_node_neighborhood_json(ZBuf *buf, const ZProgramGraph *
     if (edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE || !z_program_graph_query_text_eq(edge->to, node_id)) continue;
     if (!first) zbuf_append(buf, ", ");
     first = false;
-    query_append_edge_ref_json(buf, graph, edge, true);
+    query_append_edge_ref_json(buf, graph, edge, true, 1);
   }
-  zbuf_append(buf, "],\"children\":[");
-  first = true;
-  for (size_t i = 0; graph && i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (!z_program_graph_query_text_eq(edge->from, node_id)) continue;
-    if (!first) zbuf_append(buf, ", ");
-    first = false;
-    query_append_edge_ref_json(buf, graph, edge, false);
-  }
-  zbuf_append(buf, "]}");
+  zbuf_append(buf, "],\"children\":");
+  query_append_child_edges_json(buf, graph, node_id, depth ? depth : 1);
+  zbuf_append_char(buf, '}');
 }
 
-void z_program_graph_append_query_json(ZBuf *buf, const ZProgramGraph *graph, const char *input, const char *artifact, const char *input_kind, const char *query_function, const char *query_find, const char *query_refs, const char *query_calls, const char *query_node) {
+static void query_append_scoped_node_json(ZBuf *buf, const ZProgramGraph *graph, const char *input, const char *artifact, const char *input_kind, const ZProgramGraphQueryRequest *request) {
+  size_t depth = request->node_depth ? request->node_depth : 1;
+  const ZProgramGraphNode *node = z_program_graph_query_node_by_id(graph, request->node);
+  zbuf_append(buf, "{\n  \"schemaVersion\": 1,\n  \"ok\": true,\n  \"input\": ");
+  query_append_json_string(buf, input);
+  zbuf_append(buf, ",\n  \"artifact\": ");
+  query_append_json_string(buf, artifact);
+  zbuf_append(buf, ",\n  \"inputKind\": ");
+  query_append_json_string(buf, input_kind);
+  zbuf_append(buf, ",\n  \"moduleIdentity\": ");
+  query_append_json_string(buf, graph ? graph->module_identity : "");
+  zbuf_append(buf, ",\n  \"graphHash\": ");
+  query_append_json_string(buf, graph ? graph->graph_hash : "");
+  zbuf_append(buf, ",\n  \"query\": {\"node\": ");
+  query_append_json_string(buf, request->node);
+  zbuf_appendf(buf, ", \"depth\": %zu, \"scope\": \"node\"}", depth);
+  zbuf_append(buf, ",\n  \"node\": ");
+  query_append_node_neighborhood_json(buf, graph, request->node, depth);
+  zbuf_append(buf, ",\n  \"hint\": ");
+  if (node) {
+    query_append_json_string(buf, "scoped to one node; use --depth <n> for a deeper subtree, --full for the whole-module report, or zero view --fn <name> for one function's source");
+  } else {
+    query_append_json_string(buf, "node id not found; run zero query --find <text> to locate node ids, or zero view --fn <name> for one function's source");
+  }
+  zbuf_append(buf, "\n}\n");
+}
+
+void z_program_graph_query_request_init(ZProgramGraphQueryRequest *request) {
+  if (!request) return;
+  *request = (ZProgramGraphQueryRequest){0};
+  request->node_depth = 1;
+}
+
+static void query_append_bare_argument_json(ZBuf *buf, const char *bare_argument) {
+  zbuf_append(buf, ",\n  \"argument\": {\"value\": ");
+  query_append_json_string(buf, bare_argument);
+  zbuf_append(buf, ", \"resolvedAs\": \"find\", \"hint\": \"argument is not an existing path; treated as --find. For one function's source run zero view --fn <name>\"}");
+}
+
+void z_program_graph_append_query_json(ZBuf *buf, const ZProgramGraph *graph, const char *input, const char *artifact, const char *input_kind, const ZProgramGraphQueryRequest *request) {
+  static const ZProgramGraphQueryRequest empty_request = {0};
+  if (!request) request = &empty_request;
+  const char *query_function = request->function;
+  const char *query_find = request->find;
+  const char *query_refs = request->refs;
+  const char *query_calls = request->calls;
+  const char *query_node = request->node;
+  if (query_node && !request->full_module) {
+    query_append_scoped_node_json(buf, graph, input, artifact, input_kind, request);
+    return;
+  }
   ZProgramGraphResolutionFacts resolution;
   z_program_graph_resolution_facts_init(&resolution);
   bool resolved = z_program_graph_collect_resolution_facts(graph, &resolution);
@@ -265,6 +335,7 @@ void z_program_graph_append_query_json(ZBuf *buf, const ZProgramGraph *graph, co
   zbuf_append(buf, ", \"node\": ");
   query_append_json_string_or_null(buf, query_node);
   zbuf_append(buf, "}");
+  if (request->bare_argument) query_append_bare_argument_json(buf, request->bare_argument);
   zbuf_appendf(buf, ",\n  \"resolution\": {\"ok\": %s, \"references\": %zu}", resolved ? "true" : "false", resolution.reference_len);
   zbuf_append(buf, ",\n  \"modules\": [");
   bool first_module = true;
@@ -316,7 +387,7 @@ void z_program_graph_append_query_json(ZBuf *buf, const ZProgramGraph *graph, co
   zbuf_append(buf, ",\n  \"calls\": ");
   z_program_graph_query_append_reference_list_json(buf, graph, &resolution, query_calls, true, query_calls ? query_function : NULL);
   zbuf_append(buf, ",\n  \"node\": ");
-  query_append_node_neighborhood_json(buf, graph, query_node);
+  query_append_node_neighborhood_json(buf, graph, query_node, request->node_depth ? request->node_depth : 1);
   zbuf_append(buf, ",\n  \"patchOperations\": [");
   const char *const *ops = z_program_graph_patch_operation_examples();
   for (size_t i = 0; ops[i]; i++) {

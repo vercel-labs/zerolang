@@ -90,6 +90,9 @@ typedef struct {
   const char *query_node;
   const char *query_refs;
   const char *query_calls;
+  const char *query_depth;
+  const char *query_bare_argument;
+  bool query_full;
   const char **patch_ops;
   size_t patch_op_len;
   size_t patch_op_cap;
@@ -4112,9 +4115,25 @@ static bool parse_graph_query_option(int argc, char **argv, int *index, Command 
   const bool node_selector = cli_arg_is(arg, "--node");
   const bool refs_selector = cli_arg_is(arg, "--refs");
   const bool calls_selector = cli_arg_is(arg, "--calls");
-  if (!function_selector && !find_selector && !node_selector && !refs_selector && !calls_selector) return false;
-  if (!command_is_program_graph_command(command) || !cli_arg_is(command->kind, "query")) {
+  const bool depth_selector = cli_arg_is(arg, "--depth");
+  const bool full_selector = cli_arg_is(arg, "--full");
+  if (!function_selector && !find_selector && !node_selector && !refs_selector && !calls_selector && !depth_selector && !full_selector) return false;
+  const bool query_command = command_is_program_graph_command(command) && cli_arg_is(command->kind, "query");
+  const bool view_command = command_is_program_graph_command(command) && cli_arg_is(command->kind, "view");
+  if (function_selector && view_command) {
+    if (*index + 1 >= argc) {
+      command->unknown_flag = arg;
+      return true;
+    }
+    command->query_function = argv[++(*index)];
+    return true;
+  }
+  if (!query_command) {
     command->unknown_flag = arg;
+    return true;
+  }
+  if (full_selector) {
+    command->query_full = true;
     return true;
   }
   if (*index + 1 >= argc) {
@@ -4125,6 +4144,7 @@ static bool parse_graph_query_option(int argc, char **argv, int *index, Command 
   else if (node_selector) command->query_node = argv[++(*index)];
   else if (refs_selector) command->query_refs = argv[++(*index)];
   else if (calls_selector) command->query_calls = argv[++(*index)];
+  else if (depth_selector) command->query_depth = argv[++(*index)];
   else command->query_find = argv[++(*index)];
   return true;
 }
@@ -12437,8 +12457,40 @@ static const char *graph_input_kind_name(GraphInputKind kind) {
   return "unknown";
 }
 
+static bool parse_graph_query_depth(const Command *command, ZProgramGraphQueryRequest *request, ZDiag *diag) {
+  if (!command->query_depth) return true;
+  char *end = NULL;
+  unsigned long value = strtoul(command->query_depth, &end, 10);
+  if (command->query_depth[0] && end && !*end && value >= 1 && value <= 16) {
+    request->node_depth = (size_t)value;
+    return true;
+  }
+  diag->code = 2002;
+  diag->line = 1;
+  diag->column = 1;
+  diag->length = 1;
+  snprintf(diag->message, sizeof(diag->message), "invalid query depth '%s'", command->query_depth);
+  snprintf(diag->expected, sizeof(diag->expected), "--depth <1-16>");
+  snprintf(diag->actual, sizeof(diag->actual), "--depth %s", command->query_depth);
+  snprintf(diag->help, sizeof(diag->help), "use --depth 1 for immediate children of --node <id>, larger values for deeper subtrees");
+  return false;
+}
+
 static int run_graph_query_command(const Command *command, const ZTargetInfo *target, ZDiag *diag) {
   if (command->out) return reject_graph_unsupported_out(command, diag);
+  ZProgramGraphQueryRequest request;
+  z_program_graph_query_request_init(&request);
+  request.function = command->query_function;
+  request.find = command->query_find;
+  request.refs = command->query_refs;
+  request.calls = command->query_calls;
+  request.node = command->query_node;
+  request.full_module = command->query_full;
+  request.bare_argument = command->query_bare_argument;
+  if (!parse_graph_query_depth(command, &request, diag)) {
+    print_command_diag(command, command->input, diag);
+    return 1;
+  }
   SourceInput input = {0};
   Program program = {0};
   ZProgramGraph graph = {0};
@@ -12451,12 +12503,12 @@ static int run_graph_query_command(const Command *command, const ZTargetInfo *ta
     ZBuf json;
     zbuf_init(&json);
     const char *input_name = command->repository_graph_source_input ? command->repository_graph_source_input : command->input;
-    z_program_graph_append_query_json(&json, &graph, input_name, command->input, graph_input_kind_name(input_kind), command->query_function, command->query_find, command->query_refs, command->query_calls, command->query_node);
+    z_program_graph_append_query_json(&json, &graph, input_name, command->input, graph_input_kind_name(input_kind), &request);
     fputs(json.data, stdout);
     zbuf_free(&json);
   } else {
     const char *input_name = command->repository_graph_source_input ? command->repository_graph_source_input : command->input;
-    z_program_graph_print_query_text(&graph, input_name, command->input, graph_input_kind_name(input_kind), command->query_function, command->query_find, command->query_refs, command->query_calls, command->query_node);
+    z_program_graph_print_query_text(&graph, input_name, command->input, graph_input_kind_name(input_kind), &request);
   }
   z_free_program(&program);
   z_free_source(&input);

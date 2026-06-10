@@ -39,12 +39,28 @@ static void query_print_edge_line(const ZProgramGraph *graph, const ZProgramGrap
   printf("\n");
 }
 
-static void query_print_node_neighborhood(const ZProgramGraph *graph, const char *node_id) {
+static void query_print_child_edges(const ZProgramGraph *graph, const char *node_id, size_t depth, size_t indent_level) {
+  size_t child_count = 0;
+  for (size_t i = 0; graph && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (!z_program_graph_query_text_eq(edge->from, node_id)) continue;
+    for (size_t pad = 0; pad < indent_level; pad++) printf("  ");
+    query_print_edge_line(graph, edge, false);
+    child_count++;
+    if (depth > 1 && edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) {
+      query_print_child_edges(graph, edge->to, depth - 1, indent_level + 1);
+    }
+  }
+  if (child_count == 0 && indent_level == 0) printf("  (none)\n");
+}
+
+static void query_print_node_neighborhood(const ZProgramGraph *graph, const char *node_id, size_t depth) {
   if (!node_id || !node_id[0]) return;
   const ZProgramGraphNode *node = z_program_graph_query_node_by_id(graph, node_id);
   printf("\nnode:\n");
   if (!node) {
     printf("  (not found) %s\n", node_id);
+    printf("  tip: run zero query --find <text> to locate node ids, or zero view --fn <name> for one function's source\n");
     return;
   }
   query_print_match_line(node);
@@ -58,17 +74,34 @@ static void query_print_node_neighborhood(const ZProgramGraph *graph, const char
   }
   if (parent_count == 0) printf("  (none)\n");
   printf("children:\n");
-  size_t child_count = 0;
-  for (size_t i = 0; graph && i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (!z_program_graph_query_text_eq(edge->from, node_id)) continue;
-    query_print_edge_line(graph, edge, false);
-    child_count++;
-  }
-  if (child_count == 0) printf("  (none)\n");
+  query_print_child_edges(graph, node_id, depth ? depth : 1, 0);
 }
 
-void z_program_graph_print_query_text(const ZProgramGraph *graph, const char *input, const char *artifact, const char *input_kind, const char *query_function, const char *query_find, const char *query_refs, const char *query_calls, const char *query_node) {
+static void query_print_scoped_node_text(const ZProgramGraph *graph, const char *input, const char *artifact, const char *input_kind, const ZProgramGraphQueryRequest *request) {
+  size_t depth = request->node_depth ? request->node_depth : 1;
+  printf("program graph query\n");
+  printf("input: %s\n", input ? input : "");
+  printf("source: %s\n", input_kind ? input_kind : "");
+  if (artifact && input && !z_program_graph_query_text_eq(artifact, input)) printf("artifact: %s\n", artifact);
+  printf("module: %s\n", graph && graph->module_identity ? graph->module_identity : "");
+  printf("hash: %s\n", graph && graph->graph_hash ? graph->graph_hash : "");
+  printf("query: node:%s depth:%zu\n", request->node ? request->node : "", depth);
+  query_print_node_neighborhood(graph, request->node, depth);
+  printf("\ntip: use --depth <n> for a deeper subtree, --full for the whole-module report, or zero view --fn <name> for one function's source\n");
+}
+
+void z_program_graph_print_query_text(const ZProgramGraph *graph, const char *input, const char *artifact, const char *input_kind, const ZProgramGraphQueryRequest *request) {
+  static const ZProgramGraphQueryRequest empty_request = {0};
+  if (!request) request = &empty_request;
+  const char *query_function = request->function;
+  const char *query_find = request->find;
+  const char *query_refs = request->refs;
+  const char *query_calls = request->calls;
+  const char *query_node = request->node;
+  if (query_node && !request->full_module) {
+    query_print_scoped_node_text(graph, input, artifact, input_kind, request);
+    return;
+  }
   ZProgramGraphResolutionFacts resolution;
   z_program_graph_resolution_facts_init(&resolution);
   bool resolved = z_program_graph_collect_resolution_facts(graph, &resolution);
@@ -88,6 +121,10 @@ void z_program_graph_print_query_text(const ZProgramGraph *graph, const char *in
     if (query_calls) printf(" calls:%s", query_calls);
     if (query_node) printf(" node:%s", query_node);
     printf("\n\n");
+  }
+  if (request->bare_argument) {
+    printf("argument: %s is not an existing path; treated as --find %s\n", request->bare_argument, request->bare_argument);
+    printf("tip: zero view --fn <name> prints one function's source\n\n");
   }
   printf("modules:\n");
   for (size_t i = 0; graph && i < graph->node_len; i++) {
@@ -134,7 +171,7 @@ void z_program_graph_print_query_text(const ZProgramGraph *graph, const char *in
   }
   z_program_graph_query_print_reference_section_text(graph, &resolution, "calls", query_calls, true, query_function);
   z_program_graph_query_print_reference_section_text(graph, &resolution, "references", query_refs, false, query_function);
-  query_print_node_neighborhood(graph, query_node);
+  query_print_node_neighborhood(graph, query_node, request->node_depth ? request->node_depth : 1);
   printf("\npatch help:\n");
   printf("  zero patch --op help\n");
   printf("common checked edits:\n");
