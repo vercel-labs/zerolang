@@ -345,6 +345,11 @@ static bool machx64_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const 
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) return machx64_emit_value(text, fun, view, ctx, diag);
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
+    if (local->is_record_ref) {
+      machx64_emit_load_local_slot_rax(text, fun, view->array_index, 0);
+      if (view->field_offset > 0) z_x64_emit_add_rax_u32(text, view->field_offset, true);
+      return true;
+    }
     if (!((local->is_array && view->field_offset == 0) || local->is_record)) return machx64_diag_at(diag, "direct x86_64 Mach-O byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
     z_x64_emit_rbp_disp_reg(text, 0x8d, 0, machx64_local_slot_offset(fun, view->array_index, view->field_offset), true);
     return true;
@@ -801,8 +806,21 @@ static bool machx64_emit_index_load_value(ZBuf *text, const IrFunction *fun, con
 
 static bool machx64_emit_field_load_value(ZBuf *text, const IrFunction *fun, const IrValue *value, ZDiag *diag) {
   if (value->local_index >= fun->local_len) return machx64_diag_at(diag, "direct x86_64 Mach-O field load record is out of range", value->line, value->column, "invalid record local");
+  if (fun->locals[value->local_index].is_record_ref) {
+    machx64_emit_load_local_slot_rax(text, fun, value->local_index, 0);
+    if (value->field_offset > 0) z_x64_emit_add_rax_u32(text, value->field_offset, true);
+    machx64_emit_load_ptr_element(text, 0, 0, value->type);
+    return true;
+  }
   if (!fun->locals[value->local_index].is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O field load requires record local", value->line, value->column, "non-record local");
   machx64_emit_load_field_eax(text, fun, value->local_index, value->field_offset, value->type);
+  return true;
+}
+
+static bool machx64_emit_record_addr_value(ZBuf *text, const IrFunction *fun, const IrValue *value, ZDiag *diag) {
+  if (value->local_index >= fun->local_len) return machx64_diag_at(diag, "direct x86_64 Mach-O record address local is out of range", value->line, value->column, "invalid record local");
+  if (!fun->locals[value->local_index].is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O record address requires record local", value->line, value->column, "non-record local");
+  z_x64_emit_rbp_disp_reg(text, 0x8d, 0, machx64_local_offset(fun, value->local_index), true);
   return true;
 }
 
@@ -1301,6 +1319,7 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: return machx64_emit_byte_view_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_INDEX_LOAD: return machx64_emit_index_load_value(text, fun, value, ctx, diag);
     case IR_VALUE_FIELD_LOAD: return machx64_emit_field_load_value(text, fun, value, diag);
+    case IR_VALUE_RECORD_ADDR: return machx64_emit_record_addr_value(text, fun, value, diag);
     default: {
       char actual[64];
       snprintf(actual, sizeof(actual), "unsupported value kind %d", (int)value->kind);
@@ -1441,6 +1460,15 @@ static bool machx64_emit_local_set_instr(ZBuf *text, const IrFunction *fun, cons
 
 static bool machx64_emit_field_store_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, MachOEmitContext *ctx, ZDiag *diag) {
   if (instr->local_index >= fun->local_len) return machx64_diag_at(diag, "direct x86_64 Mach-O field store record is out of range", instr->line, instr->column, "invalid record local");
+  if (fun->locals[instr->local_index].is_record_ref) {
+    machx64_emit_load_local_slot_rax(text, fun, instr->local_index, 0);
+    if (instr->field_offset > 0) z_x64_emit_add_rax_u32(text, instr->field_offset, true);
+    z_x64_emit_push_rax(text);
+    if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
+    z_x64_emit_pop_reg64(text, 1);
+    machx64_emit_store_ptr_element(text, 1, 0, instr->value ? instr->value->type : IR_TYPE_I32);
+    return true;
+  }
   if (!fun->locals[instr->local_index].is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
   if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
   machx64_emit_store_field_from_eax(text, fun, instr->local_index, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32);

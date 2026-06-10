@@ -705,6 +705,8 @@ const passCheckFixtures = [
   "conformance/run/pass/hello.0",
   "conformance/native/pass/params.0",
   "conformance/native/pass/shape.0",
+  "conformance/native/pass/mutref-shape-param.0",
+  "conformance/native/pass/mutref-shape-param-nested.0",
   "conformance/native/pass/primitive-stdlib.0",
   "conformance/native/pass/variants-defer-stdlib.0",
   "conformance/native/pass/defer-return-raise-nested.0",
@@ -4812,6 +4814,8 @@ assert.equal(packageGraph.selfHostRouting.cBridge.policy, "removed");
 for (const runtimeFixture of [
   ["conformance/native/pass/break-continue.0", "break-continue", { stdout: "loop tick\nloop tick\n" }],
   ["conformance/native/pass/nested-break-continue.0", "nested-break-continue", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" }],
+  ["conformance/native/pass/mutref-shape-param.0", "mutref-shape-param", { stdout: "mutref x ok\nmutref y ok\nref sum ok\n" }],
+  ["conformance/native/pass/mutref-shape-param-nested.0", "mutref-shape-param-nested", { stdout: "nested count ok\nnested total ok\nnested flag ok\nnested copy ok\nnested bytes ok\ngeneric mutref ok\n" }],
   ["conformance/native/pass/untyped-literal-adoption.0", "untyped-literal-adoption", { stdout: "usize literal adoption ok\nflipped literal adoption ok\nliteral arithmetic adoption ok\nu8 literal adoption ok\n" }],
   ["conformance/native/pass/for-range.0", "for-range", { stdout: "range tick\nrange tick\nrange tick\n" }],
   ["conformance/native/pass/match-payload-binding.0", "match-payload-binding", { stdout: /payload binding ok/ }],
@@ -4882,6 +4886,8 @@ assert.match(literalAdoptionCompareOverflowBody.diagnostics[0].help, /smaller li
 
 await assertDirectRuntimeRequired("conformance/native/pass/break-continue.0", "break-continue-required", { stdout: "loop tick\nloop tick\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/nested-break-continue.0", "nested-break-continue-required", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/mutref-shape-param.0", "mutref-shape-param-required", { stdout: "mutref x ok\nmutref y ok\nref sum ok\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/mutref-shape-param-nested.0", "mutref-shape-param-nested-required", { stdout: "nested count ok\nnested total ok\nnested flag ok\nnested copy ok\nnested bytes ok\ngeneric mutref ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-function-basic.0", "generic-function-basic-required", { stdout: "generic function ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-nested-calls.0", "generic-nested-calls-required", { stdout: "generic nested calls ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-inferred-specialized-call.0", "generic-inferred-specialized-call-required", { stdout: "generic inferred specialized call ok\n" });

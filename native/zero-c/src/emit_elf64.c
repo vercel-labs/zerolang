@@ -591,6 +591,11 @@ static bool elf_emit_byte_view_ptr(ZBuf *code, const IrFunction *fun, const IrVa
   }
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
+    if (local->is_record_ref) {
+      elf_emit_load_local_rax(code, fun, view->array_index);
+      if (view->field_offset > 0) z_x64_emit_add_rax_u32(code, view->field_offset, true);
+      return true;
+    }
     if (!((local->is_array && view->field_offset == 0) || local->is_record)) return elf_diag(diag, "direct ELF64 byte-view array requires a fixed array or record array field", view->line, view->column, "non-array view");
     elf_emit_lea_array_base_rax(code, local, view->field_offset);
     return true;
@@ -1974,8 +1979,21 @@ static bool elf_emit_memory_access_value(ZBuf *code, const IrFunction *fun, cons
     case IR_VALUE_FIELD_LOAD: {
       if (value->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 field load record is out of range", value->line, value->column, "invalid record local");
       const IrLocal *local = &fun->locals[value->local_index];
+      if (local->is_record_ref) {
+        elf_emit_load_local_rax(code, fun, value->local_index);
+        if (value->field_offset > 0) z_x64_emit_add_rax_u32(code, value->field_offset, true);
+        elf_emit_load_ptr_element(code, 0, 0, value->type);
+        return true;
+      }
       if (!local->is_record) return elf_diag(diag, "direct ELF64 field load requires record local", value->line, value->column, "non-record local");
       elf_emit_load_field_rax(code, local, value->field_offset, value->type);
+      return true;
+    }
+    case IR_VALUE_RECORD_ADDR: {
+      if (value->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 record address local is out of range", value->line, value->column, "invalid record local");
+      const IrLocal *local = &fun->locals[value->local_index];
+      if (!local->is_record) return elf_diag(diag, "direct ELF64 record address requires record local", value->line, value->column, "non-record local");
+      elf_emit_lea_array_base_rax(code, local, 0);
       return true;
     }
     case IR_VALUE_BYTE_VIEW_LEN: {
@@ -2305,7 +2323,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_VEC_LEN: case IR_VALUE_VEC_CAPACITY:
     case IR_VALUE_VEC_PUSH: case IR_VALUE_CHECK: case IR_VALUE_RESCUE:
       return elf_emit_stateful_value(code, fun, value, ctx, diag);
-    case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_BYTE_VIEW_LEN: case IR_VALUE_BYTE_VIEW_REMAINING:
+    case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_RECORD_ADDR: case IR_VALUE_BYTE_VIEW_LEN: case IR_VALUE_BYTE_VIEW_REMAINING:
       return elf_emit_memory_access_value(code, fun, value, ctx, diag);
     case IR_VALUE_CRC32_BYTES: case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL:
     case IR_VALUE_ITEM_COPY: case IR_VALUE_ITEM_FILL: case IR_VALUE_ITEM_CONTAINS:
@@ -2838,6 +2856,15 @@ static bool elf_emit_store_instr(ZBuf *text, const IrFunction *fun, const IrInst
   }
   if (instr->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 field store record is out of range", instr->line, instr->column, "invalid record local");
   const IrLocal *local = &fun->locals[instr->local_index];
+  if (local->is_record_ref) {
+    elf_emit_load_local_rax(text, fun, instr->local_index);
+    if (instr->field_offset > 0) z_x64_emit_add_rax_u32(text, instr->field_offset, true);
+    z_x64_emit_push_rax(text);
+    if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
+    z_x64_emit_pop_reg64(text, 1);
+    elf_emit_store_ptr_element(text, 1, 0, instr->value ? instr->value->type : IR_TYPE_I32);
+    return true;
+  }
   if (!local->is_record) return elf_diag(diag, "direct ELF64 field store requires record local", instr->line, instr->column, "non-record local");
   if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
   elf_emit_store_field_from_rax(text, local, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32);

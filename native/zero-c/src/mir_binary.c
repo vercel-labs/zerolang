@@ -61,7 +61,9 @@ typedef struct {
   bool is_param;
   bool is_array;
   bool is_record;
+  bool is_record_ref;
   bool is_mutable;
+  unsigned ref_byte_size;
   int line;
   int column;
 } MirLocalFlat;
@@ -216,7 +218,7 @@ typedef struct {
 } MirDecoded;
 
 static const unsigned char MIR_BINARY_MAGIC[8] = {'Z', 'M', 'I', 'R', 'B', 'I', 'N', '1'};
-enum { MIR_BINARY_SCHEMA_VERSION = 3 };
+enum { MIR_BINARY_SCHEMA_VERSION = 4 };
 static const uint64_t MIR_NULL_LEN = UINT64_MAX;
 static const uint64_t MIR_BINARY_MAX_FUNCTION_COUNT = 100000;
 static const uint64_t MIR_BINARY_MAX_LOCAL_COUNT = 1000000;
@@ -230,7 +232,7 @@ static const uint64_t MIR_BINARY_MAX_DATA_BYTES = 256u * 1024u * 1024u;
 static const uint64_t MIR_BINARY_MAX_STRING_BYTES = 256u * 1024u * 1024u;
 enum {
   MIR_FUNCTION_RECORD_BYTES = 120,
-  MIR_LOCAL_RECORD_BYTES = 76,
+  MIR_LOCAL_RECORD_BYTES = 80,
   MIR_INSTR_RECORD_BYTES = 80,
   MIR_VALUE_RECORD_BYTES = 112,
   MIR_EXTERNAL_RECORD_BYTES = 72,
@@ -413,7 +415,9 @@ static bool mir_flatten_program(const IrProgram *program, MirFlat *flat) {
         .is_param = local->is_param,
         .is_array = local->is_array,
         .is_record = local->is_record,
+        .is_record_ref = local->is_record_ref,
         .is_mutable = local->is_mutable,
+        .ref_byte_size = local->ref_byte_size,
         .line = local->line,
         .column = local->column,
       };
@@ -515,11 +519,13 @@ static void mir_put_local_record(ZBuf *out, MirStringTable *strings, const MirLo
   mir_put_u32(out, record->field_offset);
   mir_put_u32(out, record->byte_size);
   mir_put_u32(out, record->alignment);
+  mir_put_u32(out, record->ref_byte_size);
   uint32_t flags = 0;
   if (record->is_param) flags |= 1u << 0;
   if (record->is_array) flags |= 1u << 1;
   if (record->is_record) flags |= 1u << 2;
   if (record->is_mutable) flags |= 1u << 3;
+  if (record->is_record_ref) flags |= 1u << 4;
   mir_put_u32(out, flags);
   mir_put_i32(out, (int32_t)record->line);
   mir_put_i32(out, (int32_t)record->column);
@@ -852,14 +858,16 @@ static bool mir_read_local(MirReader *reader, const MirHeader *header, MirLocalF
       !mir_get_u32(reader, &record->index) || !mir_get_u32(reader, &record->frame_offset) ||
       !mir_get_u32(reader, &record->array_len) || !mir_get_u32(reader, &record->field_offset) ||
       !mir_get_u32(reader, &record->byte_size) || !mir_get_u32(reader, &record->alignment) ||
+      !mir_get_u32(reader, &record->ref_byte_size) ||
       !mir_get_u32(reader, &flags) || !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) ||
-      (flags & ~15u) != 0) return false;
+      (flags & ~31u) != 0) return false;
   record->type = (IrTypeKind)type;
   record->element_type = (IrTypeKind)element_type;
   record->is_param = (flags & (1u << 0)) != 0;
   record->is_array = (flags & (1u << 1)) != 0;
   record->is_record = (flags & (1u << 2)) != 0;
   record->is_mutable = (flags & (1u << 3)) != 0;
+  record->is_record_ref = (flags & (1u << 4)) != 0;
   record->line = (int)line;
   record->column = (int)column;
   return mir_ref_borrow_string(header, name_ref, &record->name) &&
@@ -900,7 +908,7 @@ static bool mir_read_value(MirReader *reader, const MirHeader *header, MirValueF
       !mir_get_count(reader, &record->arg_ref_start) || !mir_get_count(reader, &record->arg_ref_len) ||
       !mir_get_count(reader, &record->index_ref) || !mir_get_count(reader, &record->left_ref) ||
       !mir_get_count(reader, &record->right_ref) || !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) ||
-      kind > (uint32_t)IR_VALUE_RESCUE || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
+      kind > (uint32_t)IR_VALUE_RECORD_ADDR || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
       compare_op > (uint32_t)IR_CMP_GE || record->index_ref > header->value_count ||
       record->left_ref > header->value_count || record->right_ref > header->value_count ||
       !mir_refs_fit(record->arg_ref_start, record->arg_ref_len, header->value_ref_count)) return false;
@@ -1122,7 +1130,9 @@ static bool mir_materialize_program(const MirDecoded *decoded, const char *path,
       local->is_param = local_record->is_param;
       local->is_array = local_record->is_array;
       local->is_record = local_record->is_record;
+      local->is_record_ref = local_record->is_record_ref;
       local->is_mutable = local_record->is_mutable;
+      local->ref_byte_size = local_record->ref_byte_size;
       local->line = local_record->line;
       local->column = local_record->column;
     }

@@ -490,7 +490,8 @@ typedef enum {
   IR_VALUE_HTTP_STATUS_CLASS,
   IR_VALUE_FIELD_LOAD,
   IR_VALUE_CHECK,
-  IR_VALUE_RESCUE
+  IR_VALUE_RESCUE,
+  IR_VALUE_RECORD_ADDR
 } IrValueKind;
 
 typedef enum {
@@ -732,7 +733,9 @@ typedef struct {
   bool is_param;
   bool is_array;
   bool is_record;
+  bool is_record_ref;
   bool is_mutable;
+  unsigned ref_byte_size;
   char *shape_name;
   int line;
   int column;

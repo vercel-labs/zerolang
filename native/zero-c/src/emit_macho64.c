@@ -224,6 +224,51 @@ static void macho_emit_store_field(ZBuf *text, const IrFunction *fun, unsigned r
   }
 }
 
+static void macho_emit_load_field_indirect(ZBuf *text, unsigned reg, unsigned base, unsigned field_offset, IrTypeKind type) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
+    z_aarch64_emit_load_b_imm(text, reg, base, field_offset);
+  } else if (type == IR_TYPE_U16) {
+    z_aarch64_emit_load_h_imm(text, reg, base, field_offset);
+  } else if (macho_type_is_scalar64(type)) {
+    z_aarch64_emit_load_x_imm(text, reg, base, field_offset);
+  } else {
+    z_aarch64_emit_load_w_imm(text, reg, base, field_offset);
+  }
+}
+
+static void macho_emit_store_field_indirect(ZBuf *text, unsigned reg, unsigned base, unsigned field_offset, IrTypeKind type) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
+    z_aarch64_emit_store_b_imm(text, reg, base, field_offset);
+  } else if (type == IR_TYPE_U16) {
+    z_aarch64_emit_store_h_imm(text, reg, base, field_offset);
+  } else if (macho_type_is_scalar64(type)) {
+    z_aarch64_emit_store_x_imm(text, reg, base, field_offset);
+  } else {
+    z_aarch64_emit_store_w_imm(text, reg, base, field_offset);
+  }
+}
+
+static bool macho_emit_field_load_to_reg(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, ZDiag *diag) {
+  if (value->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O field load record is out of range", value->line, value->column, "invalid record local");
+  const IrLocal *record_local = &fun->locals[value->local_index];
+  if (record_local->is_record_ref) {
+    unsigned base = reg == 10 ? 11 : 10;
+    macho_emit_load_local_x(text, fun, base, value->local_index, 0, frame_size);
+    macho_emit_load_field_indirect(text, reg, base, value->field_offset, value->type);
+    return true;
+  }
+  if (!record_local->is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field load requires record local", value->line, value->column, "non-record local");
+  macho_emit_load_field(text, fun, reg, value->local_index, value->field_offset, value->type, frame_size);
+  return true;
+}
+
+static bool macho_emit_record_addr_to_reg(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, ZDiag *diag) {
+  if (value->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O record address local is out of range", value->line, value->column, "invalid record local");
+  if (!fun->locals[value->local_index].is_record) return macho_diag_at(diag, "direct AArch64 Mach-O record address requires record local", value->line, value->column, "non-record local");
+  z_aarch64_emit_add_x_sp_imm(text, reg, macho_local_slot_offset(fun, value->local_index, 0, frame_size));
+  return true;
+}
+
 static void macho_emit_binary_reg(ZBuf *text, IrBinaryOp op, unsigned dst, unsigned lhs, unsigned rhs, bool wide) {
   if (op == IR_BIN_ADD) {
     if (wide) z_aarch64_emit_add_x_reg(text, dst, lhs, rhs);
@@ -576,6 +621,11 @@ static bool macho_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const
   }
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
+    if (local->is_record_ref) {
+      macho_emit_load_local_x(text, fun, reg, view->array_index, 0, frame_size);
+      if (view->field_offset > 0) z_aarch64_emit_add_x_imm(text, reg, reg, view->field_offset);
+      return true;
+    }
     if (!((local->is_array && view->field_offset == 0) || local->is_record)) return macho_diag_at(diag, "direct AArch64 Mach-O byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
     z_aarch64_emit_add_x_sp_imm(text, reg, macho_local_slot_offset(fun, view->array_index, view->field_offset, frame_size));
     return true;
@@ -1909,10 +1959,9 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_INDEX_LOAD:
       return macho_emit_index_load_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_FIELD_LOAD:
-      if (value->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O field load record is out of range", value->line, value->column, "invalid record local");
-      if (!fun->locals[value->local_index].is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field load requires record local", value->line, value->column, "non-record local");
-      macho_emit_load_field(text, fun, reg, value->local_index, value->field_offset, value->type, frame_size);
-      return true;
+      return macho_emit_field_load_to_reg(text, fun, value, reg, frame_size, diag);
+    case IR_VALUE_RECORD_ADDR:
+      return macho_emit_record_addr_to_reg(text, fun, value, reg, frame_size, diag);
     default: {
       char actual[64];
       snprintf(actual, sizeof(actual), "unsupported value kind %d", value ? (int)value->kind : -1);
@@ -2370,7 +2419,14 @@ static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *i
   if (instr->kind == IR_INSTR_LOCAL_SET) return macho_emit_local_set(text, fun, instr, frame_size, ctx, diag);
   if (instr->kind == IR_INSTR_FIELD_STORE) {
     if (instr->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O field store record is out of range", instr->line, instr->column, "invalid record local");
-    if (!fun->locals[instr->local_index].is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
+    const IrLocal *record_local = &fun->locals[instr->local_index];
+    if (record_local->is_record_ref) {
+      if (!macho_emit_value_to_reg(text, fun, instr->value, 8, frame_size, ctx, diag)) return false;
+      macho_emit_load_local_x(text, fun, 10, instr->local_index, 0, frame_size);
+      macho_emit_store_field_indirect(text, 8, 10, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32);
+      return true;
+    }
+    if (!record_local->is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
     if (!macho_emit_value_to_reg(text, fun, instr->value, 8, frame_size, ctx, diag)) return false;
     macho_emit_store_field(text, fun, 8, instr->local_index, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32, frame_size);
     return true;

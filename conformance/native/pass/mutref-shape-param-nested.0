@@ -1,0 +1,55 @@
+type Stats {
+    count: u32,
+    total: i64,
+    flag: Bool,
+    bytes: [8]u8,
+}
+
+type Box<T: Type> {
+    item: T,
+    extra: u32,
+}
+
+fn inner(s: mutref<Stats>) -> Void {
+    s.count = s.count + 1_u32
+    s.total = s.total + 10
+}
+
+fn fill(s: mutref<Stats>) -> usize {
+    return std.mem.copy(s.bytes, std.mem.span("zero"))
+}
+
+fn outer(s: mutref<Stats>) -> Void {
+    inner(s)
+    s.flag = true
+}
+
+fn bumpBox<T: Type>(b: mutref<Box<T>>) -> Void {
+    b.extra = b.extra + 1_u32
+}
+
+pub fn main(world: World) -> Void raises {
+    var st: Stats = Stats { count: 1_u32, total: 5, flag: false, bytes: [0_u8; 8] }
+    outer(&mut st)
+    let copied: usize = fill(&mut st)
+    if st.count == 2_u32 {
+        check world.out.write("nested count ok\n")
+    }
+    if st.total == 15 {
+        check world.out.write("nested total ok\n")
+    }
+    if st.flag {
+        check world.out.write("nested flag ok\n")
+    }
+    if copied == 4 {
+        check world.out.write("nested copy ok\n")
+    }
+    if st.bytes[1] == 101_u8 {
+        check world.out.write("nested bytes ok\n")
+    }
+    var bi: Box<i32> = Box { item: 5, extra: 1_u32 }
+    bumpBox<i32>(&mut bi)
+    if bi.extra == 2_u32 {
+        check world.out.write("generic mutref ok\n")
+    }
+}

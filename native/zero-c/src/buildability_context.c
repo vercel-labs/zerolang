@@ -134,6 +134,7 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_FIELD_LOAD: return "IR_VALUE_FIELD_LOAD";
     case IR_VALUE_CHECK: return "IR_VALUE_CHECK";
     case IR_VALUE_RESCUE: return "IR_VALUE_RESCUE";
+    case IR_VALUE_RECORD_ADDR: return "IR_VALUE_RECORD_ADDR";
   }
   return "IR_VALUE_UNKNOWN";
 }

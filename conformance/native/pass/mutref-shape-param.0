@@ -1,0 +1,27 @@
+type Point {
+    x: i32,
+    y: i32,
+}
+
+fn bump(p: mutref<Point>) -> Void {
+    p.x = p.x + 1
+    p.y = p.y + 2
+}
+
+fn sum(p: ref<Point>) -> i32 {
+    return p.x + p.y
+}
+
+pub fn main(world: World) -> Void raises {
+    var pt: Point = Point { x: 1, y: 2 }
+    bump(&mut pt)
+    if pt.x == 2 {
+        check world.out.write("mutref x ok\n")
+    }
+    if pt.y == 4 {
+        check world.out.write("mutref y ok\n")
+    }
+    if sum(&pt) == 6 {
+        check world.out.write("ref sum ok\n")
+    }
+}

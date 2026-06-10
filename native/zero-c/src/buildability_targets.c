@@ -50,7 +50,7 @@ static bool build_byte_view_const_len(const IrValue *view, unsigned *out) {
 static bool build_array_byte_view_has_storage(const IrFunction *fun, const IrValue *view) {
   if (!view || view->kind != IR_VALUE_ARRAY_BYTE_VIEW || !fun || view->array_index >= fun->local_len) return false;
   const IrLocal *local = &fun->locals[view->array_index];
-  return (local->is_array && view->field_offset == 0) || local->is_record;
+  return (local->is_array && view->field_offset == 0) || local->is_record || local->is_record_ref;
 }
 
 static bool build_runtime_byte_view_result(const IrValue *view) {
