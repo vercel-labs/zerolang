@@ -13214,6 +13214,13 @@ static bool resolve_graph_command_manifest_input(Command *command, bool *artifac
       free(manifest_path);
       return true;
     }
+    bool projection_inspection = command->kind && (strcmp(command->kind, "status") == 0 || strcmp(command->kind, "verify-projection") == 0);
+    const char *input_name = strrchr(command->input, '/');
+    input_name = input_name ? input_name + 1 : command->input;
+    if (projection_inspection && strcmp(input_name, "zero.graph") == 0 && direct_file_exists(command->input)) {
+      command_set_owned_input(command, direct_dirname_of(command->input));
+      return true;
+    }
     set_source_input_diag(command->input, diag);
     return false;
   }

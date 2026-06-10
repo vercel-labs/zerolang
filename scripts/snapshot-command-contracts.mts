@@ -3019,8 +3019,12 @@ assert.match(repositoryBlockView, /check world\.out\.write\("hello anonymous\\n"
 assert.equal(zero(["check", graphRepositoryPatchPackageDir]).stdout, "ok\n");
 assert.equal(zero(["run", graphRepositoryPatchPackageDir, "--", "Ada"]).stdout, "name: Ada\n");
 assert.match(zero(["status", graphRepositoryPatchPackageDir]).stdout, /source-stale/);
+const statusStorePathStdout = zero(["status", join(graphRepositoryPatchPackageDir, "zero.graph")]).stdout;
+assert.match(statusStorePathStdout, /repository graph status: source-stale/);
+assert.match(statusStorePathStdout, new RegExp(`root: ${graphRepositoryPatchPackageDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\n`));
 assert.match(zero(["export", graphRepositoryPatchPackageDir]).stdout, /repository graph export ok/);
 assert.equal(zero(["verify-projection", graphRepositoryPatchPackageDir]).stdout, "repository graph verify-projection ok\n");
+assert.equal(zero(["verify-projection", join(graphRepositoryPatchPackageDir, "zero.graph")]).stdout, "repository graph verify-projection ok\n");
 const repositoryRowQueryJson = json(["query", "--json", graphRepositoryPatchPackageDir]).body;
 writeFileSync(graphRepositoryCheckExprPatchPath, [
   "zero-program-graph-patch v1",
