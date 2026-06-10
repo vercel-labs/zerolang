@@ -1,0 +1,25 @@
+pub fn main(world: World) -> Void raises {
+    var outer: i32 = 0
+    while outer < 3 {
+        outer = outer + 1
+        if outer == 2 {
+            continue
+        }
+        var inner: i32 = 0
+        while inner < 5 {
+            inner = inner + 1
+            if inner == 2 {
+                continue
+            }
+            if inner == 4 {
+                break
+            }
+            check world.out.write("inner tick\n")
+        }
+        if outer == 3 {
+            break
+        }
+        check world.out.write("outer tick\n")
+    }
+    check world.out.write("nested break continue ok\n")
+}

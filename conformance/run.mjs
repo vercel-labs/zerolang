@@ -710,6 +710,7 @@ const passCheckFixtures = [
   "conformance/native/pass/defer-return-raise-nested.0",
   "conformance/native/pass/payload-match.0",
   "conformance/native/pass/break-continue.0",
+  "conformance/native/pass/nested-break-continue.0",
   "conformance/native/pass/for-range.0",
   "conformance/native/pass/match-payload-binding.0",
   "conformance/native/pass/choice-payload-reference-return.0",
@@ -4807,6 +4808,7 @@ assert.equal(packageGraph.selfHostRouting.cBridge.policy, "removed");
 
 for (const runtimeFixture of [
   ["conformance/native/pass/break-continue.0", "break-continue", { stdout: "loop tick\nloop tick\n" }],
+  ["conformance/native/pass/nested-break-continue.0", "nested-break-continue", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" }],
   ["conformance/native/pass/for-range.0", "for-range", { stdout: "range tick\nrange tick\nrange tick\n" }],
   ["conformance/native/pass/match-payload-binding.0", "match-payload-binding", { stdout: /payload binding ok/ }],
   ["conformance/native/pass/match-fallback.0", "match-fallback", { stdout: "match fallback ok\n" }],
@@ -4847,6 +4849,8 @@ for (const runtimeFixture of [
   await assertDirectRuntimeOrUnsupported(...runtimeFixture);
 }
 
+await assertDirectRuntimeRequired("conformance/native/pass/break-continue.0", "break-continue-required", { stdout: "loop tick\nloop tick\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/nested-break-continue.0", "nested-break-continue-required", { stdout: "inner tick\ninner tick\nouter tick\ninner tick\ninner tick\nnested break continue ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-function-basic.0", "generic-function-basic-required", { stdout: "generic function ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-nested-calls.0", "generic-nested-calls-required", { stdout: "generic nested calls ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/generic-inferred-specialized-call.0", "generic-inferred-specialized-call-required", { stdout: "generic inferred specialized call ok\n" });
