@@ -1517,10 +1517,28 @@ static bool machx64_emit_while_instr(ZBuf *text, const IrFunction *fun, const Ir
   if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
   z_x64_emit_test_rax_rax(text, false);
   size_t false_patch = z_x64_emit_jcc32_placeholder(text, 0x84);
-  if (!machx64_emit_instrs(text, fun, instr->then_instrs, instr->then_len, ctx, diag)) return false;
+  ZDirectLoopFrame frame = {.continue_target = loop_start};
+  ZDirectLoopFrame *parent = ctx->loop;
+  ctx->loop = &frame;
+  bool body_ok = machx64_emit_instrs(text, fun, instr->then_instrs, instr->then_len, ctx, diag);
+  ctx->loop = parent;
+  if (!body_ok) {
+    free(frame.break_patches);
+    return false;
+  }
   size_t loop_patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
   z_x64_patch_rel32(text, loop_patch, loop_start);
   z_x64_patch_rel32(text, false_patch, text->len);
+  for (size_t i = 0; i < frame.break_len; i++) z_x64_patch_rel32(text, frame.break_patches[i], text->len);
+  free(frame.break_patches);
+  return true;
+}
+
+static bool machx64_emit_loop_exit_instr(ZBuf *text, const IrInstr *instr, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!ctx->loop) return machx64_diag_at(diag, "direct x86_64 Mach-O break or continue requires an enclosing loop", instr->line, instr->column, instr->kind == IR_INSTR_BREAK ? "break" : "continue");
+  size_t patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  if (instr->kind == IR_INSTR_CONTINUE) z_x64_patch_rel32(text, patch, ctx->loop->continue_target);
+  else if (!z_direct_loop_frame_add_break(ctx->loop, patch)) return machx64_diag_at(diag, "direct x86_64 Mach-O break patch list allocation failed", instr->line, instr->column, "out of memory");
   return true;
 }
 
@@ -1606,6 +1624,8 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
       return true;
     case IR_INSTR_IF: return machx64_emit_if_instr(text, fun, instr, ctx, diag);
     case IR_INSTR_WHILE: return machx64_emit_while_instr(text, fun, instr, ctx, diag);
+    case IR_INSTR_BREAK:
+    case IR_INSTR_CONTINUE: return machx64_emit_loop_exit_instr(text, instr, ctx, diag);
     default: {
       char actual[64];
       snprintf(actual, sizeof(actual), "unsupported instruction kind %d", instr ? (int)instr->kind : -1);

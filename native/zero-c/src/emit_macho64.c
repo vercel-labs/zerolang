@@ -2440,10 +2440,27 @@ static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *i
     size_t loop_start = text->len;
     if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     size_t false_patch = z_aarch64_emit_cbz_w_placeholder(text, 0);
-    if (!macho_emit_instrs(text, fun, instr->then_instrs, instr->then_len, frame_size, restore_process_args, ctx, diag)) return false;
+    ZDirectLoopFrame frame = {.continue_target = loop_start};
+    ZDirectLoopFrame *parent = ctx->loop;
+    ctx->loop = &frame;
+    bool body_ok = macho_emit_instrs(text, fun, instr->then_instrs, instr->then_len, frame_size, restore_process_args, ctx, diag);
+    ctx->loop = parent;
+    if (!body_ok) {
+      free(frame.break_patches);
+      return false;
+    }
     size_t loop_patch = z_aarch64_emit_b_placeholder(text);
     z_aarch64_patch_branch26(text, loop_patch, loop_start);
     z_aarch64_patch_cond19(text, false_patch, text->len);
+    for (size_t i = 0; i < frame.break_len; i++) z_aarch64_patch_branch26(text, frame.break_patches[i], text->len);
+    free(frame.break_patches);
+    return true;
+  }
+  if (instr->kind == IR_INSTR_BREAK || instr->kind == IR_INSTR_CONTINUE) {
+    if (!ctx->loop) return macho_diag_at(diag, "direct AArch64 Mach-O break or continue requires an enclosing loop", instr->line, instr->column, instr->kind == IR_INSTR_BREAK ? "break" : "continue");
+    size_t patch = z_aarch64_emit_b_placeholder(text);
+    if (instr->kind == IR_INSTR_CONTINUE) z_aarch64_patch_branch26(text, patch, ctx->loop->continue_target);
+    else if (!z_direct_loop_frame_add_break(ctx->loop, patch)) return macho_diag_at(diag, "direct AArch64 Mach-O break patch list allocation failed", instr->line, instr->column, "out of memory");
     return true;
   }
   char actual[64];

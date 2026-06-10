@@ -90,6 +90,7 @@ typedef struct {
   bool seed_main_process_args;
   unsigned rodata_base_offset;
   uint64_t rodata_addr;
+  ZDirectLoopFrame *loop;
 } ElfEmitContext;
 
 const char *z_elf_runtime_helper_symbol(ElfRuntimeHelper helper);

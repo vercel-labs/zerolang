@@ -876,7 +876,7 @@ static bool mir_read_instr(MirReader *reader, const MirHeader *header, MirInstrF
       !mir_get_count(reader, &record->then_ref_start) || !mir_get_count(reader, &record->then_ref_len) ||
       !mir_get_count(reader, &record->else_ref_start) || !mir_get_count(reader, &record->else_ref_len) ||
       !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) || reserved != 0 ||
-      kind > (uint32_t)IR_INSTR_WHILE || record->value_ref > header->value_count ||
+      kind > (uint32_t)IR_INSTR_CONTINUE || record->value_ref > header->value_count ||
       record->index_ref > header->value_count ||
       !mir_refs_fit(record->then_ref_start, record->then_ref_len, header->instr_ref_count) ||
       !mir_refs_fit(record->else_ref_start, record->else_ref_len, header->instr_ref_count)) return false;

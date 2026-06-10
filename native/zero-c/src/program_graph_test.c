@@ -321,7 +321,9 @@ static bool pgt_expr_name(const ZProgramGraph *graph, const ZProgramGraphNode *e
 
 static bool pgt_eval_expr(const ZProgramGraph *graph, PgtEnv *env, const ZProgramGraphNode *expr, PgtValue *out, PgtFailure *failure);
 
-static bool pgt_eval_block(const ZProgramGraph *graph, PgtEnv *env, const ZProgramGraphNode *block, PgtValue *ret, bool *returned, PgtFailure *failure) {
+enum { PGT_LOOP_NONE = 0, PGT_LOOP_BREAK = 1, PGT_LOOP_CONTINUE = 2 };
+
+static bool pgt_eval_block(const ZProgramGraph *graph, PgtEnv *env, const ZProgramGraphNode *block, PgtValue *ret, bool *returned, int *loop_signal, PgtFailure *failure) {
   bool have_last = false;
   size_t last_order = 0;
   for (const ZProgramGraphEdge *edge = pgt_next_edge(graph, block ? block->id : NULL, "statement", false, 0);
@@ -361,8 +363,9 @@ static bool pgt_eval_block(const ZProgramGraph *graph, PgtEnv *env, const ZProgr
       if (!pgt_eval_expr(graph, env, pgt_child(graph, stmt->id, "expr", 0), &condition, failure)) return false;
       bool branch = pgt_truthy(&condition);
       pgt_value_free(&condition);
-      if (!pgt_eval_block(graph, env, pgt_child(graph, stmt->id, branch ? "then" : "else", branch ? 0 : 1), ret, returned, failure)) return false;
+      if (!pgt_eval_block(graph, env, pgt_child(graph, stmt->id, branch ? "then" : "else", branch ? 0 : 1), ret, returned, loop_signal, failure)) return false;
       if (*returned) return true;
+      if (loop_signal && *loop_signal != PGT_LOOP_NONE) return true;
     } else if (stmt->kind == Z_PROGRAM_GRAPH_NODE_WHILE) {
       for (size_t iterations = 0; iterations < 100000; iterations++) {
         PgtValue condition = {0};
@@ -370,10 +373,16 @@ static bool pgt_eval_block(const ZProgramGraph *graph, PgtEnv *env, const ZProgr
         bool keep_going = pgt_truthy(&condition);
         pgt_value_free(&condition);
         if (!keep_going) break;
-        if (!pgt_eval_block(graph, env, pgt_child(graph, stmt->id, "then", 0), ret, returned, failure)) return false;
+        int body_signal = PGT_LOOP_NONE;
+        if (!pgt_eval_block(graph, env, pgt_child(graph, stmt->id, "then", 0), ret, returned, &body_signal, failure)) return false;
         if (*returned) return true;
+        if (body_signal == PGT_LOOP_BREAK) break;
         if (iterations == 99999) { pgt_fail(failure, stmt, "zero graph test while loop exceeded iteration limit"); return false; }
       }
+    } else if (stmt->kind == Z_PROGRAM_GRAPH_NODE_BREAK || stmt->kind == Z_PROGRAM_GRAPH_NODE_CONTINUE) {
+      if (!loop_signal) { pgt_fail(failure, stmt, "zero graph test break or continue requires an enclosing loop"); return false; }
+      *loop_signal = stmt->kind == Z_PROGRAM_GRAPH_NODE_BREAK ? PGT_LOOP_BREAK : PGT_LOOP_CONTINUE;
+      return true;
     } else {
       pgt_fail(failure, stmt, "zero graph test runner does not support this statement yet");
       return false;
@@ -388,7 +397,7 @@ static bool pgt_eval_function(const ZProgramGraph *graph, const ZProgramGraphNod
   PgtEnv local = {0};
   for (size_t i = 0; i < arg_len; i++) pgt_env_set(&local, pgt_child(graph, fun->id, "param", i)->name, &args[i]);
   bool returned = false;
-  bool ok = pgt_eval_block(graph, &local, pgt_child(graph, fun->id, "body", 0), out, &returned, failure);
+  bool ok = pgt_eval_block(graph, &local, pgt_child(graph, fun->id, "body", 0), out, &returned, NULL, failure);
   pgt_env_free(&local);
   if (!ok) return false;
   if (!returned) out->kind = PGT_VOID;

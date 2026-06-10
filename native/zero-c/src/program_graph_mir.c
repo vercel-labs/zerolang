@@ -4178,6 +4178,10 @@ static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFun
     ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_RAISE, .field_offset = 1, .error_code = ir_graph_error_code_for_name(stmt->name), .line = ir_graph_line(stmt), .column = ir_graph_column(stmt)});
     return true;
   }
+  if (stmt->kind == Z_PROGRAM_GRAPH_NODE_BREAK || stmt->kind == Z_PROGRAM_GRAPH_NODE_CONTINUE) {
+    ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = stmt->kind == Z_PROGRAM_GRAPH_NODE_BREAK ? IR_INSTR_BREAK : IR_INSTR_CONTINUE, .line = ir_graph_line(stmt), .column = ir_graph_column(stmt)});
+    return true;
+  }
   ir_graph_mark_unsupported(ir, stmt, "typed graph MIR statement kind is unsupported", z_program_graph_node_kind_name(stmt->kind));
   return false;
 }

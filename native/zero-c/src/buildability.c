@@ -79,6 +79,9 @@ static bool build_check_instr(const ZBuildability *ctx, const IrFunction *fun, c
       if (instr->value && !z_build_check_value(ctx, fun, instr->value, false, 0, diag)) return false;
       if (!build_check_instrs(ctx, fun, instr->then_instrs, instr->then_len, diag)) return false;
       return build_check_instrs(ctx, fun, instr->else_instrs, instr->else_len, diag);
+    case IR_INSTR_BREAK:
+    case IR_INSTR_CONTINUE:
+      return true;
     case IR_INSTR_RAISE:
       if (ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64 || ctx->backend == Z_DIRECT_BACKEND_MACHO_X64) return true;
       return z_build_diag(ctx, diag, "direct backend buildability does not support raise instructions for this emitter", instr->line, instr->column, "IR_INSTR_RAISE");

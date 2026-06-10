@@ -4823,6 +4823,10 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
   if (stmt->kind == STMT_MATCH) {
     return ir_lower_enum_match(program, ir, mir_fun, stmt, out_items, out_len, out_cap, saw_return);
   }
+  if (stmt->kind == STMT_BREAK || stmt->kind == STMT_CONTINUE) {
+    ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = stmt->kind == STMT_BREAK ? IR_INSTR_BREAK : IR_INSTR_CONTINUE, .line = stmt->line, .column = stmt->column});
+    return true;
+  }
   ir_mark_unsupported(ir, "direct backend statement kind is unsupported", stmt->line, stmt->column, mir_fun->name);
   return false;
 }

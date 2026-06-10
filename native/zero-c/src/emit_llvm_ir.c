@@ -20,6 +20,9 @@ typedef struct {
   unsigned temp_index;
   unsigned label_index;
   unsigned current_label;
+  unsigned loop_cond_label;
+  unsigned loop_end_label;
+  bool in_loop;
 } LlvmEmit;
 
 static bool llvm_scalar_type_supported(IrTypeKind type) {
@@ -731,6 +734,34 @@ static bool llvm_emit_world_write(LlvmEmit *emit, const IrInstr *instr, ZDiag *d
   return true;
 }
 
+static bool llvm_emit_while_instr(LlvmEmit *emit, const IrInstr *instr, ZDiag *diag) {
+  unsigned cond_label = llvm_label(emit), body_label = llvm_label(emit), end_label = llvm_label(emit);
+  zbuf_appendf(emit->out, "  br label %%L%u\n", cond_label);
+  llvm_emit_label(emit, cond_label);
+  LlvmValue cond;
+  if (!llvm_emit_value(emit, instr->value, &cond, diag)) return false;
+  if (cond.type != IR_TYPE_BOOL) {
+    llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend loop condition must be Bool", "non-Bool loop condition", "lower");
+    return false;
+  }
+  zbuf_appendf(emit->out, "  br i1 %s, label %%L%u, label %%L%u\n", cond.text, body_label, end_label);
+  llvm_emit_label(emit, body_label);
+  unsigned saved_cond_label = emit->loop_cond_label, saved_end_label = emit->loop_end_label;
+  bool saved_in_loop = emit->in_loop;
+  emit->loop_cond_label = cond_label;
+  emit->loop_end_label = end_label;
+  emit->in_loop = true;
+  bool body_term = false;
+  bool body_ok = llvm_emit_instrs(emit, instr->then_instrs, instr->then_len, &body_term, diag);
+  emit->loop_cond_label = saved_cond_label;
+  emit->loop_end_label = saved_end_label;
+  emit->in_loop = saved_in_loop;
+  if (!body_ok) return false;
+  if (!body_term) zbuf_appendf(emit->out, "  br label %%L%u\n", cond_label);
+  llvm_emit_label(emit, end_label);
+  return true;
+}
+
 static bool llvm_emit_instr(LlvmEmit *emit, const IrInstr *instr, bool *terminated, ZDiag *diag) {
   if (*terminated) return true;
   switch (instr->kind) {
@@ -787,22 +818,16 @@ static bool llvm_emit_instr(LlvmEmit *emit, const IrInstr *instr, bool *terminat
       *terminated = then_term && else_term;
       return true;
     }
-    case IR_INSTR_WHILE: {
-      unsigned cond_label = llvm_label(emit), body_label = llvm_label(emit), end_label = llvm_label(emit);
-      zbuf_appendf(emit->out, "  br label %%L%u\n", cond_label);
-      llvm_emit_label(emit, cond_label);
-      LlvmValue cond;
-      if (!llvm_emit_value(emit, instr->value, &cond, diag)) return false;
-      if (cond.type != IR_TYPE_BOOL) {
-        llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend loop condition must be Bool", "non-Bool loop condition", "lower");
+    case IR_INSTR_WHILE:
+      return llvm_emit_while_instr(emit, instr, diag);
+    case IR_INSTR_BREAK:
+    case IR_INSTR_CONTINUE: {
+      if (!emit->in_loop) {
+        llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend break or continue requires an enclosing loop", "loop exit outside a loop", "lower");
         return false;
       }
-      zbuf_appendf(emit->out, "  br i1 %s, label %%L%u, label %%L%u\n", cond.text, body_label, end_label);
-      llvm_emit_label(emit, body_label);
-      bool body_term = false;
-      if (!llvm_emit_instrs(emit, instr->then_instrs, instr->then_len, &body_term, diag)) return false;
-      if (!body_term) zbuf_appendf(emit->out, "  br label %%L%u\n", cond_label);
-      llvm_emit_label(emit, end_label);
+      zbuf_appendf(emit->out, "  br label %%L%u\n", instr->kind == IR_INSTR_BREAK ? emit->loop_end_label : emit->loop_cond_label);
+      *terminated = true;
       return true;
     }
     case IR_INSTR_WORLD_WRITE:

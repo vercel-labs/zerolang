@@ -51,6 +51,7 @@ struct ZAArch64DirectContext {
   ZAArch64DirectCallPatchFn record_call_patch;
   ZAArch64DirectRuntimePatchFn record_runtime_patch;
   ZAArch64DirectWorldWriteFn emit_world_write;
+  ZDirectLoopFrame *loop;
 };
 
 bool z_aarch64_direct_emit_function_text(ZBuf *text, const IrFunction *fun, ZAArch64DirectContext *ctx, ZDiag *diag);

@@ -2206,6 +2206,8 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
         return false;
       }
       break;
+    case IR_INSTR_BREAK:
+    case IR_INSTR_CONTINUE:
     case IR_INSTR_EXPR:
       break;
     default: {
@@ -2218,7 +2220,7 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
   return true;
 }
 
-static bool mir_verify_direct_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instrs, size_t len, MirVerifierState *state, MirHelperRequirements *requirements);
+static bool mir_verify_direct_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instrs, size_t len, MirVerifierState *state, MirHelperRequirements *requirements, size_t loop_depth);
 
 static void mir_apply_instr_state_effect(const IrFunction *fun, const IrInstr *instr, MirVerifierState *state) {
   if (!fun || !instr || !state || instr->kind != IR_INSTR_LOCAL_SET) return;
@@ -2228,7 +2230,7 @@ static void mir_apply_instr_state_effect(const IrFunction *fun, const IrInstr *i
   state->mutable_maybe_bytes[instr->local_index] = mir_value_produces_mutable_byte_payload(instr->value);
 }
 
-static bool mir_verify_branch_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instr, MirVerifierState *state, MirHelperRequirements *requirements) {
+static bool mir_verify_branch_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instr, MirVerifierState *state, MirHelperRequirements *requirements, size_t loop_depth) {
   MirVerifierState then_state = {0};
   MirVerifierState else_state = {0};
   if (!mir_state_clone(ir, &then_state, state, instr->line, instr->column)) return false;
@@ -2236,15 +2238,15 @@ static bool mir_verify_branch_instrs(IrProgram *ir, const IrFunction *fun, const
     mir_state_free(&then_state);
     return false;
   }
-  bool ok = mir_verify_direct_instrs(ir, fun, instr->then_instrs, instr->then_len, &then_state, requirements) &&
-            mir_verify_direct_instrs(ir, fun, instr->else_instrs, instr->else_len, &else_state, requirements) &&
+  bool ok = mir_verify_direct_instrs(ir, fun, instr->then_instrs, instr->then_len, &then_state, requirements, loop_depth) &&
+            mir_verify_direct_instrs(ir, fun, instr->else_instrs, instr->else_len, &else_state, requirements, loop_depth) &&
             mir_state_intersect_from(state, &then_state, &else_state);
   mir_state_free(&then_state);
   mir_state_free(&else_state);
   return ok;
 }
 
-static bool mir_verify_loop_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instr, MirVerifierState *state, MirHelperRequirements *requirements) {
+static bool mir_verify_loop_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instr, MirVerifierState *state, MirHelperRequirements *requirements, size_t loop_depth) {
   MirVerifierState entry_state = {0};
   if (!mir_state_clone(ir, &entry_state, state, instr->line, instr->column)) return false;
   bool changed = false;
@@ -2254,7 +2256,7 @@ static bool mir_verify_loop_instrs(IrProgram *ir, const IrFunction *fun, const I
       mir_state_free(&entry_state);
       return false;
     }
-    bool ok = mir_verify_direct_instrs(ir, fun, instr->then_instrs, instr->then_len, &body_state, requirements);
+    bool ok = mir_verify_direct_instrs(ir, fun, instr->then_instrs, instr->then_len, &body_state, requirements, loop_depth + 1);
     if (!ok) {
       mir_state_free(&body_state);
       mir_state_free(&entry_state);
@@ -2275,19 +2277,23 @@ static bool mir_verify_loop_instrs(IrProgram *ir, const IrFunction *fun, const I
   return true;
 }
 
-static bool mir_verify_direct_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instrs, size_t len, MirVerifierState *state, MirHelperRequirements *requirements) {
+static bool mir_verify_direct_instrs(IrProgram *ir, const IrFunction *fun, const IrInstr *instrs, size_t len, MirVerifierState *state, MirHelperRequirements *requirements, size_t loop_depth) {
   if (!ir || !ir->mir_valid) return false;
   for (size_t i = 0; i < len; i++) {
     const IrInstr *instr = &instrs[i];
     if (!mir_verify_direct_value(ir, fun, state, instr->value, requirements)) return false;
     if (!mir_verify_direct_value(ir, fun, state, instr->index, requirements)) return false;
     if (!mir_verify_direct_instr_contract(ir, fun, instr, requirements)) return false;
+    if ((instr->kind == IR_INSTR_BREAK || instr->kind == IR_INSTR_CONTINUE) && loop_depth == 0) {
+      mir_verify_mark_unsupported(ir, "MIR verifier found break or continue outside a loop", instr->line, instr->column, instr->kind == IR_INSTR_BREAK ? "break" : "continue");
+      return false;
+    }
     if (instr->kind == IR_INSTR_IF) {
-      if (!mir_verify_branch_instrs(ir, fun, instr, state, requirements)) return false;
+      if (!mir_verify_branch_instrs(ir, fun, instr, state, requirements, loop_depth)) return false;
       continue;
     }
     if (instr->kind == IR_INSTR_WHILE) {
-      if (!mir_verify_loop_instrs(ir, fun, instr, state, requirements)) return false;
+      if (!mir_verify_loop_instrs(ir, fun, instr, state, requirements, loop_depth)) return false;
       continue;
     }
     mir_apply_instr_state_effect(fun, instr, state);
@@ -2323,7 +2329,7 @@ bool z_mir_verify_direct_contracts(IrProgram *ir) {
     IrFunction *fun = &ir->functions[i];
     MirVerifierState state = {0};
     if (!mir_state_init(ir, &state, fun->local_len, fun->line, fun->column)) return false;
-    bool ok = mir_verify_direct_instrs(ir, fun, fun->instrs, fun->instr_len, &state, &requirements);
+    bool ok = mir_verify_direct_instrs(ir, fun, fun->instrs, fun->instr_len, &state, &requirements, 0);
     mir_state_free(&state);
     if (!ok) return false;
   }

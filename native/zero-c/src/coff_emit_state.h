@@ -65,6 +65,7 @@ typedef struct {
   size_t rodata_patch_cap;
   CoffPatchList runtime_patches[COFF_RUNTIME_HELPER_COUNT];
   unsigned rodata_base_offset;
+  ZDirectLoopFrame *loop;
 } CoffEmitContext;
 
 const char *z_coff_runtime_helper_symbol(CoffRuntimeHelper helper);

@@ -687,8 +687,19 @@ typedef enum {
   IR_INSTR_EXPR,
   IR_INSTR_RETURN,
   IR_INSTR_IF,
-  IR_INSTR_WHILE
+  IR_INSTR_WHILE,
+  IR_INSTR_BREAK,
+  IR_INSTR_CONTINUE
 } IrInstrKind;
+
+typedef struct {
+  size_t continue_target;
+  size_t *break_patches;
+  size_t break_len;
+  size_t break_cap;
+} ZDirectLoopFrame;
+
+bool z_direct_loop_frame_add_break(Z_INOUT ZDirectLoopFrame *frame, size_t patch_offset);
 
 struct IrInstr {
   IrInstrKind kind;

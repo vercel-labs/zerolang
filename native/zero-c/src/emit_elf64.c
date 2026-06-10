@@ -2945,14 +2945,31 @@ static bool elf_emit_control_instr(ZBuf *text, const IrFunction *fun, const IrIn
     }
     return true;
   }
+  if (instr->kind == IR_INSTR_BREAK || instr->kind == IR_INSTR_CONTINUE) {
+    if (!ctx->loop) return elf_diag(diag, "direct ELF64 break or continue requires an enclosing loop", instr->line, instr->column, instr->kind == IR_INSTR_BREAK ? "break" : "continue");
+    size_t patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
+    if (instr->kind == IR_INSTR_CONTINUE) z_x64_patch_rel32(text, patch, ctx->loop->continue_target);
+    else if (!z_direct_loop_frame_add_break(ctx->loop, patch)) return elf_diag(diag, "direct ELF64 break patch list allocation failed", instr->line, instr->column, "out of memory");
+    return true;
+  }
   size_t loop_start = text->len;
   if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
   z_x64_emit_test_rax_rax(text, false);
   size_t exit_patch = z_x64_emit_jcc32_placeholder(text, 0x84);
-  if (!elf_emit_instrs(text, fun, instr->then_instrs, instr->then_len, ctx, diag)) return false;
+  ZDirectLoopFrame frame = {.continue_target = loop_start};
+  ZDirectLoopFrame *parent = ctx->loop;
+  ctx->loop = &frame;
+  bool body_ok = elf_emit_instrs(text, fun, instr->then_instrs, instr->then_len, ctx, diag);
+  ctx->loop = parent;
+  if (!body_ok) {
+    free(frame.break_patches);
+    return false;
+  }
   size_t back_patch = z_x64_emit_jmp32_placeholder(text, 0xe9);
   z_x64_patch_rel32(text, back_patch, loop_start);
   z_x64_patch_rel32(text, exit_patch, text->len);
+  for (size_t i = 0; i < frame.break_len; i++) z_x64_patch_rel32(text, frame.break_patches[i], text->len);
+  free(frame.break_patches);
   return true;
 }
 
@@ -2962,7 +2979,7 @@ static bool elf_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
     case IR_INSTR_LOCAL_SET: return elf_emit_local_set_instr(text, fun, instr, ctx, diag);
     case IR_INSTR_INDEX_STORE: case IR_INSTR_FIELD_STORE: return elf_emit_store_instr(text, fun, instr, ctx, diag);
     case IR_INSTR_EXPR: case IR_INSTR_RAISE: case IR_INSTR_RETURN: return elf_emit_terminal_instr(text, fun, instr, ctx, diag);
-    case IR_INSTR_IF: case IR_INSTR_WHILE: return elf_emit_control_instr(text, fun, instr, ctx, diag);
+    case IR_INSTR_IF: case IR_INSTR_WHILE: case IR_INSTR_BREAK: case IR_INSTR_CONTINUE: return elf_emit_control_instr(text, fun, instr, ctx, diag);
     default: return elf_diag(diag, "direct ELF64 instruction kind is unsupported", instr->line, instr->column, "unsupported instruction");
   }
 }

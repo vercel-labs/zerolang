@@ -93,6 +93,7 @@ typedef struct {
   unsigned rodata_base_offset;
   bool pie_relative_data;
   bool seed_main_process_args;
+  ZDirectLoopFrame *loop;
 } MachOEmitContext;
 
 const char *z_macho_runtime_helper_symbol(MachORuntimeHelper helper);
