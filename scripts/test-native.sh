@@ -302,7 +302,11 @@ run_native_or_gap() {
   fi
 
   local native_case_started_at="$SECONDS"
-  bin/zero check "$input" >/dev/null
+  # Check passes, or fails with the same BLD004 buildability gate the build
+  # path reports for gated typed graph MIR constructs.
+  if ! bin/zero check "$input" >/dev/null 2>"$out.check.err"; then
+    grep -q "BLD004" "$out.check.err"
+  fi
   if bin/zero build --json --emit exe --target linux-musl-x64 "$input" --out "$out" > "$out.json"; then
     local native_output
     if ! native_output="$("$out" "$@" 2>/dev/null)"; then
