@@ -276,7 +276,9 @@ native_case_in_scope() {
     conformance/native/pass/std-fs-bytes.graph | \
     conformance/native/pass/std-cli-helpers.graph | \
     conformance/native/pass/generic-function-basic.graph | \
-    conformance/native/pass/match-fallback.graph)
+    conformance/native/pass/match-fallback.graph | \
+    conformance/native/pass/recursive-multi-call-let.graph | \
+    conformance/native/pass/mutual-recursion.graph)
       return 0
       ;;
     *)
@@ -365,6 +367,8 @@ run_native_or_gap conformance/native/pass/std-search-sort-widths.graph .zero/nat
 run_native_or_gap conformance/native/pass/std-codec-json-url.graph .zero/native-test/std-codec-json-url "std codec json url ok"
 run_native_or_gap conformance/native/pass/memory-types.graph .zero/native-test/memory-types "native memory types"
 run_native_or_gap conformance/native/pass/recursive-fibonacci.graph .zero/native-test/recursive-fibonacci "recursive fibonacci ok"
+run_native_or_gap conformance/native/pass/recursive-multi-call-let.graph .zero/native-test/recursive-multi-call-let "recursive multi call ok"
+run_native_or_gap conformance/native/pass/mutual-recursion.graph .zero/native-test/mutual-recursion "mutual recursion ok"
 run_native_or_gap conformance/native/pass/scratch-nested-index.graph .zero/native-test/scratch-nested-index "scratch nested index ok"
 run_native_or_gap conformance/native/pass/owned-transfer.graph .zero/native-test/owned-transfer "owned transfer ok"
 run_native_or_gap conformance/native/pass/owned-drop-cleanup.graph .zero/native-test/owned-drop-cleanup "owned drop cleanup ok"

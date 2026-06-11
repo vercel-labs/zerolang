@@ -1,0 +1,31 @@
+fn isEven(n: usize) -> Bool {
+    if n == 0 {
+        return true
+    }
+    let odd: Bool = isOdd(n - 1)
+    return odd
+}
+
+fn isOdd(n: usize) -> Bool {
+    if n == 0 {
+        return false
+    }
+    let even: Bool = isEven(n - 1)
+    return even
+}
+
+fn checkEven(n: usize) -> Bool {
+    let even: Bool = isEven(n)
+    return even
+}
+
+fn checkOdd(n: usize) -> Bool {
+    let odd: Bool = isOdd(n)
+    return odd
+}
+
+pub fn main(world: World) -> Void raises {
+    if checkEven(8) && checkOdd(7) && !isEven(3) {
+        check world.out.write("mutual recursion ok\n")
+    }
+}

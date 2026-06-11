@@ -3273,6 +3273,7 @@ await rm(programGraphAuthoringRunAfterHumanEditPath, { force: true });
 await rm(programGraphBuilderOpsPackage, { recursive: true, force: true });
 await rm(programGraphBuilderOpsRunPath, { force: true });
 await rm(programGraphLoopTestPackage, { recursive: true, force: true });
+await rm(programGraphArrayLengthPackage, { recursive: true, force: true });
 await rm(programGraphBlockBodyPackage, { recursive: true, force: true });
 await rm(programGraphBlockBodyRunPath, { force: true });
 await rm(programGraphAuthoringCliPackage, { recursive: true, force: true });
@@ -4882,6 +4883,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/char-literals.0", "char-literals", { stdout: "char literals ok\n" }],
   ["conformance/native/pass/float-primitives.0", "float-primitives", { stdout: "float primitives ok\n" }],
   ["conformance/native/pass/recursive-fibonacci.0", "recursive-fibonacci", { stdout: "recursive fibonacci ok\n" }],
+  ["conformance/native/pass/mutual-recursion.0", "mutual-recursion", { stdout: "mutual recursion ok\n" }],
   ["conformance/native/pass/scratch-nested-index.0", "scratch-nested-index", { stdout: "scratch nested index ok\n" }],
   ["conformance/native/pass/checked-bounds-get.0", "checked-bounds-get", { stdout: "checked bounds get ok\n" }],
   ["conformance/native/pass/check-maybe-fallibility.0", "check-maybe-fallibility", { stdout: "check maybe fallibility ok\n" }],
@@ -4898,6 +4900,8 @@ for (const runtimeFixture of [
 }
 
 await assertDirectRuntimeRequired("conformance/native/pass/untyped-literal-adoption.0", "untyped-literal-adoption-required", { stdout: "usize literal adoption ok\nflipped literal adoption ok\nliteral arithmetic adoption ok\nu8 literal adoption ok\n" });
+
+await assertDirectRuntimeRequired("conformance/native/pass/recursive-multi-call-let.0", "recursive-multi-call-let-required", { stdout: "recursive multi call ok\n" });
 
 const literalAdoptionInitOverflowFixture = `${outDir}/untyped-literal-adoption-init-overflow.0`;
 const literalAdoptionInitOverflowBody = await writeImportFailureFixture(literalAdoptionInitOverflowFixture, `pub fn main(world: World) -> Void raises {

@@ -1,0 +1,18 @@
+fn shrink(bytes: Span<u8>, n: usize) -> Bool {
+    if n == 0 {
+        return true
+    }
+    if n == 1 {
+        let tail: Bool = shrink(bytes, n - 1)
+        return tail
+    }
+    let skip: Bool = shrink(bytes, n - 2)
+    return skip
+}
+
+pub fn main(world: World) -> Void raises {
+    let bytes: Span<u8> = std.mem.span("zero")
+    if shrink(bytes, 5) && shrink(bytes, 4) {
+        check world.out.write("recursive multi call ok\n")
+    }
+}
