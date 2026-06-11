@@ -7,7 +7,7 @@ description: Graph-first agent workflow for making focused Zero changes with CLI
 
 Use this when editing Zero code, examples, tests, docs, or a package. `zero.graph` is the package compiler input; `.0` files are the human-readable source projection. Command text is designed to be readable by agents. Use JSON only when another tool must parse stable fields or a debugging session needs the full machine contract.
 
-Inside the Zero repository checkout, prefer `bin/zero` over a global `zero`. Otherwise use the same compiler binary that will run the project; start with `zero --version` and `zero skills`, and load `language`, `graph`, or `diagnostics` only as the task needs them.
+Inside the Zero repository checkout, prefer `bin/zero` over a global `zero`. Otherwise use the same compiler binary that will run the project; start with `zero --version` and `zero skills`, and load `language`, `graph`, or `diagnostics` only as the task needs them. Fetch each skill topic once and rely on it: the content is fixed for a given compiler binary, so re-running `zero skills get` for a topic you already loaded returns the same text. The `zero` stub topic lists every topic with its approximate size.
 
 ## Read, Edit, Verify
 

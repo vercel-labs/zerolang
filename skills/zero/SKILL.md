@@ -38,10 +38,20 @@ If the user has multiple Zero binaries, use the same binary that will run the pr
 /path/to/zero skills get zero --full
 ```
 
-Use `zero skills` to discover additional skills bundled with that Zero version.
-Use `zero skills get <name>` to load only what is relevant to the task. Common
-inner skills include `agent`, `language`, `graph`, `diagnostics`, `packages`,
-`builds`, `testing`, and `stdlib`.
+Use `zero skills get <name>` to load only what the task needs, and fetch each
+topic at most once per session: the content is fixed for a given compiler
+binary, so refetching a loaded topic returns the same text. Topics and
+approximate served sizes:
+
+- `zero` (~2 KB): this discovery stub
+- `agent` (~4 KB): read-edit-verify loop, locating code, edit surfaces, verification
+- `language` (~6 KB): syntax, types, effects, control flow, generics
+- `graph` (~8 KB): zero.graph store, query/view, patch operations, import/export/merge
+- `diagnostics` (~4 KB): reading diagnostics, zero explain, typed fix plans
+- `packages` (~5 KB): manifests, package layout, creation and repair
+- `builds` (~5 KB): build/run, targets, profiles, emitted artifacts
+- `testing` (~3 KB): test blocks, filters, runtime checks
+- `stdlib` (~39 KB): full standard library signature and capability reference; fetch only when you need exact signatures
 
 Agents author through graph patches or direct `.0` source edits; package commands refresh `zero.graph` from edited source automatically. Read one function with `zero view --fn <name>` instead of whole files. Prefer concise text output during interactive agent work; use `--json` only for automation, exact spans, contracts, or machine-readable diagnostics.
 

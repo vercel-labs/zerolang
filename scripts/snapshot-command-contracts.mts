@@ -5018,11 +5018,16 @@ assert.match(zeroSkill.data[0].content, /zero skills get zero --full/);
 assert.match(zeroSkill.data[0].content, /zero check \[graph-or-package\]/);
 assert.doesNotMatch(zeroSkill.data[0].content, /<file-or-package>/);
 assert.equal(zeroSkill.data[0].files, undefined);
+assert.match(zeroSkill.data[0].content, /at most once per session/);
+for (const skillName of skillsList.data.map((skill) => skill.name)) {
+  assert(zeroSkill.data[0].content.includes(`\`${skillName}\` (~`), `zero stub should index topic ${skillName} with a size`);
+}
 
 const agentSkill = json(["skills", "get", "agent", "--json"]).body;
 assert.equal(agentSkill.success, true);
 assert.match(agentSkill.data[0].content, /zero query --fn main/);
 assert.match(agentSkill.data[0].content, /Use JSON only when another tool must parse stable fields/);
+assert.match(agentSkill.data[0].content, /Fetch each skill topic once/);
 assert.doesNotMatch(agentSkill.data[0].content, /<file-or-package>/);
 
 const languageSkill = json(["skills", "get", "language", "--json"]).body;
