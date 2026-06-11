@@ -245,5 +245,6 @@ bool z_program_graph_name_contracts_ok(const ZProgramGraph *graph, const char *p
 bool z_program_graph_semantic_contracts_ok(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const char *path, ZDiag *diag) {
   if (!z_program_graph_effect_contracts_ok(graph, resolution, path, diag)) return false;
   if (!z_program_graph_memory_contracts_ok(graph, resolution, path, diag)) return false;
+  if (!z_program_graph_fixed_array_length_contracts_ok(graph, resolution, path, diag)) return false;
   return z_program_graph_borrow_contracts_ok(graph, path, diag);
 }

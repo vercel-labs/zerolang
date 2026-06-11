@@ -2706,6 +2706,7 @@ static bool graph_native_compiler_input_ok(const ZProgramGraph *graph, const ZPr
 
 static bool graph_stored_compiler_input_ok(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const SourceInput *input, const ZTargetInfo *target, const char *path, ZDiag *diag) {
   if (!graph_check_resolution_ok(graph, resolution, path, diag)) return false;
+  if (!z_program_graph_fixed_array_length_contracts_ok(graph, resolution, path, diag)) return false;
   if (!graph_check_target_capabilities_ok(graph, resolution, target, diag)) return false;
   return validate_package_dependencies_for_target(input, target, diag);
 }

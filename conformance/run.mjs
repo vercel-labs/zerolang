@@ -946,6 +946,7 @@ const passCheckFixtures = [
   "conformance/check/pass/std-mem-field-items.0",
   "conformance/check/pass/std-mem-field-slice.0",
   "conformance/check/pass/checker-type-forms.0",
+  "conformance/check/pass/fixed-array-length-match.0",
   "conformance/check/pass/package",
   "conformance/check/pass/imports",
   "examples/memory-package",
@@ -3230,6 +3231,7 @@ const programGraphAuthoringRunAfterHumanEditPath = `${outDir}/program-graph-auth
 const programGraphBuilderOpsPackage = `${outDir}/program-graph-builder-ops`;
 const programGraphBuilderOpsRunPath = `${outDir}/program-graph-builder-ops-run`;
 const programGraphLoopTestPackage = `${outDir}/program-graph-loop-test`;
+const programGraphArrayLengthPackage = `${outDir}/program-graph-array-length-mismatch`;
 const programGraphBlockBodyPackage = `${outDir}/program-graph-block-body`;
 const programGraphBlockBodyRunPath = `${outDir}/program-graph-block-body-run`;
 const programGraphAuthoringCliPackage = `${outDir}/program-graph-authoring-cli`;
@@ -3453,6 +3455,18 @@ const programGraphLoopTestAddTest = JSON.parse((await execFileAsync(zero, [
 const programGraphLoopTestCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphLoopTestPackage])).stdout);
 const programGraphLoopTestRun = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphLoopTestPackage])).stdout);
 const programGraphLoopTestView = (await execFileAsync(zero, ["view", programGraphLoopTestPackage])).stdout;
+const programGraphArrayLengthInit = JSON.parse((await execFileAsync(zero, ["init", "--json", programGraphArrayLengthPackage])).stdout);
+const programGraphArrayLengthMainPatch = JSON.parse((await execFileAsync(zero, ["patch", "--json", "--op", "addMain", programGraphArrayLengthPackage])).stdout);
+const programGraphArrayLengthRepeatBodyPath = `${outDir}/program-graph-array-length-repeat-body.0`;
+await writeFile(programGraphArrayLengthRepeatBodyPath, 'var b: [64]u8 = [0_u8; 32]\ncheck world.out.write("unreachable\\n")\n');
+const programGraphArrayLengthRepeatPatch = JSON.parse((await execFileAsync(zero, ["patch", "--json", "--replace-fn", "main", "--body-file", programGraphArrayLengthRepeatBodyPath, programGraphArrayLengthPackage]).catch((error) => error)).stdout);
+const programGraphArrayLengthListBodyPath = `${outDir}/program-graph-array-length-list-body.0`;
+await writeFile(programGraphArrayLengthListBodyPath, 'var b: [4]u8 = [1, 2]\ncheck world.out.write("unreachable\\n")\n');
+const programGraphArrayLengthListPatch = JSON.parse((await execFileAsync(zero, ["patch", "--json", "--replace-fn", "main", "--body-file", programGraphArrayLengthListBodyPath, programGraphArrayLengthPackage]).catch((error) => error)).stdout);
+const programGraphArrayLengthMatchingBodyPath = `${outDir}/program-graph-array-length-matching-body.0`;
+await writeFile(programGraphArrayLengthMatchingBodyPath, 'var b: [4]u8 = [0_u8; 4]\nb[0] = 1\ncheck world.out.write("lengths agree\\n")\n');
+const programGraphArrayLengthMatchingPatch = JSON.parse((await execFileAsync(zero, ["patch", "--json", "--replace-fn", "main", "--body-file", programGraphArrayLengthMatchingBodyPath, programGraphArrayLengthPackage])).stdout);
+const programGraphArrayLengthCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphArrayLengthPackage])).stdout);
 const programGraphBlockBodyInit = JSON.parse((await execFileAsync(zero, ["init", "--json", programGraphBlockBodyPackage])).stdout);
 const programGraphBlockBodyMainPatch = JSON.parse((await execFileAsync(zero, [
   "patch",
@@ -3972,6 +3986,20 @@ assert.equal(programGraphLoopTestRun.testBackend, "direct-program-graph");
 assert.equal(programGraphLoopTestRun.passedTests, 1);
 assert.match(programGraphLoopTestView, /while i < n \{/);
 assert.match(programGraphLoopTestView, /i = i \+ 1/);
+assert.equal(programGraphArrayLengthInit.ok, true);
+assert.equal(programGraphArrayLengthMainPatch.ok, true);
+assert.equal(programGraphArrayLengthRepeatPatch.ok, false);
+assert.equal(programGraphArrayLengthRepeatPatch.diagnostics[0].code, "TYP002");
+assert.equal(programGraphArrayLengthRepeatPatch.diagnostics[0].expected, "[64]u8");
+assert.equal(programGraphArrayLengthRepeatPatch.diagnostics[0].actual, "repeat count 32");
+assert.match(programGraphArrayLengthRepeatPatch.diagnostics[0].help, /make the lengths agree/);
+assert.equal(programGraphArrayLengthListPatch.ok, false);
+assert.equal(programGraphArrayLengthListPatch.diagnostics[0].code, "TYP002");
+assert.equal(programGraphArrayLengthListPatch.diagnostics[0].expected, "[4]u8");
+assert.equal(programGraphArrayLengthListPatch.diagnostics[0].actual, "2 element(s)");
+assert.equal(programGraphArrayLengthMatchingPatch.ok, true);
+assert.equal(programGraphArrayLengthCheck.ok, true);
+assertRepositoryGraphNativeCheck(programGraphArrayLengthCheck, "missing");
 assert.equal(programGraphBlockBodyInit.ok, true);
 assert.equal(programGraphBlockBodyMainPatch.ok, true);
 assert.equal(programGraphBlockBodyMainPatch.operationCount, 1);
@@ -4893,6 +4921,30 @@ assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].code, "TYP016");
 assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].expected, "u8");
 assert.equal(literalAdoptionCompareOverflowBody.diagnostics[0].actual, "300 overflows u8");
 assert.match(literalAdoptionCompareOverflowBody.diagnostics[0].help, /smaller literal or a wider integer type/);
+
+const fixedArrayRepeatLengthFixture = `${outDir}/fixed-array-repeat-length-mismatch.0`;
+const fixedArrayRepeatLengthBody = await writeImportFailureFixture(fixedArrayRepeatLengthFixture, `pub fn main(world: World) -> Void raises {
+    var b: [64]u8 = [0_u8; 32]
+    b[0] = 1
+    check world.out.write("unreachable\\n")
+}
+`);
+assert.equal(fixedArrayRepeatLengthBody.diagnostics[0].code, "TYP002");
+assert.equal(fixedArrayRepeatLengthBody.diagnostics[0].expected, "[64]u8");
+assert.equal(fixedArrayRepeatLengthBody.diagnostics[0].actual, "repeat count 32");
+assert.match(fixedArrayRepeatLengthBody.diagnostics[0].help, /make the lengths agree/);
+
+const fixedArrayListLengthFixture = `${outDir}/fixed-array-list-length-mismatch.0`;
+const fixedArrayListLengthBody = await writeImportFailureFixture(fixedArrayListLengthFixture, `pub fn main(world: World) -> Void raises {
+    var b: [4]u8 = [1, 2]
+    b[0] = 1
+    check world.out.write("unreachable\\n")
+}
+`);
+assert.equal(fixedArrayListLengthBody.diagnostics[0].code, "TYP002");
+assert.equal(fixedArrayListLengthBody.diagnostics[0].expected, "[4]u8");
+assert.equal(fixedArrayListLengthBody.diagnostics[0].actual, "2 element(s)");
+assert.match(fixedArrayListLengthBody.diagnostics[0].help, /annotate the intended array length/);
 
 await assertDirectRuntimeRequired("conformance/native/pass/break-continue.0", "break-continue-required", { stdout: "loop tick\nloop tick\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/maybe-local-null-init-return.0", "maybe-local-null-init-return-required", { stdout: "maybe local found 42\nmaybe local none\nmaybe local sum 5\n" });

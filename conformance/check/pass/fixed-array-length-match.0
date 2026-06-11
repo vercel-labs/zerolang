@@ -1,0 +1,8 @@
+pub fn main(world: World) -> Void raises {
+    var filled: [8]u8 = [7_u8; 8]
+    var listed: [4]u8 = [1, 2, 3, 4]
+    filled[0] = listed[3]
+    if filled[0] == 4 {
+        check world.out.write("fixed array lengths ok\n")
+    }
+}

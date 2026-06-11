@@ -1531,6 +1531,12 @@ static bool ir_graph_lower_array_initializer(const ZProgramGraph *graph, IrProgr
       ir_graph_mark_unsupported(ir, expr, "typed graph MIR fixed array repeat literal requires value and count", local->name);
       return false;
     }
+    const ZProgramGraphNode *count_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
+    unsigned long long repeat_count = 0;
+    if (count_node && count_node->kind == Z_PROGRAM_GRAPH_NODE_LITERAL && ir_parse_integer_literal(count_node->value, &repeat_count) && repeat_count != (unsigned long long)local->array_len) {
+      ir_graph_mark_unsupported(ir, count_node, "typed graph MIR fixed array repeat count must match local type", local->name);
+      return false;
+    }
     const ZProgramGraphNode *value_node = ir_graph_ordered_node(graph, expr->id, "arg", 0);
     for (size_t i = 0; i < local->array_len; i++) {
       IrValue *index = ir_new_index_literal(ir, (unsigned)i, ir_graph_line(value_node), ir_graph_column(value_node));
@@ -1631,6 +1637,15 @@ static bool ir_graph_lower_record_initializer(const ZProgramGraph *graph, IrProg
         ir_graph_type_arg_vec_free(&shape_args);
         ir_graph_mark_unsupported(ir, field_expr, "typed graph MIR record array field literal length must match field type", field->name);
         return false;
+      }
+      if (repeat) {
+        const ZProgramGraphNode *count_node = ir_graph_ordered_node(graph, field_expr->id, "arg", 1);
+        unsigned long long repeat_count = 0;
+        if (count_node && count_node->kind == Z_PROGRAM_GRAPH_NODE_LITERAL && ir_parse_integer_literal(count_node->value, &repeat_count) && repeat_count != (unsigned long long)field_array_len) {
+          ir_graph_type_arg_vec_free(&shape_args);
+          ir_graph_mark_unsupported(ir, count_node, "typed graph MIR record array field repeat count must match field type", field->name);
+          return false;
+        }
       }
       const ZProgramGraphNode *repeat_value = repeat ? ir_graph_ordered_node(graph, field_expr->id, "arg", 0) : NULL;
       for (size_t element_index = 0; element_index < field_array_len; element_index++) {

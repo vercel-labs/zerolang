@@ -8052,7 +8052,7 @@ static bool check_expr_expected(CheckContext *ctx, const Program *program, const
             char actual_detail[128];
             if (expr->array_repeat) snprintf(actual_detail, sizeof(actual_detail), "repeat count %s", actual_len_text);
             else snprintf(actual_detail, sizeof(actual_detail), "%zu element(s)", expr->args.len);
-            bool ok = set_diag_detail(diag, 3006, "array literal length does not match expected fixed array", expr->line, expr->column, expected, actual_detail, "add or remove elements so the array literal length matches its fixed-array type");
+            bool ok = set_diag_detail(diag, 3006, "array literal length does not match expected fixed array", expr->line, expr->column, expected, actual_detail, "make the lengths agree: resize the initializer or annotate the intended array length");
             return ok;
           }
           element_expected = close + 1;

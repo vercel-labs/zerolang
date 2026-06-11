@@ -4425,6 +4425,12 @@ static bool ir_lower_array_initializer(const Program *program, IrProgram *ir, Ir
       ir_mark_unsupported(ir, "direct backend fixed array repeat literal requires value and count", line, column, local->name);
       return false;
     }
+    const Expr *count_expr = expr->args.items[1];
+    unsigned long long repeat_count = 0;
+    if (count_expr && count_expr->kind == EXPR_NUMBER && ir_parse_integer_literal(count_expr->text ? count_expr->text : "", &repeat_count) && repeat_count != (unsigned long long)local->array_len) {
+      ir_mark_unsupported(ir, "direct backend fixed array repeat count must match local type", count_expr->line, count_expr->column, local->name);
+      return false;
+    }
     const Expr *value_expr = expr->args.items[0];
     for (size_t i = 0; i < local->array_len; i++) {
       IrValue *index = ir_new_index_literal(ir, (unsigned)i, value_expr->line, value_expr->column);
@@ -4513,6 +4519,13 @@ static bool ir_lower_shape_initializer(const Program *program, IrProgram *ir, Ir
         if (field_expr->args.len != 2) {
           ir_type_arg_vec_free(&shape_args);
           ir_mark_unsupported(ir, "direct backend record array field repeat literal requires value and count", field_expr->line, field_expr->column, field->name);
+          return false;
+        }
+        const Expr *field_count_expr = field_expr->args.items[1];
+        unsigned long long field_repeat_count = 0;
+        if (field_count_expr && field_count_expr->kind == EXPR_NUMBER && ir_parse_integer_literal(field_count_expr->text ? field_count_expr->text : "", &field_repeat_count) && field_repeat_count != (unsigned long long)field_array_len) {
+          ir_type_arg_vec_free(&shape_args);
+          ir_mark_unsupported(ir, "direct backend record array field repeat count must match field type", field_count_expr->line, field_count_expr->column, field->name);
           return false;
         }
       } else if (field_expr->args.len != field_array_len) {

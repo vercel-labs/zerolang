@@ -181,3 +181,137 @@ bool z_program_graph_memory_contracts_ok(const ZProgramGraph *graph, const ZProg
   }
   return true;
 }
+
+static bool memory_integer_literal_value(const char *text, unsigned long long *out) {
+  if (!text || !text[0]) return false;
+  size_t body_len = strlen(text);
+  const char *last_underscore = strrchr(text, '_');
+  if (last_underscore && (last_underscore[1] == 'i' || last_underscore[1] == 'u')) body_len = (size_t)(last_underscore - text);
+  if (body_len == 0) return false;
+  unsigned long long value = 0;
+  bool saw_digit = false;
+  for (size_t index = 0; index < body_len; index++) {
+    char ch = text[index];
+    if (ch == '_') continue;
+    if (ch < '0' || ch > '9') return false;
+    value = value * 10ull + (unsigned long long)(ch - '0');
+    saw_digit = true;
+  }
+  if (!saw_digit) return false;
+  if (out) *out = value;
+  return true;
+}
+
+static bool memory_fixed_array_declared_len(const char *type_text, unsigned long long *out) {
+  if (!type_text || type_text[0] != '[') return false;
+  const char *close = strchr(type_text, ']');
+  if (!close || close == type_text + 1 || !close[1]) return false;
+  unsigned long long value = 0;
+  bool saw_digit = false;
+  for (const char *cursor = type_text + 1; cursor < close; cursor++) {
+    char ch = *cursor;
+    if (ch == '_') continue;
+    if (ch < '0' || ch > '9') return false;
+    value = value * 10ull + (unsigned long long)(ch - '0');
+    saw_digit = true;
+  }
+  if (!saw_digit) return false;
+  if (out) *out = value;
+  return true;
+}
+
+static size_t memory_edge_count(const ZProgramGraph *graph, const ZProgramGraphNode *node, const char *kind) {
+  size_t count = 0;
+  for (size_t i = 0; graph && node && kind && i < graph->edge_len; i++) {
+    const ZProgramGraphEdge *edge = &graph->edges[i];
+    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE && memory_text_eq(edge->from, node->id) && memory_text_eq(edge->kind, kind)) count++;
+  }
+  return count;
+}
+
+static const ZProgramGraphNode *memory_top_level_const(const ZProgramGraph *graph, const char *name) {
+  for (size_t i = 0; graph && name && name[0] && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_CONST && memory_text_eq(node->name, name)) return node;
+  }
+  return NULL;
+}
+
+static bool memory_repeat_count_value(const ZProgramGraph *graph, const ZProgramGraphNode *count_node, unsigned long long *out) {
+  if (!count_node) return false;
+  if (count_node->kind == Z_PROGRAM_GRAPH_NODE_LITERAL) return memory_integer_literal_value(count_node->value, out);
+  if (count_node->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER) {
+    const ZProgramGraphNode *const_decl = memory_top_level_const(graph, count_node->name);
+    const ZProgramGraphNode *const_value = const_decl ? memory_child(graph, const_decl, "value", 0) : NULL;
+    if (const_value && const_value->kind == Z_PROGRAM_GRAPH_NODE_LITERAL) return memory_integer_literal_value(const_value->value, out);
+  }
+  return false;
+}
+
+static bool fail_fixed_array_length(const ZProgramGraphNode *literal, const char *declared_type, const char *actual_detail, const char *path, ZDiag *diag) {
+  if (diag) {
+    *diag = (ZDiag){0};
+    diag->code = 3006;
+    diag->path = literal && literal->path && literal->path[0] ? literal->path : path;
+    diag->line = literal && literal->line > 0 ? literal->line : 1;
+    diag->column = literal && literal->column > 0 ? literal->column : 1;
+    diag->length = 1;
+    snprintf(diag->message, sizeof(diag->message), "array literal length does not match expected fixed array");
+    snprintf(diag->expected, sizeof(diag->expected), "%s", declared_type ? declared_type : "fixed array type");
+    snprintf(diag->actual, sizeof(diag->actual), "%s", actual_detail ? actual_detail : "mismatched array literal length");
+    snprintf(diag->help, sizeof(diag->help), "make the lengths agree: resize the initializer or annotate the intended array length");
+  }
+  return false;
+}
+
+static bool memory_array_initializer_length_ok(const ZProgramGraph *graph, const char *declared_type, const ZProgramGraphNode *literal, const char *path, ZDiag *diag) {
+  unsigned long long declared_len = 0;
+  if (!literal || literal->kind != Z_PROGRAM_GRAPH_NODE_ARRAY_LITERAL) return true;
+  if (!memory_fixed_array_declared_len(declared_type, &declared_len)) return true;
+  if (memory_text_eq(literal->value, "repeat")) {
+    unsigned long long repeat_count = 0;
+    if (!memory_repeat_count_value(graph, memory_child(graph, literal, "arg", 1), &repeat_count)) return true;
+    if (repeat_count == declared_len) return true;
+    char actual_detail[96];
+    snprintf(actual_detail, sizeof(actual_detail), "repeat count %llu", repeat_count);
+    return fail_fixed_array_length(literal, declared_type, actual_detail, path, diag);
+  }
+  size_t element_count = memory_edge_count(graph, literal, "arg");
+  if ((unsigned long long)element_count == declared_len) return true;
+  char actual_detail[96];
+  snprintf(actual_detail, sizeof(actual_detail), "%zu element(s)", element_count);
+  return fail_fixed_array_length(literal, declared_type, actual_detail, path, diag);
+}
+
+static const char *memory_assignment_target_array_type(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const ZProgramGraphNode *assignment) {
+  const ZProgramGraphNode *target = memory_child(graph, assignment, "target", 0);
+  if (!target || target->kind != Z_PROGRAM_GRAPH_NODE_IDENTIFIER) return NULL;
+  const ZProgramGraphResolutionReference *ref = memory_ref_for_node(resolution, target, "identifier");
+  const ZProgramGraphNode *binding = ref && ref->resolved ? memory_node_by_id(graph, ref->target_node) : NULL;
+  if (!binding || binding->kind != Z_PROGRAM_GRAPH_NODE_LET) return NULL;
+  return binding->type;
+}
+
+bool z_program_graph_fixed_array_length_contracts_ok(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const char *path, ZDiag *diag) {
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    const char *declared_type = NULL;
+    const char *init_edge = NULL;
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_LET) {
+      declared_type = node->type;
+      init_edge = "expr";
+    } else if (node->kind == Z_PROGRAM_GRAPH_NODE_CONST) {
+      declared_type = node->type;
+      init_edge = "value";
+    } else if (node->kind == Z_PROGRAM_GRAPH_NODE_ASSIGNMENT) {
+      declared_type = memory_assignment_target_array_type(graph, resolution, node);
+      init_edge = "expr";
+    } else {
+      continue;
+    }
+    if (!declared_type || declared_type[0] != '[') continue;
+    const ZProgramGraphNode *init = memory_child(graph, node, init_edge, 0);
+    if (!memory_array_initializer_length_ok(graph, declared_type, init, path, diag)) return false;
+  }
+  return true;
+}
