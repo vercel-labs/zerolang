@@ -10,11 +10,11 @@ database and `.0` files are human-readable projections.
 
 Install this skill once in an agent's skill manager. Keep it thin; Zero's own CLI serves the version-matched workflow for each installed compiler.
 
-Install the latest release:
+Use the zero already on PATH or at `~/.zero/bin/zero` when one exists; environments often pin a specific compiler, and replacing it silently breaks version-matched stores and workflows. Install only when zero is missing:
 
 ```sh
-curl -fsSL https://zerolang.ai/install.sh | bash
-export PATH="$HOME/.zero/bin:$PATH"
+command -v zero >/dev/null 2>&1 || { curl -fsSL https://zerolang.ai/install.sh | bash; }
+export PATH="$PATH:$HOME/.zero/bin"
 zero --version
 ```
 
