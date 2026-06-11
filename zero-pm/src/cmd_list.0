@@ -3,27 +3,36 @@
 use std.mem
 use std.fs
 
-use types
 use lockfile
 use output
 
-pub fn runList(world: World) -> CmdResult raises {
+// Appends output to `out` and returns its length.
+pub fn runList(out: MutSpan<u8>) -> usize {
     let fs: Fs = std.fs.host()
-    var lk: Lockfile = Lockfile { schema_version: 1_u32, raw_pkgs:       [0_u8; 4096], raw_len:        0, count:          0 }
-    if !readLockfile(fs, ".zero/zero.lock.json", &mut lk) {
-        return CmdResult.err("no lockfile found — run `0pm install` first")
+
+    var lk_buf: [4096]u8 = [0_u8; 4096]
+    let lk_len: usize = readLockPackages(fs, ".zero/zero.lock.json", lk_buf)
+    if lk_len == 0 {
+        return outError(out, 0, "no lockfile found — run `0pm install` first")
     }
-    if lk.count == 0 {
-        check printLine(world, "no packages installed")
-        return CmdResult.ok
+    let pkgs: Span<u8> = lk_buf[..lk_len]
+
+    let count: usize = lockCount(pkgs)
+    if count == 0 {
+        return outLine(out, 0, "no packages installed")
     }
+
+    var cursor: usize = 0
     var i: usize = 0
-    while i < lk.count {
-        var entry: LockEntry = LockEntry { name:     [0_u8; 64], name_len: 0, version:  [0_u8; 32], ver_len:  0, url:      [0_u8; 256], url_len:  0, checksum: [0_u8; 80],  cs_len:   0 }
-        if getEntry(&lk, i, &mut entry) {
-            check printPackage(world, entry.name[..entry.name_len], entry.version[..entry.ver_len])
+    while i < count {
+        var name_buf: [64]u8 = [0_u8; 64]
+        let nlen: usize = lockNameAt(pkgs, i, name_buf)
+        var ver_buf: [32]u8 = [0_u8; 32]
+        let vlen: usize = lockFieldAt(pkgs, i, "version", ver_buf)
+        if nlen > 0 {
+            cursor = outPackage(out, cursor, name_buf[..nlen], ver_buf[..vlen])
         }
         i = i + 1
     }
-    return CmdResult.ok
+    return cursor
 }

@@ -1,11 +1,11 @@
 // main.0 — 0pm entry point and sub-command dispatcher
+// Commands append their output into a buffer; main writes it once because the
+// direct backend only lowers World in the entry function.
 
 use std.args
 use std.mem
 use std.io
 
-use types
-use output
 use cmd_init
 use cmd_install
 use cmd_add
@@ -14,49 +14,59 @@ use cmd_list
 use cmd_info
 use cmd_update
 
+// Usage text, returned as a constant so main stays the only World user.
+fn usageText() -> Span<u8> {
+    return "zero-pm v0.1.0 — zerolang package manager\n\nusage: 0pm <command> [args]\n\ncommands:\n  init [name]         create zero.json in current directory\n  install             install all dependencies\n  add <name[@ver]>    add a dependency\n  remove <name>       remove a dependency\n  list                list installed packages\n  info <name>         show package information\n  update [name]       update dependency to latest\n"
+}
+
 pub fn main(world: World) -> Void raises {
     let sub_m: Maybe<String> = std.args.get(1)
     if !sub_m.has {
-        check printUsage(world)
+        check world.out.write(usageText())
         return
     }
     let sub: Span<u8> = std.mem.span(sub_m.value)
 
-    var result: CmdResult = CmdResult.ok
+    var out_buf: [8192]u8 = [0_u8; 8192]
+    var out_len: usize = 0
+    var handled: Bool = true
 
     if std.mem.eql(sub, "init") {
-        result = check runInit(world)
+        out_len = runInit(out_buf)
     } else if std.mem.eql(sub, "install") {
-        result = check runInstall(world)
+        out_len = runInstall(out_buf)
     } else if std.mem.eql(sub, "add") {
-        result = check runAdd(world)
+        out_len = runAdd(out_buf)
     } else if std.mem.eql(sub, "remove") {
-        result = check runRemove(world)
+        out_len = runRemove(out_buf)
     } else if std.mem.eql(sub, "list") {
-        result = check runList(world)
+        out_len = runList(out_buf)
     } else if std.mem.eql(sub, "info") {
-        result = check runInfo(world)
+        out_len = runInfo(out_buf)
     } else if std.mem.eql(sub, "update") {
-        result = check runUpdate(world)
+        out_len = runUpdate(out_buf)
     } else if std.mem.eql(sub, "--help") || std.mem.eql(sub, "-h") || std.mem.eql(sub, "help") {
-        check printUsage(world)
+        check world.out.write(usageText())
         return
     } else {
-        var msg_buf: [80]u8 = [0_u8; 80]
-        var mc: usize = 0
-        let a1: Maybe<usize> = std.io.writeSpan(msg_buf, mc, "unknown command: ")
-        if a1.has { mc = a1.value }
-        let a2: Maybe<usize> = std.io.writeSpan(msg_buf, mc, sub)
-        if a2.has { mc = a2.value }
-        check printError(world, std.io.written(msg_buf, mc))
-        check printUsage(world)
+        handled = false
+    }
+
+    if handled {
+        if out_len > 0 {
+            check world.out.write(out_buf[..out_len])
+        }
         return
     }
 
-    match result {
-        ok {}
-        .err(msg) {
-            check printError(world, std.mem.span(msg))
-        }
-    }
+    var msg_buf: [96]u8 = [0_u8; 96]
+    var cursor: usize = 0
+    let a1: Maybe<usize> = std.io.writeSpan(msg_buf, cursor, "error: unknown command: ")
+    if a1.has { cursor = a1.value }
+    let a2: Maybe<usize> = std.io.writeSpan(msg_buf, cursor, sub)
+    if a2.has { cursor = a2.value }
+    let a3: Maybe<usize> = std.io.writeSpan(msg_buf, cursor, "\n")
+    if a3.has { cursor = a3.value }
+    check world.err.write(std.io.written(msg_buf, cursor))
+    check world.out.write(usageText())
 }

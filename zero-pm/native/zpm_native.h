@@ -37,14 +37,15 @@ int mkdir_p(int path_len);
 
 /* ── Minimal ustar tar extraction ───────────────────────────────────── */
 
-/* Extract tar from input[0..archive_len] to dir in output[0..dest_path_len].
+/* Extract tar from input[0..archive_len] to the destination directory whose
+   path is stored in input[archive_len..archive_len+dest_path_len].
    Returns files extracted, or -1 on error. */
 int tar_extract(int archive_len, int dest_path_len);
 
 /* ── CRC-32 ─────────────────────────────────────────────────────────── */
 
 /* CRC-32 of input[0..data_len]. Writes 8 hex chars to output[0..8].
-   Returns CRC value (non-negative) or -1 on error. */
+   Returns 8 (hex chars written) on success or -1 on error. */
 int crc32_compute(int data_len);
 
 #ifdef __cplusplus

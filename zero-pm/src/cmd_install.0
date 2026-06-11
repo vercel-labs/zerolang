@@ -2,97 +2,123 @@
 
 use std.mem
 use std.fs
-use std.net
-use std.http
-use std.time
-use std.env
-use std.io
 
-use types
+use jsonwalk
 use manifest
 use lockfile
 use resolver
+use registry
 use installer
+use cache
 use output
 
-pub fn runInstall(world: World) -> CmdResult raises {
+// Resolve, download, and lock every dependency in zero.json.
+// Appends progress/errors to `out` starting at `cursor_in` and returns the new
+// cursor. Sets status[0] = 1 on failure, 0 on success.
+pub fn installAllDeps(out: MutSpan<u8>, cursor_in: usize, status: MutSpan<u8>) -> usize {
+    var cursor: usize = cursor_in
+    status[0] = 1_u8
     let fs: Fs = std.fs.host()
 
-    var m: Manifest = Manifest { pkg_name:        [0_u8; 64], name_len:        0, pkg_version:     [0_u8; 32], ver_len:         0, raw_targets:     [0_u8; 512], raw_targets_len: 0, raw_deps:        [0_u8; 2048], raw_deps_len:    0, dep_count:       0 }
-    if !readManifest(fs, "zero.json", &mut m) {
-        return CmdResult.err("zero.json not found — run `0pm init` first")
+    var manifest_buf: [4096]u8 = [0_u8; 4096]
+    let mlen: usize = readManifestRaw(fs, "zero.json", manifest_buf)
+    if mlen == 0 {
+        return outError(out, cursor, "zero.json not found — run `0pm init` first")
     }
 
-    if m.dep_count == 0 {
-        check printLine(world, "no dependencies declared")
-        return CmdResult.ok
+    var deps_buf: [2048]u8 = [0_u8; 2048]
+    let dlen: usize = manifestDepsRaw(manifest_buf[..mlen], deps_buf)
+    let dep_total: usize = countObjEntries(deps_buf[..dlen])
+    if dlen == 0 || dep_total == 0 {
+        status[0] = 0_u8
+        return outLine(out, cursor, "no dependencies declared")
     }
 
     var registry_buf: [128]u8 = [0_u8; 128]
-    let reg_env: Maybe<String> = std.env.get("ZERO_REGISTRY")
-    var registry_url: Span<u8> = "https://registry.zerolang.ai"
-    if reg_env.has {
-        let rn: usize = std.mem.copy(registry_buf, std.mem.span(reg_env.value))
-        registry_url = registry_buf[..rn]
-    }
+    let rlen: usize = registryUrlInto(registry_buf)
+    let registry_url: Span<u8> = registry_buf[..rlen]
 
-    let client: HttpClient = std.http.client(std.net.host())
-    var req_buf: [512]u8   = [0_u8; 512]
-    var resp_buf: [8192]u8 = [0_u8; 8192]
+    // Build the lock packages object from scratch
+    var lk_buf: [4096]u8 = [0_u8; 4096]
+    var lk_len: usize = std.mem.copy(lk_buf, "{}")
 
-    var resolved: [64]ResolvedPkg = [ResolvedPkg { name: [0_u8; 64], name_len: 0, version: [0_u8; 32], ver_len: 0, url: [0_u8; 256], url_len: 0, checksum: [0_u8; 80], cs_len: 0 }; 64]
-    let count: usize = resolve(client, registry_url, &m, req_buf, resp_buf, resolved)
-    let sentinel: usize = 18446744073709551615_usize
-    if count == sentinel {
-        return CmdResult.err("dependency resolution failed (cycle or conflict)")
-    }
-    if count == 0 {
-        check printLine(world, "no remote packages to install")
-        return CmdResult.ok
-    }
-
-    var dl_buf: [65536]u8 = [0_u8; 65536]
+    var remote: usize = 0
     var failed: usize = 0
     var i: usize = 0
-    while i < count {
-        let p: ResolvedPkg = resolved[i]
-                let ok: Bool = install( client, p.name[..p.name_len], p.version[..p.ver_len], p.url[..p.url_len], p.checksum[..p.cs_len], req_buf, dl_buf )
-        if !ok {
-            check printError(world, "failed to install package")
-            failed = failed + 1
-        } else {
-            check printPackage(world, p.name[..p.name_len], p.version[..p.ver_len])
+    while i < dep_total {
+        var name_buf: [64]u8 = [0_u8; 64]
+        let nlen: usize = depNameAt(deps_buf[..dlen], i, name_buf)
+        if nlen > 0 && !depIsLocalAt(deps_buf[..dlen], i) {
+            remote = remote + 1
+            let name: Span<u8> = name_buf[..nlen]
+
+            var cons_buf: [32]u8 = [0_u8; 32]
+            let clen: usize = depVersionAt(deps_buf[..dlen], i, cons_buf)
+
+            var ver_buf: [32]u8 = [0_u8; 32]
+            let vlen: usize = resolveVersionFor(registry_url, name, cons_buf[..clen], ver_buf)
+            if vlen == 0 {
+                cursor = outError(out, cursor, "failed to resolve package")
+                failed = failed + 1
+            } else {
+                let version: Span<u8> = ver_buf[..vlen]
+                var body_buf: [4096]u8 = [0_u8; 4096]
+                let blen: usize = fetchVersionBody(registry_url, name, version, body_buf)
+                if blen == 0 {
+                    cursor = outError(out, cursor, "failed to fetch version metadata")
+                    failed = failed + 1
+                } else {
+                    var url_buf: [256]u8 = [0_u8; 256]
+                    let ulen: usize = jsonStrField(body_buf[..blen], "download_url", url_buf)
+                    var cs_buf: [80]u8 = [0_u8; 80]
+                    let cslen: usize = jsonStrField(body_buf[..blen], "checksum", cs_buf)
+                    let ok: Bool = install(name, version, url_buf[..ulen], cs_buf[..cslen])
+                    if !ok {
+                        cursor = outError(out, cursor, "failed to install package")
+                        failed = failed + 1
+                    } else {
+                        cursor = outPackage(out, cursor, name, version)
+                        var entry_buf: [512]u8 = [0_u8; 512]
+                        let elen: usize = buildLockEntryJson(version, url_buf[..ulen], cs_buf[..cslen], entry_buf)
+                        var lk_tmp: [4096]u8 = [0_u8; 4096]
+                        var new_len: usize = 0
+                        if elen > 0 {
+                            new_len = lockUpsert(lk_buf[..lk_len], name, entry_buf[..elen], lk_tmp)
+                        }
+                        if new_len == 0 {
+                            cursor = outError(out, cursor, "lockfile full")
+                            failed = failed + 1
+                        } else {
+                            lk_len = std.mem.copy(lk_buf, lk_tmp[..new_len])
+                        }
+                    }
+                }
+            }
         }
         i = i + 1
     }
+
     if failed > 0 {
-        return CmdResult.err("one or more packages failed to install")
+        return outError(out, cursor, "one or more packages failed to install")
+    }
+    if remote == 0 {
+        status[0] = 0_u8
+        return outLine(out, cursor, "no remote packages to install")
     }
 
-    // Write lockfile
-    var lk: Lockfile = Lockfile { schema_version: 1_u32, raw_pkgs:       [0_u8; 4096], raw_len:        0, count:          0 }
-    var j: usize = 0
-    while j < count {
-        let p: ResolvedPkg = resolved[j]
-        var entry: LockEntry = LockEntry { name:     [0_u8; 64], name_len: 0, version:  [0_u8; 32], ver_len:  0, url:      [0_u8; 256], url_len:  0, checksum: [0_u8; 80],  cs_len:   0 }
-        let nc: usize = std.mem.copy(entry.name, p.name[..p.name_len])
-        entry.name_len = nc
-        let vc: usize = std.mem.copy(entry.version, p.version[..p.ver_len])
-        entry.ver_len = vc
-        let uc: usize = std.mem.copy(entry.url, p.url[..p.url_len])
-        entry.url_len = uc
-        let cc: usize = std.mem.copy(entry.checksum, p.checksum[..p.cs_len])
-        entry.cs_len = cc
-        if !setEntry(&mut lk, &entry) {
-            return CmdResult.err("lockfile full")
-        }
-        j = j + 1
+    if !ensurePath(".zero") {
+        return outError(out, cursor, "failed to create .zero directory")
+    }
+    if !writeLockFile(fs, ".zero/zero.lock.json", lk_buf[..lk_len]) {
+        return outError(out, cursor, "failed to write lockfile")
     }
 
-    if !writeLockfile(fs, ".zero/zero.lock.json", &lk) {
-        return CmdResult.err("failed to write lockfile")
-    }
+    status[0] = 0_u8
+    return outLine(out, cursor, "packages installed successfully")
+}
 
-    check printLine(world, "packages installed successfully")
-    return CmdResult.ok
+// Appends output to `out` and returns its length.
+pub fn runInstall(out: MutSpan<u8>) -> usize {
+    var status: [1]u8 = [0_u8; 1]
+    return installAllDeps(out, 0, status)
 }

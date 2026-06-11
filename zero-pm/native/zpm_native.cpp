@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <zlib.h>
 
 /* ── Shared buffers ─────────────────────────────────────────────────── */
 
@@ -208,7 +209,7 @@ extern "C" int crc32_compute(int data_len) {
         g_output[i*2 + 1] = (unsigned char)HEX[byte & 0xf];
     }
     g_output[8] = '\0';
-    return (int)result;
+    return 8;
 }
 
 /* ── Minimal ustar tar extraction ───────────────────────────────────── */
@@ -257,12 +258,87 @@ static int make_parent_dirs(const char *path) {
     return 0;
 }
 
+/* Reject tar member paths that could escape the destination directory. */
+static bool tar_path_is_safe(const char *name) {
+    if (!name || !name[0]) return false;
+    if (name[0] == '/') return false;
+    const char *p = name;
+    while (*p) {
+        if (p[0] == '.' && p[1] == '.' &&
+            (p[2] == '/' || p[2] == '\0') &&
+            (p == name || p[-1] == '/')) {
+            return false;
+        }
+        ++p;
+    }
+    return true;
+}
+
+/* Inflate a gzip stream into a malloc'd buffer. Returns the decompressed
+   size and stores the buffer in *out, or -1 on error. */
+static long gunzip_to_heap(const unsigned char *data, int len, unsigned char **out) {
+    const long max_out = 16 * 1024 * 1024;
+    long cap = (long)len * 8 + 4096;
+    if (cap > max_out) cap = max_out;
+    unsigned char *buf = (unsigned char *)malloc((size_t)cap);
+    if (!buf) return -1;
+
+    z_stream zs;
+    memset(&zs, 0, sizeof(zs));
+    /* 15 + 16 = max window with gzip framing */
+    if (inflateInit2(&zs, 15 + 16) != Z_OK) { free(buf); return -1; }
+    zs.next_in = const_cast<unsigned char *>(data);
+    zs.avail_in = (uInt)len;
+
+    long total = 0;
+    int rc = Z_OK;
+    while (rc != Z_STREAM_END) {
+        if (total == cap) {
+            if (cap >= max_out) { rc = Z_BUF_ERROR; break; }
+            cap = cap * 2 > max_out ? max_out : cap * 2;
+            unsigned char *grown = (unsigned char *)realloc(buf, (size_t)cap);
+            if (!grown) { rc = Z_MEM_ERROR; break; }
+            buf = grown;
+        }
+        zs.next_out = buf + total;
+        zs.avail_out = (uInt)(cap - total);
+        rc = inflate(&zs, Z_NO_FLUSH);
+        total = (long)zs.total_out;
+        if (rc != Z_OK && rc != Z_STREAM_END) break;
+    }
+    inflateEnd(&zs);
+    if (rc != Z_STREAM_END) { free(buf); return -1; }
+    *out = buf;
+    return total;
+}
+
+static int tar_extract_from(const unsigned char *arc, long archive_len, const char *dest_in, int dest_path_len);
+
 extern "C" int tar_extract(int archive_len, int dest_path_len) {
     if (archive_len <= 0 || archive_len > ZPM_BUF_SIZE) return -1;
     if (dest_path_len <= 0 || dest_path_len >= 4096) return -1;
+    if (archive_len + dest_path_len > ZPM_BUF_SIZE) return -1;
 
+    // Destination path is stored in the input buffer right after the archive.
     char dest[4097];
-    memcpy(dest, g_output, (size_t)dest_path_len);
+    memcpy(dest, g_input + archive_len, (size_t)dest_path_len);
+    dest[dest_path_len] = '\0';
+
+    // Transparently decompress gzip archives (.tar.gz).
+    if (archive_len >= 2 && g_input[0] == 0x1f && g_input[1] == 0x8b) {
+        unsigned char *raw = nullptr;
+        long raw_len = gunzip_to_heap(g_input, archive_len, &raw);
+        if (raw_len < 0) return -1;
+        int extracted = tar_extract_from(raw, raw_len, dest, dest_path_len);
+        free(raw);
+        return extracted;
+    }
+    return tar_extract_from(g_input, archive_len, dest, dest_path_len);
+}
+
+static int tar_extract_from(const unsigned char *arc, long archive_len, const char *dest_in, int dest_path_len) {
+    char dest[4097];
+    memcpy(dest, dest_in, (size_t)dest_path_len);
     dest[dest_path_len] = '\0';
     // Ensure dest ends with /
     int dlen = dest_path_len;
@@ -273,8 +349,7 @@ extern "C" int tar_extract(int archive_len, int dest_path_len) {
     }
 
     int extracted = 0;
-    int pos = 0;
-    const unsigned char *arc = g_input;
+    long pos = 0;
 
     while (pos + 512 <= archive_len) {
         const TarHeader *hdr = reinterpret_cast<const TarHeader *>(arc + pos);
@@ -288,17 +363,23 @@ extern "C" int tar_extract(int archive_len, int dest_path_len) {
             continue;
         }
 
-        // Build full path: dest + prefix/name
-        char full_path[4096];
+        // Build the member-relative path: prefix/name
+        char member[300];
         if (hdr->prefix[0] != '\0') {
-            snprintf(full_path, sizeof(full_path), "%s%.*s/%.*s",
-                     dest, 155, hdr->prefix, 100, hdr->name);
+            snprintf(member, sizeof(member), "%.*s/%.*s",
+                     155, hdr->prefix, 100, hdr->name);
         } else {
-            snprintf(full_path, sizeof(full_path), "%s%.*s",
-                     dest, 100, hdr->name);
+            snprintf(member, sizeof(member), "%.*s", 100, hdr->name);
         }
+        uint64_t entry_size = oct_to_u64(hdr->size, 12);
+        if (!tar_path_is_safe(member)) {
+            pos += 512 + (long)((entry_size + 511) / 512) * 512;
+            continue;
+        }
+        char full_path[4096];
+        snprintf(full_path, sizeof(full_path), "%s%s", dest, member);
 
-        uint64_t file_size = oct_to_u64(hdr->size, 12);
+        uint64_t file_size = entry_size;
         int blocks = (int)((file_size + 511) / 512);
         pos += 512;
 
@@ -312,7 +393,7 @@ extern "C" int tar_extract(int archive_len, int dest_path_len) {
             int fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd >= 0) {
                 uint64_t remaining = file_size;
-                int block_pos = pos;
+                long block_pos = pos;
                 while (remaining > 0 && block_pos + 512 <= archive_len) {
                     uint64_t chunk = (remaining > 512) ? 512 : remaining;
                     ssize_t written = write(fd, arc + block_pos, (size_t)chunk);
@@ -324,7 +405,7 @@ extern "C" int tar_extract(int archive_len, int dest_path_len) {
                 extracted++;
             }
         }
-        pos += blocks * 512;
+        pos += (long)blocks * 512;
     }
     return extracted;
 }
