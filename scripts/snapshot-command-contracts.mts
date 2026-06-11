@@ -1852,8 +1852,15 @@ rmSync(copiedRepoGraphRootA, { force: true, recursive: true });
 rmSync(copiedRepoGraphRootB, { force: true, recursive: true });
 mkdirSync(copiedRepoGraphRootA, { recursive: true });
 mkdirSync(copiedRepoGraphRootB, { recursive: true });
-writeFileSync(join(copiedRepoGraphRootA, "main.0"), readFileSync("conformance/check/pass/checker-type-forms.0", "utf8"));
-writeFileSync(join(copiedRepoGraphRootB, "main.0"), readFileSync("conformance/check/pass/checker-type-forms.0", "utf8"));
+const copiedRepoGraphSourceText = `pub fn main(world: World) -> Void raises {
+    let total: i32 = 41 + 1
+    if total == 42 {
+        check world.out.write("copied graph source ok\\n")
+    }
+}
+`;
+writeFileSync(join(copiedRepoGraphRootA, "main.0"), copiedRepoGraphSourceText);
+writeFileSync(join(copiedRepoGraphRootB, "main.0"), copiedRepoGraphSourceText);
 const copiedRepoGraphSourceA = join(copiedRepoGraphRootA, "main.0");
 const copiedRepoGraphSourceB = join(copiedRepoGraphRootB, "main.0");
 json(["import", "--format", "text", "--json", copiedRepoGraphSourceA]);
@@ -1861,7 +1868,7 @@ writeFileSync(join(copiedRepoGraphRootB, "zero.graph"), readFileSync(join(copied
 const copiedRepoGraphVerify = json(["verify-projection", "--json", copiedRepoGraphSourceB]);
 assert.equal(copiedRepoGraphVerify.code, 0);
 assert.equal(copiedRepoGraphVerify.body.ok, true);
-writeFileSync(copiedRepoGraphSourceB, readFileSync(copiedRepoGraphSourceB, "utf8").replace("checker type forms ok", "checker copied graph store"));
+writeFileSync(copiedRepoGraphSourceB, readFileSync(copiedRepoGraphSourceB, "utf8").replace("copied graph source ok", "checker copied graph store"));
 const copiedRepoGraphVerifyDrift = json(["verify-projection", "--json", copiedRepoGraphSourceB], { allowFailure: true });
 assert.notEqual(copiedRepoGraphVerifyDrift.code, 0);
 assert.equal(copiedRepoGraphVerifyDrift.body.diagnostics[0].code, "RGP006");

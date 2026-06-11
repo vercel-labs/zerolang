@@ -44,7 +44,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 14896, maxStrcmpCalls: 440, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 15020, maxStrcmpCalls: 440, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 5600, maxStrcmpCalls: 277 },
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -111,6 +111,8 @@ const fileBudgets: Record<string, FileBudget> = {
   // Shared sorted node/edge index used by validation, lowering, views, and resolution.
   "native/zero-c/src/program_graph_adjacency.c": { maxLines: 224, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_adjacency.h": { maxLines: 40, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_check_gate.c": { maxLines: 92, maxStrcmpCalls: 24 },
+  "native/zero-c/src/program_graph_check_gate.h": { maxLines: 12, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_clone.c": { maxLines: 70, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_build.c": { maxLines: 60, maxStrcmpCalls: 8 },
   "native/zero-c/src/program_graph_build.h": { maxLines: 25, maxStrcmpCalls: 0 },
@@ -143,7 +145,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.c": { maxLines: 240, maxStrcmpCalls: 8 },
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 4973, maxStrcmpCalls: 5 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 4990, maxStrcmpCalls: 5 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -198,7 +200,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_semantics.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.c": { maxLines: 55, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_size.c": { maxLines: 251, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_size.c": { maxLines: 262, maxStrcmpCalls: 2 },
   "native/zero-c/src/program_graph_size.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_source_map.c": { maxLines: 460, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_source_map.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -1552,7 +1554,7 @@ const artifactGraphReadinessBody = cCodeText(cBlock(main, "static bool append_gr
 const artifactGraphSizeBody = cCodeText(cBlock(main, "static int run_graph_size_command"));
 const repositoryGraphCheckBody = cCodeText(cBlock(main, "static int run_repository_graph_check_command"));
 const graphNativeCompilerInputBody = cCodeText(cBlock(main, "static bool graph_native_compiler_input_ok"));
-const repositoryGraphTargetReadinessBody = cCodeText(cBlock(main, "static bool append_repository_graph_target_readiness_json(ZBuf *buf, SourceInput *input, const ZProgramGraphStore *store, const ZProgramGraphResolutionFacts *resolution, const ZTargetInfo *target, const Command *command, long long *lower_ms_out, bool *graph_mir_used_out) {"));
+const repositoryGraphTargetReadinessBody = cCodeText(cBlock(main, "static bool repository_graph_check_readiness_compute(const Command *command, SourceInput *input, const ZProgramGraphStore *store, const ZTargetInfo *target, RepositoryGraphCheckReadiness *out) {"));
 const repositoryGraphCheckJsonRawBody = cBlock(main, "static void append_repository_graph_compiler_path_json");
 const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_repository_graph_compiler_path_json"));
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
@@ -2264,7 +2266,7 @@ const programGraph = {
     /semanticDiagnosticsEnforced\\":false/.test(repositoryGraphCheckJsonRawBody) &&
     /semanticDiagnosticsAuthority\\":\\"stored-typed-graph-facts/.test(repositoryGraphCheckJsonRawBody),
   repositoryGraphCheckReadinessNoProgramReconstruction:
-    /z_program_graph_prepare_repository_store_mir_input[\s\S]*command\s*\?\s*command->backend\s*:\s*NULL[\s\S]*false[\s\S]*&readiness_program/.test(repositoryGraphTargetReadinessBody) &&
+    /z_program_graph_prepare_repository_store_mir_input[\s\S]*command\s*\?\s*command->backend\s*:\s*NULL[\s\S]*false[\s\S]*&out->program/.test(repositoryGraphTargetReadinessBody) &&
     !/z_program_graph_lower_to_program_with_source\s*\(/.test(repositoryGraphTargetReadinessBody) &&
     !/z_check_program\s*\(/.test(repositoryGraphTargetReadinessBody),
   repositoryGraphCheckReportsSemanticFacts: /z_program_graph_append_semantics_json\s*\(/.test(repositoryGraphCheckJsonBody),

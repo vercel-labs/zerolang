@@ -708,18 +708,13 @@ const passCheckFixtures = [
   "conformance/native/pass/mutref-shape-param.0",
   "conformance/native/pass/mutref-shape-param-nested.0",
   "conformance/native/pass/primitive-stdlib.0",
-  "conformance/native/pass/variants-defer-stdlib.0",
-  "conformance/native/pass/defer-return-raise-nested.0",
-  "conformance/native/pass/payload-match.0",
   "conformance/native/pass/break-continue.0",
   "conformance/native/pass/nested-break-continue.0",
   "conformance/native/pass/untyped-literal-adoption.0",
   "conformance/native/pass/for-range.0",
-  "conformance/native/pass/match-payload-binding.0",
   "conformance/native/pass/choice-payload-reference-return.0",
   "conformance/native/pass/choice-match-payload-reference-origin.0",
   "conformance/native/pass/choice-match-payload-return-origin.0",
-  "conformance/native/pass/match-choice-fallback.0",
   "conformance/native/pass/null-maybe.0",
   "conformance/native/pass/maybe-local-null-init-return.0",
   "conformance/native/pass/meta-typed-target-type.0",
@@ -782,7 +777,6 @@ const passCheckFixtures = [
   "conformance/native/pass/char-literals.0",
   "conformance/native/pass/float-primitives.0",
   "conformance/native/pass/wrapping-saturating-arithmetic.0",
-  "conformance/native/pass/maybe-error-flow.0",
   "conformance/native/pass/maybe-guard-branch-restore.0",
   "conformance/native/pass/maybe-guard-negated-conjunction.0",
   "conformance/native/pass/maybe-guard-scalar-match.0",
@@ -852,7 +846,6 @@ const passCheckFixtures = [
   "conformance/native/pass/static-method-namespace.0",
   "conformance/native/pass/c-import-type-shadowing.0",
   "conformance/native/pass/c-import-alias-later-local.0",
-  "conformance/native/pass/match-fallback.0",
   "conformance/native/pass/memory-types.0",
   "conformance/native/pass/owned-transfer.0",
   "conformance/native/pass/owned-field-move-return-branch.0",
@@ -892,7 +885,6 @@ const passCheckFixtures = [
   "conformance/native/pass/index-reference-assignment-clears-origin.0",
   "conformance/native/pass/allocator-primitives.0",
   "conformance/native/pass/std-mem-arena.0",
-  "conformance/native/pass/std-mem-collections.0",
   "conformance/native/pass/std-collections-algorithms.0",
   "conformance/native/pass/std-collections-u8.0",
   "conformance/native/pass/std-collections-mutspan-memory.0",
@@ -929,7 +921,6 @@ const passCheckFixtures = [
   "conformance/check/pass/shape-field-defaults.0",
   "conformance/check/pass/static-value-params.0",
   "conformance/check/pass/static-interface-basic.0",
-  "conformance/check/pass/call-resolution-inspection.0",
   "conformance/check/pass/call-resolution-edge-cases.0",
   "conformance/native/pass/static-interface-mutref.0",
   "conformance/native/pass/static-interface-static-param.0",
@@ -941,11 +932,9 @@ const passCheckFixtures = [
   "conformance/check/pass/c-header-import.0",
   "conformance/check/pass/c-import-local-shadowing.0",
   "conformance/check/pass/match-fallback.0",
-  "conformance/native/pass/match-choice-fallback.0",
   "conformance/check/pass/memory-types.0",
   "conformance/check/pass/std-mem-field-items.0",
   "conformance/check/pass/std-mem-field-slice.0",
-  "conformance/check/pass/checker-type-forms.0",
   "conformance/check/pass/fixed-array-length-match.0",
   "conformance/check/pass/package",
   "conformance/check/pass/imports",
@@ -961,6 +950,22 @@ const passCheckFixtures = [
   "examples/ownership-cleanup.0",
 ];
 await mapLimit(passCheckFixtures, checkJobs, (fixture, _index, workerIndex) => checkFixtureParallel(fixture, workerIndex));
+
+// Fixtures using the gated typed graph MIR constructs fail check with the
+// same BLD004 diagnostics zero build reports for their graph stores.
+const gateBlockedCheckFixtures = [
+  "conformance/native/pass/variants-defer-stdlib.0",
+  "conformance/native/pass/defer-return-raise-nested.0",
+  "conformance/native/pass/payload-match.0",
+  "conformance/native/pass/match-payload-binding.0",
+  "conformance/native/pass/match-choice-fallback.0",
+  "conformance/native/pass/maybe-error-flow.0",
+  "conformance/native/pass/match-fallback.0",
+  "conformance/native/pass/std-mem-collections.0",
+  "conformance/check/pass/call-resolution-inspection.0",
+  "conformance/check/pass/checker-type-forms.0",
+];
+await mapLimit(gateBlockedCheckFixtures, checkJobs, (fixture, _index, workerIndex) => checkFailureFixtureParallel(fixture, /BLD004/, workerIndex));
 
 const checkJsonSuccess = await execFileAsync(zero, ["check", "--json", "conformance/native/pass/explicit-casts.0"]);
 const checkJsonSuccessBody = JSON.parse(checkJsonSuccess.stdout);
@@ -4981,8 +4986,9 @@ assert.match(frameLimitOverBody.diagnostics[0].expected, /131072 bytes of locals
 assert.match(frameLimitOverBody.diagnostics[0].actual, /262144 bytes of locals/);
 assert.match(frameLimitOverBody.diagnostics[0].help, /smaller buffers in helper functions/);
 
-const pageAllocLocalFixture = `${outDir}/page-alloc-local.0`;
-await writeGraphFixture(pageAllocLocalFixture, `pub fn main(world: World) -> Void raises {
+// Typed graph MIR constructs outside the buildable subset fail at import
+// time with the same BLD004 diagnostics zero build would report later.
+const pageAllocLocalBody = await writeImportFailureFixture(`${outDir}/page-alloc-local.0`, `pub fn main(world: World) -> Void raises {
     let page: PageAlloc = std.mem.pageAlloc()
     let bytes: Maybe<MutSpan<u8>> = std.mem.allocBytes(page, 4096)
     if bytes.has {
@@ -4990,14 +4996,119 @@ await writeGraphFixture(pageAllocLocalFixture, `pub fn main(world: World) -> Voi
     }
 }
 `);
-const pageAllocLocalBuild = await execFileAsync(zero, ["build", "--json", "--emit", "exe", "--target", runnableDirectTarget ?? "linux-musl-x64", pageAllocLocalFixture, "--out", `${outDir}/page-alloc-local`]).catch((error) => error);
-assert.notEqual(pageAllocLocalBuild.code, 0);
-const pageAllocLocalBody = JSON.parse(pageAllocLocalBuild.stdout);
 assert.equal(pageAllocLocalBody.diagnostics[0].code, "BLD004");
 assert.match(pageAllocLocalBody.diagnostics[0].message, /allocator local requires FixedBufAlloc/);
 assert.equal(pageAllocLocalBody.diagnostics[0].actual, "PageAlloc");
+assert.equal(pageAllocLocalBody.diagnostics[0].line, 2);
 assert.match(pageAllocLocalBody.diagnostics[0].help, /std\.mem\.fixedBufAlloc/);
 assert.match(pageAllocLocalBody.diagnostics[0].help, /do not lower to direct backends yet/);
+
+const generalAllocLocalBody = await writeImportFailureFixture(`${outDir}/general-alloc-local.0`, `pub fn main(world: World) -> Void raises {
+    let general: GeneralAlloc = std.mem.generalAlloc()
+    let bytes: Maybe<MutSpan<u8>> = std.mem.allocBytes(general, 64)
+    if bytes.has {
+        check world.out.write("unreachable\\n")
+    }
+}
+`);
+assert.equal(generalAllocLocalBody.diagnostics[0].code, "BLD004");
+assert.equal(generalAllocLocalBody.diagnostics[0].actual, "GeneralAlloc");
+assert.equal(generalAllocLocalBody.diagnostics[0].line, 2);
+
+const deferStatementBody = await writeImportFailureFixture(`${outDir}/defer-statement-gate.0`, `pub fn main(world: World) -> Void raises {
+    defer check world.out.write("bye\\n")
+    check world.out.write("hi\\n")
+}
+`);
+assert.equal(deferStatementBody.diagnostics[0].code, "BLD004");
+assert.match(deferStatementBody.diagnostics[0].message, /statement kind is unsupported/);
+assert.equal(deferStatementBody.diagnostics[0].actual, "Defer");
+assert.equal(deferStatementBody.diagnostics[0].line, 2);
+assert.equal(deferStatementBody.diagnostics[0].column, 5);
+
+const rescueNonPrimitiveBody = await writeImportFailureFixture(`${outDir}/rescue-non-primitive-gate.0`, `fn label(ok: Bool) -> String raises [Invalid] {
+    if ok {
+        return "primary"
+    }
+    raise Invalid
+}
+
+pub fn main(world: World) -> Void raises {
+    let value: String = rescue label(false) err "fallback"
+    check world.out.write(value)
+}
+`);
+assert.equal(rescueNonPrimitiveBody.diagnostics[0].code, "BLD004");
+assert.equal(rescueNonPrimitiveBody.diagnostics[0].line, 9);
+
+const refByteBufParamBody = await writeImportFailureFixture(`${outDir}/ref-bytebuf-param-gate.0`, `fn buffered(buf: ref<ByteBuf>) -> usize {
+    return std.mem.bufLen(buf)
+}
+
+pub fn main(world: World) -> Void raises {
+    var storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
+    var alloc: FixedBufAlloc = std.mem.fixedBufAlloc(storage)
+    let maybe: Maybe<owned<ByteBuf>> = std.mem.byteBuf(alloc, 4)
+    if !maybe.has {
+        return
+    }
+    let buf: owned<ByteBuf> = maybe.value
+    if buffered(&buf) == 4 {
+        check world.out.write("buffered\\n")
+    }
+}
+`);
+assert.equal(refByteBufParamBody.diagnostics[0].code, "BLD004");
+assert.equal(refByteBufParamBody.diagnostics[0].actual, "ref<ByteBuf>");
+assert.equal(refByteBufParamBody.diagnostics[0].line, 1);
+
+const codecReadU32Body = await writeImportFailureFixture(`${outDir}/codec-readu32-gate.0`, `use std.codec
+
+pub fn main(world: World) -> Void raises {
+    let value: u32 = std.codec.readU32("abcd")
+    if value > 0 {
+        check world.out.write("read\\n")
+    }
+}
+`);
+assert.equal(codecReadU32Body.diagnostics[0].code, "BLD004");
+assert.match(codecReadU32Body.diagnostics[0].message, /call target is unsupported/);
+assert.equal(codecReadU32Body.diagnostics[0].actual, "readU32");
+assert.equal(codecReadU32Body.diagnostics[0].line, 4);
+
+const enumLocalPackage = `${outDir}/enum-local-package`;
+await mkdir(`${enumLocalPackage}/src`, { recursive: true });
+await writeZeroToml(enumLocalPackage, {
+  package: { name: "enum-local-package", version: "0.1.0" },
+  targets: { cli: { kind: "exe", main: "src/main.0" } },
+  deps: {},
+});
+await writeFile(`${enumLocalPackage}/src/main.0`, `enum Status {
+    ready,
+    failed,
+}
+
+choice Outcome {
+    ok,
+    failed: i32,
+}
+
+pub fn main(world: World) -> Void raises {
+    let status: Status = Status.ready
+    let outcome: Outcome = Outcome.ok
+    if status == Status.ready {
+        check world.out.write("ready\\n")
+    }
+}
+`);
+const enumLocalImport = await execFileAsync(zero, ["import", "--json", enumLocalPackage]).catch((error) => error);
+assert.notEqual(enumLocalImport.code, 0);
+const enumLocalImportBody = JSON.parse(enumLocalImport.stdout);
+assert.equal(enumLocalImportBody.diagnostics[0].code, "BLD004");
+assert.match(enumLocalImportBody.diagnostics[0].message, /local type is unsupported/);
+assert.equal(enumLocalImportBody.diagnostics[0].actual, "Status");
+assert.match(enumLocalImportBody.diagnostics[0].path, /src\/main\.0$/);
+assert.equal(enumLocalImportBody.diagnostics[0].line, 12);
 
 const abiDump = await execFileAsync(zero, ["abi", "dump", "--json", "conformance/native/pass/const-layout.0"]);
 const abiDumpBody = JSON.parse(abiDump.stdout);
