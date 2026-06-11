@@ -1061,6 +1061,31 @@ Z_RET_OWNED void *z_checked_malloc(size_t size);
 Z_RET_OWNED void *z_checked_calloc(size_t count, size_t item_size);
 Z_RET_OWNED void *z_checked_reallocarray(Z_SINK Z_OPTIONAL void *ptr, size_t count, size_t item_size);
 size_t z_grow_capacity(size_t current, size_t required, size_t initial);
+
+/* Shared dynamic-array grow helper. Ensures room for one more element, growing
+ * via z_grow_capacity + z_checked_reallocarray when the slot is full. Replaces
+ * the per-file copies that previously lived in ir.c, program_graph_lower.c, and
+ * checker.c. */
+static inline void *z_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
+  if (len + 1 > *cap) {
+    *cap = z_grow_capacity(*cap, len + 1, initial);
+    return z_checked_reallocarray(items, *cap, item_size);
+  }
+  return items;
+}
+
+/* As z_grow_items, but also accounts the new allocation against an IrProgram's
+ * mir_bytes total. Replaces the verbatim copies in ir.c and program_graph_mir.c. */
+static inline void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
+  if (len + 1 > *cap) {
+    size_t next_cap = z_grow_capacity(*cap, len + 1, initial);
+    void *next_items = z_checked_reallocarray(items, next_cap, item_size);
+    if (ir) ir->mir_bytes += next_cap * item_size;
+    *cap = next_cap;
+    return next_items;
+  }
+  return items;
+}
 Z_RET_OWNED char *z_strdup(Z_IN const char *text);
 Z_RET_OWNED char *z_strndup(Z_IN const char *text, size_t len);
 Z_RET_OWNED Z_RET_OPTIONAL char *z_read_file(Z_IN const char *path, Z_OUT ZDiag *diag);

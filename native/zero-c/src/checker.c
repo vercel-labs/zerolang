@@ -157,14 +157,6 @@ struct MetaCache {
 static const ZTargetInfo *configured_check_target = NULL;
 static MetaCache default_meta_cache = {0};
 
-static void *checker_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
-  if (len + 1 > *cap) {
-    *cap = z_grow_capacity(*cap, len + 1, initial);
-    return z_checked_reallocarray(items, *cap, item_size);
-  }
-  return items;
-}
-
 static const char *origin_path_text(const char *path) {
   return path ? path : "";
 }
@@ -338,7 +330,7 @@ static bool value_provenance_add_full_with_index_exact(ValueProvenance *origins,
       return true;
     }
   }
-  origins->items = checker_grow_items(origins->items, origins->len, &origins->cap, 4, sizeof(ProvenanceEntry));
+  origins->items = z_grow_items(origins->items, origins->len, &origins->cap, 4, sizeof(ProvenanceEntry));
   origins->items[origins->len] = (ProvenanceEntry){
     .value_path = path && path[0] ? z_strdup(path) : NULL,
     .origin = {
@@ -458,7 +450,7 @@ static bool place_vec_add(PlaceVec *places, const char *root, Scope *root_scope,
     Place *place = &places->items[i];
     if (strcmp(place->root, root) == 0 && place->root_scope == root_scope && origin_path_equal(place->path, path)) return true;
   }
-  places->items = checker_grow_items(places->items, places->len, &places->cap, 4, sizeof(Place));
+  places->items = z_grow_items(places->items, places->len, &places->cap, 4, sizeof(Place));
   places->items[places->len++] = (Place){
     .root = z_strdup(root),
     .root_scope = root_scope,
@@ -537,7 +529,7 @@ static void place_vec_clear_for_place(PlaceVec *places, Scope *root_scope, const
 
 static bool provenance_storage_effect_vec_add(ProvenanceStorageEffectVec *effects, const char *target_root, Scope *target_scope, const char *target_path, const ValueProvenance *value, bool overwrite) {
   if (!effects || !target_root || !target_root[0] || !value || value->len == 0) return false;
-  effects->items = checker_grow_items(effects->items, effects->len, &effects->cap, 4, sizeof(ProvenanceStorageEffect));
+  effects->items = z_grow_items(effects->items, effects->len, &effects->cap, 4, sizeof(ProvenanceStorageEffect));
   ProvenanceStorageEffect *effect = &effects->items[effects->len++];
   *effect = (ProvenanceStorageEffect){
     .target = {
@@ -1345,7 +1337,7 @@ static bool split_generic_args(const char *inner, size_t inner_len, char ***out_
         free(items);
         return false;
       }
-      items = checker_grow_items(items, len, &cap, 4, sizeof(char *));
+      items = z_grow_items(items, len, &cap, 4, sizeof(char *));
       items[len++] = z_strndup(inner + start, end - start);
       start = i + 1;
     }
@@ -10366,7 +10358,7 @@ static void collect_visible_type_names(Scope *scope, ParamVec *out) {
       bool type_param = cursor->is_type_param && cursor->is_type_param[i];
       if (!cursor->names[i] || (!type_param && !static_param)) continue;
       if (param_vec_contains_name(out, cursor->names[i])) continue;
-      out->items = checker_grow_items(out->items, out->len, &out->cap, 8, sizeof(Param));
+      out->items = z_grow_items(out->items, out->len, &out->cap, 8, sizeof(Param));
       out->items[out->len++] = (Param){
         .name = cursor->names[i],
         .type = static_param ? cursor->types[i] : "Type",

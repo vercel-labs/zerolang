@@ -23,27 +23,8 @@ static Expr *clone_expr(const Expr *expr);
 static Stmt *clone_stmt(const Stmt *stmt);
 static void push_function_clone(FunctionVec *vec, const Function *source);
 
-static void *ir_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
-  if (len + 1 > *cap) {
-    *cap = z_grow_capacity(*cap, len + 1, initial);
-    return z_checked_reallocarray(items, *cap, item_size);
-  }
-  return items;
-}
-
-static void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
-  if (len + 1 > *cap) {
-    size_t next_cap = z_grow_capacity(*cap, len + 1, initial);
-    void *next_items = z_checked_reallocarray(items, next_cap, item_size);
-    if (ir) ir->mir_bytes += next_cap * item_size;
-    *cap = next_cap;
-    return next_items;
-  }
-  return items;
-}
-
 static void push_param_clone(ParamVec *vec, const Param *param) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Param));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Param));
   vec->items[vec->len++] = (Param){
     .name = z_strdup(param->name),
     .type = param->type ? z_strdup(param->type) : NULL,
@@ -61,12 +42,12 @@ static ParamVec clone_params(const ParamVec *params) {
 }
 
 static void push_expr_clone(ExprVec *vec, const Expr *expr) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Expr *));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Expr *));
   vec->items[vec->len++] = clone_expr(expr);
 }
 
 static void push_type_arg_clone(TypeArgVec *vec, const TypeArg *arg) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeArg));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeArg));
   vec->items[vec->len++] = (TypeArg){
     .type = arg->type ? z_strdup(arg->type) : NULL,
     .line = arg->line,
@@ -75,7 +56,7 @@ static void push_type_arg_clone(TypeArgVec *vec, const TypeArg *arg) {
 }
 
 static void push_field_clone(FieldInitVec *vec, const FieldInit *field) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(FieldInit));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(FieldInit));
   vec->items[vec->len++] = (FieldInit){
     .name = z_strdup(field->name),
     .value = clone_expr(field->value),
@@ -107,7 +88,7 @@ static Expr *clone_expr(const Expr *expr) {
 }
 
 static void push_stmt_clone(StmtVec *vec, const Stmt *stmt) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Stmt *));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Stmt *));
   vec->items[vec->len++] = clone_stmt(stmt);
 }
 
@@ -118,7 +99,7 @@ static StmtVec clone_stmts(const StmtVec *stmts) {
 }
 
 static void push_match_arm_clone(MatchArmVec *vec, const MatchArm *arm) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(MatchArm));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(MatchArm));
   vec->items[vec->len++] = (MatchArm){
     .case_name = z_strdup(arm->case_name),
     .range_end = arm->range_end ? z_strdup(arm->range_end) : NULL,
@@ -338,7 +319,7 @@ static void ir_type_arg_vec_free(TypeArgVec *args) {
 }
 
 static void ir_type_arg_vec_push_owned(TypeArgVec *args, char *type) {
-  args->items = ir_grow_items(args->items, args->len, &args->cap, 4, sizeof(TypeArg));
+  args->items = z_grow_items(args->items, args->len, &args->cap, 4, sizeof(TypeArg));
   args->items[args->len++] = (TypeArg){.type = type};
 }
 
@@ -851,7 +832,7 @@ static void ir_active_local_restore(IrProgram *ir, size_t mark) {
 
 static void ir_active_local_push(IrProgram *ir, const char *name) {
   if (!ir || !name) return;
-  ir->active_local_names = ir_grow_items(ir->active_local_names, ir->active_local_len, &ir->active_local_cap, 8, sizeof(char *));
+  ir->active_local_names = z_grow_items(ir->active_local_names, ir->active_local_len, &ir->active_local_cap, 8, sizeof(char *));
   ir->active_local_names[ir->active_local_len++] = z_strdup(name);
 }
 
@@ -5334,7 +5315,7 @@ static void ir_lower_direct_backend_subset(IrProgram *ir, const Program *program
 }
 
 static void push_function_clone(FunctionVec *vec, const Function *source) {
-  vec->items = ir_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Function));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Function));
   vec->items[vec->len++] = (Function){
     .name = z_strdup(source->name),
     .test_name = source->test_name ? z_strdup(source->test_name) : NULL,
@@ -5358,7 +5339,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   ir.target = target;
   for (size_t i = 0; i < program->c_imports.len; i++) {
     CImport *source = &program->c_imports.items[i];
-    ir.program.c_imports.items = ir_grow_items(ir.program.c_imports.items, ir.program.c_imports.len, &ir.program.c_imports.cap, 4, sizeof(CImport));
+    ir.program.c_imports.items = z_grow_items(ir.program.c_imports.items, ir.program.c_imports.len, &ir.program.c_imports.cap, 4, sizeof(CImport));
     ir.program.c_imports.items[ir.program.c_imports.len++] = (CImport){
       .header = source->header ? z_strdup(source->header) : NULL,
       .resolved_header = source->resolved_header ? z_strdup(source->resolved_header) : NULL,
@@ -5369,7 +5350,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->consts.len; i++) {
     ConstDecl *source = &program->consts.items[i];
-    ir.program.consts.items = ir_grow_items(ir.program.consts.items, ir.program.consts.len, &ir.program.consts.cap, 4, sizeof(ConstDecl));
+    ir.program.consts.items = z_grow_items(ir.program.consts.items, ir.program.consts.len, &ir.program.consts.cap, 4, sizeof(ConstDecl));
     ir.program.consts.items[ir.program.consts.len++] = (ConstDecl){
       .name = z_strdup(source->name),
       .type = source->type ? z_strdup(source->type) : NULL,
@@ -5381,7 +5362,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->aliases.len; i++) {
     TypeAlias *source = &program->aliases.items[i];
-    ir.program.aliases.items = ir_grow_items(ir.program.aliases.items, ir.program.aliases.len, &ir.program.aliases.cap, 4, sizeof(TypeAlias));
+    ir.program.aliases.items = z_grow_items(ir.program.aliases.items, ir.program.aliases.len, &ir.program.aliases.cap, 4, sizeof(TypeAlias));
     ir.program.aliases.items[ir.program.aliases.len++] = (TypeAlias){
       .name = z_strdup(source->name),
       .target = source->target ? z_strdup(source->target) : NULL,
@@ -5392,7 +5373,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->interfaces.len; i++) {
     InterfaceDecl *source = &program->interfaces.items[i];
-    ir.program.interfaces.items = ir_grow_items(ir.program.interfaces.items, ir.program.interfaces.len, &ir.program.interfaces.cap, 4, sizeof(InterfaceDecl));
+    ir.program.interfaces.items = z_grow_items(ir.program.interfaces.items, ir.program.interfaces.len, &ir.program.interfaces.cap, 4, sizeof(InterfaceDecl));
     InterfaceDecl cloned = {
       .name = z_strdup(source->name),
       .type_params = clone_params(&source->type_params),
@@ -5407,7 +5388,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->shapes.len; i++) {
     Shape *source = &program->shapes.items[i];
-    ir.program.shapes.items = ir_grow_items(ir.program.shapes.items, ir.program.shapes.len, &ir.program.shapes.cap, 4, sizeof(Shape));
+    ir.program.shapes.items = z_grow_items(ir.program.shapes.items, ir.program.shapes.len, &ir.program.shapes.cap, 4, sizeof(Shape));
     Shape cloned = {
       .name = z_strdup(source->name),
       .layout = z_strdup(source->layout),
@@ -5424,7 +5405,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->enums.len; i++) {
     EnumDecl *source = &program->enums.items[i];
-    ir.program.enums.items = ir_grow_items(ir.program.enums.items, ir.program.enums.len, &ir.program.enums.cap, 4, sizeof(EnumDecl));
+    ir.program.enums.items = z_grow_items(ir.program.enums.items, ir.program.enums.len, &ir.program.enums.cap, 4, sizeof(EnumDecl));
     ir.program.enums.items[ir.program.enums.len++] = (EnumDecl){
       .name = z_strdup(source->name),
       .type = source->type ? z_strdup(source->type) : NULL,
@@ -5436,7 +5417,7 @@ IrProgram z_lower_program_with_source(const Program *program, const SourceInput 
   }
   for (size_t i = 0; i < program->choices.len; i++) {
     Choice *source = &program->choices.items[i];
-    ir.program.choices.items = ir_grow_items(ir.program.choices.items, ir.program.choices.len, &ir.program.choices.cap, 4, sizeof(Choice));
+    ir.program.choices.items = z_grow_items(ir.program.choices.items, ir.program.choices.len, &ir.program.choices.cap, 4, sizeof(Choice));
     ir.program.choices.items[ir.program.choices.len++] = (Choice){
       .name = z_strdup(source->name),
       .cases = clone_params(&source->cases),

@@ -19,16 +19,6 @@
 #include <sys/time.h>
 enum { IR_READONLY_DATA_BASE = 1024u, IR_READONLY_DATA_LIMIT = 65536u };
 
-static void *ir_grow_tracked_items(IrProgram *ir, void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
-  if (len + 1 > *cap) {
-    size_t next_cap = z_grow_capacity(*cap, len + 1, initial);
-    void *next_items = z_checked_reallocarray(items, next_cap, item_size);
-    if (ir) ir->mir_bytes += next_cap * item_size;
-    *cap = next_cap;
-    return next_items;
-  }
-  return items;
-}
 static IrTypeKind ir_type_kind(const char *type);
 static bool ir_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
