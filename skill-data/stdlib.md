@@ -33,6 +33,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.ascii`: ASCII byte predicates, case conversion, and digit value helpers.
 - `std.fmt`: caller-buffer formatting for booleans and integer text.
 - `std.text`: ASCII and UTF-8 byte-backed text validation.
+- `std.unicode`: strict UTF-8 codepoint decode/encode iteration and codepoint-class helpers; pair with `std.text.utf8Valid`/`std.text.utf8Len` for whole-span validation and counting.
 - `std.math`: fixed-width min/max/clamp, checked and saturating integer arithmetic, GCD/LCM, powers, modular power, roots, combinatorics, primality, and divisor routines.
 - `std.path`: target-neutral lexical path basename, dirname, extension, join, normalize, and relative helpers.
 - `std.codec`: byte reads, endian reads/writes, varint sizing/encode/decode, base64/hex encode/decode, CRC helpers, and byte checksums.
@@ -841,6 +842,23 @@ abs(arg0: Duration) -> Duration
 between(arg0: Duration, arg1: Duration) -> Duration
 hasElapsed(arg0: Duration, arg1: Duration, arg2: Duration) -> Bool
 ```
+
+### std.unicode
+
+```text
+decodeAt(text: Span<u8>, index: usize) -> Maybe<u32>
+widthAt(text: Span<u8>, index: usize) -> Maybe<usize>
+encode(buffer: MutSpan<u8>, cp: u32) -> Maybe<Span<u8>>
+encodedWidth(cp: u32) -> Maybe<usize>
+isDigit(cp: u32) -> Bool
+isWord(cp: u32) -> Bool
+isSpace(cp: u32) -> Bool
+```
+
+Decoding is strict UTF-8 (overlong encodings, surrogates, values above
+U+10FFFF, and truncated sequences return `null`). Iterate codepoints by
+advancing a byte index with `widthAt`. The class helpers use ECMA-262 regex
+semantics by codepoint (`\d` `\w` `\s`).
 
 ### std.url
 

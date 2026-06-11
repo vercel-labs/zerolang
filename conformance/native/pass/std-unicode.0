@@ -1,0 +1,95 @@
+fn unicode_decode_checks() -> Bool {
+    let ascii: Maybe<u32> = std.unicode.decodeAt("A", 0)
+    if !ascii.has || ascii.value != 65 {
+        return false
+    }
+    let accent: Maybe<u32> = std.unicode.decodeAt("xé", 1)
+    if !accent.has || accent.value != 233 {
+        return false
+    }
+    let emoji: Maybe<u32> = std.unicode.decodeAt("💯", 0)
+    if !emoji.has || emoji.value != 128175 {
+        return false
+    }
+    let continuation: Maybe<u32> = std.unicode.decodeAt("é", 1)
+    if continuation.has {
+        return false
+    }
+    var overlong: [2]u8 = [192_u8, 175_u8]
+    let bad: Maybe<u32> = std.unicode.decodeAt(overlong, 0)
+    if bad.has {
+        return false
+    }
+    var surrogate: [3]u8 = [237_u8, 160_u8, 128_u8]
+    let lone: Maybe<u32> = std.unicode.decodeAt(surrogate, 0)
+    return !lone.has
+}
+
+fn unicode_iteration_checks() -> Bool {
+    let text: Span<u8> = std.mem.span("aé💯")
+    var index: usize = 0
+    var count: usize = 0
+    while index < std.mem.len(text) {
+        let width: Maybe<usize> = std.unicode.widthAt(text, index)
+        if !width.has {
+            return false
+        }
+        index = index + width.value
+        count = count + 1
+    }
+    let total: Maybe<usize> = std.text.utf8Len(text)
+    return count == 3 && (total.has && total.value == 3)
+}
+
+fn unicode_encode_checks() -> Bool {
+    var two_storage: [4]u8 = [0; 4]
+    let two_buffer: MutSpan<u8> = two_storage
+    let two: Maybe<Span<u8>> = std.unicode.encode(two_buffer, 233)
+    if !two.has || (std.mem.len(two.value) != 2 || (two.value[0] != 195_u8 || two.value[1] != 169_u8)) {
+        return false
+    }
+    var four_storage: [4]u8 = [0; 4]
+    let four_buffer: MutSpan<u8> = four_storage
+    let four: Maybe<Span<u8>> = std.unicode.encode(four_buffer, 128175)
+    if !four.has || std.mem.len(four.value) != 4 {
+        return false
+    }
+    let echo: Maybe<u32> = std.unicode.decodeAt(four.value, 0)
+    if !echo.has || echo.value != 128175 {
+        return false
+    }
+    var reject_storage: [4]u8 = [0; 4]
+    let reject_buffer: MutSpan<u8> = reject_storage
+    let surrogate: Maybe<Span<u8>> = std.unicode.encode(reject_buffer, 55296)
+    if surrogate.has {
+        return false
+    }
+    var big_storage: [4]u8 = [0; 4]
+    let big_buffer: MutSpan<u8> = big_storage
+    let too_big: Maybe<Span<u8>> = std.unicode.encode(big_buffer, 1114112)
+    if too_big.has {
+        return false
+    }
+    let max_width: Maybe<usize> = std.unicode.encodedWidth(1114111)
+    let bad_width: Maybe<usize> = std.unicode.encodedWidth(56000)
+    let one_width: Maybe<usize> = std.unicode.encodedWidth(65)
+    if !max_width.has || max_width.value != 4 {
+        return false
+    }
+    if bad_width.has {
+        return false
+    }
+    return one_width.has && one_width.value == 1
+}
+
+fn unicode_class_checks() -> Bool {
+    return std.unicode.isDigit(53) && !std.unicode.isDigit(97) && std.unicode.isWord(95) && (std.unicode.isWord(122) && !std.unicode.isWord(233)) && std.unicode.isSpace(32) && (std.unicode.isSpace(8195) && (std.unicode.isSpace(12288) && !std.unicode.isSpace(65)))
+}
+
+pub fn main(world: World) -> Void raises {
+    if unicode_decode_checks() && unicode_iteration_checks() && (unicode_encode_checks() && unicode_class_checks()) {
+        check world.out.write("std unicode ok\n")
+    } else {
+        check world.out.write("std unicode failed\n")
+    }
+}

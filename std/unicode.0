@@ -1,0 +1,149 @@
+fn __zero_std_unicode_decode_raw(text: Span<u8>, index: usize) -> u64 {
+    let len: usize = std.mem.len(text)
+    if index >= len {
+        return 0
+    }
+    let first: u8 = text[index]
+    if first < 128_u8 {
+        return 4294967296_u64 + (first as u64)
+    }
+    if first >= 194_u8 && first <= 223_u8 {
+        if index + 2 > len {
+            return 0
+        }
+        let second: u8 = text[index + 1]
+        if second < 128_u8 || second > 191_u8 {
+            return 0
+        }
+        let cp: u64 = ((first as u64) - 192_u64) * 64_u64 + ((second as u64) - 128_u64)
+        return 2_u64 * 4294967296_u64 + cp
+    }
+    if first >= 224_u8 && first <= 239_u8 {
+        if index + 3 > len {
+            return 0
+        }
+        let second: u8 = text[index + 1]
+        let third: u8 = text[index + 2]
+        if second < 128_u8 || second > 191_u8 || (third < 128_u8 || third > 191_u8) {
+            return 0
+        }
+        if first == 224_u8 && second < 160_u8 {
+            return 0
+        }
+        if first == 237_u8 && second > 159_u8 {
+            return 0
+        }
+        let cp: u64 = ((first as u64) - 224_u64) * 4096_u64 + ((second as u64) - 128_u64) * 64_u64 + ((third as u64) - 128_u64)
+        return 3_u64 * 4294967296_u64 + cp
+    }
+    if first >= 240_u8 && first <= 244_u8 {
+        if index + 4 > len {
+            return 0
+        }
+        let second: u8 = text[index + 1]
+        let third: u8 = text[index + 2]
+        let fourth: u8 = text[index + 3]
+        if second < 128_u8 || second > 191_u8 {
+            return 0
+        }
+        if third < 128_u8 || third > 191_u8 || (fourth < 128_u8 || fourth > 191_u8) {
+            return 0
+        }
+        if first == 240_u8 && second < 144_u8 {
+            return 0
+        }
+        if first == 244_u8 && second > 143_u8 {
+            return 0
+        }
+        let cp: u64 = ((first as u64) - 240_u64) * 262144_u64 + ((second as u64) - 128_u64) * 4096_u64 + ((third as u64) - 128_u64) * 64_u64 + ((fourth as u64) - 128_u64)
+        return 4_u64 * 4294967296_u64 + cp
+    }
+    return 0
+}
+
+fn __zero_std_unicode_decode_at(text: Span<u8>, index: usize) -> Maybe<u32> {
+    let raw: u64 = __zero_std_unicode_decode_raw(text, index)
+    if raw == 0 {
+        return null
+    }
+    return (raw % 4294967296_u64) as u32
+}
+
+fn __zero_std_unicode_width_at(text: Span<u8>, index: usize) -> Maybe<usize> {
+    let raw: u64 = __zero_std_unicode_decode_raw(text, index)
+    if raw == 0 {
+        return null
+    }
+    return (raw / 4294967296_u64) as usize
+}
+
+fn __zero_std_unicode_encoded_width(cp: u32) -> Maybe<usize> {
+    if cp >= 55296_u32 && cp <= 57343_u32 {
+        return null
+    }
+    if cp > 1114111_u32 {
+        return null
+    }
+    if cp < 128_u32 {
+        return 1_usize
+    }
+    if cp < 2048_u32 {
+        return 2_usize
+    }
+    if cp < 65536_u32 {
+        return 3_usize
+    }
+    return 4_usize
+}
+
+fn __zero_std_unicode_encode(buffer: MutSpan<u8>, cp: u32) -> Maybe<Span<u8>> {
+    let width: Maybe<usize> = __zero_std_unicode_encoded_width(cp)
+    if !width.has {
+        return null
+    }
+    let needed: usize = width.value
+    if needed > std.mem.len(buffer) {
+        return null
+    }
+    if needed == 1 {
+        buffer[0] = cp as u8
+        return buffer[..1]
+    }
+    if needed == 2 {
+        buffer[0] = (192_u32 + cp / 64_u32) as u8
+        buffer[1] = (128_u32 + cp % 64_u32) as u8
+        return buffer[..2]
+    }
+    if needed == 3 {
+        buffer[0] = (224_u32 + cp / 4096_u32) as u8
+        buffer[1] = (128_u32 + (cp / 64_u32) % 64_u32) as u8
+        buffer[2] = (128_u32 + cp % 64_u32) as u8
+        return buffer[..3]
+    }
+    buffer[0] = (240_u32 + cp / 262144_u32) as u8
+    buffer[1] = (128_u32 + (cp / 4096_u32) % 64_u32) as u8
+    buffer[2] = (128_u32 + (cp / 64_u32) % 64_u32) as u8
+    buffer[3] = (128_u32 + cp % 64_u32) as u8
+    return buffer[..4]
+}
+
+fn __zero_std_unicode_is_digit(cp: u32) -> Bool {
+    return cp >= 48_u32 && cp <= 57_u32
+}
+
+fn __zero_std_unicode_is_word(cp: u32) -> Bool {
+    return (cp >= 48_u32 && cp <= 57_u32) || ((cp >= 65_u32 && cp <= 90_u32) || (cp >= 97_u32 && cp <= 122_u32) || cp == 95_u32)
+}
+
+fn __zero_std_unicode_is_space(cp: u32) -> Bool {
+    if cp == 9_u32 || cp == 10_u32 || (cp == 11_u32 || cp == 12_u32) || (cp == 13_u32 || cp == 32_u32) {
+        return true
+    }
+    if cp == 160_u32 || cp == 5760_u32 || (cp == 8232_u32 || cp == 8233_u32) {
+        return true
+    }
+    if cp >= 8192_u32 && cp <= 8202_u32 {
+        return true
+    }
+    return cp == 8239_u32 || cp == 8287_u32 || (cp == 12288_u32 || cp == 65279_u32)
+}

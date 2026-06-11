@@ -203,6 +203,7 @@ expected_output() {
     conformance/native/pass/std-math-breadth.graph) printf "std math breadth ok" ;;
     conformance/native/pass/std-numeric-random-time.graph) printf "std numeric random time ok" ;;
     conformance/native/pass/std-regex.graph) printf "std regex ok" ;;
+    conformance/native/pass/std-unicode.graph) printf "std unicode ok" ;;
     conformance/native/pass/std-io-lines.graph) printf "std io lines ok" ;;
     conformance/native/pass/std-path-io-breadth.graph) printf "std path io breadth ok" ;;
     conformance/native/pass/std-fs-file-helpers.graph) printf "std fs file helpers ok" ;;
@@ -250,6 +251,7 @@ examples=(
   conformance/native/pass/std-math-breadth.graph
   conformance/native/pass/std-numeric-random-time.graph
   conformance/native/pass/std-regex.graph
+  conformance/native/pass/std-unicode.graph
   conformance/native/pass/std-io-lines.graph
   conformance/native/pass/std-path-io-breadth.graph
   conformance/native/pass/std-fs-file-helpers.graph

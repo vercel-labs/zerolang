@@ -43,6 +43,7 @@ static const ZStdSourceModule std_source_modules[] = {
   {"std.text", "std/text.0", zero_embedded_stdlib_graph_std_text_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_text_graph_bytes)},
   {"std.time", "std/time.0", zero_embedded_stdlib_graph_std_time_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_time_graph_bytes)},
   {"std.toml", "std/toml.0", zero_embedded_stdlib_graph_std_toml_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_toml_graph_bytes)},
+  {"std.unicode", "std/unicode.0", zero_embedded_stdlib_graph_std_unicode_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_unicode_graph_bytes)},
   {"std.url", "std/url.0", zero_embedded_stdlib_graph_std_url_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_url_graph_bytes)},
 };
 
@@ -235,6 +236,13 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.toml.u32", "__zero_std_toml_u32", "std.toml"},
   {"std.toml.validate", "__zero_std_toml_validate", "std.toml"},
   {"std.toml.validateBytes", "__zero_std_toml_validate_bytes", "std.toml"},
+  {"std.unicode.decodeAt", "__zero_std_unicode_decode_at", "std.unicode"},
+  {"std.unicode.widthAt", "__zero_std_unicode_width_at", "std.unicode"},
+  {"std.unicode.encode", "__zero_std_unicode_encode", "std.unicode"},
+  {"std.unicode.encodedWidth", "__zero_std_unicode_encoded_width", "std.unicode"},
+  {"std.unicode.isDigit", "__zero_std_unicode_is_digit", "std.unicode"},
+  {"std.unicode.isWord", "__zero_std_unicode_is_word", "std.unicode"},
+  {"std.unicode.isSpace", "__zero_std_unicode_is_space", "std.unicode"},
   {"std.url.appendQuery", "__zero_std_url_append_query", "std.url"},
   {"std.url.appendFormField", "__zero_std_url_append_form_field", "std.url"},
   {"std.url.authority", "__zero_std_url_authority", "std.url"},

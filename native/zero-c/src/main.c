@@ -8744,6 +8744,7 @@ static const char *helper_module_name(const ZStdHelperInfo *helper) {
   if (strncmp(name, "std.str.", strlen("std.str.")) == 0) return "std.str";
   if (strncmp(name, "std.testing.", strlen("std.testing.")) == 0) return "std.testing";
   if (strncmp(name, "std.text.", strlen("std.text.")) == 0) return "std.text";
+  if (strncmp(name, "std.unicode.", strlen("std.unicode.")) == 0) return "std.unicode";
   if (strncmp(name, "std.io.", strlen("std.io.")) == 0) return "std.io";
   if (strncmp(name, "std.codec.", strlen("std.codec.")) == 0) return "std.codec";
   if (strncmp(name, "std.mem.", strlen("std.mem.")) == 0) return "std.mem";
@@ -8794,6 +8795,7 @@ static const char *helper_example_path(const ZStdHelperInfo *helper) {
   if (helper && helper->name && strncmp(helper->name, "std.str.", strlen("std.str.")) == 0) return "examples/std-str.0";
   if (strcmp(module, "std.testing") == 0 || strcmp(module, "std.log") == 0) return "examples/std-testing-log.0";
   if (strcmp(module, "std.text") == 0) return "conformance/native/pass/std-text.0";
+  if (strcmp(module, "std.unicode") == 0) return "conformance/native/pass/std-unicode.0";
   if (helper && helper->name && strncmp(helper->name, "std.math.", strlen("std.math.")) == 0) return "examples/std-math.0";
   if (strcmp(module, "std.io") == 0 || strcmp(module, "std.path") == 0) return "examples/std-path-io.0";
   if (strcmp(module, "std.args") == 0 || strcmp(module, "std.env") == 0) return "examples/cli-file.0";

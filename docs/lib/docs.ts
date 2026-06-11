@@ -310,6 +310,15 @@ export const docs: Doc[] = [
     sourcePath: "/articles/modules/text.md",
     section: "Text And Data",
   },
+
+  {
+    slug: "module-unicode",
+    title: "std.unicode",
+    description: "Strict UTF-8 codepoint decode/encode iteration and codepoint-class helpers.",
+    path: "/modules/unicode",
+    sourcePath: "/articles/modules/unicode.md",
+    section: "Text And Data",
+  },
   {
     slug: "module-io",
     title: "std.io",
