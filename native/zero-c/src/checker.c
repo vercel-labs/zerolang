@@ -9589,6 +9589,129 @@ static void assignment_provenance_snapshot_restore(Scope *scope, AssignmentProve
 
 static size_t function_return_provenance_depth = 0;
 
+// Function provenance summaries are memoized per (function, generic bindings)
+// with in-progress markers so call cycles cost linear work instead of
+// re-expanding the callee per call site. In-cycle queries answer with the
+// same conservative approximation the recursion depth cap produces. A
+// generous work budget converts any future divergence in this analysis into
+// a clear diagnostic instead of a silent spin.
+
+typedef struct ProvenanceSummaryCacheEntry {
+  const Function *fun;
+  char *binding_key;
+  FunctionProvenanceSummary summary;
+  bool ok;
+  struct ProvenanceSummaryCacheEntry *next;
+} ProvenanceSummaryCacheEntry;
+
+typedef struct {
+  const Function *fun;
+  char *binding_key;
+  bool depends_on_in_progress;
+} ProvenanceSummaryFrame;
+
+#define PROVENANCE_SUMMARY_WORK_BUDGET 500000u
+
+static ProvenanceSummaryCacheEntry *provenance_summary_cache = NULL;
+static const Program *provenance_summary_cache_program = NULL;
+static ProvenanceSummaryFrame *provenance_summary_stack = NULL;
+static size_t provenance_summary_stack_len = 0;
+static size_t provenance_summary_stack_cap = 0;
+static size_t provenance_summary_work = 0;
+static bool provenance_summary_budget_exceeded = false;
+static char provenance_summary_budget_function[128];
+static int provenance_summary_budget_line = 0;
+static int provenance_summary_budget_column = 0;
+
+static void provenance_summary_cache_clear(void) {
+  ProvenanceSummaryCacheEntry *entry = provenance_summary_cache;
+  while (entry) {
+    ProvenanceSummaryCacheEntry *next = entry->next;
+    free(entry->binding_key);
+    function_provenance_summary_free(&entry->summary);
+    free(entry);
+    entry = next;
+  }
+  provenance_summary_cache = NULL;
+  provenance_summary_cache_program = NULL;
+}
+
+static void provenance_summary_state_reset(void) {
+  provenance_summary_cache_clear();
+  provenance_summary_work = 0;
+  provenance_summary_budget_exceeded = false;
+  provenance_summary_budget_function[0] = '\0';
+  provenance_summary_budget_line = 0;
+  provenance_summary_budget_column = 0;
+}
+
+static char *provenance_summary_binding_key(GenericBinding *bindings, size_t binding_len) {
+  if (!bindings || binding_len == 0) return NULL;
+  ZBuf buf;
+  zbuf_init(&buf);
+  for (size_t i = 0; i < binding_len; i++) {
+    zbuf_append(&buf, bindings[i].name ? bindings[i].name : "");
+    zbuf_append_char(&buf, '=');
+    zbuf_append(&buf, bindings[i].type ? bindings[i].type : "");
+    if (bindings[i].is_static) {
+      zbuf_append_char(&buf, '#');
+      zbuf_append(&buf, bindings[i].static_type ? bindings[i].static_type : "");
+    }
+    zbuf_append_char(&buf, ';');
+  }
+  return buf.data;
+}
+
+static bool provenance_summary_binding_key_equal(const char *left, const char *right) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return strcmp(left, right) == 0;
+}
+
+static ProvenanceSummaryCacheEntry *provenance_summary_cache_find(const Function *fun, const char *binding_key) {
+  for (ProvenanceSummaryCacheEntry *entry = provenance_summary_cache; entry; entry = entry->next) {
+    if (entry->fun == fun && provenance_summary_binding_key_equal(entry->binding_key, binding_key)) return entry;
+  }
+  return NULL;
+}
+
+static bool provenance_summary_stack_find(const Function *fun, const char *binding_key, size_t *out_index) {
+  for (size_t i = 0; i < provenance_summary_stack_len; i++) {
+    if (provenance_summary_stack[i].fun == fun &&
+        provenance_summary_binding_key_equal(provenance_summary_stack[i].binding_key, binding_key)) {
+      if (out_index) *out_index = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static void provenance_summary_taint_frames_above(size_t index) {
+  for (size_t i = index + 1; i < provenance_summary_stack_len; i++) {
+    provenance_summary_stack[i].depends_on_in_progress = true;
+  }
+}
+
+static void provenance_summary_taint_all_frames(void) {
+  for (size_t i = 0; i < provenance_summary_stack_len; i++) {
+    provenance_summary_stack[i].depends_on_in_progress = true;
+  }
+}
+
+static void function_provenance_summary_copy(FunctionProvenanceSummary *target, const FunctionProvenanceSummary *source) {
+  *target = (FunctionProvenanceSummary){
+    .may_return = source->may_return,
+    .return_complete = source->return_complete,
+    .effect_complete = source->effect_complete,
+    .callee_local_storage = source->callee_local_storage,
+  };
+  value_provenance_add_all(&target->return_value, &source->return_value);
+  for (size_t i = 0; i < source->storage_effects.len; i++) {
+    const ProvenanceStorageEffect *effect = &source->storage_effects.items[i];
+    provenance_storage_effect_vec_add(&target->storage_effects, effect->target.root, effect->target.root_scope, effect->target.path, &effect->value, effect->overwrite);
+  }
+}
+
 static char *return_provenance_type_text(const Program *program, const char *type, GenericBinding *bindings, size_t binding_len) {
   if (!type) return NULL;
   if (bindings && binding_len > 0) return type_substitute_generic_signature(program, type, bindings, binding_len);
@@ -9810,11 +9933,7 @@ static bool seed_param_storage_value_provenance(const Program *program, Scope *s
   return added;
 }
 
-static bool function_provenance_summary(CheckContext *ctx, const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, FunctionProvenanceSummary *summary) {
-  if (!summary) return false;
-  *summary = (FunctionProvenanceSummary){.may_return = true};
-  if (!program || !fun) return false;
-  if (function_return_provenance_depth > 16) return false;
+static bool function_provenance_summary_compute(CheckContext *ctx, const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, FunctionProvenanceSummary *summary) {
   summary->may_return = false;
   summary->return_complete = true;
   summary->effect_complete = true;
@@ -9862,6 +9981,70 @@ static bool function_provenance_summary(CheckContext *ctx, const Program *progra
   scope_free(&scope);
   function_return_provenance_depth--;
   return summary->return_complete && summary->effect_complete;
+}
+
+static bool function_provenance_summary(CheckContext *ctx, const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, FunctionProvenanceSummary *summary) {
+  if (!summary) return false;
+  *summary = (FunctionProvenanceSummary){.may_return = true};
+  if (!program || !fun) return false;
+  if (program != provenance_summary_cache_program) {
+    provenance_summary_cache_clear();
+    provenance_summary_cache_program = program;
+  }
+  char *binding_key = provenance_summary_binding_key(bindings, binding_len);
+  ProvenanceSummaryCacheEntry *cached = provenance_summary_cache_find(fun, binding_key);
+  if (cached) {
+    function_provenance_summary_copy(summary, &cached->summary);
+    free(binding_key);
+    return cached->ok;
+  }
+  size_t frame_index = 0;
+  if (provenance_summary_stack_find(fun, binding_key, &frame_index)) {
+    // In-cycle query: answer with the conservative approximation and keep
+    // every summary that observed this in-flight value out of the cache.
+    provenance_summary_taint_frames_above(frame_index);
+    free(binding_key);
+    return false;
+  }
+  if (function_return_provenance_depth > 16 || provenance_summary_budget_exceeded) {
+    provenance_summary_taint_all_frames();
+    free(binding_key);
+    return false;
+  }
+  if (++provenance_summary_work > PROVENANCE_SUMMARY_WORK_BUDGET) {
+    if (!provenance_summary_budget_exceeded) {
+      provenance_summary_budget_exceeded = true;
+      snprintf(provenance_summary_budget_function, sizeof(provenance_summary_budget_function), "%s", fun->name ? fun->name : "<anonymous>");
+      provenance_summary_budget_line = fun->line;
+      provenance_summary_budget_column = fun->column;
+    }
+    provenance_summary_taint_all_frames();
+    free(binding_key);
+    return false;
+  }
+  if (provenance_summary_stack_len + 1 > provenance_summary_stack_cap) {
+    provenance_summary_stack_cap = z_grow_capacity(provenance_summary_stack_cap, provenance_summary_stack_len + 1, 16);
+    provenance_summary_stack = z_checked_reallocarray(provenance_summary_stack, provenance_summary_stack_cap, sizeof(ProvenanceSummaryFrame));
+  }
+  provenance_summary_stack[provenance_summary_stack_len++] = (ProvenanceSummaryFrame){
+    .fun = fun,
+    .binding_key = binding_key,
+    .depends_on_in_progress = false,
+  };
+  bool ok = function_provenance_summary_compute(ctx, program, fun, bindings, binding_len, summary);
+  ProvenanceSummaryFrame frame = provenance_summary_stack[--provenance_summary_stack_len];
+  if (!frame.depends_on_in_progress && !provenance_summary_budget_exceeded) {
+    ProvenanceSummaryCacheEntry *entry = z_checked_calloc(1, sizeof(ProvenanceSummaryCacheEntry));
+    entry->fun = fun;
+    entry->binding_key = frame.binding_key;
+    function_provenance_summary_copy(&entry->summary, summary);
+    entry->ok = ok;
+    entry->next = provenance_summary_cache;
+    provenance_summary_cache = entry;
+  } else {
+    free(frame.binding_key);
+  }
+  return ok;
 }
 
 static bool function_return_value_provenance(CheckContext *ctx, const Program *program, const Function *fun, GenericBinding *bindings, size_t binding_len, ValueProvenance *origins, bool *may_return) {
@@ -11592,7 +11775,7 @@ static bool validate_c_imports(const Program *program, const ZTargetInfo *target
   return true;
 }
 
-static bool check_program_internal(const Program *program, bool require_entrypoint, ZDiag *diag) {
+static bool check_program_internal_body(const Program *program, bool require_entrypoint, ZDiag *diag) {
   meta_cache_free(&default_meta_cache);
   DiagSink diag_sink = {.diag = diag};
   CheckContext check_ctx = {.program = program, .target = check_context_target(NULL), .meta_cache = &default_meta_cache, .diags = &diag_sink};
@@ -11805,6 +11988,17 @@ static bool check_program_internal(const Program *program, bool require_entrypoi
     if (!ok) return false;
   }
   return true;
+}
+
+static bool check_program_internal(const Program *program, bool require_entrypoint, ZDiag *diag) {
+  provenance_summary_state_reset();
+  bool ok = check_program_internal_body(program, require_entrypoint, diag);
+  if (provenance_summary_budget_exceeded) {
+    char actual[256];
+    snprintf(actual, sizeof(actual), "provenance analysis work budget exceeded while summarizing '%s'", provenance_summary_budget_function);
+    return set_diag_detail(diag, 3053, "borrow provenance analysis did not converge", provenance_summary_budget_line, provenance_summary_budget_column, "recursive call cycle analyzable within the provenance work budget", actual, "simplify the recursive call cycle around this function and report this compiler defect with the source program");
+  }
+  return ok;
 }
 
 bool z_check_program(const Program *program, ZDiag *diag) {

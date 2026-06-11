@@ -215,6 +215,7 @@ static const char *diag_code(int code) {
     case 3050: return "TYP027";
     case 3051: return "MEM002";
     case 3052: return "MEM003";
+    case 3053: return "BOR003";
     case 3037: return "PUB001";
     case 3038: return "IFC001";
     case 3039: return "IFC002";
@@ -3248,6 +3249,7 @@ static const char *diag_repair_id(int code) {
     case 3015: return "add-memory-type-argument";
     case 3029: return "end-conflicting-borrow";
     case 3030: return "return-owned-value";
+    case 3053: return "report-provenance-analysis-budget";
     case 3031: return "make-c-abi-safe";
     case 2003: return "use-direct-emitter";
     case 2004: return "choose-supported-backend";
@@ -3338,6 +3340,7 @@ static const char *diag_repair_summary(int code) {
     case 9002: return "Remove the package cycle or move shared code into an acyclic dependency.";
     case 9003: return "Resolve the graph to one version of each package name.";
     case 9004: return "Select a target supported by the dependency or gate the dependency behind a compatible target.";
+    case 3053: return "Simplify the recursive call cycle around the named function and report this compiler defect with the source program.";
     default: return code == 0 ? "Repair the syntax at the reported parser span, then rerun zero check." : "Inspect the diagnostic fields and choose a repair manually.";
   }
 }
@@ -3672,6 +3675,16 @@ static const ExplainInfo explain_infos[] = {
     "{\n  let shared = &data\n  let observed = shared.value\n}\nupdate(&mut data)",
   },
   {
+    "BOR003",
+    "borrow",
+    "Borrow provenance analysis did not converge",
+    "The borrow provenance analysis exceeded its internal work budget while summarizing a recursive call cycle, so the compiler stopped instead of spinning.",
+    "Provenance summaries over recursive call cycles are memoized and bounded so the type checker always terminates; exceeding the generous budget indicates a compiler defect, not a program error.",
+    "Simplify the recursive call cycle around the named function and report this compiler defect with the source program.",
+    "fn deep(n: usize) -> Bool {\n    if n == 0 {\n        return true\n    }\n    let next: Bool = deep(n - 1)\n    return next\n}",
+    "fn deep(n: usize) -> Bool {\n    if n == 0 {\n        return true\n    }\n    return deep(n - 1)\n}",
+  },
+  {
     "SHM001",
     "shape-method",
     "Generic shape method cannot be specialized",
@@ -3778,6 +3791,7 @@ static void print_explain_json(const ExplainInfo *info) {
                                          strcmp(info->code, "RCV001") == 0 ? 3048 :
                                          strcmp(info->code, "RCV002") == 0 ? 3049 :
                                          strcmp(info->code, "BOR001") == 0 ? 3029 :
+                                         strcmp(info->code, "BOR003") == 0 ? 3053 :
                                          strcmp(info->code, "ERR002") == 0 ? 1002 :
                                          strcmp(info->code, "ERR003") == 0 ? 1003 :
                                          strcmp(info->code, "STD003") == 0 ? 3012 :
