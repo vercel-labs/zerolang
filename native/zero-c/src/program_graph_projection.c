@@ -13,6 +13,7 @@
 #if !defined(_WIN32)
 #include <fcntl.h>
 #endif
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -436,24 +437,31 @@ static bool projection_source_text(const ZProgramGraphStore *store, const char *
   return true;
 }
 
-static bool projection_source_text_matches(const ZProgramGraphStore *store, const char *source_path, bool *matches, ZDiag *diag) {
-  *matches = false;
-  const char *projection = NULL;
-  if (!projection_source_text(store, source_path, &projection, diag)) return false;
+static bool projection_source_text_current(const ZProgramGraphStore *store, const char *source_path, const char **projection_out, char **current_out, ZDiag *diag) {
+  *projection_out = NULL;
+  *current_out = NULL;
+  if (!projection_source_text(store, source_path, projection_out, diag)) return false;
   char *path = projection_join_path(store->root, source_path);
   bool before_exists = false;
   if (!projection_target_path_safe(store, path, &before_exists, diag)) {
     free(path);
     return false;
   }
-  char *current = NULL;
-  if (!projection_current_text_for_target(store, path, before_exists, &current, diag)) {
+  if (!projection_current_text_for_target(store, path, before_exists, current_out, diag)) {
     free(path);
     return false;
   }
+  free(path);
+  return true;
+}
+
+static bool projection_source_text_matches(const ZProgramGraphStore *store, const char *source_path, bool *matches, ZDiag *diag) {
+  *matches = false;
+  const char *projection = NULL;
+  char *current = NULL;
+  if (!projection_source_text_current(store, source_path, &projection, &current, diag)) return false;
   if (current) *matches = projection_text_eq(current, projection);
   free(current);
-  free(path);
   return true;
 }
 
@@ -487,46 +495,52 @@ bool z_program_graph_projection_sources_match(const ZProgramGraphStore *store, c
   return z_program_graph_projection_source_files_match(store, matches, diag);
 }
 
-static long long projection_path_mtime_ns(const char *path) {
-  struct stat st;
-  if (!path || !path[0] || stat(path, &st) != 0) return -1;
-#if defined(__APPLE__)
-  return (long long)st.st_mtime * 1000000000ll + (long long)st.st_mtimensec;
-#elif defined(_WIN32)
-  return (long long)st.st_mtime * 1000000000ll;
-#else
-  return (long long)st.st_mtim.tv_sec * 1000000000ll + (long long)st.st_mtim.tv_nsec;
-#endif
-}
-
+/*
+ * Classify store/source sync by content, never by file mtimes. The store
+ * records a hash of the on-disk source projection at every store write
+ * (zero import, zero patch, zero export, zero init). Comparing the current
+ * on-disk projection and the store's own projection table against that
+ * recorded hash separates the three drift states:
+ *
+ * - on-disk projection matches the table: clean.
+ * - on-disk projection still matches the recorded hash: only the store
+ *   moved (patches landed after the record); the store is authoritative.
+ * - the store's table still matches the recorded hash: only the source
+ *   moved; the source is authoritative and the store needs a refresh.
+ * - neither matches the record: source and store were edited independently.
+ *
+ * Stores written before the recorded hash existed degrade to one
+ * reconciling source refresh instead of an error wall, so freshly staged,
+ * cloned, or extracted workspaces classify identically everywhere.
+ */
 bool z_program_graph_projection_source_sync_state(const ZProgramGraphStore *store, ZProgramGraphProjectionSourceSync *sync, ZDiag *diag) {
   if (sync) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
   if (!store || store->projection_len == 0) return false;
-  long long store_mtime = projection_path_mtime_ns(store->path);
   bool any_changed = false;
-  bool all_changed_newer = true;
-  bool all_changed_older = true;
+  uint64_t disk_state = z_program_graph_store_source_hash_seed();
+  uint64_t table_state = z_program_graph_store_source_hash_seed();
   for (size_t i = 0; i < store->projection_len; i++) {
-    bool file_matches = false;
-    if (!projection_source_text_matches(store, store->projection_paths[i], &file_matches, diag)) return false;
-    if (file_matches) continue;
-    any_changed = true;
-    char *path = projection_join_path(store->root, store->projection_paths[i]);
-    long long file_mtime = projection_path_mtime_ns(path);
-    free(path);
-    if (store_mtime < 0 || file_mtime < 0) {
-      all_changed_newer = false;
-      all_changed_older = false;
-      continue;
-    }
-    if (file_mtime <= store_mtime) all_changed_newer = false;
-    if (file_mtime >= store_mtime) all_changed_older = false;
+    const char *projection = NULL;
+    char *current = NULL;
+    if (!projection_source_text_current(store, store->projection_paths[i], &projection, &current, diag)) return false;
+    if (!current || !projection_text_eq(current, projection)) any_changed = true;
+    disk_state = z_program_graph_store_source_hash_fold(disk_state, store->projection_paths[i], current);
+    table_state = z_program_graph_store_source_hash_fold(table_state, store->projection_paths[i], projection ? projection : "");
+    free(current);
   }
-  if (sync && any_changed) {
-    if (all_changed_newer) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_SOURCE_NEWER;
-    else if (all_changed_older) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER;
-    else *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_DIVERGED;
+  if (!sync || !any_changed) return true;
+  const char *recorded = store->source_projection_hash;
+  if (!recorded || !recorded[0]) {
+    *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_SOURCE_NEWER;
+    return true;
   }
+  char *disk_hash = z_program_graph_store_source_hash_text(disk_state);
+  char *table_hash = z_program_graph_store_source_hash_text(table_state);
+  if (projection_text_eq(disk_hash, recorded)) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER;
+  else if (projection_text_eq(table_hash, recorded)) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_SOURCE_NEWER;
+  else *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_DIVERGED;
+  free(disk_hash);
+  free(table_hash);
   return true;
 }
 

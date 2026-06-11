@@ -524,6 +524,33 @@ int z_repository_graph_verify_projection_command(const char *input, const ZTarge
   return rc;
 }
 
+/*
+ * After zero export, the exported .0 files are the on-disk source projection
+ * the store agreed with last; refresh the recorded source projection hash so
+ * the content-based sync classifier sees future source edits as source-newer
+ * instead of diverged. Stores without a recorded hash (written by older
+ * compilers) are left untouched; the classifier already degrades them to a
+ * reconciling source refresh.
+ */
+static bool repo_export_refresh_recorded_source_hash(ZProgramGraphStore *store, const char *store_path, ZProgramGraphProjection *projection, ZDiag *diag) {
+  char *exported_hash = z_program_graph_store_projection_table_hash(store);
+  bool recorded = store->source_projection_hash && store->source_projection_hash[0];
+  if (!exported_hash || !recorded || strcmp(exported_hash, store->source_projection_hash) == 0) {
+    free(exported_hash);
+    return true;
+  }
+  free(store->source_projection_hash);
+  store->source_projection_hash = exported_hash;
+  if (!z_program_graph_store_write_path(store_path, store, diag)) return false;
+  if (projection->changed_len == projection->changed_cap) {
+    size_t next = projection->changed_cap ? projection->changed_cap * 2 : 4;
+    projection->changed_paths = z_checked_reallocarray(projection->changed_paths, next, sizeof(char *));
+    projection->changed_cap = next;
+  }
+  projection->changed_paths[projection->changed_len++] = z_strdup(store_path);
+  return true;
+}
+
 int z_repository_graph_import_export_command(const char *input, const ZTargetInfo *target, bool json, bool from_graph, bool from_source, const char *store_format, const ZProgramGraph *source_graph, ZRepositoryGraphLoadSourceGraphFn load_source_graph, void *load_source_graph_ctx) {
   RepositoryGraphState state = repo_graph_state(input, target);
   const char *mode = from_graph ? "export" : "import";
@@ -558,6 +585,13 @@ int z_repository_graph_import_export_command(const char *input, const ZTargetInf
     ZProgramGraphProjection projection;
     if (!z_program_graph_projection_write_sources(&store, target, &projection, &diag)) {
       rc = repo_graph_error(&state, json, "export", "RGP004", "repository graph projection could not be written", "canonical .0 source projection", diag.message[0] ? diag.message : "projection failed", "run zero check zero.graph before exporting from graph", REPO_GRAPH_REPAIR_NONE);
+      z_program_graph_projection_free(&projection);
+      z_program_graph_store_free(&store);
+      repo_graph_state_free(&state);
+      return rc;
+    }
+    if (!repo_export_refresh_recorded_source_hash(&store, state.store_path, &projection, &diag)) {
+      rc = repo_graph_error(&state, json, "export", "RGP004", "repository graph store hash could not be refreshed after export", "byte-stable zero.graph repository graph store", diag.message[0] ? diag.message : "store write failed", "run zero status to inspect repository graph state", REPO_GRAPH_REPAIR_STATUS);
       z_program_graph_projection_free(&projection);
       z_program_graph_store_free(&store);
       repo_graph_state_free(&state);
@@ -804,6 +838,8 @@ int z_repository_graph_merge_command(const char *input, const ZTargetInfo *targe
   ZRepositoryGraphMergeResult merge = {0};
   bool ok = z_repository_graph_merge_stores(&base, &left, &right, target, target_path, &merged, &merge, &diag);
   if (ok) {
+    free(merged.source_projection_hash);
+    merged.source_projection_hash = z_program_graph_store_disk_projection_hash(&merged);
     ok = z_program_graph_store_write_path_format(target_path, &merged, requested_format, &diag);
     merge.wrote = ok;
     if (!ok) {

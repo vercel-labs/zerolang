@@ -51,6 +51,8 @@ typedef struct {
   StoreBinaryStringRef module_identity_ref;
   StoreBinaryStringRef graph_hash_ref;
   StoreBinaryStringRef module_hash_ref;
+  bool has_source_hash;
+  StoreBinaryStringRef source_hash_ref;
   ZProgramGraphStoreTableCounts stored_counts;
 } StoreBinaryHeader;
 
@@ -389,14 +391,19 @@ void z_program_graph_store_append_binary(ZBuf *buf, const ZProgramGraph *graph, 
   StoreBinaryStringRef module_identity_ref = binary_add_string(&strings, graph ? graph->module_identity : "module:main");
   StoreBinaryStringRef graph_hash_ref = binary_add_string(&strings, graph ? graph->graph_hash : "");
   StoreBinaryStringRef module_hash_ref = binary_add_string(&strings, graph ? graph->graph_hash : "");
+  const char *source_hash = projections && projections->source_projection_hash && projections->source_projection_hash[0] ? projections->source_projection_hash : NULL;
+  StoreBinaryStringRef source_hash_ref = {0};
+  if (source_hash) source_hash_ref = binary_add_string(&strings, source_hash);
   binary_append_source_records(&records, &strings, &metadata);
   binary_append_projection_records(&records, &strings, projections);
   binary_append_graph_records(&records, &strings, graph);
   ZProgramGraphStoreTableCounts counts;
   z_program_graph_store_table_counts_for_graph(graph, metadata.source_path_len, projections ? projections->projection_len : 0, &counts);
+  uint32_t flags = graph && graph->canonical_source ? 1u : 0u;
+  if (source_hash) flags |= 1u << 1;
   binary_append_bytes(buf, STORE_BINARY_MAGIC, sizeof(STORE_BINARY_MAGIC));
   binary_put_u32(buf, 1);
-  binary_put_u32(buf, graph && graph->canonical_source ? 1u : 0u);
+  binary_put_u32(buf, flags);
   binary_put_u32(buf, (uint32_t)(graph ? Z_PROGRAM_GRAPH_VALIDATION_SHAPE_VALID : Z_PROGRAM_GRAPH_VALIDATION_DECODED));
   binary_put_u32(buf, 0);
   binary_put_u64(buf, (uint64_t)metadata.source_path_len);
@@ -408,6 +415,7 @@ void z_program_graph_store_append_binary(ZBuf *buf, const ZProgramGraph *graph, 
   binary_put_ref(buf, module_identity_ref);
   binary_put_ref(buf, graph_hash_ref);
   binary_put_ref(buf, module_hash_ref);
+  if (source_hash) binary_put_ref(buf, source_hash_ref);
   binary_put_counts(buf, &counts);
   binary_append_bytes(buf, records.data, records.len);
   binary_append_bytes(buf, strings.bytes.data, strings.bytes.len);
@@ -529,10 +537,15 @@ static bool binary_read_header(StoreBinaryReader *reader, StoreBinaryHeader *hea
             binary_get_u64(reader, &string_bytes64) &&
             binary_get_ref(reader, &header->module_identity_ref) &&
             binary_get_ref(reader, &header->graph_hash_ref) &&
-            binary_get_ref(reader, &header->module_hash_ref) &&
-            binary_get_counts(reader, &header->stored_counts);
+            binary_get_ref(reader, &header->module_hash_ref);
+  if (ok) {
+    header->has_source_hash = (header->flags & (1u << 1)) != 0;
+    if (header->has_source_hash) ok = binary_get_ref(reader, &header->source_hash_ref);
+  }
+  ok = ok && binary_get_counts(reader, &header->stored_counts);
   if (!ok || header->schema != 1 || reserved != 0 || next_id64 > (uint64_t)SIZE_MAX ||
       string_bytes64 > (uint64_t)SIZE_MAX || string_bytes64 > (uint64_t)file_len ||
+      (header->flags & ~3u) != 0 ||
       header->validation_state > (uint32_t)Z_PROGRAM_GRAPH_VALIDATION_BUILDABLE) {
     return false;
   }
@@ -682,6 +695,10 @@ bool z_program_graph_store_parse_binary(const char *path, const unsigned char *d
   char *module_hash = NULL;
   bool ok = binary_read_header(&reader, &header, len) &&
             binary_decode_module_strings(&header, &module_identity, &graph_hash, &module_hash);
+  if (ok && header.has_source_hash) {
+    ok = binary_ref_string(&header, header.source_hash_ref, &out->source_projection_hash) &&
+         out->source_projection_hash && out->source_projection_hash[0];
+  }
   if (ok) {
     out->schema_version = header.schema;
     out->graph.schema_version = header.schema;

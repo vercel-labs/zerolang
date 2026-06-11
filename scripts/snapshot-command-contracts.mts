@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createAggregateAssert, finishAggregateAssert } from "./aggregate-assert.mjs";
@@ -1659,6 +1659,84 @@ assert.equal(staleMultiDivergedBuild.body.diagnostics[0].code, "RGP006");
 assert.equal(json(["import", "--json", staleMultiRoot]).body.ok, true);
 assert.equal(zero(["run", staleMultiRoot]).stdout, "stale multi two\n");
 assert.equal(json(["status", "--json", staleMultiRoot]).body.repositoryGraph.projectionState, "clean");
+// Content-based store/source sync classification: a freshly staged workspace
+// with an edited source projection classifies source-newer and runs the
+// edited behavior with the store mtime newest, oldest, or tied, because the
+// store records a hash of the source projection at every write and mtimes
+// never decide the state.
+const stagedSyncBase = join("/tmp", `zero-staged-sync-base-${process.pid}`);
+rmSync(stagedSyncBase, { force: true, recursive: true });
+mkdirSync(join(stagedSyncBase, "src"), { recursive: true });
+writeFileSync(join(stagedSyncBase, "zero.toml"), '[package]\nname = "staged-sync"\nversion = "0.1.0"\n\n[targets.cli]\nkind = "exe"\nmain = "src/main.0"\n');
+writeFileSync(join(stagedSyncBase, "src", "main.0"), 'pub fn main(world: World) -> Void raises {\n    check world.out.write("staged one\\n")\n}\n');
+assert.equal(json(["import", "--json", stagedSyncBase]).body.ok, true);
+assert.equal(zero(["run", stagedSyncBase]).stdout, "staged one\n");
+const stagedSyncEpoch = new Date("2026-01-01T00:00:00Z");
+for (const order of ["store-newest", "store-oldest", "tied"]) {
+  const stagedRoot = join("/tmp", `zero-staged-sync-${order}-${process.pid}`);
+  rmSync(stagedRoot, { force: true, recursive: true });
+  cpSync(stagedSyncBase, stagedRoot, { recursive: true });
+  writeFileSync(join(stagedRoot, "src", "main.0"), 'pub fn main(world: World) -> Void raises {\n    check world.out.write("staged two\\n")\n}\n');
+  const stagedNow = new Date();
+  const storeTime = order === "store-newest" ? stagedNow : stagedSyncEpoch;
+  const sourceTime = order === "store-oldest" ? stagedNow : stagedSyncEpoch;
+  utimesSync(join(stagedRoot, "zero.graph"), storeTime, storeTime);
+  utimesSync(join(stagedRoot, "src", "main.0"), sourceTime, sourceTime);
+  const stagedRun = zeroWithStderr(["run", stagedRoot]);
+  assert.equal(stagedRun.code, 0, `staged ${order} run exits 0`);
+  assert.equal(stagedRun.stdout, "staged two\n", `staged ${order} runs the edited behavior`);
+  assert.match(stagedRun.stderr, /refreshed zero\.graph from the edited package source projection/, `staged ${order} classifies source-newer`);
+  rmSync(stagedRoot, { force: true, recursive: true });
+}
+// A patched store stays authoritative by content even when its mtime is the
+// oldest file in the workspace.
+const stagedPatch = json(["patch", "--json", stagedSyncBase, "--op", 'addCheckWrite fn="main" text="staged patched\\n"']);
+assert.equal(stagedPatch.body.ok, true);
+utimesSync(join(stagedSyncBase, "zero.graph"), stagedSyncEpoch, stagedSyncEpoch);
+const stagedStoreNewer = zeroWithStderr(["run", stagedSyncBase]);
+assert.equal(stagedStoreNewer.code, 0);
+assert.equal(stagedStoreNewer.stdout, "staged one\nstaged patched\n");
+assert.match(stagedStoreNewer.stderr, /is using zero\.graph, which is newer than the \.0 source projection/);
+// zero export refreshes the recorded source projection hash so a source edit
+// after the export classifies source-newer instead of diverged.
+const stagedExport = json(["export", "--json", stagedSyncBase]);
+assert.equal(stagedExport.body.ok, true);
+assert.equal(stagedExport.body.changedPaths.includes(join(stagedSyncBase, "zero.graph")), true);
+writeFileSync(join(stagedSyncBase, "src", "main.0"), 'pub fn main(world: World) -> Void raises {\n    check world.out.write("staged three\\n")\n}\n');
+utimesSync(join(stagedSyncBase, "src", "main.0"), stagedSyncEpoch, stagedSyncEpoch);
+const stagedAfterExport = zeroWithStderr(["run", stagedSyncBase]);
+assert.equal(stagedAfterExport.code, 0);
+assert.equal(stagedAfterExport.stdout, "staged three\n");
+assert.match(stagedAfterExport.stderr, /refreshed zero\.graph from the edited package source projection/);
+// Editing the source while the store holds unexported patches is a genuine
+// divergence regardless of mtimes.
+assert.equal(json(["patch", "--json", stagedSyncBase, "--op", 'addCheckWrite fn="main" text="staged patched again\\n"']).body.ok, true);
+writeFileSync(join(stagedSyncBase, "src", "main.0"), 'pub fn main(world: World) -> Void raises {\n    check world.out.write("staged four\\n")\n}\n');
+const stagedDiverged = json(["check", "--json", stagedSyncBase], { allowFailure: true });
+assert.notEqual(stagedDiverged.code, 0);
+assert.equal(stagedDiverged.body.diagnostics[0].code, "RGP006");
+rmSync(stagedSyncBase, { force: true, recursive: true });
+// Stores written before the recorded source projection hash existed degrade
+// to one reconciling source refresh instead of an error wall, and the
+// refresh records the hash.
+const legacySyncRoot = join("/tmp", `zero-legacy-sync-${process.pid}`);
+rmSync(legacySyncRoot, { force: true, recursive: true });
+mkdirSync(join(legacySyncRoot, "src"), { recursive: true });
+writeFileSync(join(legacySyncRoot, "zero.toml"), '[package]\nname = "legacy-sync"\nversion = "0.1.0"\n\n[targets.cli]\nkind = "exe"\nmain = "src/main.0"\n');
+writeFileSync(join(legacySyncRoot, "src", "main.0"), 'pub fn main(world: World) -> Void raises {\n    check world.out.write("legacy one\\n")\n}\n');
+assert.equal(json(["import", "--json", "--format", "text", legacySyncRoot]).body.ok, true);
+const legacyStorePath = join(legacySyncRoot, "zero.graph");
+const legacyStoreText = readFileSync(legacyStorePath, "utf8");
+assert.match(legacyStoreText, /\nsourceHash "src:[0-9a-f]{16}"\n/);
+writeFileSync(legacyStorePath, legacyStoreText.replace(/\nsourceHash "[^"]*"/, ""));
+writeFileSync(join(legacySyncRoot, "src", "main.0"), 'pub fn main(world: World) -> Void raises {\n    check world.out.write("legacy two\\n")\n}\n');
+utimesSync(join(legacySyncRoot, "src", "main.0"), stagedSyncEpoch, stagedSyncEpoch);
+const legacyRun = zeroWithStderr(["run", legacySyncRoot]);
+assert.equal(legacyRun.code, 0);
+assert.equal(legacyRun.stdout, "legacy two\n");
+assert.match(legacyRun.stderr, /refreshed zero\.graph from the edited package source projection/);
+assert.match(readFileSync(legacyStorePath, "utf8"), /\nsourceHash "src:[0-9a-f]{16}"\n/);
+rmSync(legacySyncRoot, { force: true, recursive: true });
 const reconcileScaleRoot = join("/tmp", `zero-reconcile-scale-${process.pid}`);
 const reconcileScaleSource = join(reconcileScaleRoot, "src", "main.0");
 rmSync(reconcileScaleRoot, { force: true, recursive: true });

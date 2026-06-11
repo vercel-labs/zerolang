@@ -58,6 +58,7 @@ want a no-write drift check.
 When the checked-in `.0` sources were edited after `zero.graph` was written, commands that consume the store, including `zero check`, `zero build`, `zero run`, `zero test`, `zero query`, `zero view`, and `zero diff`, refresh the store from the edited source first and report the refresh on stderr.
 When the graph is the newer side, for example right after `zero patch`, those commands keep using `zero.graph` until `zero export` syncs the projection, and they say so on stderr.
 When both sides were edited independently, they fail with an `RGP006` diagnostic that offers `zero import` and `zero export` as repairs instead of picking a side.
+Which side moved is decided by content: every store write records a hash of the source projection inside `zero.graph`, so a freshly staged, cloned, or extracted workspace classifies the same way everywhere regardless of file timestamps.
 Set `ZERO_STALE=fail` to fail with an `RGP008` diagnostic instead of refreshing automatically.
 
 That rule prevents the worst ambiguity: an agent editing text, seeing `zero check` pass, and then running a binary built from different code.
