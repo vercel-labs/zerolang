@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Minimum constant-fill run length that justifies a fill loop over unrolled
+// per-element stores.
+#define ELF_FILL_RUN_MIN 8u
+
 static bool elf_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {
   diag->code = 4004;
   diag->line = line > 0 ? line : 1;
@@ -3057,8 +3061,31 @@ static bool elf_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
   }
 }
 
+// Register-only fill loop replacing an unrolled run of constant-index,
+// constant-value array stores. rax holds the running element pointer, rcx the
+// fill value, rdx the remaining count.
+static void elf_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFillRun *run) {
+  unsigned elem_size = elf_type_byte_size(run->element_type);
+  const IrLocal *local = &fun->locals[run->array_index];
+  elf_emit_lea_array_base_rax(text, local, 0);
+  z_x64_emit_mov_reg_u64(text, 1, run->fill_value);
+  z_x64_emit_mov_reg_u64(text, 2, run->count);
+  size_t loop = text->len;
+  elf_emit_store_ptr_element(text, 0, 1, run->element_type);
+  z_x64_emit_add_reg_i8(text, 0, (int8_t)elem_size, true);
+  z_x64_emit_add_reg_i8(text, 2, -1, true);
+  size_t back = z_x64_emit_jcc32_placeholder(text, 0x85); // jnz -> loop
+  z_x64_patch_rel32(text, back, loop);
+}
+
 static bool elf_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, ElfEmitContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
+    ZDirectFillRun run;
+    if (z_direct_detect_fill_run(fun, instrs, len, i, ELF_FILL_RUN_MIN, &run)) {
+      elf_emit_fill_run(text, fun, &run);
+      i += run.count - 1;
+      continue;
+    }
     if (!elf_emit_instr(text, fun, &instrs[i], ctx, diag)) return false;
   }
   return true;

@@ -1582,8 +1582,34 @@ static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
   return a64_diag(diag, "direct AArch64 instruction kind is unsupported", instr->line, instr->column, "unsupported instruction");
 }
 
+// Register-only fill loop replacing an unrolled run of constant-index,
+// constant-value array stores. x9 carries the running element pointer, x8 the
+// running index, x11 the count, x10 the fill value.
+static void a64_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFillRun *run, unsigned frame_size) {
+  unsigned elem_size = 1u << a64_type_index_shift(run->element_type);
+  z_aarch64_emit_add_x_sp_imm(text, 9, a64_local_slot_offset(fun, run->array_index, 0, frame_size));
+  z_aarch64_emit_movz_x(text, 8, 0);
+  z_aarch64_emit_movz_x(text, 11, run->count);
+  z_aarch64_emit_movz_x(text, 10, run->fill_value);
+  size_t loop = text->len;
+  a64_emit_store_ptr_element(text, 10, 9, run->element_type);
+  z_aarch64_emit_add_x_imm(text, 9, 9, elem_size);
+  z_aarch64_emit_add_x_imm(text, 8, 8, 1);
+  z_aarch64_emit_cmp_x(text, 8, 11);
+  size_t back = z_aarch64_emit_b_cond_placeholder(text, 1); // b.ne -> loop
+  z_aarch64_patch_cond19(text, back, loop);
+}
+
+#define A64_FILL_RUN_MIN 8u
+
 static bool a64_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
+    ZDirectFillRun run;
+    if (z_direct_detect_fill_run(fun, instrs, len, i, A64_FILL_RUN_MIN, &run)) {
+      a64_emit_fill_run(text, fun, &run, frame_size);
+      i += run.count - 1;
+      continue;
+    }
     if (!a64_emit_instr(text, fun, &instrs[i], frame_size, ctx, diag)) return false;
   }
   return true;

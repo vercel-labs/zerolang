@@ -706,6 +706,19 @@ typedef struct {
 
 bool z_direct_loop_frame_add_break(Z_INOUT ZDirectLoopFrame *frame, size_t patch_offset);
 
+// Describes a maximal run of consecutive constant-index, constant-value
+// IR_INSTR_INDEX_STORE instructions over a single array local that writes the
+// elements 0,1,2,...,count-1 with one identical scalar literal. Direct
+// backends fold such runs into a single fill loop instead of emitting one
+// store per element, which is the dominant source of emitted-code density for
+// zero-initialized fixed arrays.
+typedef struct {
+  unsigned array_index;
+  size_t count;             // number of stores folded (run length)
+  unsigned long long fill_value;
+  IrTypeKind element_type;
+} ZDirectFillRun;
+
 struct IrInstr {
   IrInstrKind kind;
   unsigned local_index;
@@ -774,6 +787,12 @@ typedef struct {
   int line;
   int column;
 } IrFunction;
+
+// Detects a fill run starting at instrs[start]. Returns true and fills *out
+// when at least min_run stores form a 0..count-1 constant fill of one array
+// local with a single literal value. The caller emits a fill loop and
+// advances past the run.
+bool z_direct_detect_fill_run(Z_IN const IrFunction *fun, Z_IN const IrInstr *instrs, size_t len, size_t start, size_t min_run, Z_OUT ZDirectFillRun *out);
 
 typedef struct {
   char *symbol;

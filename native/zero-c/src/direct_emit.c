@@ -45,6 +45,41 @@ bool z_direct_loop_frame_add_break(ZDirectLoopFrame *frame, size_t patch_offset)
   return true;
 }
 
+bool z_direct_detect_fill_run(const IrFunction *fun, const IrInstr *instrs, size_t len, size_t start, size_t min_run, ZDirectFillRun *out) {
+  if (!fun || !instrs || start >= len) return false;
+  const IrInstr *first = &instrs[start];
+  if (first->kind != IR_INSTR_INDEX_STORE) return false;
+  if (first->array_index >= fun->local_len) return false;
+  const IrLocal *local = &fun->locals[first->array_index];
+  // Only plain fixed-array locals with a scalar element are foldable. Byte
+  // views are pointer-indirected and excluded.
+  if (!local->is_array || local->type == IR_TYPE_BYTE_VIEW) return false;
+  if (!first->index || first->index->kind != IR_VALUE_INT || first->index->int_value != 0) return false;
+  if (!first->value || first->value->kind != IR_VALUE_INT) return false;
+  IrTypeKind element_type = local->element_type;
+  if (element_type == IR_TYPE_UNSUPPORTED) return false;
+  if (first->value->type != element_type) return false;
+  unsigned long long fill_value = first->value->int_value;
+  size_t run = 1;
+  while (start + run < len) {
+    const IrInstr *next = &instrs[start + run];
+    if (next->kind != IR_INSTR_INDEX_STORE) break;
+    if (next->array_index != first->array_index) break;
+    if (!next->index || next->index->kind != IR_VALUE_INT || next->index->int_value != run) break;
+    if (!next->value || next->value->kind != IR_VALUE_INT) break;
+    if (next->value->type != element_type || next->value->int_value != fill_value) break;
+    run++;
+  }
+  if (run < min_run) return false;
+  if (out) {
+    out->array_index = first->array_index;
+    out->count = run;
+    out->fill_value = fill_value;
+    out->element_type = element_type;
+  }
+  return true;
+}
+
 bool z_emit_direct_object_from_ir(ZDirectBackend backend, const IrProgram *program, ZBuf *out, ZDiag *diag) {
   switch (backend) {
     case Z_DIRECT_BACKEND_ELF64: return z_emit_elf64_object_from_ir(program, out, diag);

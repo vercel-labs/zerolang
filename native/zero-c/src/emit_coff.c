@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Minimum constant-fill run length that justifies a fill loop.
+#define COFF_FILL_RUN_MIN 8u
+
 static bool coff_diag(ZDiag *diag, const char *message) {
   if (diag) {
     diag->code = 4004;
@@ -1701,8 +1704,30 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
   }
 }
 
+// Register-only fill loop replacing an unrolled run of constant-index,
+// constant-value array stores. rdx holds the running element pointer, rcx the
+// fill value, rax the remaining count.
+static void coff_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFillRun *run) {
+  unsigned elem_size = coff_type_byte_size(run->element_type);
+  coff_emit_array_base_rdx(text, fun, run->array_index);
+  z_x64_emit_mov_reg_u64(text, 1, run->fill_value);
+  z_x64_emit_mov_reg_u64(text, 0, run->count);
+  size_t loop = text->len;
+  coff_emit_store_ptr_element(text, 2, 1, run->element_type);
+  z_x64_emit_add_reg_i8(text, 2, (int8_t)elem_size, true);
+  z_x64_emit_add_reg_i8(text, 0, -1, true);
+  size_t back = z_x64_emit_jcc32_placeholder(text, 0x85); // jnz -> loop
+  z_x64_patch_rel32(text, back, loop);
+}
+
 static bool coff_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, CoffEmitContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
+    ZDirectFillRun run;
+    if (z_direct_detect_fill_run(fun, instrs, len, i, COFF_FILL_RUN_MIN, &run)) {
+      coff_emit_fill_run(text, fun, &run);
+      i += run.count - 1;
+      continue;
+    }
     if (!coff_emit_instr(text, fun, &instrs[i], ctx, diag)) return false;
   }
   return true;
