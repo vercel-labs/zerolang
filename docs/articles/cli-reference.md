@@ -134,6 +134,19 @@ A file path works as the alternative:
 zero patch --replace-fn main --body-file /tmp/main.body
 ```
 
+To change a few characters inside a function without retyping the body,
+`--replace-in-fn` replaces one unique literal occurrence of `--old` in the
+function's canonical body text (what `zero view --fn <name>` prints) with
+`--new`, then revalidates exactly like `--replace-fn`:
+
+```sh
+zero patch --replace-in-fn main --old 'limit + 1' --new 'limit + 2'
+```
+
+A missing or non-unique `--old` fails with the occurrence count. Inline
+`--old`/`--new` accept `\n` escapes for multi-line text; `--old-file` and
+`--new-file <file|->` read the text from a file or stdin.
+
 The patch step validates graph shape and repository metadata. A stale graph
 hash, missing required edge, sparse ordered child group, or invalid row body
 fails before the package store is updated.

@@ -89,6 +89,14 @@ EOF
 
 The body holds only the new rows, exactly what `zero view --fn <name>` prints between the signature braces (no header, no `end`). Quotes, `$variables`, and backslashes pass through a quoted heredoc untouched. The alternative is a file path: `zero patch --replace-fn <name> --body-file /tmp/main.body`.
 
+To change a few characters inside a large function, do not retype the body: `--replace-in-fn` replaces one unique literal occurrence of `--old` in the function's canonical body text with `--new` (Edit semantics), then revalidates exactly like `--replace-fn`:
+
+```sh
+zero patch --replace-in-fn handleLine --old 'limit + 1' --new 'limit + 2'
+```
+
+A missing or non-unique `--old` fails with the occurrence count; extend `--old` with surrounding lines from `zero view --fn <name>` until it matches once. Inline `--old`/`--new` accept `\n` escapes; `--old-file`/`--new-file <file|->` read multi-line text from a file or stdin.
+
 To patch one branch instead of rewriting the whole function, find the block handle first:
 
 ```sh

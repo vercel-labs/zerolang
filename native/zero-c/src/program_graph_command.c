@@ -128,7 +128,7 @@ void z_program_graph_print_command_help(void) {
   printf("Reconcile usage: zero reconcile [--json] <base-graph-input> --source <edited-file.0|project|zero.toml|zero.json>\n");
   printf("Repository projection usage: zero status|verify-projection [--json] [project|zero.toml|zero.json|file.0|zero.graph]; zero import [--json] [--format text|binary] [project|zero.toml|zero.json|file.0]; zero export [--json] [project|zero.toml|zero.json|file.0]; zero merge --base <base-zero.graph> --left <left-zero.graph> --right <right-zero.graph> [--json] [project|zero.toml|zero.json|file.0]\n");
   printf("Size usage: zero size [--json] [--target <target>] [--out <artifact>] [graph-input]\n");
-  printf("Patch usage: zero patch [--json] [--check-only|--dry-run] [--format text|binary] [--out <program-graph-artifact>] [graph-input] (<patch-file>|--op <operation>|--replace-fn <name> --body-file <file|->)\n");
+  printf("Patch usage: zero patch [--json] [--check-only|--dry-run] [--format text|binary] [--out <program-graph-artifact>] [graph-input] (<patch-file>|--op <operation>|--replace-fn <name> --body-file <file|->|--replace-in-fn <name> --old <text> --new <text>)\n");
   printf("  In a graph-first package, zero patch --op <operation> defaults to the current directory.\nPatch operation help: zero patch --op help\n\n");
   printf("Build usage: zero build [--json] [--emit exe|obj|llvm-ir] [--backend direct|llvm|<direct-emitter>] [--target <target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] [graph-input]\n\n");
   printf("Run usage: zero run [--target <host-target>] [--profile debug|dev|release-fast|release-small|tiny|audit] [--release <profile>] [--out <file>] [graph-input] [-- args...]\n\n");

@@ -37,7 +37,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   // The static const type and canonical value memos compare binder names with strcmp.
   "native/zero-c/src/checker.c": { maxLines: 12085, maxStrcmpCalls: 291 },
-  "native/zero-c/src/cli_help.c": { maxLines: 165, maxStrcmpCalls: 1 },
+  "native/zero-c/src/cli_help.c": { maxLines: 185, maxStrcmpCalls: 1 },
   "native/zero-c/src/cli_help.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/http_listen_runner.c": { maxLines: 600, maxStrcmpCalls: 0 },
   "native/zero-c/src/http_listen_runner.h": { maxLines: 22, maxStrcmpCalls: 0 },
@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 15980, maxStrcmpCalls: 446, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 16020, maxStrcmpCalls: 446, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 5622, maxStrcmpCalls: 278 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
@@ -123,6 +123,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_c_import_metadata.c": { maxLines: 120, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_c_import_metadata.h": { maxLines: 12, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_command.c": { maxLines: 175, maxStrcmpCalls: 2 },
+  "native/zero-c/src/program_graph_patch_internal.h": { maxLines: 16, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_patch_replace.c": { maxLines: 175, maxStrcmpCalls: 2 },
   "native/zero-c/src/program_graph_command.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_compile.c": { maxLines: 124, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_contracts.c": { maxLines: 280, maxStrcmpCalls: 1 },

@@ -69,5 +69,6 @@ const char *z_program_graph_patch_minimal_file_example(void);
 bool z_program_graph_apply_patch_text(const char *label, const char *text, size_t text_len, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag);
 bool z_program_graph_apply_patch_file(const char *path, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag);
 bool z_program_graph_apply_replace_fn_body_file(const char *function_name, const char *path, const char *expect_graph_hash, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag);
+bool z_program_graph_apply_replace_in_fn(const char *function_name, const char *old_inline, const char *old_file, const char *new_inline, const char *new_file, const char *expect_graph_hash, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag);
 void z_program_graph_patch_result_free(ZProgramGraphPatchResult *result);
 #endif

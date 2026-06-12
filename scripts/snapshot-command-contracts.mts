@@ -1013,7 +1013,7 @@ assert.match(graphHelp, /zero import \[--json\] \[--format text\|binary\] \[proj
 assert.match(graphHelp, /zero export \[--json\] \[project\|zero\.toml\|zero\.json\|file\.0\]/);
 assert.match(graphHelp, /zero merge --base <base-zero\.graph> --left <left-zero\.graph> --right <right-zero\.graph> \[--json\] \[project\|zero\.toml\|zero\.json\|file\.0\]/);
 assert.match(graphHelp, /zero size \[--json\] \[--target <target>\] \[--out <artifact>\] \[graph-input\]/);
-assert.match(graphHelp, /Patch usage: zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[graph-input\] \(<patch-file>\|--op <operation>\|--replace-fn <name> --body-file <file\|->\)/);
+assert.match(graphHelp, /Patch usage: zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[graph-input\] \(<patch-file>\|--op <operation>\|--replace-fn <name> --body-file <file\|->\|--replace-in-fn <name> --old <text> --new <text>\)/);
 assert.match(graphHelp, /Patch operation help: zero patch --op help/);
 assert.match(graphHelp, /binary is the default zero\.graph encoding/);
 assert.match(graphHelp, /--format text writes readable repository stores when explicitly requested/);
@@ -1036,7 +1036,7 @@ assert.match(rootHelp, /zero build \[--json\] \[--emit exe\|obj\|llvm-ir\].*\[gr
 assert.match(rootHelp, /zero test \[graph-input\]/);
 assert.match(rootHelp, /zero check \[--json\] \[--target <target>\] \[--emit exe\|obj\|llvm-ir\] \[graph-input\]/);
 assert.match(rootHelp, /zero fix --plan --json \[graph-input\]/);
-assert.match(rootHelp, /zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[graph-input\] \(<patch-file>\|--op <operation>\|--replace-fn <name> --body-file <file\|->\)/);
+assert.match(rootHelp, /zero patch \[--json\] \[--check-only\|--dry-run\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[graph-input\] \(<patch-file>\|--op <operation>\|--replace-fn <name> --body-file <file\|->\|--replace-in-fn <name> --old <text> --new <text>\)/);
 assert.match(rootHelp, /zero dump\|validate\|roundtrip \[--json\] \[--format text\|binary\] \[--out <program-graph-artifact>\] \[graph-input\]/);
 assert.match(rootHelp, /zero view \[--json\] \[--fn <name> \[--around <text>\]\] \[--outline <module-or-file>\] \[--out <file\.0>\] \[graph-input\]/);
 assert.match(rootHelp, /zero diff \[--fn <name>\] \[graph-input\]/);
@@ -1064,6 +1064,9 @@ assert.match(graphPatchHelp, /zero patch \. --replace-fn greet --body-file - <<'
 assert.match(graphPatchHelp, /Alternative: write the rows to a file and pass its path/);
 assert.match(graphPatchHelp, /zero patch \. --replace-fn greet --body-file \/tmp\/greet\.body/);
 assert(graphPatchHelp.indexOf("--body-file - <<'EOF'") < graphPatchHelp.indexOf("/tmp/greet.body"), "patch help should show the stdin heredoc form before the temp-file form");
+assert.match(graphPatchHelp, /--replace-in-fn/);
+assert.match(graphPatchHelp, /zero patch \. --replace-in-fn greet --old 'return 1' --new 'return 2'/);
+assert.match(graphPatchHelp, /--old must match the body text zero view --fn <name> prints exactly once/);
 assert.match(graphPatchHelp, /addLetLiteral fn="main" name="count" type="u32" value="0"/);
 assert.match(graphPatchHelp, /addReturnValue fn="identity" value="input" type="i32"/);
 const graphPatchHelpJson = json(["patch", "--op", "help", "--json"]).body;
@@ -3546,6 +3549,78 @@ const replaceFnStdinEmptyBody = JSON.parse(replaceFnStdinEmpty.stdout);
 assert.equal(replaceFnStdinEmptyBody.diagnostic.code, "GPH001");
 assert.equal(replaceFnStdinEmptyBody.diagnostic.message, "function body file is empty");
 assert.equal(replaceFnStdinEmptyBody.diagnostic.actual, "<stdin>");
+// Surgical in-function replacement: --replace-in-fn finds --old as a literal
+// substring of the canonical body projection (the text zero view --fn prints),
+// requires it unique within the function, and revalidates exactly like
+// --replace-fn, all in one call.
+const replaceInFnHash = json(["query", "--json", graphRepositoryPatchPackageDir]).body.graphHash;
+const replaceInFnSingle = zero(["patch", graphRepositoryPatchPackageDir, "--expect-graph-hash", replaceInFnHash, "--replace-in-fn", "main", "--old", "stdin body update\\n", "--new", "surgical update\\n"]);
+assertPatchOkOutput(replaceInFnSingle.stdout, join(graphRepositoryPatchPackageDir, "zero.graph"));
+assert.equal(zero(["run", graphRepositoryPatchPackageDir]).stdout, "surgical update\n");
+const replaceInFnBodyRows = [
+  '  let name: Maybe<String> = std.args.get(1)',
+  '  if name.has {',
+  '    check world.out.write("hey ")',
+  '    check world.out.write(name.value)',
+  '    check world.out.write("\\n")',
+  '  } else {',
+  '    check world.out.write("hey anonymous\\n")',
+  '  }',
+  '',
+].join("\n");
+zeroWithInput(["patch", graphRepositoryPatchPackageDir, "--replace-fn", "main", "--body-file", "-"], replaceInFnBodyRows);
+const replaceInFnView = zero(["view", "--fn", "main", graphRepositoryPatchPackageDir]).stdout;
+const replaceInFnViewLines = replaceInFnView.split("\n");
+const replaceInFnHeyIndex = replaceInFnViewLines.findIndex((line) => line.includes('"hey "'));
+assert(replaceInFnHeyIndex > 0, "expected the replaced body in zero view --fn main");
+// multi-line --old/--new through inline \n escapes, exactly as view prints the rows
+const replaceInFnMultiOld = `${replaceInFnViewLines[replaceInFnHeyIndex]}\\n${replaceInFnViewLines[replaceInFnHeyIndex + 1]}`;
+const replaceInFnMultiNew = replaceInFnMultiOld.replace('"hey "', '"hi "');
+const replaceInFnMulti = zero(["patch", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", replaceInFnMultiOld, "--new", replaceInFnMultiNew]);
+assertPatchOkOutput(replaceInFnMulti.stdout, join(graphRepositoryPatchPackageDir, "zero.graph"));
+assert.equal(zero(["run", graphRepositoryPatchPackageDir, "--", "Ada"]).stdout, "hi Ada\n");
+// non-unique --old fails with the occurrence count and a view-oriented hint
+const replaceInFnAmbiguous = zero(["patch", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", "check world.out.write(", "--new", "check world.err.write("], { allowFailure: true });
+assert.notEqual(replaceInFnAmbiguous.code, 0);
+assert.match(replaceInFnAmbiguous.stderr, /replace-in-fn --old text matches 4 places in function 'main'/);
+assert.match(replaceInFnAmbiguous.stderr, /zero view --fn main/);
+// missing --old fails without touching the store
+const replaceInFnMissBefore = json(["query", "--json", graphRepositoryPatchPackageDir]).body.graphHash;
+const replaceInFnMiss = zero(["patch", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", "zzz-not-here", "--new", "anything"], { allowFailure: true });
+assert.notEqual(replaceInFnMiss.code, 0);
+assert.match(replaceInFnMiss.stderr, /replace-in-fn --old text was not found in function 'main'/);
+assert.match(replaceInFnMiss.stderr, /zero view --fn main/);
+assert.equal(json(["query", "--json", graphRepositoryPatchPackageDir]).body.graphHash, replaceInFnMissBefore);
+// stdin variants: --old-file - and --new-file - read the text verbatim
+const replaceInFnStdinOld = zeroWithInput(["patch", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old-file", "-", "--new", replaceInFnViewLines[replaceInFnHeyIndex].replace('"hey "', '"hello "')], replaceInFnViewLines[replaceInFnHeyIndex].replace('"hey "', '"hi "'));
+assertPatchOkOutput(replaceInFnStdinOld.stdout, join(graphRepositoryPatchPackageDir, "zero.graph"));
+assert.equal(zero(["run", graphRepositoryPatchPackageDir, "--", "Ada"]).stdout, "hello Ada\n");
+const replaceInFnStdinNew = zeroWithInput(["patch", "--json", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", '"hello "', "--new-file", "-"], '"howdy "');
+const replaceInFnStdinNewBody = JSON.parse(replaceInFnStdinNew.stdout);
+assert.equal(replaceInFnStdinNewBody.ok, true);
+assert.equal(replaceInFnStdinNewBody.patch, "<replace-in-fn>");
+assert.equal(replaceInFnStdinNewBody.operationCount, 1);
+assert.equal(replaceInFnStdinNewBody.operations[0].op, "replaceFunctionBody");
+assert.equal(zero(["run", graphRepositoryPatchPackageDir, "--", "Ada"]).stdout, "howdy Ada\n");
+// a replacement that introduces a diagnostic fails revalidation with
+// baseline-diff behavior and leaves the store untouched
+const replaceInFnInvalidBefore = json(["query", "--json", graphRepositoryPatchPackageDir]).body.graphHash;
+const replaceInFnInvalid = zero(["patch", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", 'check world.out.write("howdy ")', "--new", 'world.out.write("howdy ")'], { allowFailure: true });
+assert.notEqual(replaceInFnInvalid.code, 0);
+assert.match(replaceInFnInvalid.stderr, /ERR003: fallible function call must be checked/);
+assert.match(replaceInFnInvalid.stderr, /program graph patch failed revalidation: 1 diagnostic introduced by this patch/);
+assert.equal(json(["query", "--json", graphRepositoryPatchPackageDir]).body.graphHash, replaceInFnInvalidBefore);
+// incomplete or doubled flag sets fail with actionable diagnostics
+const replaceInFnMissingNew = json(["patch", "--json", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", "x"], { allowFailure: true });
+assert.notEqual(replaceInFnMissingNew.code, 0);
+assert.match(replaceInFnMissingNew.body.diagnostics[0].message, /needs --replace-in-fn, --old, and --new/);
+assert.equal(replaceInFnMissingNew.body.diagnostics[0].actual, "missing --new");
+const replaceInFnDoubleStdin = json(["patch", "--json", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old-file", "-", "--new-file", "-"], { allowFailure: true });
+assert.notEqual(replaceInFnDoubleStdin.code, 0);
+assert.match(replaceInFnDoubleStdin.body.diagnostics[0].message, /cannot read both texts from stdin/);
+const replaceInFnMixedSource = json(["patch", "--json", graphRepositoryPatchPackageDir, "--replace-in-fn", "main", "--old", "x", "--new", "y", "--replace-fn", "main", "--body-file", "-"], { allowFailure: true });
+assert.notEqual(replaceInFnMixedSource.code, 0);
+assert.match(replaceInFnMixedSource.body.diagnostics[0].message, /graph patch source is ambiguous/);
 const genericPatchRoot = join(outDir, "repository-graph-generic-patch");
 rmSync(genericPatchRoot, { recursive: true, force: true });
 mkdirSync(join(genericPatchRoot, "src"), { recursive: true });

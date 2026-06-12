@@ -1,4 +1,5 @@
 #include "program_graph_patch.h"
+#include "program_graph_patch_internal.h"
 #include "program_graph_order.h"
 #include <ctype.h>
 #include <errno.h>
@@ -14,23 +15,23 @@ static void patch_free_text(char **slot) {
   *slot = NULL;
 }
 
-static void patch_replace_text(char **slot, const char *value) {
+void z_graph_patch_replace_text(char **slot, const char *value) {
   if (!slot) return;
   free(*slot);
   *slot = z_strdup(value ? value : "");
 }
 
-static void patch_result_fail(ZProgramGraphPatchResult *result, const char *code, const char *message, const char *expected, const char *actual) {
+void z_graph_patch_result_fail(ZProgramGraphPatchResult *result, const char *code, const char *message, const char *expected, const char *actual) {
   if (!result) return;
   result->ok = false;
   snprintf(result->code, sizeof(result->code), "%s", code ? code : "GPH000");
   snprintf(result->message, sizeof(result->message), "%s", message ? message : "program graph patch failed");
-  patch_replace_text(&result->expected, expected);
-  patch_replace_text(&result->actual, actual);
+  z_graph_patch_replace_text(&result->expected, expected);
+  z_graph_patch_replace_text(&result->actual, actual);
 }
 
 static void patch_format_fail(ZProgramGraphPatchResult *result, const char *code, const char *message, const char *expected, const char *actual, int line) {
-  patch_result_fail(result, code, message, expected, actual);
+  z_graph_patch_result_fail(result, code, message, expected, actual);
   if (!result) return;
   result->line = line > 0 ? line : 1;
   result->format_error = true;
@@ -50,10 +51,10 @@ static void patch_op_fail(ZProgramGraphPatchResult *result, ZProgramGraphPatchOp
     op->ok = false;
     snprintf(op->code, sizeof(op->code), "%s", code ? code : "GPH000");
     snprintf(op->message, sizeof(op->message), "%s", message ? message : "program graph patch operation failed");
-    patch_replace_text(&op->expected, expected_copy);
-    patch_replace_text(&op->actual, actual_copy);
+    z_graph_patch_replace_text(&op->expected, expected_copy);
+    z_graph_patch_replace_text(&op->actual, actual_copy);
   }
-  patch_result_fail(result, code, message, expected_copy, actual_copy);
+  z_graph_patch_result_fail(result, code, message, expected_copy, actual_copy);
   free(expected_copy);
   free(actual_copy);
 }
@@ -105,7 +106,7 @@ static char *patch_read_stdin(size_t *out_len, ZDiag *diag) {
   return data;
 }
 
-static char *patch_read_body_source(const char *path, size_t *out_len, ZDiag *diag) {
+char *z_graph_patch_read_body_source(const char *path, size_t *out_len, ZDiag *diag) {
   if (path && strcmp(path, "-") == 0) return patch_read_stdin(out_len, diag);
   return patch_read_file(path, out_len, diag);
 }
@@ -193,7 +194,7 @@ static bool patch_parse_attr(const char **cursor, char **key, char **value) {
   return true;
 }
 
-static ZProgramGraphPatchOpResult *patch_push_operation(ZProgramGraphPatchResult *result) {
+ZProgramGraphPatchOpResult *z_graph_patch_push_operation(ZProgramGraphPatchResult *result) {
   if (result->operation_len == result->operation_cap) {
     size_t next = result->operation_cap ? result->operation_cap * 2 : 8;
     result->operations = z_checked_reallocarray(result->operations, next, sizeof(ZProgramGraphPatchOpResult));
@@ -218,7 +219,7 @@ static bool patch_parse_expect_graph_hash(const char *line, ZProgramGraphPatchRe
     free(hash);
     return false;
   }
-  patch_replace_text(&result->expected_graph_hash, hash);
+  z_graph_patch_replace_text(&result->expected_graph_hash, hash);
   free(hash);
   return true;
 }
@@ -271,7 +272,7 @@ static bool patch_assign_bool_value(bool *slot, bool *has_slot, char *value) {
 }
 
 static bool patch_parse_set(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("set");
 
@@ -443,7 +444,7 @@ static bool patch_reject_attrs(
 }
 
 static bool patch_parse_insert(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("insert");
   if (!patch_parse_structural_attrs(line, "insert", result, op)) return false;
@@ -457,7 +458,7 @@ static bool patch_parse_insert(const char *line, int line_number, ZProgramGraphP
 }
 
 static bool patch_parse_insert_edge(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("insertEdge");
   if (!patch_parse_structural_attrs(line, "insertEdge", result, op)) return false;
@@ -471,7 +472,7 @@ static bool patch_parse_insert_edge(const char *line, int line_number, ZProgramG
 }
 
 static bool patch_parse_replace(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("replace");
   if (!patch_parse_structural_attrs(line, "replace", result, op)) return false;
@@ -484,7 +485,7 @@ static bool patch_parse_replace(const char *line, int line_number, ZProgramGraph
 }
 
 static bool patch_parse_delete(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("delete");
   if (!patch_parse_structural_attrs(line, "delete", result, op)) return false;
@@ -497,7 +498,7 @@ static bool patch_parse_delete(const char *line, int line_number, ZProgramGraphP
 }
 
 static bool patch_parse_rename(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("rename");
   if (!patch_parse_structural_attrs(line, "rename", result, op)) return false;
@@ -516,7 +517,7 @@ static bool patch_parse_rename(const char *line, int line_number, ZProgramGraphP
 }
 
 static bool patch_parse_add_function(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addFunction");
   if (!patch_parse_structural_attrs(line, "addFunction", result, op)) return false;
@@ -529,7 +530,7 @@ static bool patch_parse_add_function(const char *line, int line_number, ZProgram
 }
 
 static bool patch_parse_add_main(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addMain");
   if (!patch_parse_structural_attrs(line, "addMain", result, op)) return false;
@@ -538,7 +539,7 @@ static bool patch_parse_add_main(const char *line, int line_number, ZProgramGrap
 }
 
 static bool patch_parse_add_param(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addParam");
   if (!patch_parse_structural_attrs(line, "addParam", result, op)) return false;
@@ -551,7 +552,7 @@ static bool patch_parse_add_param(const char *line, int line_number, ZProgramGra
 }
 
 static bool patch_parse_add_return_binary(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addReturnBinary");
   if (!patch_parse_structural_attrs(line, "addReturnBinary", result, op)) return false;
@@ -564,7 +565,7 @@ static bool patch_parse_add_return_binary(const char *line, int line_number, ZPr
 }
 
 static bool patch_parse_add_let_literal(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addLetLiteral");
   if (!patch_parse_structural_attrs(line, "addLetLiteral", result, op)) return false;
@@ -577,7 +578,7 @@ static bool patch_parse_add_let_literal(const char *line, int line_number, ZProg
 }
 
 static bool patch_parse_add_let_binary(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addLetBinary");
   if (!patch_parse_structural_attrs(line, "addLetBinary", result, op)) return false;
@@ -590,7 +591,7 @@ static bool patch_parse_add_let_binary(const char *line, int line_number, ZProgr
 }
 
 static bool patch_parse_add_return_value(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addReturnValue");
   if (!patch_parse_structural_attrs(line, "addReturnValue", result, op)) return false;
@@ -603,7 +604,7 @@ static bool patch_parse_add_return_value(const char *line, int line_number, ZPro
 }
 
 static bool patch_parse_add_check_write_value(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addCheckWriteValue");
   if (!patch_parse_structural_attrs(line, "addCheckWriteValue", result, op)) return false;
@@ -616,7 +617,7 @@ static bool patch_parse_add_check_write_value(const char *line, int line_number,
 }
 
 static bool patch_parse_add_check_write(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addCheckWrite");
   if (!patch_parse_structural_attrs(line, "addCheckWrite", result, op)) return false;
@@ -629,7 +630,7 @@ static bool patch_parse_add_check_write(const char *line, int line_number, ZProg
 }
 
 static bool patch_parse_add_test(const char *line, int line_number, ZProgramGraphPatchResult *result) {
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup("addTest");
   if (!patch_parse_structural_attrs(line, "addTest", result, op)) return false;
@@ -646,14 +647,14 @@ static bool patch_parse_replace_body_target(const char *line, int line_number, c
   const char *usage = block ? "replaceBlockBody #block_id" : "replaceFunctionBody main";
   const char *cursor = line + strlen(operation);
   patch_skip_spaces(&cursor);
-  if (!*cursor) { patch_result_fail(result, "GPH001", block ? "replaceBlockBody is missing a block node id" : "replaceFunctionBody is missing a function name", usage, line); return false; }
+  if (!*cursor) { z_graph_patch_result_fail(result, "GPH001", block ? "replaceBlockBody is missing a block node id" : "replaceFunctionBody is missing a function name", usage, line); return false; }
   const char *start = cursor;
   while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
   char *target = z_strndup(start, (size_t)(cursor - start));
   patch_skip_spaces(&cursor);
-  if (*cursor) { patch_result_fail(result, "GPH001", block ? "replaceBlockBody has trailing header text" : "replaceFunctionBody has trailing header text", usage, line); free(target); return false; }
-  if (block && target[0] != '#') { patch_result_fail(result, "GPH003", "replaceBlockBody target must be a graph node id", "#block_id", target); free(target); return false; }
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  if (*cursor) { z_graph_patch_result_fail(result, "GPH001", block ? "replaceBlockBody has trailing header text" : "replaceFunctionBody has trailing header text", usage, line); free(target); return false; }
+  if (block && target[0] != '#') { z_graph_patch_result_fail(result, "GPH003", "replaceBlockBody target must be a graph node id", "#block_id", target); free(target); return false; }
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = line_number;
   op->op = z_strdup(operation);
   if (block) op->node = target;
@@ -725,7 +726,7 @@ static bool patch_parse_text(char *text, ZProgramGraphPatchResult *result) {
     }
     if (strncmp(trimmed, "expect", strlen("expect")) == 0 && isspace((unsigned char)trimmed[strlen("expect")])) {
       if (!patch_parse_expect_graph_hash(trimmed, result)) {
-        patch_result_fail(result, "GPH001", "invalid graph hash precondition", "expect graphHash \"graph:<hash>\"", trimmed);
+        z_graph_patch_result_fail(result, "GPH001", "invalid graph hash precondition", "expect graphHash \"graph:<hash>\"", trimmed);
         return false;
       }
     } else if (strncmp(trimmed, "set", strlen("set")) == 0 && isspace((unsigned char)trimmed[strlen("set")])) {
@@ -777,9 +778,9 @@ static bool patch_parse_text(char *text, ZProgramGraphPatchResult *result) {
   }
   return true;
 }
-static bool patch_apply_operations(ZProgramGraph *graph, ZProgramGraphPatchResult *result) {
+bool z_graph_patch_apply_operations(ZProgramGraph *graph, ZProgramGraphPatchResult *result) {
   if (result->expected_graph_hash && !patch_text_eq(result->expected_graph_hash, result->actual_graph_hash)) {
-    patch_result_fail(result, "GPH002", "graph hash precondition failed", result->expected_graph_hash, result->actual_graph_hash);
+    z_graph_patch_result_fail(result, "GPH002", "graph hash precondition failed", result->expected_graph_hash, result->actual_graph_hash);
     return false;
   }
   for (size_t i = 0; i < result->operation_len; i++) {
@@ -787,10 +788,10 @@ static bool patch_apply_operations(ZProgramGraph *graph, ZProgramGraphPatchResul
     z_program_graph_finalize_identities(graph);
   }
   z_program_graph_compact_ordered_edges(graph); z_program_graph_finalize_identities(graph);
-  patch_replace_text(&result->actual_graph_hash, graph->graph_hash);
+  z_graph_patch_replace_text(&result->actual_graph_hash, graph->graph_hash);
   ZProgramGraphValidation validation = {0};
   if (!z_program_graph_validate(graph, &validation)) {
-    patch_result_fail(result, "GPH006", validation.message, "shape-valid ProgramGraph", validation.code);
+    z_graph_patch_result_fail(result, "GPH006", validation.message, "shape-valid ProgramGraph", validation.code);
     return false;
   }
   result->ok = true; return true;
@@ -801,13 +802,13 @@ bool z_program_graph_apply_patch_text(const char *label, const char *text, size_
   result->actual_graph_hash = z_strdup(graph && graph->graph_hash ? graph->graph_hash : "");
   if (!text) { text = ""; text_len = 0; }
   if (memchr(text, '\0', text_len)) {
-    patch_result_fail(result, "GPH001", "program graph patch contains NUL byte", "text without NUL bytes", "NUL byte");
+    z_graph_patch_result_fail(result, "GPH001", "program graph patch contains NUL byte", "text without NUL bytes", "NUL byte");
     if (diag && label) diag->path = label;
     return false;
   }
   char *copy = z_strndup(text, text_len);
   bool parsed = patch_parse_text(copy, result); free(copy); if (!parsed) return false;
-  return patch_apply_operations(graph, result);
+  return z_graph_patch_apply_operations(graph, result);
 }
 bool z_program_graph_apply_replace_fn_body_file(const char *function_name, const char *path, const char *expect_graph_hash, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag) {
   if (!result) return false;
@@ -815,28 +816,28 @@ bool z_program_graph_apply_replace_fn_body_file(const char *function_name, const
   result->actual_graph_hash = z_strdup(graph && graph->graph_hash ? graph->graph_hash : "");
   size_t text_len = 0;
   bool from_stdin = path && strcmp(path, "-") == 0;
-  char *text = patch_read_body_source(path, &text_len, diag);
+  char *text = z_graph_patch_read_body_source(path, &text_len, diag);
   if (!text) return false;
   if (memchr(text, '\0', text_len)) {
     free(text);
-    patch_result_fail(result, "GPH001", "function body file contains NUL byte", "body rows without NUL bytes", "NUL byte");
+    z_graph_patch_result_fail(result, "GPH001", "function body file contains NUL byte", "body rows without NUL bytes", "NUL byte");
     return false;
   }
   bool blank = true;
   for (size_t i = 0; blank && i < text_len; i++) blank = isspace((unsigned char)text[i]) != 0;
   if (blank) {
     free(text);
-    patch_result_fail(result, "GPH001", "function body file is empty", "body rows in zero view syntax", from_stdin ? "<stdin>" : path);
+    z_graph_patch_result_fail(result, "GPH001", "function body file is empty", "body rows in zero view syntax", from_stdin ? "<stdin>" : path);
     return false;
   }
-  if (expect_graph_hash) patch_replace_text(&result->expected_graph_hash, expect_graph_hash);
-  ZProgramGraphPatchOpResult *op = patch_push_operation(result);
+  if (expect_graph_hash) z_graph_patch_replace_text(&result->expected_graph_hash, expect_graph_hash);
+  ZProgramGraphPatchOpResult *op = z_graph_patch_push_operation(result);
   op->line = 1;
   op->op = z_strdup("replaceFunctionBody");
   op->function = z_strdup(function_name ? function_name : "");
   op->value = z_strndup(text, text_len);
   free(text);
-  return patch_apply_operations(graph, result);
+  return z_graph_patch_apply_operations(graph, result);
 }
 bool z_program_graph_apply_patch_file(const char *path, ZProgramGraph *graph, ZProgramGraphPatchResult *result, ZDiag *diag) {
   if (!result) return false;

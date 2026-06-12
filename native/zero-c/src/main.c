@@ -83,6 +83,11 @@ typedef struct {
   const char *patch_expect_graph_hash;
   const char *patch_replace_fn;
   const char *patch_body_file;
+  const char *patch_replace_in_fn;
+  const char *patch_old_text;
+  const char *patch_old_file;
+  const char *patch_new_text;
+  const char *patch_new_file;
   const char *reconcile_source;
   const char *merge_base;
   const char *merge_left;
@@ -4584,12 +4589,40 @@ static bool parse_common_value_option(int argc, char **argv, int *index, Command
   return true;
 }
 
+static const char **graph_patch_value_option_slot(Command *command, const char *arg) {
+  if (cli_arg_is(arg, "--patch-text")) return &command->patch_text;
+  if (cli_arg_is(arg, "--expect-graph-hash")) return &command->patch_expect_graph_hash;
+  if (cli_arg_is(arg, "--replace-fn")) return &command->patch_replace_fn;
+  if (cli_arg_is(arg, "--body-file")) return &command->patch_body_file;
+  if (cli_arg_is(arg, "--replace-in-fn")) return &command->patch_replace_in_fn;
+  if (cli_arg_is(arg, "--old")) return &command->patch_old_text;
+  if (cli_arg_is(arg, "--old-file")) return &command->patch_old_file;
+  if (cli_arg_is(arg, "--new")) return &command->patch_new_text;
+  if (cli_arg_is(arg, "--new-file")) return &command->patch_new_file;
+  return NULL;
+}
+
+static bool parse_graph_patch_value_option(int argc, char **argv, int *index, Command *command) {
+  const char *arg = argv[*index];
+  const char **slot = command ? graph_patch_value_option_slot(command, arg) : NULL;
+  if (!slot) return false;
+  if (!command->graph_patch_command) {
+    command->unknown_flag = arg;
+    return true;
+  }
+  if (*index + 1 >= argc) command->unknown_flag = arg;
+  else *slot = argv[++(*index)];
+  return true;
+}
+
 static bool parse_common_option(int argc, char **argv, int *index, Command *command) {
   const char *arg = argv[*index];
   if (parse_emit_option(argc, argv, index, command)) return true;
   if (parse_common_value_option(argc, argv, index, command)) {
     return true;
   } else if (parse_graph_query_option(argc, argv, index, command)) {
+    return true;
+  } else if (parse_graph_patch_value_option(argc, argv, index, command)) {
     return true;
   } else if (strcmp(arg, "--json") == 0) {
     command->json = true;
@@ -4609,38 +4642,6 @@ static bool parse_common_option(int argc, char **argv, int *index, Command *comm
     return true;
   } else if (strcmp(arg, "--patch") == 0) {
     command->patch = true;
-    return true;
-  } else if (cli_arg_is(arg, "--patch-text")) {
-    if (!command || !command->graph_patch_command) {
-      command->unknown_flag = arg;
-      return true;
-    }
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->patch_text = argv[++(*index)];
-    return true;
-  } else if (cli_arg_is(arg, "--expect-graph-hash")) {
-    if (!command || !command->graph_patch_command) {
-      command->unknown_flag = arg;
-      return true;
-    }
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->patch_expect_graph_hash = argv[++(*index)];
-    return true;
-  } else if (cli_arg_is(arg, "--replace-fn")) {
-    if (!command || !command->graph_patch_command) {
-      command->unknown_flag = arg;
-      return true;
-    }
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->patch_replace_fn = argv[++(*index)];
-    return true;
-  } else if (cli_arg_is(arg, "--body-file")) {
-    if (!command || !command->graph_patch_command) {
-      command->unknown_flag = arg;
-      return true;
-    }
-    if (*index + 1 >= argc) command->unknown_flag = arg;
-    else command->patch_body_file = argv[++(*index)];
     return true;
   } else if (cli_arg_is(arg, "--op")) {
     if (!command || !command->graph_patch_command) {
@@ -13178,6 +13179,7 @@ static void print_graph_patch_summary_text(const ZProgramGraph *graph, const ZPr
 
 static const char *graph_patch_source_label(const Command *command) {
   if (command && command->patch_file) return command->patch_file;
+  if (command && command->patch_replace_in_fn) return "<replace-in-fn>";
   if (command && command->patch_body_file) return strcmp(command->patch_body_file, "-") == 0 ? "<stdin>" : command->patch_body_file;
   if (command && (command->patch_text || command->patch_op_len > 0)) return "<inline>";
   return "<patch>";
@@ -13790,6 +13792,7 @@ static bool validate_graph_patch_sources(const Command *command, bool *has_file,
   *has_patch_text = command->patch_text != NULL;
   *has_ops = command->patch_op_len > 0;
   bool has_body = command->patch_replace_fn || command->patch_body_file;
+  bool has_in_fn = command->patch_replace_in_fn || command->patch_old_text || command->patch_old_file || command->patch_new_text || command->patch_new_file;
   diag->code = 2002;
   diag->path = command->input;
   diag->line = 1;
@@ -13802,19 +13805,44 @@ static bool validate_graph_patch_sources(const Command *command, bool *has_file,
     snprintf(diag->help, sizeof(diag->help), "the body file holds only the new body rows, exactly what zero view --fn prints between the signature braces; --body-file - reads them from stdin");
     return false;
   }
-  int source_count = (*has_file ? 1 : 0) + (*has_patch_text ? 1 : 0) + (*has_ops ? 1 : 0) + (has_body ? 1 : 0);
+  if (has_in_fn) {
+    bool has_old = command->patch_old_text || command->patch_old_file;
+    bool has_new = command->patch_new_text || command->patch_new_file;
+    if (!command->patch_replace_in_fn || !has_old || !has_new) {
+      snprintf(diag->message, sizeof(diag->message), "graph patch in-function replacement needs --replace-in-fn, --old, and --new");
+      snprintf(diag->expected, sizeof(diag->expected), "zero patch [graph-input] --replace-in-fn <function> --old <text> --new <text>");
+      snprintf(diag->actual, sizeof(diag->actual), "missing %s", !command->patch_replace_in_fn ? "--replace-in-fn" : (!has_old ? "--old" : "--new"));
+      snprintf(diag->help, sizeof(diag->help), "--old must match the body text zero view --fn <name> prints exactly once; inline --old/--new accept \\n escapes, or pass --old-file/--new-file <file|-> for multi-line text");
+      return false;
+    }
+    if ((command->patch_old_text && command->patch_old_file) || (command->patch_new_text && command->patch_new_file)) {
+      snprintf(diag->message, sizeof(diag->message), "graph patch in-function replacement text is ambiguous");
+      snprintf(diag->expected, sizeof(diag->expected), "one of --old or --old-file, and one of --new or --new-file");
+      snprintf(diag->actual, sizeof(diag->actual), "%s", command->patch_old_text && command->patch_old_file ? "--old and --old-file" : "--new and --new-file");
+      snprintf(diag->help, sizeof(diag->help), "pass the text inline or in a file, not both");
+      return false;
+    }
+    if (command->patch_old_file && command->patch_new_file && strcmp(command->patch_old_file, "-") == 0 && strcmp(command->patch_new_file, "-") == 0) {
+      snprintf(diag->message, sizeof(diag->message), "graph patch in-function replacement cannot read both texts from stdin");
+      snprintf(diag->expected, sizeof(diag->expected), "at most one of --old-file and --new-file as -");
+      snprintf(diag->actual, sizeof(diag->actual), "--old-file - --new-file -");
+      snprintf(diag->help, sizeof(diag->help), "pass one of the texts inline or in a real file");
+      return false;
+    }
+  }
+  int source_count = (*has_file ? 1 : 0) + (*has_patch_text ? 1 : 0) + (*has_ops ? 1 : 0) + (has_body ? 1 : 0) + (has_in_fn ? 1 : 0);
   if (source_count == 0) {
     snprintf(diag->message, sizeof(diag->message), "graph patch requires patch operations");
-    snprintf(diag->expected, sizeof(diag->expected), "zero patch [graph-input] (<patch-file>|--op <operation>|--patch-text <text>|--replace-fn <function> --body-file <file|->)");
+    snprintf(diag->expected, sizeof(diag->expected), "zero patch [graph-input] (<patch-file>|--op <operation>|--patch-text <text>|--replace-fn <function> --body-file <file|->|--replace-in-fn <function> --old <text> --new <text>)");
     snprintf(diag->actual, sizeof(diag->actual), "missing patch input");
-    snprintf(diag->help, sizeof(diag->help), "pass a zero-program-graph-patch v1 file, one or more --op lines, or --replace-fn with --body-file");
+    snprintf(diag->help, sizeof(diag->help), "pass a zero-program-graph-patch v1 file, one or more --op lines, --replace-fn with --body-file, or --replace-in-fn with --old and --new");
     return false;
   }
-  if (source_count > 1 || (command->patch_expect_graph_hash && !*has_ops && !has_body)) {
+  if (source_count > 1 || (command->patch_expect_graph_hash && !*has_ops && !has_body && !has_in_fn)) {
     snprintf(diag->message, sizeof(diag->message), "graph patch source is ambiguous");
-    snprintf(diag->expected, sizeof(diag->expected), "one patch source: <patch-file>, --patch-text, --op, or --replace-fn with --body-file");
+    snprintf(diag->expected, sizeof(diag->expected), "one patch source: <patch-file>, --patch-text, --op, --replace-fn with --body-file, or --replace-in-fn with --old and --new");
     snprintf(diag->actual, sizeof(diag->actual), "%s", graph_patch_source_label(command));
-    snprintf(diag->help, sizeof(diag->help), "use --expect-graph-hash with --op or --replace-fn, or put the precondition in patch text");
+    snprintf(diag->help, sizeof(diag->help), "use --expect-graph-hash with --op, --replace-fn, or --replace-in-fn, or put the precondition in patch text");
     return false;
   }
   diag->code = 0;
@@ -13825,6 +13853,10 @@ static bool validate_graph_patch_sources(const Command *command, bool *has_file,
 static bool apply_graph_patch_source(const Command *command, bool has_file, bool has_patch_text, ZProgramGraph *graph, ZProgramGraphPatchResult *result, char **inline_text, ZDiag *diag) {
   if (has_file) return z_program_graph_apply_patch_file(command->patch_file, graph, result, diag);
   if (has_patch_text) return z_program_graph_apply_patch_text("<inline>", command->patch_text, strlen(command->patch_text), graph, result, diag);
+  if (command->patch_replace_in_fn) {
+    return graph_patch_expect_hash_ok(command, diag) &&
+           z_program_graph_apply_replace_in_fn(command->patch_replace_in_fn, command->patch_old_text, command->patch_old_file, command->patch_new_text, command->patch_new_file, command->patch_expect_graph_hash, graph, result, diag);
+  }
   if (command->patch_body_file) {
     return graph_patch_expect_hash_ok(command, diag) &&
            z_program_graph_apply_replace_fn_body_file(command->patch_replace_fn, command->patch_body_file, command->patch_expect_graph_hash, graph, result, diag);
@@ -14013,7 +14045,9 @@ static int run_graph_patch_command(const Command *command, const ZTargetInfo *ta
     }
     if (result.expected && result.expected[0]) fprintf(stderr, "  expected: %s\n", result.expected);
     if (result.line <= 0 && result.actual && result.actual[0]) fprintf(stderr, "  actual: %s\n", result.actual);
-    if (strcmp(result.code, "GPH003") == 0 || strcmp(result.code, "GPH004") == 0) {
+    if (command->patch_replace_in_fn && (strcmp(result.code, "GPH003") == 0 || strcmp(result.code, "GPH004") == 0)) {
+      fprintf(stderr, "  help: run zero view --fn %s to see the exact body text to match\n", command->patch_replace_in_fn);
+    } else if (strcmp(result.code, "GPH003") == 0 || strcmp(result.code, "GPH004") == 0) {
       fprintf(stderr, "  help: run zero query --fn <name> --handles to list stmt and param patch handles, or zero query --find <text> for node ids\n");
     }
     if (result.format_error) {
@@ -15033,12 +15067,13 @@ int main(int argc, char **argv) {
       !command.patch_text &&
       !command.patch_body_file &&
       !command.patch_replace_fn &&
+      !command.patch_replace_in_fn &&
       (path_has_program_graph_patch_header(command.input) ||
        path_starts_with_program_graph_patch_operation(command.input))) {
     command.patch_file = command.input;
     command.input = ".";
   }
-  if (!command.input && command.graph_patch_command && (command.patch_op_len > 0 || command.patch_text || command.patch_file || command.patch_body_file || command.patch_replace_fn)) {
+  if (!command.input && command.graph_patch_command && (command.patch_op_len > 0 || command.patch_text || command.patch_file || command.patch_body_file || command.patch_replace_fn || command.patch_replace_in_fn)) {
     command.input = ".";
   }
   command_apply_query_bare_argument(&command);

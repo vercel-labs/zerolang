@@ -5,7 +5,7 @@ description: Graph-first agent workflow for making focused Zero changes with CLI
 
 # Zero Agent Workflow
 
-Use this when editing Zero code, examples, tests, docs, or a package. `zero.graph` is the package compiler input; `.0` files are the human-readable source projection. Command text output is written for agents. Use JSON only when another tool must parse stable fields.
+Use this when editing Zero code, examples, tests, docs, or a package. `zero.graph` is the package compiler input; `.0` files are the human-readable projection. Command text output is written for agents. Use JSON only when another tool must parse stable fields.
 
 ## Read, Edit, Verify
 
@@ -19,7 +19,7 @@ zero check               # validate; refreshes a stale zero.graph from edited so
 zero run . -- <args>     # execute the changed code
 ```
 
-Never read a whole `.0` file to find one function. Scoped reads:
+Never read a whole `.0` file for one function. Scoped reads:
 
 - `zero view --fn <name>`: one function's source; a missing name fails with close matches.
 - `zero view --fn <name> --around <text>`: only the enclosing block containing the text.
@@ -43,17 +43,17 @@ zero query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name
 
 ## Edit
 
-Edit through the graph: `zero patch` covers everything from one-line ops (`addCheckWrite`, `rename`, `set`) to whole function bodies, in one call with a heredoc:
+Edit through the graph: `zero patch` covers one-line ops (`addCheckWrite`, `rename`, `set`), in-function text edits, and whole bodies. Replace only the changed text, not the whole function:
 
 ```sh
-zero patch --replace-fn main --body-file - <<'EOF'
-  check world.out.write("hello agent\n")
-EOF
+zero patch --replace-in-fn handleLine --old 'return total' --new 'return total + 1'
 ```
+
+`--old` must match the `zero view --fn` body exactly once; `\n` escapes work inline, `--old-file`/`--new-file` take `<file|->`. Whole body: `--replace-fn <fn> --body-file -`.
 
 `zero patch --op help` lists operation shapes. A successful patch has already validated and saved the graph; do not run `zero check` just to confirm it.
 
-Direct `.0` text edits are a last resort for changes no patch op expresses: `zero check`, `zero run`, `zero test`, and `zero build` refresh a stale `zero.graph` automatically, but patch keeps the loop faster and preserves node identity for queries. Never delete `zero.graph` to force a reimport.
+Direct `.0` text edits are a last resort for changes no patch op expresses: compiler commands refresh a stale `zero.graph` automatically, but patch keeps the loop faster and preserves node identity. Never delete `zero.graph` to force a reimport.
 
 Load the `graph` topic for patch operations, import/export, identity (RGP007) recovery, and merge.
 
