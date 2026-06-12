@@ -118,16 +118,9 @@ zero patch --dry-run --json /tmp/body.patch
 zero patch --op help
 ```
 
-Supported graph patch operations:
+Supported graph patch operations (authoring ops first; node-handle ops are the advanced surface):
 
 ```text
-expect graphHash "graph:a7f7e6899a73f3b4"
-set node="#id" field="value" expect="old" value="new"
-insert node="#id" kind="Literal" parent="#parent" edge="arg" order="0" type="String" value="text"
-insertEdge from="#from" to="#to" edge="arg" target="node" order="0"
-replace node="#id" expect="nodehash:abc123" kind="Literal" type="String" value="text"
-delete node="#id" expect="nodehash:abc123"
-rename node="#id" expect="old" value="new"
 addMain
 addCheckWrite fn="main" text="hello\n"
 addFunction name="add" ret="i32"
@@ -150,6 +143,13 @@ end
 replaceBlockBody #block_id
   check world.out.write "updated\n"
 end
+expect graphHash "graph:a7f7e6899a73f3b4"
+set node="#id" field="value" expect="old" value="new"
+insert node="#id" kind="Literal" parent="#parent" edge="arg" order="0" type="String" value="text"
+insertEdge from="#from" to="#to" edge="arg" target="node" order="0"
+replace node="#id" expect="nodehash:abc123" kind="Literal" type="String" value="text"
+delete node="#id" expect="nodehash:abc123"
+rename node="#id" expect="old" value="new"
 ```
 
 `insert` and `insertEdge` default `order` to `0`, which fits singular edges like `expr`, `left`, and `declaredType`. For precise existing-node edits, pin the graph hash and node facts:

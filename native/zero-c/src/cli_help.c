@@ -26,13 +26,12 @@ void z_cli_print_help(void) {
 
 void z_cli_print_graph_patch_help_text(void) {
   printf("program graph patch operations\n");
-  printf("accepted by zero patch --op, --patch-text, and zero-program-graph-patch v1 files\n");
-  const char *const *ops = z_program_graph_patch_operation_examples();
-  for (size_t i = 0; ops[i]; i++) printf("  %s\n", ops[i]);
-  printf("\nA minimal complete patch file looks exactly like this:\n");
-  fputs(z_program_graph_patch_minimal_file_example(), stdout);
-  printf("\nFor larger graph edits, put these lines in a patch file under /tmp or pass --patch-text.\n");
-  printf("\nTo replace one function body without writing a patch file, use --replace-fn with --body-file.\n");
+  printf("\nTo replace text inside one function without retyping the body, use --replace-in-fn (Edit semantics):\n");
+  printf("  $ zero patch . --replace-in-fn greet --old 'return 1' --new 'return 2'\n");
+  printf("--old must match the body text zero view --fn <name> prints exactly once; a missing or non-unique\n");
+  printf("match fails with the occurrence count. Inline --old/--new accept \\n escapes; --old-file/--new-file\n");
+  printf("read the text from a file or - (stdin) for multi-line replacements.\n");
+  printf("\nTo replace one whole function body, use --replace-fn with --body-file.\n");
   printf("--body-file - reads the body rows from stdin, so a heredoc does the whole edit in one call:\n");
   printf("  $ zero patch . --replace-fn greet --body-file - <<'EOF'\n");
   printf("  check world.out.write(\"hello agent\\n\")\n");
@@ -41,11 +40,15 @@ void z_cli_print_graph_patch_help_text(void) {
   printf("zero view --fn <name> prints between the signature braces. No header, no end marker.\n");
   printf("Alternative: write the rows to a file and pass its path:\n");
   printf("  $ zero patch . --replace-fn greet --body-file /tmp/greet.body\n");
-  printf("\nTo replace text inside one function without retyping the body, use --replace-in-fn (Edit semantics):\n");
-  printf("  $ zero patch . --replace-in-fn greet --old 'return 1' --new 'return 2'\n");
-  printf("--old must match the body text zero view --fn <name> prints exactly once; a missing or non-unique\n");
-  printf("match fails with the occurrence count. Inline --old/--new accept \\n escapes; --old-file/--new-file\n");
-  printf("read the text from a file or - (stdin) for multi-line replacements.\n");
+  printf("\nOperation grammar accepted by zero patch --op, --patch-text, and zero-program-graph-patch v1 files:\n");
+  const char *const *ops = z_program_graph_patch_authoring_operation_examples();
+  for (size_t i = 0; ops[i]; i++) printf("  %s\n", ops[i]);
+  printf("\nA minimal complete patch file looks exactly like this:\n");
+  fputs(z_program_graph_patch_minimal_file_example(), stdout);
+  printf("\nFor larger graph edits, put these lines in a patch file under /tmp or pass --patch-text.\n");
+  printf("\nadvanced: node-level ops (see zero query --handles)\n");
+  const char *const *node_ops = z_program_graph_patch_node_operation_examples();
+  for (size_t i = 0; node_ops[i]; i++) printf("  %s\n", node_ops[i]);
 }
 
 void z_cli_print_command_help(const char *command) {

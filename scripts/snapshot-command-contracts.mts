@@ -1067,6 +1067,16 @@ assert(graphPatchHelp.indexOf("--body-file - <<'EOF'") < graphPatchHelp.indexOf(
 assert.match(graphPatchHelp, /--replace-in-fn/);
 assert.match(graphPatchHelp, /zero patch \. --replace-in-fn greet --old 'return 1' --new 'return 2'/);
 assert.match(graphPatchHelp, /--old must match the body text zero view --fn <name> prints exactly once/);
+assert.match(graphPatchHelp, /advanced: node-level ops \(see zero query --handles\)/);
+const patchHelpInFnIdx = graphPatchHelp.indexOf("--replace-in-fn greet");
+const patchHelpReplaceFnIdx = graphPatchHelp.indexOf("--replace-fn greet --body-file - <<'EOF'");
+const patchHelpGrammarIdx = graphPatchHelp.indexOf("zero-program-graph-patch v1 files");
+const patchHelpAdvancedIdx = graphPatchHelp.indexOf("advanced: node-level ops");
+assert(patchHelpInFnIdx >= 0 && patchHelpInFnIdx < patchHelpReplaceFnIdx, "patch help leads with --replace-in-fn");
+assert(patchHelpReplaceFnIdx < patchHelpGrammarIdx, "the --replace-fn heredoc precedes the op grammar reference");
+assert(patchHelpGrammarIdx < patchHelpAdvancedIdx, "the op grammar precedes the advanced node-level section");
+assert(graphPatchHelp.indexOf('set node="#id"') > patchHelpAdvancedIdx, "node-handle ops sit under the advanced header");
+assert(graphPatchHelp.indexOf("addMain") < patchHelpAdvancedIdx, "authoring ops print before node-level ops");
 assert.match(graphPatchHelp, /addLetLiteral fn="main" name="count" type="u32" value="0"/);
 assert.match(graphPatchHelp, /addReturnValue fn="identity" value="input" type="i32"/);
 const graphPatchHelpJson = json(["patch", "--op", "help", "--json"]).body;

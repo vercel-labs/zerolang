@@ -169,11 +169,11 @@ const fileBudgets: Record<string, FileBudget> = {
   // Body rows accept zero view output verbatim before falling back to the legacy row grammar.
   "native/zero-c/src/program_graph_patch_body.c": { maxLines: 880, maxStrcmpCalls: 20 },
   "native/zero-c/src/program_graph_patch_body.h": { maxLines: 10, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_patch_examples.c": { maxLines: 35, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_patch_examples.c": { maxLines: 60, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_patch_ops.c": { maxLines: 1740, maxStrcmpCalls: 13 },
   // The --body-file - stdin reader lives beside the file reader it falls back to.
   "native/zero-c/src/program_graph_patch.c": { maxLines: 890, maxStrcmpCalls: 48 },
-  "native/zero-c/src/program_graph_patch.h": { maxLines: 74, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_patch.h": { maxLines: 80, maxStrcmpCalls: 0 },
   // Projection safety memoizes realpath resolutions so warm status/check stay fast.
   "native/zero-c/src/program_graph_projection.c": { maxLines: 680, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_projection.h": { maxLines: 35, maxStrcmpCalls: 0 },
