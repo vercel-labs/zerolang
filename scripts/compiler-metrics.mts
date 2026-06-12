@@ -35,7 +35,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/include/zero_runtime.h": { maxLines: 231, maxStrcmpCalls: 0 },
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
-  "native/zero-c/src/checker.c": { maxLines: 12010, maxStrcmpCalls: 289 },
+  // The static const type and canonical value memos compare binder names with strcmp.
+  "native/zero-c/src/checker.c": { maxLines: 12085, maxStrcmpCalls: 291 },
   "native/zero-c/src/cli_help.c": { maxLines: 165, maxStrcmpCalls: 1 },
   "native/zero-c/src/cli_help.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/http_listen_runner.c": { maxLines: 600, maxStrcmpCalls: 0 },
@@ -44,8 +45,9 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 15860, maxStrcmpCalls: 446, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 15980, maxStrcmpCalls: 446, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 5622, maxStrcmpCalls: 278 },
+
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
   "native/zero-c/src/manifest_toml.c": { maxLines: 430, maxStrcmpCalls: 4 },
@@ -109,7 +111,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   // Shared sorted node/edge index used by validation, lowering, views, and resolution.
-  "native/zero-c/src/program_graph_adjacency.c": { maxLines: 224, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_adjacency.c": { maxLines: 315, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_adjacency.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_check_gate.c": { maxLines: 92, maxStrcmpCalls: 24 },
   "native/zero-c/src/program_graph_check_gate.h": { maxLines: 12, maxStrcmpCalls: 0 },
@@ -147,7 +149,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 5160, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 5200, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -172,7 +174,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_patch.h": { maxLines: 74, maxStrcmpCalls: 0 },
   // Projection safety memoizes realpath resolutions so warm status/check stay fast.
   "native/zero-c/src/program_graph_projection.c": { maxLines: 680, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_projection.h": { maxLines: 33, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_projection.h": { maxLines: 35, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_projection_validate.c": { maxLines: 465, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.c": { maxLines: 441, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.h": { maxLines: 30, maxStrcmpCalls: 0 },
@@ -188,7 +190,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_repository_repair.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_store_binary.c": { maxLines: 736, maxStrcmpCalls: 3 },
   "native/zero-c/src/program_graph_store_binary.h": { maxLines: 10, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_store.c": { maxLines: 1425, maxStrcmpCalls: 6 },
+  "native/zero-c/src/program_graph_store.c": { maxLines: 1525, maxStrcmpCalls: 6 },
   "native/zero-c/src/program_graph_store_prune.c": { maxLines: 180, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_store_prune.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_store_tables.c": { maxLines: 220, maxStrcmpCalls: 0 },
@@ -229,8 +231,10 @@ const fileBudgets: Record<string, FileBudget> = {
 };
 
 const knownLargeFunctionLimits = new Map([
+  ["native/zero-c/src/program_graph_mir.c|bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {", 144],
   ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1678],
   ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 121],
+
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1016],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 386],

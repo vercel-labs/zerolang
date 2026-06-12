@@ -5048,35 +5048,49 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
   /* Classify the source projection before the stdlib merge mutates the stored
    * graph; classifying the merged graph would misreport the state as conflict. */
   const char *source_projection_state = source ? z_program_graph_projection_state_label(&store, target, NULL, NULL, NULL) : NULL;
-  phase_started = ir_graph_now_ms();
-  if (!z_program_graph_merge_embedded_std_graph_modules_timed(&store.graph, input, diag)) {
-    if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
-    z_program_graph_store_free(&store);
-    return false;
-  }
-  if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
+  /*
+   * The MIR cache is keyed on the pre-merge store graph hash. The merged
+   * graph is a pure function of the stored graph and the embedded stdlib
+   * graphs, and the cache path already folds in the stdlib fingerprint plus
+   * compiler version, so a cache hit can skip the stdlib merge entirely.
+   * Metadata seeding also reads the pre-merge graph on every path so cache
+   * hits and misses report identical facts.
+   */
+  char *store_graph_hash = z_strdup(store.graph.graph_hash ? store.graph.graph_hash : "");
   z_program_graph_seed_source_metadata(input, &store.graph);
   if (input && !input->package_root && store.root) input->package_root = z_strdup(store.root);
   if (!require_checked_program) z_program_graph_seed_artifact_source_paths(input, &store.graph, store_path);
-  char *mir_cache_path = z_mir_binary_cache_path_for_graph_store(store_path, store.graph.graph_hash, target, emit_kind, requested_backend);
+  char *mir_cache_path = z_mir_binary_cache_path_for_graph_store(store_path, store_graph_hash, target, emit_kind, requested_backend);
   ZMirBinaryCacheFacts mir_cache = {0};
   phase_started = ir_graph_now_ms();
-  if (mir_cache_path && z_mir_binary_load_path(mir_cache_path, store.graph.graph_hash, target, emit_kind, requested_backend, ir, &mir_cache, NULL)) {
+  if (mir_cache_path && z_mir_binary_load_path(mir_cache_path, store_graph_hash, target, emit_kind, requested_backend, ir, &mir_cache, NULL)) {
     if (input) input->graph_mir_cache_load_ms += ir_graph_now_ms() - phase_started;
     if (require_checked_program) {
+      /* The checked-program path verifies against stdlib bodies, so the
+       * merge still runs before the checker on cache hits. */
+      phase_started = ir_graph_now_ms();
+      bool merged = z_program_graph_merge_embedded_std_graph_modules_timed(&store.graph, input, diag);
+      if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
+      if (!merged) {
+        z_free_ir_program(ir);
+        free(mir_cache_path);
+        free(store_graph_hash);
+        z_program_graph_store_free(&store);
+        return false;
+      }
       phase_started = ir_graph_now_ms();
       bool checked = ir_graph_lower_checked_program(&store.graph, store_path, target, program, input, diag);
       if (input) input->graph_readiness_check_ms += ir_graph_now_ms() - phase_started;
       if (!checked) {
         z_free_ir_program(ir);
         free(mir_cache_path);
+        free(store_graph_hash);
         z_program_graph_store_free(&store);
         return false;
       }
     }
     if (input) {
-      z_program_graph_seed_source_metadata_facts(input, &store.graph);
-      input->program_graph_hash = z_strdup(store.graph.graph_hash ? store.graph.graph_hash : "");
+      input->program_graph_hash = z_strdup(store_graph_hash);
       input->program_graph_module_identity = z_strdup(store.graph.module_identity ? store.graph.module_identity : "");
       ir_graph_set_mapped_mir_cache_facts(input, &mir_cache, true, false, !require_checked_program, require_checked_program);
     }
@@ -5089,10 +5103,21 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
       source->canonical_source = false;
     }
     free(mir_cache_path);
+    free(store_graph_hash);
     z_program_graph_store_free(&store);
     return true;
   }
   if (input) input->graph_mir_cache_load_ms += ir_graph_now_ms() - phase_started;
+
+  phase_started = ir_graph_now_ms();
+  if (!z_program_graph_merge_embedded_std_graph_modules_timed(&store.graph, input, diag)) {
+    if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
+    free(mir_cache_path);
+    free(store_graph_hash);
+    z_program_graph_store_free(&store);
+    return false;
+  }
+  if (input) input->graph_stdlib_merge_ms += ir_graph_now_ms() - phase_started;
 
   phase_started = ir_graph_now_ms();
   IrProgram graph_ir = z_lower_program_graph_with_source(&store.graph, input, target);
@@ -5102,11 +5127,11 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
     if (mir_cache_path) {
       ZDiag cache_diag = {0};
       phase_started = ir_graph_now_ms();
-      if (z_mir_binary_write_path(mir_cache_path, &graph_ir, store.graph.graph_hash, target, emit_kind, requested_backend, &cache_diag)) {
+      if (z_mir_binary_write_path(mir_cache_path, &graph_ir, store_graph_hash, target, emit_kind, requested_backend, &cache_diag)) {
         if (input) input->graph_mir_cache_write_ms += ir_graph_now_ms() - phase_started;
         IrProgram mapped_ir = {0};
         phase_started = ir_graph_now_ms();
-        if (z_mir_binary_load_path(mir_cache_path, store.graph.graph_hash, target, emit_kind, requested_backend, &mapped_ir, &mir_cache, NULL)) {
+        if (z_mir_binary_load_path(mir_cache_path, store_graph_hash, target, emit_kind, requested_backend, &mapped_ir, &mir_cache, NULL)) {
           if (input) input->graph_mir_cache_reload_ms += ir_graph_now_ms() - phase_started;
           z_free_ir_program(&graph_ir);
           graph_ir = mapped_ir;
@@ -5126,6 +5151,7 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
       if (!checked) {
         z_free_ir_program(ir);
         free(mir_cache_path);
+        free(store_graph_hash);
         z_program_graph_store_free(&store);
         return false;
       }
@@ -5135,12 +5161,12 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
     z_free_ir_program(&graph_ir);
     if (diag && !diag->path) diag->path = input && input->source_file ? input->source_file : store_path;
     free(mir_cache_path);
+    free(store_graph_hash);
     z_program_graph_store_free(&store);
     return false;
   }
   if (input) {
-    z_program_graph_seed_source_metadata_facts(input, &store.graph);
-    input->program_graph_hash = z_strdup(store.graph.graph_hash ? store.graph.graph_hash : "");
+    input->program_graph_hash = z_strdup(store_graph_hash);
     input->program_graph_module_identity = z_strdup(store.graph.module_identity ? store.graph.module_identity : "");
     ir_graph_set_mapped_mir_cache_facts(input, &mir_cache, false, mir_cache.hit, false, require_checked_program);
   }
@@ -5153,6 +5179,7 @@ bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, 
     source->canonical_source = false;
   }
   free(mir_cache_path);
+  free(store_graph_hash);
   z_program_graph_store_free(&store);
   return true;
 }

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #if !defined(_WIN32)
 #include <unistd.h>
 #endif
@@ -1204,26 +1205,127 @@ static bool store_bytes_equal(const unsigned char *left, size_t left_len, const 
   return left_len == right_len && (left_len == 0 || memcmp(left, right_data, left_len) == 0);
 }
 
+static long long store_perf_now_us(void) {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return (long long)tv.tv_sec * 1000000LL + tv.tv_usec;
+}
+
+static bool store_perf_trace_enabled(void) {
+  static int enabled = -1;
+  if (enabled < 0) enabled = getenv("ZERO_PERF_TRACE") ? 1 : 0;
+  return enabled == 1;
+}
+
+static char *store_clone_text(const char *text) { return text ? z_strdup(text) : NULL; }
+
+static void store_clone(const ZProgramGraphStore *from, ZProgramGraphStore *out) {
+  z_program_graph_store_init(out);
+  out->root = store_clone_text(from->root);
+  out->path = store_clone_text(from->path);
+  out->present = from->present;
+  out->format = from->format;
+  out->schema_version = from->schema_version;
+  out->source_projection_hash = store_clone_text(from->source_projection_hash);
+  if (from->source_path_len > 0) {
+    out->source_paths = z_checked_calloc(from->source_path_len, sizeof(char *));
+    for (size_t i = 0; i < from->source_path_len; i++) out->source_paths[i] = store_clone_text(from->source_paths[i]);
+    out->source_path_len = from->source_path_len;
+    out->source_path_cap = from->source_path_len;
+  }
+  if (from->projection_len > 0) {
+    out->projection_paths = z_checked_calloc(from->projection_len, sizeof(char *));
+    out->projection_texts = z_checked_calloc(from->projection_len, sizeof(char *));
+    for (size_t i = 0; i < from->projection_len; i++) {
+      out->projection_paths[i] = store_clone_text(from->projection_paths[i]);
+      out->projection_texts[i] = store_clone_text(from->projection_texts[i]);
+    }
+    out->projection_len = from->projection_len;
+    out->projection_cap = from->projection_len;
+  }
+  z_program_graph_clone(&from->graph, &out->graph);
+}
+
+/*
+ * Per-process memo of the most recent successful store load. Compiler
+ * commands resolve, verify, and consume the same zero.graph store several
+ * times per invocation; the memo turns repeat loads into a clone of the
+ * already parsed and byte-stability-proven store. Correctness contract: a
+ * repeat load only reuses the memo when the requested path string and the
+ * exact on-disk bytes match the memoized load, so any store rewrite (or
+ * external edit) between loads forces a fresh parse and revalidation.
+ */
+typedef struct {
+  bool present;
+  char *path;
+  unsigned char *bytes;
+  size_t len;
+  ZProgramGraphStore store;
+} StoreLoadMemo;
+
+static StoreLoadMemo store_load_memo;
+
+static bool store_load_memo_matches(const char *path, const unsigned char *data, size_t len) {
+  if (!store_load_memo.present || !path || !store_load_memo.path) return false;
+  if (strcmp(path, store_load_memo.path) != 0) return false;
+  if (len != store_load_memo.len) return false;
+  return len == 0 || memcmp(data, store_load_memo.bytes, len) == 0;
+}
+
+static void store_load_memo_replace(const char *path, unsigned char *data, size_t len, const ZProgramGraphStore *store) {
+  if (store_load_memo.present) {
+    free(store_load_memo.path);
+    free(store_load_memo.bytes);
+    z_program_graph_store_free(&store_load_memo.store);
+    store_load_memo.present = false;
+  }
+  store_load_memo.path = z_strdup(path ? path : "");
+  store_load_memo.bytes = data;
+  store_load_memo.len = len;
+  store_clone(store, &store_load_memo.store);
+  store_load_memo.present = true;
+}
+
 bool z_program_graph_store_load_path(const char *path, ZProgramGraphStore *out, ZDiag *diag) {
+  long long trace_started = store_perf_trace_enabled() ? store_perf_now_us() : 0;
   unsigned char *data = NULL;
   size_t len = 0;
   if (!store_read_file_bytes(path, &data, &len, diag)) return false;
+  if (store_load_memo_matches(path, data, len)) {
+    free(data);
+    store_clone(&store_load_memo.store, out);
+    if (trace_started) {
+      fprintf(stderr, "[perf] store_load path=%s bytes=%zu memo=hit total=%lldus\n",
+              path ? path : "(null)", len, store_perf_now_us() - trace_started);
+    }
+    return true;
+  }
   ZProgramGraphStoreFormat format = z_program_graph_store_bytes_are_binary(data, len)
     ? Z_PROGRAM_GRAPH_STORE_FORMAT_BINARY
     : Z_PROGRAM_GRAPH_STORE_FORMAT_TEXT;
+  long long trace_parse_started = trace_started ? store_perf_now_us() : 0;
   bool ok = store_parse_format(path, data, len, format, out, diag);
+  long long trace_parse_us = trace_started ? store_perf_now_us() - trace_parse_started : 0;
+  long long trace_stability_us = 0;
   if (ok) {
+    long long trace_stability_started = trace_started ? store_perf_now_us() : 0;
     ZBuf canonical;
     zbuf_init(&canonical);
     store_append_format(&canonical, &out->graph, out, out->format);
     ok = store_bytes_equal(data, len, &canonical);
     zbuf_free(&canonical);
+    if (trace_started) trace_stability_us = store_perf_now_us() - trace_stability_started;
     if (!ok) {
       z_program_graph_store_free(out);
       store_byte_stability_fail(path, diag);
     }
   }
-  free(data);
+  if (ok) store_load_memo_replace(path, data, len, out);
+  else free(data);
+  if (trace_started) {
+    fprintf(stderr, "[perf] store_load path=%s bytes=%zu memo=miss parse=%lldus stability=%lldus total=%lldus\n",
+            path ? path : "(null)", len, trace_parse_us, trace_stability_us, store_perf_now_us() - trace_started);
+  }
   return ok;
 }
 

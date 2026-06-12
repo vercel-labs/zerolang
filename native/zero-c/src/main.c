@@ -12,6 +12,7 @@
 #include "http_listen_runner.h"
 #include "init_template.h"
 #include "mir_binary.h"
+#include "process_path.h"
 #include "program_graph_build.h"
 #include "program_graph_check_gate.h"
 #include "program_graph_command.h"
@@ -855,11 +856,113 @@ static const char *unsafe_cc_override_for_command(const Command *command) {
   return NULL;
 }
 
+static uint64_t runtime_object_cache_fold_text(uint64_t hash, const char *text) {
+  for (const unsigned char *p = (const unsigned char *)(text ? text : ""); *p; p++) {
+    hash ^= (uint64_t)*p;
+    hash *= 1099511628211ull;
+  }
+  hash ^= (uint64_t)0x1f;
+  hash *= 1099511628211ull;
+  return hash;
+}
+
+static uint64_t runtime_object_cache_fold_chunks(uint64_t hash, const char *const *chunks) {
+  for (size_t i = 0; chunks && chunks[i]; i++) hash = runtime_object_cache_fold_text(hash, chunks[i]);
+  return hash;
+}
+
+/*
+ * Fold the resolved compiler binary identity (path, size, mtime) into the
+ * cache key so a toolchain upgrade at the same path can never serve a stale
+ * runtime object. An unresolvable compiler contributes no file facts and the
+ * compile itself reports the failure.
+ */
+static uint64_t runtime_object_cache_fold_compiler(uint64_t hash, const ZToolchainPlan *plan) {
+  const char *compiler = plan && plan->compiler && plan->compiler[0] ? plan->compiler : "cc";
+  hash = runtime_object_cache_fold_text(hash, compiler);
+  char *resolved = strchr(compiler, '/') ? z_strdup(compiler) : z_process_resolve_executable(compiler);
+  if (resolved) {
+    struct stat st;
+    if (stat(resolved, &st) == 0) {
+      char facts[128];
+      snprintf(facts, sizeof(facts), "%lld:%lld", (long long)st.st_size, (long long)st.st_mtime);
+      hash = runtime_object_cache_fold_text(hash, resolved);
+      hash = runtime_object_cache_fold_text(hash, facts);
+    }
+    free(resolved);
+  }
+  return hash;
+}
+
+/*
+ * The embedded runtime sources are fixed for a given compiler binary and the
+ * runtime object compile command is a pure function of the toolchain plan,
+ * profile, and target, so the compiled object can be reused across builds.
+ * The key folds in every compile input including the resolved C compiler
+ * identity; any change misses and recompiles.
+ */
+static char *runtime_object_cache_file(const char *kind, const char *const *source_chunks, const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target) {
+  uint64_t hash = 1469598103934665603ull;
+  hash = runtime_object_cache_fold_text(hash, "zero-runtime-object-cache-v1");
+  hash = runtime_object_cache_fold_text(hash, kind);
+  hash = runtime_object_cache_fold_text(hash, ZERO_VERSION);
+  hash = runtime_object_cache_fold_text(hash, command && command->profile ? command->profile : "");
+  hash = runtime_object_cache_fold_text(hash, target && target->name ? target->name : "");
+  if (plan) {
+    hash = runtime_object_cache_fold_text(hash, plan->driver_kind ? plan->driver_kind : "");
+    hash = runtime_object_cache_fold_text(hash, plan->target_triple ? plan->target_triple : "");
+    hash = runtime_object_cache_fold_text(hash, plan->libc_mode ? plan->libc_mode : "");
+    hash = runtime_object_cache_fold_text(hash, plan->sysroot_path ? plan->sysroot_path : "");
+    hash = runtime_object_cache_fold_compiler(hash, plan);
+  }
+  hash = runtime_object_cache_fold_chunks(hash, zero_embedded_zero_runtime_h);
+  hash = runtime_object_cache_fold_chunks(hash, source_chunks);
+  const char *cache_dir = getenv("ZERO_CACHE_DIR");
+  if (!cache_dir || !cache_dir[0]) cache_dir = ".zero/cache/native";
+  ZBuf path;
+  zbuf_init(&path);
+  zbuf_append(&path, cache_dir);
+  if (path.len > 0 && path.data[path.len - 1] != '/' && path.data[path.len - 1] != '\\') zbuf_append_char(&path, '/');
+  zbuf_appendf(&path, "%s-%016llx.o", kind, (unsigned long long)hash);
+  return path.data;
+}
+
+static bool runtime_object_cache_restore(const char *cache_path, const char *object_file) {
+  if (!cache_path || !object_file) return false;
+  unsigned char *data = NULL;
+  size_t len = 0;
+  ZDiag ignored = {0};
+  if (!z_read_binary_file(cache_path, &data, &len, &ignored)) return false;
+  bool ok = len > 0 && z_write_binary_file(object_file, data, len, &ignored);
+  free(data);
+  return ok && z_process_output_file_ready(object_file);
+}
+
+static void runtime_object_cache_store(const char *cache_path, const char *object_file) {
+  if (!cache_path || !object_file) return;
+  unsigned char *data = NULL;
+  size_t len = 0;
+  ZDiag ignored = {0};
+  if (!z_read_binary_file(object_file, &data, &len, &ignored)) return;
+  if (len > 0) (void)z_write_binary_file(cache_path, data, len, &ignored);
+  free(data);
+}
+
 static bool compile_zero_runtime_object(const char *runtime_object_file, const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target, bool llvm_backend, ZDiag *diag) {
+  char *cache_path = runtime_object_cache_file("runtime-object", zero_embedded_zero_runtime_c, plan, command, target);
+  if (runtime_object_cache_restore(cache_path, runtime_object_file)) {
+    free(cache_path);
+    return true;
+  }
   RuntimeCompileInputs inputs = {0};
-  if (!write_runtime_compile_inputs(runtime_object_file, ".zero_runtime.c", zero_embedded_zero_runtime_c, &inputs, diag)) return false;
+  if (!write_runtime_compile_inputs(runtime_object_file, ".zero_runtime.c", zero_embedded_zero_runtime_c, &inputs, diag)) {
+    free(cache_path);
+    return false;
+  }
   bool ok = z_toolchain_compile_c_object(plan, command ? command->profile : NULL, target, inputs.source_file, runtime_object_file, inputs.include_dir, "-std=c11 -Wall -Wextra -Wpedantic");
   runtime_compile_inputs_free(&inputs);
+  if (ok) runtime_object_cache_store(cache_path, runtime_object_file);
+  free(cache_path);
   if (!ok && diag) {
     const char *unsafe_cc = unsafe_cc_override_for_command(command);
     diag->code = llvm_backend ? 2004 : 2003;
@@ -874,10 +977,20 @@ static bool compile_zero_runtime_object(const char *runtime_object_file, const Z
 }
 
 static bool compile_zero_http_curl_object(const char *runtime_object_file, const ZToolchainPlan *plan, const Command *command, const ZTargetInfo *target, ZDiag *diag) {
+  char *cache_path = runtime_object_cache_file("http-curl-object", zero_embedded_zero_http_curl_c, plan, command, target);
+  if (runtime_object_cache_restore(cache_path, runtime_object_file)) {
+    free(cache_path);
+    return true;
+  }
   RuntimeCompileInputs inputs = {0};
-  if (!write_runtime_compile_inputs(runtime_object_file, ".zero_http_curl.c", zero_embedded_zero_http_curl_c, &inputs, diag)) return false;
+  if (!write_runtime_compile_inputs(runtime_object_file, ".zero_http_curl.c", zero_embedded_zero_http_curl_c, &inputs, diag)) {
+    free(cache_path);
+    return false;
+  }
   bool ok = z_toolchain_compile_c_object(plan, command ? command->profile : NULL, target, inputs.source_file, runtime_object_file, inputs.include_dir, "-std=c11 -Wall -Wextra -Wpedantic");
   runtime_compile_inputs_free(&inputs);
+  if (ok) runtime_object_cache_store(cache_path, runtime_object_file);
+  free(cache_path);
   if (!ok && diag) {
     const char *unsafe_cc = unsafe_cc_override_for_command(command);
     diag->code = 2003;
@@ -14321,6 +14434,15 @@ static int resolve_direct_command_manifest_graph_input(Command *command, const Z
   return 0;
 }
 
+static char *repository_graph_check_verdict_manifest_text(const ZProgramGraphStore *store) {
+  char *manifest_path = store && store->root ? z_manifest_path_for_root(store->root) : NULL;
+  if (!manifest_path) return NULL;
+  ZDiag read_diag = {0};
+  char *text = z_read_file(manifest_path, &read_diag);
+  free(manifest_path);
+  return text;
+}
+
 static int run_repository_graph_check_command(Command *command, const ZTargetInfo *target, bool *handled) {
   if (handled) *handled = false;
   if (!command || !graph_check_text_eq(command->command, "check")) return 0;
@@ -14368,15 +14490,30 @@ static int run_repository_graph_check_command(Command *command, const ZTargetInf
     return 1;
   }
 
+  /*
+   * The semantic verification below is a pure function of the stored graph,
+   * the target, the embedded stdlib, the manifest, and the compiler version.
+   * Plain checks consult the persisted verdict cache before redoing it; the
+   * JSON surface always reverifies because it reports the collected facts.
+   */
+  char *verdict_manifest_text = command->json ? NULL : repository_graph_check_verdict_manifest_text(&store);
+  bool semantics_verdict_known = !command->json && z_program_graph_check_semantics_verdict_known(&store, target, verdict_manifest_text);
+
   ZProgramGraphResolutionFacts resolution;
   z_program_graph_resolution_facts_init(&resolution);
   long long resolve_started = now_ms();
-  bool collected_resolution = z_program_graph_name_contracts_ok(&store.graph, store.path ? store.path : command->input, &diag) && z_program_graph_collect_resolution_facts(&store.graph, &resolution);
+  bool collected_resolution = semantics_verdict_known ||
+                              (z_program_graph_name_contracts_ok(&store.graph, store.path ? store.path : command->input, &diag) && z_program_graph_collect_resolution_facts(&store.graph, &resolution));
   long long resolve_ms = now_ms() - resolve_started;
   long long check_started = now_ms();
-  bool ok = collected_resolution &&
-            graph_stored_compiler_input_ok(&store.graph, &resolution, &input, target, store.path ? store.path : command->input, &diag);
+  bool ok = semantics_verdict_known ||
+            (collected_resolution &&
+             graph_stored_compiler_input_ok(&store.graph, &resolution, &input, target, store.path ? store.path : command->input, &diag));
   input.check_ms = now_ms() - check_started;
+  if (ok && !command->json && !semantics_verdict_known) {
+    z_program_graph_check_semantics_verdict_remember(&store, target, verdict_manifest_text);
+  }
+  free(verdict_manifest_text);
 
   /*
    * Check-time buildability: lower the stored typed graph for the checked

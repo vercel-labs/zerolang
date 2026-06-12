@@ -79,9 +79,96 @@ void z_program_graph_id_index_run(const ZProgramGraphAdjacencyNodeEntry *entries
   if (run_len) *run_len = high - low;
 }
 
+/*
+ * Per-process memo of the most recent adjacency sort. Compiler commands
+ * rebuild adjacency for the same loaded graph several times per invocation
+ * (validation, stdlib reference scan, resolution facts, semantic checks);
+ * the memo keeps the sorted order as table indexes and replays it with a
+ * linear copy. Following the lowering index precedent, it revalidates
+ * against the graph identity, table addresses, lengths, id allocation
+ * cursor, and graph hash, so a rebuilt or mutated graph that happens to
+ * reuse an address can never serve a stale order. Sort comparators tiebreak
+ * on table index, so a replayed order is exactly what a fresh sort returns.
+ */
+typedef struct {
+  const ZProgramGraph *graph;
+  const ZProgramGraphNode *nodes;
+  const ZProgramGraphEdge *edges;
+  size_t node_len;
+  size_t edge_len;
+  size_t next_id;
+  char *graph_hash;
+  size_t *node_order;
+  size_t *owner_order;
+  size_t *child_order;
+  size_t node_edge_len;
+  bool present;
+} AdjacencyMemo;
+
+static AdjacencyMemo adjacency_memo;
+
+static bool adjacency_memo_matches(const ZProgramGraph *graph) {
+  return adjacency_memo.present && graph &&
+         adjacency_memo.graph == graph &&
+         adjacency_memo.nodes == graph->nodes &&
+         adjacency_memo.edges == graph->edges &&
+         adjacency_memo.node_len == graph->node_len &&
+         adjacency_memo.edge_len == graph->edge_len &&
+         adjacency_memo.next_id == graph->next_id &&
+         adjacency_text_cmp(adjacency_memo.graph_hash, graph->graph_hash) == 0;
+}
+
+static void adjacency_memo_store(const ZProgramGraph *graph, const ZProgramGraphAdjacency *adjacency) {
+  free(adjacency_memo.graph_hash);
+  free(adjacency_memo.node_order);
+  free(adjacency_memo.owner_order);
+  free(adjacency_memo.child_order);
+  adjacency_memo = (AdjacencyMemo){
+    .graph = graph,
+    .nodes = graph->nodes,
+    .edges = graph->edges,
+    .node_len = graph->node_len,
+    .edge_len = graph->edge_len,
+    .next_id = graph->next_id,
+    .graph_hash = z_strdup(graph->graph_hash ? graph->graph_hash : ""),
+    .node_order = z_checked_calloc(graph->node_len ? graph->node_len : 1, sizeof(size_t)),
+    .owner_order = z_checked_calloc(graph->edge_len ? graph->edge_len : 1, sizeof(size_t)),
+    .child_order = z_checked_calloc(adjacency->node_edge_len ? adjacency->node_edge_len : 1, sizeof(size_t)),
+    .node_edge_len = adjacency->node_edge_len,
+    .present = true,
+  };
+  for (size_t i = 0; i < graph->node_len; i++) adjacency_memo.node_order[i] = adjacency->nodes_by_id[i].node_index;
+  for (size_t i = 0; i < graph->edge_len; i++) adjacency_memo.owner_order[i] = adjacency->edges_by_owner[i].edge_index;
+  for (size_t i = 0; i < adjacency->node_edge_len; i++) adjacency_memo.child_order[i] = adjacency->edges_by_child[i].edge_index;
+}
+
+static bool adjacency_memo_replay(ZProgramGraphAdjacency *adjacency, const ZProgramGraph *graph) {
+  if (!adjacency_memo_matches(graph)) return false;
+  size_t node_len = graph->node_len;
+  size_t edge_len = graph->edge_len;
+  adjacency->nodes_by_id = z_checked_calloc(node_len ? node_len : 1, sizeof(ZProgramGraphAdjacencyNodeEntry));
+  for (size_t i = 0; i < node_len; i++) {
+    size_t node_index = adjacency_memo.node_order[i];
+    adjacency->nodes_by_id[i] = (ZProgramGraphAdjacencyNodeEntry){.id = graph->nodes[node_index].id, .node_index = node_index};
+  }
+  adjacency->edges_by_owner = z_checked_calloc(edge_len ? edge_len : 1, sizeof(ZProgramGraphAdjacencyEdgeEntry));
+  for (size_t i = 0; i < edge_len; i++) {
+    size_t edge_index = adjacency_memo.owner_order[i];
+    adjacency->edges_by_owner[i] = (ZProgramGraphAdjacencyEdgeEntry){.edge = &graph->edges[edge_index], .edge_index = edge_index};
+  }
+  adjacency->node_edge_len = adjacency_memo.node_edge_len;
+  adjacency->edges_by_child = z_checked_calloc(adjacency_memo.node_edge_len ? adjacency_memo.node_edge_len : 1, sizeof(ZProgramGraphAdjacencyEdgeEntry));
+  for (size_t i = 0; i < adjacency_memo.node_edge_len; i++) {
+    size_t edge_index = adjacency_memo.child_order[i];
+    adjacency->edges_by_child[i] = (ZProgramGraphAdjacencyEdgeEntry){.edge = &graph->edges[edge_index], .edge_index = edge_index};
+  }
+  return true;
+}
+
 void z_program_graph_adjacency_init(ZProgramGraphAdjacency *adjacency, const ZProgramGraph *graph) {
   if (!adjacency) return;
   *adjacency = (ZProgramGraphAdjacency){.graph = graph};
+  if (graph && adjacency_memo_replay(adjacency, graph)) return;
   size_t node_len = graph ? graph->node_len : 0;
   size_t edge_len = graph ? graph->edge_len : 0;
   adjacency->nodes_by_id = z_checked_calloc(node_len ? node_len : 1, sizeof(ZProgramGraphAdjacencyNodeEntry));
@@ -104,6 +191,7 @@ void z_program_graph_adjacency_init(ZProgramGraphAdjacency *adjacency, const ZPr
     adjacency->edges_by_child[i] = adjacency->edges_by_owner[i];
   }
   qsort(adjacency->edges_by_child, node_edge_len, sizeof(ZProgramGraphAdjacencyEdgeEntry), adjacency_child_entry_cmp);
+  if (graph && graph->node_len > 0) adjacency_memo_store(graph, adjacency);
 }
 
 void z_program_graph_adjacency_free(ZProgramGraphAdjacency *adjacency) {

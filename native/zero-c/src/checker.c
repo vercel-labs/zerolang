@@ -3174,7 +3174,7 @@ static bool static_const_name_is_ambiguous_type_arg(const Program *program, cons
   return visible_concrete_type_name_kind(program, name) != NULL;
 }
 
-static const char *type_core_static_const_type(const Program *program, const ConstDecl *item) {
+static const char *type_core_static_const_type_compute(const Program *program, const ConstDecl *item) {
   if (!program || !item || !item->name) return NULL;
   StaticValue value = {0};
   if (!static_value_from_text(program, item->name, &value)) return NULL;
@@ -3189,6 +3189,77 @@ static const char *type_core_static_const_type(const Program *program, const Con
     return item_enum ? item_enum->name : NULL;
   }
   return NULL;
+}
+
+/*
+ * Static const classification evaluates the const initializer expression, and
+ * generic signature substitution asks for it for every program const at every
+ * call site. The program is immutable while it is being checked, so the
+ * answers are memoized per const slot and reset when a different program (or
+ * a resized const table) shows up, mirroring the provenance summary cache
+ * contract. Returned type texts point at the const declaration or at string
+ * literals, both stable for the cached program.
+ */
+static const Program *static_const_type_cache_program;
+static size_t static_const_type_cache_len;
+static const char **static_const_type_cache_types;
+static unsigned char *static_const_type_cache_set;
+static char **static_const_type_cache_canonical;
+static unsigned char *static_const_type_cache_canonical_set;
+
+static void static_const_type_cache_prime(const Program *program) {
+  if (program == static_const_type_cache_program && program->consts.len == static_const_type_cache_len) return;
+  free(static_const_type_cache_types);
+  free(static_const_type_cache_set);
+  for (size_t i = 0; static_const_type_cache_canonical && i < static_const_type_cache_len; i++) free(static_const_type_cache_canonical[i]);
+  free(static_const_type_cache_canonical);
+  free(static_const_type_cache_canonical_set);
+  static_const_type_cache_len = program->consts.len;
+  size_t slots = static_const_type_cache_len ? static_const_type_cache_len : 1;
+  static_const_type_cache_types = z_checked_calloc(slots, sizeof(const char *));
+  static_const_type_cache_set = z_checked_calloc(slots, sizeof(unsigned char));
+  static_const_type_cache_canonical = z_checked_calloc(slots, sizeof(char *));
+  static_const_type_cache_canonical_set = z_checked_calloc(slots, sizeof(unsigned char));
+  static_const_type_cache_program = program;
+}
+
+static const char *type_core_static_const_type(const Program *program, const ConstDecl *item) {
+  if (!program || !item || !item->name) return NULL;
+  static_const_type_cache_prime(program);
+  if (item < program->consts.items || item >= program->consts.items + program->consts.len) {
+    return type_core_static_const_type_compute(program, item);
+  }
+  size_t index = (size_t)(item - program->consts.items);
+  if (!static_const_type_cache_set[index]) {
+    static_const_type_cache_types[index] = type_core_static_const_type_compute(program, item);
+    static_const_type_cache_set[index] = 1;
+  }
+  return static_const_type_cache_types[index];
+}
+
+/*
+ * Canonical static argument text for a const binder, memoized per const slot
+ * keyed by the binder name and its classified static type. The memoized
+ * value is the result of the full ordered canonical_static_arg_for_type
+ * lookup, so name resolution order is unchanged; queries for other types or
+ * names that match no const fall through to the uncached path.
+ */
+static char *canonical_static_arg_for_type_cached(const Program *program, const char *name, const char *type) {
+  if (program && name && type) {
+    static_const_type_cache_prime(program);
+    for (size_t i = 0; i < program->consts.len; i++) {
+      const ConstDecl *item = &program->consts.items[i];
+      if (!item->name || strcmp(item->name, name) != 0) continue;
+      const char *classified = type_core_static_const_type(program, item);
+      if (!classified || strcmp(classified, type) != 0) break;
+      if (!static_const_type_cache_canonical_set[i]) {
+        static_const_type_cache_canonical[i] = canonical_static_arg_for_type(program, name, type);
+        static_const_type_cache_canonical_set[i] = 1;
+      }
+      return static_const_type_cache_canonical[i] ? z_strdup(static_const_type_cache_canonical[i]) : NULL;
+    }
+  }
+  return canonical_static_arg_for_type(program, name, type);
 }
 
 static bool program_has_ambiguous_type_arg_static_consts(const Program *program) {
@@ -3324,7 +3395,7 @@ static bool seed_type_core_static_const_bindings(const Program *program, const Z
     const ZTypeBinderDecl *decl = &scope->items[i];
     if (decl->kind != Z_TYPE_BINDER_STATIC) continue;
     if (decl->id < first_const_id) continue;
-    char *canonical = canonical_static_arg_for_type(program, decl->name, decl->static_type);
+    char *canonical = canonical_static_arg_for_type_cached(program, decl->name, decl->static_type);
     if (!canonical) continue;
     ZStaticValue value = {0};
     ZTypeParseError error = {0};
