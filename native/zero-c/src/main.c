@@ -14432,6 +14432,15 @@ static int resolve_direct_command_manifest_graph_input(Command *command, const Z
   return 0;
 }
 
+static char *repository_graph_check_verdict_manifest_text(const ZProgramGraphStore *store) {
+  char *manifest_path = store && store->root ? z_manifest_path_for_root(store->root) : NULL;
+  if (!manifest_path) return NULL;
+  ZDiag read_diag = {0};
+  char *text = z_read_file(manifest_path, &read_diag);
+  free(manifest_path);
+  return text;
+}
+
 static int run_repository_graph_check_command(Command *command, const ZTargetInfo *target, bool *handled) {
   if (handled) *handled = false;
   if (!command || !graph_check_text_eq(command->command, "check")) return 0;
@@ -14479,15 +14488,30 @@ static int run_repository_graph_check_command(Command *command, const ZTargetInf
     return 1;
   }
 
+  /*
+   * The semantic verification below is a pure function of the stored graph,
+   * the target, the embedded stdlib, the manifest, and the compiler version.
+   * Plain checks consult the persisted verdict cache before redoing it; the
+   * JSON surface always reverifies because it reports the collected facts.
+   */
+  char *verdict_manifest_text = command->json ? NULL : repository_graph_check_verdict_manifest_text(&store);
+  bool semantics_verdict_known = !command->json && z_program_graph_check_semantics_verdict_known(&store, target, verdict_manifest_text);
+
   ZProgramGraphResolutionFacts resolution;
   z_program_graph_resolution_facts_init(&resolution);
   long long resolve_started = now_ms();
-  bool collected_resolution = z_program_graph_name_contracts_ok(&store.graph, store.path ? store.path : command->input, &diag) && z_program_graph_collect_resolution_facts(&store.graph, &resolution);
+  bool collected_resolution = semantics_verdict_known ||
+                              (z_program_graph_name_contracts_ok(&store.graph, store.path ? store.path : command->input, &diag) && z_program_graph_collect_resolution_facts(&store.graph, &resolution));
   long long resolve_ms = now_ms() - resolve_started;
   long long check_started = now_ms();
-  bool ok = collected_resolution &&
-            graph_stored_compiler_input_ok(&store.graph, &resolution, &input, target, store.path ? store.path : command->input, &diag);
+  bool ok = semantics_verdict_known ||
+            (collected_resolution &&
+             graph_stored_compiler_input_ok(&store.graph, &resolution, &input, target, store.path ? store.path : command->input, &diag));
   input.check_ms = now_ms() - check_started;
+  if (ok && !command->json && !semantics_verdict_known) {
+    z_program_graph_check_semantics_verdict_remember(&store, target, verdict_manifest_text);
+  }
+  free(verdict_manifest_text);
 
   /*
    * Check-time buildability: lower the stored typed graph for the checked

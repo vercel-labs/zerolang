@@ -315,6 +315,40 @@ void z_program_graph_projection_match_verdicts_flush(void) {
   projection_match_pending_len = 0;
 }
 
+/*
+ * Check-semantics verdict: zero check re-verifies name contracts, resolution
+ * facts, fixed-array contracts, target capabilities, and package dependency
+ * declarations on every run. Those checks are a pure function of the stored
+ * graph, the check target, the embedded stdlib, the package manifest, and
+ * the compiler version, so positive verdicts persist exactly like the
+ * projection match verdicts above. Stores with C imports stay uncached for
+ * the same filesystem-dependence reason.
+ */
+static uint64_t check_semantics_fingerprint(const ZProgramGraphStore *store, const ZTargetInfo *target, const char *manifest_text) {
+  uint64_t state = z_program_graph_store_source_hash_seed();
+  state = z_program_graph_store_source_hash_fold(state, "verdict-kind", "check-semantics-v1");
+  state = z_program_graph_store_source_hash_fold(state, "compiler-version", ZERO_VERSION);
+  char stdlib_fingerprint[32];
+  snprintf(stdlib_fingerprint, sizeof(stdlib_fingerprint), "%016llx", (unsigned long long)z_std_source_graph_fingerprint());
+  state = z_program_graph_store_source_hash_fold(state, "stdlib", stdlib_fingerprint);
+  state = z_program_graph_store_source_hash_fold(state, "target", target && target->name ? target->name : "");
+  state = z_program_graph_store_source_hash_fold(state, "graph-hash", store->graph.graph_hash);
+  state = z_program_graph_store_source_hash_fold(state, "manifest", manifest_text ? manifest_text : "");
+  return state;
+}
+
+bool z_program_graph_check_semantics_verdict_known(const ZProgramGraphStore *store, const ZTargetInfo *target, const char *manifest_text) {
+  if (!store || !store->graph.graph_hash || !store->graph.graph_hash[0]) return false;
+  if (!projection_match_verdict_cacheable(store)) return false;
+  return projection_match_verdict_known(store, check_semantics_fingerprint(store, target, manifest_text));
+}
+
+void z_program_graph_check_semantics_verdict_remember(const ZProgramGraphStore *store, const ZTargetInfo *target, const char *manifest_text) {
+  if (!store || !store->graph.graph_hash || !store->graph.graph_hash[0]) return;
+  if (!projection_match_verdict_cacheable(store)) return;
+  projection_match_verdict_remember(store, check_semantics_fingerprint(store, target, manifest_text));
+}
+
 static bool projection_source_input_from_store(const ZProgramGraphStore *store, SourceInput *input, ZDiag *diag) {
   if (!store || store->projection_len == 0) return projection_diag(store, diag, "repository graph store has no source projections", "empty projection table");
   *input = (SourceInput){0};

@@ -29,5 +29,7 @@ bool z_program_graph_projection_write_sources(const ZProgramGraphStore *store, c
 bool z_program_graph_projection_graph_from_store(const ZProgramGraphStore *store, const ZTargetInfo *target, ZProgramGraph *graph, ZDiag *diag);
 bool z_program_graph_projection_store_matches_graph(const ZProgramGraphStore *store, const ZTargetInfo *target, ZDiag *diag);
 void z_program_graph_projection_match_verdicts_flush(void);
+bool z_program_graph_check_semantics_verdict_known(const ZProgramGraphStore *store, const ZTargetInfo *target, const char *manifest_text);
+void z_program_graph_check_semantics_verdict_remember(const ZProgramGraphStore *store, const ZTargetInfo *target, const char *manifest_text);
 
 #endif

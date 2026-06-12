@@ -171,7 +171,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_patch.h": { maxLines: 74, maxStrcmpCalls: 0 },
   // Projection safety memoizes realpath resolutions so warm status/check stay fast.
   "native/zero-c/src/program_graph_projection.c": { maxLines: 680, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_projection.h": { maxLines: 33, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_projection.h": { maxLines: 35, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_projection_validate.c": { maxLines: 465, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.c": { maxLines: 441, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.h": { maxLines: 30, maxStrcmpCalls: 0 },
