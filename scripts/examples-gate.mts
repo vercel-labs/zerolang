@@ -136,7 +136,9 @@ for (const name of packages) {
     }
   } else if (!failure) {
     const expectedExit = expectation.exitCode ?? 0;
-    const run = runZero(["run", packagePath, "--out", join(workDir, `${name}-exe`)], workDir);
+    // Arguments after the input belong to the program (zero run [input] -- <args>),
+    // so --out must precede the package path or it lands in the program argv.
+    const run = runZero(["run", "--out", join(workDir, `${name}-exe`), packagePath], workDir);
     const runText = `${run.stdout}${run.stderr}`;
     if (run.code !== expectedExit && linuxBuildOk && isHostBackendGap(runText)) {
       steps.push("run host-backend-gap");
