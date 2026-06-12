@@ -39,7 +39,7 @@ zero query [--json] [--fn <name>] [--find <text>] [--refs <name>] [--calls <name
 - `--find <text>`: search names, ids, types, values, and node kinds; prints matches with spans
 - `--calls <name>` / `--refs <name>`: resolved calls and semantic references
 - `--node <id>`: one node's span, parents, and children; `--depth <n>` for a deeper subtree
-- no arguments: package overview with modules and function signatures
+- no arguments: per-module function counts plus entry-module signatures
 
 ## Edit
 

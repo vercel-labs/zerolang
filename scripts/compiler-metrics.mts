@@ -156,7 +156,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_refs.c": { maxLines: 180, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_query_text.c": { maxLines: 300, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_query_text.c": { maxLines: 360, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_order.c": { maxLines: 80, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_order.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_node_id.c": { maxLines: 388, maxStrcmpCalls: 0 },

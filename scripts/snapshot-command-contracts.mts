@@ -1189,8 +1189,14 @@ assert.doesNotMatch(queryBareNameText, /modules:/, "scoped query text output mus
 assert.doesNotMatch(queryBareNameText, /patch help:/, "scoped query text output must not repeat the patch footer");
 const queryOverviewText = execFileSync(zeroBin, ["query"], { cwd: queryScopeRoot, encoding: "utf8", maxBuffer: execMaxBuffer });
 assert.match(queryOverviewText, /modules:/);
+assert.match(queryOverviewText, /main path:src\/main\.0 functions:2 \(entry\)/);
+assert.match(queryOverviewText, /functions \(module main\):/);
 assert.match(queryOverviewText, /dealsTotal\(amount: usize\) -> usize #decl_/);
 assert.doesNotMatch(queryOverviewText, /stmt\[0\]/, "overview hides stmt handle inventories unless --handles is set");
+assert.doesNotMatch(queryOverviewText, /resolution:/, "overview omits resolution facts");
+assert.match(queryOverviewText, /tips: zero query --fn <name> \| --find <text> \| --calls <name> \| --refs <name>/);
+assert.match(queryOverviewText, /zero view --fn <name>.*zero view --outline/);
+assert(queryOverviewText.length < 3072, `bare query overview should stay compact, got ${queryOverviewText.length}`);
 const queryFnText = execFileSync(zeroBin, ["query", "--fn", "dealsTotal"], { cwd: queryScopeRoot, encoding: "utf8", maxBuffer: execMaxBuffer });
 assert.match(queryFnText, /query: fn:dealsTotal/);
 assert.match(queryFnText, /dealsTotal\(amount: usize\) -> usize #decl_/);
@@ -1704,6 +1710,11 @@ writeFileSync(
 writeFileSync(staleMultiHelper, "pub fn add_one(value: i32) -> i32 {\n    return value + 1\n}\n");
 assert.equal(json(["import", "--json", staleMultiRoot]).body.ok, true);
 assert.equal(zero(["run", staleMultiRoot]).stdout, "stale multi one\n");
+const staleMultiOverview = zero(["query", staleMultiRoot]).stdout;
+assert.match(staleMultiOverview, /math path:src\/math\.0 functions:1\n/);
+assert.match(staleMultiOverview, /main path:src\/main\.0 functions:1 \(entry\)/);
+assert.match(staleMultiOverview, /functions \(module main\):/);
+assert.doesNotMatch(staleMultiOverview, /add_one\(value: i32\)/, "the bare overview lists only entry-module signatures");
 writeFileSync(staleMultiHelper, "pub fn add_one(value: i32) -> i32 {\n    return value + 2\n}\n");
 const staleMultiCheck = zeroWithStderr(["check"], { cwd: staleMultiRoot });
 assert.equal(staleMultiCheck.code, 0);
