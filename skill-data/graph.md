@@ -33,12 +33,13 @@ zero query --calls std     # resolved call targets
 zero query --refs add      # semantic references
 zero query --node '#expr_2cad38f9' --depth 2   # node-scoped: span, parents, children
 zero view --fn main        # one function's canonical source
+zero view --fn main --handles   # the same source with a trailing // #handle per statement
 zero view --fn main --around minLength   # only the enclosing block containing the text
 zero view --outline src/main.0           # signatures plus one-line docs, no bodies
 zero status                # store format and projection state
 ```
 
-`--node` defaults to depth 1; add `--full` for the whole-module report. Use handles from `--find` or `--fn <name> --handles` for checked edits (`set`, `insert`, `insertEdge`, `replace`, `rename`, `delete`); delete compacts ordered graph groups so valid sibling order is preserved. Reserve unfiltered `zero query` dumps for tools that need every node and edge.
+`--node` defaults to depth 1; add `--full` for the whole-module report. Use handles from `zero view --fn <name> --handles`, `--find`, or `--fn <name> --handles` for checked edits (`set`, `insert`, `insertEdge`, `replace`, `replaceExpr`, `rename`, `delete`); delete compacts ordered graph groups so valid sibling order is preserved. Handles accept short forms: the id segment (`#55ae541c`), any unique prefix (`#55ae`), or `#head..tail` for ids with long shared prefixes; `--handles` views print the shortest form that resolves, and a missing handle fails with the nearest existing one. Reserve unfiltered `zero query` dumps for tools that need every node and edge.
 
 ## Patches
 
@@ -53,6 +54,21 @@ zero patch \
   --op 'addParam fn="add" name="right" type="i32"' \
   --op 'addReturnBinary fn="add" name="+" left="left" right="right" type="i32"' \
   --op 'addTest name="addition works" call="add" arg0="40" arg1="2" expect="42" type="i32"'
+```
+
+For sub-line edits, think in graph: take a handle from `zero view --fn <name> --handles` and change exactly one thing. `set` edits one field (a literal `value`, a declared `type`, a `name`/operator); `replaceExpr` swaps any expression subtree, and aimed at a statement handle it replaces that statement's expression (initializer, condition, return value). Repeat `--op` to batch several micro-ops into one patch with a single revalidation:
+
+```sh
+zero patch . \
+  --op 'set node="#a647" field="value" expect="1" value="8"' \
+  --op 'replaceExpr node="#5f15" with="i < k + 1"'
+```
+
+To express one cross-cutting transformation instead of editing N sites, use structural rewrite by example. `--rewrite '<pattern>' --to '<template>'` matches canonical projection expressions structurally; `$A`, `$B` bind arbitrary subtrees and the same metavariable twice must match equal subtrees. The default is a dry run that lists every site as `path fn:handle` with rendered before/after; `--apply` rewrites all sites in one batch with one revalidation, and `--fn <name>` scopes matching to one function. Patterns are expression-level only; unsupported subtree kinds are skipped and counted.
+
+```sh
+zero patch . --rewrite 'bnCmp($A, $B) == 0' --to 'bnEq($A, $B)'          # dry run
+zero patch . --rewrite 'bnCmp($A, $B) == 0' --to 'bnEq($A, $B)' --apply  # rewrite every site
 ```
 
 For multi-statement bodies, use `replaceFunctionBody` for a whole function or `replaceBlockBody` for one selected `Block` node. Body rows accept canonical projection syntax, the same text `zero view` prints:
