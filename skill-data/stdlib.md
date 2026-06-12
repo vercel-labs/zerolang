@@ -240,6 +240,8 @@ pub fn main(world: World) -> Void raises {
 
 This catalog is generated from the compiler's standard-library signature table. Use these names exactly; helpers with `T` are generic over the concrete span or item type inferred from the call.
 
+Fetch one module's section instead of this whole catalog with `zero skills get stdlib --topic <prefix>`, for example `zero skills get stdlib --topic std.time`.
+
 ### std.args
 
 ```text

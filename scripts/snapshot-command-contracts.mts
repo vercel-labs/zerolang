@@ -5374,10 +5374,12 @@ for (const skillName of skillsList.data.map((skill) => skill.name)) {
 
 const agentSkill = json(["skills", "get", "agent", "--json"]).body;
 assert.equal(agentSkill.success, true);
-assert.match(agentSkill.data[0].content, /zero query --fn main/);
+assert.match(agentSkill.data[0].content, /zero query --fn <name> --handles/);
 assert.match(agentSkill.data[0].content, /Use JSON only when another tool must parse stable fields/);
-assert.match(agentSkill.data[0].content, /Fetch each skill topic once/);
+assert.match(agentSkill.data[0].content, /zero skills get stdlib --topic std\.time/);
+assert.match(agentSkill.data[0].content, /zero view --outline <module-or-file>/);
 assert.doesNotMatch(agentSkill.data[0].content, /<file-or-package>/);
+assert(agentSkill.data[0].content.length < 4096, `agent topic should stay compact, got ${agentSkill.data[0].content.length}`);
 
 const languageSkill = json(["skills", "get", "language", "--json"]).body;
 assert.equal(languageSkill.success, true);
@@ -5436,6 +5438,20 @@ for (const helperName of stdHelperNames) {
   assert(stdlibCatalog.includes(`### ${moduleName}`), `stdlib skill should include module ${moduleName}`);
   assert(stdlibCatalog.includes(`${shortName}(`), `stdlib skill should include helper ${helperName}`);
 }
+
+const stdlibTopicSkill = json(["skills", "get", "stdlib", "--topic", "std.time", "--json"]).body;
+assert.equal(stdlibTopicSkill.success, true);
+assert.equal(stdlibTopicSkill.data[0].topic, "std.time");
+assert.match(stdlibTopicSkill.data[0].content, /^### std\.time/);
+assert.match(stdlibTopicSkill.data[0].content, /isRfc3339DateTime/);
+assert.doesNotMatch(stdlibTopicSkill.data[0].content, /### std\.args/);
+assert(stdlibTopicSkill.data[0].content.length < 4096, `stdlib --topic std.time should serve one section, got ${stdlibTopicSkill.data[0].content.length}`);
+assert.equal(zero(["skills", "get", "stdlib", "--topic", "std.time"]).stdout, stdlibTopicSkill.data[0].content);
+const stdlibTopicMiss = zero(["skills", "get", "stdlib", "--topic", "std.nosuch"], { allowFailure: true });
+assert.notEqual(stdlibTopicMiss.code, 0);
+assert.match(stdlibTopicMiss.stderr, /No section in skill 'stdlib' matches --topic std\.nosuch/);
+assert.match(stdlibTopicMiss.stderr, /std\.time/);
+assert.match(zeroSkill.data[0].content, /zero skills get stdlib --topic std\.time/);
 
 const diagnosticSkill = json(["skills", "get", "diagnostics", "--json"]).body;
 assert.equal(diagnosticSkill.success, true);

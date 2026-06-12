@@ -47,6 +47,7 @@ void z_cli_print_command_help(const char *command) {
     printf("Subcommands:\n");
     printf("  list                 list available skills (default)\n");
     printf("  get <name> [--full]  print bundled skill content\n");
+    printf("  get <name> --topic <section-prefix>  print only the matching sections, e.g. zero skills get stdlib --topic std.time\n");
     printf("  get --all            print every visible skill\n");
   } else if (cli_help_arg_is(command, "doctor")) {
     printf("Usage: zero doctor [--json]\n\n");

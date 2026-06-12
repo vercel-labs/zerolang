@@ -434,8 +434,67 @@ static int embedded_skills_list_command(bool json) {
   return 0;
 }
 
+static size_t embedded_skill_heading_level(const char *line) {
+  if (strncmp(line, "## ", 3) == 0) return 2;
+  if (strncmp(line, "### ", 4) == 0) return 3;
+  return 0;
+}
+
+static bool embedded_skill_extract_topic(const char *content, const char *topic, ZBuf *out) {
+  size_t topic_len = strlen(topic);
+  bool found = false;
+  size_t in_section_level = 0;
+  const char *line = content;
+  while (line && *line) {
+    const char *line_end = strchr(line, '\n');
+    size_t line_len = line_end ? (size_t)(line_end - line) + 1 : strlen(line);
+    size_t level = embedded_skill_heading_level(line);
+    if (level > 0) {
+      const char *title = line + level + 1;
+      size_t title_len = line_len;
+      while (title_len > 0 && (line[title_len - 1] == '\n' || line[title_len - 1] == '\r')) title_len--;
+      title_len -= (size_t)(title - line);
+      bool matches = title_len >= topic_len && strncmp(title, topic, topic_len) == 0;
+      if (in_section_level > 0 && level <= in_section_level && !matches) {
+        in_section_level = 0;
+      }
+      if (matches && in_section_level == 0) {
+        if (found) zbuf_append_char(out, '\n');
+        found = true;
+        in_section_level = level;
+      }
+    }
+    if (in_section_level > 0) {
+      for (size_t i = 0; i < line_len; i++) zbuf_append_char(out, line[i]);
+    }
+    if (!line_end) break;
+    line = line_end + 1;
+  }
+  return found;
+}
+
+static void embedded_skill_append_topic_headings(const char *content, ZBuf *out) {
+  const char *line = content;
+  bool first = true;
+  while (line && *line) {
+    const char *line_end = strchr(line, '\n');
+    size_t level = embedded_skill_heading_level(line);
+    if (level > 0) {
+      const char *title = line + level + 1;
+      size_t title_len = line_end ? (size_t)(line_end - title) : strlen(title);
+      while (title_len > 0 && (title[title_len - 1] == '\n' || title[title_len - 1] == '\r')) title_len--;
+      if (!first) zbuf_append(out, ", ");
+      first = false;
+      for (size_t i = 0; i < title_len; i++) zbuf_append_char(out, title[i]);
+    }
+    if (!line_end) break;
+    line = line_end + 1;
+  }
+}
+
 static int embedded_skills_get_command(int argc, char **argv, int subcommand_index, bool json) {
   bool get_all = false;
+  const char *topic = NULL;
   const ZeroEmbeddedSkill *targets[64];
   size_t target_count = 0;
 
@@ -443,6 +502,13 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
     const char *arg = argv[i];
     if (strcmp(arg, "--all") == 0) {
       get_all = true;
+      continue;
+    }
+    if (strcmp(arg, "--topic") == 0) {
+      if (i + 1 >= argc) {
+        return embedded_skills_error(json, "Missing --topic value. Usage: zero skills get <name> --topic <section-prefix>");
+      }
+      topic = argv[++i];
       continue;
     }
     if (strcmp(arg, "--full") == 0 || strcmp(arg, "--json") == 0) continue;
@@ -471,6 +537,31 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
     return embedded_skills_error(json, "No skill name provided. Usage: zero skills get <name>");
   }
 
+  if (topic && (get_all || target_count != 1)) {
+    return embedded_skills_error(json, "--topic scopes one skill. Usage: zero skills get <name> --topic <section-prefix>");
+  }
+
+  ZBuf topic_content;
+  zbuf_init(&topic_content);
+  if (topic) {
+    ZBuf full;
+    zbuf_init(&full);
+    append_embedded_skill_content(&full, targets[0]);
+    bool found = embedded_skill_extract_topic(full.data ? full.data : "", topic, &topic_content);
+    if (!found) {
+      ZBuf message;
+      zbuf_init(&message);
+      zbuf_appendf(&message, "No section in skill '%s' matches --topic %s. Sections: ", targets[0]->name, topic);
+      embedded_skill_append_topic_headings(full.data ? full.data : "", &message);
+      int rc = embedded_skills_error(json, message.data ? message.data : "");
+      zbuf_free(&message);
+      zbuf_free(&full);
+      zbuf_free(&topic_content);
+      return rc;
+    }
+    zbuf_free(&full);
+  }
+
   if (json) {
     ZBuf buf;
     zbuf_init(&buf);
@@ -479,20 +570,34 @@ static int embedded_skills_get_command(int argc, char **argv, int subcommand_ind
       if (i > 0) zbuf_append(&buf, ",");
       zbuf_append(&buf, "{\"name\":");
       append_json_string(&buf, targets[i]->name);
-      zbuf_append(&buf, ",\"content\":");
-      ZBuf content;
-      zbuf_init(&content);
-      append_embedded_skill_content(&content, targets[i]);
-      append_json_string(&buf, content.data ? content.data : "");
-      zbuf_free(&content);
+      if (topic) {
+        zbuf_append(&buf, ",\"topic\":");
+        append_json_string(&buf, topic);
+        zbuf_append(&buf, ",\"content\":");
+        append_json_string(&buf, topic_content.data ? topic_content.data : "");
+      } else {
+        zbuf_append(&buf, ",\"content\":");
+        ZBuf content;
+        zbuf_init(&content);
+        append_embedded_skill_content(&content, targets[i]);
+        append_json_string(&buf, content.data ? content.data : "");
+        zbuf_free(&content);
+      }
       zbuf_append(&buf, "}");
     }
     zbuf_append(&buf, "]}\n");
     fputs(buf.data, stdout);
     zbuf_free(&buf);
+    zbuf_free(&topic_content);
     return 0;
   }
 
+  if (topic) {
+    fputs(topic_content.data ? topic_content.data : "", stdout);
+    zbuf_free(&topic_content);
+    return 0;
+  }
+  zbuf_free(&topic_content);
   for (size_t i = 0; i < target_count; i++) {
     if (i > 0) printf("\n---\n\n");
     print_embedded_skill_content(targets[i]);
@@ -506,6 +611,10 @@ static int embedded_skills_command(int argc, char **argv, bool json) {
   for (int i = 2; i < argc; i++) {
     const char *arg = argv[i];
     if (strcmp(arg, "--json") == 0 || strcmp(arg, "--all") == 0 || strcmp(arg, "--full") == 0) continue;
+    if (strcmp(arg, "--topic") == 0) {
+      i++;
+      continue;
+    }
     if (arg[0] == '-') {
       char message[160];
       snprintf(message, sizeof(message), "Unknown skills flag: %s", arg);
