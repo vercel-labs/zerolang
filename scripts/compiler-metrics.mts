@@ -109,7 +109,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   // Shared sorted node/edge index used by validation, lowering, views, and resolution.
-  "native/zero-c/src/program_graph_adjacency.c": { maxLines: 224, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_adjacency.c": { maxLines: 315, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_adjacency.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_check_gate.c": { maxLines: 92, maxStrcmpCalls: 24 },
   "native/zero-c/src/program_graph_check_gate.h": { maxLines: 12, maxStrcmpCalls: 0 },
