@@ -12740,8 +12740,98 @@ static void print_command_diag_list(const Command *command, const char *fallback
   }
 }
 
-static void print_preexisting_diag_notes(const char *verb, const GraphOracleDiags *list) {
+#define NOTE_DEDUP_SEED 1469598103934665603ull
+
+static uint64_t note_dedup_fold(uint64_t hash, const char *text) {
+  for (const unsigned char *cursor = (const unsigned char *)(text ? text : ""); *cursor; cursor++) {
+    hash ^= *cursor;
+    hash *= 1099511628211ull;
+  }
+  hash ^= 0x1f;
+  hash *= 1099511628211ull;
+  return hash;
+}
+
+static char *note_dedup_marker_path(const char *input) {
+  char *root = z_program_graph_store_root_for_input(input);
+  if (!root) return NULL;
+  ZBuf path;
+  zbuf_init(&path);
+  zbuf_append(&path, root);
+  if (path.len > 0 && path.data[path.len - 1] != '/') zbuf_append_char(&path, '/');
+  zbuf_append(&path, ".zero/cache/agent-notes.state");
+  free(root);
+  return path.data;
+}
+
+/*
+ * Once-per-state stderr notes: a tiny marker under .zero/cache records the
+ * context hash of the last printed note per note id, so an exact-duplicate
+ * note stays suppressed until the store or source state changes the context.
+ * The first print for any new state keeps its verbatim wording.
+ */
+static bool note_dedup_should_print(const char *input, const char *note_id, uint64_t context_hash) {
+  char *marker = note_dedup_marker_path(input);
+  if (!marker) return true;
+  char line[160];
+  snprintf(line, sizeof(line), "%s %016llx", note_id, (unsigned long long)context_hash);
+  ZBuf next;
+  zbuf_init(&next);
+  bool seen = false;
+  unsigned char *data = NULL;
+  size_t len = 0;
+  ZDiag read_diag = {0};
+  if (z_read_binary_file(marker, &data, &len, &read_diag)) {
+    char *text = z_strndup((const char *)data, len);
+    free(data);
+    char *cursor = text;
+    while (*cursor) {
+      char *end = strchr(cursor, '\n');
+      if (end) *end = '\0';
+      if (strcmp(cursor, line) == 0) seen = true;
+      else {
+        size_t id_len = strlen(note_id);
+        bool same_id = strncmp(cursor, note_id, id_len) == 0 && cursor[id_len] == ' ';
+        if (cursor[0] && !same_id) {
+          zbuf_append(&next, cursor);
+          zbuf_append_char(&next, '\n');
+        }
+      }
+      if (!end) break;
+      cursor = end + 1;
+    }
+    free(text);
+  }
+  if (seen) {
+    zbuf_free(&next);
+    free(marker);
+    return false;
+  }
+  zbuf_append(&next, line);
+  zbuf_append_char(&next, '\n');
+  ZDiag write_diag = {0};
+  (void)z_write_binary_file(marker, (const unsigned char *)(next.data ? next.data : ""), next.len, &write_diag);
+  zbuf_free(&next);
+  free(marker);
+  return true;
+}
+
+static uint64_t preexisting_notes_context_hash(const GraphOracleDiags *list) {
+  uint64_t hash = NOTE_DEDUP_SEED;
+  for (size_t i = 0; list && i < list->len; i++) {
+    const ZDiag *diag = &list->items[i];
+    char facts[64];
+    snprintf(facts, sizeof(facts), "%d:%d:%d", diag->code, diag->line, diag->column);
+    hash = note_dedup_fold(hash, diag->path ? diag->path : "");
+    hash = note_dedup_fold(hash, facts);
+    hash = note_dedup_fold(hash, diag->message);
+  }
+  return hash;
+}
+
+static void print_preexisting_diag_notes(const char *verb, const char *input, const GraphOracleDiags *list) {
   if (!list || list->len == 0) return;
+  if (!note_dedup_should_print(input, "preexisting", preexisting_notes_context_hash(list))) return;
   fprintf(stderr, "note: %zu pre-existing diagnostic%s predate%s this %s and did not block it; zero check reports the same set\n",
           list->len, list->len == 1 ? "" : "s", list->len == 1 ? "s" : "", verb);
   for (size_t i = 0; i < list->len; i++) {
@@ -12903,10 +12993,15 @@ static int repository_graph_handle_checker_failure(const Command *print_command,
   } else if (introduced.len > 0) {
     rc = repository_graph_report_introduced(print_command, input, verb, &introduced);
   } else {
-    fprintf(stderr, "note: a pre-existing diagnostic predates this %s and did not block it (the file is unchanged since the last sync): %s:%d:%d %s: %s\n",
-            verb, check_diag->path ? check_diag->path : input, check_diag->line, check_diag->column, diag_code(check_diag->code), check_diag->message);
+    char facts[64];
+    snprintf(facts, sizeof(facts), "%d:%d:%d", check_diag->code, check_diag->line, check_diag->column);
+    uint64_t context = note_dedup_fold(note_dedup_fold(note_dedup_fold(NOTE_DEDUP_SEED, check_diag->path ? check_diag->path : ""), facts), check_diag->message);
+    if (note_dedup_should_print(input, "preexisting-skip", context)) {
+      fprintf(stderr, "note: a pre-existing diagnostic predates this %s and did not block it (the file is unchanged since the last sync): %s:%d:%d %s: %s\n",
+              verb, check_diag->path ? check_diag->path : input, check_diag->line, check_diag->column, diag_code(check_diag->code), check_diag->message);
+    }
   }
-  print_preexisting_diag_notes(verb, &preexisting);
+  print_preexisting_diag_notes(verb, input, &preexisting);
   graph_oracle_diags_free(&introduced);
   graph_oracle_diags_free(&preexisting);
   return rc;
@@ -12954,7 +13049,7 @@ static int load_and_validate_repository_graph_source(const Command *print_comman
   }
   int rc = 0;
   if (introduced.len > 0) rc = repository_graph_report_introduced(print_command, input, verb, &introduced);
-  print_preexisting_diag_notes(verb, &preexisting);
+  print_preexisting_diag_notes(verb, input, &preexisting);
   graph_oracle_diags_free(&introduced);
   graph_oracle_diags_free(&preexisting);
   return rc;
@@ -13998,14 +14093,14 @@ static int run_graph_patch_command(const Command *command, const ZTargetInfo *ta
       if (!command->json) {
         fprintf(stderr, "program graph patch failed revalidation: %zu diagnostic%s introduced by this patch\n", introduced.len, introduced.len == 1 ? "" : "s");
       }
-      print_preexisting_diag_notes("patch", &preexisting);
+      print_preexisting_diag_notes("patch", command->input, &preexisting);
       graph_oracle_diags_free(&introduced);
       graph_oracle_diags_free(&preexisting);
       graph_patch_baseline_free(baseline, baseline_len);
       free_graph_patch_state(inline_text, &result, original_hash, &program, &input, &graph);
       return 1;
     }
-    print_preexisting_diag_notes("patch", &preexisting);
+    print_preexisting_diag_notes("patch", command->input, &preexisting);
     graph_oracle_diags_free(&introduced);
     graph_oracle_diags_free(&preexisting);
   }
@@ -14353,10 +14448,11 @@ static bool resolve_graph_command_manifest_input(Command *command, bool *artifac
   return true;
 }
 
-static ZProgramGraphProjectionSourceSync manifest_graph_store_source_sync(const char *input) {
+static ZProgramGraphProjectionSourceSync manifest_graph_store_source_sync(const char *input, char **out_store_hash) {
   char *root = z_program_graph_store_root_for_input(input);
   char *store_path = root ? z_program_graph_store_path_for_root(root) : NULL;
   ZProgramGraphProjectionSourceSync sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
+  if (out_store_hash) *out_store_hash = NULL;
   if (store_path && z_program_graph_store_path_exists(store_path)) {
     ZProgramGraphStore store;
     ZDiag store_diag = {0};
@@ -14366,6 +14462,7 @@ static ZProgramGraphProjectionSourceSync manifest_graph_store_source_sync(const 
         ZDiag sync_diag = {0};
         if (z_program_graph_projection_source_sync_state(&store, &store_sync, &sync_diag)) sync = store_sync;
       }
+      if (out_store_hash && store.graph.graph_hash) *out_store_hash = z_strdup(store.graph.graph_hash);
       z_program_graph_store_free(&store);
     }
   }
@@ -14376,12 +14473,21 @@ static ZProgramGraphProjectionSourceSync manifest_graph_store_source_sync(const 
 
 static int resolve_manifest_graph_input_sync(const Command *command, const ZTargetInfo *target, const char *source_input_path) {
   const char *input = source_input_path ? source_input_path : command->input;
-  ZProgramGraphProjectionSourceSync sync = manifest_graph_store_source_sync(input);
-  if (sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN) return 0;
-  if (sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER) {
-    fprintf(stderr, "note: zero %s is using zero.graph, which is newer than the .0 source projection; run zero export to sync sources or zero import to make the edited source authoritative\n", command->command ? command->command : "build");
+  char *store_hash = NULL;
+  ZProgramGraphProjectionSourceSync sync = manifest_graph_store_source_sync(input, &store_hash);
+  if (sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN) {
+    free(store_hash);
     return 0;
   }
+  if (sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER) {
+    uint64_t context = note_dedup_fold(NOTE_DEDUP_SEED, store_hash ? store_hash : "");
+    if (note_dedup_should_print(input, "store-newer", context)) {
+      fprintf(stderr, "note: zero %s is using zero.graph, which is newer than the .0 source projection; run zero export to sync sources or zero import to make the edited source authoritative\n", command->command ? command->command : "build");
+    }
+    free(store_hash);
+    return 0;
+  }
+  free(store_hash);
   if (sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_DIVERGED) {
     return z_repository_graph_diverged_compiler_input_error(input, target, command->json);
   }

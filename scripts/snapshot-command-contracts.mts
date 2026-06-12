@@ -1745,6 +1745,11 @@ assert.equal(staleMultiPatch.body.ok, true);
 const staleMultiGraphNewerBuild = zeroWithStderr(["build", staleMultiRoot]);
 assert.equal(staleMultiGraphNewerBuild.code, 0);
 assert.match(staleMultiGraphNewerBuild.stderr, /note: zero build is using zero\.graph, which is newer than the \.0 source projection/);
+// the store-newer note is once-per-state: a second command on the same store
+// stays quiet until the store or source state changes
+const staleMultiGraphNewerRepeat = zeroWithStderr(["check", staleMultiRoot]);
+assert.equal(staleMultiGraphNewerRepeat.code, 0);
+assert.doesNotMatch(staleMultiGraphNewerRepeat.stderr, /is using zero\.graph/, "two consecutive commands print the store-newer note once");
 writeFileSync(staleMultiHelper, "pub fn add_one(value: i32) -> i32 {\n    return value + 2\n}\n");
 const staleMultiDiverged = json(["check", "--json", staleMultiRoot], { allowFailure: true });
 assert.notEqual(staleMultiDiverged.code, 0);
@@ -1915,6 +1920,12 @@ assert.equal(oraclePrePatch.code, 0);
 assert.match(oraclePrePatch.stdout, /program graph patch ok/);
 assert.match(oraclePrePatch.stderr, /pre-existing diagnostic predates this patch and did not block it/);
 assert.match(oraclePrePatch.stderr, /TAR002: target does not provide required Args capability/);
+// the pre-existing note is once-per-state as well: the next patch against the
+// same unchanged diagnostic set stays quiet
+const oraclePrePatchRepeat = zeroWithStderr(["patch", "--target", "win32-x64.exe", oraclePreRoot, "--op", 'addLetLiteral fn="main" name="probe2" type="u32" value="2"']);
+assert.equal(oraclePrePatchRepeat.code, 0);
+assert.match(oraclePrePatchRepeat.stdout, /program graph patch ok/);
+assert.doesNotMatch(oraclePrePatchRepeat.stderr, /pre-existing diagnostic/, "the pre-existing diagnostics note prints once per diagnostic state");
 rmSync(oraclePreRoot, { force: true, recursive: true });
 // a store whose recorded projection already fails the compiler typecheck
 // (checker drift, stores written by older compilers) does not wall the

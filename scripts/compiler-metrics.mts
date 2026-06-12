@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 16020, maxStrcmpCalls: 446, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 16125, maxStrcmpCalls: 446, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 5622, maxStrcmpCalls: 278 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
