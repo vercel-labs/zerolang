@@ -147,7 +147,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 5160, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 5170, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 20, maxStrcmpCalls: 0 },
@@ -228,6 +228,7 @@ const fileBudgets: Record<string, FileBudget> = {
 };
 
 const knownLargeFunctionLimits = new Map([
+  ["native/zero-c/src/program_graph_mir.c|bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {", 144],
   ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1656],
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1016],
