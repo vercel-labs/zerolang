@@ -13928,7 +13928,7 @@ static bool validate_graph_patch_sources(const Command *command, bool *has_file,
   int source_count = (*has_file ? 1 : 0) + (*has_patch_text ? 1 : 0) + (*has_ops ? 1 : 0) + (has_body ? 1 : 0) + (has_in_fn ? 1 : 0);
   if (source_count == 0) {
     snprintf(diag->message, sizeof(diag->message), "graph patch requires patch operations");
-    snprintf(diag->expected, sizeof(diag->expected), "zero patch [graph-input] (<patch-file>|--op <operation>|--patch-text <text>|--replace-fn <function> --body-file <file|->|--replace-in-fn <function> --old <text> --new <text>)");
+    snprintf(diag->expected, sizeof(diag->expected), "zero patch [graph-input] with a patch file, --op, --patch-text, --replace-fn, or --replace-in-fn; see zero patch --op help");
     snprintf(diag->actual, sizeof(diag->actual), "missing patch input");
     snprintf(diag->help, sizeof(diag->help), "pass a zero-program-graph-patch v1 file, one or more --op lines, --replace-fn with --body-file, or --replace-in-fn with --old and --new");
     return false;
