@@ -54,6 +54,8 @@ approximate served sizes:
 - `testing` (~3 KB): test blocks, filters, runtime checks
 - `stdlib` (~39 KB): full signature reference, including ready-made validators: `std.time` (RFC 3339 incl. the exact leap-second rule), `std.inet` (IPv4/IPv6/hostname), `std.regex` (ECMA subset), `std.unicode` (strict UTF-8). Check here before hand-writing any parsing or validation logic. Fetch one module's section (~1 KB) with `zero skills get stdlib --topic <prefix>`, e.g. `--topic std.time`.
 
+Before hand-writing any parsing or validation, check the stdlib catalog: `zero skills get stdlib --topic <module>` serves one section (`std.time` covers RFC 3339 incl. leap seconds).
+
 Edit through the graph: `zero patch` covers everything from surgical in-function text edits (`--replace-in-fn <fn> --old <text> --new <text>`, Edit semantics) to whole function bodies (`--replace-fn <fn> --body-file -` with a heredoc). Direct `.0` text edits are a last resort for changes no patch op expresses; package commands refresh `zero.graph` from edited source, but patch keeps the loop faster and preserves node identity. Read one function with `zero view --fn <name>` instead of whole files. Prefer concise text output during interactive agent work; use `--json` only for automation, exact spans, contracts, or machine-readable diagnostics.
 
 ## Common Entry Points
