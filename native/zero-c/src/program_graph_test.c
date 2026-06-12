@@ -701,7 +701,24 @@ int z_program_graph_run_tests_direct(const ZProgramGraphTestCommand *command, co
   PgtRun run = pgt_run_tests(active_graph, command->filter);
   if (command->json) pgt_print_json(command, &input, active_graph, target, &run, projection_state);
   else if (run.failed) fprintf(stderr, "%s\n", run.first_failure.message);
-  else printf("%zu test(s) ok\n", run.selected);
+  else if (run.selected == 0 && run.discovered > 0) {
+    printf("0 of %zu test(s) matched --filter %s; nothing ran\n", run.discovered, command->filter ? command->filter : "");
+  } else if (run.selected == 0) {
+    size_t function_count = 0;
+    size_t module_count = 0;
+    for (size_t i = 0; i < active_graph->node_len; i++) {
+      const ZProgramGraphNode *node = &active_graph->nodes[i];
+      if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE) module_count++;
+      if (node->kind == Z_PROGRAM_GRAPH_NODE_FUNCTION && (!node->value || !node->value[0])) function_count++;
+    }
+    printf("0 test(s) ok\n");
+    printf("note: no test blocks found; validated %zu function%s in %zu module%s (name, semantic, and capability contracts)\n",
+           function_count,
+           function_count == 1 ? "" : "s",
+           module_count,
+           module_count == 1 ? "" : "s");
+    printf("tip: add a test block in source, or zero patch --op 'addTest name=\"...\" call=\"<fn>\" arg0=\"...\" expect=\"...\" type=\"<type>\"'\n");
+  } else printf("%zu test(s) ok\n", run.selected);
   int rc = run.failed ? 1 : 0;
   pgt_run_free(&run);
   z_free_source(&input);

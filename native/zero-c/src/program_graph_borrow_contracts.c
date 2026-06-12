@@ -1,5 +1,7 @@
 #include "program_graph_contracts.h"
 
+#include "program_graph_adjacency.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -22,25 +24,18 @@ static bool borrow_text_starts(const char *text, const char *prefix) {
   return strncmp(text, prefix, strlen(prefix)) == 0;
 }
 
-static const ZProgramGraphNode *borrow_node_by_id(const ZProgramGraph *graph, const char *id) {
-  for (size_t i = 0; graph && id && i < graph->node_len; i++) {
-    if (borrow_text_eq(graph->nodes[i].id, id)) return &graph->nodes[i];
-  }
-  return NULL;
-}
-
-static const ZProgramGraphNode *borrow_child(const ZProgramGraph *graph, const ZProgramGraphNode *node, const char *kind, size_t order) {
-  for (size_t i = 0; graph && node && kind && i < graph->edge_len; i++) {
-    const ZProgramGraphEdge *edge = &graph->edges[i];
-    if (edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE && edge->order == order && borrow_text_eq(edge->from, node->id) && borrow_text_eq(edge->kind, kind)) {
-      return borrow_node_by_id(graph, edge->to);
+static const ZProgramGraphNode *borrow_child(const ZProgramGraphAdjacency *adjacency, const ZProgramGraphNode *node, const char *kind, size_t order) {
+  if (!adjacency || !node || !kind) return NULL;
+  size_t start = 0;
+  size_t len = 0;
+  z_program_graph_adjacency_owner_run(adjacency, node->id, kind, &start, &len);
+  for (size_t i = start; i < start + len; i++) {
+    const ZProgramGraphEdge *edge = z_program_graph_adjacency_owner_edge_at(adjacency, i);
+    if (edge && edge->target == Z_PROGRAM_GRAPH_EDGE_TARGET_NODE && edge->order == order) {
+      return z_program_graph_adjacency_node(adjacency, edge->to);
     }
   }
   return NULL;
-}
-
-static const ZProgramGraphNode *borrow_statement_at(const ZProgramGraph *graph, const ZProgramGraphNode *block, size_t order) {
-  return borrow_child(graph, block, "statement", order);
 }
 
 static bool borrow_append_path(char *path, size_t path_len, const char *field) {
@@ -55,7 +50,7 @@ static bool borrow_append_path(char *path, size_t path_len, const char *field) {
   return written >= 0 && (size_t)written < path_len - used;
 }
 
-static bool borrow_place_from_expr(const ZProgramGraph *graph, const ZProgramGraphNode *expr, char *root, size_t root_len, char *path, size_t path_len) {
+static bool borrow_place_from_expr(const ZProgramGraphAdjacency *adjacency, const ZProgramGraphNode *expr, char *root, size_t root_len, char *path, size_t path_len) {
   if (!expr || !root || !path || root_len == 0 || path_len == 0) return false;
   if (expr->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER) {
     snprintf(root, root_len, "%s", expr->name ? expr->name : "");
@@ -63,12 +58,12 @@ static bool borrow_place_from_expr(const ZProgramGraph *graph, const ZProgramGra
     return root[0] != 0;
   }
   if (expr->kind == Z_PROGRAM_GRAPH_NODE_FIELD_ACCESS) {
-    const ZProgramGraphNode *left = borrow_child(graph, expr, "left", 0);
-    if (!borrow_place_from_expr(graph, left, root, root_len, path, path_len)) return false;
+    const ZProgramGraphNode *left = borrow_child(adjacency, expr, "left", 0);
+    if (!borrow_place_from_expr(adjacency, left, root, root_len, path, path_len)) return false;
     return borrow_append_path(path, path_len, expr->name);
   }
   if (expr->kind == Z_PROGRAM_GRAPH_NODE_BORROW) {
-    return borrow_place_from_expr(graph, borrow_child(graph, expr, "left", 0), root, root_len, path, path_len);
+    return borrow_place_from_expr(adjacency, borrow_child(adjacency, expr, "left", 0), root, root_len, path, path_len);
   }
   return false;
 }
@@ -116,12 +111,12 @@ static bool fail_borrow_conflict(const ZProgramGraphNode *op, const ZGraphActive
   return false;
 }
 
-static bool borrow_let_contract_ok(const ZProgramGraph *graph, const ZProgramGraphNode *stmt, ZGraphActiveBorrow *active, size_t *active_len, const char *path, ZDiag *diag) {
-  const ZProgramGraphNode *expr = borrow_child(graph, stmt, "expr", 0);
+static bool borrow_let_contract_ok(const ZProgramGraphAdjacency *adjacency, const ZProgramGraphNode *stmt, ZGraphActiveBorrow *active, size_t *active_len, const char *path, ZDiag *diag) {
+  const ZProgramGraphNode *expr = borrow_child(adjacency, stmt, "expr", 0);
   if (!expr || expr->kind != Z_PROGRAM_GRAPH_NODE_BORROW) return true;
   char root[128] = {0};
   char place[256] = {0};
-  if (!borrow_place_from_expr(graph, expr, root, sizeof(root), place, sizeof(place))) return true;
+  if (!borrow_place_from_expr(adjacency, expr, root, sizeof(root), place, sizeof(place))) return true;
   bool mutable_borrow = expr->is_mutable || borrow_text_starts(stmt->type, "mutref<");
   const ZGraphActiveBorrow *conflict = borrow_conflict(active, active_len ? *active_len : 0, root, place, mutable_borrow);
   if (conflict) return fail_borrow_conflict(expr, conflict, root, place, mutable_borrow, path, diag);
@@ -138,30 +133,40 @@ static bool borrow_let_contract_ok(const ZProgramGraph *graph, const ZProgramGra
   return true;
 }
 
-static bool borrow_assignment_contract_ok(const ZProgramGraph *graph, const ZProgramGraphNode *stmt, const ZGraphActiveBorrow *active, size_t active_len, const char *path, ZDiag *diag) {
-  const ZProgramGraphNode *target = borrow_child(graph, stmt, "target", 0);
+static bool borrow_assignment_contract_ok(const ZProgramGraphAdjacency *adjacency, const ZProgramGraphNode *stmt, const ZGraphActiveBorrow *active, size_t active_len, const char *path, ZDiag *diag) {
+  const ZProgramGraphNode *target = borrow_child(adjacency, stmt, "target", 0);
   char root[128] = {0};
   char place[256] = {0};
-  if (!borrow_place_from_expr(graph, target, root, sizeof(root), place, sizeof(place))) return true;
+  if (!borrow_place_from_expr(adjacency, target, root, sizeof(root), place, sizeof(place))) return true;
   const ZGraphActiveBorrow *conflict = borrow_conflict(active, active_len, root, place, true);
   return conflict ? fail_borrow_conflict(target, conflict, root, place, true, path, diag) : true;
 }
 
-static bool borrow_block_contract_ok(const ZProgramGraph *graph, const ZProgramGraphNode *block, const char *path, ZDiag *diag) {
+static bool borrow_block_contract_ok(const ZProgramGraphAdjacency *adjacency, const ZProgramGraphNode *block, const char *path, ZDiag *diag) {
   ZGraphActiveBorrow active[64] = {0};
   size_t active_len = 0;
-  for (size_t order = 0; graph && order < graph->node_len; order++) {
-    const ZProgramGraphNode *stmt = borrow_statement_at(graph, block, order);
+  size_t start = 0;
+  size_t len = 0;
+  z_program_graph_adjacency_owner_run(adjacency, block->id, "statement", &start, &len);
+  for (size_t i = start; i < start + len; i++) {
+    const ZProgramGraphEdge *edge = z_program_graph_adjacency_owner_edge_at(adjacency, i);
+    if (!edge || edge->target != Z_PROGRAM_GRAPH_EDGE_TARGET_NODE) continue;
+    const ZProgramGraphNode *stmt = z_program_graph_adjacency_node(adjacency, edge->to);
     if (!stmt) continue;
-    if (stmt->kind == Z_PROGRAM_GRAPH_NODE_LET && !borrow_let_contract_ok(graph, stmt, active, &active_len, path, diag)) return false;
-    if (stmt->kind == Z_PROGRAM_GRAPH_NODE_ASSIGNMENT && !borrow_assignment_contract_ok(graph, stmt, active, active_len, path, diag)) return false;
+    if (stmt->kind == Z_PROGRAM_GRAPH_NODE_LET && !borrow_let_contract_ok(adjacency, stmt, active, &active_len, path, diag)) return false;
+    if (stmt->kind == Z_PROGRAM_GRAPH_NODE_ASSIGNMENT && !borrow_assignment_contract_ok(adjacency, stmt, active, active_len, path, diag)) return false;
   }
   return true;
 }
 
 bool z_program_graph_borrow_contracts_ok(const ZProgramGraph *graph, const char *path, ZDiag *diag) {
-  for (size_t i = 0; graph && i < graph->node_len; i++) {
-    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_BLOCK && !borrow_block_contract_ok(graph, &graph->nodes[i], path, diag)) return false;
+  if (!graph || graph->node_len == 0) return true;
+  ZProgramGraphAdjacency adjacency;
+  z_program_graph_adjacency_init(&adjacency, graph);
+  bool ok = true;
+  for (size_t i = 0; ok && i < graph->node_len; i++) {
+    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_BLOCK) ok = borrow_block_contract_ok(&adjacency, &graph->nodes[i], path, diag);
   }
-  return true;
+  z_program_graph_adjacency_free(&adjacency);
+  return ok;
 }
