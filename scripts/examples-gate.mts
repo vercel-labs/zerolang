@@ -151,7 +151,9 @@ for (const name of packages) {
     }
   }
 
-  rmSync(workDir, { force: true, recursive: true });
+  // Retry the teardown: macOS indexing can briefly repopulate the temp tree
+  // while rm walks it, surfacing as ENOTEMPTY on an otherwise clean removal.
+  rmSync(workDir, { force: true, recursive: true, maxRetries: 5, retryDelay: 100 });
   if (failure) {
     failures.push(`${name}: ${failure.trimEnd()}`);
     console.error(`examples gate FAIL: ${name}`);
