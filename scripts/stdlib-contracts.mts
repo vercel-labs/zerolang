@@ -350,12 +350,20 @@ function hasMutableSpanArg(helper: StdHelper): boolean {
   return helper.argTypes.some((type) => type?.startsWith("MutSpan<"));
 }
 
+function describesStaticView(behavior: string): boolean {
+  return behavior.includes("boundary metadata") ||
+    behavior.includes("status text") ||
+    behavior.includes("tls boundary") ||
+    behavior.includes("borrows static") ||
+    (behavior.includes("static") && !behavior.includes("borrows/static"));
+}
+
 function returnViewCategory(helper: StdHelper, category: AllocationCategory | null): ReturnViewCategory | null {
   if (!returnsBorrowedViewType(helper.returnType)) return null;
   const behavior = helper.allocationBehavior.toLowerCase();
+  if (describesStaticView(behavior)) return "static-view";
   if (behavior.includes("borrows")) return "borrowed-view";
   if (helper.returnType.includes("MutSpan<") && category === "explicit-allocator") return "explicit-allocator-view";
-  if (behavior.includes("static") || behavior.includes("boundary metadata") || behavior.includes("status text") || behavior.includes("tls boundary")) return "static-view";
   if (category === "caller-storage" && hasMutableSpanArg(helper)) return "caller-storage-view";
   if (category === "explicit-allocator") return "explicit-allocator-view";
   if (category === "borrowed-view") return "borrowed-view";
