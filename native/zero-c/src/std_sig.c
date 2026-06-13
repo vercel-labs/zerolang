@@ -395,7 +395,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.http.headerOffset", "usize", 1, {"HttpHeaderValue"}, {NULL}, "memory", "host-runtime", "reads header-value offset metadata", true, Z_STD_HELPER_KIND_TABLE},
   {"std.http.headerLen", "usize", 1, {"HttpHeaderValue"}, {NULL}, "memory", "host-runtime", "reads header-value length metadata", true, Z_STD_HELPER_KIND_TABLE},
   {"std.http.tlsBoundary", "String", 0, {NULL}, {NULL}, "net", "host", "declares platform-or-C-library TLS boundary", false, Z_STD_HELPER_KIND_TABLE},
-  {"std.http.statusReason", "String", 1, {"u16"}, {NULL}, "none", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.http.statusReason", "String", 1, {"u16"}, {NULL}, "none", "target-neutral", "borrows static status text; no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.http.statusIsInformational", "Bool", 1, {"u16"}, {NULL}, "none", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.http.statusIsSuccess", "Bool", 1, {"u16"}, {NULL}, "none", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.http.statusIsRedirect", "Bool", 1, {"u16"}, {NULL}, "none", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
