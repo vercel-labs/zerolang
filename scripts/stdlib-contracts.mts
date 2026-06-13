@@ -43,6 +43,42 @@ type AllocationCategory =
   | "no-allocation"
   | "owned-resource";
 
+type ReturnViewCategory =
+  | "borrowed-view"
+  | "caller-storage-view"
+  | "explicit-allocator-view"
+  | "static-view";
+
+type ResourceLifetimeCategory =
+  | "borrowed-resource"
+  | "owned-resource"
+  | "resource-capability"
+  | "resource-value";
+
+type StreamingBehaviorCategory =
+  | "bounded-input"
+  | "buffer-copy"
+  | "chunked-read"
+  | "line-scan"
+  | "stream-scan";
+
+const knownCapabilities = new Set([
+  "alloc",
+  "args",
+  "codec",
+  "env",
+  "fs",
+  "memory",
+  "net",
+  "none",
+  "parse",
+  "path",
+  "proc",
+  "rand",
+  "time",
+]);
+const hostOnlyCapabilities = new Set(["args", "env", "fs", "proc"]);
+const runtimeCapabilities = new Set(["memory", "net"]);
 const targetSupportValues = new Set(["target-neutral", "host", "host-runtime"]);
 const errorNamePattern = /^[A-Z][A-Za-z0-9]*$/;
 const helperKindPattern = /^Z_STD_HELPER_KIND_[A-Z_]+$/;
@@ -300,6 +336,66 @@ function resourceTypeUses(type: string): string[] {
   return [...wrappers, ...exact];
 }
 
+function unwrapMaybe(type: string): string {
+  const match = type.match(/^Maybe<(.+)>$/);
+  return match ? match[1] : type;
+}
+
+function returnsBorrowedViewType(type: string): boolean {
+  const unwrapped = unwrapMaybe(type);
+  return unwrapped === "String" || unwrapped.includes("Span<");
+}
+
+function hasMutableSpanArg(helper: StdHelper): boolean {
+  return helper.argTypes.some((type) => type?.startsWith("MutSpan<"));
+}
+
+function describesStaticView(behavior: string): boolean {
+  return behavior.includes("boundary metadata") ||
+    behavior.includes("status text") ||
+    behavior.includes("tls boundary") ||
+    behavior.includes("borrows static") ||
+    (behavior.includes("static") && !behavior.includes("borrows/static"));
+}
+
+function returnViewCategory(helper: StdHelper, category: AllocationCategory | null): ReturnViewCategory | null {
+  if (!returnsBorrowedViewType(helper.returnType)) return null;
+  const behavior = helper.allocationBehavior.toLowerCase();
+  if (describesStaticView(behavior)) return "static-view";
+  if (behavior.includes("borrows")) return "borrowed-view";
+  if (helper.returnType.includes("MutSpan<") && category === "explicit-allocator") return "explicit-allocator-view";
+  if (category === "caller-storage" && hasMutableSpanArg(helper)) return "caller-storage-view";
+  if (category === "explicit-allocator") return "explicit-allocator-view";
+  if (category === "borrowed-view") return "borrowed-view";
+  return null;
+}
+
+function resourceLifetimeCategories(helper: StdHelper): ResourceLifetimeCategory[] {
+  const categories = new Set<ResourceLifetimeCategory>();
+  if (helper.returnType.includes("owned<")) categories.add("owned-resource");
+  if (helperTypes(helper).some((type) => resourceWrapperUses(type).some((use) => use.wrapper === "ref" || use.wrapper === "mutref"))) {
+    categories.add("borrowed-resource");
+  }
+  const unwrappedReturn = unwrapMaybe(helper.returnType);
+  if (countedResourceTypes.has(unwrappedReturn) && !helper.returnType.includes("<")) categories.add("resource-value");
+  if (helper.argTypes.some((type) => type !== null && countedResourceTypes.has(type))) categories.add("resource-capability");
+  return [...categories].sort((a, b) => a.localeCompare(b));
+}
+
+function streamingBehaviorCategory(helper: StdHelper): StreamingBehaviorCategory | null {
+  const behavior = helper.allocationBehavior.toLowerCase();
+  if (helper.name.endsWith("streamTokens") || helper.name.endsWith("streamTokensBytes") || behavior.includes("streaming")) return "stream-scan";
+  if (helper.name.endsWith("readBytesAt") || behavior.includes("chunked")) return "chunked-read";
+  if (helper.name.includes("Within") || behavior.includes("within size limit")) return "bounded-input";
+  if (helper.name.endsWith("nextLine") || helper.name.endsWith("nextLineStart") || helper.name.endsWith("countLines")) return "line-scan";
+  if (helper.name.endsWith(".copy") || behavior.includes("copies through caller buffer")) return "buffer-copy";
+  return null;
+}
+
+function capabilityTargetKey(helper: StdHelper): string {
+  return `${helper.targetSupport}:${helper.capability}`;
+}
+
 function helperTypes(helper: StdHelper): string[] {
   return [
     helper.returnType,
@@ -357,8 +453,14 @@ await Promise.all(modules.map(async (module) => {
 
 const failures: string[] = [];
 const allocationCategoryCounts = new Map<string, number>();
+const capabilityCounts = new Map<string, number>();
+const capabilityTargetCounts = new Map<string, number>();
 const namedErrorCounts = new Map<string, number>();
 const resourceTypeCounts = new Map<string, number>();
+const resourceLifetimeCounts = new Map<string, number>();
+const returnViewCounts = new Map<string, number>();
+const targetSupportCounts = new Map<string, number>();
+const streamingBehaviorCounts = new Map<string, number>();
 
 pushIf(stdSource.includes("embedded_stdlib.inc"), failures, "std_source.c must not include embedded stdlib source chunks");
 pushIf(/zero_embedded_stdlib_[A-Za-z0-9_]+_chunks/.test(stdSource), failures, "std_source.c must not reference embedded stdlib source chunks");
@@ -388,12 +490,33 @@ for (const helper of helpers) {
   pushIf(helper.name.endsWith("OrRaise") && helper.errorNames.length === 0, failures, `${helper.name}: OrRaise helper must declare named errors`);
   pushIf(helper.errorNames.length > 0 && helper.returnType.startsWith("Maybe<"), failures, `${helper.name}: named-error helpers must not also use Maybe return failure`);
   pushIf(!targetSupportValues.has(helper.targetSupport), failures, `${helper.name}: unknown target support '${helper.targetSupport}'`);
+  if (targetSupportValues.has(helper.targetSupport)) incrementCount(targetSupportCounts, helper.targetSupport);
   pushIf(helper.capability.length === 0, failures, `${helper.name}: capability is empty`);
+  pushIf(helper.capability.length > 0 && !knownCapabilities.has(helper.capability), failures, `${helper.name}: unknown capability '${helper.capability}'`);
+  if (helper.capability.length > 0 && knownCapabilities.has(helper.capability)) incrementCount(capabilityCounts, helper.capability);
+  if (targetSupportValues.has(helper.targetSupport) && helper.capability.length > 0 && knownCapabilities.has(helper.capability)) {
+    incrementCount(capabilityTargetCounts, capabilityTargetKey(helper));
+  }
   pushIf(helper.allocationBehavior.length === 0, failures, `${helper.name}: allocation behavior is empty`);
   pushIf(vagueAllocationBehaviors.has(helper.allocationBehavior), failures, `${helper.name}: allocation behavior '${helper.allocationBehavior}' is too vague`);
   const category = allocationCategory(helper);
   pushIf(category === null, failures, `${helper.name}: allocation behavior '${helper.allocationBehavior}' does not fit a known ownership category`);
   if (category !== null) incrementCount(allocationCategoryCounts, category);
+  pushIf(hostOnlyCapabilities.has(helper.capability) && helper.targetSupport !== "host", failures, `${helper.name}: capability '${helper.capability}' must use host target support`);
+  pushIf(helper.targetSupport === "host" && helper.capability === "none", failures, `${helper.name}: host helper must declare its host capability`);
+  pushIf(helper.targetSupport === "host-runtime" && !runtimeCapabilities.has(helper.capability), failures, `${helper.name}: host-runtime helper must use a runtime-facing capability`);
+  pushIf(helper.targetSupport === "target-neutral" && category === "host-resource", failures, `${helper.name}: target-neutral helper must not depend on host resources`);
+  const viewCategory = returnViewCategory(helper, category);
+  pushIf(returnsBorrowedViewType(helper.returnType) && viewCategory === null, failures, `${helper.name}: return type ${helper.returnType} needs explicit return-view lifetime metadata`);
+  if (viewCategory !== null) incrementCount(returnViewCounts, viewCategory);
+  for (const lifetimeCategory of resourceLifetimeCategories(helper)) {
+    incrementCount(resourceLifetimeCounts, lifetimeCategory);
+  }
+  const streamingCategory = streamingBehaviorCategory(helper);
+  if (streamingCategory !== null) incrementCount(streamingBehaviorCounts, streamingCategory);
+  pushIf(helper.name.includes("Within") && streamingCategory !== "bounded-input", failures, `${helper.name}: bounded helper must declare bounded-input streaming behavior`);
+  pushIf(helper.name.endsWith("readBytesAt") && streamingCategory !== "chunked-read", failures, `${helper.name}: offset read helper must declare chunked-read behavior`);
+  pushIf(helper.name.endsWith("streamTokens") && streamingCategory !== "stream-scan", failures, `${helper.name}: stream helper must declare stream-scan behavior`);
   for (const type of helperTypes(helper)) {
     for (const use of resourceWrapperUses(type)) {
       pushIf(!knownResourceTypes.has(use.typeName), failures, `${helper.name}: ${use.wrapper}<${use.typeName}> uses an unknown resource type`);
@@ -501,8 +624,14 @@ const summary = {
   graphBackedHelperCount: sourceCalls.length,
   nativeOrTableHelperCount: helpers.length - sourceCalls.length,
   allocationCategoryCounts: sortedObjectFromCounts(allocationCategoryCounts),
+  capabilityCounts: sortedObjectFromCounts(capabilityCounts),
+  capabilityTargetCounts: sortedObjectFromCounts(capabilityTargetCounts),
   namedErrorCounts: sortedObjectFromCounts(namedErrorCounts),
+  returnViewCounts: sortedObjectFromCounts(returnViewCounts),
+  resourceLifetimeCounts: sortedObjectFromCounts(resourceLifetimeCounts),
   resourceTypeCounts: sortedObjectFromCounts(resourceTypeCounts),
+  streamingBehaviorCounts: sortedObjectFromCounts(streamingBehaviorCounts),
+  targetSupportCounts: sortedObjectFromCounts(targetSupportCounts),
   fixtureFileCount: fixtureFiles.length,
   ok: failures.length === 0,
   failures,

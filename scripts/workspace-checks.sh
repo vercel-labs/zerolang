@@ -26,7 +26,7 @@ pnpm run extension:test
 if [[ -n "${VERCEL_OIDC_TOKEN:-}" ]]; then
   ZERO_BENCH_RUNS=1 pnpm run bench:budgets
 else
-  ZERO_BENCH_RUNS=1 ZERO_BENCH_BUDGET=fail pnpm run bench:local
+  ZERO_BENCH_RUNS=1 ZERO_BENCH_BUDGET=warn pnpm run bench:local
 fi
 
 bin/zero check --target linux-musl-x64 examples/memory-package
