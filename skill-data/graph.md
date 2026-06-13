@@ -11,7 +11,7 @@ Use this when creating, inspecting, patching, importing, or exporting Zero progr
 
 - Normal `zero check`, `zero run`, `zero test`, `zero build`, `zero size`, and `zero mem` compile packages from `zero.graph` (`zero.toml` takes precedence over `zero.json`). When the `.0` projection was edited, those commands refresh the stale store from source first and note it on stderr; `ZERO_STALE=fail` turns that refresh into an RGP008 error instead.
 - `zero import` refreshes `zero.graph` from edited source explicitly. It accepts the package root, manifest, or any source path inside the package, updates an existing store in place, and preserves node handles where the edit is unambiguous. When several edited nodes could claim one handle, import picks the structurally closest match and notes it on stderr. A whole-file rewrite that keeps the file's function set (names and signatures) is accepted in one pass with regenerated node identities for that file, noted on stderr; only ties that span files or change the function set fail (RGP007) with a split-the-edit strategy. Never delete the store to force a reimport, and omit `--out` for package imports.
-- `zero export [package]` materializes `.0` projections for human review; compiler commands report projection state but never rewrite `.0` files. `zero verify-projection [package]` fails on drift without writing anything.
+- `zero export [package]` materializes `.0` projections for human review; do not export just to silence stale-projection notes or after every patch. Compiler commands report projection state but never rewrite `.0` files. `zero verify-projection [package]` fails on drift without writing anything.
 - `zero.graph` is binary by default. Reads auto-detect text and binary stores, writes preserve the existing encoding, and `zero status` reports `store format: text|binary`. Use `--format text` only for a deliberately readable debug store. Stdlib `std/*.graph` stores are binary; sibling `std/*.0` files are projections, not the stdlib compile source.
 
 ## Create
@@ -45,7 +45,7 @@ zero status                # store format and projection state
 
 Edit through the graph: `zero patch` covers everything from one-line changes (`addCheckWrite`, `rename`, `set`) to whole function bodies (`--replace-fn <fn> --body-file -` with a heredoc). Direct `.0` text edits are a last resort for changes no patch op expresses; the compiler will refresh the graph from edited source, but patch keeps the loop faster (0.2s validation, no reconcile pass) and preserves node identity for queries.
 
-A successful patch loads, applies, validates, and saves `zero.graph`, and prints the saved path, new graph hash, functions, and tests. Do not run `zero check` or `zero query` just to confirm that the patch applied.
+A successful patch loads, applies, validates, and saves `zero.graph`, and prints the saved path, new graph hash, functions, and tests. Do not run `zero check`, `zero view`, `zero query`, or `zero export` just to confirm that the patch applied. Use those only when you need current text/handles, projection review, or a diagnostic loop.
 
 ```sh
 zero patch \
@@ -56,7 +56,7 @@ zero patch \
   --op 'addTest name="addition works" call="add" arg0="40" arg1="2" expect="42" type="i32"'
 ```
 
-Use `addTest` for one pure helper call; reserve `addTestBody` for custom body rows. Test labels are display names, not `__zero_test_*` function names.
+Use `addTest` for one pure helper call; reserve `addTestBody` for custom body rows. Test labels are display names, not `__zero_test_*` function names. If a custom test fails as an unknown function label, delete it and recreate simple coverage with `addTest` instead of renaming the label.
 
 For declaration-level edits, stay in patch ops instead of rewriting files. `setConst name="limit" value="64"` replaces a top-level const's initializer by package-scoped name. `addParamTo fn="scan" name="bias" type="i32" default="0"` appends a parameter to an existing function and updates every call site in the package (nested calls included) to pass the default explicitly, reporting `updated N call sites`; without `default` it fails with the call-site count. `setReturnType fn="scan" type="i64"` changes a declared return type. All three revalidate and batch like any other op.
 

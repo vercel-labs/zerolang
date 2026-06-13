@@ -50,13 +50,13 @@ Pass a patch file, or stream full `zero-program-graph-patch v1` text with `zero 
 
 Use `addReturnExpr fn="maybe" expr="null"` for non-id returns and `appendStmt fn="main" stmt="check std.http.listen(world, 3000_u16)"` for one stmt. For pure helper tests, use `addTest name="addition works" call="add" arg0="2" arg1="3" expect="5" type="i32"`; reserve `addTestBody name="api add" ... end` for custom bodies and remove bad ones with `deleteTest name="api add"`. Labels are display names, not `__zero_test_*`.
 
-For runnable CLIs, keep `World` on `pub fn main`; helpers should be value-based. HTTP servers use `handle(request, response)` helpers instead of `World`.
+Runnable CLIs keep `World` on `pub fn main`; helpers are value-based. HTTP uses `handle(request, response)`.
 
-A successful patch prints `validated: check-equivalent`: it validated and saved the graph. Run `zero run . -- <args>` / `zero test`. Repeat `--op` to batch edits. For rewrites and handle edits, see `zero skills get graph`.
+After `validated: check-equivalent`, the graph is saved and checked. Do not run `zero check`, `zero view`, or `zero export` just to confirm. `zero run . -- <args>` / `zero test` prove behavior or debug. Export only for requested `.0` review. Repeat `--op` to batch edits. For rewrites/handles: `zero skills get graph`.
 
-Scoped reads; never read a whole `.0` file for one function:
+Read only for current code or handles:
 
-- `zero view --fn <name>`: one function's source; misses show close matches.
+- `zero view --fn <name>`: one function source.
 - `zero view --fn <name> --around <text>`: enclosing block only.
 - `zero view --outline <module-or-file>`: signatures plus one-line docs.
 
