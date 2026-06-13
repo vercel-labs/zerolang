@@ -1,8 +1,23 @@
 # Changelog
 
-## 0.3.3
+## 0.3.4
 
 <!-- release:start -->
+
+- Makes graph patching the primary agent edit loop with stdin patch bodies, `--replace-in-fn`, expression replacement by handle, structural rewrites, declaration-level edits, helper/test patch ops, and inline handle diagnostics across view, query, and patch commands.
+- Improves graph/source reconciliation with patch-specific stale-refresh tips, once-per-state notes, accepted whole-file rewrites when function sets are preserved, and clearer unsupported graph-test and non-entry `World` helper diagnostics.
+- Speeds up graph workflows with memoized repository store loads, adjacency orders, semantic check verdicts, static const classification, pre-merge MIR cache keys, and reusable runtime object cache artifacts.
+- Reduces direct backend output and broadens native coverage with constant array-fill loop lowering, COFF x64 HTTP request-body extraction, chunked file reads via `std.fs.readBytesAt`, and total-file-size reporting for fixed-buffer reads.
+- Refreshes bundled skills, CLI help, docs, command contracts, conformance fixtures, compiler metrics, and validation guidance around the patch-first agent workflow.
+- Hardens release checks with runtime object cache cleanup, graph patch routing coverage, examples gate teardown retries, and additional package cache/version assertions.
+
+### Contributors
+
+- @ctate
+
+<!-- release:end -->
+
+## 0.3.3
 
 - Makes package graph stores refresh from edited projections across compiler commands, classifies source/store sync by content instead of mtimes, and gives stale, diverged, and ambiguous reconcile states deterministic diagnostics and repairs.
 - Improves agent-facing inspection and edit loops with scoped `zero query` output, `zero view --fn`, `zero diff --fn`, `zero patch --replace-fn --body-file`, focused command help, and smaller version-matched skill topics with section-scoped stdlib fetches.
@@ -14,8 +29,6 @@
 ### Contributors
 
 - @ctate
-
-<!-- release:end -->
 
 ## 0.3.2
 

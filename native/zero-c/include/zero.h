@@ -6,7 +6,7 @@
 
 #include "zero_contracts.h"
 
-#define ZERO_VERSION "0.3.3"
+#define ZERO_VERSION "0.3.4"
 
 #ifndef ZERO_BUILD_HASH
 #define ZERO_BUILD_HASH "unknown"

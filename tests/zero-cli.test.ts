@@ -62,7 +62,7 @@ async function collectSkillMdFiles(dir: string): Promise<string[]> {
 
 describe("native zero CLI", () => {
   it("prints a terse plain version with the build hash", async () => {
-    const versionPattern = /^zero 0\.3\.3 \(build (?:[0-9a-f]{7,40}|unknown)\)\n$/;
+    const versionPattern = /^zero 0\.3\.4 \(build (?:[0-9a-f]{7,40}|unknown)\)\n$/;
     assert.match((await runZero(["--version"])).stdout, versionPattern);
     assert.match((await runNativeZero(["--version"])).stdout, versionPattern);
   });
