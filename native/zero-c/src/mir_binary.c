@@ -218,7 +218,7 @@ typedef struct {
 } MirDecoded;
 
 static const unsigned char MIR_BINARY_MAGIC[8] = {'Z', 'M', 'I', 'R', 'B', 'I', 'N', '1'};
-enum { MIR_BINARY_SCHEMA_VERSION = 4 };
+enum { MIR_BINARY_SCHEMA_VERSION = 5 };
 static const uint64_t MIR_NULL_LEN = UINT64_MAX;
 static const uint64_t MIR_BINARY_MAX_FUNCTION_COUNT = 100000;
 static const uint64_t MIR_BINARY_MAX_LOCAL_COUNT = 1000000;
@@ -908,7 +908,7 @@ static bool mir_read_value(MirReader *reader, const MirHeader *header, MirValueF
       !mir_get_count(reader, &record->arg_ref_start) || !mir_get_count(reader, &record->arg_ref_len) ||
       !mir_get_count(reader, &record->index_ref) || !mir_get_count(reader, &record->left_ref) ||
       !mir_get_count(reader, &record->right_ref) || !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) ||
-      kind > (uint32_t)IR_VALUE_FS_READ_BYTES_AT_PATH || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
+      kind > (uint32_t)IR_VALUE_VEC_REMOVE_SWAP || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
       compare_op > (uint32_t)IR_CMP_GE || record->index_ref > header->value_count ||
       record->left_ref > header->value_count || record->right_ref > header->value_count ||
       !mir_refs_fit(record->arg_ref_start, record->arg_ref_len, header->value_ref_count)) return false;
