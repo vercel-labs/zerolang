@@ -23,86 +23,78 @@ typedef struct {
   bool preserve_graph_types;
 } GraphLower;
 
-static void *lower_grow_items(void *items, size_t len, size_t *cap, size_t initial, size_t item_size) {
-  if (len + 1 > *cap) {
-    *cap = z_grow_capacity(*cap, len + 1, initial);
-    return z_checked_reallocarray(items, *cap, item_size);
-  }
-  return items;
-}
-
 static void lower_push_function(FunctionVec *vec, Function item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Function));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Function));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_stmt(StmtVec *vec, Stmt *item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Stmt *));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 8, sizeof(Stmt *));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_expr(ExprVec *vec, Expr *item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Expr *));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Expr *));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_type_arg(TypeArgVec *vec, TypeArg item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeArg));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeArg));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_field(FieldInitVec *vec, FieldInit item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(FieldInit));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(FieldInit));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_param(ParamVec *vec, Param item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Param));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Param));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_use(UseImportVec *vec, UseImport item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(UseImport));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(UseImport));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_c_import(CImportVec *vec, CImport item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(CImport));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(CImport));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_const(ConstVec *vec, ConstDecl item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(ConstDecl));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(ConstDecl));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_alias(TypeAliasVec *vec, TypeAlias item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeAlias));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(TypeAlias));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_shape(ShapeVec *vec, Shape item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Shape));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Shape));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_interface(InterfaceVec *vec, InterfaceDecl item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(InterfaceDecl));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(InterfaceDecl));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_enum(EnumVec *vec, EnumDecl item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(EnumDecl));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(EnumDecl));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_choice(ChoiceVec *vec, Choice item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Choice));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(Choice));
   vec->items[vec->len++] = item;
 }
 
 static void lower_push_match_arm(MatchArmVec *vec, MatchArm item) {
-  vec->items = lower_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(MatchArm));
+  vec->items = z_grow_items(vec->items, vec->len, &vec->cap, 4, sizeof(MatchArm));
   vec->items[vec->len++] = item;
 }
 
