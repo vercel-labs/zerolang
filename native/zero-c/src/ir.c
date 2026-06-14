@@ -419,6 +419,27 @@ static char *ir_shape_substitute_type(const Shape *shape, const TypeArgVec *args
       return buf.data;
     }
   }
+  const char *open = strchr(type, '<');
+  const char *close = strrchr(type, '>');
+  if (open && close && close[1] == '\0' && open < close) {
+    TypeArgVec inner_args = {0};
+    if (ir_split_generic_args(open + 1, close, &inner_args)) {
+      ZBuf buf;
+      zbuf_init(&buf);
+      for (const char *cursor = type; cursor < open; cursor++) zbuf_append_char(&buf, *cursor);
+      zbuf_append_char(&buf, '<');
+      for (size_t i = 0; i < inner_args.len; i++) {
+        if (i > 0) zbuf_append(&buf, ", ");
+        char *inner = ir_shape_substitute_type(shape, args, inner_args.items[i].type);
+        zbuf_append(&buf, inner);
+        free(inner);
+      }
+      zbuf_append_char(&buf, '>');
+      ir_type_arg_vec_free(&inner_args);
+      return buf.data;
+    }
+    ir_type_arg_vec_free(&inner_args);
+  }
   return z_strdup(type);
 }
 
@@ -486,6 +507,36 @@ static size_t ir_align_to(size_t value, size_t alignment) {
   return remainder == 0 ? value : value + (alignment - remainder);
 }
 
+static bool ir_field_storage_info_for_type(const Program *program, const char *type_text, unsigned *out_byte_size, unsigned *out_align, IrTypeKind *out_type, bool *out_is_array, unsigned *out_array_len, IrTypeKind *out_element_type) {
+  IrTypeKind type = ir_type_kind_for_program(program, type_text);
+  unsigned array_len = 0;
+  IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
+  bool is_array = ir_parse_fixed_array_type_for_program(program, type_text, &array_len, &element_type);
+  unsigned byte_size = 0;
+  unsigned align = 0;
+  if (is_array) {
+    byte_size = ir_type_byte_size(element_type) * array_len;
+    align = ir_type_alignment(element_type);
+  } else if (type == IR_TYPE_BYTE_VIEW) {
+    byte_size = 16;
+    align = 8;
+    element_type = ir_view_element_type_for_type(type_text);
+  } else if (type == IR_TYPE_BOOL || ir_type_is_value(type)) {
+    byte_size = ir_type_byte_size(type);
+    align = ir_type_alignment(type);
+  } else {
+    return false;
+  }
+  if (!byte_size || !align) return false;
+  if (out_byte_size) *out_byte_size = byte_size;
+  if (out_align) *out_align = align;
+  if (out_type) *out_type = type;
+  if (out_is_array) *out_is_array = is_array;
+  if (out_array_len) *out_array_len = array_len;
+  if (out_element_type) *out_element_type = element_type;
+  return true;
+}
+
 static bool ir_shape_layout(const Program *program, const char *shape_name, unsigned *out_size, unsigned *out_align) {
   const Shape *shape = NULL;
   TypeArgVec args = {0};
@@ -494,17 +545,14 @@ static bool ir_shape_layout(const Program *program, const char *shape_name, unsi
   unsigned max_align = 1;
   for (size_t i = 0; i < shape->fields.len; i++) {
     char *field_type_text = ir_shape_substitute_type(shape, &args, shape->fields.items[i].type);
-    IrTypeKind field_type = ir_type_kind_for_program(program, field_type_text);
-    unsigned array_len = 0;
-    IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
-    bool is_array = ir_parse_fixed_array_type_for_program(program, field_type_text, &array_len, &element_type);
-    if (!(field_type == IR_TYPE_BOOL || ir_type_is_value(field_type) || is_array)) {
+    unsigned byte_size = 0;
+    unsigned align = 0;
+    bool ok = ir_field_storage_info_for_type(program, field_type_text, &byte_size, &align, NULL, NULL, NULL, NULL);
+    if (!ok) {
       free(field_type_text);
       ir_type_arg_vec_free(&args);
       return false;
     }
-    unsigned align = is_array ? ir_type_alignment(element_type) : ir_type_alignment(field_type);
-    unsigned byte_size = is_array ? ir_type_byte_size(element_type) * array_len : ir_type_byte_size(field_type);
     free(field_type_text);
     offset = ir_align_to(offset, align);
     offset += byte_size;
@@ -517,7 +565,7 @@ static bool ir_shape_layout(const Program *program, const char *shape_name, unsi
   return offset <= UINT_MAX;
 }
 
-static bool ir_shape_field_info(const Program *program, const char *shape_name, const char *field_name, unsigned *out_offset, IrTypeKind *out_type) {
+static bool ir_shape_field_info(const Program *program, const char *shape_name, const char *field_name, unsigned *out_offset, IrTypeKind *out_type, IrTypeKind *out_element_type) {
   const Shape *shape = NULL;
   TypeArgVec args = {0};
   if (!field_name || !ir_shape_instance(program, shape_name, &shape, &args)) return false;
@@ -525,17 +573,17 @@ static bool ir_shape_field_info(const Program *program, const char *shape_name, 
   for (size_t i = 0; i < shape->fields.len; i++) {
     const Param *field = &shape->fields.items[i];
     char *field_type_text = ir_shape_substitute_type(shape, &args, field->type);
-    IrTypeKind field_type = ir_type_kind_for_program(program, field_type_text);
-    unsigned array_len = 0;
+    IrTypeKind field_type = IR_TYPE_UNSUPPORTED;
     IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
-    bool is_array = ir_parse_fixed_array_type_for_program(program, field_type_text, &array_len, &element_type);
-    if (!(field_type == IR_TYPE_BOOL || ir_type_is_value(field_type) || is_array)) {
+    bool is_array = false;
+    unsigned byte_size = 0;
+    unsigned align = 0;
+    bool ok = ir_field_storage_info_for_type(program, field_type_text, &byte_size, &align, &field_type, &is_array, NULL, &element_type);
+    if (!ok) {
       free(field_type_text);
       ir_type_arg_vec_free(&args);
       return false;
     }
-    unsigned align = is_array ? ir_type_alignment(element_type) : ir_type_alignment(field_type);
-    unsigned byte_size = is_array ? ir_type_byte_size(element_type) * array_len : ir_type_byte_size(field_type);
     offset = ir_align_to(offset, align);
     if (strcmp(field->name, field_name) == 0) {
       free(field_type_text);
@@ -545,6 +593,7 @@ static bool ir_shape_field_info(const Program *program, const char *shape_name, 
       }
       if (out_offset) *out_offset = (unsigned)offset;
       if (out_type) *out_type = field_type;
+      if (out_element_type) *out_element_type = element_type;
       ir_type_arg_vec_free(&args);
       return true;
     }
@@ -563,17 +612,18 @@ static bool ir_shape_field_storage_info(const Program *program, const char *shap
   for (size_t i = 0; i < shape->fields.len; i++) {
     const Param *field = &shape->fields.items[i];
     char *field_type_text = ir_shape_substitute_type(shape, &args, field->type);
-    IrTypeKind field_type = ir_type_kind_for_program(program, field_type_text);
+    IrTypeKind field_type = IR_TYPE_UNSUPPORTED;
+    bool is_array = false;
     unsigned array_len = 0;
     IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
-    bool is_array = ir_parse_fixed_array_type_for_program(program, field_type_text, &array_len, &element_type);
-    if (!(field_type == IR_TYPE_BOOL || ir_type_is_value(field_type) || is_array)) {
+    unsigned byte_size = 0;
+    unsigned align = 0;
+    bool ok = ir_field_storage_info_for_type(program, field_type_text, &byte_size, &align, &field_type, &is_array, &array_len, &element_type);
+    if (!ok) {
       free(field_type_text);
       ir_type_arg_vec_free(&args);
       return false;
     }
-    unsigned align = is_array ? ir_type_alignment(element_type) : ir_type_alignment(field_type);
-    unsigned byte_size = is_array ? ir_type_byte_size(element_type) * array_len : ir_type_byte_size(field_type);
     offset = ir_align_to(offset, align);
     if (strcmp(field->name, field_name) == 0) {
       free(field_type_text);
@@ -782,6 +832,51 @@ static IrValue *ir_new_compare_value(IrProgram *ir, IrCompareOp op, IrValue *lef
   value->left = left;
   value->right = right;
   return value;
+}
+
+typedef enum {
+  IR_VEC_HELPER_NONE = 0,
+  IR_VEC_HELPER_LEN,
+  IR_VEC_HELPER_CAPACITY,
+  IR_VEC_HELPER_REMAINING,
+  IR_VEC_HELPER_IS_EMPTY,
+  IR_VEC_HELPER_IS_FULL,
+  IR_VEC_HELPER_BYTES
+} IrVecHelper;
+
+#define IR_LITERAL_EQ(text, literal) ((text) && strlen(text) == sizeof(literal) - 1 && memcmp((text), (literal), sizeof(literal) - 1) == 0)
+
+static IrVecHelper ir_std_mem_vec_helper(const char *callee_name) {
+  if (IR_LITERAL_EQ(callee_name, "std.mem.vecLen")) return IR_VEC_HELPER_LEN;
+  if (IR_LITERAL_EQ(callee_name, "std.mem.vecCapacity")) return IR_VEC_HELPER_CAPACITY;
+  if (IR_LITERAL_EQ(callee_name, "std.mem.vecRemaining")) return IR_VEC_HELPER_REMAINING;
+  if (IR_LITERAL_EQ(callee_name, "std.mem.vecIsEmpty")) return IR_VEC_HELPER_IS_EMPTY;
+  if (IR_LITERAL_EQ(callee_name, "std.mem.vecIsFull")) return IR_VEC_HELPER_IS_FULL;
+  if (IR_LITERAL_EQ(callee_name, "std.mem.vecBytes")) return IR_VEC_HELPER_BYTES;
+  return IR_VEC_HELPER_NONE;
+}
+
+static IrValue *ir_new_vec_helper_value(IrProgram *ir, IrVecHelper helper, size_t local_index, int line, int column) {
+  if (helper == IR_VEC_HELPER_BYTES) {
+    IrValue *bytes = ir_new_value(ir, IR_VALUE_VEC_BYTES, IR_TYPE_BYTE_VIEW, line, column);
+    bytes->local_index = local_index;
+    bytes->element_type = IR_TYPE_U8;
+    return bytes;
+  }
+  if (helper == IR_VEC_HELPER_CAPACITY) {
+    IrValue *capacity = ir_new_value(ir, IR_VALUE_VEC_CAPACITY, IR_TYPE_USIZE, line, column);
+    capacity->local_index = local_index;
+    return capacity;
+  }
+  IrValue *len = ir_new_value(ir, IR_VALUE_VEC_LEN, IR_TYPE_USIZE, line, column);
+  len->local_index = local_index;
+  if (helper == IR_VEC_HELPER_LEN) return len;
+  if (helper == IR_VEC_HELPER_IS_EMPTY) return ir_new_compare_value(ir, IR_CMP_EQ, len, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column), line, column);
+  IrValue *capacity = ir_new_value(ir, IR_VALUE_VEC_CAPACITY, IR_TYPE_USIZE, line, column);
+  capacity->local_index = local_index;
+  if (helper == IR_VEC_HELPER_REMAINING) return ir_new_binary_value(ir, IR_BIN_SUB, IR_TYPE_USIZE, capacity, len, line, column);
+  if (helper == IR_VEC_HELPER_IS_FULL) return ir_new_compare_value(ir, IR_CMP_EQ, len, capacity, line, column);
+  return len;
 }
 
 static void ir_free_value(IrValue *value) {
@@ -2856,10 +2951,12 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         const IrLocal *local = ir_function_find_local(fun, expr->left->text);
         unsigned field_offset = 0;
         IrTypeKind field_type = IR_TYPE_UNSUPPORTED;
-        if (local && local->is_record && ir_shape_field_info(program, local->shape_name, expr->text, &field_offset, &field_type)) {
+        IrTypeKind field_element_type = IR_TYPE_UNSUPPORTED;
+        if (local && local->is_record && ir_shape_field_info(program, local->shape_name, expr->text, &field_offset, &field_type, &field_element_type)) {
           IrValue *value = ir_new_value(ir, IR_VALUE_FIELD_LOAD, field_type, expr->line, expr->column);
           value->local_index = local->index;
           value->field_offset = field_offset;
+          value->element_type = field_type == IR_TYPE_BYTE_VIEW ? field_element_type : field_type;
           *out = value;
           return true;
         }
@@ -4038,17 +4135,177 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if ((strcmp(callee_name, "std.mem.vecLen") == 0 || strcmp(callee_name, "std.mem.vecCapacity") == 0) &&
-          expr->args.len == 1) {
+      if ((strcmp(callee_name, "std.mem.vecClear") == 0 || strcmp(callee_name, "std.mem.vecPop") == 0) &&
+          expr->args.len == 1 &&
+          expr->args.items[0] &&
+          expr->args.items[0]->kind == EXPR_BORROW &&
+          expr->args.items[0]->mutable_borrow &&
+          expr->args.items[0]->left &&
+          expr->args.items[0]->left->kind == EXPR_IDENT) {
+        const IrLocal *vec = ir_function_find_local(fun, expr->args.items[0]->left->text);
+        if (!vec || vec->type != IR_TYPE_VEC || !vec->is_mutable) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem Vec mutation expects a mutable Vec local", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable Vec");
+          return false;
+        }
+        bool pop = strcmp(callee_name, "std.mem.vecPop") == 0;
+        IrValue *value = ir_new_value(ir, pop ? IR_VALUE_VEC_POP : IR_VALUE_VEC_CLEAR, pop ? IR_TYPE_BOOL : IR_TYPE_USIZE, expr->line, expr->column);
+        value->local_index = vec->index;
+        ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 4 ? 4 : ir->direct_buffer_helper_count;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.mem.vecTruncate") == 0 &&
+          expr->args.len == 2 &&
+          expr->args.items[0] &&
+          expr->args.items[0]->kind == EXPR_BORROW &&
+          expr->args.items[0]->mutable_borrow &&
+          expr->args.items[0]->left &&
+          expr->args.items[0]->left->kind == EXPR_IDENT) {
+        const IrLocal *vec = ir_function_find_local(fun, expr->args.items[0]->left->text);
+        if (!vec || vec->type != IR_TYPE_VEC || !vec->is_mutable) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecTruncate expects a mutable Vec local", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable Vec");
+          return false;
+        }
+        IrValue *len = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[1], &len)) {
+          free(callee_name);
+          return false;
+        }
+        if (!len || len->type != IR_TYPE_USIZE) {
+          ir_free_value(len);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecTruncate expects a usize length", expr->args.items[1]->line, expr->args.items[1]->column, "non-usize length");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_VEC_TRUNCATE, IR_TYPE_USIZE, expr->line, expr->column);
+        value->local_index = vec->index;
+        value->left = len;
+        ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 4 ? 4 : ir->direct_buffer_helper_count;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.mem.vecRemoveSwap") == 0 &&
+          expr->args.len == 2 &&
+          expr->args.items[0] &&
+          expr->args.items[0]->kind == EXPR_BORROW &&
+          expr->args.items[0]->mutable_borrow &&
+          expr->args.items[0]->left &&
+          expr->args.items[0]->left->kind == EXPR_IDENT) {
+        const IrLocal *vec = ir_function_find_local(fun, expr->args.items[0]->left->text);
+        if (!vec || vec->type != IR_TYPE_VEC || !vec->is_mutable) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecRemoveSwap expects a mutable Vec local", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable Vec");
+          return false;
+        }
+        IrValue *index = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[1], &index)) {
+          free(callee_name);
+          return false;
+        }
+        if (!index || index->type != IR_TYPE_USIZE) {
+          ir_free_value(index);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecRemoveSwap expects a usize index", expr->args.items[1]->line, expr->args.items[1]->column, "non-usize index");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_VEC_REMOVE_SWAP, IR_TYPE_BOOL, expr->line, expr->column);
+        value->element_type = IR_TYPE_U8;
+        value->local_index = vec->index;
+        value->left = index;
+        ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 5 ? 5 : ir->direct_buffer_helper_count;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.mem.vecGet") == 0 &&
+          expr->args.len == 2) {
         const Expr *arg = expr->args.items[0];
         if (arg && arg->kind == EXPR_BORROW) arg = arg->left;
         if (arg && arg->kind == EXPR_IDENT) {
           const IrLocal *vec = ir_function_find_local(fun, arg->text);
           if (vec && vec->type == IR_TYPE_VEC) {
-            IrValueKind kind = strcmp(callee_name, "std.mem.vecLen") == 0 ? IR_VALUE_VEC_LEN : IR_VALUE_VEC_CAPACITY;
-            IrValue *value = ir_new_value(ir, kind, IR_TYPE_USIZE, expr->line, expr->column);
+            IrValue *index = NULL;
+            if (!ir_lower_expr(program, ir, fun, expr->args.items[1], &index)) {
+              free(callee_name);
+              return false;
+            }
+            if (!index || index->type != IR_TYPE_USIZE) {
+              ir_free_value(index);
+              free(callee_name);
+              ir_mark_unsupported(ir, "direct backend std.mem.vecGet expects a usize index", expr->args.items[1]->line, expr->args.items[1]->column, "non-usize index");
+              return false;
+            }
+            IrValue *value = ir_new_value(ir, IR_VALUE_VEC_GET, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+            value->element_type = IR_TYPE_U8;
             value->local_index = vec->index;
-            ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 3 ? 3 : ir->direct_buffer_helper_count;
+            value->left = index;
+            ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 5 ? 5 : ir->direct_buffer_helper_count;
+            free(callee_name);
+            *out = value;
+            return true;
+          }
+        }
+      }
+      if (strcmp(callee_name, "std.mem.vecSet") == 0 &&
+          expr->args.len == 3 &&
+          expr->args.items[0] &&
+          expr->args.items[0]->kind == EXPR_BORROW &&
+          expr->args.items[0]->mutable_borrow &&
+          expr->args.items[0]->left &&
+          expr->args.items[0]->left->kind == EXPR_IDENT) {
+        const IrLocal *vec = ir_function_find_local(fun, expr->args.items[0]->left->text);
+        if (!vec || vec->type != IR_TYPE_VEC || !vec->is_mutable) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecSet expects a mutable Vec local", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable Vec");
+          return false;
+        }
+        IrValue *index = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[1], &index)) {
+          free(callee_name);
+          return false;
+        }
+        if (!index || index->type != IR_TYPE_USIZE) {
+          ir_free_value(index);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecSet expects a usize index", expr->args.items[1]->line, expr->args.items[1]->column, "non-usize index");
+          return false;
+        }
+        IrValue *item = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[2], &item)) {
+          ir_free_value(index);
+          free(callee_name);
+          return false;
+        }
+        if (!item || item->type != IR_TYPE_U8) {
+          ir_free_value(index);
+          ir_free_value(item);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem.vecSet currently supports only u8 values", expr->args.items[2]->line, expr->args.items[2]->column, "non-u8 value");
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_VEC_SET, IR_TYPE_BOOL, expr->line, expr->column);
+        value->element_type = IR_TYPE_U8;
+        value->local_index = vec->index;
+        value->left = index;
+        value->right = item;
+        ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 5 ? 5 : ir->direct_buffer_helper_count;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      IrVecHelper vec_helper = ir_std_mem_vec_helper(callee_name);
+      if (vec_helper != IR_VEC_HELPER_NONE && expr->args.len == 1) {
+        const Expr *arg = expr->args.items[0];
+        if (arg && arg->kind == EXPR_BORROW) arg = arg->left;
+        if (arg && arg->kind == EXPR_IDENT) {
+          const IrLocal *vec = ir_function_find_local(fun, arg->text);
+          if (vec && vec->type == IR_TYPE_VEC) {
+            IrValue *value = ir_new_vec_helper_value(ir, vec_helper, vec->index, expr->line, expr->column);
+            ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < (vec_helper == IR_VEC_HELPER_BYTES ? 4 : 3) ? (vec_helper == IR_VEC_HELPER_BYTES ? 4 : 3) : ir->direct_buffer_helper_count;
             free(callee_name);
             *out = value;
             return true;
@@ -4738,7 +4995,7 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
       const IrLocal *local = ir_function_find_local(mir_fun, stmt->target->left->text);
       unsigned field_offset = 0;
       IrTypeKind field_type = IR_TYPE_UNSUPPORTED;
-      if (local && local->is_record && ir_shape_field_info(program, local->shape_name, stmt->target->text, &field_offset, &field_type)) {
+      if (local && local->is_record && ir_shape_field_info(program, local->shape_name, stmt->target->text, &field_offset, &field_type, NULL)) {
         if (!local->is_mutable) {
           ir_mark_unsupported(ir, "direct backend record field assignment target must be mutable", stmt->line, stmt->column, local->name);
           return false;

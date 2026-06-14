@@ -465,7 +465,7 @@ static bool mir_verify_mutable_local_value_kind(IrProgram *ir, const IrFunction 
 
 static bool mir_verify_record_field_span(IrProgram *ir, const IrLocal *local, unsigned field_offset, IrTypeKind type, int line, int column, const char *message) {
   if (!ir || !ir->mir_valid || !local) return false;
-  unsigned byte_size = mir_type_byte_size(type);
+  unsigned byte_size = type == IR_TYPE_BYTE_VIEW ? 16 : mir_type_byte_size(type);
   unsigned storage_size = local->is_record_ref ? local->ref_byte_size : local->byte_size;
   if (byte_size > 0 && field_offset <= storage_size && byte_size <= storage_size - field_offset) return true;
   char actual[192];
@@ -623,6 +623,51 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->buffer_helpers, 3, value->line, value->column, value->kind == IR_VALUE_VEC_LEN ? "std.mem.vecLen" : "std.mem.vecCapacity");
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, value->kind == IR_VALUE_VEC_LEN ? "Vec length result" : "Vec capacity result")) return false;
       return mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec");
+    case IR_VALUE_VEC_BYTES:
+      mir_require_count(&requirements->buffer_helpers, 4, value->line, value->column, "std.mem.vecBytes");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BYTE_VIEW, "Vec bytes result")) return false;
+      return mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec");
+    case IR_VALUE_VEC_GET:
+      mir_require_count(&requirements->buffer_helpers, 5, value->line, value->column, "std.mem.vecGet");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_SCALAR, "Vec get result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec get element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_USIZE, "MIR verifier found invalid Vec get index", "Vec index");
+    case IR_VALUE_VEC_SET:
+      mir_require_count(&requirements->buffer_helpers, 5, value->line, value->column, "std.mem.vecSet");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "Vec set result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec set element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      if (!mir_verify_value_type(ir, value->left, IR_TYPE_USIZE, "MIR verifier found invalid Vec set index", "Vec index")) return false;
+      return mir_verify_value_type(ir, value->right, IR_TYPE_U8, "MIR verifier found invalid Vec set value", "Vec item");
+    case IR_VALUE_VEC_REMOVE_SWAP:
+      mir_require_count(&requirements->buffer_helpers, 5, value->line, value->column, "std.mem.vecRemoveSwap");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "Vec swap-remove result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec swap-remove element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_USIZE, "MIR verifier found invalid Vec swap-remove index", "Vec index");
+    case IR_VALUE_VEC_CLEAR:
+      mir_require_count(&requirements->buffer_helpers, 4, value->line, value->column, "std.mem.vecClear");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, "Vec clear result")) return false;
+      return mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec");
+    case IR_VALUE_VEC_POP:
+      mir_require_count(&requirements->buffer_helpers, 4, value->line, value->column, "std.mem.vecPop");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "Vec pop result")) return false;
+      return mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec");
+    case IR_VALUE_VEC_TRUNCATE:
+      mir_require_count(&requirements->buffer_helpers, 4, value->line, value->column, "std.mem.vecTruncate");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, "Vec truncate result")) return false;
+      if (!mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_USIZE, "MIR verifier found invalid Vec truncate length", "Vec length");
     case IR_VALUE_JSON_PARSE_BYTES:
       mir_require_count(&requirements->allocator_helpers, 2, value->line, value->column, "std.json.parseBytes");
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json.parseBytes");
@@ -1356,6 +1401,10 @@ static bool mir_verify_field_load_value_contract(IrProgram *ir, const IrFunction
     mir_verify_mark_unsupported(ir, "MIR verifier found field load from a non-record local", value->line, value->column, actual);
     return false;
   }
+  if (value->type == IR_TYPE_BYTE_VIEW && !(value->element_type == IR_TYPE_BOOL || mir_type_is_value(value->element_type))) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found byte-view field load without element type", value->line, value->column, "byte-view field load");
+    return false;
+  }
   return mir_verify_record_field_span(ir, local, value->field_offset, value->type, value->line, value->column, "MIR verifier found field load outside the local storage");
 }
 
@@ -1991,6 +2040,13 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_VEC_PUSH:
     case IR_VALUE_VEC_LEN:
     case IR_VALUE_VEC_CAPACITY:
+    case IR_VALUE_VEC_BYTES:
+    case IR_VALUE_VEC_GET:
+    case IR_VALUE_VEC_SET:
+    case IR_VALUE_VEC_REMOVE_SWAP:
+    case IR_VALUE_VEC_CLEAR:
+    case IR_VALUE_VEC_POP:
+    case IR_VALUE_VEC_TRUNCATE:
     case IR_VALUE_ALLOC_BYTES:
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:

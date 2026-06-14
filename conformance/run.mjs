@@ -890,6 +890,7 @@ const passCheckFixtures = [
   "conformance/native/pass/index-reference-assignment-clears-origin.0",
   "conformance/native/pass/allocator-primitives.0",
   "conformance/native/pass/std-mem-arena.0",
+  "conformance/native/pass/std-mem-collections.0",
   "conformance/native/pass/std-collections-algorithms.0",
   "conformance/native/pass/std-collections-u8.0",
   "conformance/native/pass/std-collections-mutspan-memory.0",
@@ -966,7 +967,6 @@ const gateBlockedCheckFixtures = [
   "conformance/native/pass/match-choice-fallback.0",
   "conformance/native/pass/maybe-error-flow.0",
   "conformance/native/pass/match-fallback.0",
-  "conformance/native/pass/std-mem-collections.0",
   "conformance/check/pass/call-resolution-inspection.0",
   "conformance/check/pass/checker-type-forms.0",
 ];

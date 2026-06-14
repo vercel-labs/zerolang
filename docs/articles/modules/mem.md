@@ -1,14 +1,7 @@
 ## When To Use std.mem
 
-In Zerolang, use `std.mem` for spans, copy/fill, fixed-buffer allocators, explicit byte
-buffers, and memory-budget-visible collection foundations.
-
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
+In Zerolang, use `std.mem` for spans, copy/fill, fixed-buffer allocators, explicit
+byte buffers, and memory-budget-visible collection foundations.
 
 Runnable today:
 
@@ -43,8 +36,18 @@ types: `Bool`, `u8`, `u16`, `usize`, `i32`, `u32`, `i64`, and `u64`.
 | `std.mem.capacity(arena)` | `usize` | Reports fixed-buffer capacity. |
 | `std.mem.vec(storage)` | `Vec` | Monomorphic byte vector over caller-owned mutable storage. |
 | `std.mem.vecPush(&mut vec, value)` | `Bool` | Appends one byte when capacity remains; returns `false` instead of growing implicitly. |
+| `std.mem.vecBytes(&vec)` | `Span<u8>` | Borrows the live bytes in the vector without copying. |
+| `std.mem.vecGet(&vec, index)` | `Maybe<u8>` | Reads one live vector byte when `index` is in bounds. |
+| `std.mem.vecSet(&mut vec, index, value)` | `Bool` | Replaces one live vector byte when `index` is in bounds; returns `false` out of bounds. |
+| `std.mem.vecClear(&mut vec)` | `usize` | Resets live length to zero and keeps caller-owned storage available for reuse. |
+| `std.mem.vecPop(&mut vec)` | `Bool` | Removes one live byte when the vector is non-empty. |
+| `std.mem.vecTruncate(&mut vec, len)` | `usize` | Shrinks the live length to at most `len` and returns the resulting length. |
+| `std.mem.vecRemoveSwap(&mut vec, index)` | `Bool` | Removes one live byte by replacing it with the last live byte. Returns `false` out of bounds. |
 | `std.mem.vecLen(&vec)` | `usize` | Reports current vector length. |
 | `std.mem.vecCapacity(&vec)` | `usize` | Reports caller-provided vector capacity. |
+| `std.mem.vecRemaining(&vec)` | `usize` | Reports remaining byte-vector capacity. Returns `0` when the vector is full. |
+| `std.mem.vecIsEmpty(&vec)` | `Bool` | Reports whether the vector has no live bytes. |
+| `std.mem.vecIsFull(&vec)` | `Bool` | Reports whether the vector has no remaining capacity. |
 
 ## Example
 

@@ -69,6 +69,13 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_VEC_PUSH: return "IR_VALUE_VEC_PUSH";
     case IR_VALUE_VEC_LEN: return "IR_VALUE_VEC_LEN";
     case IR_VALUE_VEC_CAPACITY: return "IR_VALUE_VEC_CAPACITY";
+    case IR_VALUE_VEC_BYTES: return "IR_VALUE_VEC_BYTES";
+    case IR_VALUE_VEC_GET: return "IR_VALUE_VEC_GET";
+    case IR_VALUE_VEC_SET: return "IR_VALUE_VEC_SET";
+    case IR_VALUE_VEC_CLEAR: return "IR_VALUE_VEC_CLEAR";
+    case IR_VALUE_VEC_POP: return "IR_VALUE_VEC_POP";
+    case IR_VALUE_VEC_TRUNCATE: return "IR_VALUE_VEC_TRUNCATE";
+    case IR_VALUE_VEC_REMOVE_SWAP: return "IR_VALUE_VEC_REMOVE_SWAP";
     case IR_VALUE_ALLOC_BYTES: return "IR_VALUE_ALLOC_BYTES";
     case IR_VALUE_MAYBE_HAS: return "IR_VALUE_MAYBE_HAS";
     case IR_VALUE_MAYBE_VALUE: return "IR_VALUE_MAYBE_VALUE";

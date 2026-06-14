@@ -598,8 +598,24 @@ static bool macho_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const
     macho_emit_load_local_w(text, fun, reg, view->local_index, 8, frame_size);
     return true;
   }
+  if (view->kind == IR_VALUE_VEC_BYTES && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_VEC) {
+    macho_emit_load_local_w(text, fun, reg, view->local_index, 8, frame_size);
+    return true;
+  }
   if (view->kind == IR_VALUE_MAYBE_VALUE && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) {
     macho_emit_load_local_w(text, fun, reg, view->local_index, 16, frame_size);
+    return true;
+  }
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && view->local_index < fun->local_len) {
+    const IrLocal *record_local = &fun->locals[view->local_index];
+    if (record_local->is_record_ref) {
+      unsigned base = reg == 10 ? 11 : 10;
+      macho_emit_load_local_x(text, fun, base, view->local_index, 0, frame_size);
+      macho_emit_load_field_indirect(text, reg, base, view->field_offset + 8, IR_TYPE_U32);
+      return true;
+    }
+    if (!record_local->is_record) return macho_diag_at(diag, "direct AArch64 Mach-O byte-view field load requires record local", view->line, view->column, "non-record local");
+    macho_emit_load_field(text, fun, reg, view->local_index, view->field_offset + 8, IR_TYPE_U32, frame_size);
     return true;
   }
   if ((view->kind == IR_VALUE_CALL || view->kind == IR_VALUE_STR_RUNTIME) && view->type == IR_TYPE_BYTE_VIEW) {
@@ -643,8 +659,24 @@ static bool macho_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const
     macho_emit_load_local_x(text, fun, reg, view->local_index, 0, frame_size);
     return true;
   }
+  if (view->kind == IR_VALUE_VEC_BYTES && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_VEC) {
+    macho_emit_load_local_x(text, fun, reg, view->local_index, 0, frame_size);
+    return true;
+  }
   if (view->kind == IR_VALUE_MAYBE_VALUE && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) {
     macho_emit_load_local_x(text, fun, reg, view->local_index, 8, frame_size);
+    return true;
+  }
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && view->local_index < fun->local_len) {
+    const IrLocal *record_local = &fun->locals[view->local_index];
+    if (record_local->is_record_ref) {
+      unsigned base = reg == 10 ? 11 : 10;
+      macho_emit_load_local_x(text, fun, base, view->local_index, 0, frame_size);
+      macho_emit_load_field_indirect(text, reg, base, view->field_offset, IR_TYPE_U64);
+      return true;
+    }
+    if (!record_local->is_record) return macho_diag_at(diag, "direct AArch64 Mach-O byte-view field load requires record local", view->line, view->column, "non-record local");
+    macho_emit_load_field(text, fun, reg, view->local_index, view->field_offset, IR_TYPE_U64, frame_size);
     return true;
   }
   if ((view->kind == IR_VALUE_CALL || view->kind == IR_VALUE_STR_RUNTIME) && view->type == IR_TYPE_BYTE_VIEW) {
@@ -1829,6 +1861,104 @@ static bool macho_emit_vec_push_to_reg_at(ZBuf *text, const IrFunction *fun, con
   return true;
 }
 
+static bool macho_emit_vec_clear_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec clear requires a Vec local", value->line, value->column, "invalid Vec local");
+  z_aarch64_emit_movz_w(text, reg, 0);
+  macho_emit_store_local_w(text, fun, reg, value->local_index, 8, frame_size);
+  return true;
+}
+
+static bool macho_emit_vec_pop_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec pop requires a Vec local", value->line, value->column, "invalid Vec local");
+  macho_emit_load_local_w(text, fun, 8, value->local_index, 8, frame_size);
+  size_t empty_patch = z_aarch64_emit_cbz_w_placeholder(text, 8);
+  z_aarch64_emit_sub_w_imm(text, 8, 8, 1);
+  macho_emit_store_local_w(text, fun, 8, value->local_index, 8, frame_size);
+  z_aarch64_emit_movz_w(text, reg, 1);
+  size_t end_patch = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, empty_patch, text->len);
+  z_aarch64_emit_movz_w(text, reg, 0);
+  z_aarch64_patch_branch26(text, end_patch, text->len);
+  return true;
+}
+
+static bool macho_emit_vec_truncate_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec truncate requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec truncate requires a length", value->line, value->column, "missing Vec length");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t requested_patch = z_aarch64_emit_b_cond_placeholder(text, 3);
+  z_aarch64_emit_mov_w(text, 8, 9);
+  z_aarch64_patch_cond19(text, requested_patch, text->len);
+  macho_emit_store_local_w(text, fun, 8, value->local_index, 8, frame_size);
+  if (reg != 8) z_aarch64_emit_mov_w(text, reg, 8);
+  return true;
+}
+
+static bool macho_emit_vec_remove_swap_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec swap-remove requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec swap-remove requires an index", value->line, value->column, "missing Vec index");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t ok_patch = z_aarch64_emit_b_cond_placeholder(text, 3);
+  z_aarch64_emit_movz_w(text, reg, 0);
+  size_t end_patch = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, ok_patch, text->len);
+  z_aarch64_emit_sub_w_imm(text, 9, 9, 1);
+  macho_emit_load_local_x(text, fun, 10, value->local_index, 0, frame_size);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 9);
+  z_aarch64_emit_load_b_imm(text, 12, 11, 0);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 8);
+  z_aarch64_emit_store_b_imm(text, 12, 11, 0);
+  macho_emit_store_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_movz_w(text, reg, 1);
+  z_aarch64_patch_branch26(text, end_patch, text->len);
+  return true;
+}
+
+static bool macho_emit_vec_get_to_maybe_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec get requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec get requires an index", value->line, value->column, "missing Vec index");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t ok_patch = z_aarch64_emit_b_cond_placeholder(text, 3); // unsigned lower
+  z_aarch64_emit_movz_w(text, 0, 0);
+  z_aarch64_emit_movz_x(text, 1, 0);
+  size_t end_patch = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, ok_patch, text->len);
+  macho_emit_load_local_x(text, fun, 9, value->local_index, 0, frame_size);
+  z_aarch64_emit_add_x_reg(text, 9, 9, 8);
+  z_aarch64_emit_load_b_imm(text, 1, 9, 0);
+  z_aarch64_emit_movz_w(text, 0, 1);
+  z_aarch64_patch_branch26(text, end_patch, text->len);
+  return true;
+}
+
+static bool macho_emit_vec_set_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec set requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec set requires an index", value->line, value->column, "missing Vec index");
+  if (!value->right) return macho_diag_at(diag, "direct AArch64 Mach-O Vec set requires a value", value->line, value->column, "missing Vec value");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t ok_patch = z_aarch64_emit_b_cond_placeholder(text, 3); // unsigned lower
+  z_aarch64_emit_movz_w(text, reg, 0);
+  size_t end_patch = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, ok_patch, text->len);
+  macho_emit_load_local_x(text, fun, 9, value->local_index, 0, frame_size);
+  z_aarch64_emit_add_x_reg(text, 9, 9, 8);
+  if (!macho_emit_store_scratch(text, 9, IR_TYPE_U64, scratch_slot, value, diag)) return false;
+  if (!macho_emit_value_to_reg_at(text, fun, value->right, 10, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 9, IR_TYPE_U64, scratch_slot, value, diag)) return false;
+  z_aarch64_emit_store_b_imm(text, 10, 9, 0);
+  z_aarch64_emit_movz_w(text, reg, 1);
+  z_aarch64_patch_branch26(text, end_patch, text->len);
+  return true;
+}
+
 static bool macho_emit_check_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value->left || value->left->type != IR_TYPE_I64) return macho_diag_at(diag, "direct AArch64 Mach-O check requires a packed fallible call result", value->line, value->column, "non-fallible value");
   if (!macho_emit_value_to_reg_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
@@ -1944,6 +2074,19 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return true;
     case IR_VALUE_VEC_PUSH:
       return macho_emit_vec_push_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_GET:
+      (void)reg;
+      return macho_emit_vec_get_to_maybe_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_SET:
+      return macho_emit_vec_set_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_CLEAR:
+      return macho_emit_vec_clear_to_reg_at(text, fun, value, reg, frame_size, diag);
+    case IR_VALUE_VEC_POP:
+      return macho_emit_vec_pop_to_reg_at(text, fun, value, reg, frame_size, diag);
+    case IR_VALUE_VEC_TRUNCATE:
+      return macho_emit_vec_truncate_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_REMOVE_SWAP:
+      return macho_emit_vec_remove_swap_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_RAND_NEXT_U32:
       if (value->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O std.rand.nextU32 local is out of range", value->line, value->column, "invalid RandSource");
       macho_emit_load_local_w(text, fun, 8, value->local_index, 0, frame_size);
@@ -2312,7 +2455,8 @@ static bool macho_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun,
     macho_emit_store_local_x(text, fun, 1, instr->local_index, 8, frame_size);
     return true;
   }
-  if (instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
+  if (instr->value->kind == IR_VALUE_VEC_GET ||
+      instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
@@ -2395,7 +2539,8 @@ static bool macho_emit_return_maybe_scalar(ZBuf *text, const IrFunction *fun, co
   if (instr->value->kind == IR_VALUE_CALL && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     return macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag);
   }
-  if (instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
+  if (instr->value->kind == IR_VALUE_VEC_GET ||
+      instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
@@ -2473,24 +2618,41 @@ static bool macho_emit_return_instr(ZBuf *text, const IrFunction *fun, const IrI
   return true;
 }
 
+static bool macho_emit_field_store_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, MachOEmitContext *ctx, ZDiag *diag) {
+  if (instr->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O field store record is out of range", instr->line, instr->column, "invalid record local");
+  const IrLocal *record_local = &fun->locals[instr->local_index];
+  if (record_local->is_record_ref) {
+    if (instr->value && instr->value->type == IR_TYPE_BYTE_VIEW) {
+      if (!macho_emit_byte_view_pair(text, fun, instr->value, 8, 9, frame_size, ctx, diag)) return false;
+      macho_emit_load_local_x(text, fun, 10, instr->local_index, 0, frame_size);
+      macho_emit_store_field_indirect(text, 8, 10, instr->field_offset, IR_TYPE_U64);
+      macho_emit_store_field_indirect(text, 9, 10, instr->field_offset + 8, IR_TYPE_U32);
+      return true;
+    }
+    if (!macho_emit_value_to_reg(text, fun, instr->value, 8, frame_size, ctx, diag)) return false;
+    macho_emit_load_local_x(text, fun, 10, instr->local_index, 0, frame_size);
+    macho_emit_store_field_indirect(text, 8, 10, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32);
+    return true;
+  }
+  if (!record_local->is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
+  if (instr->value && instr->value->type == IR_TYPE_BYTE_VIEW) {
+    if (!macho_emit_byte_view_pair(text, fun, instr->value, 8, 9, frame_size, ctx, diag)) return false;
+    macho_emit_store_field(text, fun, 8, instr->local_index, instr->field_offset, IR_TYPE_U64, frame_size);
+    macho_emit_store_field(text, fun, 9, instr->local_index, instr->field_offset + 8, IR_TYPE_U32, frame_size);
+    return true;
+  }
+  if (!macho_emit_value_to_reg(text, fun, instr->value, 8, frame_size, ctx, diag)) return false;
+  macho_emit_store_field(text, fun, 8, instr->local_index, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32, frame_size);
+  return true;
+}
+
 static bool macho_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, bool restore_process_args, MachOEmitContext *ctx, ZDiag *diag) {
   if (instr->kind == IR_INSTR_WORLD_WRITE) {
     return macho_emit_world_write(text, fun, instr, frame_size, ctx, diag);
   }
   if (instr->kind == IR_INSTR_LOCAL_SET) return macho_emit_local_set(text, fun, instr, frame_size, ctx, diag);
   if (instr->kind == IR_INSTR_FIELD_STORE) {
-    if (instr->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O field store record is out of range", instr->line, instr->column, "invalid record local");
-    const IrLocal *record_local = &fun->locals[instr->local_index];
-    if (record_local->is_record_ref) {
-      if (!macho_emit_value_to_reg(text, fun, instr->value, 8, frame_size, ctx, diag)) return false;
-      macho_emit_load_local_x(text, fun, 10, instr->local_index, 0, frame_size);
-      macho_emit_store_field_indirect(text, 8, 10, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32);
-      return true;
-    }
-    if (!record_local->is_record) return macho_diag_at(diag, "direct AArch64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
-    if (!macho_emit_value_to_reg(text, fun, instr->value, 8, frame_size, ctx, diag)) return false;
-    macho_emit_store_field(text, fun, 8, instr->local_index, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32, frame_size);
-    return true;
+    return macho_emit_field_store_instr(text, fun, instr, frame_size, ctx, diag);
   }
   if (instr->kind == IR_INSTR_INDEX_STORE) {
     if (instr->array_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O indexed store array is out of range", instr->line, instr->column, "invalid array local");

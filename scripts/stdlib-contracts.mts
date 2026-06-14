@@ -124,6 +124,7 @@ const stdSigPath = "native/zero-c/src/std_sig.c";
 const stdSourcePath = "native/zero-c/src/std_source.c";
 const embeddedStdlibGraphPath = "native/zero-c/src/embedded_stdlib_graph.inc";
 const fixtureRoots = ["examples", "conformance", "benchmarks/rosetta"];
+const generatedFixtureFiles = ["conformance/run.mjs"];
 
 function cBlock(text: string, marker: string): string {
   const start = text.indexOf(marker);
@@ -143,11 +144,12 @@ function cBlock(text: string, marker: string): string {
 }
 
 function parseCStringArray(raw: string): Array<string | null> {
-  return raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0)
-    .map((value) => value === "NULL" ? null : value.replace(/^"|"$/g, ""));
+  const values: Array<string | null> = [];
+  const tokenPattern = /"((?:\\.|[^"\\])*)"|NULL/g;
+  for (const match of raw.matchAll(tokenPattern)) {
+    values.push(match[0] === "NULL" ? null : match[1].replace(/\\"/g, "\"").replace(/\\\\/g, "\\"));
+  }
+  return values;
 }
 
 function duplicateValues(values: string[]): string[] {
@@ -213,7 +215,7 @@ function parseSkillSignatures(text: string): Map<string, StdSkillSignature> {
       const argText = signatureMatch[2].trim();
       const argTypes = argText.length === 0
         ? []
-        : argText.split(/\s*,\s*/).map((arg) => {
+        : splitTopLevelCommaList(argText).map((arg) => {
             const colon = arg.indexOf(":");
             return (colon >= 0 ? arg.slice(colon + 1) : arg).trim();
           });
@@ -227,6 +229,27 @@ function parseSkillSignatures(text: string): Map<string, StdSkillSignature> {
     }
   }
   return signatures;
+}
+
+function splitTopLevelCommaList(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index++) {
+    const ch = text[index];
+    if (ch === "<" || ch === "(" || ch === "[") {
+      depth++;
+    } else if (ch === ">" || ch === ")" || ch === "]") {
+      if (depth > 0) depth--;
+    } else if (ch === "," && depth === 0) {
+      const part = text.slice(start, index).trim();
+      if (part.length > 0) parts.push(part);
+      start = index + 1;
+    }
+  }
+  const tail = text.slice(start).trim();
+  if (tail.length > 0) parts.push(tail);
+  return parts;
 }
 
 function parseStdSourceModules(text: string): StdSourceModule[] {
@@ -424,8 +447,10 @@ const skillSignatures = parseSkillSignatures(skill);
 const modules = [...new Set(helpers.map((helper) => helper.module))].sort((a, b) => a.localeCompare(b));
 const sourceModules = parseStdSourceModules(stdSource);
 const sourceCalls = parseStdSourceCalls(stdSource);
-const fixtureFiles = (await Promise.all(fixtureRoots.map((root) => sourceFilesUnder(root))))
-  .flat()
+const fixtureFiles = [
+  ...(await Promise.all(fixtureRoots.map((root) => sourceFilesUnder(root)))).flat(),
+  ...generatedFixtureFiles.filter((path) => existsSync(path)),
+]
   .sort((a, b) => a.localeCompare(b));
 const fixtureTexts = await Promise.all(fixtureFiles.map(async (path) => ({
   path,
@@ -474,8 +499,8 @@ for (const helper of helpers) {
   pushIf(!helperNamePattern.test(helper.name), failures, `${helper.name}: helper name must be std.<module>.<name>`);
   pushIf(!moduleNamePattern.test(helper.module), failures, `${helper.name}: helper module must be std.<module>`);
   pushIf(helper.returnType.length === 0, failures, `${helper.name}: return type is empty`);
-  pushIf(helper.argCount < 0 || helper.argCount > 4, failures, `${helper.name}: arg count ${helper.argCount} exceeds contract bounds`);
-  pushIf(helper.argTypes.length > 4, failures, `${helper.name}: arg type list exceeds contract bounds`);
+  pushIf(helper.argCount < 0 || helper.argCount > 5, failures, `${helper.name}: arg count ${helper.argCount} exceeds contract bounds`);
+  pushIf(helper.argTypes.length > 5, failures, `${helper.name}: arg type list exceeds contract bounds`);
   for (let index = 0; index < helper.argCount; index++) {
     pushIf(helper.argTypes[index] === null || helper.argTypes[index] === undefined, failures, `${helper.name}: arg ${index + 1} is missing from std_sig.c`);
   }

@@ -1,16 +1,35 @@
 pub fn main(world: World) -> Void raises {
-    let _page: PageAlloc = std.mem.pageAlloc()
-    let _general: GeneralAlloc = std.mem.generalAlloc()
     var storage: [4]u8 = [0, 0, 0, 0]
     var vec: Vec = std.mem.vec(storage)
+    let emptyBeforePush: Bool = std.mem.vecIsEmpty(&vec)
     let pushedA: Bool = std.mem.vecPush(&mut vec, 65_u8)
     let pushedB: Bool = std.mem.vecPush(&mut vec, 66_u8)
+    let setSecond: Bool = std.mem.vecSet(&mut vec, 1_usize, 67_u8)
+    let setMissing: Bool = std.mem.vecSet(&mut vec, 9_usize, 68_u8)
+    let remaining: usize = std.mem.vecRemaining(&vec)
+    let fullAfterTwo: Bool = std.mem.vecIsFull(&vec)
+    let firstRead: Maybe<u8> = std.mem.vecGet(&vec, 0_usize)
+    let secondRead: Maybe<u8> = std.mem.vecGet(&vec, 1_usize)
+    let missingRead: Maybe<u8> = std.mem.vecGet(&vec, 9_usize)
+    let removedFirst: Bool = std.mem.vecRemoveSwap(&mut vec, 0_usize)
+    let removeMissing: Bool = std.mem.vecRemoveSwap(&mut vec, 9_usize)
+    let firstAfterRemove: Maybe<u8> = std.mem.vecGet(&vec, 0_usize)
+    let pushedC: Bool = std.mem.vecPush(&mut vec, 69_u8)
+    let bytesBeforeTruncate: Span<u8> = std.mem.vecBytes(&vec)
+    let truncatedHigh: usize = std.mem.vecTruncate(&mut vec, 4_usize)
+    let truncated: usize = std.mem.vecTruncate(&mut vec, 1_usize)
+    let secondAfterTruncate: Maybe<u8> = std.mem.vecGet(&vec, 1_usize)
+    let bytesBeforePop: Span<u8> = std.mem.vecBytes(&vec)
+    let popped: Bool = std.mem.vecPop(&mut vec)
+    let bytesAfterPop: Span<u8> = std.mem.vecBytes(&vec)
+    let cleared: usize = std.mem.vecClear(&mut vec)
+    let emptyAfterClear: Bool = std.mem.vecIsEmpty(&vec)
     var values: [4]u8 = [0, 0, 0, 0]
     var len: usize = 0
     len = std.collections.push(values, len, 65_u8)
     len = std.collections.push(values, len, 66_u8)
     let live: Span<u8> = std.collections.view(values, len)
-    if pushedA && pushedB && std.mem.vecLen(&vec) == 2 && std.mem.vecCapacity(&vec) == 4 && storage[0] == 65_u8 && storage[1] == 66_u8 && std.mem.len(live) == 2 && std.collections.contains(values, len, 66_u8) {
+    if emptyBeforePush && pushedA && pushedB && setSecond && !setMissing && std.mem.vecLen(&vec) == 0 && std.mem.vecCapacity(&vec) == 4 && remaining == 2 && !fullAfterTwo && firstRead.has && firstRead.value == 65_u8 && secondRead.has && secondRead.value == 67_u8 && !missingRead.has && removedFirst && !removeMissing && firstAfterRemove.has && firstAfterRemove.value == 67_u8 && pushedC && truncatedHigh == 2 && truncated == 1 && !secondAfterTruncate.has && popped && cleared == 0 && emptyAfterClear && std.mem.len(bytesBeforeTruncate) == 2 && std.mem.len(bytesBeforePop) == 1 && std.mem.len(bytesAfterPop) == 0 && bytesBeforeTruncate[0] == 67_u8 && bytesBeforeTruncate[1] == 69_u8 && bytesBeforePop[0] == 67_u8 && storage[0] == 67_u8 && storage[1] == 69_u8 && std.mem.len(live) == 2 && std.collections.remaining(values, len) == 2 && !std.collections.isFull(values, len) && std.collections.contains(values, len, 66_u8) {
         check world.out.write("std mem collections ok\n")
     }
 }

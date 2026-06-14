@@ -96,8 +96,11 @@ static bool build_array_byte_view_has_storage(const IrFunction *fun, const IrVal
 static bool build_aarch64_byte_view_ptr(const ZBuildability *ctx, const IrFunction *fun, const IrValue *view, ZDiag *diag) {
   if (!view) return z_build_diag(ctx, diag, "direct AArch64 byte view is missing", 1, 1, "missing byte view");
   if (view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
+  if (view->kind == IR_VALUE_VEC_BYTES && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_VEC) return true;
   if (view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && fun && view->local_index < fun->local_len &&
+      (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW &&
       (ctx->backend == Z_DIRECT_BACKEND_ELF_AARCH64 || ctx->backend == Z_DIRECT_BACKEND_COFF_AARCH64)) return true;
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && fun && view->array_index < fun->local_len) {
@@ -125,8 +128,11 @@ bool z_build_check_aarch64_byte_view_len(const ZBuildability *ctx, const IrFunct
     return true;
   }
   if (view->kind == IR_VALUE_LOCAL && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_BYTE_VIEW) return true;
+  if (view->kind == IR_VALUE_VEC_BYTES && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_VEC) return true;
   if (view->kind == IR_VALUE_MAYBE_VALUE && fun && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && fun && view->local_index < fun->local_len &&
+      (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW &&
       (ctx->backend == Z_DIRECT_BACKEND_ELF_AARCH64 || ctx->backend == Z_DIRECT_BACKEND_COFF_AARCH64)) return true;
   if (view->kind == IR_VALUE_BYTE_SLICE) {
@@ -363,7 +369,8 @@ static bool build_kind_is_fmt_buffer_use(IrValueKind kind) {
 }
 
 static bool build_kind_is_skip_left_view(IrValueKind kind) {
-  return kind == IR_VALUE_BYTE_VIEW_LEN || kind == IR_VALUE_BYTE_VIEW_REMAINING || kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD;
+  return kind == IR_VALUE_BYTE_VIEW_LEN || kind == IR_VALUE_BYTE_VIEW_REMAINING || kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD ||
+         kind == IR_VALUE_VEC_BYTES;
 }
 
 static bool build_check_linear_byte_view_target(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, BuildByteViewCheck check_view, BuildByteViewCheck check_len, bool include_json_parse, bool include_alloc_skip_left, bool *skip_left, ZDiag *diag) {

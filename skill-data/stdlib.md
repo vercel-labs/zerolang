@@ -5,14 +5,7 @@ description: Use Zero standard library modules and target-gated capabilities.
 
 # Zero Standard Library
 
-Use this when an agent needs common library calls, memory helpers, hosted I/O, or target-capability guidance.
-
-Stdlib modules are graph-backed. The checked-in `std/*.graph` files are binary
-graph stores used by the compiler path; sibling `std/*.0` files are
-human-readable projections for review and repair. Do not treat the projections
-as the stdlib compile source, and do not browse or edit them as the first step
-when an agent needs a helper. Load this skill, inspect the target package graph
-with `zero query` or `zero inspect`, then patch the user's graph-backed program.
+Use this for common library calls, memory helpers, hosted I/O, or target-capability guidance.
 
 ## Import
 
@@ -27,7 +20,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 ## Target-Neutral Helpers
 
 - `std.mem`: spans, byte copy/fill, non-owned scalar item copy/fill/search, scalar item slicing, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
-- `std.collections`: fixed-capacity push, append, live-prefix view, count, contains, swap-remove, and move-to-front helpers over caller-owned storage plus explicit lengths.
+- `std.collections`: fixed-capacity push/pop, deque front/back operations, first/last access, indexed insert/replace/remove, unique insert, append, clear, truncate, fill, reverse, rotate, live-prefix and set/map views, `FixedSet<T>`, `FixedDeque<T>`, `FixedRingBuffer<T>`, and `FixedMap<K,V>` storage wrappers, set/map/ring-buffer capacity state, count, contains, value removal, swap, swap-remove, move-to-front, and parallel key/value map helpers over caller-owned storage plus explicit lengths.
 - `std.search`: generic scalar index search plus typed lower-bound and binary-search helpers.
 - `std.sort`: in-place insertion sort and sortedness checks for `i32`, `u32`, and `usize` storage.
 - `std.ascii`: ASCII byte predicates, case conversion, and digit value helpers.
@@ -121,8 +114,55 @@ pub fn main() -> Void {
     var len: usize = 0
     len = std.collections.push(values, len, 3)
     len = std.collections.push(values, len, 1)
+    len = std.collections.setInsert(values, len, 5)
+    len = std.collections.insertAt(values, len, 1_usize, 4)
+    let replaced: Bool = std.collections.replaceAt(values, len, 1_usize, 9)
+    let swapped: Bool = std.collections.swapAt(values, len, 0_usize, 1_usize)
+    let reversed: Bool = std.collections.reverse(values, len)
+    let filled: Bool = std.collections.fill(values, 2_usize, 7)
+    let rotated_left: Bool = std.collections.rotateLeft(values, len, 1_usize)
+    let rotated_right: Bool = std.collections.rotateRight(values, len, 1_usize)
+    len = std.collections.removeAt(values, len, 2_usize)
+    let last: Maybe<i32> = std.collections.last(values, len)
+    len = std.collections.dequePushFront(values, len, 2)
+    let front: Maybe<i32> = std.collections.dequeFront(values, len)
+    len = std.collections.dequePopFront(values, len)
+    let back_len: usize = std.collections.dequePopBack(values, len)
+    len = std.collections.truncate(values, len, 3)
+    let set_live: Span<i32> = std.collections.setView(values, len)
+    let set_remaining: usize = std.collections.setRemaining(values, len)
     let live: Span<i32> = std.collections.view(values, len)
-    expect std.collections.contains(values, len, 3) && std.mem.len(live) == 2
+    var fixed_storage: [4]i32 = [1, 2, 0, 0]
+    var fixed_set: FixedSet<i32> = std.collections.fixedSet(fixed_storage, 2_usize)
+    let fixed_inserted: Bool = std.collections.fixedSetInsert(&mut fixed_set, 3)
+    let fixed_removed: Bool = std.collections.fixedSetRemove(&mut fixed_set, 1)
+    let fixed_live: Span<i32> = std.collections.fixedSetView(&fixed_set)
+    var fixed_deque_storage: [4]i32 = [0, 0, 0, 0]
+    var fixed_deque: FixedDeque<i32> = std.collections.fixedDeque(fixed_deque_storage, 0_usize)
+    let fixed_deque_back_pushed: Bool = std.collections.fixedDequePushBack(&mut fixed_deque, 2)
+    let fixed_deque_front_pushed: Bool = std.collections.fixedDequePushFront(&mut fixed_deque, 1)
+    let fixed_deque_front: Maybe<i32> = std.collections.fixedDequeFront(&fixed_deque)
+    let fixed_deque_popped: Maybe<i32> = std.collections.fixedDequePopBack(&mut fixed_deque)
+    var fixed_ring_storage: [4]i32 = [0, 0, 0, 0]
+    var fixed_ring: FixedRingBuffer<i32> = std.collections.fixedRingBuffer(fixed_ring_storage, 0_usize, 0_usize)
+    let fixed_ring_back_pushed: Bool = std.collections.fixedRingBufferPushBack(&mut fixed_ring, 2)
+    let fixed_ring_front_pushed: Bool = std.collections.fixedRingBufferPushFront(&mut fixed_ring, 1)
+    let fixed_ring_front: Maybe<i32> = std.collections.fixedRingBufferFront(&fixed_ring)
+    let fixed_ring_popped: Maybe<i32> = std.collections.fixedRingBufferPopBack(&mut fixed_ring)
+    var fixed_keys: [3]u8 = [1_u8, 2_u8, 0_u8]
+    var fixed_scores: [3]u16 = [10_u16, 20_u16, 0_u16]
+    var fixed_map: FixedMap<u8, u16> = std.collections.fixedMap(fixed_keys, fixed_scores, 2_usize)
+    let fixed_map_added: Bool = std.collections.fixedMapPut(&mut fixed_map, 3_u8, 30_u16)
+    let fixed_map_score: Maybe<u16> = std.collections.fixedMapGet(&fixed_map, 3_u8)
+    var keys: [3]u8 = [1_u8, 2_u8, 0_u8]
+    var scores: [3]u16 = [10_u16, 20_u16, 0_u16]
+    var map_len: usize = 2
+    map_len = std.collections.mapPut(keys, scores, map_len, 3_u8, 30_u16)
+    let has_score: Bool = std.collections.mapContains(keys, map_len, 3_u8)
+    let score: Maybe<u16> = std.collections.mapGet(keys, scores, map_len, 3_u8)
+    let live_keys: Span<u8> = std.collections.mapKeys(keys, map_len)
+    let live_scores: Span<u16> = std.collections.mapValues(keys, scores, map_len)
+    expect replaced && swapped && reversed && filled && rotated_left && rotated_right && std.collections.clear(values, len) == 0 && std.collections.setClear(values, len) == 0 && std.collections.pop(values, len) == 2 && last.has && last.value == 5 && front.has && front.value == 2 && back_len == 2 && std.collections.setContains(values, len, 5) && set_remaining == 1 && std.mem.len(set_live) == 3 && std.mem.len(live) == 3 && fixed_inserted && fixed_removed && std.mem.len(fixed_live) == 2 && std.collections.fixedSetRemaining(&fixed_set) == 2 && std.collections.fixedSetLen(&fixed_set) == 2 && fixed_deque_back_pushed && fixed_deque_front_pushed && fixed_deque_front.has && fixed_deque_front.value == 1 && fixed_deque_popped.has && fixed_deque_popped.value == 2 && fixed_map_added && fixed_map_score.has && fixed_map_score.value == 30_u16 && map_len == 3 && std.collections.mapRemaining(keys, scores, map_len) == 0 && std.collections.mapIsFull(keys, scores, map_len) && std.collections.mapClear(keys, scores, map_len) == 0 && has_score && score.has && score.value == 30_u16 && std.mem.len(live_keys) == 3 && std.mem.len(live_scores) == 3
 }
 ```
 
@@ -323,11 +363,103 @@ urlEncode(arg0: MutSpan<u8>, arg1: String) -> Maybe<String>
 
 ```text
 append(storage: MutSpan<T>, len: usize, values: Span<T>) -> usize
+clear(storage: Span<T>, len: usize) -> usize
 contains(storage: Span<T>, len: usize, value: T) -> Bool
 count(storage: Span<T>, len: usize, value: T) -> usize
+dequeBack(storage: Span<T>, len: usize) -> Maybe<T>
+dequeFront(storage: Span<T>, len: usize) -> Maybe<T>
+dequePopBack(storage: Span<T>, len: usize) -> usize
+dequePopFront(storage: MutSpan<T>, len: usize) -> usize
+dequePushBack(storage: MutSpan<T>, len: usize, value: T) -> usize
+dequePushFront(storage: MutSpan<T>, len: usize, value: T) -> usize
+fill(storage: MutSpan<T>, len: usize, value: T) -> Bool
+first(storage: Span<T>, len: usize) -> Maybe<T>
+fixedDeque(storage: MutSpan<T>, len: usize) -> FixedDeque<T>
+fixedDequeBack(deque: ref<FixedDeque<T>>) -> Maybe<T>
+fixedDequeClear(deque: mutref<FixedDeque<T>>) -> usize
+fixedDequeFront(deque: ref<FixedDeque<T>>) -> Maybe<T>
+fixedDequeIsFull(deque: ref<FixedDeque<T>>) -> Bool
+fixedDequeLen(deque: ref<FixedDeque<T>>) -> usize
+fixedDequePopBack(deque: mutref<FixedDeque<T>>) -> Maybe<T>
+fixedDequePopFront(deque: mutref<FixedDeque<T>>) -> Maybe<T>
+fixedDequePushBack(deque: mutref<FixedDeque<T>>, value: T) -> Bool
+fixedDequePushFront(deque: mutref<FixedDeque<T>>, value: T) -> Bool
+fixedDequeRemaining(deque: ref<FixedDeque<T>>) -> usize
+fixedDequeTruncate(deque: mutref<FixedDeque<T>>, newLen: usize) -> usize
+fixedDequeView(deque: ref<FixedDeque<T>>) -> Span<T>
+fixedRingBuffer(storage: MutSpan<T>, head: usize, len: usize) -> FixedRingBuffer<T>
+fixedRingBufferBack(ring: ref<FixedRingBuffer<T>>) -> Maybe<T>
+fixedRingBufferCapacity(ring: ref<FixedRingBuffer<T>>) -> usize
+fixedRingBufferClear(ring: mutref<FixedRingBuffer<T>>) -> usize
+fixedRingBufferFront(ring: ref<FixedRingBuffer<T>>) -> Maybe<T>
+fixedRingBufferGet(ring: ref<FixedRingBuffer<T>>, index: usize) -> Maybe<T>
+fixedRingBufferIsFull(ring: ref<FixedRingBuffer<T>>) -> Bool
+fixedRingBufferLen(ring: ref<FixedRingBuffer<T>>) -> usize
+fixedRingBufferPopBack(ring: mutref<FixedRingBuffer<T>>) -> Maybe<T>
+fixedRingBufferPopFront(ring: mutref<FixedRingBuffer<T>>) -> Maybe<T>
+fixedRingBufferPushBack(ring: mutref<FixedRingBuffer<T>>, value: T) -> Bool
+fixedRingBufferPushFront(ring: mutref<FixedRingBuffer<T>>, value: T) -> Bool
+fixedRingBufferRemaining(ring: ref<FixedRingBuffer<T>>) -> usize
+fixedRingBufferTruncate(ring: mutref<FixedRingBuffer<T>>, newLen: usize) -> usize
+fixedMap(keys: MutSpan<K>, values: MutSpan<V>, len: usize) -> FixedMap<K,V>
+fixedMapClear(map: mutref<FixedMap<K,V>>) -> usize
+fixedMapContains(map: ref<FixedMap<K,V>>, key: K) -> Bool
+fixedMapGet(map: ref<FixedMap<K,V>>, key: K) -> Maybe<V>
+fixedMapIndex(map: ref<FixedMap<K,V>>, key: K) -> usize
+fixedMapIsFull(map: ref<FixedMap<K,V>>) -> Bool
+fixedMapKeys(map: ref<FixedMap<K,V>>) -> Span<K>
+fixedMapLen(map: ref<FixedMap<K,V>>) -> usize
+fixedMapPut(map: mutref<FixedMap<K,V>>, key: K, value: V) -> Bool
+fixedMapRemaining(map: ref<FixedMap<K,V>>) -> usize
+fixedMapRemove(map: mutref<FixedMap<K,V>>, key: K) -> Bool
+fixedMapTruncate(map: mutref<FixedMap<K,V>>, newLen: usize) -> usize
+fixedMapValues(map: ref<FixedMap<K,V>>) -> Span<V>
+fixedSet(storage: MutSpan<T>, len: usize) -> FixedSet<T>
+fixedSetClear(set: mutref<FixedSet<T>>) -> usize
+fixedSetContains(set: ref<FixedSet<T>>, value: T) -> Bool
+fixedSetInsert(set: mutref<FixedSet<T>>, value: T) -> Bool
+fixedSetIsFull(set: ref<FixedSet<T>>) -> Bool
+fixedSetLen(set: ref<FixedSet<T>>) -> usize
+fixedSetRemaining(set: ref<FixedSet<T>>) -> usize
+fixedSetRemove(set: mutref<FixedSet<T>>, value: T) -> Bool
+fixedSetTruncate(set: mutref<FixedSet<T>>, newLen: usize) -> usize
+fixedSetView(set: ref<FixedSet<T>>) -> Span<T>
+insertAt(storage: MutSpan<T>, len: usize, index: usize, value: T) -> usize
+insertUnique(storage: MutSpan<T>, len: usize, value: T) -> usize
+isFull(storage: Span<T>, len: usize) -> Bool
+last(storage: Span<T>, len: usize) -> Maybe<T>
+mapClear(keys: Span<K>, values: Span<V>, len: usize) -> usize
+mapContains(keys: Span<K>, len: usize, key: K) -> Bool
+mapGet(keys: Span<K>, values: Span<V>, len: usize, key: K) -> Maybe<V>
+mapIndex(keys: Span<K>, len: usize, key: K) -> usize
+mapIsFull(keys: Span<K>, values: Span<V>, len: usize) -> Bool
+mapKeys(keys: Span<K>, len: usize) -> Span<K>
+mapPut(keys: MutSpan<K>, values: MutSpan<V>, len: usize, key: K, value: V) -> usize
+mapRemaining(keys: Span<K>, values: Span<V>, len: usize) -> usize
+mapRemove(keys: MutSpan<K>, values: MutSpan<V>, len: usize, key: K) -> usize
+mapTruncate(keys: Span<K>, values: Span<V>, len: usize, newLen: usize) -> usize
+mapValues(keys: Span<K>, values: Span<V>, len: usize) -> Span<V>
 moveToFront(storage: MutSpan<T>, len: usize, index: usize) -> usize
+pop(storage: Span<T>, len: usize) -> usize
 push(storage: MutSpan<T>, len: usize, value: T) -> usize
+remaining(storage: Span<T>, len: usize) -> usize
+replaceAt(storage: MutSpan<T>, len: usize, index: usize, value: T) -> Bool
+removeAt(storage: MutSpan<T>, len: usize, index: usize) -> usize
+removeValue(storage: MutSpan<T>, len: usize, value: T) -> usize
 removeSwap(storage: MutSpan<T>, len: usize, index: usize) -> usize
+reverse(storage: MutSpan<T>, len: usize) -> Bool
+rotateLeft(storage: MutSpan<T>, len: usize, count: usize) -> Bool
+rotateRight(storage: MutSpan<T>, len: usize, count: usize) -> Bool
+setClear(storage: Span<T>, len: usize) -> usize
+setContains(storage: Span<T>, len: usize, value: T) -> Bool
+setInsert(storage: MutSpan<T>, len: usize, value: T) -> usize
+setIsFull(storage: Span<T>, len: usize) -> Bool
+setRemaining(storage: Span<T>, len: usize) -> usize
+setRemove(storage: MutSpan<T>, len: usize, value: T) -> usize
+setTruncate(storage: Span<T>, len: usize, newLen: usize) -> usize
+setView(storage: Span<T>, len: usize) -> Span<T>
+swapAt(storage: MutSpan<T>, len: usize, left: usize, right: usize) -> Bool
+truncate(storage: Span<T>, len: usize, newLen: usize) -> usize
 view(storage: Span<T>, len: usize) -> Span<T>
 ```
 
@@ -680,8 +812,18 @@ allocBytes(allocator: Alloc, len: usize) -> Maybe<MutSpan<u8>>
 byteBuf(allocator: Alloc, capacity: usize) -> Maybe<owned<ByteBuf>>
 vec(arg0: MutSpan<u8>) -> Vec
 vecPush(arg0: mutref<Vec>, arg1: u8) -> Bool
+vecBytes(arg0: ref<Vec>) -> Span<u8>
+vecGet(arg0: ref<Vec>, arg1: usize) -> Maybe<u8>
+vecSet(arg0: mutref<Vec>, arg1: usize, arg2: u8) -> Bool
+vecClear(arg0: mutref<Vec>) -> usize
+vecPop(arg0: mutref<Vec>) -> Bool
+vecTruncate(arg0: mutref<Vec>, arg1: usize) -> usize
+vecRemoveSwap(arg0: mutref<Vec>, arg1: usize) -> Bool
 vecLen(arg0: ref<Vec>) -> usize
 vecCapacity(arg0: ref<Vec>) -> usize
+vecRemaining(arg0: ref<Vec>) -> usize
+vecIsEmpty(arg0: ref<Vec>) -> Bool
+vecIsFull(arg0: ref<Vec>) -> Bool
 bufBytes(arg0: ref<ByteBuf>) -> MutSpan<u8>
 bufLen(arg0: ref<ByteBuf>) -> usize
 reset(arg0: mutref<FixedBufAlloc>) -> Void

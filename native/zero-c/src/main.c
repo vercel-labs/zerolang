@@ -1343,6 +1343,12 @@ typedef struct {
   size_t capacity_calls;
   size_t vec_count;
   size_t vec_push_calls;
+  size_t vec_set_calls;
+  size_t vec_view_calls;
+  size_t vec_clear_calls;
+  size_t vec_pop_calls;
+  size_t vec_truncate_calls;
+  size_t vec_remove_swap_calls;
   size_t vec_len_calls;
   size_t vec_capacity_calls;
   size_t vec_capacity_bytes;
@@ -1670,9 +1676,17 @@ static void memory_model_collect_expr(const Expr *expr, MemoryScope *scope, Memo
       if (capacity > 0) summary->vec_capacity_bytes += capacity;
       else summary->unknown_capacity_sites++;
     } else if (strcmp(callee, "std.mem.vecPush") == 0) summary->vec_push_calls++;
+    else if (strcmp(callee, "std.mem.vecSet") == 0) summary->vec_set_calls++;
+    else if (strcmp(callee, "std.mem.vecBytes") == 0) summary->vec_view_calls++;
+    else if (strcmp(callee, "std.mem.vecGet") == 0) summary->vec_view_calls++;
+    else if (strcmp(callee, "std.mem.vecClear") == 0) summary->vec_clear_calls++;
+    else if (strcmp(callee, "std.mem.vecPop") == 0) summary->vec_pop_calls++;
+    else if (strcmp(callee, "std.mem.vecTruncate") == 0) summary->vec_truncate_calls++;
+    else if (strcmp(callee, "std.mem.vecRemoveSwap") == 0) summary->vec_remove_swap_calls++;
     else if (strcmp(callee, "std.mem.vecLen") == 0) summary->vec_len_calls++;
     else if (strcmp(callee, "std.mem.vecCapacity") == 0) summary->vec_capacity_calls++;
-    else if (strcmp(callee, "std.collections.push") == 0) {
+    else if (strcmp(callee, "std.collections.push") == 0 ||
+             strcmp(callee, "std.collections.dequePushBack") == 0) {
       summary->collection_push_calls++;
       summary->collection_mutation_calls++;
       memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
@@ -1683,12 +1697,66 @@ static void memory_model_collect_expr(const Expr *expr, MemoryScope *scope, Memo
     } else if (strcmp(callee, "std.collections.view") == 0) {
       summary->collection_view_calls++;
       memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
-    } else if (strcmp(callee, "std.collections.contains") == 0 || strcmp(callee, "std.collections.count") == 0) {
+    } else if (strcmp(callee, "std.collections.setView") == 0 ||
+               strcmp(callee, "std.collections.mapKeys") == 0) {
+      summary->collection_view_calls++;
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
+    } else if (strcmp(callee, "std.collections.contains") == 0 ||
+               strcmp(callee, "std.collections.count") == 0 ||
+               strcmp(callee, "std.collections.clear") == 0 ||
+               strcmp(callee, "std.collections.dequeBack") == 0 ||
+               strcmp(callee, "std.collections.dequeFront") == 0 ||
+               strcmp(callee, "std.collections.dequePopBack") == 0 ||
+               strcmp(callee, "std.collections.first") == 0 ||
+               strcmp(callee, "std.collections.remaining") == 0 ||
+               strcmp(callee, "std.collections.isFull") == 0 ||
+               strcmp(callee, "std.collections.last") == 0 ||
+               strcmp(callee, "std.collections.pop") == 0 ||
+               strcmp(callee, "std.collections.truncate") == 0 ||
+               strcmp(callee, "std.collections.setContains") == 0 ||
+               strcmp(callee, "std.collections.setClear") == 0 ||
+               strcmp(callee, "std.collections.setRemaining") == 0 ||
+               strcmp(callee, "std.collections.setIsFull") == 0 ||
+               strcmp(callee, "std.collections.setTruncate") == 0 ||
+               strcmp(callee, "std.collections.mapContains") == 0 ||
+               strcmp(callee, "std.collections.mapIndex") == 0) {
       summary->collection_query_calls++;
       memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
-    } else if (strcmp(callee, "std.collections.removeSwap") == 0 || strcmp(callee, "std.collections.moveToFront") == 0) {
+    } else if (strcmp(callee, "std.collections.mapGet") == 0 ||
+               strcmp(callee, "std.collections.mapClear") == 0 ||
+               strcmp(callee, "std.collections.mapRemaining") == 0 ||
+               strcmp(callee, "std.collections.mapIsFull") == 0 ||
+               strcmp(callee, "std.collections.mapTruncate") == 0) {
+      summary->collection_query_calls++;
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 1 ? expr->args.items[1] : NULL);
+    } else if (strcmp(callee, "std.collections.mapValues") == 0) {
+      summary->collection_view_calls++;
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 1 ? expr->args.items[1] : NULL);
+    } else if (strcmp(callee, "std.collections.insertUnique") == 0 ||
+               strcmp(callee, "std.collections.insertAt") == 0 ||
+               strcmp(callee, "std.collections.dequePopFront") == 0 ||
+               strcmp(callee, "std.collections.dequePushFront") == 0 ||
+               strcmp(callee, "std.collections.fill") == 0 ||
+               strcmp(callee, "std.collections.replaceAt") == 0 ||
+               strcmp(callee, "std.collections.removeAt") == 0 ||
+               strcmp(callee, "std.collections.removeValue") == 0 ||
+               strcmp(callee, "std.collections.reverse") == 0 ||
+               strcmp(callee, "std.collections.rotateLeft") == 0 ||
+               strcmp(callee, "std.collections.rotateRight") == 0 ||
+               strcmp(callee, "std.collections.setInsert") == 0 ||
+               strcmp(callee, "std.collections.setRemove") == 0 ||
+               strcmp(callee, "std.collections.swapAt") == 0 ||
+               strcmp(callee, "std.collections.removeSwap") == 0 ||
+               strcmp(callee, "std.collections.moveToFront") == 0) {
       summary->collection_mutation_calls++;
       memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
+    } else if (strcmp(callee, "std.collections.mapPut") == 0 ||
+               strcmp(callee, "std.collections.mapRemove") == 0) {
+      summary->collection_mutation_calls++;
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 0 ? expr->args.items[0] : NULL);
+      memory_model_note_fixed_collection_storage(summary, scope, expr->args.len > 1 ? expr->args.items[1] : NULL);
     }
     free(callee);
   }
@@ -1854,12 +1922,54 @@ static void memory_model_note_ir_allocator_storage(MemoryModelSummary *summary, 
 static bool memory_ir_collection_op(const char *name, const char **op) {
   if (op) *op = NULL;
   if (memory_name_has_base(name, "__zero_std_collections_push")) { if (op) *op = "push"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_deque_push_back")) { if (op) *op = "push"; return true; }
   if (memory_name_has_base(name, "__zero_std_collections_append")) { if (op) *op = "append"; return true; }
   if (memory_name_has_base(name, "__zero_std_collections_view")) { if (op) *op = "view"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_view")) { if (op) *op = "view"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_keys")) { if (op) *op = "view"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_values")) { if (op) *op = "map-view"; return true; }
   if (memory_name_has_base(name, "__zero_std_collections_contains")) { if (op) *op = "query"; return true; }
   if (memory_name_has_base(name, "__zero_std_collections_count")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_clear")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_deque_back")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_deque_front")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_deque_pop_back")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_first")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_remaining")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_is_full")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_last")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_pop")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_truncate")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_clear")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_contains")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_remaining")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_is_full")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_truncate")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_contains")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_index")) { if (op) *op = "query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_clear")) { if (op) *op = "map-query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_get")) { if (op) *op = "map-query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_remaining")) { if (op) *op = "map-query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_is_full")) { if (op) *op = "map-query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_truncate")) { if (op) *op = "map-query"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_deque_pop_front")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_deque_push_front")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_fill")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_insert_at")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_insert_unique")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_replace_at")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_remove_at")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_remove_value")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_reverse")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_rotate_left")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_rotate_right")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_insert")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_set_remove")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_swap_at")) { if (op) *op = "mutation"; return true; }
   if (memory_name_has_base(name, "__zero_std_collections_remove_swap")) { if (op) *op = "mutation"; return true; }
   if (memory_name_has_base(name, "__zero_std_collections_move_to_front")) { if (op) *op = "mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_put")) { if (op) *op = "map-mutation"; return true; }
+  if (memory_name_has_base(name, "__zero_std_collections_map_remove")) { if (op) *op = "map-mutation"; return true; }
   return false;
 }
 
@@ -1882,8 +1992,17 @@ static void memory_model_collect_ir_call(const IrProgram *ir, MemoryIrScope *sco
       summary->collection_query_calls++;
     } else if (strcmp(op, "mutation") == 0) {
       summary->collection_mutation_calls++;
+    } else if (strcmp(op, "map-view") == 0) {
+      summary->collection_view_calls++;
+    } else if (strcmp(op, "map-query") == 0) {
+      summary->collection_query_calls++;
+    } else if (strcmp(op, "map-mutation") == 0) {
+      summary->collection_mutation_calls++;
     }
     memory_model_note_ir_storage(summary, value->arg_len > 0 ? memory_ir_storage_ref_for_value(ir, scope, value->args[0]) : memory_ir_empty_storage_ref());
+    if (strcmp(op, "map-view") == 0 || strcmp(op, "map-query") == 0 || strcmp(op, "map-mutation") == 0) {
+      memory_model_note_ir_storage(summary, value->arg_len > 1 ? memory_ir_storage_ref_for_value(ir, scope, value->args[1]) : memory_ir_empty_storage_ref());
+    }
   }
 }
 
@@ -1902,6 +2021,27 @@ static void memory_model_collect_ir_value(const IrProgram *ir, MemoryIrScope *sc
     }
     case IR_VALUE_VEC_PUSH:
       summary->vec_push_calls++;
+      break;
+    case IR_VALUE_VEC_SET:
+      summary->vec_set_calls++;
+      break;
+    case IR_VALUE_VEC_BYTES:
+      summary->vec_view_calls++;
+      break;
+    case IR_VALUE_VEC_GET:
+      summary->vec_view_calls++;
+      break;
+    case IR_VALUE_VEC_CLEAR:
+      summary->vec_clear_calls++;
+      break;
+    case IR_VALUE_VEC_POP:
+      summary->vec_pop_calls++;
+      break;
+    case IR_VALUE_VEC_TRUNCATE:
+      summary->vec_truncate_calls++;
+      break;
+    case IR_VALUE_VEC_REMOVE_SWAP:
+      summary->vec_remove_swap_calls++;
       break;
     case IR_VALUE_VEC_LEN:
       summary->vec_len_calls++;
@@ -7198,6 +7338,12 @@ static bool memory_summary_uses_allocator(const MemoryModelSummary *summary) {
 static bool memory_summary_uses_collections(const MemoryModelSummary *summary) {
   return summary && (summary->vec_count > 0 ||
                      summary->vec_push_calls > 0 ||
+                     summary->vec_set_calls > 0 ||
+                     summary->vec_view_calls > 0 ||
+                     summary->vec_clear_calls > 0 ||
+                     summary->vec_pop_calls > 0 ||
+                     summary->vec_truncate_calls > 0 ||
+                     summary->vec_remove_swap_calls > 0 ||
                      summary->vec_len_calls > 0 ||
                      summary->vec_capacity_calls > 0 ||
                      summary->collection_storage_count > 0 ||
@@ -7265,10 +7411,16 @@ static void append_allocation_instrumentation_json(ZBuf *buf, const MemoryModelS
 }
 
 static void append_collection_facts_json(ZBuf *buf, const MemoryModelSummary *summary) {
-  zbuf_appendf(buf, "{\"Vec\":{\"used\":%s,\"instances\":%zu,\"pushCalls\":%zu,\"capacityCalls\":%zu,\"capacityBytes\":%zu,\"growth\":\"fixed-capacity caller storage\",\"pushFailure\":\"returns false\",\"cleanup\":\"caller owns storage\",\"hiddenAllocation\":false}",
+  zbuf_appendf(buf, "{\"Vec\":{\"used\":%s,\"instances\":%zu,\"pushCalls\":%zu,\"setCalls\":%zu,\"viewCalls\":%zu,\"clearCalls\":%zu,\"popCalls\":%zu,\"truncateCalls\":%zu,\"removeSwapCalls\":%zu,\"capacityCalls\":%zu,\"capacityBytes\":%zu,\"growth\":\"fixed-capacity caller storage\",\"pushFailure\":\"returns false\",\"setFailure\":\"returns false\",\"cleanup\":\"caller owns storage\",\"hiddenAllocation\":false}",
                summary && summary->vec_count > 0 ? "true" : "false",
                summary ? summary->vec_count : 0,
                summary ? summary->vec_push_calls : 0,
+               summary ? summary->vec_set_calls : 0,
+               summary ? summary->vec_view_calls : 0,
+               summary ? summary->vec_clear_calls : 0,
+               summary ? summary->vec_pop_calls : 0,
+               summary ? summary->vec_truncate_calls : 0,
+               summary ? summary->vec_remove_swap_calls : 0,
                summary ? summary->vec_capacity_calls : 0,
                summary ? summary->vec_capacity_bytes : 0);
   zbuf_appendf(buf, ",\"FixedStorage\":{\"used\":%s,\"storageSites\":%zu,\"pushCalls\":%zu,\"appendCalls\":%zu,\"viewCalls\":%zu,\"queryCalls\":%zu,\"mutationCalls\":%zu,\"capacityBytes\":%zu,\"lengthModel\":\"caller-tracked usize\",\"overflow\":\"returns unchanged length\",\"cleanup\":\"caller owns storage\",\"hiddenAllocation\":false}",

@@ -58,7 +58,7 @@ Build JSON reports `profileSemantics` and `profileBudget`. Size JSON adds `sizeB
 | `result-choice.graph` | `enum`, payload `choice`, exhaustive `match`, payload binding | `bin/zero check examples/result-choice.graph` |
 | `primitive-language-gaps.graph` | fixed arrays, `var`, assignment | `bin/zero check examples/primitive-language-gaps.graph` |
 | `memory-primitives.graph` | `Span`, `Maybe`, references, allocator vocabulary, `std.mem` spans | `bin/zero check examples/memory-primitives.graph` |
-| `allocator-collections.graph` | `NullAlloc`, explicit allocator handles, fixed-buffer allocation, `Vec`, and fixed-storage collections without a global heap | `bin/zero check examples/allocator-collections.graph && bin/zero mem --json examples/allocator-collections.graph` |
+| `allocator-collections.graph` | fixed-buffer allocation, `Vec` capacity helpers, and fixed-capacity set operations without a global heap | `bin/zero check examples/allocator-collections.graph && bin/zero mem --json examples/allocator-collections.graph` |
 | `const-arithmetic.graph` | top-level deterministic `const` values and arithmetic | `bin/zero check examples/const-arithmetic.graph` |
 | `compile-time-v1.graph` | bounded `meta`, target/type reflection facts, Bool and enum static values, and compile-time JSON metadata | `bin/zero check --json examples/compile-time-v1.graph` |
 | `generic-pair.graph` | multi-parameter generic type storage and field access | `bin/zero run examples/generic-pair.graph` |

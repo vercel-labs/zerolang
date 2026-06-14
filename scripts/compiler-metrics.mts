@@ -30,13 +30,13 @@ type FileBudget = {
 };
 
 const fileBudgets: Record<string, FileBudget> = {
-  "native/zero-c/include/zero.h": { maxLines: 1245, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 1252, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_runtime.h": { maxLines: 231, maxStrcmpCalls: 0 },
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   // The static const type and canonical value memos compare binder names with strcmp.
-  "native/zero-c/src/checker.c": { maxLines: 12085, maxStrcmpCalls: 291 },
+  "native/zero-c/src/checker.c": { maxLines: 12850, maxStrcmpCalls: 298 },
   "native/zero-c/src/cli_help.c": { maxLines: 195, maxStrcmpCalls: 1 },
   "native/zero-c/src/cli_help.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/http_listen_runner.c": { maxLines: 600, maxStrcmpCalls: 0 },
@@ -45,8 +45,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 16400, maxStrcmpCalls: 446, maxShellCalls: 0 },
-  "native/zero-c/src/ir.c": { maxLines: 5622, maxStrcmpCalls: 278 },
+  "native/zero-c/src/main.c": { maxLines: 16547, maxStrcmpCalls: 449, maxShellCalls: 0 },
+  "native/zero-c/src/ir.c": { maxLines: 5879, maxStrcmpCalls: 282 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -60,9 +60,9 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/buildability_value_support.c": { maxLines: 210, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability_internal.h": { maxLines: 40, maxStrcmpCalls: 0 },
-  "native/zero-c/src/buildability_context.c": { maxLines: 219, maxStrcmpCalls: 1 },
-  "native/zero-c/src/buildability_targets.c": { maxLines: 180, maxStrcmpCalls: 0 },
-  "native/zero-c/src/buildability_value_targets.c": { maxLines: 567, maxStrcmpCalls: 0 },
+  "native/zero-c/src/buildability_context.c": { maxLines: 226, maxStrcmpCalls: 1 },
+  "native/zero-c/src/buildability_targets.c": { maxLines: 186, maxStrcmpCalls: 0 },
+  "native/zero-c/src/buildability_value_targets.c": { maxLines: 574, maxStrcmpCalls: 0 },
   "native/zero-c/src/c_import.c": { maxLines: 750, maxStrcmpCalls: 51 },
   "native/zero-c/src/c_import.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/call_resolve.c": { maxLines: 200, maxStrcmpCalls: 2 },
@@ -92,14 +92,14 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/aarch64_direct.h": { maxLines: 69, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_emit.c": { maxLines: 472, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_emit.h": { maxLines: 87, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_macho64.c": { maxLines: 3060, maxStrcmpCalls: 2 },
+  "native/zero-c/src/emit_macho64.c": { maxLines: 3217, maxStrcmpCalls: 2 },
   "native/zero-c/src/emit_macho_x64.c": { maxLines: 2218, maxStrcmpCalls: 1 },
   "native/zero-c/src/macho_emit_state.c": { maxLines: 232, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_emit_state.h": { maxLines: 117, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_elf64.c": { maxLines: 3515, maxStrcmpCalls: 3 },
+  "native/zero-c/src/emit_elf64.c": { maxLines: 3666, maxStrcmpCalls: 3 },
   "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 469, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_llvm_ir.c": { maxLines: 970, maxStrcmpCalls: 9 },
-  "native/zero-c/src/emit_coff.c": { maxLines: 2145, maxStrcmpCalls: 1 },
+  "native/zero-c/src/emit_coff.c": { maxLines: 2258, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 500, maxStrcmpCalls: 0 },
   "native/zero-c/src/fs.c": { maxLines: 1545, maxStrcmpCalls: 36, maxShellCalls: 0 },
   "native/zero-c/src/fs_read.c": { maxLines: 130, maxStrcmpCalls: 0, maxShellCalls: 0 },
@@ -107,7 +107,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/process_exec.h": { maxLines: 26, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.c": { maxLines: 110, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.h": { maxLines: 10, maxStrcmpCalls: 0, maxShellCalls: 0 },
-  "native/zero-c/src/mir_verify.c": { maxLines: 2360, maxStrcmpCalls: 0 },
+  "native/zero-c/src/mir_verify.c": { maxLines: 2416, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   // Shared sorted node/edge index used by validation, lowering, views, and resolution.
@@ -151,7 +151,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 5200, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 5707, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 24, maxStrcmpCalls: 0 },
@@ -222,9 +222,9 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/safety_contract.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_sig.c": { maxLines: 513, maxStrcmpCalls: 2 },
-  "native/zero-c/src/std_sig.h": { maxLines: 61, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_source.c": { maxLines: 448, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.c": { maxLines: 615, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.h": { maxLines: 105, maxStrcmpCalls: 0 },
+  "native/zero-c/src/std_source.c": { maxLines: 540, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_source.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/target_backend.c": { maxLines: 392, maxStrcmpCalls: 1 },
   "native/zero-c/src/target.c": { maxLines: 517, maxStrcmpCalls: 1 },
@@ -238,11 +238,12 @@ const fileBudgets: Record<string, FileBudget> = {
 
 const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/program_graph_mir.c|bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {", 144],
-  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1678],
-  ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 121],
+  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 1840],
+  ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 128],
 
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
   ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1016],
+  ["native/zero-c/src/main.c|static void memory_model_collect_expr(const Expr *expr, MemoryScope *scope, MemoryModelSummary *summary) {", 121],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 386],
   ["native/zero-c/src/checker.c|static bool check_stmt(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {", 279],
   ["native/zero-c/src/checker.c|static bool check_program_internal_body(const Program *program, bool require_entrypoint, ZDiag *diag) {", 214],
@@ -252,16 +253,18 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/checker.c|static bool expr_reference_provenance(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ValueProvenance *origins) {", 175],
   ["native/zero-c/src/main.c|static int run_tests_direct(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target) {", 151],
   ["native/zero-c/src/checker.c|static bool check_scalar_match(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth, const char *match_type) {", 127],
-  ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 159],
-  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 616],
+  ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 172],
+  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 727],
   ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 245],
-  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 252],
+  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 295],
   ["native/zero-c/src/main.c|static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit *audit) {", 171],
-  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFunction *fun, const ZProgramGraphNode *stmt, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {", 224],
+  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFunction *fun, const ZProgramGraphNode *stmt, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {", 236],
   ["native/zero-c/src/emit_elf64.c|static bool elf_emit_str_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 159],
   ["native/zero-c/src/emit_macho_x64.c|static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {", 159],
   ["native/zero-c/src/mir_verify.c|static bool mir_verify_math_runtime_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {", 142],
-  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 149],
+  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 156],
+  ["native/zero-c/src/emit_elf64.c|static bool elf_emit_stateful_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 178],
+  ["native/zero-c/src/buildability_context.c|const char *z_build_value_kind_name(IrValueKind kind) {", 122],
   ["native/zero-c/src/emit_llvm_ir.c|static bool llvm_emit_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag) {", 129],
   ["native/zero-c/src/aarch64_direct.c|static bool a64_emit_str_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {", 124],
   ["native/zero-c/src/emit_macho64.c|static bool macho_emit_str_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 124],
@@ -274,11 +277,103 @@ const allowedHelpersWithSpecialArgTypeChecks = [];
 
 const expectedStdHelperKinds = new Map([
   ["std.collections.append", "Z_STD_HELPER_KIND_COLLECTIONS_APPEND"],
+  ["std.collections.clear", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
   ["std.collections.contains", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_VALUE"],
   ["std.collections.count", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_VALUE"],
+  ["std.collections.dequeBack", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_MAYBE_VALUE"],
+  ["std.collections.dequeFront", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_MAYBE_VALUE"],
+  ["std.collections.dequePopBack", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
+  ["std.collections.dequePopFront", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_STATE"],
+  ["std.collections.dequePushBack", "Z_STD_HELPER_KIND_COLLECTIONS_PUSH"],
+  ["std.collections.dequePushFront", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_VALUE"],
+  ["std.collections.fill", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_VALUE"],
+  ["std.collections.first", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_MAYBE_VALUE"],
+  ["std.collections.fixedDeque", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_CONSTRUCTOR"],
+  ["std.collections.fixedDequeBack", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_VALUE"],
+  ["std.collections.fixedDequeClear", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_STATE"],
+  ["std.collections.fixedDequeFront", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_VALUE"],
+  ["std.collections.fixedDequeIsFull", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_STATE"],
+  ["std.collections.fixedDequeLen", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_STATE"],
+  ["std.collections.fixedDequePopBack", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_POP"],
+  ["std.collections.fixedDequePopFront", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_POP"],
+  ["std.collections.fixedDequePushBack", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_MUT_VALUE"],
+  ["std.collections.fixedDequePushFront", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_MUT_VALUE"],
+  ["std.collections.fixedDequeRemaining", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_STATE"],
+  ["std.collections.fixedDequeTruncate", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_TRUNCATE"],
+  ["std.collections.fixedDequeView", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_DEQUE_VIEW"],
+  ["std.collections.fixedRingBuffer", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_CONSTRUCTOR"],
+  ["std.collections.fixedRingBufferBack", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_VALUE"],
+  ["std.collections.fixedRingBufferCapacity", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_STATE"],
+  ["std.collections.fixedRingBufferClear", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_STATE"],
+  ["std.collections.fixedRingBufferFront", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_VALUE"],
+  ["std.collections.fixedRingBufferGet", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_GET"],
+  ["std.collections.fixedRingBufferIsFull", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_STATE"],
+  ["std.collections.fixedRingBufferLen", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_STATE"],
+  ["std.collections.fixedRingBufferPopBack", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_POP"],
+  ["std.collections.fixedRingBufferPopFront", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_POP"],
+  ["std.collections.fixedRingBufferPushBack", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_MUT_VALUE"],
+  ["std.collections.fixedRingBufferPushFront", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_MUT_VALUE"],
+  ["std.collections.fixedRingBufferRemaining", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_STATE"],
+  ["std.collections.fixedRingBufferTruncate", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_RING_BUFFER_TRUNCATE"],
+  ["std.collections.fixedMap", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_CONSTRUCTOR"],
+  ["std.collections.fixedMapClear", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_STATE"],
+  ["std.collections.fixedMapContains", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_KEY"],
+  ["std.collections.fixedMapGet", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_GET"],
+  ["std.collections.fixedMapIsFull", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_STATE"],
+  ["std.collections.fixedMapIndex", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_KEY"],
+  ["std.collections.fixedMapKeys", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_VIEW"],
+  ["std.collections.fixedMapLen", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_STATE"],
+  ["std.collections.fixedMapPut", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_PUT"],
+  ["std.collections.fixedMapRemaining", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_STATE"],
+  ["std.collections.fixedMapRemove", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_REMOVE"],
+  ["std.collections.fixedMapTruncate", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_TRUNCATE"],
+  ["std.collections.fixedMapValues", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_MAP_VIEW"],
+  ["std.collections.fixedSet", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_CONSTRUCTOR"],
+  ["std.collections.fixedSetClear", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_STATE"],
+  ["std.collections.fixedSetContains", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_VALUE"],
+  ["std.collections.fixedSetInsert", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_MUT_VALUE"],
+  ["std.collections.fixedSetIsFull", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_STATE"],
+  ["std.collections.fixedSetLen", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_STATE"],
+  ["std.collections.fixedSetRemaining", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_STATE"],
+  ["std.collections.fixedSetRemove", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_MUT_VALUE"],
+  ["std.collections.fixedSetTruncate", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_TRUNCATE"],
+  ["std.collections.fixedSetView", "Z_STD_HELPER_KIND_COLLECTIONS_FIXED_SET_VIEW"],
+  ["std.collections.insertAt", "Z_STD_HELPER_KIND_COLLECTIONS_INSERT_AT"],
+  ["std.collections.insertUnique", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_VALUE"],
+  ["std.collections.isFull", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
+  ["std.collections.last", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_MAYBE_VALUE"],
+  ["std.collections.mapClear", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_STATE"],
+  ["std.collections.mapContains", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_CONTAINS"],
+  ["std.collections.mapGet", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_GET"],
+  ["std.collections.mapIndex", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_INDEX"],
+  ["std.collections.mapIsFull", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_STATE"],
+  ["std.collections.mapKeys", "Z_STD_HELPER_KIND_COLLECTIONS_VIEW"],
+  ["std.collections.mapPut", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_PUT"],
+  ["std.collections.mapRemaining", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_STATE"],
+  ["std.collections.mapRemove", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_REMOVE"],
+  ["std.collections.mapTruncate", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_TRUNCATE"],
+  ["std.collections.mapValues", "Z_STD_HELPER_KIND_COLLECTIONS_MAP_VALUES"],
   ["std.collections.moveToFront", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_INDEX"],
+  ["std.collections.pop", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
   ["std.collections.push", "Z_STD_HELPER_KIND_COLLECTIONS_PUSH"],
+  ["std.collections.remaining", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
+  ["std.collections.replaceAt", "Z_STD_HELPER_KIND_COLLECTIONS_REPLACE_AT"],
+  ["std.collections.removeAt", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_INDEX"],
+  ["std.collections.removeValue", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_VALUE"],
   ["std.collections.removeSwap", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_INDEX"],
+  ["std.collections.reverse", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_STATE"],
+  ["std.collections.rotateLeft", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_INDEX"],
+  ["std.collections.rotateRight", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_INDEX"],
+  ["std.collections.setClear", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
+  ["std.collections.setContains", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_VALUE"],
+  ["std.collections.setInsert", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_VALUE"],
+  ["std.collections.setIsFull", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
+  ["std.collections.setRemaining", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_STATE"],
+  ["std.collections.setRemove", "Z_STD_HELPER_KIND_COLLECTIONS_MUT_LEN_VALUE"],
+  ["std.collections.setTruncate", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_USIZE"],
+  ["std.collections.setView", "Z_STD_HELPER_KIND_COLLECTIONS_VIEW"],
+  ["std.collections.swapAt", "Z_STD_HELPER_KIND_COLLECTIONS_SWAP_AT"],
+  ["std.collections.truncate", "Z_STD_HELPER_KIND_COLLECTIONS_LEN_USIZE"],
   ["std.collections.view", "Z_STD_HELPER_KIND_COLLECTIONS_VIEW"],
   ["std.mem.len", "Z_STD_HELPER_KIND_MEM_LEN"],
   ["std.mem.get", "Z_STD_HELPER_KIND_MEM_GET"],
@@ -632,11 +727,7 @@ function parseStdHelperArgTypes(text) {
   const names = [];
   const map = new Map();
   for (const match of block.matchAll(/\{\s*"([^"]+)"\s*,\s*"[^"]+"\s*,\s*-?\d+\s*,\s*\{([^}]*)\}/g)) {
-    const args = match[2]
-      .split(",")
-      .map((arg) => arg.trim())
-      .filter((arg) => arg.length > 0)
-      .map((arg) => arg === "NULL" ? null : arg.replace(/^"|"$/g, ""));
+    const args = parseCStringArray(match[2]);
     if (!args.some((arg) => arg !== null)) continue;
     names.push(match[1]);
     if (!map.has(match[1])) map.set(match[1], args);
@@ -653,12 +744,7 @@ function parseStdHelperErrors(text) {
   const names = [];
   const map = new Map();
   for (const match of block.matchAll(/\{\s*"([^"]+)"\s*,\s*"[^"]+"\s*,\s*-?\d+\s*,\s*\{[^}]*\}\s*,\s*\{([^}]*)\}/g)) {
-    const errors = match[2]
-      .split(",")
-      .map((error) => error.trim())
-      .filter((error) => error.length > 0)
-      .map((error) => error === "NULL" ? null : error.replace(/^"|"$/g, ""))
-      .filter((error) => error !== null);
+    const errors = parseCStringArray(match[2]).filter((error) => error !== null);
     if (errors.length === 0) continue;
     names.push(match[1]);
     if (!map.has(match[1])) map.set(match[1], errors);
@@ -668,6 +754,15 @@ function parseStdHelperErrors(text) {
     map,
     duplicates: duplicates(names),
   };
+}
+
+function parseCStringArray(raw) {
+  const values = [];
+  const tokenPattern = /"((?:\\.|[^"\\])*)"|NULL/g;
+  for (const match of raw.matchAll(tokenPattern)) {
+    values.push(match[0] === "NULL" ? null : match[1].replace(/\\"/g, "\"").replace(/\\\\/g, "\\"));
+  }
+  return values;
 }
 
 function stdHelperKindMismatches(text) {

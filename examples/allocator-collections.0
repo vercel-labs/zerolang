@@ -1,22 +1,46 @@
 pub fn main(world: World) -> Void raises {
-    let _page: PageAlloc = std.mem.pageAlloc()
-    let _general: GeneralAlloc = std.mem.generalAlloc()
-    let nullAlloc: NullAlloc = std.mem.nullAlloc()
-    let nullBytes: Maybe<MutSpan<u8>> = std.mem.allocBytes(nullAlloc, 1)
-    var storage: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
+    var storage: [8]u8 = [0_u8; 8]
     var alloc: FixedBufAlloc = std.mem.fixedBufAlloc(storage)
     let bytes: Maybe<MutSpan<u8>> = std.mem.allocBytes(alloc, 4)
-    var vecStorage: [4]u8 = [0, 0, 0, 0]
+    var vecStorage: [4]u8 = [0_u8; 4]
     var vec: Vec = std.mem.vec(vecStorage)
+    let vecEmpty: Bool = std.mem.vecIsEmpty(&vec)
     let pushed: Bool = std.mem.vecPush(&mut vec, 42_u8)
-    var values: [4]u8 = [0, 0, 0, 0]
+    let setExisting: Bool = std.mem.vecSet(&mut vec, 0_usize, 43_u8)
+    let setMissing: Bool = std.mem.vecSet(&mut vec, 9_usize, 44_u8)
+    let pushedAgain: Bool = std.mem.vecPush(&mut vec, 45_u8)
+    let removedFirst: Bool = std.mem.vecRemoveSwap(&mut vec, 0_usize)
+    let removeMissing: Bool = std.mem.vecRemoveSwap(&mut vec, 9_usize)
+    let firstAfterRemove: Maybe<u8> = std.mem.vecGet(&vec, 0_usize)
+    let pushedThird: Bool = std.mem.vecPush(&mut vec, 46_u8)
+    let vecBytesBeforeTruncate: Span<u8> = std.mem.vecBytes(&vec)
+    let truncatedHigh: usize = std.mem.vecTruncate(&mut vec, 4_usize)
+    let truncated: usize = std.mem.vecTruncate(&mut vec, 1_usize)
+    let vecBytesBeforePop: Span<u8> = std.mem.vecBytes(&vec)
+    let vecRemaining: usize = std.mem.vecRemaining(&vec)
+    let vecFull: Bool = std.mem.vecIsFull(&vec)
+    let vecItem: Maybe<u8> = std.mem.vecGet(&vec, 0_usize)
+    let vecMissing: Maybe<u8> = std.mem.vecGet(&vec, 9_usize)
+    let popped: Bool = std.mem.vecPop(&mut vec)
+    let vecBytesAfterPop: Span<u8> = std.mem.vecBytes(&vec)
+    let cleared: usize = std.mem.vecClear(&mut vec)
+    let vecEmptyAfterClear: Bool = std.mem.vecIsEmpty(&vec)
+    var values: [4]u8 = [0_u8; 4]
     var len: usize = 0
-    len = std.collections.push(values, len, 7_u8)
-    len = std.collections.push(values, len, 9_u8)
+    len = std.collections.insertUnique(values, len, 7_u8)
+    len = std.collections.insertUnique(values, len, 7_u8)
+    len = std.collections.insertUnique(values, len, 9_u8)
+    len = std.collections.removeValue(values, len, 7_u8)
     let live: Span<u8> = std.collections.view(values, len)
-    if !nullBytes.has && bytes.has && pushed && std.mem.vecLen(&vec) == 1 && std.mem.vecCapacity(&vec) == 4 && std.mem.len(live) == 2 && std.collections.contains(values, len, 9_u8) {
+    var setStorage: [4]u8 = [1_u8, 2_u8, 0_u8, 0_u8]
+    var fixedSet: FixedSet<u8> = std.collections.fixedSet(setStorage, 2_usize)
+    let setInserted: Bool = std.collections.fixedSetInsert(&mut fixedSet, 3_u8)
+    let setDuplicate: Bool = std.collections.fixedSetInsert(&mut fixedSet, 3_u8)
+    let setRemoved: Bool = std.collections.fixedSetRemove(&mut fixedSet, 1_u8)
+    let setHasTwo: Bool = std.collections.fixedSetContains(&fixedSet, 2_u8)
+    let setLive: Span<u8> = std.collections.fixedSetView(&fixedSet)
+    let setRemaining: usize = std.collections.fixedSetRemaining(&fixedSet)
+    if bytes.has && vecEmpty && pushed && setExisting && !setMissing && pushedAgain && removedFirst && !removeMissing && firstAfterRemove.has && firstAfterRemove.value == 45_u8 && pushedThird && std.mem.len(vecBytesBeforeTruncate) == 2 && vecBytesBeforeTruncate[0] == 45_u8 && vecBytesBeforeTruncate[1] == 46_u8 && truncatedHigh == 2 && truncated == 1 && std.mem.len(vecBytesBeforePop) == 1 && vecBytesBeforePop[0] == 45_u8 && vecItem.has && vecItem.value == 45_u8 && !vecMissing.has && popped && std.mem.len(vecBytesAfterPop) == 0 && cleared == 0 && vecEmptyAfterClear && std.mem.vecLen(&vec) == 0 && std.mem.vecCapacity(&vec) == 4 && vecRemaining == 3 && !vecFull && std.mem.len(live) == 1 && values[0] == 9_u8 && std.collections.remaining(values, len) == 3 && !std.collections.isFull(values, len) && std.collections.contains(values, len, 9_u8) && setInserted && !setDuplicate && setRemoved && setHasTwo && std.mem.len(setLive) == 2 && setLive[0] == 3_u8 && setLive[1] == 2_u8 && setRemaining == 2 {
         check world.out.write("allocator collections ok\n")
-    } else {
-        check world.out.write("allocator collections failed\n")
     }
 }

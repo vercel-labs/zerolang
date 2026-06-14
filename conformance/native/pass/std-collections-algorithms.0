@@ -5,11 +5,13 @@ pub fn main(world: World) -> Void raises {
     len = std.collections.push(values, len, 3)
     len = std.collections.push(values, len, 1)
     len = std.collections.append(values, len, extra)
+    let remaining: usize = std.collections.remaining(values, len)
+    let full: Bool = std.collections.isFull(values, len)
     std.sort.insertionI32(values[..len])
     let live: Span<i32> = std.collections.view(values, len)
     let found: usize = std.search.binaryI32(live, 4)
     let missing: usize = std.search.indexOf(live, 9)
-    if len == 4 && std.mem.len(live) == 4 && std.collections.count(values, len, 1) == 2 && std.collections.contains(values, len, 3) && std.sort.isSortedI32(live) && found == 3 && missing == std.mem.len(live) {
+    if len == 4 && remaining == 1 && !full && std.mem.len(live) == 4 && std.collections.count(values, len, 1) == 2 && std.collections.contains(values, len, 3) && std.sort.isSortedI32(live) && found == 3 && missing == std.mem.len(live) {
         check world.out.write("std collections algorithms ok\n")
     }
 }
