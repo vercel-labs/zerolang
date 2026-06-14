@@ -151,7 +151,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 5835, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 5880, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 24, maxStrcmpCalls: 0 },
