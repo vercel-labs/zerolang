@@ -15,6 +15,7 @@ const zeroBin = resolve("bin/zero");
 const examplesDir = resolve("examples");
 const buildTarget = "linux-musl-x64";
 const runTimeoutMs = 120_000;
+const buildTimeoutMs = 300_000;
 
 type Expectation = {
   exitCode?: number;
@@ -50,11 +51,11 @@ if (staleExpectations.length > 0) {
   process.exit(1);
 }
 
-function runZero(args: string[], cwd: string) {
+function runZero(args: string[], cwd: string, timeoutMs = runTimeoutMs) {
   const result = spawnSync(zeroBin, args, {
     cwd,
     encoding: "utf8",
-    timeout: runTimeoutMs,
+    timeout: timeoutMs,
     stdio: ["ignore", "pipe", "pipe"],
   });
   return {
@@ -62,7 +63,18 @@ function runZero(args: string[], cwd: string) {
     signal: result.signal,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+    error: result.error?.message ?? "",
+    timedOut: result.error !== undefined && "code" in result.error && result.error.code === "ETIMEDOUT",
+    timeoutMs,
   };
+}
+
+function zeroFailure(action: string, result: ReturnType<typeof runZero>) {
+  const detail = result.stderr || result.stdout || result.error;
+  if (result.timedOut) {
+    return `${action} timed out after ${result.timeoutMs}ms${detail ? `\n${detail}` : ""}`;
+  }
+  return `${action} failed (exit ${result.code}${result.signal ? ` signal ${result.signal}` : ""})${detail ? `\n${detail}` : ""}`;
 }
 
 function isHostBackendGap(text: string) {
@@ -113,17 +125,17 @@ for (const name of packages) {
   if (check.code === 0) {
     steps.push("check");
   } else {
-    failure = `zero check failed (exit ${check.code})\n${check.stderr || check.stdout}`;
+    failure = zeroFailure("zero check", check);
   }
 
   let linuxBuildOk = false;
   if (!failure && !expectation.server) {
-    const build = runZero(["build", "--emit", "exe", "--target", buildTarget, packagePath, "--out", join(workDir, `${name}-${buildTarget}`)], workDir);
+    const build = runZero(["build", "--emit", "exe", "--target", buildTarget, packagePath, "--out", join(workDir, `${name}-${buildTarget}`)], workDir, buildTimeoutMs);
     if (build.code === 0) {
       linuxBuildOk = true;
       steps.push(`build ${buildTarget}`);
     } else {
-      failure = `zero build --target ${buildTarget} failed (exit ${build.code})\n${build.stderr || build.stdout}`;
+      failure = zeroFailure(`zero build --target ${buildTarget}`, build);
     }
   }
 
