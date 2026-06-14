@@ -2166,6 +2166,43 @@ static bool elf_emit_stateful_value(ZBuf *code, const IrFunction *fun, const IrV
       z_x64_patch_rel32(code, end_patch, code->len);
       return true;
     }
+    case IR_VALUE_VEC_INDEX:
+    case IR_VALUE_VEC_CONTAINS: {
+      if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return elf_diag(diag, "direct ELF64 Vec lookup requires a Vec local", value->line, value->column, "invalid Vec local");
+      if (!value->left) return elf_diag(diag, "direct ELF64 Vec lookup requires a value", value->line, value->column, "missing Vec value");
+      const IrLocal *local = &fun->locals[value->local_index];
+      if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+      z_x64_emit_mov_reg_from_rax(code, 8, false);
+      elf_emit_load_local_slot_reg(code, local, 0, 2, true);
+      elf_emit_load_local_slot_reg(code, local, 8, 1, false);
+      z_x64_emit_vec_lookup_loop(code, value->kind == IR_VALUE_VEC_CONTAINS);
+      return true;
+    }
+    case IR_VALUE_VEC_INSERT_UNIQUE: {
+      if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return elf_diag(diag, "direct ELF64 Vec insert-unique requires a Vec local", value->line, value->column, "invalid Vec local");
+      if (!value->left) return elf_diag(diag, "direct ELF64 Vec insert-unique requires a value", value->line, value->column, "missing Vec value");
+      const IrLocal *local = &fun->locals[value->local_index];
+      if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+      z_x64_emit_mov_reg_from_rax(code, 8, false);
+      elf_emit_load_local_slot_reg(code, local, 0, 2, true);
+      elf_emit_load_local_slot_reg(code, local, 8, 1, false);
+      elf_emit_load_local_slot_reg(code, local, 12, 9, false);
+      z_x64_emit_vec_insert_unique_loop(code);
+      elf_emit_store_local_slot_reg(code, local, 8, 1, false);
+      return true;
+    }
+    case IR_VALUE_VEC_REMOVE_VALUE: {
+      if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return elf_diag(diag, "direct ELF64 Vec remove-value requires a Vec local", value->line, value->column, "invalid Vec local");
+      if (!value->left) return elf_diag(diag, "direct ELF64 Vec remove-value requires a value", value->line, value->column, "missing Vec value");
+      const IrLocal *local = &fun->locals[value->local_index];
+      if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+      z_x64_emit_mov_reg_from_rax(code, 8, false);
+      elf_emit_load_local_slot_reg(code, local, 0, 2, true);
+      elf_emit_load_local_slot_reg(code, local, 8, 1, false);
+      z_x64_emit_vec_remove_value_loop(code);
+      elf_emit_store_local_slot_reg(code, local, 8, 1, false);
+      return true;
+    }
     case IR_VALUE_CHECK: {
       if (!value->left || value->left->type != IR_TYPE_I64) return elf_diag(diag, "direct ELF64 check requires a packed fallible call result", value->line, value->column, "non-fallible value");
       if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
@@ -2501,7 +2538,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
          value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       value->kind != IR_VALUE_MAYBE_HAS && value->kind != IR_VALUE_VEC_LEN && value->kind != IR_VALUE_VEC_CAPACITY &&
-      value->kind != IR_VALUE_VEC_PUSH && value->kind != IR_VALUE_VEC_GET && value->kind != IR_VALUE_VEC_SET && value->kind != IR_VALUE_VEC_CLEAR && value->kind != IR_VALUE_VEC_POP && value->kind != IR_VALUE_VEC_TRUNCATE && value->kind != IR_VALUE_VEC_REMOVE_SWAP && value->kind != IR_VALUE_ARGS_LEN &&
+      value->kind != IR_VALUE_VEC_PUSH && value->kind != IR_VALUE_VEC_GET && value->kind != IR_VALUE_VEC_SET && value->kind != IR_VALUE_VEC_CLEAR && value->kind != IR_VALUE_VEC_POP && value->kind != IR_VALUE_VEC_TRUNCATE && value->kind != IR_VALUE_VEC_REMOVE_SWAP &&
+      value->kind != IR_VALUE_VEC_INDEX && value->kind != IR_VALUE_VEC_CONTAINS && value->kind != IR_VALUE_VEC_INSERT_UNIQUE && value->kind != IR_VALUE_VEC_REMOVE_VALUE && value->kind != IR_VALUE_ARGS_LEN &&
       value->type != IR_TYPE_MAYBE_SCALAR && value->kind != IR_VALUE_FS_CLOSE_FILE) {
     return elf_diag(diag, "direct ELF64 object backend currently supports only primitive integer values", value->line, value->column, elf_type_name(value->type));
   }
@@ -2557,7 +2595,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
     case IR_VALUE_FS_READ_PATH: case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH: case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH:
       return elf_emit_fs_path_io_value(code, fun, value, ctx, diag);
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_VEC_LEN: case IR_VALUE_VEC_CAPACITY:
-    case IR_VALUE_VEC_PUSH: case IR_VALUE_VEC_GET: case IR_VALUE_VEC_SET: case IR_VALUE_VEC_CLEAR: case IR_VALUE_VEC_POP: case IR_VALUE_VEC_TRUNCATE: case IR_VALUE_VEC_REMOVE_SWAP: case IR_VALUE_CHECK: case IR_VALUE_RESCUE:
+    case IR_VALUE_VEC_PUSH: case IR_VALUE_VEC_GET: case IR_VALUE_VEC_SET: case IR_VALUE_VEC_CLEAR: case IR_VALUE_VEC_POP: case IR_VALUE_VEC_TRUNCATE: case IR_VALUE_VEC_REMOVE_SWAP:
+    case IR_VALUE_VEC_INDEX: case IR_VALUE_VEC_CONTAINS: case IR_VALUE_VEC_INSERT_UNIQUE: case IR_VALUE_VEC_REMOVE_VALUE: case IR_VALUE_CHECK: case IR_VALUE_RESCUE:
       return elf_emit_stateful_value(code, fun, value, ctx, diag);
     case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_RECORD_ADDR: case IR_VALUE_BYTE_VIEW_LEN: case IR_VALUE_BYTE_VIEW_REMAINING:
       return elf_emit_memory_access_value(code, fun, value, ctx, diag);

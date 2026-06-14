@@ -1,5 +1,5 @@
 pub fn main(world: World) -> Void raises {
-    var storage: [8]u8 = [0_u8; 8]
+    var storage: [32]u8 = [0_u8; 32]
     var alloc: FixedBufAlloc = std.mem.fixedBufAlloc(storage)
     let bytes: Maybe<MutSpan<u8>> = std.mem.allocBytes(alloc, 4)
     var vecStorage: [4]u8 = [0_u8; 4]
@@ -9,6 +9,14 @@ pub fn main(world: World) -> Void raises {
     let setExisting: Bool = std.mem.vecSet(&mut vec, 0_usize, 43_u8)
     let setMissing: Bool = std.mem.vecSet(&mut vec, 9_usize, 44_u8)
     let pushedAgain: Bool = std.mem.vecPush(&mut vec, 45_u8)
+    let vecHasFortyThree: Bool = std.mem.vecContains(&vec, 43_u8)
+    let vecMissingFortySix: Bool = std.mem.vecContains(&vec, 46_u8)
+    let vecFortyFiveIndex: usize = std.mem.vecIndex(&vec, 45_u8)
+    let vecMissingIndex: usize = std.mem.vecIndex(&vec, 46_u8)
+    let vecDuplicate: Bool = std.mem.vecInsertUnique(&mut vec, 45_u8)
+    let vecUnique: Bool = std.mem.vecInsertUnique(&mut vec, 46_u8)
+    let vecRemovedValue: Bool = std.mem.vecRemoveValue(&mut vec, 43_u8)
+    let vecRemoveValueMissing: Bool = std.mem.vecRemoveValue(&mut vec, 43_u8)
     let removedFirst: Bool = std.mem.vecRemoveSwap(&mut vec, 0_usize)
     let removeMissing: Bool = std.mem.vecRemoveSwap(&mut vec, 9_usize)
     let firstAfterRemove: Maybe<u8> = std.mem.vecGet(&vec, 0_usize)
@@ -40,7 +48,45 @@ pub fn main(world: World) -> Void raises {
     let setHasTwo: Bool = std.collections.fixedSetContains(&fixedSet, 2_u8)
     let setLive: Span<u8> = std.collections.fixedSetView(&fixedSet)
     let setRemaining: usize = std.collections.fixedSetRemaining(&fixedSet)
-    if bytes.has && vecEmpty && pushed && setExisting && !setMissing && pushedAgain && removedFirst && !removeMissing && firstAfterRemove.has && firstAfterRemove.value == 45_u8 && pushedThird && std.mem.len(vecBytesBeforeTruncate) == 2 && vecBytesBeforeTruncate[0] == 45_u8 && vecBytesBeforeTruncate[1] == 46_u8 && truncatedHigh == 2 && truncated == 1 && std.mem.len(vecBytesBeforePop) == 1 && vecBytesBeforePop[0] == 45_u8 && vecItem.has && vecItem.value == 45_u8 && !vecMissing.has && popped && std.mem.len(vecBytesAfterPop) == 0 && cleared == 0 && vecEmptyAfterClear && std.mem.vecLen(&vec) == 0 && std.mem.vecCapacity(&vec) == 4 && vecRemaining == 3 && !vecFull && std.mem.len(live) == 1 && values[0] == 9_u8 && std.collections.remaining(values, len) == 3 && !std.collections.isFull(values, len) && std.collections.contains(values, len, 9_u8) && setInserted && !setDuplicate && setRemoved && setHasTwo && std.mem.len(setLive) == 2 && setLive[0] == 3_u8 && setLive[1] == 2_u8 && setRemaining == 2 {
+    var allocatorSetBacking: [4]u8 = [0_u8; 4]
+    var allocatorDequeBacking: [4]u8 = [0_u8; 4]
+    var allocatorMapKeyBacking: [3]u8 = [0_u8; 3]
+    var allocatorMapValueBacking: [3]u8 = [0_u8; 3]
+    var allocatorSetAlloc: FixedBufAlloc = std.mem.fixedBufAlloc(allocatorSetBacking)
+    var allocatorDequeAlloc: FixedBufAlloc = std.mem.fixedBufAlloc(allocatorDequeBacking)
+    var allocatorMapKeyAlloc: FixedBufAlloc = std.mem.fixedBufAlloc(allocatorMapKeyBacking)
+    var allocatorMapValueAlloc: FixedBufAlloc = std.mem.fixedBufAlloc(allocatorMapValueBacking)
+    var allocatorContainersOk: Bool = false
+    let allocatorSetStorageMaybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(allocatorSetAlloc, 4_usize)
+    let allocatorDequeStorageMaybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(allocatorDequeAlloc, 4_usize)
+    let allocatorMapKeysMaybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(allocatorMapKeyAlloc, 3_usize)
+    let allocatorMapValuesMaybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(allocatorMapValueAlloc, 3_usize)
+    if allocatorSetStorageMaybe.has && allocatorDequeStorageMaybe.has && allocatorMapKeysMaybe.has && allocatorMapValuesMaybe.has {
+        var allocatorSet: FixedSet<u8> = std.collections.fixedSet(allocatorSetStorageMaybe.value, 0_usize)
+        let allocatorSetInsertedA: Bool = std.collections.fixedSetInsert(&mut allocatorSet, 11_u8)
+        let allocatorSetInsertedB: Bool = std.collections.fixedSetInsert(&mut allocatorSet, 12_u8)
+        let allocatorSetDuplicate: Bool = std.collections.fixedSetInsert(&mut allocatorSet, 12_u8)
+        let allocatorSetRemoved: Bool = std.collections.fixedSetRemove(&mut allocatorSet, 11_u8)
+        let allocatorSetLive: Span<u8> = std.collections.fixedSetView(&allocatorSet)
+        var allocatorDeque: FixedDeque<u8> = std.collections.fixedDeque(allocatorDequeStorageMaybe.value, 0_usize)
+        let allocatorDequeBackPushed: Bool = std.collections.fixedDequePushBack(&mut allocatorDeque, 21_u8)
+        let allocatorDequeFrontPushed: Bool = std.collections.fixedDequePushFront(&mut allocatorDeque, 20_u8)
+        let allocatorDequeBack: Maybe<u8> = std.collections.fixedDequeBack(&allocatorDeque)
+        let allocatorDequeFront: Maybe<u8> = std.collections.fixedDequeFront(&allocatorDeque)
+        let allocatorDequePopped: Maybe<u8> = std.collections.fixedDequePopFront(&mut allocatorDeque)
+        let allocatorDequeLive: Span<u8> = std.collections.fixedDequeView(&allocatorDeque)
+        var allocatorMap: FixedMap<u8, u8> = std.collections.fixedMap(allocatorMapKeysMaybe.value, allocatorMapValuesMaybe.value, 0_usize)
+        let allocatorMapPutA: Bool = std.collections.fixedMapPut(&mut allocatorMap, 1_u8, 31_u8)
+        let allocatorMapPutB: Bool = std.collections.fixedMapPut(&mut allocatorMap, 2_u8, 32_u8)
+        let allocatorMapUpdated: Bool = std.collections.fixedMapPut(&mut allocatorMap, 2_u8, 33_u8)
+        let allocatorMapValue: Maybe<u8> = std.collections.fixedMapGet(&allocatorMap, 2_u8)
+        let allocatorMapKeys: Span<u8> = std.collections.fixedMapKeys(&allocatorMap)
+        let allocatorMapValues: Span<u8> = std.collections.fixedMapValues(&allocatorMap)
+        let allocatorMapBeforeRemoveOk: Bool = allocatorMapValue.has && allocatorMapValue.value == 33_u8 && std.mem.len(allocatorMapKeys) == 2 && std.mem.len(allocatorMapValues) == 2 && allocatorMapKeys[0] == 1_u8 && allocatorMapKeys[1] == 2_u8 && allocatorMapValues[0] == 31_u8 && allocatorMapValues[1] == 33_u8
+        let allocatorMapRemoved: Bool = std.collections.fixedMapRemove(&mut allocatorMap, 1_u8)
+        allocatorContainersOk = allocatorSetInsertedA && allocatorSetInsertedB && !allocatorSetDuplicate && allocatorSetRemoved && std.collections.fixedSetContains(&allocatorSet, 12_u8) && std.mem.len(allocatorSetLive) == 1 && allocatorSetLive[0] == 12_u8 && std.collections.fixedSetRemaining(&allocatorSet) == 3 && allocatorDequeBackPushed && allocatorDequeFrontPushed && allocatorDequeBack.has && allocatorDequeBack.value == 21_u8 && allocatorDequeFront.has && allocatorDequeFront.value == 20_u8 && allocatorDequePopped.has && allocatorDequePopped.value == 20_u8 && std.mem.len(allocatorDequeLive) == 1 && allocatorDequeLive[0] == 21_u8 && std.collections.fixedDequeRemaining(&allocatorDeque) == 3 && allocatorMapPutA && allocatorMapPutB && allocatorMapUpdated && allocatorMapBeforeRemoveOk && allocatorMapRemoved && std.collections.fixedMapContains(&allocatorMap, 2_u8) && std.collections.fixedMapLen(&allocatorMap) == 1 && std.collections.fixedMapRemaining(&allocatorMap) == 2
+    }
+    if bytes.has && allocatorContainersOk && vecEmpty && pushed && setExisting && !setMissing && pushedAgain && vecHasFortyThree && !vecMissingFortySix && vecFortyFiveIndex == 1_usize && vecMissingIndex == 2_usize && !vecDuplicate && vecUnique && vecRemovedValue && !vecRemoveValueMissing && removedFirst && !removeMissing && firstAfterRemove.has && firstAfterRemove.value == 45_u8 && pushedThird && std.mem.len(vecBytesBeforeTruncate) == 2 && vecBytesBeforeTruncate[0] == 45_u8 && vecBytesBeforeTruncate[1] == 46_u8 && truncatedHigh == 2 && truncated == 1 && std.mem.len(vecBytesBeforePop) == 1 && vecBytesBeforePop[0] == 45_u8 && vecItem.has && vecItem.value == 45_u8 && !vecMissing.has && popped && std.mem.len(vecBytesAfterPop) == 0 && cleared == 0 && vecEmptyAfterClear && std.mem.vecLen(&vec) == 0 && std.mem.vecCapacity(&vec) == 4 && vecRemaining == 3 && !vecFull && std.mem.len(live) == 1 && values[0] == 9_u8 && std.collections.remaining(values, len) == 3 && !std.collections.isFull(values, len) && std.collections.contains(values, len, 9_u8) && setInserted && !setDuplicate && setRemoved && setHasTwo && std.mem.len(setLive) == 2 && setLive[0] == 3_u8 && setLive[1] == 2_u8 && setRemaining == 2 {
         check world.out.write("allocator collections ok\n")
     }
 }

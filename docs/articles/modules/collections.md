@@ -16,6 +16,13 @@ Use `FixedSet<T>`, `FixedDeque<T>`, `FixedRingBuffer<T>`, or
 value. These resource values still borrow caller-owned mutable storage;
 inserting, removing, clearing, or truncating values never allocates.
 
+For byte collections, storage can come from a fixed array or from an explicit
+allocator. Use `std.mem.allocBytes(alloc, capacity)` to request a
+`MutSpan<u8>`, then pass that mutable span to `FixedSet<u8>`,
+`FixedDeque<u8>`, or `FixedMap<u8, u8>`. The wrapper does not own the storage;
+the allocator-backed span must remain live for as long as the collection value
+is used.
+
 | API | Return | Notes |
 | --- | --- | --- |
 | `std.collections.push(items, len, value)` | `usize` | Writes `value` at `len` when capacity remains and returns the next length. Returns the unchanged length on overflow. |
@@ -207,6 +214,27 @@ pub fn main(world: World) -> Void raises {
     let removed_index: usize = std.collections.mapIndex(keys, map_len, 2_u8)
     if len == 4 && inserted_len == 3 && replaced && swapped && std.collections.clear(values, len) == 0 && std.collections.setClear(values, len) == 0 && first.has && first.value == 6 && last.has && last.value == 1 && popped_len == 1 && std.collections.remaining(values, len) == 1 && !std.collections.isFull(values, len) && has_three && std.mem.len(set_live) == 3 && set_remaining == 2 && set_truncated == 1 && fixed_inserted && fixed_removed && std.mem.len(fixed_live) == 2 && fixed_remaining == 2 && fixed_len == 2 && fixed_truncated == 1 && std.collections.fixedSetClear(&mut fixed_set) == 0 && fixed_map_added && fixed_map_updated && fixed_map_score.has && fixed_map_score.value == 25_u16 && std.mem.len(fixed_map_keys) == 3 && std.mem.len(fixed_map_values) == 3 && fixed_map_index == 1 && fixed_map_full && fixed_map_removed && std.collections.fixedMapClear(&mut fixed_map) == 0 && std.collections.contains(values, len, 4) && std.collections.count(values, len, 1) == 2 && std.mem.len(live) == 4 && deque_front.has && deque_front.value == 1 && deque_back.has && deque_back.value == 3 && deque_after_pop_back == 2 && deque_len == 1 && deque_values[0] == 2 && fixed_deque_pushed && fixed_deque_front_pushed && fixed_deque_back.has && fixed_deque_back.value == 2 && fixed_deque_front.has && fixed_deque_front.value == 1 && std.mem.len(fixed_deque_live) == 2 && fixed_deque_removed.has && fixed_deque_removed.value == 1 && fixed_ring_back_pushed && fixed_ring_front_pushed && fixed_ring_middle.has && fixed_ring_middle.value == 2 && fixed_ring_front.has && fixed_ring_front.value == 1 && fixed_ring_wrapped && reversed && filled && rotated_left && rotated_right && transform[0] == 1 && transform[1] == 9 && transform[2] == 9 && transform[3] == 2 && has_score && score.has && score.value == 25_u16 && std.mem.len(live_keys) == 3 && std.mem.len(live_scores) == 3 && map_remaining == 0 && map_full && std.collections.mapClear(keys, scores, map_len) == 0 && std.collections.mapTruncate(keys, scores, map_len, 2_usize) == 2 && map_len == 2 && removed_index == 2 {
         check world.out.write("collections ok\n")
+    }
+}
+```
+
+## Allocator-Backed Storage
+
+```zero
+pub fn main(world: World) -> Void raises {
+    var key_storage: [4]u8 = [0_u8; 4]
+    var value_storage: [4]u8 = [0_u8; 4]
+    var key_alloc: FixedBufAlloc = std.mem.fixedBufAlloc(key_storage)
+    var value_alloc: FixedBufAlloc = std.mem.fixedBufAlloc(value_storage)
+    let keys_maybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(key_alloc, 4_usize)
+    let values_maybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(value_alloc, 4_usize)
+    if keys_maybe.has && values_maybe.has {
+        var map: FixedMap<u8, u8> = std.collections.fixedMap(keys_maybe.value, values_maybe.value, 0_usize)
+        let stored: Bool = std.collections.fixedMapPut(&mut map, 7_u8, 42_u8)
+        let value: Maybe<u8> = std.collections.fixedMapGet(&map, 7_u8)
+        if stored && value.has && value.value == 42_u8 {
+            check world.out.write("allocator-backed map ok\n")
+        }
     }
 }
 ```

@@ -74,6 +74,9 @@ void z_aarch64_emit_b_offset_words(ZBuf *text, int32_t words);
 void z_aarch64_emit_byte_copy_min_loop(ZBuf *text, unsigned result_reg);
 void z_aarch64_emit_byte_fill_loop(ZBuf *text, unsigned result_reg);
 void z_aarch64_emit_byte_eq_loop(ZBuf *text, unsigned result_reg);
+void z_aarch64_emit_vec_lookup_loop(ZBuf *text, unsigned result_reg, bool contains);
+void z_aarch64_emit_vec_insert_unique_loop(ZBuf *text, unsigned result_reg);
+void z_aarch64_emit_vec_remove_value_loop(ZBuf *text, unsigned result_reg);
 void z_aarch64_emit_crc32_bytes_loop(ZBuf *text, unsigned result_reg);
 
 size_t z_aarch64_emit_bl_placeholder(ZBuf *text);

@@ -1683,6 +1683,10 @@ static void memory_model_collect_expr(const Expr *expr, MemoryScope *scope, Memo
     else if (strcmp(callee, "std.mem.vecPop") == 0) summary->vec_pop_calls++;
     else if (strcmp(callee, "std.mem.vecTruncate") == 0) summary->vec_truncate_calls++;
     else if (strcmp(callee, "std.mem.vecRemoveSwap") == 0) summary->vec_remove_swap_calls++;
+    else if (strcmp(callee, "std.mem.vecIndex") == 0) summary->vec_view_calls++;
+    else if (strcmp(callee, "std.mem.vecContains") == 0) summary->vec_view_calls++;
+    else if (strcmp(callee, "std.mem.vecInsertUnique") == 0) summary->vec_push_calls++;
+    else if (strcmp(callee, "std.mem.vecRemoveValue") == 0) summary->vec_remove_swap_calls++;
     else if (strcmp(callee, "std.mem.vecLen") == 0) summary->vec_len_calls++;
     else if (strcmp(callee, "std.mem.vecCapacity") == 0) summary->vec_capacity_calls++;
     else if (strcmp(callee, "std.collections.push") == 0 ||
@@ -2041,6 +2045,16 @@ static void memory_model_collect_ir_value(const IrProgram *ir, MemoryIrScope *sc
       summary->vec_truncate_calls++;
       break;
     case IR_VALUE_VEC_REMOVE_SWAP:
+      summary->vec_remove_swap_calls++;
+      break;
+    case IR_VALUE_VEC_INDEX:
+    case IR_VALUE_VEC_CONTAINS:
+      summary->vec_view_calls++;
+      break;
+    case IR_VALUE_VEC_INSERT_UNIQUE:
+      summary->vec_push_calls++;
+      break;
+    case IR_VALUE_VEC_REMOVE_VALUE:
       summary->vec_remove_swap_calls++;
       break;
     case IR_VALUE_VEC_LEN:

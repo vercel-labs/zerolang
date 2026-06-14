@@ -43,6 +43,10 @@ types: `Bool`, `u8`, `u16`, `usize`, `i32`, `u32`, `i64`, and `u64`.
 | `std.mem.vecPop(&mut vec)` | `Bool` | Removes one live byte when the vector is non-empty. |
 | `std.mem.vecTruncate(&mut vec, len)` | `usize` | Shrinks the live length to at most `len` and returns the resulting length. |
 | `std.mem.vecRemoveSwap(&mut vec, index)` | `Bool` | Removes one live byte by replacing it with the last live byte. Returns `false` out of bounds. |
+| `std.mem.vecIndex(&vec, value)` | `usize` | Returns the first live index for `value`, or the current live length when absent. |
+| `std.mem.vecContains(&vec, value)` | `Bool` | Reports whether a byte value is present in the live vector prefix. |
+| `std.mem.vecInsertUnique(&mut vec, value)` | `Bool` | Appends `value` only when it is absent and capacity remains. |
+| `std.mem.vecRemoveValue(&mut vec, value)` | `Bool` | Swap-removes the first matching live byte by value. |
 | `std.mem.vecLen(&vec)` | `usize` | Reports current vector length. |
 | `std.mem.vecCapacity(&vec)` | `usize` | Reports caller-provided vector capacity. |
 | `std.mem.vecRemaining(&vec)` | `usize` | Reports remaining byte-vector capacity. Returns `0` when the vector is full. |
@@ -96,6 +100,11 @@ Allocation behavior:
   storage.
 - `ByteBuf` owns a slice of explicit allocator storage and never reaches for a
   global heap.
+
+Use `std.mem.allocBytes(alloc, capacity)` when a byte-oriented API needs
+allocator-backed mutable storage directly. `std.collections.fixedSet`,
+`std.collections.fixedDeque`, and `std.collections.fixedMap` can use those
+returned spans as caller-owned backing storage.
 
 Ownership: returned spans borrow from the original fixed buffer; no heap
 ownership is created.

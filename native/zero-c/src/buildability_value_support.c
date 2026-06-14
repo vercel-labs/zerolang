@@ -103,7 +103,8 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_FIXED_BUF_ALLOC: case IR_VALUE_VEC_INIT: case IR_VALUE_ALLOC_BYTES:
       return local_set_value;
     case IR_VALUE_VEC_PUSH: case IR_VALUE_VEC_LEN: case IR_VALUE_VEC_CAPACITY:
-    case IR_VALUE_VEC_BYTES: case IR_VALUE_VEC_GET: case IR_VALUE_VEC_SET: case IR_VALUE_VEC_CLEAR: case IR_VALUE_VEC_POP: case IR_VALUE_VEC_TRUNCATE: case IR_VALUE_VEC_REMOVE_SWAP: case IR_VALUE_MAYBE_HAS:
+    case IR_VALUE_VEC_BYTES: case IR_VALUE_VEC_GET: case IR_VALUE_VEC_SET: case IR_VALUE_VEC_CLEAR: case IR_VALUE_VEC_POP: case IR_VALUE_VEC_TRUNCATE: case IR_VALUE_VEC_REMOVE_SWAP:
+    case IR_VALUE_VEC_INDEX: case IR_VALUE_VEC_CONTAINS: case IR_VALUE_VEC_INSERT_UNIQUE: case IR_VALUE_VEC_REMOVE_VALUE: case IR_VALUE_MAYBE_HAS:
       return true;
     case IR_VALUE_ARGS_GET:
       return build_backend_is_native_graph_runtime(ctx->backend) ? local_set_value : false;

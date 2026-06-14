@@ -705,6 +705,42 @@ static bool coff_emit_vec_remove_swap_value(ZBuf *text, const IrFunction *fun, c
   return true;
 }
 
+static bool coff_emit_vec_lookup_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec lookup requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return coff_diag_at(diag, "direct COFF Vec lookup requires a value", value->line, value->column, "missing Vec value");
+  if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+  z_x64_emit_mov_reg_from_rax(text, 8, false);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 0, 2, true);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 8, 1, false);
+  z_x64_emit_vec_lookup_loop(text, value->kind == IR_VALUE_VEC_CONTAINS);
+  return true;
+}
+
+static bool coff_emit_vec_insert_unique_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec insert-unique requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return coff_diag_at(diag, "direct COFF Vec insert-unique requires a value", value->line, value->column, "missing Vec value");
+  if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+  z_x64_emit_mov_reg_from_rax(text, 8, false);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 0, 2, true);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 8, 1, false);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 12, 9, false);
+  z_x64_emit_vec_insert_unique_loop(text);
+  coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 1, 8, false);
+  return true;
+}
+
+static bool coff_emit_vec_remove_value_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec remove-value requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return coff_diag_at(diag, "direct COFF Vec remove-value requires a value", value->line, value->column, "missing Vec value");
+  if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+  z_x64_emit_mov_reg_from_rax(text, 8, false);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 0, 2, true);
+  coff_emit_load_local_slot_reg(text, fun, value->local_index, 8, 1, false);
+  z_x64_emit_vec_remove_value_loop(text);
+  coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 1, 8, false);
+  return true;
+}
+
 static bool coff_emit_byte_view_index_load_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   unsigned const_index = 0;
   unsigned char byte = 0;
@@ -1469,6 +1505,11 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
     case IR_VALUE_VEC_POP: return coff_emit_vec_pop_value(text, fun, value, diag);
     case IR_VALUE_VEC_TRUNCATE: return coff_emit_vec_truncate_value(text, fun, value, ctx, diag);
     case IR_VALUE_VEC_REMOVE_SWAP: return coff_emit_vec_remove_swap_value(text, fun, value, ctx, diag);
+    case IR_VALUE_VEC_INDEX:
+    case IR_VALUE_VEC_CONTAINS:
+      return coff_emit_vec_lookup_value(text, fun, value, ctx, diag);
+    case IR_VALUE_VEC_INSERT_UNIQUE: return coff_emit_vec_insert_unique_value(text, fun, value, ctx, diag);
+    case IR_VALUE_VEC_REMOVE_VALUE: return coff_emit_vec_remove_value_value(text, fun, value, ctx, diag);
     case IR_VALUE_MAYBE_HAS:
       if (value->local_index >= fun->local_len ||
           (fun->locals[value->local_index].type != IR_TYPE_MAYBE_BYTE_VIEW && fun->locals[value->local_index].type != IR_TYPE_MAYBE_SCALAR)) {

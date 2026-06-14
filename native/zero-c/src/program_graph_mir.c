@@ -4297,6 +4297,49 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     *out = value;
     return true;
   }
+  if ((ir_text_eq(callee_name, "std.mem.vecInsertUnique") || ir_text_eq(callee_name, "std.mem.vecRemoveValue")) && arg_count == 2) {
+    const ZProgramGraphNode *vec_arg = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+    const IrLocal *vec = vec_arg && vec_arg->kind == Z_PROGRAM_GRAPH_NODE_BORROW && vec_arg->is_mutable ? ir_graph_find_borrowed_local(graph, fun, vec_arg) : NULL;
+    if (!vec || vec->type != IR_TYPE_VEC || !vec->is_mutable) {
+      ir_graph_mark_unsupported(ir, vec_arg, "typed graph MIR std.mem Vec value mutation expects a mutable Vec local", "non-mutable Vec");
+      return false;
+    }
+    IrValue *item = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_U8, &item)) return false;
+    if (!item || item->type != IR_TYPE_U8) {
+      ir_free_value(item);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 1), "typed graph MIR std.mem Vec value mutation currently supports only u8 values", "non-u8 value");
+      return false;
+    }
+    bool insert_unique = ir_text_eq(callee_name, "std.mem.vecInsertUnique");
+    IrValue *value = ir_new_value(ir, insert_unique ? IR_VALUE_VEC_INSERT_UNIQUE : IR_VALUE_VEC_REMOVE_VALUE, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->element_type = IR_TYPE_U8;
+    value->local_index = vec->index;
+    value->left = item;
+    if (ir->direct_buffer_helper_count < 6) ir->direct_buffer_helper_count = 6;
+    *out = value;
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.mem.vecIndex") || ir_text_eq(callee_name, "std.mem.vecContains")) && arg_count == 2) {
+    const IrLocal *vec = ir_graph_find_borrowed_local(graph, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0));
+    if (vec && vec->type == IR_TYPE_VEC) {
+      IrValue *item = NULL;
+      if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_U8, &item)) return false;
+      if (!item || item->type != IR_TYPE_U8) {
+        ir_free_value(item);
+        ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr->id, "arg", 1), "typed graph MIR std.mem Vec lookup currently supports only u8 values", "non-u8 value");
+        return false;
+      }
+      bool contains = ir_text_eq(callee_name, "std.mem.vecContains");
+      IrValue *value = ir_new_value(ir, contains ? IR_VALUE_VEC_CONTAINS : IR_VALUE_VEC_INDEX, contains ? IR_TYPE_BOOL : IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+      value->element_type = IR_TYPE_U8;
+      value->local_index = vec->index;
+      value->left = item;
+      if (ir->direct_buffer_helper_count < 6) ir->direct_buffer_helper_count = 6;
+      *out = value;
+      return true;
+    }
+  }
   if (ir_text_eq(callee_name, "std.mem.vecGet") && arg_count == 2) {
     const IrLocal *vec = ir_graph_find_borrowed_local(graph, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0));
     if (vec && vec->type == IR_TYPE_VEC) {

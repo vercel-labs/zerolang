@@ -655,6 +655,42 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       }
       if (!mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
       return mir_verify_value_type(ir, value->left, IR_TYPE_USIZE, "MIR verifier found invalid Vec swap-remove index", "Vec index");
+    case IR_VALUE_VEC_INDEX:
+      mir_require_count(&requirements->buffer_helpers, 6, value->line, value->column, "std.mem.vecIndex");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, "Vec index result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec index element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_U8, "MIR verifier found invalid Vec index value", "Vec item");
+    case IR_VALUE_VEC_CONTAINS:
+      mir_require_count(&requirements->buffer_helpers, 6, value->line, value->column, "std.mem.vecContains");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "Vec contains result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec contains element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_U8, "MIR verifier found invalid Vec contains value", "Vec item");
+    case IR_VALUE_VEC_INSERT_UNIQUE:
+      mir_require_count(&requirements->buffer_helpers, 6, value->line, value->column, "std.mem.vecInsertUnique");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "Vec insert-unique result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec insert-unique element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_U8, "MIR verifier found invalid Vec insert-unique value", "Vec item");
+    case IR_VALUE_VEC_REMOVE_VALUE:
+      mir_require_count(&requirements->buffer_helpers, 6, value->line, value->column, "std.mem.vecRemoveValue");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "Vec remove-value result")) return false;
+      if (value->element_type != IR_TYPE_U8) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid Vec remove-value element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_mutable_local_value_kind(ir, fun, value->local_index, IR_TYPE_VEC, value->line, value->column, "MIR verifier found invalid Vec helper target", "Vec")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_U8, "MIR verifier found invalid Vec remove-value value", "Vec item");
     case IR_VALUE_VEC_CLEAR:
       mir_require_count(&requirements->buffer_helpers, 4, value->line, value->column, "std.mem.vecClear");
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, "Vec clear result")) return false;
@@ -2044,6 +2080,10 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_VEC_GET:
     case IR_VALUE_VEC_SET:
     case IR_VALUE_VEC_REMOVE_SWAP:
+    case IR_VALUE_VEC_INDEX:
+    case IR_VALUE_VEC_CONTAINS:
+    case IR_VALUE_VEC_INSERT_UNIQUE:
+    case IR_VALUE_VEC_REMOVE_VALUE:
     case IR_VALUE_VEC_CLEAR:
     case IR_VALUE_VEC_POP:
     case IR_VALUE_VEC_TRUNCATE:

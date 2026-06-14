@@ -486,6 +486,72 @@ void z_x64_emit_byte_eq_loop(ZBuf *buf) {
   z_x64_patch_rel32(buf, after_false, buf->len);
 }
 
+void z_x64_emit_vec_lookup_loop(ZBuf *buf, bool contains) {
+  // Inputs: r8b=value, rdx=base, ecx=len. Output: eax=index/len or Bool.
+  z_x64_emit_xor_eax_eax(buf);
+  size_t loop = buf->len;
+  z_x64_emit_cmp_rax_rcx(buf, false);
+  size_t absent = z_x64_emit_jcc32_placeholder(buf, 0x83);
+  z_x64_emit_cmp_base_index_reg8(buf, 2, 0, 8);
+  size_t found = z_x64_emit_jcc32_placeholder(buf, 0x84);
+  z_x64_emit_add_reg_i8(buf, 0, 1, false);
+  size_t back = z_x64_emit_jmp32_placeholder(buf, 0xe9);
+  z_x64_patch_rel32(buf, back, loop);
+  z_x64_patch_rel32(buf, absent, buf->len);
+  if (contains) z_x64_emit_mov_eax_u32(buf, 0);
+  else z_x64_emit_mov_eax_from_ecx(buf);
+  size_t end = z_x64_emit_jmp32_placeholder(buf, 0xe9);
+  z_x64_patch_rel32(buf, found, buf->len);
+  if (contains) z_x64_emit_mov_eax_u32(buf, 1);
+  z_x64_patch_rel32(buf, end, buf->len);
+}
+
+void z_x64_emit_vec_insert_unique_loop(ZBuf *buf) {
+  // Inputs: r8b=value, rdx=base, ecx=len, r9d=capacity. Output: eax=Bool, ecx=final len.
+  z_x64_emit_xor_eax_eax(buf);
+  size_t loop = buf->len;
+  z_x64_emit_cmp_rax_rcx(buf, false);
+  size_t absent = z_x64_emit_jcc32_placeholder(buf, 0x83);
+  z_x64_emit_cmp_base_index_reg8(buf, 2, 0, 8);
+  size_t duplicate = z_x64_emit_jcc32_placeholder(buf, 0x84);
+  z_x64_emit_add_reg_i8(buf, 0, 1, false);
+  size_t back = z_x64_emit_jmp32_placeholder(buf, 0xe9);
+  z_x64_patch_rel32(buf, back, loop);
+  z_x64_patch_rel32(buf, absent, buf->len);
+  z_x64_emit_cmp_reg_reg(buf, 1, 9, false);
+  size_t has_capacity = z_x64_emit_jcc32_placeholder(buf, 0x82);
+  z_x64_patch_rel32(buf, duplicate, buf->len);
+  z_x64_emit_mov_eax_u32(buf, 0);
+  size_t end = z_x64_emit_jmp32_placeholder(buf, 0xe9);
+  z_x64_patch_rel32(buf, has_capacity, buf->len);
+  z_x64_emit_store_base_index_reg8(buf, 2, 1, 8);
+  z_x64_emit_add_reg_i8(buf, 1, 1, false);
+  z_x64_emit_mov_eax_u32(buf, 1);
+  z_x64_patch_rel32(buf, end, buf->len);
+}
+
+void z_x64_emit_vec_remove_value_loop(ZBuf *buf) {
+  // Inputs: r8b=value, rdx=base, ecx=len. Output: eax=Bool, ecx=final len.
+  z_x64_emit_xor_eax_eax(buf);
+  size_t loop = buf->len;
+  z_x64_emit_cmp_rax_rcx(buf, false);
+  size_t absent = z_x64_emit_jcc32_placeholder(buf, 0x83);
+  z_x64_emit_cmp_base_index_reg8(buf, 2, 0, 8);
+  size_t found = z_x64_emit_jcc32_placeholder(buf, 0x84);
+  z_x64_emit_add_reg_i8(buf, 0, 1, false);
+  size_t back = z_x64_emit_jmp32_placeholder(buf, 0xe9);
+  z_x64_patch_rel32(buf, back, loop);
+  z_x64_patch_rel32(buf, absent, buf->len);
+  z_x64_emit_mov_eax_u32(buf, 0);
+  size_t end = z_x64_emit_jmp32_placeholder(buf, 0xe9);
+  z_x64_patch_rel32(buf, found, buf->len);
+  z_x64_emit_add_reg_i8(buf, 1, -1, false);
+  z_x64_emit_movzx_reg32_base_index_u8(buf, 9, 2, 1);
+  z_x64_emit_store_base_index_reg8(buf, 2, 0, 9);
+  z_x64_emit_mov_eax_u32(buf, 1);
+  z_x64_patch_rel32(buf, end, buf->len);
+}
+
 void z_x64_emit_crc32_bytes_loop(ZBuf *buf, unsigned ptr_reg, unsigned len_reg) {
   z_x64_emit_mov_eax_u32(buf, 0xffffffffu);
   z_x64_emit_xor_ecx_ecx(buf);

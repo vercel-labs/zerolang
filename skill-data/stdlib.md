@@ -20,7 +20,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 ## Target-Neutral Helpers
 
 - `std.mem`: spans, byte copy/fill, non-owned scalar item copy/fill/search, scalar item slicing, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
-- `std.collections`: fixed-capacity push/pop, deque front/back operations, first/last access, indexed insert/replace/remove, unique insert, append, clear, truncate, fill, reverse, rotate, live-prefix and set/map views, `FixedSet<T>`, `FixedDeque<T>`, `FixedRingBuffer<T>`, and `FixedMap<K,V>` storage wrappers, set/map/ring-buffer capacity state, count, contains, value removal, swap, swap-remove, move-to-front, and parallel key/value map helpers over caller-owned storage plus explicit lengths.
+- `std.collections`: fixed-capacity push/pop, deque front/back operations, first/last access, indexed insert/replace/remove, unique insert, append, clear, truncate, fill, reverse, rotate, live-prefix and set/map views, `FixedSet<T>`, `FixedDeque<T>`, `FixedRingBuffer<T>`, and `FixedMap<K,V>` storage wrappers, set/map/ring-buffer capacity state, count, contains, value removal, swap, swap-remove, move-to-front, and parallel key/value map helpers over caller-owned array or allocator-returned span storage plus explicit lengths.
 - `std.search`: generic scalar index search plus typed lower-bound and binary-search helpers.
 - `std.sort`: in-place insertion sort and sortedness checks for `i32`, `u32`, and `usize` storage.
 - `std.ascii`: ASCII byte predicates, case conversion, and digit value helpers.
@@ -163,6 +163,27 @@ pub fn main() -> Void {
     let live_keys: Span<u8> = std.collections.mapKeys(keys, map_len)
     let live_scores: Span<u16> = std.collections.mapValues(keys, scores, map_len)
     expect replaced && swapped && reversed && filled && rotated_left && rotated_right && std.collections.clear(values, len) == 0 && std.collections.setClear(values, len) == 0 && std.collections.pop(values, len) == 2 && last.has && last.value == 5 && front.has && front.value == 2 && back_len == 2 && std.collections.setContains(values, len, 5) && set_remaining == 1 && std.mem.len(set_live) == 3 && std.mem.len(live) == 3 && fixed_inserted && fixed_removed && std.mem.len(fixed_live) == 2 && std.collections.fixedSetRemaining(&fixed_set) == 2 && std.collections.fixedSetLen(&fixed_set) == 2 && fixed_deque_back_pushed && fixed_deque_front_pushed && fixed_deque_front.has && fixed_deque_front.value == 1 && fixed_deque_popped.has && fixed_deque_popped.value == 2 && fixed_map_added && fixed_map_score.has && fixed_map_score.value == 30_u16 && map_len == 3 && std.collections.mapRemaining(keys, scores, map_len) == 0 && std.collections.mapIsFull(keys, scores, map_len) && std.collections.mapClear(keys, scores, map_len) == 0 && has_score && score.has && score.value == 30_u16 && std.mem.len(live_keys) == 3 && std.mem.len(live_scores) == 3
+}
+```
+
+For byte-oriented dynamic storage, request mutable byte spans explicitly with
+`std.mem.allocBytes`. The fixed collection wrappers can use those returned spans
+as backing storage:
+
+```zero
+pub fn main() -> Void {
+    var key_storage: [4]u8 = [0_u8; 4]
+    var value_storage: [4]u8 = [0_u8; 4]
+    var key_alloc: FixedBufAlloc = std.mem.fixedBufAlloc(key_storage)
+    var value_alloc: FixedBufAlloc = std.mem.fixedBufAlloc(value_storage)
+    let keys_maybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(key_alloc, 4_usize)
+    let values_maybe: Maybe<MutSpan<u8>> = std.mem.allocBytes(value_alloc, 4_usize)
+    if keys_maybe.has && values_maybe.has {
+        var map: FixedMap<u8, u8> = std.collections.fixedMap(keys_maybe.value, values_maybe.value, 0_usize)
+        let ok: Bool = std.collections.fixedMapPut(&mut map, 7_u8, 42_u8)
+        let value: Maybe<u8> = std.collections.fixedMapGet(&map, 7_u8)
+        expect ok && value.has && value.value == 42_u8
+    }
 }
 ```
 
@@ -819,6 +840,10 @@ vecClear(arg0: mutref<Vec>) -> usize
 vecPop(arg0: mutref<Vec>) -> Bool
 vecTruncate(arg0: mutref<Vec>, arg1: usize) -> usize
 vecRemoveSwap(arg0: mutref<Vec>, arg1: usize) -> Bool
+vecIndex(arg0: ref<Vec>, arg1: u8) -> usize
+vecContains(arg0: ref<Vec>, arg1: u8) -> Bool
+vecInsertUnique(arg0: mutref<Vec>, arg1: u8) -> Bool
+vecRemoveValue(arg0: mutref<Vec>, arg1: u8) -> Bool
 vecLen(arg0: ref<Vec>) -> usize
 vecCapacity(arg0: ref<Vec>) -> usize
 vecRemaining(arg0: ref<Vec>) -> usize

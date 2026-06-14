@@ -386,6 +386,82 @@ void z_aarch64_emit_byte_eq_loop(ZBuf *text, unsigned result_reg) {
   z_aarch64_patch_branch26(text, after_false, text->len);
 }
 
+void z_aarch64_emit_vec_lookup_loop(ZBuf *text, unsigned result_reg, bool contains) {
+  // Inputs: x10=base, w9=len, w12=value. Output: result_reg=index/len or Bool.
+  z_aarch64_emit_movz_w(text, 8, 0);
+  size_t loop = text->len;
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t absent = z_aarch64_emit_b_cond_placeholder(text, 2);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 8);
+  z_aarch64_emit_load_b_imm(text, 13, 11, 0);
+  z_aarch64_emit_cmp_w(text, 13, 12);
+  size_t found = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_add_w_imm(text, 8, 8, 1);
+  size_t back = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_branch26(text, back, loop);
+  z_aarch64_patch_cond19(text, absent, text->len);
+  if (contains) z_aarch64_emit_movz_w(text, result_reg, 0);
+  else if (result_reg != 9) z_aarch64_emit_mov_w(text, result_reg, 9);
+  size_t end = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, found, text->len);
+  if (contains) z_aarch64_emit_movz_w(text, result_reg, 1);
+  else if (result_reg != 8) z_aarch64_emit_mov_w(text, result_reg, 8);
+  z_aarch64_patch_branch26(text, end, text->len);
+}
+
+void z_aarch64_emit_vec_insert_unique_loop(ZBuf *text, unsigned result_reg) {
+  // Inputs: x10=base, w9=len, w12=value, w13=capacity. Output: result_reg=Bool, w9=final len.
+  z_aarch64_emit_movz_w(text, 8, 0);
+  size_t loop = text->len;
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t absent = z_aarch64_emit_b_cond_placeholder(text, 2);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 8);
+  z_aarch64_emit_load_b_imm(text, 14, 11, 0);
+  z_aarch64_emit_cmp_w(text, 14, 12);
+  size_t duplicate = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_add_w_imm(text, 8, 8, 1);
+  size_t back = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_branch26(text, back, loop);
+  z_aarch64_patch_cond19(text, absent, text->len);
+  z_aarch64_emit_cmp_w(text, 9, 13);
+  size_t has_capacity = z_aarch64_emit_b_cond_placeholder(text, 3);
+  z_aarch64_patch_cond19(text, duplicate, text->len);
+  z_aarch64_emit_movz_w(text, result_reg, 0);
+  size_t end = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, has_capacity, text->len);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 9);
+  z_aarch64_emit_store_b_imm(text, 12, 11, 0);
+  z_aarch64_emit_add_w_imm(text, 9, 9, 1);
+  z_aarch64_emit_movz_w(text, result_reg, 1);
+  z_aarch64_patch_branch26(text, end, text->len);
+}
+
+void z_aarch64_emit_vec_remove_value_loop(ZBuf *text, unsigned result_reg) {
+  // Inputs: x10=base, w9=len, w12=value. Output: result_reg=Bool, w9=final len.
+  z_aarch64_emit_movz_w(text, 8, 0);
+  size_t loop = text->len;
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t absent = z_aarch64_emit_b_cond_placeholder(text, 2);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 8);
+  z_aarch64_emit_load_b_imm(text, 13, 11, 0);
+  z_aarch64_emit_cmp_w(text, 13, 12);
+  size_t found = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_add_w_imm(text, 8, 8, 1);
+  size_t back = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_branch26(text, back, loop);
+  z_aarch64_patch_cond19(text, absent, text->len);
+  z_aarch64_emit_movz_w(text, result_reg, 0);
+  size_t end = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, found, text->len);
+  z_aarch64_emit_sub_w_imm(text, 9, 9, 1);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 9);
+  z_aarch64_emit_load_b_imm(text, 13, 11, 0);
+  z_aarch64_emit_add_x_reg(text, 11, 10, 8);
+  z_aarch64_emit_store_b_imm(text, 13, 11, 0);
+  z_aarch64_emit_movz_w(text, result_reg, 1);
+  z_aarch64_patch_branch26(text, end, text->len);
+}
+
 void z_aarch64_emit_crc32_bytes_loop(ZBuf *text, unsigned result_reg) {
   z_aarch64_emit_movz_w(text, 8, 0xffffffffu);
   z_aarch64_emit_movz_w(text, 9, 0);

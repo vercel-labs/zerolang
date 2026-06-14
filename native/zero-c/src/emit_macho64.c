@@ -1918,6 +1918,41 @@ static bool macho_emit_vec_remove_swap_to_reg_at(ZBuf *text, const IrFunction *f
   return true;
 }
 
+static bool macho_emit_vec_lookup_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec lookup requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec lookup requires a value", value->line, value->column, "missing Vec value");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 12, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_x(text, fun, 10, value->local_index, 0, frame_size);
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_vec_lookup_loop(text, reg, value->kind == IR_VALUE_VEC_CONTAINS);
+  return true;
+}
+
+static bool macho_emit_vec_insert_unique_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec insert-unique requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec insert-unique requires a value", value->line, value->column, "missing Vec value");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 12, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_x(text, fun, 10, value->local_index, 0, frame_size);
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  macho_emit_load_local_w(text, fun, 13, value->local_index, 12, frame_size);
+  z_aarch64_emit_vec_insert_unique_loop(text, 15);
+  macho_emit_store_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  if (reg != 15) z_aarch64_emit_mov_w(text, reg, 15);
+  return true;
+}
+
+static bool macho_emit_vec_remove_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec remove-value requires a Vec local", value->line, value->column, "invalid Vec local");
+  if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec remove-value requires a value", value->line, value->column, "missing Vec value");
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 12, frame_size, scratch_slot, ctx, diag)) return false;
+  macho_emit_load_local_x(text, fun, 10, value->local_index, 0, frame_size);
+  macho_emit_load_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  z_aarch64_emit_vec_remove_value_loop(text, 15);
+  macho_emit_store_local_w(text, fun, 9, value->local_index, 8, frame_size);
+  if (reg != 15) z_aarch64_emit_mov_w(text, reg, 15);
+  return true;
+}
+
 static bool macho_emit_vec_get_to_maybe_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return macho_diag_at(diag, "direct AArch64 Mach-O Vec get requires a Vec local", value->line, value->column, "invalid Vec local");
   if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O Vec get requires an index", value->line, value->column, "missing Vec index");
@@ -2087,6 +2122,13 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return macho_emit_vec_truncate_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_VEC_REMOVE_SWAP:
       return macho_emit_vec_remove_swap_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_INDEX:
+    case IR_VALUE_VEC_CONTAINS:
+      return macho_emit_vec_lookup_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_INSERT_UNIQUE:
+      return macho_emit_vec_insert_unique_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_VEC_REMOVE_VALUE:
+      return macho_emit_vec_remove_value_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_RAND_NEXT_U32:
       if (value->local_index >= fun->local_len) return macho_diag_at(diag, "direct AArch64 Mach-O std.rand.nextU32 local is out of range", value->line, value->column, "invalid RandSource");
       macho_emit_load_local_w(text, fun, 8, value->local_index, 0, frame_size);

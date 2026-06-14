@@ -4221,6 +4221,70 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if ((strcmp(callee_name, "std.mem.vecInsertUnique") == 0 || strcmp(callee_name, "std.mem.vecRemoveValue") == 0) &&
+          expr->args.len == 2 &&
+          expr->args.items[0] &&
+          expr->args.items[0]->kind == EXPR_BORROW &&
+          expr->args.items[0]->mutable_borrow &&
+          expr->args.items[0]->left &&
+          expr->args.items[0]->left->kind == EXPR_IDENT) {
+        const IrLocal *vec = ir_function_find_local(fun, expr->args.items[0]->left->text);
+        if (!vec || vec->type != IR_TYPE_VEC || !vec->is_mutable) {
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem Vec value mutation expects a mutable Vec local", expr->args.items[0]->line, expr->args.items[0]->column, "non-mutable Vec");
+          return false;
+        }
+        IrValue *item = NULL;
+        if (!ir_lower_expr(program, ir, fun, expr->args.items[1], &item)) {
+          free(callee_name);
+          return false;
+        }
+        if (!item || item->type != IR_TYPE_U8) {
+          ir_free_value(item);
+          free(callee_name);
+          ir_mark_unsupported(ir, "direct backend std.mem Vec value mutation currently supports only u8 values", expr->args.items[1]->line, expr->args.items[1]->column, "non-u8 value");
+          return false;
+        }
+        bool insert_unique = strcmp(callee_name, "std.mem.vecInsertUnique") == 0;
+        IrValue *value = ir_new_value(ir, insert_unique ? IR_VALUE_VEC_INSERT_UNIQUE : IR_VALUE_VEC_REMOVE_VALUE, IR_TYPE_BOOL, expr->line, expr->column);
+        value->element_type = IR_TYPE_U8;
+        value->local_index = vec->index;
+        value->left = item;
+        ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 6 ? 6 : ir->direct_buffer_helper_count;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.mem.vecIndex") == 0 || strcmp(callee_name, "std.mem.vecContains") == 0) &&
+          expr->args.len == 2) {
+        const Expr *arg = expr->args.items[0];
+        if (arg && arg->kind == EXPR_BORROW) arg = arg->left;
+        if (arg && arg->kind == EXPR_IDENT) {
+          const IrLocal *vec = ir_function_find_local(fun, arg->text);
+          if (vec && vec->type == IR_TYPE_VEC) {
+            IrValue *item = NULL;
+            if (!ir_lower_expr(program, ir, fun, expr->args.items[1], &item)) {
+              free(callee_name);
+              return false;
+            }
+            if (!item || item->type != IR_TYPE_U8) {
+              ir_free_value(item);
+              free(callee_name);
+              ir_mark_unsupported(ir, "direct backend std.mem Vec lookup currently supports only u8 values", expr->args.items[1]->line, expr->args.items[1]->column, "non-u8 value");
+              return false;
+            }
+            bool contains = strcmp(callee_name, "std.mem.vecContains") == 0;
+            IrValue *value = ir_new_value(ir, contains ? IR_VALUE_VEC_CONTAINS : IR_VALUE_VEC_INDEX, contains ? IR_TYPE_BOOL : IR_TYPE_USIZE, expr->line, expr->column);
+            value->element_type = IR_TYPE_U8;
+            value->local_index = vec->index;
+            value->left = item;
+            ir->direct_buffer_helper_count = ir->direct_buffer_helper_count < 6 ? 6 : ir->direct_buffer_helper_count;
+            free(callee_name);
+            *out = value;
+            return true;
+          }
+        }
+      }
       if (strcmp(callee_name, "std.mem.vecGet") == 0 &&
           expr->args.len == 2) {
         const Expr *arg = expr->args.items[0];

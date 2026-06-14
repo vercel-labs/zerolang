@@ -51,6 +51,10 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_VEC_POP:
     case IR_VALUE_VEC_TRUNCATE:
     case IR_VALUE_VEC_REMOVE_SWAP:
+    case IR_VALUE_VEC_INDEX:
+    case IR_VALUE_VEC_CONTAINS:
+    case IR_VALUE_VEC_INSERT_UNIQUE:
+    case IR_VALUE_VEC_REMOVE_VALUE:
       caps->memory = true;
       break;
     case IR_VALUE_ALLOC_BYTES:
