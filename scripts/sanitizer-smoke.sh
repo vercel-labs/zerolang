@@ -7,7 +7,9 @@ cd "$root"
 out=".zero/sanitizer/zero"
 mkdir -p "$(dirname "$out")"
 
-cc -std=c11 -Wall -Wextra -Wpedantic -g -O1 -fsanitize=address,undefined -I native/zero-c/include native/zero-c/src/*.c -o "$out"
+make -C native/zero-c \
+  OUT="$root/$out" \
+  CFLAGS="-std=c11 -Wall -Wextra -Wpedantic -g -O1 -fsanitize=address,undefined"
 
 "$out" --version >/dev/null
 "$out" check examples/hello.graph >/dev/null
