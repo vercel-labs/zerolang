@@ -157,6 +157,14 @@ static void a64_emit_load_local_w(ZBuf *text, const IrFunction *fun, unsigned re
   z_aarch64_emit_load_w_sp(text, reg, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
 }
 
+static void a64_emit_load_local_b(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned slot_offset, unsigned frame_size) {
+  z_aarch64_emit_load_b_sp(text, reg, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
+}
+
+static void a64_emit_load_local_h(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned slot_offset, unsigned frame_size) {
+  z_aarch64_emit_load_h_imm(text, reg, 31u, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
+}
+
 static void a64_emit_load_local_x(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned slot_offset, unsigned frame_size) {
   z_aarch64_emit_load_x_sp(text, reg, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
 }
@@ -165,8 +173,64 @@ static void a64_emit_store_local_w(ZBuf *text, const IrFunction *fun, unsigned r
   z_aarch64_emit_store_w_sp(text, reg, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
 }
 
+static void a64_emit_store_local_b(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned slot_offset, unsigned frame_size) {
+  z_aarch64_emit_store_b_sp(text, reg, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
+}
+
+static void a64_emit_store_local_h(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned slot_offset, unsigned frame_size) {
+  z_aarch64_emit_store_h_imm(text, reg, 31u, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
+}
+
 static void a64_emit_store_local_x(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned slot_offset, unsigned frame_size) {
   z_aarch64_emit_store_x_sp(text, reg, a64_local_slot_offset(fun, local_index, slot_offset, frame_size));
+}
+
+static void a64_emit_load_field(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned field_offset, IrTypeKind type, unsigned frame_size) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
+    a64_emit_load_local_b(text, fun, reg, local_index, field_offset, frame_size);
+  } else if (type == IR_TYPE_U16) {
+    a64_emit_load_local_h(text, fun, reg, local_index, field_offset, frame_size);
+  } else if (a64_type_is_scalar64(type)) {
+    a64_emit_load_local_x(text, fun, reg, local_index, field_offset, frame_size);
+  } else {
+    a64_emit_load_local_w(text, fun, reg, local_index, field_offset, frame_size);
+  }
+}
+
+static void a64_emit_store_field(ZBuf *text, const IrFunction *fun, unsigned reg, unsigned local_index, unsigned field_offset, IrTypeKind type, unsigned frame_size) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
+    a64_emit_store_local_b(text, fun, reg, local_index, field_offset, frame_size);
+  } else if (type == IR_TYPE_U16) {
+    a64_emit_store_local_h(text, fun, reg, local_index, field_offset, frame_size);
+  } else if (a64_type_is_scalar64(type)) {
+    a64_emit_store_local_x(text, fun, reg, local_index, field_offset, frame_size);
+  } else {
+    a64_emit_store_local_w(text, fun, reg, local_index, field_offset, frame_size);
+  }
+}
+
+static void a64_emit_load_field_indirect(ZBuf *text, unsigned reg, unsigned base, unsigned field_offset, IrTypeKind type) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
+    z_aarch64_emit_load_b_imm(text, reg, base, field_offset);
+  } else if (type == IR_TYPE_U16) {
+    z_aarch64_emit_load_h_imm(text, reg, base, field_offset);
+  } else if (a64_type_is_scalar64(type)) {
+    z_aarch64_emit_load_x_imm(text, reg, base, field_offset);
+  } else {
+    z_aarch64_emit_load_w_imm(text, reg, base, field_offset);
+  }
+}
+
+static void a64_emit_store_field_indirect(ZBuf *text, unsigned reg, unsigned base, unsigned field_offset, IrTypeKind type) {
+  if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) {
+    z_aarch64_emit_store_b_imm(text, reg, base, field_offset);
+  } else if (type == IR_TYPE_U16) {
+    z_aarch64_emit_store_h_imm(text, reg, base, field_offset);
+  } else if (a64_type_is_scalar64(type)) {
+    z_aarch64_emit_store_x_imm(text, reg, base, field_offset);
+  } else {
+    z_aarch64_emit_store_w_imm(text, reg, base, field_offset);
+  }
 }
 
 static bool a64_scratch_slot(unsigned slot, unsigned *offset, const IrValue *value, ZDiag *diag) {
@@ -354,6 +418,18 @@ static bool a64_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const I
     a64_emit_load_local_w(text, fun, reg, view->local_index, 16, frame_size);
     return true;
   }
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && view->local_index < fun->local_len) {
+    const IrLocal *record_local = &fun->locals[view->local_index];
+    if (record_local->is_record_ref) {
+      unsigned base = reg == 10 ? 11 : 10;
+      a64_emit_load_local_x(text, fun, base, view->local_index, 0, frame_size);
+      a64_emit_load_field_indirect(text, reg, base, view->field_offset + 8u, IR_TYPE_U32);
+      return true;
+    }
+    if (!record_local->is_record) return a64_diag(diag, "direct AArch64 byte-view field load requires record local", view->line, view->column, "non-record local");
+    a64_emit_load_field(text, fun, reg, view->local_index, view->field_offset + 8u, IR_TYPE_U32, frame_size);
+    return true;
+  }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
     if (!a64_emit_value_to_reg_at(text, fun, view, 0, frame_size, scratch_slot, ctx, diag)) return false;
     if (reg != 1) z_aarch64_emit_mov_w(text, reg, 1);
@@ -379,6 +455,18 @@ static bool a64_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const I
   }
   if (view->kind == IR_VALUE_MAYBE_VALUE && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) {
     a64_emit_load_local_x(text, fun, reg, view->local_index, 8, frame_size);
+    return true;
+  }
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && view->local_index < fun->local_len) {
+    const IrLocal *record_local = &fun->locals[view->local_index];
+    if (record_local->is_record_ref) {
+      unsigned base = reg == 10 ? 11 : 10;
+      a64_emit_load_local_x(text, fun, base, view->local_index, 0, frame_size);
+      a64_emit_load_field_indirect(text, reg, base, view->field_offset, IR_TYPE_U64);
+      return true;
+    }
+    if (!record_local->is_record) return a64_diag(diag, "direct AArch64 byte-view field load requires record local", view->line, view->column, "non-record local");
+    a64_emit_load_field(text, fun, reg, view->local_index, view->field_offset, IR_TYPE_U64, frame_size);
     return true;
   }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
@@ -1145,6 +1233,28 @@ static bool a64_emit_index_load_to_reg_at(ZBuf *text, const IrFunction *fun, con
   return true;
 }
 
+static bool a64_emit_field_load_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, ZDiag *diag) {
+  if (value->local_index >= fun->local_len) return a64_diag(diag, "direct AArch64 field load record is out of range", value->line, value->column, "invalid record local");
+  if (value->type == IR_TYPE_BYTE_VIEW) return a64_diag(diag, "direct AArch64 byte-view field load cannot be used as a scalar", value->line, value->column, "byte-view field load");
+  const IrLocal *record_local = &fun->locals[value->local_index];
+  if (record_local->is_record_ref) {
+    unsigned base = reg == 10 ? 11 : 10;
+    a64_emit_load_local_x(text, fun, base, value->local_index, 0, frame_size);
+    a64_emit_load_field_indirect(text, reg, base, value->field_offset, value->type);
+    return true;
+  }
+  if (!record_local->is_record) return a64_diag(diag, "direct AArch64 field load requires record local", value->line, value->column, "non-record local");
+  a64_emit_load_field(text, fun, reg, value->local_index, value->field_offset, value->type, frame_size);
+  return true;
+}
+
+static bool a64_emit_record_addr_to_reg(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, ZDiag *diag) {
+  if (value->local_index >= fun->local_len) return a64_diag(diag, "direct AArch64 record address local is out of range", value->line, value->column, "invalid record local");
+  if (!fun->locals[value->local_index].is_record) return a64_diag(diag, "direct AArch64 record address requires record local", value->line, value->column, "non-record local");
+  z_aarch64_emit_add_x_sp_imm(text, reg, a64_local_slot_offset(fun, value->local_index, 0, frame_size));
+  return true;
+}
+
 static bool a64_emit_call_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   const IrFunction *callee = ctx && ctx->program && !value->external_call && value->callee_index < ctx->program->function_len ? &ctx->program->functions[value->callee_index] : NULL;
   const IrExternalFunction *external = ctx && ctx->program && value->external_call && value->external_index < ctx->program->external_function_len ? &ctx->program->external_functions[value->external_index] : NULL;
@@ -1283,6 +1393,8 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
     case IR_VALUE_CRC32_BYTES: return a64_emit_crc32_bytes_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: return a64_emit_byte_view_index_load_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_INDEX_LOAD: return a64_emit_index_load_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FIELD_LOAD: return a64_emit_field_load_to_reg_at(text, fun, value, reg, frame_size, diag);
+    case IR_VALUE_RECORD_ADDR: return a64_emit_record_addr_to_reg(text, fun, value, reg, frame_size, diag);
     default:
       return a64_diag(diag, "direct AArch64 value kind is unsupported", value->line, value->column, "unsupported value");
   }
@@ -1460,6 +1572,36 @@ static bool a64_emit_index_store(ZBuf *text, const IrFunction *fun, const IrInst
   return true;
 }
 
+static bool a64_emit_field_store(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (instr->local_index >= fun->local_len) return a64_diag(diag, "direct AArch64 field store record is out of range", instr->line, instr->column, "invalid record local");
+  const IrLocal *record_local = &fun->locals[instr->local_index];
+  if (instr->value && instr->value->type == IR_TYPE_BYTE_VIEW) {
+    if (record_local->is_record_ref) {
+      if (!a64_emit_byte_view_pair_at(text, fun, instr->value, 8, 9, frame_size, 0, ctx, diag)) return false;
+      a64_emit_load_local_x(text, fun, 10, instr->local_index, 0, frame_size);
+      a64_emit_store_field_indirect(text, 8, 10, instr->field_offset, IR_TYPE_U64);
+      a64_emit_store_field_indirect(text, 9, 10, instr->field_offset + 8u, IR_TYPE_U32);
+      return true;
+    }
+    if (!record_local->is_record) return a64_diag(diag, "direct AArch64 byte-view field store requires record local", instr->line, instr->column, "non-record local");
+    if (!a64_emit_byte_view_pair_at(text, fun, instr->value, 8, 9, frame_size, 0, ctx, diag)) return false;
+    a64_emit_store_field(text, fun, 8, instr->local_index, instr->field_offset, IR_TYPE_U64, frame_size);
+    a64_emit_store_field(text, fun, 9, instr->local_index, instr->field_offset + 8u, IR_TYPE_U32, frame_size);
+    return true;
+  }
+  IrTypeKind type = instr->value ? instr->value->type : IR_TYPE_I32;
+  if (record_local->is_record_ref) {
+    if (!a64_emit_value_to_reg_at(text, fun, instr->value, 8, frame_size, 0, ctx, diag)) return false;
+    a64_emit_load_local_x(text, fun, 10, instr->local_index, 0, frame_size);
+    a64_emit_store_field_indirect(text, 8, 10, instr->field_offset, type);
+    return true;
+  }
+  if (!record_local->is_record) return a64_diag(diag, "direct AArch64 field store requires record local", instr->line, instr->column, "non-record local");
+  if (!a64_emit_value_to_reg_at(text, fun, instr->value, 8, frame_size, 0, ctx, diag)) return false;
+  a64_emit_store_field(text, fun, 8, instr->local_index, instr->field_offset, type, frame_size);
+  return true;
+}
+
 static bool a64_emit_world_write(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (!instr || !instr->value) return a64_diag(diag, "direct AArch64 World write requires bytes", instr ? instr->line : 1, instr ? instr->column : 1, "missing byte view");
   if (!ctx || !ctx->emit_world_write) return a64_diag(diag, "direct AArch64 World write requires an executable target runtime", instr->line, instr->column, "unsupported instruction");
@@ -1471,6 +1613,7 @@ static bool a64_emit_world_write(ZBuf *text, const IrFunction *fun, const IrInst
 static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (instr->kind == IR_INSTR_LOCAL_SET) return a64_emit_local_set(text, fun, instr, frame_size, ctx, diag);
   if (instr->kind == IR_INSTR_INDEX_STORE) return a64_emit_index_store(text, fun, instr, frame_size, ctx, diag);
+  if (instr->kind == IR_INSTR_FIELD_STORE) return a64_emit_field_store(text, fun, instr, frame_size, ctx, diag);
   if (instr->kind == IR_INSTR_WORLD_WRITE) return a64_emit_world_write(text, fun, instr, frame_size, ctx, diag);
   if (instr->kind == IR_INSTR_EXPR) return !instr->value || a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag);
   if (instr->kind == IR_INSTR_RETURN) {
@@ -1627,11 +1770,12 @@ static bool a64_validate_function(const IrFunction *fun, ZDiag *diag) {
   for (size_t i = 0; i < fun->local_len; i++) {
     const IrLocal *local = &fun->locals[i];
     if (local->type == IR_TYPE_BYTE_VIEW || local->type == IR_TYPE_MAYBE_BYTE_VIEW || local->type == IR_TYPE_MAYBE_SCALAR) continue;
+    if (local->is_record || local->is_record_ref) continue;
     if (local->is_array && (local->element_type == IR_TYPE_U8 || local->element_type == IR_TYPE_BOOL || local->element_type == IR_TYPE_U16 ||
                             local->element_type == IR_TYPE_U32 || local->element_type == IR_TYPE_I32 || local->element_type == IR_TYPE_USIZE ||
                             a64_type_is_scalar64(local->element_type))) continue;
     if (local->is_array || !a64_type_is_scalar(local->type)) {
-      return a64_diag(diag, "direct AArch64 backend supports only primitive scalar locals and fixed byte/integer arrays", local->line, local->column, local->name);
+      return a64_diag(diag, "direct AArch64 backend supports only primitive scalar locals, record locals, and fixed byte/integer arrays", local->line, local->column, local->name);
     }
   }
   return true;

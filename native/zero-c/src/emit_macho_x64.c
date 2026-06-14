@@ -351,6 +351,18 @@ static bool machx64_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const 
     machx64_emit_load_local_slot_eax(text, fun, view->local_index, 16);
     return true;
   }
+  if (view && view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && view->local_index < fun->local_len) {
+    const IrLocal *local = &fun->locals[view->local_index];
+    if (local->is_record_ref) {
+      machx64_emit_load_local_slot_rax(text, fun, view->local_index, 0);
+      z_x64_emit_add_rax_u32(text, view->field_offset + 8u, true);
+      machx64_emit_load_ptr_element(text, 0, 0, IR_TYPE_U64);
+      return true;
+    }
+    if (!local->is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O byte-view field load requires record local", view->line, view->column, "non-record local");
+    machx64_emit_load_field_eax(text, fun, view->local_index, view->field_offset + 8u, IR_TYPE_U64);
+    return true;
+  }
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
     if (!machx64_emit_value(text, fun, view, ctx, diag)) return false;
     z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
@@ -376,6 +388,18 @@ static bool machx64_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const 
   }
   if (view->kind == IR_VALUE_MAYBE_VALUE && view->local_index < fun->local_len && fun->locals[view->local_index].type == IR_TYPE_MAYBE_BYTE_VIEW) {
     machx64_emit_load_local_slot_rax(text, fun, view->local_index, 8);
+    return true;
+  }
+  if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && view->local_index < fun->local_len) {
+    const IrLocal *local = &fun->locals[view->local_index];
+    if (local->is_record_ref) {
+      machx64_emit_load_local_slot_rax(text, fun, view->local_index, 0);
+      if (view->field_offset > 0) z_x64_emit_add_rax_u32(text, view->field_offset, true);
+      machx64_emit_load_ptr_element(text, 0, 0, IR_TYPE_U64);
+      return true;
+    }
+    if (!local->is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O byte-view field load requires record local", view->line, view->column, "non-record local");
+    machx64_emit_load_field_eax(text, fun, view->local_index, view->field_offset, IR_TYPE_U64);
     return true;
   }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return machx64_emit_value(text, fun, view, ctx, diag);
@@ -1497,7 +1521,30 @@ static bool machx64_emit_local_set_instr(ZBuf *text, const IrFunction *fun, cons
 
 static bool machx64_emit_field_store_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, MachOEmitContext *ctx, ZDiag *diag) {
   if (instr->local_index >= fun->local_len) return machx64_diag_at(diag, "direct x86_64 Mach-O field store record is out of range", instr->line, instr->column, "invalid record local");
-  if (fun->locals[instr->local_index].is_record_ref) {
+  const IrLocal *local = &fun->locals[instr->local_index];
+  if (instr->value && instr->value->type == IR_TYPE_BYTE_VIEW) {
+    if (local->is_record_ref) {
+      if (!machx64_emit_byte_view_pair(text, fun, instr->value, 0, 2, ctx, diag)) return false;
+      z_x64_emit_push_rax(text);
+      z_x64_emit_push_reg64(text, 2);
+      machx64_emit_load_local_slot_rax(text, fun, instr->local_index, 0);
+      if (instr->field_offset > 0) z_x64_emit_add_rax_u32(text, instr->field_offset, true);
+      z_x64_emit_mov_reg_from_reg(text, 1, 0, true);
+      z_x64_emit_pop_reg64(text, 2);
+      z_x64_emit_pop_rax(text);
+      machx64_emit_store_ptr_element(text, 1, 0, IR_TYPE_U64);
+      z_x64_emit_add_reg_i8(text, 1, 8, true);
+      machx64_emit_store_ptr_element(text, 1, 2, IR_TYPE_U64);
+      return true;
+    }
+    if (!local->is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O byte-view field store requires record local", instr->line, instr->column, "non-record local");
+    if (!machx64_emit_byte_view_pair(text, fun, instr->value, 0, 2, ctx, diag)) return false;
+    machx64_emit_store_field_from_eax(text, fun, instr->local_index, instr->field_offset, IR_TYPE_U64);
+    z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
+    machx64_emit_store_field_from_eax(text, fun, instr->local_index, instr->field_offset + 8u, IR_TYPE_U64);
+    return true;
+  }
+  if (local->is_record_ref) {
     machx64_emit_load_local_slot_rax(text, fun, instr->local_index, 0);
     if (instr->field_offset > 0) z_x64_emit_add_rax_u32(text, instr->field_offset, true);
     z_x64_emit_push_rax(text);
@@ -1506,7 +1553,7 @@ static bool machx64_emit_field_store_instr(ZBuf *text, const IrFunction *fun, co
     machx64_emit_store_ptr_element(text, 1, 0, instr->value ? instr->value->type : IR_TYPE_I32);
     return true;
   }
-  if (!fun->locals[instr->local_index].is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
+  if (!local->is_record) return machx64_diag_at(diag, "direct x86_64 Mach-O field store requires record local", instr->line, instr->column, "non-record local");
   if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
   machx64_emit_store_field_from_eax(text, fun, instr->local_index, instr->field_offset, instr->value ? instr->value->type : IR_TYPE_I32);
   return true;

@@ -35,8 +35,7 @@ static bool build_check_instr(const ZBuildability *ctx, const IrFunction *fun, c
     if (instr->index && !z_build_check_value(ctx, fun, instr->index, false, 0, diag)) return false;
     return true;
   }
-  if (z_build_backend_is_aarch64_direct(ctx->backend) &&
-      (instr->kind == IR_INSTR_FIELD_STORE || instr->kind == IR_INSTR_RAISE)) {
+  if (z_build_backend_is_aarch64_direct(ctx->backend) && instr->kind == IR_INSTR_RAISE) {
     return z_build_diag(ctx, diag, "direct AArch64 buildability does not support this instruction yet", instr->line, instr->column, "unsupported instruction");
   }
   switch (instr->kind) {
@@ -57,6 +56,9 @@ static bool build_check_instr(const ZBuildability *ctx, const IrFunction *fun, c
       return true;
     case IR_INSTR_INDEX_STORE:
     case IR_INSTR_FIELD_STORE: {
+      if (z_build_backend_is_aarch64_direct(ctx->backend) && instr->kind == IR_INSTR_FIELD_STORE && instr->value && instr->value->type == IR_TYPE_BYTE_VIEW) {
+        if (!z_build_check_aarch64_byte_view(ctx, fun, instr->value, diag)) return false;
+      }
       if (instr->value && !z_build_check_value(ctx, fun, instr->value, false, 0, diag)) return false;
       unsigned index_scratch_slot = instr->kind == IR_INSTR_INDEX_STORE && (ctx->backend == Z_DIRECT_BACKEND_MACHO64 || z_build_backend_is_aarch64_direct(ctx->backend)) ? 1 : 0;
       if (instr->index && !z_build_check_value(ctx, fun, instr->index, false, index_scratch_slot, diag)) return false;
