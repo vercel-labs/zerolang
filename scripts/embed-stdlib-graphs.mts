@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stdRoot = path.join(repoRoot, "std");
 const outPath = path.join(repoRoot, "native/zero-c/src/embedded_stdlib_graph.inc");
+const outDir = path.join(repoRoot, "native/zero-c/src/embedded_stdlib_graph");
 
 function cIdent(text: string): string {
   return text.replace(/[^A-Za-z0-9_]/g, "_");
@@ -36,13 +37,22 @@ out.push("#ifndef ZERO_EMBEDDED_STDLIB_GRAPH_INC");
 out.push("#define ZERO_EMBEDDED_STDLIB_GRAPH_INC");
 out.push("");
 
+fs.rmSync(outDir, { recursive: true, force: true });
+fs.mkdirSync(outDir, { recursive: true });
+
 for (const relativePath of inputs) {
   const ident = `zero_embedded_stdlib_graph_${cIdent(relativePath)}_bytes`;
+  const partName = `${cIdent(relativePath)}.inc`;
+  const part: string[] = [];
   const bytes = fs.readFileSync(path.join(repoRoot, relativePath));
-  appendByteArray(out, ident, bytes);
-  out.push("");
+  part.push(`/* Generated from ${relativePath}. */`);
+  appendByteArray(part, ident, bytes);
+  part.push("");
+  fs.writeFileSync(path.join(outDir, partName), part.join("\n"));
+  out.push(`#include "embedded_stdlib_graph/${partName}"`);
 }
 
+out.push("");
 out.push("#endif");
 out.push("");
 

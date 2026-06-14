@@ -123,6 +123,7 @@ const skillPath = "skill-data/stdlib.md";
 const stdSigPath = "native/zero-c/src/std_sig.c";
 const stdSourcePath = "native/zero-c/src/std_source.c";
 const embeddedStdlibGraphPath = "native/zero-c/src/embedded_stdlib_graph.inc";
+const embeddedStdlibGraphDir = "native/zero-c/src/embedded_stdlib_graph";
 const fixtureRoots = ["examples", "conformance", "benchmarks/rosetta"];
 const generatedFixtureFiles = ["conformance/run.mjs"];
 
@@ -172,6 +173,25 @@ function parseEmbeddedStdlibGraphBytes(text: string, graphPath: string): Buffer 
   if (block.length === 0) return null;
   const bytes = [...block.matchAll(/0x([0-9a-fA-F]{2})/g)].map((match) => Number.parseInt(match[1], 16));
   return Buffer.from(bytes);
+}
+
+function parseEmbeddedStdlibGraphPart(text: string, graphPath: string): string | null {
+  const partName = `${cIdent(graphPath)}.inc`;
+  const pattern = new RegExp(`#include\\s+"embedded_stdlib_graph/${partName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`);
+  return pattern.test(text) ? join(embeddedStdlibGraphDir, partName) : null;
+}
+
+async function readEmbeddedStdlibGraphBytes(text: string | null, graphPath: string): Promise<Buffer | null> {
+  if (text !== null) {
+    const embeddedGraph = parseEmbeddedStdlibGraphBytes(text, graphPath);
+    if (embeddedGraph !== null) return embeddedGraph;
+    const partPath = parseEmbeddedStdlibGraphPart(text, graphPath);
+    if (partPath !== null && existsSync(partPath)) {
+      const partText = await readFile(partPath, "utf8");
+      return parseEmbeddedStdlibGraphBytes(partText, graphPath);
+    }
+  }
+  return existsSync(graphPath) ? readFile(graphPath) : null;
 }
 
 function parseStdHelpers(text: string): StdHelper[] {
@@ -429,7 +449,7 @@ function helperTypes(helper: StdHelper): string[] {
 const [stdSig, stdSource, embeddedStdlibGraph, skill] = await Promise.all([
   readFile(stdSigPath, "utf8"),
   readFile(stdSourcePath, "utf8"),
-  readFile(embeddedStdlibGraphPath, "utf8"),
+  readOptional(embeddedStdlibGraphPath),
   readFile(skillPath, "utf8"),
 ]);
 
@@ -599,7 +619,7 @@ for (const sourceModule of sourceModules) {
   pushIf(!moduleNamePattern.test(sourceModule.module), failures, `${sourceModule.module}: invalid graph-backed std module name`);
   pushIf(!existsSync(sourceModule.path), failures, `${sourceModule.module}: missing std projection ${sourceModule.path}`);
   pushIf(!modules.includes(sourceModule.module), failures, `${sourceModule.module}: graph-backed module has no public helpers`);
-  const embeddedGraph = parseEmbeddedStdlibGraphBytes(embeddedStdlibGraph, sourceModule.graphPath);
+  const embeddedGraph = await readEmbeddedStdlibGraphBytes(embeddedStdlibGraph, sourceModule.graphPath);
   const graph = existsSync(sourceModule.graphPath) ? await readFile(sourceModule.graphPath) : null;
   pushIf(!existsSync(sourceModule.graphPath), failures, `${sourceModule.module}: missing graph-backed std module ${sourceModule.graphPath}`);
   pushIf(embeddedGraph === null, failures, `${sourceModule.module}: embedded stdlib graph is missing for ${sourceModule.graphPath}`);

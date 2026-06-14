@@ -5,6 +5,8 @@ dist/
 .turbo/
 node_modules/
 npm-debug.log*
+native/zero-c/src/embedded_stdlib_graph.inc
+native/zero-c/src/embedded_stdlib_graph/
 
 # environment variables
 .env*
