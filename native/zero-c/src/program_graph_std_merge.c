@@ -369,11 +369,9 @@ static void std_merge_remove_module_path_nodes(ZProgramGraph *graph, const ZStdS
 static void std_merge_canonicalize_module_root(ZProgramGraph *graph, const ZStdSourceModule *module) {
   for (size_t i = 0; graph && module && i < graph->node_len; i++) {
     ZProgramGraphNode *node = &graph->nodes[i];
-    if (node->kind != Z_PROGRAM_GRAPH_NODE_MODULE) continue;
     if (!std_merge_path_matches_module(node->path, module)) continue;
-    std_merge_replace_text(&node->name, module->module);
     std_merge_replace_text(&node->path, module->path);
-    return;
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE) std_merge_replace_text(&node->name, module->module);
   }
 }
 

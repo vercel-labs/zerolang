@@ -1691,6 +1691,83 @@ static bool ir_graph_fixed_map_types(const char *type_text, IrTypeKind *out_key_
   return true;
 }
 
+static IrValue *ir_graph_record_field_load_value(IrProgram *ir, const IrLocal *local, unsigned field_offset, IrTypeKind field_type, IrTypeKind element_type, int line, int column) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_FIELD_LOAD, field_type, line, column);
+  value->local_index = local ? local->index : 0;
+  value->field_offset = field_offset;
+  value->element_type = field_type == IR_TYPE_BYTE_VIEW ? element_type : field_type;
+  return value;
+}
+
+static IrValue *ir_graph_record_view_len_value(IrProgram *ir, const IrLocal *local, unsigned view_offset, IrTypeKind view_element_type, int line, int column) {
+  IrValue *view = ir_graph_record_field_load_value(ir, local, view_offset, IR_TYPE_BYTE_VIEW, view_element_type, line, column);
+  IrValue *len = ir_new_value(ir, IR_VALUE_BYTE_VIEW_LEN, IR_TYPE_USIZE, line, column);
+  len->left = view;
+  return len;
+}
+
+static IrValue *ir_graph_record_usize_field_value(IrProgram *ir, const IrLocal *local, unsigned field_offset, int line, int column) {
+  return ir_graph_record_field_load_value(ir, local, field_offset, IR_TYPE_USIZE, IR_TYPE_USIZE, line, column);
+}
+
+static void ir_graph_push_record_field_store(IrProgram *ir, IrInstr **out_items, size_t *out_len, size_t *out_cap, const IrLocal *local, unsigned field_offset, IrValue *value, int line, int column) {
+  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local ? local->index : 0, .field_offset = field_offset, .value = value, .line = line, .column = column});
+}
+
+static void ir_graph_push_conditional_field_store(IrProgram *ir, IrInstr **out_items, size_t *out_len, size_t *out_cap, const IrLocal *local, unsigned field_offset, IrValue *condition, IrValue *value, int line, int column) {
+  IrInstr *then_instrs = NULL;
+  size_t then_len = 0;
+  size_t then_cap = 0;
+  ir_graph_push_record_field_store(ir, &then_instrs, &then_len, &then_cap, local, field_offset, value, line, column);
+  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_IF, .value = condition, .then_instrs = then_instrs, .then_len = then_len, .then_cap = then_cap, .line = line, .column = column});
+}
+
+static void ir_graph_push_fixed_resource_len_clamp(IrProgram *ir, IrInstr **out_items, size_t *out_len, size_t *out_cap, const IrLocal *local, unsigned len_offset, unsigned view_offset, IrTypeKind view_element_type, int line, int column) {
+  IrValue *condition = ir_new_compare_value(ir,
+                                            IR_CMP_GT,
+                                            ir_graph_record_usize_field_value(ir, local, len_offset, line, column),
+                                            ir_graph_record_view_len_value(ir, local, view_offset, view_element_type, line, column),
+                                            line,
+                                            column);
+  IrValue *clamped_len = ir_graph_record_view_len_value(ir, local, view_offset, view_element_type, line, column);
+  ir_graph_push_conditional_field_store(ir, out_items, out_len, out_cap, local, len_offset, condition, clamped_len, line, column);
+}
+
+static void ir_graph_push_fixed_ring_head_normalization(IrProgram *ir, IrInstr **out_items, size_t *out_len, size_t *out_cap, const IrLocal *local, unsigned items_offset, unsigned head_offset, unsigned len_offset, IrTypeKind element_type, int line, int column) {
+  IrValue *capacity_is_zero = ir_new_compare_value(ir,
+                                                   IR_CMP_EQ,
+                                                   ir_graph_record_view_len_value(ir, local, items_offset, element_type, line, column),
+                                                   ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column),
+                                                   line,
+                                                   column);
+  ir_graph_push_conditional_field_store(ir, out_items, out_len, out_cap, local, head_offset, capacity_is_zero, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column), line, column);
+
+  IrValue *capacity_is_nonzero = ir_new_compare_value(ir,
+                                                      IR_CMP_NE,
+                                                      ir_graph_record_view_len_value(ir, local, items_offset, element_type, line, column),
+                                                      ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column),
+                                                      line,
+                                                      column);
+  IrValue *normalized_head = ir_new_binary_value(ir,
+                                                 IR_BIN_MOD,
+                                                 IR_TYPE_USIZE,
+                                                 ir_graph_record_usize_field_value(ir, local, head_offset, line, column),
+                                                 ir_graph_record_view_len_value(ir, local, items_offset, element_type, line, column),
+                                                 line,
+                                                 column);
+  ir_graph_push_conditional_field_store(ir, out_items, out_len, out_cap, local, head_offset, capacity_is_nonzero, normalized_head, line, column);
+
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, len_offset, items_offset, element_type, line, column);
+
+  IrValue *len_is_zero = ir_new_compare_value(ir,
+                                              IR_CMP_EQ,
+                                              ir_graph_record_usize_field_value(ir, local, len_offset, line, column),
+                                              ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column),
+                                              line,
+                                              column);
+  ir_graph_push_conditional_field_store(ir, out_items, out_len, out_cap, local, head_offset, len_is_zero, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column), line, column);
+}
+
 static bool ir_graph_lower_fixed_set_initializer(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const IrLocal *local, const ZProgramGraphNode *expr, IrInstr **out_items, size_t *out_len, size_t *out_cap) {
   IrTypeKind element_type = IR_TYPE_UNSUPPORTED;
   if (!local || !local->is_record || !ir_graph_fixed_set_element_type(local->shape_name, &element_type) ||
@@ -1732,8 +1809,9 @@ static bool ir_graph_lower_fixed_set_initializer(const ZProgramGraph *graph, IrP
     ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedSet constructor arguments do not match storage type", local->shape_name ? local->shape_name : "FixedSet");
     return true;
   }
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = items_offset, .value = items, .line = ir_graph_line(items_node), .column = ir_graph_column(items_node)});
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = len_offset, .value = len, .line = ir_graph_line(len_node), .column = ir_graph_column(len_node)});
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, items_offset, items, ir_graph_line(items_node), ir_graph_column(items_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, len_offset, len, ir_graph_line(len_node), ir_graph_column(len_node));
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, len_offset, items_offset, element_type, ir_graph_line(expr), ir_graph_column(expr));
   return true;
 }
 
@@ -1778,8 +1856,9 @@ static bool ir_graph_lower_fixed_deque_initializer(const ZProgramGraph *graph, I
     ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedDeque constructor arguments do not match storage type", local->shape_name ? local->shape_name : "FixedDeque");
     return true;
   }
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = items_offset, .value = items, .line = ir_graph_line(items_node), .column = ir_graph_column(items_node)});
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = len_offset, .value = len, .line = ir_graph_line(len_node), .column = ir_graph_column(len_node)});
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, items_offset, items, ir_graph_line(items_node), ir_graph_column(items_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, len_offset, len, ir_graph_line(len_node), ir_graph_column(len_node));
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, len_offset, items_offset, element_type, ir_graph_line(expr), ir_graph_column(expr));
   return true;
 }
 
@@ -1833,9 +1912,10 @@ static bool ir_graph_lower_fixed_ring_buffer_initializer(const ZProgramGraph *gr
     ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedRingBuffer constructor arguments do not match storage type", local->shape_name ? local->shape_name : "FixedRingBuffer");
     return true;
   }
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = items_offset, .value = items, .line = ir_graph_line(items_node), .column = ir_graph_column(items_node)});
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = head_offset, .value = head, .line = ir_graph_line(head_node), .column = ir_graph_column(head_node)});
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = len_offset, .value = len, .line = ir_graph_line(len_node), .column = ir_graph_column(len_node)});
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, items_offset, items, ir_graph_line(items_node), ir_graph_column(items_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, head_offset, head, ir_graph_line(head_node), ir_graph_column(head_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, len_offset, len, ir_graph_line(len_node), ir_graph_column(len_node));
+  ir_graph_push_fixed_ring_head_normalization(ir, out_items, out_len, out_cap, local, items_offset, head_offset, len_offset, element_type, ir_graph_line(expr), ir_graph_column(expr));
   return true;
 }
 
@@ -1894,9 +1974,11 @@ static bool ir_graph_lower_fixed_map_initializer(const ZProgramGraph *graph, IrP
     ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedMap constructor arguments do not match storage type", local->shape_name ? local->shape_name : "FixedMap");
     return true;
   }
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = keys_offset, .value = keys, .line = ir_graph_line(keys_node), .column = ir_graph_column(keys_node)});
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = values_offset, .value = values, .line = ir_graph_line(values_node), .column = ir_graph_column(values_node)});
-  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_FIELD_STORE, .local_index = local->index, .field_offset = len_offset, .value = len, .line = ir_graph_line(len_node), .column = ir_graph_column(len_node)});
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, keys_offset, keys, ir_graph_line(keys_node), ir_graph_column(keys_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, values_offset, values, ir_graph_line(values_node), ir_graph_column(values_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, len_offset, len, ir_graph_line(len_node), ir_graph_column(len_node));
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, len_offset, keys_offset, key_type, ir_graph_line(expr), ir_graph_column(expr));
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, len_offset, values_offset, value_type, ir_graph_line(expr), ir_graph_column(expr));
   return true;
 }
 
@@ -5072,8 +5154,54 @@ static bool ir_graph_pattern_matches_generic_wrapper(const char *pattern, const 
   return pattern && wrapper_len && param_len && strncmp(pattern, wrapper, wrapper_len) == 0 && pattern[wrapper_len] == '<' && strncmp(pattern + wrapper_len + 1, param, param_len) == 0 && pattern[wrapper_len + 1 + param_len] == '>' && pattern[wrapper_len + 2 + param_len] == '\0';
 }
 
+static bool ir_graph_generic_type_bounds(const char *type, const char **out_open, const char **out_close) {
+  size_t len = type ? strlen(type) : 0;
+  if (len < 3 || type[len - 1] != '>') return false;
+  const char *open = strchr(type, '<');
+  if (!open || open == type || open + 1 >= type + len - 1) return false;
+  if (out_open) *out_open = open;
+  if (out_close) *out_close = type + len - 1;
+  return true;
+}
+
 static bool ir_graph_bind_type_param_from_pattern(char **param_names, char **arg_types, size_t binding_len, const char *param_pattern, const char *arg_type) {
   if (!param_pattern || !param_pattern[0]) return true;
+  bool pattern_ref_mutable = false;
+  bool arg_ref_mutable = false;
+  char *pattern_ref_inner = ir_graph_reference_inner_type_alloc(param_pattern, &pattern_ref_mutable);
+  char *arg_ref_inner = ir_graph_reference_inner_type_alloc(arg_type, &arg_ref_mutable);
+  if (pattern_ref_inner && arg_ref_inner) {
+    bool ok = ir_graph_bind_type_param_from_pattern(param_names, arg_types, binding_len, pattern_ref_inner, arg_ref_inner);
+    free(pattern_ref_inner);
+    free(arg_ref_inner);
+    return ok;
+  }
+  free(pattern_ref_inner);
+  free(arg_ref_inner);
+
+  const char *pattern_open = NULL;
+  const char *pattern_close = NULL;
+  const char *arg_open = NULL;
+  const char *arg_close = NULL;
+  if (arg_type && ir_graph_generic_type_bounds(param_pattern, &pattern_open, &pattern_close) &&
+      ir_graph_generic_type_bounds(arg_type, &arg_open, &arg_close) &&
+      (size_t)(pattern_open - param_pattern) == (size_t)(arg_open - arg_type) &&
+      strncmp(param_pattern, arg_type, (size_t)(pattern_open - param_pattern)) == 0) {
+    TypeArgVec pattern_args = {0};
+    TypeArgVec concrete_args = {0};
+    bool ok = ir_graph_split_generic_args(pattern_open + 1, pattern_close, &pattern_args) &&
+              ir_graph_split_generic_args(arg_open + 1, arg_close, &concrete_args) &&
+              pattern_args.len == concrete_args.len;
+    for (size_t i = 0; ok && i < pattern_args.len; i++) {
+      ok = ir_graph_bind_type_param_from_pattern(param_names, arg_types, binding_len, pattern_args.items[i].type, concrete_args.items[i].type);
+    }
+    size_t matched_arg_count = pattern_args.len;
+    ir_graph_type_arg_vec_free(&pattern_args);
+    ir_graph_type_arg_vec_free(&concrete_args);
+    if (!ok) return false;
+    if (matched_arg_count > 0) return true;
+  }
+
   for (size_t i = 0; i < binding_len; i++) {
     const char *param = param_names[i];
     size_t param_len = param ? strlen(param) : 0;

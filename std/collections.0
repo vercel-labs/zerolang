@@ -53,7 +53,8 @@ fn __zero_std_collections_fixed_set_contains<T: Type>(fixed_set: ref<FixedSet<T>
 }
 
 fn __zero_std_collections_fixed_set_insert<T: Type>(fixed_set: mutref<FixedSet<T>>, value: T) -> Bool {
-    let next_len: usize = __zero_std_collections_set_insert(fixed_set.items, fixed_set.len, value)
+    let items: MutSpan<T> = fixed_set.items
+    let next_len: usize = __zero_std_collections_set_insert(items, fixed_set.len, value)
     if next_len != fixed_set.len {
         fixed_set.len = next_len
         return true
@@ -62,7 +63,8 @@ fn __zero_std_collections_fixed_set_insert<T: Type>(fixed_set: mutref<FixedSet<T
 }
 
 fn __zero_std_collections_fixed_set_remove<T: Type>(fixed_set: mutref<FixedSet<T>>, value: T) -> Bool {
-    let next_len: usize = __zero_std_collections_set_remove(fixed_set.items, fixed_set.len, value)
+    let items: MutSpan<T> = fixed_set.items
+    let next_len: usize = __zero_std_collections_set_remove(items, fixed_set.len, value)
     if next_len != fixed_set.len {
         fixed_set.len = next_len
         return true
@@ -137,7 +139,8 @@ fn __zero_std_collections_fixed_deque_back<T: Type>(fixed_deque: ref<FixedDeque<
 }
 
 fn __zero_std_collections_fixed_deque_push_back<T: Type>(fixed_deque: mutref<FixedDeque<T>>, value: T) -> Bool {
-    let next_len: usize = __zero_std_collections_deque_push_back(fixed_deque.items, fixed_deque.len, value)
+    let items: MutSpan<T> = fixed_deque.items
+    let next_len: usize = __zero_std_collections_deque_push_back(items, fixed_deque.len, value)
     if next_len != fixed_deque.len {
         fixed_deque.len = next_len
         return true
@@ -146,7 +149,8 @@ fn __zero_std_collections_fixed_deque_push_back<T: Type>(fixed_deque: mutref<Fix
 }
 
 fn __zero_std_collections_fixed_deque_push_front<T: Type>(fixed_deque: mutref<FixedDeque<T>>, value: T) -> Bool {
-    let next_len: usize = __zero_std_collections_deque_push_front(fixed_deque.items, fixed_deque.len, value)
+    let items: MutSpan<T> = fixed_deque.items
+    let next_len: usize = __zero_std_collections_deque_push_front(items, fixed_deque.len, value)
     if next_len != fixed_deque.len {
         fixed_deque.len = next_len
         return true
@@ -168,15 +172,16 @@ fn __zero_std_collections_fixed_deque_pop_back<T: Type>(fixed_deque: mutref<Fixe
 }
 
 fn __zero_std_collections_fixed_deque_pop_front<T: Type>(fixed_deque: mutref<FixedDeque<T>>) -> Maybe<T> {
+    let items: MutSpan<T> = fixed_deque.items
     var live_len: usize = fixed_deque.len
-    if live_len > std.mem.len(fixed_deque.items) {
-        live_len = std.mem.len(fixed_deque.items)
+    if live_len > std.mem.len(items) {
+        live_len = std.mem.len(items)
     }
     if live_len == 0 {
         return null
     }
-    let result: T = fixed_deque.items[0]
-    fixed_deque.len = __zero_std_collections_deque_pop_front(fixed_deque.items, live_len)
+    let result: T = items[0]
+    fixed_deque.len = __zero_std_collections_deque_pop_front(items, live_len)
     return result
 }
 
@@ -209,16 +214,12 @@ fn __zero_std_collections_fixed_deque_is_full<T: Type>(fixed_deque: ref<FixedDeq
     return __zero_std_collections_fixed_deque_remaining(fixed_deque) == 0
 }
 
-fn __zero_std_collections_fixed_ring_buffer_normalize_head(head: usize, capacity: usize) -> usize {
-    if capacity == 0 {
-        return 0
-    }
-    return head % capacity
-}
-
 fn __zero_std_collections_fixed_ring_buffer<T: Type>(items: MutSpan<T>, head: usize, len: usize) -> FixedRingBuffer<T> {
     let capacity: usize = std.mem.len(items)
-    var live_head: usize = __zero_std_collections_fixed_ring_buffer_normalize_head(head, capacity)
+    var live_head: usize = 0
+    if capacity != 0 {
+        live_head = head % capacity
+    }
     var live_len: usize = len
     if live_len > capacity {
         live_len = capacity
@@ -277,29 +278,31 @@ fn __zero_std_collections_fixed_ring_buffer_back<T: Type>(ring: ref<FixedRingBuf
 }
 
 fn __zero_std_collections_fixed_ring_buffer_push_back<T: Type>(ring: mutref<FixedRingBuffer<T>>, value: T) -> Bool {
-    let capacity: usize = std.mem.len(ring.items)
+    let items: MutSpan<T> = ring.items
+    let capacity: usize = std.mem.len(items)
     if capacity == 0 || ring.len >= capacity {
         return false
     }
-    ring.head = __zero_std_collections_fixed_ring_buffer_normalize_head(ring.head, capacity)
+    ring.head = ring.head % capacity
     let storage_index: usize = (ring.head + ring.len) % capacity
-    ring.items[storage_index] = value
+    items[storage_index] = value
     ring.len = ring.len + 1
     return true
 }
 
 fn __zero_std_collections_fixed_ring_buffer_push_front<T: Type>(ring: mutref<FixedRingBuffer<T>>, value: T) -> Bool {
-    let capacity: usize = std.mem.len(ring.items)
+    let items: MutSpan<T> = ring.items
+    let capacity: usize = std.mem.len(items)
     if capacity == 0 || ring.len >= capacity {
         return false
     }
-    ring.head = __zero_std_collections_fixed_ring_buffer_normalize_head(ring.head, capacity)
+    ring.head = ring.head % capacity
     if ring.head == 0 {
         ring.head = capacity - 1
     } else {
         ring.head = ring.head - 1
     }
-    ring.items[ring.head] = value
+    items[ring.head] = value
     ring.len = ring.len + 1
     return true
 }
@@ -309,7 +312,7 @@ fn __zero_std_collections_fixed_ring_buffer_pop_back<T: Type>(ring: mutref<Fixed
     if capacity == 0 || ring.len == 0 || ring.len > capacity {
         return null
     }
-    ring.head = __zero_std_collections_fixed_ring_buffer_normalize_head(ring.head, capacity)
+    ring.head = ring.head % capacity
     let storage_index: usize = (ring.head + ring.len - 1) % capacity
     let result: T = ring.items[storage_index]
     ring.len = ring.len - 1
@@ -324,7 +327,7 @@ fn __zero_std_collections_fixed_ring_buffer_pop_front<T: Type>(ring: mutref<Fixe
     if capacity == 0 || ring.len == 0 || ring.len > capacity {
         return null
     }
-    ring.head = __zero_std_collections_fixed_ring_buffer_normalize_head(ring.head, capacity)
+    ring.head = ring.head % capacity
     let result: T = ring.items[ring.head]
     ring.len = ring.len - 1
     if ring.len == 0 {
@@ -343,7 +346,11 @@ fn __zero_std_collections_fixed_ring_buffer_clear<T: Type>(ring: mutref<FixedRin
 
 fn __zero_std_collections_fixed_ring_buffer_truncate<T: Type>(ring: mutref<FixedRingBuffer<T>>, new_len: usize) -> usize {
     let capacity: usize = std.mem.len(ring.items)
-    ring.head = __zero_std_collections_fixed_ring_buffer_normalize_head(ring.head, capacity)
+    if capacity == 0 {
+        ring.head = 0
+    } else {
+        ring.head = ring.head % capacity
+    }
     var live_len: usize = ring.len
     if live_len > capacity {
         live_len = capacity
@@ -409,33 +416,37 @@ fn __zero_std_collections_fixed_map_index<K: Type, V: Type>(fixed_map: ref<Fixed
 }
 
 fn __zero_std_collections_fixed_map_put<K: Type, V: Type>(fixed_map: mutref<FixedMap<K, V>>, key: K, value: V) -> Bool {
-    if fixed_map.len > std.mem.len(fixed_map.keys) || fixed_map.len > std.mem.len(fixed_map.values) {
+    let keys: MutSpan<K> = fixed_map.keys
+    let values: MutSpan<V> = fixed_map.values
+    if fixed_map.len > std.mem.len(keys) || fixed_map.len > std.mem.len(values) {
         return false
     }
     var index: usize = 0
     while index < fixed_map.len {
-        if fixed_map.keys[index] == key {
-            fixed_map.values[index] = value
+        if keys[index] == key {
+            values[index] = value
             return true
         }
         index = index + 1
     }
-    if fixed_map.len >= std.mem.len(fixed_map.keys) || fixed_map.len >= std.mem.len(fixed_map.values) {
+    if fixed_map.len >= std.mem.len(keys) || fixed_map.len >= std.mem.len(values) {
         return false
     }
-    fixed_map.keys[fixed_map.len] = key
-    fixed_map.values[fixed_map.len] = value
+    keys[fixed_map.len] = key
+    values[fixed_map.len] = value
     fixed_map.len = fixed_map.len + 1
     return true
 }
 
 fn __zero_std_collections_fixed_map_remove<K: Type, V: Type>(fixed_map: mutref<FixedMap<K, V>>, key: K) -> Bool {
-    if fixed_map.len == 0 || fixed_map.len > std.mem.len(fixed_map.keys) || fixed_map.len > std.mem.len(fixed_map.values) {
+    let keys: MutSpan<K> = fixed_map.keys
+    let values: MutSpan<V> = fixed_map.values
+    if fixed_map.len == 0 || fixed_map.len > std.mem.len(keys) || fixed_map.len > std.mem.len(values) {
         return false
     }
     var index: usize = 0
     while index < fixed_map.len {
-        if fixed_map.keys[index] == key {
+        if keys[index] == key {
             break
         }
         index = index + 1
@@ -445,8 +456,8 @@ fn __zero_std_collections_fixed_map_remove<K: Type, V: Type>(fixed_map: mutref<F
     }
     let next_len: usize = fixed_map.len - 1
     if index != next_len {
-        fixed_map.keys[index] = fixed_map.keys[next_len]
-        fixed_map.values[index] = fixed_map.values[next_len]
+        keys[index] = keys[next_len]
+        values[index] = values[next_len]
     }
     fixed_map.len = next_len
     return true
