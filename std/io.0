@@ -368,12 +368,21 @@ fn __zero_std_io_copy_buffer(reader: mutref<FixedReader>, writer: mutref<FixedWr
     }
     var total: usize = 0
     while true {
+        let writable: usize = __zero_std_io_fixed_writer_remaining(writer)
+        if writable == 0 {
+            return total
+        }
+        var chunk_len: usize = std.mem.len(scratch)
+        if writable < chunk_len {
+            chunk_len = writable
+        }
+        let chunk_buffer: MutSpan<u8> = scratch[..chunk_len]
         let before: usize = reader.cursor
-        let count: usize = __zero_std_io_fixed_reader_read(reader, scratch)
+        let count: usize = __zero_std_io_fixed_reader_read(reader, chunk_buffer)
         if count == 0 {
             return total
         }
-        let chunk: Span<u8> = __zero_std_io_written(scratch, count)
+        let chunk: Span<u8> = __zero_std_io_written(chunk_buffer, count)
         if !__zero_std_io_fixed_writer_write_all(writer, chunk) {
             reader.cursor = before
             return total
@@ -390,6 +399,14 @@ fn __zero_std_io_copy_reader_n(reader: mutref<FixedReader>, writer: mutref<Fixed
     if std.mem.len(scratch) == 0 {
         return null
     }
+    let reader_start: usize = reader.cursor
+    let writer_start: usize = writer.cursor
+    if count > __zero_std_io_fixed_reader_remaining(reader) {
+        return null
+    }
+    if count > __zero_std_io_fixed_writer_remaining(writer) {
+        return null
+    }
     var copied: usize = 0
     while copied < count {
         var chunk_len: usize = count - copied
@@ -397,14 +414,15 @@ fn __zero_std_io_copy_reader_n(reader: mutref<FixedReader>, writer: mutref<Fixed
             chunk_len = std.mem.len(scratch)
         }
         let chunk_buffer: MutSpan<u8> = scratch[..chunk_len]
-        let read_before: usize = reader.cursor
         if !__zero_std_io_fixed_reader_read_exact(reader, chunk_buffer) {
-            reader.cursor = read_before
+            reader.cursor = reader_start
+            writer.cursor = writer_start
             return null
         }
         let chunk: Span<u8> = __zero_std_io_written(chunk_buffer, chunk_len)
         if !__zero_std_io_fixed_writer_write_all(writer, chunk) {
-            reader.cursor = read_before
+            reader.cursor = reader_start
+            writer.cursor = writer_start
             return null
         }
         copied = copied + chunk_len

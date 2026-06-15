@@ -48,6 +48,10 @@ pub fn main(world: World) -> Void raises {
     var limit_reader: FixedReader = std.io.fixedReaderLimit(&line_reader, 4)
     var limit_buf: [4]u8 = [0_u8; 4]
     let limit_all: Maybe<Span<u8>> = std.io.fixedReaderReadAll(&mut limit_reader, limit_buf)
+    var wide_limit_base: FixedReader = std.io.fixedReader("abc", 1_usize)
+    var wide_limit_reader: FixedReader = std.io.fixedReaderLimit(&wide_limit_base, 99_usize)
+    var wide_limit_buf: [2]u8 = [0_u8; 2]
+    let wide_limit_all: Maybe<Span<u8>> = std.io.fixedReaderReadAll(&mut wide_limit_reader, wide_limit_buf)
     var fixed_at_buf: [2]u8 = [0_u8; 2]
     let fixed_at: Maybe<usize> = std.io.fixedReaderReadAt(&line_reader, 0, fixed_at_buf)
     let fixed_len: usize = std.io.fixedReaderLen(&line_reader)
@@ -80,11 +84,19 @@ pub fn main(world: World) -> Void raises {
     var copy_writer: FixedWriter = std.io.fixedWriter(copy_writer_storage, 0_usize)
     var scratch: [2]u8 = [0_u8; 2]
     let copied_stream: usize = std.io.copyBuffer(&mut copy_reader, &mut copy_writer, scratch)
+    var capacity_reader: FixedReader = std.io.fixedReader("abcd", 0_usize)
+    var capacity_writer_storage: [3]u8 = [0_u8; 3]
+    var capacity_writer: FixedWriter = std.io.fixedWriter(capacity_writer_storage, 0_usize)
+    let copied_to_capacity: usize = std.io.copyBuffer(&mut capacity_reader, &mut capacity_writer, scratch)
 
     var n_reader: FixedReader = std.io.fixedReader("12345", 0_usize)
     var n_writer_storage: [8]u8 = [0_u8; 8]
     var n_writer: FixedWriter = std.io.fixedWriter(n_writer_storage, 0_usize)
     let copied_n: Maybe<usize> = std.io.copyReaderN(&mut n_reader, &mut n_writer, 3_usize, scratch)
+    var n_fail_reader: FixedReader = std.io.fixedReader("abcd", 0_usize)
+    var n_fail_writer_storage: [3]u8 = [0_u8; 3]
+    var n_fail_writer: FixedWriter = std.io.fixedWriter(n_fail_writer_storage, 0_usize)
+    let copied_n_fail: Maybe<usize> = std.io.copyReaderN(&mut n_fail_reader, &mut n_fail_writer, 4_usize, scratch)
 
     var discard_reader: FixedReader = std.io.fixedReader("drop", 0_usize)
     let discarded: usize = std.io.discard(&mut discard_reader, scratch)
@@ -115,10 +127,10 @@ pub fn main(world: World) -> Void raises {
         ok = false
     }
 
-    if fixed_first.has && fixed_byte.has && fixed_until_space.has && limit_all.has && fixed_at.has {
+    if fixed_first.has && fixed_byte.has && fixed_until_space.has && limit_all.has && wide_limit_all.has && fixed_at.has {
         ok = ok && seek_second && seek_end && fixed_done && fixed_exact
         ok = ok && std.mem.eql(fixed_first.value, "alpha") && fixed_byte.value == 122_u8 && std.mem.eql(fixed_until_space.value, "zero")
-        ok = ok && std.mem.eql(limit_all.value, "beta") && fixed_at.value == 2 && std.mem.eql(std.io.written(fixed_at_buf, 2), "al")
+        ok = ok && std.mem.eql(limit_all.value, "beta") && std.mem.eql(wide_limit_all.value, "bc") && fixed_at.value == 2 && std.mem.eql(std.io.written(fixed_at_buf, 2), "al")
         ok = ok && fixed_len == std.mem.len(text) && fixed_remaining == std.mem.len(text) - fixed_cursor && fixed_cursor == second_start + 5
         ok = ok && std.mem.eql(std.io.written(exact_reader_buf, 5), "exact")
     } else {
@@ -129,11 +141,13 @@ pub fn main(world: World) -> Void raises {
     ok = ok && writer_capacity == 16 && writer_remaining == 13 && writer_truncated == 2 && writer_seek && writer_cleared == 0
     ok = ok && writer_all_ok && std.mem.eql(std.io.fixedWriterView(&writer_all), "full")
     ok = ok && copied_stream == 4 && std.mem.eql(std.io.fixedWriterView(&copy_writer), "copy")
+    ok = ok && copied_to_capacity == 3 && std.mem.eql(std.io.fixedWriterView(&capacity_writer), "abc")
     if copied_n.has {
         ok = ok && copied_n.value == 3 && std.mem.eql(std.io.fixedWriterView(&n_writer), "123")
     } else {
         ok = false
     }
+    ok = ok && !copied_n_fail.has && std.io.fixedReaderCursor(&n_fail_reader) == 0 && std.io.fixedWriterCursor(&n_fail_writer) == 0
     ok = ok && discarded == 4 && std.io.fixedReaderDone(&discard_reader)
     if tee_count.has {
         ok = ok && tee_count.value == 2 && std.mem.eql(std.io.written(tee_buf, 2), "te") && std.mem.eql(std.io.fixedWriterView(&tee_writer), "te")

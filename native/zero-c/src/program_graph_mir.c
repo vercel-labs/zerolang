@@ -1772,6 +1772,102 @@ static void ir_graph_push_fixed_resource_len_clamp(IrProgram *ir, IrInstr **out_
   ir_graph_push_conditional_field_store(ir, out_items, out_len, out_cap, local, len_offset, condition, clamped_len, line, column);
 }
 
+static IrValue *ir_graph_fixed_reader_slice_value(IrProgram *ir, const IrLocal *reader, unsigned bytes_offset, IrValue *start, IrValue *end, int line, int column) {
+  IrValue *slice = ir_new_value(ir, IR_VALUE_BYTE_SLICE, IR_TYPE_BYTE_VIEW, line, column);
+  slice->left = ir_graph_record_field_load_value(ir, reader, bytes_offset, IR_TYPE_BYTE_VIEW, IR_TYPE_U8, line, column);
+  slice->index = start;
+  slice->right = end;
+  slice->element_type = IR_TYPE_U8;
+  return slice;
+}
+
+static bool ir_graph_lower_fixed_reader_limit_initializer(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const IrLocal *local, const ZProgramGraphNode *expr, unsigned bytes_offset, unsigned cursor_offset, IrInstr **out_items, size_t *out_len, size_t *out_cap) {
+  const ZProgramGraphNode *reader_arg = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+  const ZProgramGraphNode *reader_target = reader_arg && reader_arg->kind == Z_PROGRAM_GRAPH_NODE_BORROW ? ir_graph_ordered_node(graph, reader_arg->id, "left", 0) : reader_arg;
+  const IrLocal *reader = reader_target && reader_target->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER ? ir_function_find_local(fun, reader_target->name) : NULL;
+  if (!reader || !reader->is_record || !ir_text_eq(reader->shape_name, "FixedReader")) {
+    ir_graph_mark_unsupported(ir, reader_arg, "typed graph MIR fixedReaderLimit expects a FixedReader reference", "non-FixedReader argument");
+    return true;
+  }
+  unsigned source_bytes_offset = 0;
+  unsigned source_cursor_offset = 0;
+  IrTypeKind source_bytes_type = IR_TYPE_UNSUPPORTED;
+  IrTypeKind source_cursor_type = IR_TYPE_UNSUPPORTED;
+  bool source_bytes_is_array = false;
+  bool source_cursor_is_array = false;
+  if (!ir_graph_shape_field_info(graph, reader->shape_name, "bytes", &source_bytes_offset, &source_bytes_type, &source_bytes_is_array, NULL, NULL) ||
+      !ir_graph_shape_field_info(graph, reader->shape_name, "cursor", &source_cursor_offset, &source_cursor_type, &source_cursor_is_array, NULL, NULL) ||
+      source_bytes_is_array || source_cursor_is_array || source_bytes_type != IR_TYPE_BYTE_VIEW || source_cursor_type != IR_TYPE_USIZE) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedReader source layout is unsupported", reader->shape_name ? reader->shape_name : "FixedReader");
+    return true;
+  }
+  const ZProgramGraphNode *count_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
+  IrValue *count = NULL;
+  if (!ir_graph_lower_expr_for_type(graph, ir, fun, count_node, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, false, ir_graph_line(count_node), ir_graph_column(count_node), &count)) {
+    return true;
+  }
+  if (!count || count->type != IR_TYPE_USIZE) {
+    ir_free_value(count);
+    ir_graph_mark_unsupported(ir, count_node, "typed graph MIR fixedReaderLimit count must be usize", "non-usize count");
+    return true;
+  }
+
+  int line = ir_graph_line(expr);
+  int column = ir_graph_column(expr);
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, cursor_offset, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column), line, column);
+  IrValue *empty_slice = ir_graph_fixed_reader_slice_value(ir, reader, source_bytes_offset, ir_graph_record_view_len_value(ir, reader, source_bytes_offset, IR_TYPE_U8, line, column), NULL, line, column);
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, bytes_offset, empty_slice, line, column);
+
+  IrValue *cursor_in_bounds = ir_new_compare_value(ir,
+                                                   IR_CMP_LE,
+                                                   ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, line, column),
+                                                   ir_graph_record_view_len_value(ir, reader, source_bytes_offset, IR_TYPE_U8, line, column),
+                                                   line,
+                                                   column);
+  IrInstr *then_instrs = NULL;
+  size_t then_len = 0;
+  size_t then_cap = 0;
+  ir_graph_push_record_field_store(ir, &then_instrs, &then_len, &then_cap, local, cursor_offset, count, line, column);
+  IrValue *remaining_len = ir_new_binary_value(ir,
+                                               IR_BIN_SUB,
+                                               IR_TYPE_USIZE,
+                                               ir_graph_record_view_len_value(ir, reader, source_bytes_offset, IR_TYPE_U8, line, column),
+                                               ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, line, column),
+                                               line,
+                                               column);
+  IrValue *count_exceeds_remaining = ir_new_compare_value(ir,
+                                                          IR_CMP_GT,
+                                                          ir_graph_record_usize_field_value(ir, local, cursor_offset, line, column),
+                                                          remaining_len,
+                                                          line,
+                                                          column);
+  IrValue *clamped_len = ir_new_binary_value(ir,
+                                             IR_BIN_SUB,
+                                             IR_TYPE_USIZE,
+                                             ir_graph_record_view_len_value(ir, reader, source_bytes_offset, IR_TYPE_U8, line, column),
+                                             ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, line, column),
+                                             line,
+                                             column);
+  ir_graph_push_conditional_field_store(ir, &then_instrs, &then_len, &then_cap, local, cursor_offset, count_exceeds_remaining, clamped_len, line, column);
+  IrValue *bounded_slice = ir_graph_fixed_reader_slice_value(ir,
+                                                             reader,
+                                                             source_bytes_offset,
+                                                             ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, line, column),
+                                                             ir_new_binary_value(ir,
+                                                                                 IR_BIN_ADD,
+                                                                                 IR_TYPE_USIZE,
+                                                                                 ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, line, column),
+                                                                                 ir_graph_record_usize_field_value(ir, local, cursor_offset, line, column),
+                                                                                 line,
+                                                                                 column),
+                                                             line,
+                                                             column);
+  ir_graph_push_record_field_store(ir, &then_instrs, &then_len, &then_cap, local, bytes_offset, bounded_slice, line, column);
+  ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_IF, .value = cursor_in_bounds, .then_instrs = then_instrs, .then_len = then_len, .then_cap = then_cap, .line = line, .column = column});
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, cursor_offset, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, line, column), line, column);
+  return true;
+}
+
 static void ir_graph_push_fixed_ring_head_normalization(IrProgram *ir, IrInstr **out_items, size_t *out_len, size_t *out_cap, const IrLocal *local, unsigned items_offset, unsigned head_offset, unsigned len_offset, IrTypeKind element_type, int line, int column) {
   IrValue *capacity_is_zero = ir_new_compare_value(ir,
                                                    IR_CMP_EQ,
@@ -2049,51 +2145,7 @@ static bool ir_graph_lower_fixed_reader_initializer(const ZProgramGraph *graph, 
   }
 
   if (is_limit) {
-    const ZProgramGraphNode *reader_arg = ir_graph_ordered_node(graph, expr->id, "arg", 0);
-    const ZProgramGraphNode *reader_target = reader_arg && reader_arg->kind == Z_PROGRAM_GRAPH_NODE_BORROW ? ir_graph_ordered_node(graph, reader_arg->id, "left", 0) : reader_arg;
-    const IrLocal *reader = reader_target && reader_target->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER ? ir_function_find_local(fun, reader_target->name) : NULL;
-    if (!reader || !reader->is_record || !ir_text_eq(reader->shape_name, "FixedReader")) {
-      ir_graph_mark_unsupported(ir, reader_arg, "typed graph MIR fixedReaderLimit expects a FixedReader reference", "non-FixedReader argument");
-      return true;
-    }
-    unsigned source_bytes_offset = 0;
-    unsigned source_cursor_offset = 0;
-    IrTypeKind source_bytes_type = IR_TYPE_UNSUPPORTED;
-    IrTypeKind source_cursor_type = IR_TYPE_UNSUPPORTED;
-    bool source_bytes_is_array = false;
-    bool source_cursor_is_array = false;
-    if (!ir_graph_shape_field_info(graph, reader->shape_name, "bytes", &source_bytes_offset, &source_bytes_type, &source_bytes_is_array, NULL, NULL) ||
-        !ir_graph_shape_field_info(graph, reader->shape_name, "cursor", &source_cursor_offset, &source_cursor_type, &source_cursor_is_array, NULL, NULL) ||
-        source_bytes_is_array || source_cursor_is_array || source_bytes_type != IR_TYPE_BYTE_VIEW || source_cursor_type != IR_TYPE_USIZE) {
-      ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedReader source layout is unsupported", reader->shape_name ? reader->shape_name : "FixedReader");
-      return true;
-    }
-    const ZProgramGraphNode *count_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
-    IrValue *count = NULL;
-    if (!ir_graph_lower_expr_for_type(graph, ir, fun, count_node, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, false, ir_graph_line(count_node), ir_graph_column(count_node), &count)) {
-      return true;
-    }
-    if (!count || count->type != IR_TYPE_USIZE) {
-      ir_free_value(count);
-      ir_graph_mark_unsupported(ir, count_node, "typed graph MIR fixedReaderLimit count must be usize", "non-usize count");
-      return true;
-    }
-    IrValue *slice_start = ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, ir_graph_line(expr), ir_graph_column(expr));
-    IrValue *slice_end = ir_new_binary_value(ir,
-                                             IR_BIN_ADD,
-                                             IR_TYPE_USIZE,
-                                             ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, ir_graph_line(expr), ir_graph_column(expr)),
-                                             count,
-                                             ir_graph_line(expr),
-                                             ir_graph_column(expr));
-    IrValue *slice = ir_new_value(ir, IR_VALUE_BYTE_SLICE, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
-    slice->left = ir_graph_record_field_load_value(ir, reader, source_bytes_offset, IR_TYPE_BYTE_VIEW, IR_TYPE_U8, ir_graph_line(expr), ir_graph_column(expr));
-    slice->index = slice_start;
-    slice->right = slice_end;
-    slice->element_type = IR_TYPE_U8;
-    ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, bytes_offset, slice, ir_graph_line(expr), ir_graph_column(expr));
-    ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, cursor_offset, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
-    return true;
+    return ir_graph_lower_fixed_reader_limit_initializer(graph, ir, fun, local, expr, bytes_offset, cursor_offset, out_items, out_len, out_cap);
   }
 
   const ZProgramGraphNode *bytes_node = ir_graph_ordered_node(graph, expr->id, "arg", 0);
