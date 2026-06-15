@@ -39,7 +39,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.json`: explicit-buffer JSON validation, structured status codes, shallow field lookup, typed scalar decode, parsing, and string/object writing helpers.
 - `std.toml`: no-allocation TOML validation, shallow/dotted field lookup, and typed scalar decode helpers.
 - `std.url`: target-neutral URL splitting, percent/query/form encoding and decoding, query/form lookup, and query append helpers.
-- `std.str`: byte-span string helpers, including copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
+- `std.str`: byte-span string helpers, including non-overlapping reverse, copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
 - `std.io`: buffered reader/writer surfaces, cursor writes, line scanning, and byte copy over caller-owned storage.
 - `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
 - `std.log`: explicit-buffer JSON Lines record formatting.

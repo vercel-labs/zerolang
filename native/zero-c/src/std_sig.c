@@ -681,7 +681,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.rand.entropySeed", "RandSource", 0, {NULL}, {NULL}, "rand", "host", "target entropy source", true, Z_STD_HELPER_KIND_TABLE},
   {"std.rand.entropyHex32", "Maybe<Span<u8>>", 1, {"MutSpan<u8>"}, {NULL}, "rand", "host", "writes caller buffer from target entropy", true, Z_STD_HELPER_KIND_TABLE},
   {"std.regex.compile", "Maybe<Span<u8>>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
-  {"std.regex.compileErrorOffset", "Maybe<usize>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "no allocation; returns the compile error byte offset, or null when the pattern compiles", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.regex.compileErrorOffset", "Maybe<usize>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "writes caller buffer; returns the compile error byte offset, or null when the pattern compiles", true, Z_STD_HELPER_KIND_TABLE},
   {"std.regex.compileStatus", "u32", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "writes caller buffer; returns structured status without allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.regex.contains", "Maybe<Bool>", 2, {"Span<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "no allocation; null on invalid pattern", true, Z_STD_HELPER_KIND_TABLE},
   {"std.regex.find", "Maybe<Span<u8>>", 2, {"Span<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "borrows the first matching input span; null on no match or invalid pattern", true, Z_STD_HELPER_KIND_TABLE},

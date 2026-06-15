@@ -78,10 +78,14 @@ pub fn main(world: World) -> Void raises {
 }
 ```
 
-Effects: none.
+Effects: writes to caller-provided mutable storage for `compile`,
+`compileStatus`, `compileErrorOffset`, and `replace`; other helpers only borrow
+input spans or return scalar results.
 
-Allocation behavior: `compile` and `compileStatus` write the caller buffer;
-`isMatch` and `matches` allocate nothing on the heap.
+Allocation behavior: `compile`, `compileStatus`, and `compileErrorOffset` write
+the caller program buffer. `replace` writes the caller output buffer. One-shot
+search, split, and match helpers use fixed internal program storage and allocate
+nothing on the heap.
 
 Error behavior: `compile` returns `null`, `compileStatus` returns a status code
 naming the construct, and `compileErrorOffset` returns the byte offset for a
