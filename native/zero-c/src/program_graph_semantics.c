@@ -818,6 +818,8 @@ static bool graph_semantics_known_resource_type_name(const char *name) {
     "GeneralAlloc",
     "BufferedReader",
     "BufferedWriter",
+    "FixedReader",
+    "FixedWriter",
     "Fs",
     "World",
     "WorldStream",

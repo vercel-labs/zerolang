@@ -709,7 +709,59 @@ bufferedWriter(arg0: MutSpan<u8>) -> BufferedWriter
 readerCapacity(arg0: ref<BufferedReader>) -> usize
 writerCapacity(arg0: ref<BufferedWriter>) -> usize
 copy(arg0: MutSpan<u8>, arg1: Span<u8>) -> usize
+copyN(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<usize>
+copyBuffer(arg0: mutref<FixedReader>, arg1: mutref<FixedWriter>, arg2: MutSpan<u8>) -> usize
+copyReaderN(arg0: mutref<FixedReader>, arg1: mutref<FixedWriter>, arg2: usize, arg3: MutSpan<u8>) -> Maybe<usize>
+discard(arg0: mutref<FixedReader>, arg1: MutSpan<u8>) -> usize
+errorCapacity() -> u32
+errorEof() -> u32
+errorIo() -> u32
+errorName(arg0: u32) -> String
+errorNone() -> u32
+errorPermission() -> u32
+errorShortRead() -> u32
+errorShortWrite() -> u32
+errorTimeout() -> u32
+fixedReader(arg0: Span<u8>, arg1: usize) -> FixedReader
+fixedReaderCursor(arg0: ref<FixedReader>) -> usize
+fixedReaderDone(arg0: ref<FixedReader>) -> Bool
+fixedReaderLen(arg0: ref<FixedReader>) -> usize
+fixedReaderLimit(arg0: ref<FixedReader>, arg1: usize) -> FixedReader
+fixedReaderRead(arg0: mutref<FixedReader>, arg1: MutSpan<u8>) -> usize
+fixedReaderReadAll(arg0: mutref<FixedReader>, arg1: MutSpan<u8>) -> Maybe<Span<u8>>
+fixedReaderReadAt(arg0: ref<FixedReader>, arg1: usize, arg2: MutSpan<u8>) -> Maybe<usize>
+fixedReaderReadByte(arg0: mutref<FixedReader>) -> Maybe<u8>
+fixedReaderReadExact(arg0: mutref<FixedReader>, arg1: MutSpan<u8>) -> Bool
+fixedReaderReadLine(arg0: mutref<FixedReader>) -> Maybe<Span<u8>>
+fixedReaderReadUntilDelimiter(arg0: mutref<FixedReader>, arg1: u8) -> Maybe<Span<u8>>
+fixedReaderRemaining(arg0: ref<FixedReader>) -> usize
+fixedReaderSeek(arg0: mutref<FixedReader>, arg1: usize) -> Bool
+fixedWriter(arg0: MutSpan<u8>, arg1: usize) -> FixedWriter
+fixedWriterCapacity(arg0: ref<FixedWriter>) -> usize
+fixedWriterClear(arg0: mutref<FixedWriter>) -> usize
+fixedWriterCursor(arg0: ref<FixedWriter>) -> usize
+fixedWriterRemaining(arg0: ref<FixedWriter>) -> usize
+fixedWriterSeek(arg0: mutref<FixedWriter>, arg1: usize) -> Bool
+fixedWriterTruncate(arg0: mutref<FixedWriter>, arg1: usize) -> usize
+fixedWriterView(arg0: ref<FixedWriter>) -> Span<u8>
+fixedWriterWrite(arg0: mutref<FixedWriter>, arg1: Span<u8>) -> Bool
+fixedWriterWriteAll(arg0: mutref<FixedWriter>, arg1: Span<u8>) -> Bool
+fixedWriterWriteAt(arg0: mutref<FixedWriter>, arg1: usize, arg2: Span<u8>) -> Bool
+fixedWriterWriteByte(arg0: mutref<FixedWriter>, arg1: u8) -> Bool
+multiRead(arg0: mutref<FixedReader>, arg1: mutref<FixedReader>, arg2: MutSpan<u8>) -> usize
+read(arg0: Span<u8>, arg1: usize, arg2: MutSpan<u8>) -> Maybe<usize>
+readAll(arg0: Span<u8>, arg1: MutSpan<u8>) -> Maybe<Span<u8>>
+readAt(arg0: Span<u8>, arg1: usize, arg2: MutSpan<u8>) -> Maybe<usize>
+readByte(arg0: Span<u8>, arg1: usize) -> Maybe<u8>
+readExact(arg0: Span<u8>, arg1: usize, arg2: MutSpan<u8>) -> Maybe<usize>
+readLine(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+readLineStart(arg0: Span<u8>, arg1: usize) -> usize
+readUntilDelimiter(arg0: Span<u8>, arg1: usize, arg2: u8) -> Maybe<Span<u8>>
+readUntilDelimiterStart(arg0: Span<u8>, arg1: usize, arg2: u8) -> usize
+teeRead(arg0: mutref<FixedReader>, arg1: mutref<FixedWriter>, arg2: MutSpan<u8>) -> Maybe<usize>
 writeByte(arg0: MutSpan<u8>, arg1: usize, arg2: u8) -> Maybe<usize>
+writeAll(arg0: MutSpan<u8>, arg1: usize, arg2: Span<u8>) -> Maybe<usize>
+writeAt(arg0: MutSpan<u8>, arg1: usize, arg2: Span<u8>) -> Maybe<usize>
 writeSpan(arg0: MutSpan<u8>, arg1: usize, arg2: Span<u8>) -> Maybe<usize>
 written(arg0: Span<u8>, arg1: usize) -> Span<u8>
 remaining(arg0: Span<u8>, arg1: usize) -> usize

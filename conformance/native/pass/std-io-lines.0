@@ -16,7 +16,136 @@ pub fn main(world: World) -> Void raises {
     let third_start: usize = std.io.nextLineStart(text, second_start)
     let third: Maybe<Span<u8>> = std.io.nextLine(text, third_start)
     let written: Span<u8> = std.io.written(output, offset)
-    if first.has && second.has && third.has && std.io.countLines(text) == 3 && std.io.remaining(output, offset) == 14 && std.mem.eql(written, "ok") && std.mem.eql(second.value, "zero beta") && std.str.contains(third.value, "gamma") {
+    var read_buf: [4]u8 = [0_u8; 4]
+    let read_next: Maybe<usize> = std.io.read(text, 0, read_buf)
+    var exact_buf: [5]u8 = [0_u8; 5]
+    let exact_next: Maybe<usize> = std.io.readExact(text, 0, exact_buf)
+    var too_large: [32]u8 = [0_u8; 32]
+    let exact_short: Maybe<usize> = std.io.readExact(text, 0, too_large)
+    let first_byte: Maybe<u8> = std.io.readByte(text, 0)
+    var copy_buf: [4]u8 = [0_u8; 4]
+    let copied: usize = std.io.copy(copy_buf, "zero!")
+    let copied_exact: Maybe<usize> = std.io.copyN(copy_buf, "zero", 4)
+    let copied_short: Maybe<usize> = std.io.copyN(copy_buf, "xy", 3)
+    var write_all_buf: [4]u8 = [0_u8; 4]
+    let wrote_all: Maybe<usize> = std.io.writeAll(write_all_buf, 0, "done")
+    var write_at_buf: [4]u8 = [120_u8; 4]
+    let wrote_at: Maybe<usize> = std.io.writeAt(write_at_buf, 1, "io")
+    let read_line: Maybe<Span<u8>> = std.io.readLine(text, second_start)
+    let read_line_start: usize = std.io.readLineStart(text, second_start)
+    let until_newline: Maybe<Span<u8>> = std.io.readUntilDelimiter(text, 0, 10_u8)
+    let after_newline: usize = std.io.readUntilDelimiterStart(text, 0, 10_u8)
+    var read_all_buf: [4]u8 = [0_u8; 4]
+    let read_all: Maybe<Span<u8>> = std.io.readAll("data", read_all_buf)
+    var read_at_buf: [4]u8 = [0_u8; 4]
+    let read_at: Maybe<usize> = std.io.readAt(text, second_start, read_at_buf)
+
+    var line_reader: FixedReader = std.io.fixedReader(text, 0_usize)
+    let fixed_first: Maybe<Span<u8>> = std.io.fixedReaderReadLine(&mut line_reader)
+    let fixed_byte: Maybe<u8> = std.io.fixedReaderReadByte(&mut line_reader)
+    let seek_second: Bool = std.io.fixedReaderSeek(&mut line_reader, second_start)
+    let fixed_until_space: Maybe<Span<u8>> = std.io.fixedReaderReadUntilDelimiter(&mut line_reader, 32_u8)
+    var limit_reader: FixedReader = std.io.fixedReaderLimit(&line_reader, 4)
+    var limit_buf: [4]u8 = [0_u8; 4]
+    let limit_all: Maybe<Span<u8>> = std.io.fixedReaderReadAll(&mut limit_reader, limit_buf)
+    var fixed_at_buf: [2]u8 = [0_u8; 2]
+    let fixed_at: Maybe<usize> = std.io.fixedReaderReadAt(&line_reader, 0, fixed_at_buf)
+    let fixed_len: usize = std.io.fixedReaderLen(&line_reader)
+    let fixed_remaining: usize = std.io.fixedReaderRemaining(&line_reader)
+    let fixed_cursor: usize = std.io.fixedReaderCursor(&line_reader)
+    let seek_end: Bool = std.io.fixedReaderSeek(&mut line_reader, fixed_len)
+    let fixed_done: Bool = std.io.fixedReaderDone(&line_reader)
+    var exact_reader: FixedReader = std.io.fixedReader("exact", 0_usize)
+    var exact_reader_buf: [5]u8 = [0_u8; 5]
+    let fixed_exact: Bool = std.io.fixedReaderReadExact(&mut exact_reader, exact_reader_buf)
+
+    var writer_storage: [16]u8 = [0_u8; 16]
+    var writer: FixedWriter = std.io.fixedWriter(writer_storage, 0_usize)
+    let writer_a: Bool = std.io.fixedWriterWrite(&mut writer, "ab")
+    let writer_b: Bool = std.io.fixedWriterWriteByte(&mut writer, 99_u8)
+    let writer_at: Bool = std.io.fixedWriterWriteAt(&mut writer, 1, "ZZ")
+    let writer_view: Span<u8> = std.io.fixedWriterView(&writer)
+    let writer_cursor: usize = std.io.fixedWriterCursor(&writer)
+    let writer_capacity: usize = std.io.fixedWriterCapacity(&writer)
+    let writer_remaining: usize = std.io.fixedWriterRemaining(&writer)
+    let writer_truncated: usize = std.io.fixedWriterTruncate(&mut writer, 2_usize)
+    let writer_seek: Bool = std.io.fixedWriterSeek(&mut writer, 1_usize)
+    let writer_cleared: usize = std.io.fixedWriterClear(&mut writer)
+    var writer_all_storage: [4]u8 = [0_u8; 4]
+    var writer_all: FixedWriter = std.io.fixedWriter(writer_all_storage, 0_usize)
+    let writer_all_ok: Bool = std.io.fixedWriterWriteAll(&mut writer_all, "full")
+
+    var copy_reader: FixedReader = std.io.fixedReader("copy", 0_usize)
+    var copy_writer_storage: [8]u8 = [0_u8; 8]
+    var copy_writer: FixedWriter = std.io.fixedWriter(copy_writer_storage, 0_usize)
+    var scratch: [2]u8 = [0_u8; 2]
+    let copied_stream: usize = std.io.copyBuffer(&mut copy_reader, &mut copy_writer, scratch)
+
+    var n_reader: FixedReader = std.io.fixedReader("12345", 0_usize)
+    var n_writer_storage: [8]u8 = [0_u8; 8]
+    var n_writer: FixedWriter = std.io.fixedWriter(n_writer_storage, 0_usize)
+    let copied_n: Maybe<usize> = std.io.copyReaderN(&mut n_reader, &mut n_writer, 3_usize, scratch)
+
+    var discard_reader: FixedReader = std.io.fixedReader("drop", 0_usize)
+    let discarded: usize = std.io.discard(&mut discard_reader, scratch)
+
+    var tee_reader: FixedReader = std.io.fixedReader("tee", 0_usize)
+    var tee_writer_storage: [4]u8 = [0_u8; 4]
+    var tee_writer: FixedWriter = std.io.fixedWriter(tee_writer_storage, 0_usize)
+    var tee_buf: [2]u8 = [0_u8; 2]
+    let tee_count: Maybe<usize> = std.io.teeRead(&mut tee_reader, &mut tee_writer, tee_buf)
+
+    var multi_first: FixedReader = std.io.fixedReader("ab", 0_usize)
+    var multi_second: FixedReader = std.io.fixedReader("cd", 0_usize)
+    var multi_buf: [4]u8 = [0_u8; 4]
+    let multi_count: usize = std.io.multiRead(&mut multi_first, &mut multi_second, multi_buf)
+
+    var ok: Bool = true
+    if first.has && second.has && third.has && read_next.has && exact_next.has && first_byte.has && copied_exact.has && wrote_all.has && wrote_at.has && read_line.has && until_newline.has && read_all.has && read_at.has {
+        ok = ok && !exact_short.has && !copied_short.has
+        ok = ok && copied == 4 && std.io.countLines(text) == 3 && std.io.remaining(output, offset) == 14
+        ok = ok && std.mem.eql(written, "ok") && std.mem.eql(second.value, "zero beta") && std.str.contains(third.value, "gamma")
+        ok = ok && read_next.value == 4 && std.mem.eql(std.io.written(read_buf, 4), "alph")
+        ok = ok && exact_next.value == 5 && std.mem.eql(std.io.written(exact_buf, 5), "alpha")
+        ok = ok && first_byte.value == 97_u8 && copied_exact.value == 4 && std.mem.eql(std.io.written(copy_buf, 4), "zero")
+        ok = ok && wrote_all.value == 4 && std.mem.eql(std.io.written(write_all_buf, 4), "done") && wrote_at.value == 3 && std.mem.eql(std.io.written(write_at_buf, 4), "xiox")
+        ok = ok && std.mem.eql(read_line.value, "zero beta") && read_line_start == third_start && std.mem.eql(until_newline.value, "alpha") && after_newline == second_start
+        ok = ok && std.mem.eql(read_all.value, "data") && read_at.value == second_start + 4 && std.mem.eql(std.io.written(read_at_buf, 4), "zero")
+    } else {
+        ok = false
+    }
+
+    if fixed_first.has && fixed_byte.has && fixed_until_space.has && limit_all.has && fixed_at.has {
+        ok = ok && seek_second && seek_end && fixed_done && fixed_exact
+        ok = ok && std.mem.eql(fixed_first.value, "alpha") && fixed_byte.value == 122_u8 && std.mem.eql(fixed_until_space.value, "zero")
+        ok = ok && std.mem.eql(limit_all.value, "beta") && fixed_at.value == 2 && std.mem.eql(std.io.written(fixed_at_buf, 2), "al")
+        ok = ok && fixed_len == std.mem.len(text) && fixed_remaining == std.mem.len(text) - fixed_cursor && fixed_cursor == second_start + 5
+        ok = ok && std.mem.eql(std.io.written(exact_reader_buf, 5), "exact")
+    } else {
+        ok = false
+    }
+
+    ok = ok && writer_a && writer_b && writer_at && std.mem.eql(writer_view, "aZZ") && writer_cursor == 3
+    ok = ok && writer_capacity == 16 && writer_remaining == 13 && writer_truncated == 2 && writer_seek && writer_cleared == 0
+    ok = ok && writer_all_ok && std.mem.eql(std.io.fixedWriterView(&writer_all), "full")
+    ok = ok && copied_stream == 4 && std.mem.eql(std.io.fixedWriterView(&copy_writer), "copy")
+    if copied_n.has {
+        ok = ok && copied_n.value == 3 && std.mem.eql(std.io.fixedWriterView(&n_writer), "123")
+    } else {
+        ok = false
+    }
+    ok = ok && discarded == 4 && std.io.fixedReaderDone(&discard_reader)
+    if tee_count.has {
+        ok = ok && tee_count.value == 2 && std.mem.eql(std.io.written(tee_buf, 2), "te") && std.mem.eql(std.io.fixedWriterView(&tee_writer), "te")
+    } else {
+        ok = false
+    }
+    ok = ok && multi_count == 4 && std.mem.eql(std.io.written(multi_buf, 4), "abcd")
+    ok = ok && std.io.errorNone() == 0_u32 && std.mem.eql(std.io.errorName(std.io.errorEof()), "eof")
+    ok = ok && std.mem.eql(std.io.errorName(std.io.errorShortRead()), "short_read") && std.mem.eql(std.io.errorName(std.io.errorShortWrite()), "short_write")
+    ok = ok && std.mem.eql(std.io.errorName(std.io.errorCapacity()), "capacity") && std.mem.eql(std.io.errorName(std.io.errorPermission()), "permission")
+    ok = ok && std.mem.eql(std.io.errorName(std.io.errorTimeout()), "timeout") && std.mem.eql(std.io.errorName(std.io.errorIo()), "io") && std.mem.eql(std.io.errorName(99_u32), "unknown")
+    if ok {
         check world.out.write("std io lines ok\n")
     }
 }

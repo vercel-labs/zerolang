@@ -573,7 +573,7 @@ static bool graph_resolve_builtin_type(const char *name) {
     "Void", "Bool", "bool", "String", "char", "Type",
     "World", "WorldStream", "Fs", "File", "ByteBuf", "NullAlloc", "FixedBufAlloc", "PageAlloc", "GeneralAlloc",
     "Vec", "FixedSet", "FixedDeque", "FixedRingBuffer", "FixedMap", "Duration", "RandSource", "ProcStatus", "Address", "Net", "Conn", "Listener",
-    "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "BufferedReader", "BufferedWriter",
+    "HttpMethod", "HttpClient", "HttpServer", "HttpResult", "HttpError", "HttpHeaderValue", "JsonDoc", "BufferedReader", "BufferedWriter", "FixedReader", "FixedWriter",
     "Env", "Args", "Clock", "Rand", "Proc", "Alloc",
     "Maybe", "Span", "MutSpan",
     "ref", "mutref", "owned", "usize", "isize", "u8", "u16", "u32", "u64",

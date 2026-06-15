@@ -2021,6 +2021,149 @@ static bool ir_graph_lower_fixed_map_initializer(const ZProgramGraph *graph, IrP
   return true;
 }
 
+static bool ir_graph_lower_fixed_reader_initializer(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const IrLocal *local, const ZProgramGraphNode *expr, IrInstr **out_items, size_t *out_len, size_t *out_cap) {
+  if (!local || !local->is_record || !ir_text_eq(local->shape_name, "FixedReader") ||
+      !expr || (expr->kind != Z_PROGRAM_GRAPH_NODE_CALL && expr->kind != Z_PROGRAM_GRAPH_NODE_METHOD_CALL)) {
+    return false;
+  }
+  char *qualified = ir_graph_expr_qualified_name(graph, expr);
+  const char *call_name = qualified && qualified[0] ? qualified : expr->name;
+  bool is_constructor = ir_text_eq(call_name, "std.io.fixedReader") ||
+                        ir_text_eq(call_name, "__zero_std_io_fixed_reader");
+  bool is_limit = ir_text_eq(call_name, "std.io.fixedReaderLimit") ||
+                  ir_text_eq(call_name, "__zero_std_io_fixed_reader_limit");
+  free(qualified);
+  if ((!is_constructor && !is_limit) || ir_graph_edge_count(graph, expr->id, "arg") != 2) return false;
+
+  unsigned bytes_offset = 0;
+  unsigned cursor_offset = 0;
+  IrTypeKind bytes_type = IR_TYPE_UNSUPPORTED;
+  IrTypeKind cursor_type = IR_TYPE_UNSUPPORTED;
+  bool bytes_is_array = false;
+  bool cursor_is_array = false;
+  if (!ir_graph_shape_field_info(graph, local->shape_name, "bytes", &bytes_offset, &bytes_type, &bytes_is_array, NULL, NULL) ||
+      !ir_graph_shape_field_info(graph, local->shape_name, "cursor", &cursor_offset, &cursor_type, &cursor_is_array, NULL, NULL) ||
+      bytes_is_array || cursor_is_array || bytes_type != IR_TYPE_BYTE_VIEW || cursor_type != IR_TYPE_USIZE) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedReader layout is unsupported", local->shape_name ? local->shape_name : "FixedReader");
+    return true;
+  }
+
+  if (is_limit) {
+    const ZProgramGraphNode *reader_arg = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+    const ZProgramGraphNode *reader_target = reader_arg && reader_arg->kind == Z_PROGRAM_GRAPH_NODE_BORROW ? ir_graph_ordered_node(graph, reader_arg->id, "left", 0) : reader_arg;
+    const IrLocal *reader = reader_target && reader_target->kind == Z_PROGRAM_GRAPH_NODE_IDENTIFIER ? ir_function_find_local(fun, reader_target->name) : NULL;
+    if (!reader || !reader->is_record || !ir_text_eq(reader->shape_name, "FixedReader")) {
+      ir_graph_mark_unsupported(ir, reader_arg, "typed graph MIR fixedReaderLimit expects a FixedReader reference", "non-FixedReader argument");
+      return true;
+    }
+    unsigned source_bytes_offset = 0;
+    unsigned source_cursor_offset = 0;
+    IrTypeKind source_bytes_type = IR_TYPE_UNSUPPORTED;
+    IrTypeKind source_cursor_type = IR_TYPE_UNSUPPORTED;
+    bool source_bytes_is_array = false;
+    bool source_cursor_is_array = false;
+    if (!ir_graph_shape_field_info(graph, reader->shape_name, "bytes", &source_bytes_offset, &source_bytes_type, &source_bytes_is_array, NULL, NULL) ||
+        !ir_graph_shape_field_info(graph, reader->shape_name, "cursor", &source_cursor_offset, &source_cursor_type, &source_cursor_is_array, NULL, NULL) ||
+        source_bytes_is_array || source_cursor_is_array || source_bytes_type != IR_TYPE_BYTE_VIEW || source_cursor_type != IR_TYPE_USIZE) {
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedReader source layout is unsupported", reader->shape_name ? reader->shape_name : "FixedReader");
+      return true;
+    }
+    const ZProgramGraphNode *count_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
+    IrValue *count = NULL;
+    if (!ir_graph_lower_expr_for_type(graph, ir, fun, count_node, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, false, ir_graph_line(count_node), ir_graph_column(count_node), &count)) {
+      return true;
+    }
+    if (!count || count->type != IR_TYPE_USIZE) {
+      ir_free_value(count);
+      ir_graph_mark_unsupported(ir, count_node, "typed graph MIR fixedReaderLimit count must be usize", "non-usize count");
+      return true;
+    }
+    IrValue *slice_start = ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, ir_graph_line(expr), ir_graph_column(expr));
+    IrValue *slice_end = ir_new_binary_value(ir,
+                                             IR_BIN_ADD,
+                                             IR_TYPE_USIZE,
+                                             ir_graph_record_usize_field_value(ir, reader, source_cursor_offset, ir_graph_line(expr), ir_graph_column(expr)),
+                                             count,
+                                             ir_graph_line(expr),
+                                             ir_graph_column(expr));
+    IrValue *slice = ir_new_value(ir, IR_VALUE_BYTE_SLICE, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    slice->left = ir_graph_record_field_load_value(ir, reader, source_bytes_offset, IR_TYPE_BYTE_VIEW, IR_TYPE_U8, ir_graph_line(expr), ir_graph_column(expr));
+    slice->index = slice_start;
+    slice->right = slice_end;
+    slice->element_type = IR_TYPE_U8;
+    ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, bytes_offset, slice, ir_graph_line(expr), ir_graph_column(expr));
+    ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, cursor_offset, ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 0, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+
+  const ZProgramGraphNode *bytes_node = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+  const ZProgramGraphNode *cursor_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
+  IrValue *bytes = NULL;
+  IrValue *cursor = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, bytes_node, &bytes) ||
+      !ir_graph_lower_expr_for_type(graph, ir, fun, cursor_node, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, false, ir_graph_line(cursor_node), ir_graph_column(cursor_node), &cursor)) {
+    ir_free_value(bytes);
+    ir_free_value(cursor);
+    return true;
+  }
+  if (bytes->element_type != IR_TYPE_U8 || cursor->type != IR_TYPE_USIZE) {
+    ir_free_value(bytes);
+    ir_free_value(cursor);
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedReader constructor arguments do not match storage type", local->shape_name ? local->shape_name : "FixedReader");
+    return true;
+  }
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, bytes_offset, bytes, ir_graph_line(bytes_node), ir_graph_column(bytes_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, cursor_offset, cursor, ir_graph_line(cursor_node), ir_graph_column(cursor_node));
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, cursor_offset, bytes_offset, IR_TYPE_U8, ir_graph_line(expr), ir_graph_column(expr));
+  return true;
+}
+
+static bool ir_graph_lower_fixed_writer_initializer(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const IrLocal *local, const ZProgramGraphNode *expr, IrInstr **out_items, size_t *out_len, size_t *out_cap) {
+  if (!local || !local->is_record || !ir_text_eq(local->shape_name, "FixedWriter") ||
+      !expr || (expr->kind != Z_PROGRAM_GRAPH_NODE_CALL && expr->kind != Z_PROGRAM_GRAPH_NODE_METHOD_CALL)) {
+    return false;
+  }
+  char *qualified = ir_graph_expr_qualified_name(graph, expr);
+  bool is_constructor = ir_text_eq(qualified && qualified[0] ? qualified : expr->name, "std.io.fixedWriter") ||
+                        ir_text_eq(qualified && qualified[0] ? qualified : expr->name, "__zero_std_io_fixed_writer");
+  free(qualified);
+  if (!is_constructor || ir_graph_edge_count(graph, expr->id, "arg") != 2) return false;
+
+  unsigned buffer_offset = 0;
+  unsigned cursor_offset = 0;
+  IrTypeKind buffer_type = IR_TYPE_UNSUPPORTED;
+  IrTypeKind cursor_type = IR_TYPE_UNSUPPORTED;
+  bool buffer_is_array = false;
+  bool cursor_is_array = false;
+  if (!ir_graph_shape_field_info(graph, local->shape_name, "buffer", &buffer_offset, &buffer_type, &buffer_is_array, NULL, NULL) ||
+      !ir_graph_shape_field_info(graph, local->shape_name, "cursor", &cursor_offset, &cursor_type, &cursor_is_array, NULL, NULL) ||
+      buffer_is_array || cursor_is_array || buffer_type != IR_TYPE_BYTE_VIEW || cursor_type != IR_TYPE_USIZE) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedWriter layout is unsupported", local->shape_name ? local->shape_name : "FixedWriter");
+    return true;
+  }
+
+  const ZProgramGraphNode *buffer_node = ir_graph_ordered_node(graph, expr->id, "arg", 0);
+  const ZProgramGraphNode *cursor_node = ir_graph_ordered_node(graph, expr->id, "arg", 1);
+  IrValue *buffer = NULL;
+  IrValue *cursor = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, buffer_node, &buffer) ||
+      !ir_graph_lower_expr_for_type(graph, ir, fun, cursor_node, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, false, ir_graph_line(cursor_node), ir_graph_column(cursor_node), &cursor)) {
+    ir_free_value(buffer);
+    ir_free_value(cursor);
+    return true;
+  }
+  if (buffer->element_type != IR_TYPE_U8 || cursor->type != IR_TYPE_USIZE) {
+    ir_free_value(buffer);
+    ir_free_value(cursor);
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR FixedWriter constructor arguments do not match storage type", local->shape_name ? local->shape_name : "FixedWriter");
+    return true;
+  }
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, buffer_offset, buffer, ir_graph_line(buffer_node), ir_graph_column(buffer_node));
+  ir_graph_push_record_field_store(ir, out_items, out_len, out_cap, local, cursor_offset, cursor, ir_graph_line(cursor_node), ir_graph_column(cursor_node));
+  ir_graph_push_fixed_resource_len_clamp(ir, out_items, out_len, out_cap, local, cursor_offset, buffer_offset, IR_TYPE_U8, ir_graph_line(expr), ir_graph_column(expr));
+  return true;
+}
+
 static bool ir_graph_expr_is_byte_view_source(const ZProgramGraph *graph, const IrFunction *fun, const ZProgramGraphNode *expr) {
   if (!expr) return false;
   if (ir_graph_type_kind(graph, ir_graph_node_type(graph, expr)) == IR_TYPE_BYTE_VIEW) return true;
@@ -2296,7 +2439,9 @@ static bool ir_graph_lower_record_initializer(const ZProgramGraph *graph, IrProg
 
 static bool ir_graph_lower_fixed_resource_initializer(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const IrLocal *local, const ZProgramGraphNode *expr, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *handled) {
   *handled = false;
-  if (ir_graph_lower_fixed_map_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap) ||
+  if (ir_graph_lower_fixed_writer_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap) ||
+      ir_graph_lower_fixed_reader_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap) ||
+      ir_graph_lower_fixed_map_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap) ||
       ir_graph_lower_fixed_ring_buffer_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap) ||
       ir_graph_lower_fixed_deque_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap) ||
       ir_graph_lower_fixed_set_initializer(graph, ir, fun, local, expr, out_items, out_len, out_cap)) {
@@ -5528,6 +5673,10 @@ static bool ir_graph_add_generic_specialization_order_context(const ZProgramGrap
       free(qualified);
       return true;
     }
+    if (ir_text_eq(qualified, "std.io.fixedReader") || ir_text_eq(qualified, "std.io.fixedReaderLimit") || ir_text_eq(qualified, "std.io.fixedWriter")) {
+      free(qualified);
+      return true;
+    }
     const char *target = z_std_source_target_for_public_call(qualified);
     if (target) callee_name = target;
   }
@@ -5544,6 +5693,10 @@ static bool ir_graph_add_generic_specialization_order_context(const ZProgramGrap
     return true;
   }
   if (ir_text_eq(callee_name, "__zero_std_collections_fixed_map")) {
+    free(qualified);
+    return true;
+  }
+  if (ir_text_eq(callee_name, "__zero_std_io_fixed_reader") || ir_text_eq(callee_name, "__zero_std_io_fixed_reader_limit") || ir_text_eq(callee_name, "__zero_std_io_fixed_writer")) {
     free(qualified);
     return true;
   }
@@ -5602,7 +5755,12 @@ static bool ir_graph_add_reachable_child_orders(const ZProgramGraph *graph, IrPr
     const ZProgramGraphNode *child = ir_graph_find_node(graph, edge->to); if (!child) continue;
     if (child->kind == Z_PROGRAM_GRAPH_NODE_CALL || child->kind == Z_PROGRAM_GRAPH_NODE_METHOD_CALL) { if (!ir_graph_add_generic_specialization_order_context(graph, ir, order, stable_ids, len, cap, NULL, child)) return false;
       char *qualified = ir_graph_expr_qualified_name(graph, child); const char *callee = qualified && qualified[0] ? qualified : child->name;
-      const char *target = z_std_source_target_for_public_call(callee); const ZProgramGraphNode *callee_function = ir_graph_find_function_by_name(graph, target ? target : child->name);
+      const char *target = z_std_source_target_for_public_call(callee);
+      bool intrinsic_fixed_io = target &&
+                                (ir_text_eq(target, "__zero_std_io_fixed_reader") ||
+                                 ir_text_eq(target, "__zero_std_io_fixed_reader_limit") ||
+                                 ir_text_eq(target, "__zero_std_io_fixed_writer"));
+      const ZProgramGraphNode *callee_function = intrinsic_fixed_io ? NULL : ir_graph_find_function_by_name(graph, target ? target : child->name);
       free(qualified); if (callee_function && !ir_graph_add_reachable_function_order(graph, ir, order, stable_ids, len, cap, callee_function)) return false;
     }
     if (!ir_graph_add_reachable_child_orders(graph, ir, order, stable_ids, len, cap, child->id, depth + 1)) return false;

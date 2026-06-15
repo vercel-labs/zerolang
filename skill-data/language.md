@@ -74,7 +74,7 @@ NullAlloc FixedBufAlloc PageAlloc GeneralAlloc
 Vec Duration RandSource ProcStatus
 Address Net Conn Listener
 HttpMethod HttpClient HttpServer HttpResult HttpError HttpHeaderValue
-JsonDoc BufferedReader BufferedWriter
+JsonDoc BufferedReader BufferedWriter FixedReader FixedWriter
 Env Args Clock Rand Proc Alloc
 Maybe<T> Span<T> MutSpan<T>
 ref<T> mutref<T> owned<T>

@@ -1,3 +1,13 @@
+type FixedReader {
+    bytes: Span<u8>,
+    cursor: usize,
+}
+
+type FixedWriter {
+    buffer: MutSpan<u8>,
+    cursor: usize,
+}
+
 fn __zero_std_io_write_byte(buffer: MutSpan<u8>, offset: usize, byte: u8) -> Maybe<usize> {
     if offset >= std.mem.len(buffer) {
         return null
@@ -19,6 +29,94 @@ fn __zero_std_io_write_span(buffer: MutSpan<u8>, offset: usize, bytes: Span<u8>)
         index = index + 1
     }
     return offset + std.mem.len(bytes)
+}
+
+fn __zero_std_io_write_all(buffer: MutSpan<u8>, offset: usize, bytes: Span<u8>) -> Maybe<usize> {
+    return __zero_std_io_write_span(buffer, offset, bytes)
+}
+
+fn __zero_std_io_write_at(buffer: MutSpan<u8>, offset: usize, bytes: Span<u8>) -> Maybe<usize> {
+    return __zero_std_io_write_span(buffer, offset, bytes)
+}
+
+fn __zero_std_io_read(bytes: Span<u8>, offset: usize, buffer: MutSpan<u8>) -> Maybe<usize> {
+    if offset > std.mem.len(bytes) {
+        return null
+    }
+    let available: usize = std.mem.len(bytes) - offset
+    var count: usize = std.mem.len(buffer)
+    if available < count {
+        count = available
+    }
+    var index: usize = 0
+    while index < count {
+        buffer[index] = bytes[offset + index]
+        index = index + 1
+    }
+    return offset + count
+}
+
+fn __zero_std_io_read_exact(bytes: Span<u8>, offset: usize, buffer: MutSpan<u8>) -> Maybe<usize> {
+    if offset > std.mem.len(bytes) {
+        return null
+    }
+    if std.mem.len(buffer) > std.mem.len(bytes) - offset {
+        return null
+    }
+    var index: usize = 0
+    while index < std.mem.len(buffer) {
+        buffer[index] = bytes[offset + index]
+        index = index + 1
+    }
+    return offset + std.mem.len(buffer)
+}
+
+fn __zero_std_io_read_at(bytes: Span<u8>, offset: usize, buffer: MutSpan<u8>) -> Maybe<usize> {
+    return __zero_std_io_read(bytes, offset, buffer)
+}
+
+fn __zero_std_io_read_all(bytes: Span<u8>, buffer: MutSpan<u8>) -> Maybe<Span<u8>> {
+    let count: usize = std.mem.len(bytes)
+    let copied: Maybe<usize> = __zero_std_io_copy_n(buffer, bytes, count)
+    if copied.has {
+        return __zero_std_io_written(buffer, copied.value)
+    }
+    return null
+}
+
+fn __zero_std_io_copy(buffer: MutSpan<u8>, bytes: Span<u8>) -> usize {
+    var count: usize = std.mem.len(bytes)
+    if std.mem.len(buffer) < count {
+        count = std.mem.len(buffer)
+    }
+    var index: usize = 0
+    while index < count {
+        buffer[index] = bytes[index]
+        index = index + 1
+    }
+    return count
+}
+
+fn __zero_std_io_read_byte(bytes: Span<u8>, offset: usize) -> Maybe<u8> {
+    if offset >= std.mem.len(bytes) {
+        return null
+    }
+    return bytes[offset]
+}
+
+fn __zero_std_io_copy_n(buffer: MutSpan<u8>, bytes: Span<u8>, count: usize) -> Maybe<usize> {
+    if count > std.mem.len(buffer) {
+        return null
+    }
+    if count > std.mem.len(bytes) {
+        return null
+    }
+    var index: usize = 0
+    while index < count {
+        buffer[index] = bytes[index]
+        index = index + 1
+    }
+    return count
 }
 
 fn __zero_std_io_written(buffer: Span<u8>, len: usize) -> Span<u8> {
@@ -49,6 +147,10 @@ fn __zero_std_io_next_line(bytes: Span<u8>, start: usize) -> Maybe<Span<u8>> {
     return bytes[start..end]
 }
 
+fn __zero_std_io_read_line(bytes: Span<u8>, start: usize) -> Maybe<Span<u8>> {
+    return __zero_std_io_next_line(bytes, start)
+}
+
 fn __zero_std_io_next_line_start(bytes: Span<u8>, start: usize) -> usize {
     if start >= std.mem.len(bytes) {
         return std.mem.len(bytes)
@@ -61,6 +163,351 @@ fn __zero_std_io_next_line_start(bytes: Span<u8>, start: usize) -> usize {
         return end + 1
     }
     return std.mem.len(bytes)
+}
+
+fn __zero_std_io_read_line_start(bytes: Span<u8>, start: usize) -> usize {
+    return __zero_std_io_next_line_start(bytes, start)
+}
+
+fn __zero_std_io_read_until_delimiter(bytes: Span<u8>, start: usize, delimiter: u8) -> Maybe<Span<u8>> {
+    if start >= std.mem.len(bytes) {
+        return null
+    }
+    var end: usize = start
+    while end < std.mem.len(bytes) && bytes[end] != delimiter {
+        end = end + 1
+    }
+    return bytes[start..end]
+}
+
+fn __zero_std_io_read_until_delimiter_start(bytes: Span<u8>, start: usize, delimiter: u8) -> usize {
+    if start >= std.mem.len(bytes) {
+        return std.mem.len(bytes)
+    }
+    var end: usize = start
+    while end < std.mem.len(bytes) && bytes[end] != delimiter {
+        end = end + 1
+    }
+    if end < std.mem.len(bytes) {
+        return end + 1
+    }
+    return std.mem.len(bytes)
+}
+
+fn __zero_std_io_fixed_reader(bytes: Span<u8>, cursor: usize) -> FixedReader {
+    var start: usize = cursor
+    if start > std.mem.len(bytes) {
+        start = std.mem.len(bytes)
+    }
+    return FixedReader { bytes: bytes, cursor: start }
+}
+
+fn __zero_std_io_fixed_reader_cursor(reader: ref<FixedReader>) -> usize {
+    return reader.cursor
+}
+
+fn __zero_std_io_fixed_reader_len(reader: ref<FixedReader>) -> usize {
+    return std.mem.len(reader.bytes)
+}
+
+fn __zero_std_io_fixed_reader_remaining(reader: ref<FixedReader>) -> usize {
+    return __zero_std_io_remaining(reader.bytes, reader.cursor)
+}
+
+fn __zero_std_io_fixed_reader_done(reader: ref<FixedReader>) -> Bool {
+    return reader.cursor >= std.mem.len(reader.bytes)
+}
+
+fn __zero_std_io_fixed_reader_seek(reader: mutref<FixedReader>, cursor: usize) -> Bool {
+    if cursor > std.mem.len(reader.bytes) {
+        return false
+    }
+    reader.cursor = cursor
+    return true
+}
+
+fn __zero_std_io_fixed_reader_limit(reader: ref<FixedReader>, count: usize) -> FixedReader {
+    let bytes: Span<u8> = std.mem.cursorChunk(reader.bytes, reader.cursor, count)
+    return FixedReader { bytes: bytes, cursor: 0 }
+}
+
+fn __zero_std_io_fixed_reader_read(reader: mutref<FixedReader>, buffer: MutSpan<u8>) -> usize {
+    let before: usize = reader.cursor
+    let next: Maybe<usize> = __zero_std_io_read(reader.bytes, before, buffer)
+    if next.has {
+        reader.cursor = next.value
+        return next.value - before
+    }
+    return 0
+}
+
+fn __zero_std_io_fixed_reader_read_exact(reader: mutref<FixedReader>, buffer: MutSpan<u8>) -> Bool {
+    let next: Maybe<usize> = __zero_std_io_read_exact(reader.bytes, reader.cursor, buffer)
+    if next.has {
+        reader.cursor = next.value
+        return true
+    }
+    return false
+}
+
+fn __zero_std_io_fixed_reader_read_at(reader: ref<FixedReader>, offset: usize, buffer: MutSpan<u8>) -> Maybe<usize> {
+    return __zero_std_io_read(reader.bytes, offset, buffer)
+}
+
+fn __zero_std_io_fixed_reader_read_byte(reader: mutref<FixedReader>) -> Maybe<u8> {
+    let byte: Maybe<u8> = __zero_std_io_read_byte(reader.bytes, reader.cursor)
+    if byte.has {
+        reader.cursor = reader.cursor + 1
+    }
+    return byte
+}
+
+fn __zero_std_io_fixed_reader_read_line(reader: mutref<FixedReader>) -> Maybe<Span<u8>> {
+    let line: Maybe<Span<u8>> = __zero_std_io_next_line(reader.bytes, reader.cursor)
+    if line.has {
+        reader.cursor = __zero_std_io_next_line_start(reader.bytes, reader.cursor)
+    }
+    return line
+}
+
+fn __zero_std_io_fixed_reader_read_until_delimiter(reader: mutref<FixedReader>, delimiter: u8) -> Maybe<Span<u8>> {
+    let chunk: Maybe<Span<u8>> = __zero_std_io_read_until_delimiter(reader.bytes, reader.cursor, delimiter)
+    if chunk.has {
+        reader.cursor = __zero_std_io_read_until_delimiter_start(reader.bytes, reader.cursor, delimiter)
+    }
+    return chunk
+}
+
+fn __zero_std_io_fixed_reader_read_all(reader: mutref<FixedReader>, buffer: MutSpan<u8>) -> Maybe<Span<u8>> {
+    let remaining: usize = __zero_std_io_fixed_reader_remaining(reader)
+    if remaining > std.mem.len(buffer) {
+        return null
+    }
+    let copied: Maybe<usize> = __zero_std_io_copy_n(buffer, reader.bytes[reader.cursor..], remaining)
+    if copied.has {
+        reader.cursor = std.mem.len(reader.bytes)
+        return __zero_std_io_written(buffer, copied.value)
+    }
+    return null
+}
+
+fn __zero_std_io_fixed_writer(buffer: MutSpan<u8>, cursor: usize) -> FixedWriter {
+    var start: usize = cursor
+    if start > std.mem.len(buffer) {
+        start = std.mem.len(buffer)
+    }
+    return FixedWriter { buffer: buffer, cursor: start }
+}
+
+fn __zero_std_io_fixed_writer_cursor(writer: ref<FixedWriter>) -> usize {
+    return writer.cursor
+}
+
+fn __zero_std_io_fixed_writer_capacity(writer: ref<FixedWriter>) -> usize {
+    return std.mem.len(writer.buffer)
+}
+
+fn __zero_std_io_fixed_writer_remaining(writer: ref<FixedWriter>) -> usize {
+    return __zero_std_io_remaining(writer.buffer, writer.cursor)
+}
+
+fn __zero_std_io_fixed_writer_view(writer: ref<FixedWriter>) -> Span<u8> {
+    return __zero_std_io_written(writer.buffer, writer.cursor)
+}
+
+fn __zero_std_io_fixed_writer_clear(writer: mutref<FixedWriter>) -> usize {
+    writer.cursor = 0
+    return writer.cursor
+}
+
+fn __zero_std_io_fixed_writer_truncate(writer: mutref<FixedWriter>, len: usize) -> usize {
+    if len < writer.cursor {
+        writer.cursor = len
+    }
+    return writer.cursor
+}
+
+fn __zero_std_io_fixed_writer_seek(writer: mutref<FixedWriter>, cursor: usize) -> Bool {
+    if cursor > std.mem.len(writer.buffer) {
+        return false
+    }
+    writer.cursor = cursor
+    return true
+}
+
+fn __zero_std_io_fixed_writer_write_byte(writer: mutref<FixedWriter>, byte: u8) -> Bool {
+    let next: Maybe<usize> = __zero_std_io_write_byte(writer.buffer, writer.cursor, byte)
+    if next.has {
+        writer.cursor = next.value
+        return true
+    }
+    return false
+}
+
+fn __zero_std_io_fixed_writer_write(writer: mutref<FixedWriter>, bytes: Span<u8>) -> Bool {
+    let next: Maybe<usize> = __zero_std_io_write_all(writer.buffer, writer.cursor, bytes)
+    if next.has {
+        writer.cursor = next.value
+        return true
+    }
+    return false
+}
+
+fn __zero_std_io_fixed_writer_write_all(writer: mutref<FixedWriter>, bytes: Span<u8>) -> Bool {
+    return __zero_std_io_fixed_writer_write(writer, bytes)
+}
+
+fn __zero_std_io_fixed_writer_write_at(writer: mutref<FixedWriter>, offset: usize, bytes: Span<u8>) -> Bool {
+    let next: Maybe<usize> = __zero_std_io_write_at(writer.buffer, offset, bytes)
+    return next.has
+}
+
+fn __zero_std_io_copy_buffer(reader: mutref<FixedReader>, writer: mutref<FixedWriter>, scratch: MutSpan<u8>) -> usize {
+    if std.mem.len(scratch) == 0 {
+        return 0
+    }
+    var total: usize = 0
+    while true {
+        let before: usize = reader.cursor
+        let count: usize = __zero_std_io_fixed_reader_read(reader, scratch)
+        if count == 0 {
+            return total
+        }
+        let chunk: Span<u8> = __zero_std_io_written(scratch, count)
+        if !__zero_std_io_fixed_writer_write_all(writer, chunk) {
+            reader.cursor = before
+            return total
+        }
+        total = total + count
+    }
+    return total
+}
+
+fn __zero_std_io_copy_reader_n(reader: mutref<FixedReader>, writer: mutref<FixedWriter>, count: usize, scratch: MutSpan<u8>) -> Maybe<usize> {
+    if count == 0 {
+        return 0_usize
+    }
+    if std.mem.len(scratch) == 0 {
+        return null
+    }
+    var copied: usize = 0
+    while copied < count {
+        var chunk_len: usize = count - copied
+        if chunk_len > std.mem.len(scratch) {
+            chunk_len = std.mem.len(scratch)
+        }
+        let chunk_buffer: MutSpan<u8> = scratch[..chunk_len]
+        let read_before: usize = reader.cursor
+        if !__zero_std_io_fixed_reader_read_exact(reader, chunk_buffer) {
+            reader.cursor = read_before
+            return null
+        }
+        let chunk: Span<u8> = __zero_std_io_written(chunk_buffer, chunk_len)
+        if !__zero_std_io_fixed_writer_write_all(writer, chunk) {
+            reader.cursor = read_before
+            return null
+        }
+        copied = copied + chunk_len
+    }
+    return copied
+}
+
+fn __zero_std_io_discard(reader: mutref<FixedReader>, scratch: MutSpan<u8>) -> usize {
+    if std.mem.len(scratch) == 0 {
+        return 0
+    }
+    var total: usize = 0
+    while true {
+        let count: usize = __zero_std_io_fixed_reader_read(reader, scratch)
+        if count == 0 {
+            return total
+        }
+        total = total + count
+    }
+    return total
+}
+
+fn __zero_std_io_tee_read(reader: mutref<FixedReader>, writer: mutref<FixedWriter>, buffer: MutSpan<u8>) -> Maybe<usize> {
+    let before: usize = reader.cursor
+    let count: usize = __zero_std_io_fixed_reader_read(reader, buffer)
+    if count == 0 {
+        return 0_usize
+    }
+    let chunk: Span<u8> = __zero_std_io_written(buffer, count)
+    if __zero_std_io_fixed_writer_write_all(writer, chunk) {
+        return count
+    }
+    reader.cursor = before
+    return null
+}
+
+fn __zero_std_io_multi_read(first: mutref<FixedReader>, second: mutref<FixedReader>, buffer: MutSpan<u8>) -> usize {
+    let first_count: usize = __zero_std_io_fixed_reader_read(first, buffer)
+    if first_count >= std.mem.len(buffer) {
+        return first_count
+    }
+    let second_count: usize = __zero_std_io_fixed_reader_read(second, buffer[first_count..])
+    return first_count + second_count
+}
+
+fn __zero_std_io_error_none() -> u32 {
+    return 0_u32
+}
+
+fn __zero_std_io_error_eof() -> u32 {
+    return 1_u32
+}
+
+fn __zero_std_io_error_short_read() -> u32 {
+    return 2_u32
+}
+
+fn __zero_std_io_error_short_write() -> u32 {
+    return 3_u32
+}
+
+fn __zero_std_io_error_capacity() -> u32 {
+    return 4_u32
+}
+
+fn __zero_std_io_error_permission() -> u32 {
+    return 5_u32
+}
+
+fn __zero_std_io_error_timeout() -> u32 {
+    return 6_u32
+}
+
+fn __zero_std_io_error_io() -> u32 {
+    return 7_u32
+}
+
+fn __zero_std_io_error_name(code: u32) -> String {
+    if code == 0_u32 {
+        return "none"
+    }
+    if code == 1_u32 {
+        return "eof"
+    }
+    if code == 2_u32 {
+        return "short_read"
+    }
+    if code == 3_u32 {
+        return "short_write"
+    }
+    if code == 4_u32 {
+        return "capacity"
+    }
+    if code == 5_u32 {
+        return "permission"
+    }
+    if code == 6_u32 {
+        return "timeout"
+    }
+    if code == 7_u32 {
+        return "io"
+    }
+    return "unknown"
 }
 
 fn __zero_std_io_count_lines(bytes: Span<u8>) -> usize {

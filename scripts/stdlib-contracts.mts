@@ -91,6 +91,8 @@ const knownResourceTypes = new Set([
   "ByteBuf",
   "File",
   "FixedBufAlloc",
+  "FixedReader",
+  "FixedWriter",
   "RandSource",
   "Vec",
 ]);
@@ -102,6 +104,8 @@ const countedResourceTypes = new Set([
   "ByteBuf",
   "File",
   "FixedBufAlloc",
+  "FixedReader",
+  "FixedWriter",
   "Fs",
   "GeneralAlloc",
   "HttpClient",
@@ -427,11 +431,11 @@ function resourceLifetimeCategories(helper: StdHelper): ResourceLifetimeCategory
 
 function streamingBehaviorCategory(helper: StdHelper): StreamingBehaviorCategory | null {
   const behavior = helper.allocationBehavior.toLowerCase();
-  if (helper.name.endsWith("streamTokens") || helper.name.endsWith("streamTokensBytes") || behavior.includes("streaming")) return "stream-scan";
+  if (helper.name.endsWith("streamTokens") || helper.name.endsWith("streamTokensBytes") || helper.name.endsWith("readUntilDelimiter") || helper.name.endsWith("readUntilDelimiterStart") || behavior.includes("streaming")) return "stream-scan";
   if (helper.name.endsWith("readBytesAt") || behavior.includes("chunked")) return "chunked-read";
   if (helper.name.includes("Within") || behavior.includes("within size limit")) return "bounded-input";
-  if (helper.name.endsWith("nextLine") || helper.name.endsWith("nextLineStart") || helper.name.endsWith("countLines")) return "line-scan";
-  if (helper.name.endsWith(".copy") || behavior.includes("copies through caller buffer")) return "buffer-copy";
+  if (helper.name.endsWith("nextLine") || helper.name.endsWith("nextLineStart") || helper.name.endsWith("readLine") || helper.name.endsWith("readLineStart") || helper.name.endsWith("countLines")) return "line-scan";
+  if (helper.name.endsWith(".copy") || helper.name.endsWith("copyN") || helper.name.endsWith("copyBuffer") || behavior.includes("copies through caller buffer")) return "buffer-copy";
   return null;
 }
 
