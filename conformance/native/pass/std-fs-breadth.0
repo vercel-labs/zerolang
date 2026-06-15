@@ -1,10 +1,13 @@
 pub fn main(world: World) -> Void raises {
     let data: Span<u8> = std.mem.span("atomic data\n")
     let wrote: Bool = std.fs.atomicWrite(".zero/conformance/std-fs-breadth.txt", ".zero/conformance/std-fs-breadth.tmp", data)
+    let ensured: Bool = std.fs.ensureDir(".zero/conformance")
+    let renamed: Bool = std.fs.rename(".zero/conformance/std-fs-breadth.txt", ".zero/conformance/std-fs-breadth-renamed.txt")
+    let restored: Bool = renamed && std.fs.rename(".zero/conformance/std-fs-breadth-renamed.txt", ".zero/conformance/std-fs-breadth.txt")
     let entries: Maybe<usize> = std.fs.dirEntryCount("conformance/native/pass")
     var tmp_buf: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let temp: Maybe<String> = std.fs.tempName(tmp_buf, ".zero/conformance/std-fs")
-    if wrote && std.fs.exists(".zero/conformance/std-fs-breadth.txt") && entries.has && entries.value > 0 && temp.has {
+    if wrote && ensured && restored && std.fs.exists(".zero/conformance/std-fs-breadth.txt") && std.fs.isFile(".zero/conformance/std-fs-breadth.txt") && entries.has && entries.value > 0 && temp.has {
         check world.out.write("std fs breadth ok\n")
     }
 }

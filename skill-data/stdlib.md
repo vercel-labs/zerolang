@@ -28,7 +28,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.text`: ASCII and UTF-8 byte-backed text validation.
 - `std.unicode`: strict UTF-8 codepoint decode/encode iteration and codepoint-class helpers; pair with `std.text.utf8Valid`/`std.text.utf8Len` for whole-span validation and counting.
 - `std.math`: fixed-width min/max/clamp, checked and saturating integer arithmetic, GCD/LCM, powers, modular power, roots, combinatorics, primality, and divisor routines.
-- `std.path`: target-neutral lexical path basename, dirname, extension, join, normalize, and relative helpers.
+- `std.path`: target-neutral lexical path basename, dirname, extension, stem, component, abs, join, normalize, and relative helpers.
 - `std.codec`: byte reads, endian reads/writes, varint sizing/encode/decode, base64/hex encode/decode, CRC helpers, and byte checksums.
 - `std.parse`: byte scanners and integer/bool parsers returning `Maybe<T>`.
 - `std.regex`: compile-once regular expression matching for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes.
@@ -51,7 +51,7 @@ Prefer `Maybe<T>` return checks over assuming an operation succeeded.
 These modules depend on host or runtime capabilities:
 
 - `std.args`: process arguments
-- `std.cli`: command-line flag and option helpers over process arguments
+- `std.cli`: command-line flag, option, and typed option helpers over process arguments
 - `std.env`: process environment lookup, comparisons, and typed fallback parsing
 - `std.fs`: hosted filesystem, explicit `Fs` or `owned<File>` handles, and file-level byte helpers
 - `std.net`: bootstrap network handles
@@ -381,7 +381,14 @@ argU32Or(arg0: usize, arg1: u32) -> u32
 hasFlag(arg0: String) -> Bool
 optionValue(arg0: String) -> Maybe<String>
 optionValueOr(arg0: String, arg1: String) -> String
+optionBool(arg0: String) -> Maybe<Bool>
+optionBoolOr(arg0: String, arg1: Bool) -> Bool
+optionI32(arg0: String) -> Maybe<i32>
+optionI32Or(arg0: String, arg1: i32) -> i32
 optionU32(arg0: String) -> Maybe<u32>
+optionU32Or(arg0: String, arg1: u32) -> u32
+optionUsize(arg0: String) -> Maybe<usize>
+optionUsizeOr(arg0: String, arg1: usize) -> usize
 successExitCode() -> i32
 usageExitCode() -> i32
 ```
@@ -545,8 +552,12 @@ getOr(arg0: String, arg1: String) -> String
 equals(arg0: String, arg1: String) -> Bool
 parseBool(arg0: String) -> Maybe<Bool>
 parseBoolOr(arg0: String, arg1: Bool) -> Bool
+parseI32(arg0: String) -> Maybe<i32>
+parseI32Or(arg0: String, arg1: i32) -> i32
 parseU32(arg0: String) -> Maybe<u32>
 parseU32Or(arg0: String, arg1: u32) -> u32
+parseUsize(arg0: String) -> Maybe<usize>
+parseUsizeOr(arg0: String, arg1: usize) -> usize
 ```
 
 ### std.fmt
@@ -594,6 +605,9 @@ writeFile(arg0: Fs, arg1: String, arg2: Span<u8>) -> Bool
 readFileBytes(arg0: Fs, arg1: String, arg2: MutSpan<u8>) -> Maybe<Span<u8>>
 readFileEquals(arg0: Fs, arg1: String, arg2: MutSpan<u8>, arg3: Span<u8>) -> Bool
 copyFile(arg0: String, arg1: String, arg2: MutSpan<u8>) -> Bool
+fileSize(arg0: Fs, arg1: String) -> Maybe<usize>
+isFile(arg0: String) -> Bool
+ensureDir(arg0: String) -> Bool
 ```
 
 `readBytes` and `readFile` fill the caller buffer and return the TOTAL file size
@@ -1004,6 +1018,13 @@ parseUsize(arg0: Span<u8>) -> Maybe<usize>
 basename(arg0: String) -> String
 dirname(arg0: String) -> String
 extension(arg0: String) -> String
+stem(arg0: String) -> String
+splitDir(arg0: String) -> String
+splitBase(arg0: String) -> String
+componentCount(arg0: String) -> usize
+component(arg0: String, arg1: usize) -> Maybe<String>
+isAbs(arg0: String) -> Bool
+abs(arg0: MutSpan<u8>, arg1: String, arg2: String) -> Maybe<String>
 join(arg0: MutSpan<u8>, arg1: String, arg2: String) -> Maybe<String>
 normalize(arg0: MutSpan<u8>, arg1: String) -> Maybe<String>
 relative(arg0: MutSpan<u8>, arg1: String, arg2: String) -> Maybe<String>

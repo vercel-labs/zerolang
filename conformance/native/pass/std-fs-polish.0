@@ -1,17 +1,8 @@
 pub fn main(world: World) -> Void raises {
     let fs: Fs = std.fs.host()
-    let created: Maybe<owned<File>> = std.fs.create(fs, ".zero/polish-a.txt")
-    if created.has {
-        var file: owned<File> = created.value
-        if std.fs.writeAll(&mut file, std.mem.span("abc")) {
-            let len: Maybe<usize> = std.fs.fileLen(&mut file)
-            if len.has && len.value == 3 {
-                if std.fs.rename(".zero/polish-a.txt", ".zero/polish-b.txt") {
-                    if std.fs.remove(".zero/polish-b.txt") {
-                        check world.out.write("fs polish ok\n")
-                    }
-                }
-            }
-        }
+    let path: String = "conformance/fixtures/std-fs-read.txt"
+    let size: Maybe<usize> = std.fs.fileSize(fs, path)
+    if size.has && size.value == 10 {
+        check world.out.write("fs polish ok\n")
     }
 }

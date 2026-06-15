@@ -15,11 +15,18 @@ pub fn main(world: World) -> Void raises {
     let option: Maybe<String> = std.cli.optionValue("--name")
     let option_or: String = std.cli.optionValueOr("--missing", "fallback")
     let option_count: Maybe<u32> = std.cli.optionU32("--count")
+    let option_bool: Maybe<Bool> = std.cli.optionBool("--enabled")
+    let option_bool_or: Bool = std.cli.optionBoolOr("--missing-bool", true)
+    let option_i32: Maybe<i32> = std.cli.optionI32("--delta")
+    let option_i32_or: i32 = std.cli.optionI32Or("--missing-delta", -13)
+    let option_count_or: u32 = std.cli.optionU32Or("--count", 0_u32)
+    let option_size: Maybe<usize> = std.cli.optionUsize("--size")
+    let option_size_or: usize = std.cli.optionUsizeOr("--missing-size", 21_usize)
     let env_mode: String = std.env.getOr("ZERO_CONFORMANCE_MODE", "dev")
     let env_has_mode: Bool = std.env.has("ZERO_CONFORMANCE_MODE")
     let env_verbose: Maybe<Bool> = std.env.parseBool("ZERO_CONFORMANCE_VERBOSE")
     let env_limit: Maybe<u32> = std.env.parseU32("ZERO_CONFORMANCE_LIMIT")
-    if std.cli.argEquals(1, "run") && command.has && command_equals && std.mem.eql(command.value, "run") && std.mem.eql(command_or, "run") && std.mem.eql(first, "run") && has_count_arg && parsed_count_arg.has && parsed_count_arg.value == 7_u32 && parsed_count_or == 7_u32 && parsed_missing_or == 11_u32 && name_index.has && name_after.has && flag && option.has && option_count.has && env_has_mode && env_verbose.has && env_limit.has && std.mem.eql(third_arg, "--json") && std.mem.eql(missing_arg, "fallback") && std.mem.eql(option.value, "agent") && std.mem.eql(name_after.value, "agent") && std.mem.eql(option_or, "fallback") && option_count.value == 3_u32 && std.mem.eql(env_mode, "test") && env_verbose.value && env_limit.value == 9_u32 && std.cli.successExitCode() == 0 && std.cli.usageExitCode() == 2 {
+    if std.cli.argEquals(1, "run") && command.has && command_equals && std.mem.eql(command.value, "run") && std.mem.eql(command_or, "run") && std.mem.eql(first, "run") && has_count_arg && parsed_count_arg.has && parsed_count_arg.value == 7_u32 && parsed_count_or == 7_u32 && parsed_missing_or == 11_u32 && name_index.has && name_after.has && flag && option.has && option_count.has && option_bool.has && !option_bool.value && option_bool_or && option_i32.has && option_i32.value == -5 && option_i32_or == -13 && option_count_or == 3_u32 && option_size.has && option_size.value == 9 && option_size_or == 21_usize && env_has_mode && env_verbose.has && env_limit.has && std.mem.eql(third_arg, "--json") && std.mem.eql(missing_arg, "fallback") && std.mem.eql(option.value, "agent") && std.mem.eql(name_after.value, "agent") && std.mem.eql(option_or, "fallback") && option_count.value == 3_u32 && std.mem.eql(env_mode, "test") && env_verbose.value && env_limit.value == 9_u32 && std.cli.successExitCode() == 0 && std.cli.usageExitCode() == 2 {
         check world.out.write("std hosted cli ok\n")
     }
 }

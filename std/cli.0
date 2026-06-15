@@ -9,7 +9,8 @@ fn __zero_std_cli_has_flag(name: String) -> Bool {
 }
 
 fn __zero_std_cli_option_value(name: String) -> Maybe<String> {
-    return std.args.valueAfter(name)
+    let value: Maybe<String> = std.args.valueAfter(name)
+    return value
 }
 
 fn __zero_std_cli_option_value_or(name: String, fallback: String) -> String {
@@ -28,6 +29,62 @@ fn __zero_std_cli_option_u32(name: String) -> Maybe<u32> {
     return null
 }
 
+fn __zero_std_cli_option_bool(name: String) -> Maybe<Bool> {
+    let value: Maybe<String> = std.args.valueAfter(name)
+    if value.has {
+        return std.parse.parseBool(value.value)
+    }
+    return null
+}
+
+fn __zero_std_cli_option_bool_or(name: String, fallback: Bool) -> Bool {
+    let value: Maybe<Bool> = __zero_std_cli_option_bool(name)
+    if value.has {
+        return value.value
+    }
+    return fallback
+}
+
+fn __zero_std_cli_option_i32(name: String) -> Maybe<i32> {
+    let value: Maybe<String> = std.args.valueAfter(name)
+    if value.has {
+        return std.parse.parseI32(value.value)
+    }
+    return null
+}
+
+fn __zero_std_cli_option_i32_or(name: String, fallback: i32) -> i32 {
+    let value: Maybe<i32> = __zero_std_cli_option_i32(name)
+    if value.has {
+        return value.value
+    }
+    return fallback
+}
+
+fn __zero_std_cli_option_u32_or(name: String, fallback: u32) -> u32 {
+    let value: Maybe<u32> = __zero_std_cli_option_u32(name)
+    if value.has {
+        return value.value
+    }
+    return fallback
+}
+
+fn __zero_std_cli_option_usize(name: String) -> Maybe<usize> {
+    let value: Maybe<String> = std.args.valueAfter(name)
+    if value.has {
+        return std.parse.parseUsize(value.value)
+    }
+    return null
+}
+
+fn __zero_std_cli_option_usize_or(name: String, fallback: usize) -> usize {
+    let value: Maybe<usize> = __zero_std_cli_option_usize(name)
+    if value.has {
+        return value.value
+    }
+    return fallback
+}
+
 fn __zero_std_cli_success_exit_code() -> i32 {
     return 0
 }
@@ -37,7 +94,8 @@ fn __zero_std_cli_usage_exit_code() -> i32 {
 }
 
 fn __zero_std_cli_command() -> Maybe<String> {
-    return std.args.get(1)
+    let command: Maybe<String> = std.args.get(1)
+    return command
 }
 
 fn __zero_std_cli_command_or(fallback: String) -> String {
