@@ -11465,7 +11465,6 @@ static bool target_readiness_select_diag(const Command *command, const SourceInp
     }
     return target_readiness_buildability_check(command, target, ir, diag);
   }
-
   const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
   ZDirectExecutableTargetFacts direct_exe = z_direct_executable_target_facts(target, direct_request);
   CapabilitySummary caps = program_capabilities(program);
@@ -11543,15 +11542,10 @@ static void append_target_readiness_result_json(ZBuf *buf, SourceInput *input, c
 static void append_target_readiness_from_ir_json(ZBuf *buf, SourceInput *input, const Program *program, const ZTargetInfo *target, const Command *command, const IrProgram *ir) {
   ZDiag diag = {0};
   bool ready = true;
-  if (!ir) {
-    append_target_readiness_json(buf, input, program, target, command);
-    return;
-  }
-
+  if (!ir) { append_target_readiness_json(buf, input, program, target, command); return; }
   if (!validate_c_libraries_for_target(input, target, command, &diag)) {
     ready = false;
   }
-
   if (ready) {
     if (!target_readiness_select_emit_target(command, input, target, &diag)) {
       ready = false;
@@ -11580,17 +11574,26 @@ static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Pr
   ir = z_lower_program_with_source(program, input, target);
   if (input) input->lower_ms = now_ms() - phase_started;
   apply_ir_metrics_to_input(input, &ir, target);
-
   if (!validate_c_libraries_for_target(input, target, command, &diag)) {
     ready = false;
   }
-
   if (ready) {
     if (!target_readiness_select_emit_target(command, input, target, &diag)) {
       ready = false;
     } else if (!ir.mir_valid) {
-      init_lowering_backend_diag(&diag, input, target, command, &ir);
-      ready = false;
+      bool graph_ready = false;
+      if (command && z_program_graph_artifact_source_present(&command->graph_source)) {
+        SourceInput graph_input = {0}; Program graph_program = {0}; IrProgram graph_ir = {0}; ZDiag graph_diag = {0};
+        graph_ready =
+          z_program_graph_prepare_artifact_mir_input(command->graph_source.artifact, target, emit_kind_name(command->emit), command->backend, &graph_program, &graph_input, &graph_ir, NULL, &graph_diag) &&
+          validate_c_libraries_for_target(&graph_input, target, command, &graph_diag) &&
+          target_readiness_select_emit_target(command, &graph_input, target, &graph_diag) &&
+          graph_ir.mir_valid &&
+          repository_graph_target_readiness_select_diag(command, &graph_input, target, &graph_ir, &graph_diag);
+        if (graph_ready) { z_free_ir_program(&ir); ir = graph_ir; graph_ir = (IrProgram){0}; apply_ir_metrics_to_input(input, &ir, target); }
+        z_free_ir_program(&graph_ir); z_free_program(&graph_program); z_free_source(&graph_input);
+      }
+      if (!graph_ready) { init_lowering_backend_diag(&diag, input, target, command, &ir); ready = false; }
     } else if (!target_readiness_select_diag(command, input, program, target, &ir, &diag)) {
       ready = false;
     }
@@ -11601,13 +11604,11 @@ static void append_target_readiness_json(ZBuf *buf, SourceInput *input, const Pr
     if (diag.code != 8003 && diag.code != 8005) mapped = z_map_source_diag(input, &diag);
     if (!diag.path) diag.path = input->source_file;
   }
-
   append_target_readiness_result_json(buf, input, program, target, command, &ir, &diag, ready);
   /* source mapping replaces the path with a fresh copy it owns */
   if (mapped) free((char *)diag.path);
   z_free_ir_program(&ir);
 }
-
 static bool repository_graph_target_readiness_select_diag(const Command *command, const SourceInput *input, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag) {
   EmitKind emit = command ? command->emit : EMIT_EXE;
   const char *emit_kind = emit_kind_name(emit);
@@ -11629,7 +11630,6 @@ static bool repository_graph_target_readiness_select_diag(const Command *command
     init_direct_backend_diag(diag, command, input, target, emit_kind, "use --emit exe or --emit obj for target readiness");
     return false;
   }
-
   bool needs_zero_runtime = ir && ir_linked_executable_needs_zero_runtime_object(ir);
   bool needs_linked_executable = ir && ir_needs_linked_executable_object(ir);
   if (needs_linked_executable) {

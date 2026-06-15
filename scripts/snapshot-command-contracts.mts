@@ -3569,6 +3569,10 @@ assert.equal(graphInspectJson.programGraph.moduleIdentity, graphDumpJson.moduleI
 assert.equal(graphInspectJson.programGraph.canonicalSource, false);
 assert.equal(graphInspectJson.programGraph.validation.ok, true);
 assert.equal(graphInspectJson.callResolution.schemaVersion, 1);
+const graphStdIoLinesInspectJson = json(["inspect", "--json", "conformance/native/pass/std-io-lines.graph"]).body;
+assert.equal(graphStdIoLinesInspectJson.targetReadiness.ok, true);
+assert.equal(graphStdIoLinesInspectJson.targetReadiness.buildable, true);
+assert.deepEqual(graphStdIoLinesInspectJson.targetReadiness.diagnostics, []);
 const graphInspectText = zero(["inspect", "examples/hello.0"]).stdout;
 assert.match(graphInspectText, /^program graph inspect\n/);
 assert.match(graphInspectText, /graph: module:hello graph:[0-9a-f]{16} \(13 nodes, 12 edges, shape-valid\)/);
