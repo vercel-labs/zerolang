@@ -89,7 +89,9 @@ fn __zero_std_fs_file_size(fs: Fs, path: String) -> Maybe<usize> {
 }
 
 fn __zero_std_fs_is_file(path: String) -> Bool {
-    return std.fs.exists(path)
+    let fs: Fs = std.fs.host()
+    let len: Maybe<usize> = std.fs.fileSize(fs, path)
+    return len.has
 }
 
 fn __zero_std_fs_ensure_dir(path: String) -> Bool {

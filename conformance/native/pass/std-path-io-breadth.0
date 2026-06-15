@@ -20,6 +20,8 @@ pub fn main(world: World) -> Void raises {
     let already_abs_path: Maybe<String> = std.path.abs(already_abs_buf, "/workspace", "/tmp/file")
     var small_abs_buf: [3]u8 = [0, 0, 0]
     let abs_overflow: Maybe<String> = std.path.abs(small_abs_buf, "/workspace", "src")
+    var root_abs_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let root_abs_path: Maybe<String> = std.path.abs(root_abs_buf, "/", "main.0")
     var small_buf: [3]u8 = [0, 0, 0]
     let overflow: Maybe<String> = std.path.normalize(small_buf, "abcd")
     var root_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -113,6 +115,14 @@ pub fn main(world: World) -> Void raises {
     }
     if abs_overflow.has {
         ok = false
+    }
+    if !root_abs_path.has {
+        ok = false
+    }
+    if root_abs_path.has {
+        if !std.mem.eql(root_abs_path.value, "/main.0") {
+            ok = false
+        }
     }
     if overflow.has {
         ok = false

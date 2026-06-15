@@ -7,7 +7,7 @@ pub fn main(world: World) -> Void raises {
     let entries: Maybe<usize> = std.fs.dirEntryCount("conformance/native/pass")
     var tmp_buf: [64]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let temp: Maybe<String> = std.fs.tempName(tmp_buf, ".zero/conformance/std-fs")
-    if wrote && ensured && restored && std.fs.exists(".zero/conformance/std-fs-breadth.txt") && std.fs.isFile(".zero/conformance/std-fs-breadth.txt") && entries.has && entries.value > 0 && temp.has {
+    if wrote && ensured && restored && std.fs.exists(".zero/conformance/std-fs-breadth.txt") && std.fs.isFile(".zero/conformance/std-fs-breadth.txt") && !std.fs.isFile(".zero/conformance") && entries.has && entries.value > 0 && temp.has {
         check world.out.write("std fs breadth ok\n")
     }
 }

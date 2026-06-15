@@ -144,10 +144,14 @@ fn __zero_std_path_abs(buffer: MutSpan<u8>, base: String, target: String) -> May
     if __zero_std_path_is_abs(target) {
         return __zero_std_path_copy(buffer, target)
     }
-    let base_end: usize = __zero_std_path_trim_end(base)
+    var base_end: usize = __zero_std_path_trim_end(base)
+    if base_end == 0 && (std.mem.len(base) > 0 && __zero_std_path_is_sep(base[0])) {
+        base_end = 1
+    }
+    let base_is_root: Bool = base_end == 1 && __zero_std_path_is_sep(base[0])
     let target_len: usize = std.mem.len(target)
     var total: usize = base_end + target_len
-    if base_end > 0 && target_len > 0 {
+    if base_end > 0 && target_len > 0 && !base_is_root {
         total = total + 1
     }
     if total > std.mem.len(buffer) {
@@ -155,10 +159,14 @@ fn __zero_std_path_abs(buffer: MutSpan<u8>, base: String, target: String) -> May
     }
     var out: usize = 0
     while out < base_end {
-        buffer[out] = base[out]
+        if base_is_root && out == 0 {
+            buffer[out] = 47_u8
+        } else {
+            buffer[out] = base[out]
+        }
         out = out + 1
     }
-    if base_end > 0 && target_len > 0 {
+    if base_end > 0 && target_len > 0 && !base_is_root {
         buffer[out] = 47_u8
         out = out + 1
     }
