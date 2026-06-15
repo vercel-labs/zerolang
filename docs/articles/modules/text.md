@@ -2,13 +2,6 @@
 
 In Zerolang, use `std.text` for ASCII and UTF-8 byte-backed validation.
 
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
-
 Runnable today:
 
 `std.text` is for byte-backed text validation and counting. It does not imply

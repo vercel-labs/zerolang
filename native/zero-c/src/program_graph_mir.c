@@ -117,7 +117,7 @@ static IrTypeKind ir_type_kind(const char *type) {
   if (ir_text_eq(type, "Vec")) return IR_TYPE_VEC;
   if (ir_text_eq(type, "BufferedReader") || ir_text_eq(type, "BufferedWriter")) return IR_TYPE_BYTE_VIEW;
   if (ir_text_eq(type, "Maybe<MutSpan<u8>>") || ir_text_eq(type, "Maybe<Span<u8>>") || ir_text_eq(type, "Maybe<String>") || ir_text_eq(type, "Maybe<owned<ByteBuf>>")) return IR_TYPE_MAYBE_BYTE_VIEW;
-  if (ir_text_eq(type, "Maybe<JsonDoc>") || ir_text_eq(type, "Maybe<Bool>") || ir_text_eq(type, "Maybe<u8>") || ir_text_eq(type, "Maybe<u16>") || ir_text_eq(type, "Maybe<usize>") || ir_text_eq(type, "Maybe<i32>") || ir_text_eq(type, "Maybe<u32>") || ir_text_eq(type, "Maybe<Conn>") || ir_text_eq(type, "Maybe<Listener>") || ir_text_eq(type, "Maybe<owned<File>>")) return IR_TYPE_MAYBE_SCALAR;
+  if (ir_text_eq(type, "Maybe<JsonDoc>") || ir_text_eq(type, "Maybe<Bool>") || ir_text_eq(type, "Maybe<u8>") || ir_text_eq(type, "Maybe<u16>") || ir_text_eq(type, "Maybe<usize>") || ir_text_eq(type, "Maybe<i32>") || ir_text_eq(type, "Maybe<u32>") || ir_text_eq(type, "Maybe<i64>") || ir_text_eq(type, "Maybe<u64>") || ir_text_eq(type, "Maybe<Duration>") || ir_text_eq(type, "Maybe<Conn>") || ir_text_eq(type, "Maybe<Listener>") || ir_text_eq(type, "Maybe<owned<File>>")) return IR_TYPE_MAYBE_SCALAR;
   return IR_TYPE_UNSUPPORTED;
 }
 

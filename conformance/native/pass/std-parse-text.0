@@ -3,13 +3,41 @@ pub fn main(world: World) -> Void raises {
     let too_big_byte: Maybe<u8> = std.parse.parseU8("256")
     let port: Maybe<u16> = std.parse.parseU16("8080")
     let count: Maybe<u32> = std.parse.parseU32("4294967295")
+    let count64: Maybe<u64> = std.parse.parseU64("18446744073709551615")
+    let count64_overflow: Maybe<u64> = std.parse.parseU64("18446744073709551616")
     let parsed_usize: Maybe<usize> = std.parse.parseUsize("12345")
     let large_usize: Maybe<usize> = std.parse.parseUsize("8589934590")
     let usize_overflow: Maybe<usize> = std.parse.parseUsize("18446744073709551616")
     let signed: Maybe<i32> = std.parse.parseI32("-2147483648")
+    let signed64: Maybe<i64> = std.parse.parseI64("-9223372036854775808")
+    let signed64_positive: Maybe<i64> = std.parse.parseI64("+9223372036854775807")
+    let signed64_overflow: Maybe<i64> = std.parse.parseI64("9223372036854775808")
     let positive: Maybe<i32> = std.parse.parseI32("+42")
     let bool_value: Maybe<Bool> = std.parse.parseBool("true")
+    let duration_value: Maybe<Duration> = std.parse.parseDuration("1h30m")
+    let negative_duration: Maybe<Duration> = std.parse.parseDuration("-250ms")
+    let invalid_duration: Maybe<Duration> = std.parse.parseDuration("10")
+    let byte_size: Maybe<usize> = std.parse.parseByteSize("2MiB")
+    let decimal_size: Maybe<usize> = std.parse.parseByteSize("3KB")
+    let invalid_size: Maybe<usize> = std.parse.parseByteSize("4XB")
     let trailing: Maybe<u32> = std.parse.parseU32("12x")
+    let hex_u32: Maybe<u32> = std.parse.parseU32Base("ff", 16_u32)
+    let invalid_hex_u32: Maybe<u32> = std.parse.parseU32Base("fg", 16_u32)
+    let invalid_base_u32: Maybe<u32> = std.parse.parseU32Base("10", 1_u32)
+    let binary_usize: Maybe<usize> = std.parse.parseUsizeBase("1010", 2_u32)
+    let signed_hex: Maybe<i32> = std.parse.parseI32Base("-80000000", 16_u32)
+    let signed_hex_overflow: Maybe<i32> = std.parse.parseI32Base("80000000", 16_u32)
+    let prefixed_hex: Maybe<u32> = std.parse.parseU32Prefix("0xff")
+    let prefixed_hex64: Maybe<u64> = std.parse.parseU64Prefix("0xffffffffffffffff")
+    let prefixed_binary: Maybe<u32> = std.parse.parseU32Prefix("0b1010")
+    let prefixed_octal: Maybe<u32> = std.parse.parseU32Prefix("0o77")
+    let prefixed_decimal: Maybe<u32> = std.parse.parseU32Prefix("42")
+    let prefixed_signed: Maybe<i32> = std.parse.parseI32Prefix("-0x2a")
+    let prefixed_signed64: Maybe<i64> = std.parse.parseI64Prefix("-0x8000000000000000")
+    let prefixed_plus: Maybe<i32> = std.parse.parseI32Prefix("+0b101")
+    let signed64_hex: Maybe<i64> = std.parse.parseI64Base("-8000000000000000", 16_u32)
+    let unsigned64_hex: Maybe<u64> = std.parse.parseU64Base("ffffffffffffffff", 16_u32)
+    let prefixed_usize: Maybe<usize> = std.parse.parseUsizePrefix("0x10")
     let digits: [5]u8 = [49_u8, 50_u8, 51_u8, 52_u8, 53_u8]
     let runtime_usize: Maybe<usize> = std.parse.parseUsize(digits)
     let token: Span<u8> = std.parse.tokenAscii("  zero text")
@@ -23,11 +51,15 @@ pub fn main(world: World) -> Void raises {
     let space_len: usize = std.parse.scanWhitespace(" \ntext")
     let until: usize = std.parse.scanUntilByte("abc:def", 58_u8)
     let min_i32: i32 = 0 - 2147483647 - 1
-    let unsigned_ok: Bool = byte.has && byte.value == 255 && !too_big_byte.has && port.has && port.value == 8080 && count.has && count.value == 4294967295_u32
-    let signed_ok: Bool = parsed_usize.has && parsed_usize.value == 12345 && large_usize.has && large_usize.value == 8589934590 && !usize_overflow.has && signed.has && signed.value == min_i32 && positive.has && positive.value == 42
+    let min_i64: i64 = 0 - 9223372036854775807 - 1
+    let unsigned_ok: Bool = byte.has && byte.value == 255 && !too_big_byte.has && port.has && port.value == 8080 && count.has && count.value == 4294967295_u32 && count64.has && count64.value == 18446744073709551615_u64 && !count64_overflow.has
+    let signed_ok: Bool = parsed_usize.has && parsed_usize.value == 12345 && large_usize.has && large_usize.value == 8589934590 && !usize_overflow.has && signed.has && signed.value == min_i32 && positive.has && positive.value == 42 && signed64.has && signed64.value == min_i64 && signed64_positive.has && signed64_positive.value == 9223372036854775807 && !signed64_overflow.has
     let text_ok: Bool = bool_value.has && bool_value.value && !trailing.has && runtime_usize.has && runtime_usize.value == 12345 && std.mem.eql(token, "zero")
     let scan_ok: Bool = alpha && digit && whitespace && ident_start && ident_len == 6 && digit_prefixed_ident_len == 0 && digit_len == 3 && space_len == 2 && until == 3
-    if unsigned_ok && signed_ok && text_ok && scan_ok {
+    let base_ok: Bool = hex_u32.has && hex_u32.value == 255_u32 && !invalid_hex_u32.has && !invalid_base_u32.has && binary_usize.has && binary_usize.value == 10 && signed_hex.has && signed_hex.value == min_i32 && !signed_hex_overflow.has && signed64_hex.has && signed64_hex.value == min_i64 && unsigned64_hex.has && unsigned64_hex.value == 18446744073709551615_u64
+    let prefix_ok: Bool = prefixed_hex.has && prefixed_hex.value == 255_u32 && prefixed_hex64.has && prefixed_hex64.value == 18446744073709551615_u64 && prefixed_binary.has && prefixed_binary.value == 10_u32 && prefixed_octal.has && prefixed_octal.value == 63_u32 && prefixed_decimal.has && prefixed_decimal.value == 42_u32 && prefixed_signed.has && prefixed_signed.value == -42 && prefixed_signed64.has && prefixed_signed64.value == min_i64 && prefixed_plus.has && prefixed_plus.value == 5 && prefixed_usize.has && prefixed_usize.value == 16
+    let unit_ok: Bool = duration_value.has && std.time.asSecondsFloor(duration_value.value) == 5400_i64 && negative_duration.has && std.time.asMsFloor(negative_duration.value) == 0 - 250 && !invalid_duration.has && byte_size.has && byte_size.value == 2097152 && decimal_size.has && decimal_size.value == 3000 && !invalid_size.has
+    if unsigned_ok && signed_ok && text_ok && scan_ok && base_ok && prefix_ok && unit_ok {
         check world.out.write("std parse text ok\n")
     }
 }

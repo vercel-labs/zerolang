@@ -33,6 +33,60 @@ fn regex_one_shot() -> Bool {
     return !invalid.has
 }
 
+fn regex_search() -> Bool {
+    let contains: Maybe<Bool> = std.regex.contains("cat|dog", "hot dog")
+    if !contains.has || !contains.value {
+        return false
+    }
+    let missing_contains: Maybe<Bool> = std.regex.contains("cat|dog", "bird")
+    if !missing_contains.has || missing_contains.value {
+        return false
+    }
+    let index: Maybe<usize> = std.regex.findIndex("wor\\w+", "hello world")
+    if !index.has || index.value != 6 {
+        return false
+    }
+    let missing_index: Maybe<usize> = std.regex.findIndex("^world", "hello world")
+    if !missing_index.has || missing_index.value != std.mem.len("hello world") {
+        return false
+    }
+    let found: Maybe<Span<u8>> = std.regex.find("\\d+", "build-2048")
+    if !found.has || !std.mem.eql(found.value, "2048") {
+        return false
+    }
+    let count: Maybe<usize> = std.regex.findCount("\\d+", "a1 b22 c333")
+    if !count.has || count.value != 3 {
+        return false
+    }
+    let second: Maybe<Span<u8>> = std.regex.findNth("\\d+", "a1 b22 c333", 1)
+    if !second.has || !std.mem.eql(second.value, "22") {
+        return false
+    }
+    let second_index: Maybe<usize> = std.regex.findNthIndex("\\d+", "a1 b22 c333", 1)
+    if !second_index.has || second_index.value != 4 {
+        return false
+    }
+    var replaced_storage: [16]u8 = [0; 16]
+    let replaced: Maybe<Span<u8>> = std.regex.replace(replaced_storage, "\\d+", "a1 b22", "#")
+    if !replaced.has || !std.mem.eql(replaced.value, "a# b#") {
+        return false
+    }
+    let fields: Maybe<usize> = std.regex.splitCount("[,;]", "red,green;blue")
+    if !fields.has || fields.value != 3 {
+        return false
+    }
+    let middle: Maybe<Span<u8>> = std.regex.split("[,;]", "red,green;blue", 1)
+    if !middle.has || !std.mem.eql(middle.value, "green") {
+        return false
+    }
+    let trailing: Maybe<Span<u8>> = std.regex.split(",", "red,", 1)
+    if !trailing.has || !std.mem.eql(trailing.value, "") {
+        return false
+    }
+    let invalid: Maybe<usize> = std.regex.findIndex("(unclosed", "text")
+    return !invalid.has
+}
+
 fn regex_codepoints() -> Bool {
     let accent: Maybe<Bool> = std.regex.matches("^.é$", "xé")
     if !accent.has || !accent.value {
@@ -72,6 +126,10 @@ fn regex_statuses() -> Bool {
     if std.regex.compileStatus(buffer, "(a") != 8 {
         return false
     }
+    let offset: Maybe<usize> = std.regex.compileErrorOffset(buffer, "(a")
+    if !offset.has || offset.value != 2 {
+        return false
+    }
     if std.regex.compileStatus(buffer, "a{4,2}") != 9 {
         return false
     }
@@ -79,7 +137,7 @@ fn regex_statuses() -> Bool {
 }
 
 pub fn main(world: World) -> Void raises {
-    if regex_compile_and_match() && regex_one_shot() && (regex_codepoints() && regex_statuses()) {
+    if regex_compile_and_match() && regex_one_shot() && (regex_search() && (regex_codepoints() && regex_statuses())) {
         check world.out.write("std regex ok\n")
     } else {
         check world.out.write("std regex failed\n")

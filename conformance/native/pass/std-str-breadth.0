@@ -9,13 +9,27 @@ pub fn main(world: World) -> Void raises {
     var copy_buf: [4]u8 = [0_u8; 4]
     var concat_buf: [8]u8 = [0_u8; 8]
     var repeat_buf: [6]u8 = [0_u8; 6]
+    var replace_buf: [16]u8 = [0_u8; 16]
+    var replace_small: [4]u8 = [0_u8; 4]
     var lower_buf: [4]u8 = [0_u8; 4]
     var upper_buf: [4]u8 = [0_u8; 4]
     let copied: Maybe<Span<u8>> = std.str.copy(copy_buf, "zero")
     let joined: Maybe<Span<u8>> = std.str.concat(concat_buf, "zero", "lang")
     let repeated: Maybe<Span<u8>> = std.str.repeat(repeat_buf, "ha", 3)
+    let replaced: Maybe<Span<u8>> = std.str.replace(replace_buf, "hello zero hello", "hello", "hi")
+    let replace_overflow: Maybe<Span<u8>> = std.str.replace(replace_small, "zero", "z", "zero")
+    let replace_empty_old: Maybe<Span<u8>> = std.str.replace(replace_buf, "zero", "", "x")
     let lowered: Maybe<Span<u8>> = std.str.toLowerAscii(lower_buf, "ZERO")
     let uppered: Maybe<Span<u8>> = std.str.toUpperAscii(upper_buf, "zero")
+    let split0: Maybe<Span<u8>> = std.str.split("alpha,beta,gamma", ",", 0)
+    let split1: Maybe<Span<u8>> = std.str.split("alpha,beta,gamma", ",", 1)
+    let split2: Maybe<Span<u8>> = std.str.split("alpha,beta,gamma", ",", 2)
+    let split_missing: Maybe<Span<u8>> = std.str.split("alpha,beta,gamma", ",", 3)
+    let field1: Maybe<Span<u8>> = std.str.fieldAscii("  zero\ttext\nsyntax  ", 1)
+    let field_missing: Maybe<Span<u8>> = std.str.fieldAscii("  zero\ttext\nsyntax  ", 3)
+    let line0: Maybe<Span<u8>> = std.str.line("one\r\ntwo\n", 0)
+    let line1: Maybe<Span<u8>> = std.str.line("one\r\ntwo\n", 1)
+    let line_missing: Maybe<Span<u8>> = std.str.line("one\r\ntwo\n", 2)
     var ok: Bool = true
     if !reversed.has {
         ok = false
@@ -64,6 +78,12 @@ pub fn main(world: World) -> Void raises {
     if repeated.has && !std.mem.eql(repeated.value, "hahaha") {
         ok = false
     }
+    if !replaced.has || replace_overflow.has || replace_empty_old.has {
+        ok = false
+    }
+    if replaced.has && !std.mem.eql(replaced.value, "hi zero hi") {
+        ok = false
+    }
     if lowered.has && !std.mem.eql(lowered.value, "zero") {
         ok = false
     }
@@ -80,6 +100,36 @@ pub fn main(world: World) -> Void raises {
         ok = false
     }
     if std.str.wordCountAscii("zero text syntax") != 3 {
+        ok = false
+    }
+    if std.str.splitCount("alpha,beta,gamma", ",") != 3 || std.str.splitCount("alpha", "") != 0 {
+        ok = false
+    }
+    if !split0.has || !split1.has || !split2.has || split_missing.has {
+        ok = false
+    }
+    if split0.has && !std.mem.eql(split0.value, "alpha") {
+        ok = false
+    }
+    if split1.has && !std.mem.eql(split1.value, "beta") {
+        ok = false
+    }
+    if split2.has && !std.mem.eql(split2.value, "gamma") {
+        ok = false
+    }
+    if std.str.fieldCountAscii("  zero\ttext\nsyntax  ") != 3 || !field1.has || field_missing.has {
+        ok = false
+    }
+    if field1.has && !std.mem.eql(field1.value, "text") {
+        ok = false
+    }
+    if std.str.lineCount("one\r\ntwo\n") != 2 || !line0.has || !line1.has || line_missing.has {
+        ok = false
+    }
+    if line0.has && !std.mem.eql(line0.value, "one") {
+        ok = false
+    }
+    if line1.has && !std.mem.eql(line1.value, "two") {
         ok = false
     }
     if ok {

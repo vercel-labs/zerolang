@@ -46,6 +46,111 @@ fn __zero_std_fmt_write_usize_at(buffer: MutSpan<u8>, offset: usize, value: usiz
     return offset + digits
 }
 
+fn __zero_std_fmt_write_u64_at(buffer: MutSpan<u8>, offset: usize, value: u64) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) {
+        return null
+    }
+    var digits: usize = 1
+    var scan: u64 = value
+    while scan >= 10_u64 {
+        digits = digits + 1
+        scan = scan / 10_u64
+    }
+    if offset + digits > std.mem.len(buffer) {
+        return null
+    }
+    var cursor: usize = offset + digits
+    var current: u64 = value
+    while cursor > offset {
+        cursor = cursor - 1
+        let digit: u8 = (current % 10_u64) as u8
+        buffer[cursor] = 48_u8 + digit
+        current = current / 10_u64
+    }
+    return offset + digits
+}
+
+fn __zero_std_fmt_digit_lower(value: u32) -> u8 {
+    if value < 10_u32 {
+        return 48_u8 + (value as u8)
+    }
+    return 87_u8 + (value as u8)
+}
+
+fn __zero_std_fmt_write_u32_base_at(buffer: MutSpan<u8>, offset: usize, value: u32, base: u32) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) || (base < 2_u32 || base > 36_u32) {
+        return null
+    }
+    var digits: usize = 1
+    var scan: u32 = value
+    while scan >= base {
+        digits = digits + 1
+        scan = scan / base
+    }
+    if offset + digits > std.mem.len(buffer) {
+        return null
+    }
+    var cursor: usize = offset + digits
+    var current: u32 = value
+    while cursor > offset {
+        cursor = cursor - 1
+        let digit: u32 = current % base
+        buffer[cursor] = __zero_std_fmt_digit_lower(digit)
+        current = current / base
+    }
+    return offset + digits
+}
+
+fn __zero_std_fmt_write_usize_base_at(buffer: MutSpan<u8>, offset: usize, value: usize, base: u32) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) || (base < 2_u32 || base > 36_u32) {
+        return null
+    }
+    let usize_base: usize = base as usize
+    var digits: usize = 1
+    var scan: usize = value
+    while scan >= usize_base {
+        digits = digits + 1
+        scan = scan / usize_base
+    }
+    if offset + digits > std.mem.len(buffer) {
+        return null
+    }
+    var cursor: usize = offset + digits
+    var current: usize = value
+    while cursor > offset {
+        cursor = cursor - 1
+        let digit: u32 = (current % usize_base) as u32
+        buffer[cursor] = __zero_std_fmt_digit_lower(digit)
+        current = current / usize_base
+    }
+    return offset + digits
+}
+
+fn __zero_std_fmt_write_u64_base_at(buffer: MutSpan<u8>, offset: usize, value: u64, base: u32) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) || (base < 2_u32 || base > 36_u32) {
+        return null
+    }
+    let u64_base: u64 = base as u64
+    var digits: usize = 1
+    var scan: u64 = value
+    while scan >= u64_base {
+        digits = digits + 1
+        scan = scan / u64_base
+    }
+    if offset + digits > std.mem.len(buffer) {
+        return null
+    }
+    var cursor: usize = offset + digits
+    var current: u64 = value
+    while cursor > offset {
+        cursor = cursor - 1
+        let digit: u32 = (current % u64_base) as u32
+        buffer[cursor] = __zero_std_fmt_digit_lower(digit)
+        current = current / u64_base
+    }
+    return offset + digits
+}
+
 fn __zero_std_fmt_write_bytes(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
     if std.mem.len(text) > std.mem.len(buffer) {
         return null
@@ -81,6 +186,14 @@ fn __zero_std_fmt_usize(buffer: MutSpan<u8>, value: usize) -> Maybe<Span<u8>> {
     return null
 }
 
+fn __zero_std_fmt_u64(buffer: MutSpan<u8>, value: u64) -> Maybe<Span<u8>> {
+    let written: Maybe<usize> = __zero_std_fmt_write_u64_at(buffer, 0, value)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
 fn __zero_std_fmt_i32(buffer: MutSpan<u8>, value: i32) -> Maybe<Span<u8>> {
     if value >= 0 {
         return __zero_std_fmt_u32(buffer, value as u32)
@@ -103,6 +216,257 @@ fn __zero_std_fmt_i32(buffer: MutSpan<u8>, value: i32) -> Maybe<Span<u8>> {
         return buffer[..written.value]
     }
     return null
+}
+
+fn __zero_std_fmt_i64(buffer: MutSpan<u8>, value: i64) -> Maybe<Span<u8>> {
+    if value >= 0 {
+        return __zero_std_fmt_u64(buffer, value as u64)
+    }
+    if std.mem.len(buffer) == 0 {
+        return null
+    }
+    buffer[0] = 45_u8
+    let min_i64: i64 = 0 - 9223372036854775807 - 1
+    if value == min_i64 {
+        let written_min: Maybe<usize> = __zero_std_fmt_write_u64_at(buffer, 1, 9223372036854775808_u64)
+        if written_min.has {
+            return buffer[..written_min.value]
+        }
+        return null
+    }
+    let magnitude: u64 = (0_i64 - value) as u64
+    let written: Maybe<usize> = __zero_std_fmt_write_u64_at(buffer, 1, magnitude)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_u32_base(buffer: MutSpan<u8>, value: u32, base: u32) -> Maybe<Span<u8>> {
+    let written: Maybe<usize> = __zero_std_fmt_write_u32_base_at(buffer, 0, value, base)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_usize_base(buffer: MutSpan<u8>, value: usize, base: u32) -> Maybe<Span<u8>> {
+    let written: Maybe<usize> = __zero_std_fmt_write_usize_base_at(buffer, 0, value, base)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_u64_base(buffer: MutSpan<u8>, value: u64, base: u32) -> Maybe<Span<u8>> {
+    let written: Maybe<usize> = __zero_std_fmt_write_u64_base_at(buffer, 0, value, base)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_i32_base(buffer: MutSpan<u8>, value: i32, base: u32) -> Maybe<Span<u8>> {
+    if base < 2_u32 || base > 36_u32 {
+        return null
+    }
+    if value >= 0 {
+        return __zero_std_fmt_u32_base(buffer, value as u32, base)
+    }
+    if std.mem.len(buffer) == 0 {
+        return null
+    }
+    buffer[0] = 45_u8
+    let min_i32: i32 = 0 - 2147483647 - 1
+    if value == min_i32 {
+        let written_min: Maybe<usize> = __zero_std_fmt_write_u32_base_at(buffer, 1, 2147483648_u32, base)
+        if written_min.has {
+            return buffer[..written_min.value]
+        }
+        return null
+    }
+    let magnitude: u32 = (0 - value) as u32
+    let written: Maybe<usize> = __zero_std_fmt_write_u32_base_at(buffer, 1, magnitude, base)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_i64_base(buffer: MutSpan<u8>, value: i64, base: u32) -> Maybe<Span<u8>> {
+    if base < 2_u32 || base > 36_u32 {
+        return null
+    }
+    if value >= 0 {
+        return __zero_std_fmt_u64_base(buffer, value as u64, base)
+    }
+    if std.mem.len(buffer) == 0 {
+        return null
+    }
+    buffer[0] = 45_u8
+    let min_i64: i64 = 0 - 9223372036854775807 - 1
+    if value == min_i64 {
+        let written_min: Maybe<usize> = __zero_std_fmt_write_u64_base_at(buffer, 1, 9223372036854775808_u64, base)
+        if written_min.has {
+            return buffer[..written_min.value]
+        }
+        return null
+    }
+    let magnitude: u64 = (0_i64 - value) as u64
+    let written: Maybe<usize> = __zero_std_fmt_write_u64_base_at(buffer, 1, magnitude, base)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_i32_sign(buffer: MutSpan<u8>, value: i32) -> Maybe<Span<u8>> {
+    if value < 0 {
+        return __zero_std_fmt_i32(buffer, value)
+    }
+    if std.mem.len(buffer) == 0 {
+        return null
+    }
+    buffer[0] = 43_u8
+    let written: Maybe<usize> = __zero_std_fmt_write_u32_at(buffer, 1, value as u32)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_i64_sign(buffer: MutSpan<u8>, value: i64) -> Maybe<Span<u8>> {
+    if value < 0 {
+        return __zero_std_fmt_i64(buffer, value)
+    }
+    if std.mem.len(buffer) == 0 {
+        return null
+    }
+    buffer[0] = 43_u8
+    let written: Maybe<usize> = __zero_std_fmt_write_u64_at(buffer, 1, value as u64)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_fmt_pad_left(buffer: MutSpan<u8>, text: Span<u8>, width: usize, pad: u8) -> Maybe<Span<u8>> {
+    let len: usize = std.mem.len(text)
+    if len >= width {
+        return __zero_std_fmt_write_bytes(buffer, text)
+    }
+    if width > std.mem.len(buffer) {
+        return null
+    }
+    let fill: usize = width - len
+    var index: usize = 0
+    while index < fill {
+        buffer[index] = pad
+        index = index + 1
+    }
+    var text_index: usize = 0
+    while text_index < len {
+        buffer[fill + text_index] = text[text_index]
+        text_index = text_index + 1
+    }
+    return buffer[..width]
+}
+
+fn __zero_std_fmt_pad_right(buffer: MutSpan<u8>, text: Span<u8>, width: usize, pad: u8) -> Maybe<Span<u8>> {
+    let len: usize = std.mem.len(text)
+    if len >= width {
+        return __zero_std_fmt_write_bytes(buffer, text)
+    }
+    if width > std.mem.len(buffer) {
+        return null
+    }
+    var text_index: usize = 0
+    while text_index < len {
+        buffer[text_index] = text[text_index]
+        text_index = text_index + 1
+    }
+    var index: usize = len
+    while index < width {
+        buffer[index] = pad
+        index = index + 1
+    }
+    return buffer[..width]
+}
+
+fn __zero_std_fmt_write_span(writer: mutref<FixedWriter>, text: Span<u8>) -> Bool {
+    return std.io.fixedWriterWrite(writer, text)
+}
+
+fn __zero_std_fmt_write_bool(writer: mutref<FixedWriter>, value: Bool) -> Bool {
+    var storage: [5]u8 = [0_u8; 5]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_bool(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_u32(writer: mutref<FixedWriter>, value: u32) -> Bool {
+    var storage: [10]u8 = [0_u8; 10]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_u32(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_usize(writer: mutref<FixedWriter>, value: usize) -> Bool {
+    var storage: [20]u8 = [0_u8; 20]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_usize(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_u64(writer: mutref<FixedWriter>, value: u64) -> Bool {
+    var storage: [20]u8 = [0_u8; 20]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_u64(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_i32(writer: mutref<FixedWriter>, value: i32) -> Bool {
+    var storage: [12]u8 = [0_u8; 12]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_i32(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_i64(writer: mutref<FixedWriter>, value: i64) -> Bool {
+    var storage: [20]u8 = [0_u8; 20]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_i64(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_i32_sign(writer: mutref<FixedWriter>, value: i32) -> Bool {
+    var storage: [12]u8 = [0_u8; 12]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_i32_sign(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
+}
+
+fn __zero_std_fmt_write_i64_sign(writer: mutref<FixedWriter>, value: i64) -> Bool {
+    var storage: [20]u8 = [0_u8; 20]
+    let text: Maybe<Span<u8>> = __zero_std_fmt_i64_sign(storage, value)
+    if text.has {
+        return __zero_std_fmt_write_span(writer, text.value)
+    }
+    return false
 }
 
 fn __zero_std_fmt_hex_lower_u32(buffer: MutSpan<u8>, value: u32) -> Maybe<Span<u8>> {

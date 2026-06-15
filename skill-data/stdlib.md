@@ -24,14 +24,14 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.search`: generic scalar index search plus typed min/max, lower-bound, upper-bound, and binary-search helpers.
 - `std.sort`: in-place insertion, stable, unstable, swap, rotate, reverse, partition, sorted dedupe, and sortedness helpers for ascending and descending `i32`, `u32`, and `usize` storage.
 - `std.ascii`: ASCII byte predicates, case conversion, and digit value helpers.
-- `std.fmt`: caller-buffer formatting for booleans and integer text.
+- `std.fmt`: caller-buffer and fixed-writer formatting for booleans, 32-bit and 64-bit integer text, integer bases, signs, and padding.
 - `std.text`: ASCII and UTF-8 byte-backed text validation.
-- `std.unicode`: strict UTF-8 codepoint decode/encode iteration and codepoint-class helpers; pair with `std.text.utf8Valid`/`std.text.utf8Len` for whole-span validation and counting.
+- `std.unicode`: strict UTF-8 codepoint decode/encode iteration, cursor status helpers, and codepoint-class helpers; pair with `std.text.utf8Valid`/`std.text.utf8Len` for whole-span validation and counting.
 - `std.math`: fixed-width min/max/clamp, checked and saturating integer arithmetic, GCD/LCM, powers, modular power, roots, combinatorics, primality, and divisor routines.
 - `std.path`: target-neutral lexical path basename, dirname, extension, stem, component, abs, join, normalize, and relative helpers.
 - `std.codec`: byte reads, endian reads/writes, varint sizing/encode/decode, base64/hex encode/decode, CRC helpers, and byte checksums.
-- `std.parse`: byte scanners and integer/bool parsers returning `Maybe<T>`.
-- `std.regex`: compile-once regular expression matching for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes.
+- `std.parse`: byte scanners plus decimal, radix, prefix integer width, bool, duration, and byte-size parsers returning `Maybe<T>`.
+- `std.regex`: compile-once and one-shot regular expression matching/search/split/replace for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes and offsets.
 - `std.inet`: target-neutral IPv4/IPv6/hostname literal validation and parsing; no network capability needed.
 - `std.time`: duration construction, conversion, comparison, elapsed-window helpers, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
 - `std.rand`: explicit deterministic random sources, random bits, target entropy helpers, and caller-buffer entropy IDs.
@@ -39,7 +39,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.json`: explicit-buffer JSON validation, structured status codes, shallow field lookup, typed scalar decode, parsing, and string/object writing helpers.
 - `std.toml`: no-allocation TOML validation, shallow/dotted field lookup, and typed scalar decode helpers.
 - `std.url`: target-neutral URL splitting, percent/query/form encoding and decoding, query/form lookup, and query append helpers.
-- `std.str`: byte-span string helpers, including non-overlapping reverse, prefix/suffix, substring, trim, and word counts.
+- `std.str`: byte-span string helpers, including copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
 - `std.io`: buffered reader/writer surfaces, cursor writes, line scanning, and byte copy over caller-owned storage.
 - `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
 - `std.log`: explicit-buffer JSON Lines record formatting.
@@ -566,8 +566,28 @@ parseUsizeOr(arg0: String, arg1: usize) -> usize
 bool(arg0: MutSpan<u8>, arg1: Bool) -> Maybe<Span<u8>>
 hexLowerU32(arg0: MutSpan<u8>, arg1: u32) -> Maybe<Span<u8>>
 i32(arg0: MutSpan<u8>, arg1: i32) -> Maybe<Span<u8>>
+i32Base(arg0: MutSpan<u8>, arg1: i32, arg2: u32) -> Maybe<Span<u8>>
+i32Sign(arg0: MutSpan<u8>, arg1: i32) -> Maybe<Span<u8>>
+i64(arg0: MutSpan<u8>, arg1: i64) -> Maybe<Span<u8>>
+i64Base(arg0: MutSpan<u8>, arg1: i64, arg2: u32) -> Maybe<Span<u8>>
+i64Sign(arg0: MutSpan<u8>, arg1: i64) -> Maybe<Span<u8>>
+padLeft(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize, arg3: u8) -> Maybe<Span<u8>>
+padRight(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize, arg3: u8) -> Maybe<Span<u8>>
 u32(arg0: MutSpan<u8>, arg1: u32) -> Maybe<Span<u8>>
+u32Base(arg0: MutSpan<u8>, arg1: u32, arg2: u32) -> Maybe<Span<u8>>
+u64(arg0: MutSpan<u8>, arg1: u64) -> Maybe<Span<u8>>
+u64Base(arg0: MutSpan<u8>, arg1: u64, arg2: u32) -> Maybe<Span<u8>>
 usize(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+usizeBase(arg0: MutSpan<u8>, arg1: usize, arg2: u32) -> Maybe<Span<u8>>
+writeBool(arg0: mutref<FixedWriter>, arg1: Bool) -> Bool
+writeI32(arg0: mutref<FixedWriter>, arg1: i32) -> Bool
+writeI32Sign(arg0: mutref<FixedWriter>, arg1: i32) -> Bool
+writeI64(arg0: mutref<FixedWriter>, arg1: i64) -> Bool
+writeI64Sign(arg0: mutref<FixedWriter>, arg1: i64) -> Bool
+writeSpan(arg0: mutref<FixedWriter>, arg1: Span<u8>) -> Bool
+writeU32(arg0: mutref<FixedWriter>, arg1: u32) -> Bool
+writeU64(arg0: mutref<FixedWriter>, arg1: u64) -> Bool
+writeUsize(arg0: mutref<FixedWriter>, arg1: usize) -> Bool
 ```
 
 ### std.fs
@@ -1005,11 +1025,25 @@ scanUntilByte(arg0: Span<u8>, arg1: u8) -> usize
 scanWhitespace(arg0: Span<u8>) -> usize
 tokenAscii(arg0: Span<u8>) -> Span<u8>
 parseBool(arg0: Span<u8>) -> Maybe<Bool>
+parseByteSize(arg0: Span<u8>) -> Maybe<usize>
+parseDuration(arg0: Span<u8>) -> Maybe<Duration>
 parseI32(arg0: Span<u8>) -> Maybe<i32>
+parseI32Base(arg0: Span<u8>, arg1: u32) -> Maybe<i32>
+parseI32Prefix(arg0: Span<u8>) -> Maybe<i32>
+parseI64(arg0: Span<u8>) -> Maybe<i64>
+parseI64Base(arg0: Span<u8>, arg1: u32) -> Maybe<i64>
+parseI64Prefix(arg0: Span<u8>) -> Maybe<i64>
 parseU8(arg0: Span<u8>) -> Maybe<u8>
 parseU16(arg0: Span<u8>) -> Maybe<u16>
 parseU32(arg0: Span<u8>) -> Maybe<u32>
+parseU32Base(arg0: Span<u8>, arg1: u32) -> Maybe<u32>
+parseU32Prefix(arg0: Span<u8>) -> Maybe<u32>
+parseU64(arg0: Span<u8>) -> Maybe<u64>
+parseU64Base(arg0: Span<u8>, arg1: u32) -> Maybe<u64>
+parseU64Prefix(arg0: Span<u8>) -> Maybe<u64>
 parseUsize(arg0: Span<u8>) -> Maybe<usize>
+parseUsizeBase(arg0: Span<u8>, arg1: u32) -> Maybe<usize>
+parseUsizePrefix(arg0: Span<u8>) -> Maybe<usize>
 ```
 
 ### std.path
@@ -1056,7 +1090,17 @@ entropyHex32(arg0: MutSpan<u8>) -> Maybe<Span<u8>>
 
 ```text
 compile(buffer: MutSpan<u8>, pattern: Span<u8>) -> Maybe<Span<u8>>
+compileErrorOffset(buffer: MutSpan<u8>, pattern: Span<u8>) -> Maybe<usize>
 compileStatus(buffer: MutSpan<u8>, pattern: Span<u8>) -> u32
+contains(pattern: Span<u8>, text: Span<u8>) -> Maybe<Bool>
+find(pattern: Span<u8>, text: Span<u8>) -> Maybe<Span<u8>>
+findCount(pattern: Span<u8>, text: Span<u8>) -> Maybe<usize>
+findIndex(pattern: Span<u8>, text: Span<u8>) -> Maybe<usize>
+findNth(pattern: Span<u8>, text: Span<u8>, index: usize) -> Maybe<Span<u8>>
+findNthIndex(pattern: Span<u8>, text: Span<u8>, index: usize) -> Maybe<usize>
+replace(buffer: MutSpan<u8>, pattern: Span<u8>, text: Span<u8>, replacement: Span<u8>) -> Maybe<Span<u8>>
+split(pattern: Span<u8>, text: Span<u8>, index: usize) -> Maybe<Span<u8>>
+splitCount(pattern: Span<u8>, text: Span<u8>) -> Maybe<usize>
 statusName(status: u32) -> String
 isMatch(program: Span<u8>, text: Span<u8>) -> Bool
 matches(pattern: Span<u8>, text: Span<u8>) -> Maybe<Bool>
@@ -1071,7 +1115,8 @@ greedy quantifiers `* + ? {m} {m,} {m,n}`, alternation `|`, capturing and
 codes: 1 backreference, 2 lookahead, 3 lookbehind, 4 named group, 5 lazy
 quantifier, 6 group modifier, 7 unicode property escape, 8 syntax, 9 quantifier
 range, 10 over buffer/2048-byte program limit, 11 pattern not UTF-8, 12 nesting
-depth over 32. `statusName` names a code for diagnostics.
+depth over 32. `statusName` names a code for diagnostics. `split` and
+`splitCount` use non-empty matches as separators and ignore zero-length matches.
 
 ### std.search
 
@@ -1212,10 +1257,17 @@ count(arg0: Span<u8>, arg1: Span<u8>) -> usize
 countByte(arg0: Span<u8>, arg1: u8) -> usize
 eqlIgnoreAsciiCase(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 endsWith(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+fieldAscii(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+fieldCountAscii(arg0: Span<u8>) -> usize
 indexOf(arg0: Span<u8>, arg1: Span<u8>) -> usize
 lastIndexOf(arg0: Span<u8>, arg1: Span<u8>) -> usize
+line(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+lineCount(arg0: Span<u8>) -> usize
 repeat(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
+replace(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 reverse(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+split(arg0: Span<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
+splitCount(arg0: Span<u8>, arg1: Span<u8>) -> usize
 startsWith(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 toLowerAscii(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 toUpperAscii(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
@@ -1295,18 +1347,24 @@ fallback for invalid text.
 
 ```text
 decodeAt(text: Span<u8>, index: usize) -> Maybe<u32>
+decodeStatusAt(text: Span<u8>, index: usize) -> u32
 widthAt(text: Span<u8>, index: usize) -> Maybe<usize>
 encode(buffer: MutSpan<u8>, cp: u32) -> Maybe<Span<u8>>
 encodedWidth(cp: u32) -> Maybe<usize>
+invalidIndex(text: Span<u8>) -> usize
 isDigit(cp: u32) -> Bool
 isWord(cp: u32) -> Bool
 isSpace(cp: u32) -> Bool
+nextIndex(text: Span<u8>, index: usize) -> Maybe<usize>
+statusName(status: u32) -> String
 ```
 
 Decoding is strict UTF-8 (overlong encodings, surrogates, values above
 U+10FFFF, and truncated sequences return `null`). Iterate codepoints by
-advancing a byte index with `widthAt`. The class helpers use ECMA-262 regex
-semantics by codepoint (`\d` `\w` `\s`).
+advancing a byte index with `nextIndex` or `widthAt`. `invalidIndex` returns
+the first invalid byte index or the input length, and `decodeStatusAt` plus
+`statusName` provide allocation-free decode diagnostics. The class helpers use
+ECMA-262 regex semantics by codepoint (`\d` `\w` `\s`).
 
 ### std.url
 

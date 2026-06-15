@@ -3,13 +3,6 @@
 In Zerolang, use `std.http` for HTTP request parsing, response envelope writing, hosted
 fetch, local listen support, and web API helpers.
 
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
-
 Runnable today:
 
 | API | Return | Notes |
@@ -294,8 +287,7 @@ fn handle(request: Span<u8>, response: MutSpan<u8>) -> Maybe<Span<u8>> {
 }
 ```
 
-Run it through the graph-backed package and use the port printed by the
-listener:
+Run it and use the port printed by the listener:
 
 ```sh
 zero run .

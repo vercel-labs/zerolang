@@ -5,13 +5,6 @@ IPv4, IPv6, and RFC 1123 hostnames. These helpers are target-neutral and need
 no network capability, so they work in validators and parsers on any compiler
 target. Use `std.net` when a program actually opens connections or listeners.
 
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
-
 Runnable today:
 
 | API | Return | Notes |

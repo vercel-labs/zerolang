@@ -3,13 +3,6 @@
 In Zerolang, use `std.str` for allocation-free byte-string helpers over spans and
 caller-owned storage.
 
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
-
 Runnable today:
 
 | API | Return | Notes |
@@ -17,9 +10,16 @@ Runnable today:
 | `std.str.copy(buffer, text)` | `Maybe<Span<u8>>` | Copies `text` into caller storage. |
 | `std.str.concat(buffer, left, right)` | `Maybe<Span<u8>>` | Writes `left` followed by `right`. |
 | `std.str.repeat(buffer, text, count)` | `Maybe<Span<u8>>` | Repeats `text` into caller storage. |
+| `std.str.replace(buffer, text, old, replacement)` | `Maybe<Span<u8>>` | Replaces non-overlapping `old` byte substrings into caller storage; empty `old` returns `null`. |
 | `std.str.reverse(buffer, text)` | `Maybe<Span<u8>>` | Writes reversed bytes into non-overlapping caller-provided storage. |
 | `std.str.countByte(text, byte)` | `usize` | Counts exact byte matches. |
 | `std.str.count(text, needle)` | `usize` | Counts non-overlapping byte substring matches; the empty needle returns `len + 1`. |
+| `std.str.splitCount(text, separator)` | `usize` | Counts byte-separator split parts; an empty separator returns `0`. |
+| `std.str.split(text, separator, index)` | `Maybe<Span<u8>>` | Borrows a zero-based split part. |
+| `std.str.fieldCountAscii(text)` | `usize` | Counts non-empty ASCII-whitespace separated fields. |
+| `std.str.fieldAscii(text, index)` | `Maybe<Span<u8>>` | Borrows a zero-based ASCII-whitespace field. |
+| `std.str.lineCount(text)` | `usize` | Counts LF-delimited lines; a trailing LF does not add a final empty line. |
+| `std.str.line(text, index)` | `Maybe<Span<u8>>` | Borrows a zero-based line and strips `\r` before `\n`. |
 | `std.str.indexOf(text, needle)` / `std.str.lastIndexOf(text, needle)` | `usize` | Returns a matching byte index or the input length when absent. |
 | `std.str.startsWith(text, prefix)` | `Bool` | Checks a byte prefix. |
 | `std.str.endsWith(text, suffix)` | `Bool` | Checks a byte suffix. |
@@ -33,7 +33,7 @@ Runnable today:
 Current scope:
 
 - Helpers operate on byte spans and ASCII delimiter rules for space, tab, line feed, and carriage return.
-- `reverse` writes into caller storage and returns `null` when the buffer is too small. The destination buffer must not overlap `text`.
+- `reverse`, `repeat`, `replace`, `copy`, and `concat` write into caller storage and return `null` when the buffer is too small. The destination buffer must not overlap the input.
 - The module does not implement Unicode case mapping, grapheme segmentation, or locale-aware text rules.
 
 ## Example
@@ -42,10 +42,13 @@ Current scope:
 pub fn main(world: World) -> Void raises {
     var storage: [6]u8 = [0_u8; 6]
     let reversed: Maybe<Span<u8>> = std.str.reverse(storage, "drawer")
+    var repeated_storage: [8]u8 = [0_u8; 8]
+    let repeated: Maybe<Span<u8>> = std.str.repeat(repeated_storage, "ha", 3)
     var lower_storage: [4]u8 = [0_u8; 4]
     let lower: Maybe<Span<u8>> = std.str.toLowerAscii(lower_storage, "ZERO")
-    if reversed.has && lower.has {
-        if std.mem.eql(reversed.value, "reward") && std.mem.eql(lower.value, "zero") {
+    let field: Maybe<Span<u8>> = std.str.fieldAscii("zero text", 1)
+    if reversed.has && repeated.has && (lower.has && field.has) {
+        if std.mem.eql(reversed.value, "reward") && std.mem.eql(repeated.value, "hahaha") && (std.mem.eql(lower.value, "zero") && std.mem.eql(field.value, "text")) {
             check world.out.write("string helper ok\n")
         }
     }

@@ -179,7 +179,7 @@ static const IrTypeName ir_builtin_type_names[] = {
 
 static const char *const ir_byte_view_type_names[] = {"String", "Span<const u8>", "Address", "ByteBuf", "owned<ByteBuf>"};
 static const char *const ir_maybe_byte_view_type_names[] = {"Maybe<MutSpan<u8>>", "Maybe<Span<u8>>", "Maybe<String>", "Maybe<owned<ByteBuf>>"};
-static const char *const ir_maybe_scalar_type_names[] = {"Maybe<JsonDoc>", "Maybe<Bool>", "Maybe<u8>", "Maybe<u16>", "Maybe<usize>", "Maybe<i32>", "Maybe<u32>", "Maybe<Conn>", "Maybe<Listener>", "Maybe<owned<File>>"};
+static const char *const ir_maybe_scalar_type_names[] = {"Maybe<JsonDoc>", "Maybe<Bool>", "Maybe<u8>", "Maybe<u16>", "Maybe<usize>", "Maybe<i32>", "Maybe<u32>", "Maybe<i64>", "Maybe<u64>", "Maybe<Duration>", "Maybe<Conn>", "Maybe<Listener>", "Maybe<owned<File>>"};
 
 static IrTypeKind ir_span_element_kind(const char *type) { return ir_type_name_lookup(ir_scalar_type_names, sizeof(ir_scalar_type_names) / sizeof(ir_scalar_type_names[0]), type); }
 

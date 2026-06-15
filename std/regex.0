@@ -1159,6 +1159,404 @@ fn __zero_std_regex_is_match(program: Span<u8>, text: Span<u8>) -> Bool {
     return false
 }
 
+fn __zero_std_regex_match_end_at(program: Span<u8>, text: Span<u8>, at_text_start: Bool, initial_prev_cp: u32) -> usize {
+    let len: usize = std.mem.len(program)
+    let no_match: usize = std.mem.len(text) + 1
+    if len < 5 || len > 2048 {
+        return no_match
+    }
+    if program[0] != 90_u8 || program[1] != 82_u8 || (program[2] != 88_u8 || program[3] != 49_u8) {
+        return no_match
+    }
+    var cur: [256]u8 = [0; 256]
+    var nxt: [256]u8 = [0; 256]
+    let tlen: usize = std.mem.len(text)
+    var pos: usize = 0
+    var prev_cp: u32 = initial_prev_cp
+    var best_end: usize = no_match
+    let injected: Bool = __zero_std_regex_bit_set(cur, 4)
+    if !injected {
+        return no_match
+    }
+    while true {
+        var cur_cp: u32 = 4294967295_u32
+        var width: usize = 0
+        if pos < tlen {
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return no_match
+            }
+            cur_cp = __zero_std_regex_decode_cp(dec)
+            width = __zero_std_regex_decode_width(dec)
+        }
+        let reached: Bool = __zero_std_regex_closure(program, cur, at_text_start && pos == 0, pos >= tlen, prev_cp, cur_cp)
+        if reached {
+            best_end = pos
+        }
+        if pos >= tlen {
+            if best_end != no_match {
+                return best_end
+            }
+            return no_match
+        }
+        var slot: usize = 0
+        while slot < 256 {
+            nxt[slot] = 0
+            slot = slot + 1
+        }
+        var pc: usize = 4
+        while pc < len {
+            let il: usize = __zero_std_regex_instr_len(program, pc)
+            if il == 0 {
+                return no_match
+            }
+            if __zero_std_regex_bit_get(cur, pc) {
+                let op: u8 = program[pc]
+                if op == 1_u8 {
+                    if cur_cp == __zero_std_regex_read_u32(program, pc + 1) {
+                        __zero_std_regex_bit_mark(nxt, pc + il)
+                    }
+                } else if op == 2_u8 {
+                    if !__zero_std_regex_is_line_term(cur_cp) {
+                        __zero_std_regex_bit_mark(nxt, pc + il)
+                    }
+                } else if op == 3_u8 {
+                    if __zero_std_regex_class_matches(program, pc, cur_cp) {
+                        __zero_std_regex_bit_mark(nxt, pc + il)
+                    }
+                }
+            }
+            pc = pc + il
+        }
+        var active: Bool = false
+        var active_slot: usize = 0
+        while active_slot < 256 {
+            if nxt[active_slot] != 0_u8 {
+                active = true
+            }
+            active_slot = active_slot + 1
+        }
+        if !active {
+            if best_end != no_match {
+                return best_end
+            }
+            return no_match
+        }
+        var copy_slot: usize = 0
+        while copy_slot < 256 {
+            cur[copy_slot] = nxt[copy_slot]
+            copy_slot = copy_slot + 1
+        }
+        prev_cp = cur_cp
+        pos = pos + width
+    }
+    return no_match
+}
+
+fn __zero_std_regex_prev_cp_before(text: Span<u8>, target: usize) -> u32 {
+    var pos: usize = 0
+    var prev: u32 = 4294967295_u32
+    while pos < target && pos < std.mem.len(text) {
+        let dec: u64 = __zero_std_regex_decode(text, pos)
+        if dec == 0 {
+            return 4294967295_u32
+        }
+        prev = __zero_std_regex_decode_cp(dec)
+        pos = pos + __zero_std_regex_decode_width(dec)
+    }
+    return prev
+}
+
+fn __zero_std_regex_find_index_program(program: Span<u8>, text: Span<u8>) -> usize {
+    let tlen: usize = std.mem.len(text)
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            return pos
+        }
+        if pos == tlen {
+            return tlen
+        }
+        let dec: u64 = __zero_std_regex_decode(text, pos)
+        if dec == 0 {
+            return tlen
+        }
+        prev_cp = __zero_std_regex_decode_cp(dec)
+        pos = pos + __zero_std_regex_decode_width(dec)
+    }
+    return tlen
+}
+
+fn __zero_std_regex_find_program(program: Span<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    let tlen: usize = std.mem.len(text)
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            return text[pos..pos + end]
+        }
+        if pos == tlen {
+            return null
+        }
+        let dec: u64 = __zero_std_regex_decode(text, pos)
+        if dec == 0 {
+            return null
+        }
+        prev_cp = __zero_std_regex_decode_cp(dec)
+        pos = pos + __zero_std_regex_decode_width(dec)
+    }
+    return null
+}
+
+fn __zero_std_regex_find_count_program(program: Span<u8>, text: Span<u8>) -> usize {
+    let tlen: usize = std.mem.len(text)
+    var count: usize = 0
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            count = count + 1
+            if end == 0 {
+                if pos == tlen {
+                    return count
+                }
+                let empty_dec: u64 = __zero_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return count
+                }
+                prev_cp = __zero_std_regex_decode_cp(empty_dec)
+                pos = pos + __zero_std_regex_decode_width(empty_dec)
+            } else {
+                pos = pos + end
+                prev_cp = __zero_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return count
+            }
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return count
+            }
+            prev_cp = __zero_std_regex_decode_cp(dec)
+            pos = pos + __zero_std_regex_decode_width(dec)
+        }
+    }
+    return count
+}
+
+fn __zero_std_regex_find_nth_index_program(program: Span<u8>, text: Span<u8>, match_index: usize) -> usize {
+    let tlen: usize = std.mem.len(text)
+    var found_index: usize = 0
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            if found_index == match_index {
+                return pos
+            }
+            found_index = found_index + 1
+            if end == 0 {
+                if pos == tlen {
+                    return tlen
+                }
+                let empty_dec: u64 = __zero_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return tlen
+                }
+                prev_cp = __zero_std_regex_decode_cp(empty_dec)
+                pos = pos + __zero_std_regex_decode_width(empty_dec)
+            } else {
+                pos = pos + end
+                prev_cp = __zero_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return tlen
+            }
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return tlen
+            }
+            prev_cp = __zero_std_regex_decode_cp(dec)
+            pos = pos + __zero_std_regex_decode_width(dec)
+        }
+    }
+    return tlen
+}
+
+fn __zero_std_regex_find_nth_program(program: Span<u8>, text: Span<u8>, match_index: usize) -> Maybe<Span<u8>> {
+    let tlen: usize = std.mem.len(text)
+    var found_index: usize = 0
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            if found_index == match_index {
+                return text[pos..pos + end]
+            }
+            found_index = found_index + 1
+            if end == 0 {
+                if pos == tlen {
+                    return null
+                }
+                let empty_dec: u64 = __zero_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return null
+                }
+                prev_cp = __zero_std_regex_decode_cp(empty_dec)
+                pos = pos + __zero_std_regex_decode_width(empty_dec)
+            } else {
+                pos = pos + end
+                prev_cp = __zero_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return null
+            }
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return null
+            }
+            prev_cp = __zero_std_regex_decode_cp(dec)
+            pos = pos + __zero_std_regex_decode_width(dec)
+        }
+    }
+    return null
+}
+
+fn __zero_std_regex_replace_program(buffer: MutSpan<u8>, program: Span<u8>, text: Span<u8>, replacement: Span<u8>) -> Maybe<Span<u8>> {
+    let tlen: usize = std.mem.len(text)
+    var pos: usize = 0
+    var write: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            if std.mem.len(replacement) > std.mem.len(buffer) - write {
+                return null
+            }
+            var rep_index: usize = 0
+            while rep_index < std.mem.len(replacement) {
+                buffer[write] = replacement[rep_index]
+                write = write + 1
+                rep_index = rep_index + 1
+            }
+            if end == 0 {
+                if pos == tlen {
+                    return buffer[..write]
+                }
+                let empty_dec: u64 = __zero_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return null
+                }
+                let width: usize = __zero_std_regex_decode_width(empty_dec)
+                if width > std.mem.len(buffer) - write {
+                    return null
+                }
+                var byte_index: usize = 0
+                while byte_index < width {
+                    buffer[write] = text[pos + byte_index]
+                    write = write + 1
+                    byte_index = byte_index + 1
+                }
+                prev_cp = __zero_std_regex_decode_cp(empty_dec)
+                pos = pos + width
+            } else {
+                pos = pos + end
+                prev_cp = __zero_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return buffer[..write]
+            }
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return null
+            }
+            let width: usize = __zero_std_regex_decode_width(dec)
+            if width > std.mem.len(buffer) - write {
+                return null
+            }
+            var byte_index: usize = 0
+            while byte_index < width {
+                buffer[write] = text[pos + byte_index]
+                write = write + 1
+                byte_index = byte_index + 1
+            }
+            prev_cp = __zero_std_regex_decode_cp(dec)
+            pos = pos + width
+        }
+    }
+    return buffer[..write]
+}
+
+fn __zero_std_regex_split_count_program(program: Span<u8>, text: Span<u8>) -> usize {
+    let tlen: usize = std.mem.len(text)
+    var count: usize = 1
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos && end > 0 {
+            count = count + 1
+            pos = pos + end
+            prev_cp = __zero_std_regex_prev_cp_before(text, pos)
+        } else {
+            if pos == tlen {
+                return count
+            }
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return count
+            }
+            prev_cp = __zero_std_regex_decode_cp(dec)
+            pos = pos + __zero_std_regex_decode_width(dec)
+        }
+    }
+    return count
+}
+
+fn __zero_std_regex_split_program(program: Span<u8>, text: Span<u8>, split_index: usize) -> Maybe<Span<u8>> {
+    let tlen: usize = std.mem.len(text)
+    var field_index: usize = 0
+    var field_start: usize = 0
+    var pos: usize = 0
+    var prev_cp: u32 = 4294967295_u32
+    while pos <= tlen {
+        let end: usize = __zero_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos && end > 0 {
+            if field_index == split_index {
+                return text[field_start..pos]
+            }
+            field_index = field_index + 1
+            pos = pos + end
+            field_start = pos
+            prev_cp = __zero_std_regex_prev_cp_before(text, pos)
+        } else {
+            if pos == tlen {
+                if field_index == split_index {
+                    return text[field_start..tlen]
+                }
+                return null
+            }
+            let dec: u64 = __zero_std_regex_decode(text, pos)
+            if dec == 0 {
+                return null
+            }
+            prev_cp = __zero_std_regex_decode_cp(dec)
+            pos = pos + __zero_std_regex_decode_width(dec)
+        }
+    }
+    return null
+}
+
 fn __zero_std_regex_compile(buffer: MutSpan<u8>, pattern: Span<u8>) -> Maybe<Span<u8>> {
     let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
     if __zero_std_regex_res_err(res) != 0 {
@@ -1169,6 +1567,14 @@ fn __zero_std_regex_compile(buffer: MutSpan<u8>, pattern: Span<u8>) -> Maybe<Spa
 
 fn __zero_std_regex_compile_status(buffer: MutSpan<u8>, pattern: Span<u8>) -> u32 {
     return __zero_std_regex_res_err(__zero_std_regex_compile_core(buffer, pattern))
+}
+
+fn __zero_std_regex_compile_error_offset(buffer: MutSpan<u8>, pattern: Span<u8>) -> Maybe<usize> {
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) == 0 {
+        return null
+    }
+    return __zero_std_regex_res_ppos(res)
 }
 
 fn __zero_std_regex_status_name(status: u32) -> String {
@@ -1223,4 +1629,96 @@ fn __zero_std_regex_matches(pattern: Span<u8>, text: Span<u8>) -> Maybe<Bool> {
     }
     let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
     return __zero_std_regex_is_match(program, text)
+}
+
+fn __zero_std_regex_contains(pattern: Span<u8>, text: Span<u8>) -> Maybe<Bool> {
+    return __zero_std_regex_matches(pattern, text)
+}
+
+fn __zero_std_regex_find_index(pattern: Span<u8>, text: Span<u8>) -> Maybe<usize> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_find_index_program(program, text)
+}
+
+fn __zero_std_regex_find(pattern: Span<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_find_program(program, text)
+}
+
+fn __zero_std_regex_find_count(pattern: Span<u8>, text: Span<u8>) -> Maybe<usize> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_find_count_program(program, text)
+}
+
+fn __zero_std_regex_find_nth_index(pattern: Span<u8>, text: Span<u8>, match_index: usize) -> Maybe<usize> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_find_nth_index_program(program, text, match_index)
+}
+
+fn __zero_std_regex_find_nth(pattern: Span<u8>, text: Span<u8>, match_index: usize) -> Maybe<Span<u8>> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_find_nth_program(program, text, match_index)
+}
+
+fn __zero_std_regex_replace(buffer: MutSpan<u8>, pattern: Span<u8>, text: Span<u8>, replacement: Span<u8>) -> Maybe<Span<u8>> {
+    var storage: [1024]u8 = [0; 1024]
+    let program_buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(program_buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = program_buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_replace_program(buffer, program, text, replacement)
+}
+
+fn __zero_std_regex_split_count(pattern: Span<u8>, text: Span<u8>) -> Maybe<usize> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_split_count_program(program, text)
+}
+
+fn __zero_std_regex_split(pattern: Span<u8>, text: Span<u8>, split_index: usize) -> Maybe<Span<u8>> {
+    var storage: [1024]u8 = [0; 1024]
+    let buffer: MutSpan<u8> = storage
+    let res: u64 = __zero_std_regex_compile_core(buffer, pattern)
+    if __zero_std_regex_res_err(res) != 0 {
+        return null
+    }
+    let program: Span<u8> = buffer[..__zero_std_regex_res_bpos(res)]
+    return __zero_std_regex_split_program(program, text, split_index)
 }

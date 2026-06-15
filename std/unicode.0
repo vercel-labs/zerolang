@@ -69,6 +69,129 @@ fn __zero_std_unicode_decode_at(text: Span<u8>, index: usize) -> Maybe<u32> {
     return (raw % 4294967296_u64) as u32
 }
 
+fn __zero_std_unicode_decode_status_at(text: Span<u8>, index: usize) -> u32 {
+    let len: usize = std.mem.len(text)
+    if index >= len {
+        return 1_u32
+    }
+    let first: u8 = text[index]
+    if first < 128_u8 {
+        return 0_u32
+    }
+    if first >= 128_u8 && first <= 191_u8 {
+        return 2_u32
+    }
+    if first == 192_u8 || first == 193_u8 {
+        return 6_u32
+    }
+    if first >= 194_u8 && first <= 223_u8 {
+        if index + 2 > len {
+            return 4_u32
+        }
+        let second: u8 = text[index + 1]
+        if second < 128_u8 || second > 191_u8 {
+            return 5_u32
+        }
+        return 0_u32
+    }
+    if first >= 224_u8 && first <= 239_u8 {
+        if index + 3 > len {
+            return 4_u32
+        }
+        let second: u8 = text[index + 1]
+        let third: u8 = text[index + 2]
+        if second < 128_u8 || second > 191_u8 {
+            return 5_u32
+        }
+        if third < 128_u8 || third > 191_u8 {
+            return 5_u32
+        }
+        if first == 224_u8 && second < 160_u8 {
+            return 6_u32
+        }
+        if first == 237_u8 && second > 159_u8 {
+            return 7_u32
+        }
+        return 0_u32
+    }
+    if first >= 240_u8 && first <= 244_u8 {
+        if index + 4 > len {
+            return 4_u32
+        }
+        let second: u8 = text[index + 1]
+        let third: u8 = text[index + 2]
+        let fourth: u8 = text[index + 3]
+        if second < 128_u8 || second > 191_u8 {
+            return 5_u32
+        }
+        if third < 128_u8 || third > 191_u8 {
+            return 5_u32
+        }
+        if fourth < 128_u8 || fourth > 191_u8 {
+            return 5_u32
+        }
+        if first == 240_u8 && second < 144_u8 {
+            return 6_u32
+        }
+        if first == 244_u8 && second > 143_u8 {
+            return 8_u32
+        }
+        return 0_u32
+    }
+    return 3_u32
+}
+
+fn __zero_std_unicode_status_name(status: u32) -> String {
+    if status == 0_u32 {
+        return "ok"
+    }
+    if status == 1_u32 {
+        return "out of range"
+    }
+    if status == 2_u32 {
+        return "unexpected continuation byte"
+    }
+    if status == 3_u32 {
+        return "invalid leading byte"
+    }
+    if status == 4_u32 {
+        return "truncated sequence"
+    }
+    if status == 5_u32 {
+        return "invalid continuation byte"
+    }
+    if status == 6_u32 {
+        return "overlong encoding"
+    }
+    if status == 7_u32 {
+        return "surrogate codepoint"
+    }
+    if status == 8_u32 {
+        return "codepoint above U+10FFFF"
+    }
+    return "unknown status"
+}
+
+fn __zero_std_unicode_next_index(text: Span<u8>, index: usize) -> Maybe<usize> {
+    let width: Maybe<usize> = __zero_std_unicode_width_at(text, index)
+    if width.has {
+        return index + width.value
+    }
+    return null
+}
+
+fn __zero_std_unicode_invalid_index(text: Span<u8>) -> usize {
+    var index: usize = 0
+    while index < std.mem.len(text) {
+        let next: Maybe<usize> = __zero_std_unicode_next_index(text, index)
+        if !next.has {
+            return index
+        }
+        index = next.value
+    }
+    return std.mem.len(text)
+}
+
 fn __zero_std_unicode_width_at(text: Span<u8>, index: usize) -> Maybe<usize> {
     let raw: u64 = __zero_std_unicode_decode_raw(text, index)
     if raw == 0 {

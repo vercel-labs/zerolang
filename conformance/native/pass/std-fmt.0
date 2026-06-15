@@ -2,18 +2,44 @@ pub fn main(world: World) -> Void raises {
     var bool_buf: [5]u8 = [0_u8; 5]
     var u32_buf: [10]u8 = [0_u8; 10]
     var usize_buf: [8]u8 = [0_u8; 8]
+    var u64_buf: [20]u8 = [0_u8; 20]
     var i32_buf: [12]u8 = [0_u8; 12]
+    var i64_buf: [20]u8 = [0_u8; 20]
     var min_buf: [12]u8 = [0_u8; 12]
     var hex_buf: [8]u8 = [0_u8; 8]
+    var base_buf: [16]u8 = [0_u8; 16]
+    var u64_base_buf: [16]u8 = [0_u8; 16]
+    var usize_base_buf: [16]u8 = [0_u8; 16]
+    var signed_base_buf: [16]u8 = [0_u8; 16]
+    var signed64_base_buf: [17]u8 = [0_u8; 17]
+    var sign_buf: [12]u8 = [0_u8; 12]
+    var sign64_buf: [20]u8 = [0_u8; 20]
+    var left_pad_buf: [8]u8 = [0_u8; 8]
+    var right_pad_buf: [8]u8 = [0_u8; 8]
+    var writer_storage: [128]u8 = [0_u8; 128]
     var small: [2]u8 = [0_u8; 2]
+    let min_i64: i64 = 0 - 9223372036854775807 - 1
     let bool_text: Maybe<Span<u8>> = std.fmt.bool(bool_buf, false)
     let u32_text: Maybe<Span<u8>> = std.fmt.u32(u32_buf, 4294967295_u32)
     let usize_text: Maybe<Span<u8>> = std.fmt.usize(usize_buf, 12345)
+    let u64_text: Maybe<Span<u8>> = std.fmt.u64(u64_buf, 18446744073709551615_u64)
     let i32_text: Maybe<Span<u8>> = std.fmt.i32(i32_buf, -42)
+    let i64_text: Maybe<Span<u8>> = std.fmt.i64(i64_buf, min_i64)
     let min_text: Maybe<Span<u8>> = std.fmt.i32(min_buf, 0 - 2147483647 - 1)
     let hex_text: Maybe<Span<u8>> = std.fmt.hexLowerU32(hex_buf, 48879_u32)
+    let base_text: Maybe<Span<u8>> = std.fmt.u32Base(base_buf, 255_u32, 16_u32)
+    let u64_base_text: Maybe<Span<u8>> = std.fmt.u64Base(u64_base_buf, 18446744073709551615_u64, 16_u32)
+    let usize_base_text: Maybe<Span<u8>> = std.fmt.usizeBase(usize_base_buf, 10, 2_u32)
+    let signed_base_text: Maybe<Span<u8>> = std.fmt.i32Base(signed_base_buf, -42, 16_u32)
+    let signed64_base_text: Maybe<Span<u8>> = std.fmt.i64Base(signed64_base_buf, min_i64, 16_u32)
+    let sign_text: Maybe<Span<u8>> = std.fmt.i32Sign(sign_buf, 42)
+    let sign64_text: Maybe<Span<u8>> = std.fmt.i64Sign(sign64_buf, 9223372036854775807)
+    let left_pad_text: Maybe<Span<u8>> = std.fmt.padLeft(left_pad_buf, "42", 5, 48_u8)
+    let right_pad_text: Maybe<Span<u8>> = std.fmt.padRight(right_pad_buf, "go", 4, 46_u8)
+    var writer: FixedWriter = std.io.fixedWriter(writer_storage, 0)
+    let wrote: Bool = std.fmt.writeSpan(&mut writer, "n=") && std.fmt.writeI32(&mut writer, -42) && (std.fmt.writeSpan(&mut writer, " ok=") && std.fmt.writeBool(&mut writer, true)) && (std.fmt.writeSpan(&mut writer, " big=") && std.fmt.writeI64(&mut writer, min_i64)) && (std.fmt.writeSpan(&mut writer, " u32=") && std.fmt.writeU32(&mut writer, 7_u32)) && (std.fmt.writeSpan(&mut writer, " usize=") && std.fmt.writeUsize(&mut writer, 8)) && (std.fmt.writeSpan(&mut writer, " s32=") && std.fmt.writeI32Sign(&mut writer, 9)) && (std.fmt.writeSpan(&mut writer, " s64=") && std.fmt.writeI64Sign(&mut writer, 10)) && (std.fmt.writeSpan(&mut writer, " u64=") && std.fmt.writeU64(&mut writer, 11_u64))
     let overflow: Maybe<Span<u8>> = std.fmt.u32(small, 1000_u32)
-    if bool_text.has && u32_text.has && usize_text.has && i32_text.has && min_text.has && hex_text.has && !overflow.has && std.mem.eql(bool_text.value, "false") && std.mem.eql(u32_text.value, "4294967295") && std.mem.eql(usize_text.value, "12345") && std.mem.eql(i32_text.value, "-42") && std.mem.eql(min_text.value, "-2147483648") && std.mem.eql(hex_text.value, "beef") {
+    if bool_text.has && u32_text.has && usize_text.has && (u64_text.has && i32_text.has) && (i64_text.has && min_text.has) && hex_text.has && base_text.has && (u64_base_text.has && usize_base_text.has) && (signed_base_text.has && signed64_base_text.has) && (sign_text.has && sign64_text.has) && left_pad_text.has && right_pad_text.has && !overflow.has && wrote && std.mem.eql(std.io.fixedWriterView(&writer), "n=-42 ok=true big=-9223372036854775808 u32=7 usize=8 s32=+9 s64=+10 u64=11") && std.mem.eql(bool_text.value, "false") && std.mem.eql(u32_text.value, "4294967295") && std.mem.eql(usize_text.value, "12345") && std.mem.eql(u64_text.value, "18446744073709551615") && std.mem.eql(i32_text.value, "-42") && std.mem.eql(i64_text.value, "-9223372036854775808") && std.mem.eql(min_text.value, "-2147483648") && std.mem.eql(hex_text.value, "beef") && std.mem.eql(base_text.value, "ff") && std.mem.eql(u64_base_text.value, "ffffffffffffffff") && std.mem.eql(usize_base_text.value, "1010") && std.mem.eql(signed_base_text.value, "-2a") && std.mem.eql(signed64_base_text.value, "-8000000000000000") && std.mem.eql(sign_text.value, "+42") && std.mem.eql(sign64_text.value, "+9223372036854775807") && std.mem.eql(left_pad_text.value, "00042") && std.mem.eql(right_pad_text.value, "go..") {
         check world.out.write("std fmt ok\n")
     }
 }

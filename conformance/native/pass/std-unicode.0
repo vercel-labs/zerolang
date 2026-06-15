@@ -22,7 +22,8 @@ fn unicode_decode_checks() -> Bool {
     }
     var surrogate: [3]u8 = [237_u8, 160_u8, 128_u8]
     let lone: Maybe<u32> = std.unicode.decodeAt(surrogate, 0)
-    return !lone.has
+    let next: Maybe<usize> = std.unicode.nextIndex("aé", 1)
+    return !lone.has && next.has && next.value == 3
 }
 
 fn unicode_iteration_checks() -> Bool {
@@ -86,8 +87,33 @@ fn unicode_class_checks() -> Bool {
     return std.unicode.isDigit(53) && !std.unicode.isDigit(97) && std.unicode.isWord(95) && (std.unicode.isWord(122) && !std.unicode.isWord(233)) && std.unicode.isSpace(32) && (std.unicode.isSpace(8195) && (std.unicode.isSpace(12288) && !std.unicode.isSpace(65)))
 }
 
+fn unicode_status_checks() -> Bool {
+    var truncated: [2]u8 = [226_u8, 130_u8]
+    var continuation: [1]u8 = [128_u8]
+    var overlong: [2]u8 = [192_u8, 175_u8]
+    if std.unicode.decodeStatusAt("é", 0) != 0_u32 {
+        return false
+    }
+    if std.unicode.decodeStatusAt(truncated, 0) != 4_u32 {
+        return false
+    }
+    if std.unicode.decodeStatusAt(continuation, 0) != 2_u32 {
+        return false
+    }
+    if std.unicode.decodeStatusAt(overlong, 0) != 6_u32 {
+        return false
+    }
+    if std.unicode.invalidIndex("aé") != std.mem.len("aé") {
+        return false
+    }
+    if std.unicode.invalidIndex(truncated) != 0 {
+        return false
+    }
+    return std.mem.eql(std.unicode.statusName(4_u32), "truncated sequence")
+}
+
 pub fn main(world: World) -> Void raises {
-    if unicode_decode_checks() && unicode_iteration_checks() && (unicode_encode_checks() && unicode_class_checks()) {
+    if unicode_decode_checks() && unicode_iteration_checks() && (unicode_encode_checks() && (unicode_class_checks() && unicode_status_checks())) {
         check world.out.write("std unicode ok\n")
     } else {
         check world.out.write("std unicode failed\n")

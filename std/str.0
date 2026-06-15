@@ -67,6 +67,38 @@ fn __zero_std_str_repeat(buffer: MutSpan<u8>, text: Span<u8>, count: usize) -> M
     return buffer[..out]
 }
 
+fn __zero_std_str_replace(buffer: MutSpan<u8>, text: Span<u8>, old: Span<u8>, replacement: Span<u8>) -> Maybe<Span<u8>> {
+    let old_len: usize = std.mem.len(old)
+    if old_len == 0 {
+        return null
+    }
+    let text_len: usize = std.mem.len(text)
+    var read: usize = 0
+    var write: usize = 0
+    while read < text_len {
+        if old_len <= text_len - read && __zero_std_str_starts_with(text[read..], old) {
+            if std.mem.len(replacement) > std.mem.len(buffer) - write {
+                return null
+            }
+            var new_index: usize = 0
+            while new_index < std.mem.len(replacement) {
+                buffer[write] = replacement[new_index]
+                write = write + 1
+                new_index = new_index + 1
+            }
+            read = read + old_len
+        } else {
+            if write >= std.mem.len(buffer) {
+                return null
+            }
+            buffer[write] = text[read]
+            write = write + 1
+            read = read + 1
+        }
+    }
+    return buffer[..write]
+}
+
 fn __zero_std_str_to_lower_ascii(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
     let len: usize = std.mem.len(text)
     if len > std.mem.len(buffer) {
@@ -255,6 +287,36 @@ fn __zero_std_str_count(text: Span<u8>, needle: Span<u8>) -> usize {
     return count
 }
 
+fn __zero_std_str_split_count(text: Span<u8>, sep: Span<u8>) -> usize {
+    if std.mem.len(sep) == 0 {
+        return 0
+    }
+    return __zero_std_str_count(text, sep) + 1
+}
+
+fn __zero_std_str_split(text: Span<u8>, sep: Span<u8>, part_index: usize) -> Maybe<Span<u8>> {
+    let sep_len: usize = std.mem.len(sep)
+    if sep_len == 0 {
+        return null
+    }
+    var current: usize = 0
+    var start: usize = 0
+    while start <= std.mem.len(text) {
+        let rest: Span<u8> = text[start..]
+        let found: usize = __zero_std_str_index_of(rest, sep)
+        let end: usize = start + found
+        if current == part_index {
+            return text[start..end]
+        }
+        if found == std.mem.len(rest) {
+            return null
+        }
+        current = current + 1
+        start = end + sep_len
+    }
+    return null
+}
+
 fn __zero_std_str_eql_ignore_ascii_case(left: Span<u8>, right: Span<u8>) -> Bool {
     if std.mem.len(left) != std.mem.len(right) {
         return false
@@ -295,6 +357,74 @@ fn __zero_std_str_trim_end_ascii(text: Span<u8>) -> Span<u8> {
         end = end - 1
     }
     return text[..end]
+}
+
+fn __zero_std_str_field_count_ascii(text: Span<u8>) -> usize {
+    return __zero_std_str_word_count_ascii(text)
+}
+
+fn __zero_std_str_field_ascii(text: Span<u8>, field_index: usize) -> Maybe<Span<u8>> {
+    var index: usize = 0
+    var current: usize = 0
+    while index < std.mem.len(text) {
+        while index < std.mem.len(text) && __zero_std_str_is_ascii_space(text[index]) {
+            index = index + 1
+        }
+        if index >= std.mem.len(text) {
+            return null
+        }
+        let start: usize = index
+        while index < std.mem.len(text) && !__zero_std_str_is_ascii_space(text[index]) {
+            index = index + 1
+        }
+        if current == field_index {
+            return text[start..index]
+        }
+        current = current + 1
+    }
+    return null
+}
+
+fn __zero_std_str_line_count(text: Span<u8>) -> usize {
+    if std.mem.len(text) == 0 {
+        return 0
+    }
+    var count: usize = 1
+    var index: usize = 0
+    while index < std.mem.len(text) {
+        if text[index] == 10_u8 && index + 1 < std.mem.len(text) {
+            count = count + 1
+        }
+        index = index + 1
+    }
+    return count
+}
+
+fn __zero_std_str_line(text: Span<u8>, line_index: usize) -> Maybe<Span<u8>> {
+    if std.mem.len(text) == 0 {
+        return null
+    }
+    var current: usize = 0
+    var start: usize = 0
+    var index: usize = 0
+    while index <= std.mem.len(text) {
+        if index == std.mem.len(text) || text[index] == 10_u8 {
+            if index == std.mem.len(text) && start == std.mem.len(text) {
+                return null
+            }
+            var end: usize = index
+            if end > start && text[end - 1] == 13_u8 {
+                end = end - 1
+            }
+            if current == line_index {
+                return text[start..end]
+            }
+            current = current + 1
+            start = index + 1
+        }
+        index = index + 1
+    }
+    return null
 }
 
 fn __zero_std_str_word_count_ascii(text: Span<u8>) -> usize {
