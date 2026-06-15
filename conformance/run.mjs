@@ -975,6 +975,19 @@ const stdMemStartsWithMismatch = await writeImportFailureFixture(`${outDir}/std-
 assert.equal(stdMemStartsWithMismatch.diagnostics[0].code, "STD003");
 assert.match(stdMemStartsWithMismatch.diagnostics[0].message, /std\.mem\.startsWith span element types must match/);
 
+const stdMemStartsWithUnsupported = await writeImportFailureFixture(`${outDir}/std-mem-startswith-unsupported.0`, `type Point {
+    x: i32,
+}
+
+pub fn main() -> Void {
+    let points: [1]Point = [Point { x: 1 }]
+    let span: Span<Point> = points
+    let ok: Bool = std.mem.startsWith(span, span)
+}
+`);
+assert.equal(stdMemStartsWithUnsupported.diagnostics[0].code, "STD003");
+assert.match(stdMemStartsWithUnsupported.diagnostics[0].message, /std\.mem\.startsWith item element type is not supported/);
+
 // Fixtures using the gated typed graph MIR constructs fail check with the
 // same BLD004 diagnostics zero build reports for their graph stores.
 const gateBlockedCheckFixtures = [

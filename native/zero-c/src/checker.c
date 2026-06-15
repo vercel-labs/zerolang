@@ -6553,29 +6553,6 @@ static bool check_stdlib_mem_get_call_expected(CheckContext *ctx, const Program 
   return true;
 }
 
-static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
-  const char *callee = resolution && resolution->callee_name ? resolution->callee_name : "std.mem.eqlBytes";
-  if (!check_expr(ctx, program, expr->args.items[0], scope, diag) || !check_expr(ctx, program, expr->args.items[1], scope, diag)) return false;
-  const char *left_type = expr_type(ctx, program, expr->args.items[0], scope);
-  const char *right_type = expr_type(ctx, program, expr->args.items[1], scope);
-  char left_element[128];
-  char right_element[128];
-  if (!span_element_text(left_type, left_element, sizeof(left_element)) || !span_element_text(right_type, right_element, sizeof(right_element))) {
-    char message[256];
-    snprintf(message, sizeof(message), "%s expects Span<T> arguments", callee);
-    return set_diag_detail(diag, 3012, message, expr->line, expr->column, "two Span<T> values", "non-span argument", "pass spans with matching element types");
-  }
-  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], "Span<T>", left_type);
-  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "Span<T>", right_type);
-  if (!types_compatible_in_scope(program, scope, left_element, right_element)) {
-    char message[256];
-    snprintf(message, sizeof(message), "%s span element types must match", callee);
-    return set_diag_detail(diag, 3012, message, expr->line, expr->column, left_element, right_element, "use spans with the same element type");
-  }
-  set_expr_resolved_type(expr, "Bool");
-  return true;
-}
-
 static bool stdlib_writable_item_element(const Expr *expr, ZDiag *diag, const char *display_name, const char *element_type) {
   if (!type_is_const(element_type)) return true;
   char message[256];
@@ -6662,6 +6639,28 @@ static bool stdlib_require_supported_item_element(const Program *program, const 
   if ((resolved && !strchr(resolved, '|') && strstr("|Bool|bool|u8|u16|usize|i32|u32|i64|u64|", pattern)) || type_is_named_generic(resolved, "ref") || type_is_named_generic(resolved, "mutref")) return true;
   char message[256]; snprintf(message, sizeof(message), "%s item element type is not supported", display_name);
   return set_diag_detail(diag, 3012, message, expr ? expr->line : 0, expr ? expr->column : 0, "Bool, u8, u16, usize, i32, u32, i64, or u64 item storage", element_type ? element_type : "Unknown", "use a supported scalar item type or write a specialized helper for this type");
+}
+
+static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *callee = resolution && resolution->callee_name ? resolution->callee_name : "std.mem helper";
+  if (!check_expr(ctx, program, expr->args.items[0], scope, diag) || !check_expr(ctx, program, expr->args.items[1], scope, diag)) return false;
+  const char *left_type = expr_type(ctx, program, expr->args.items[0], scope);
+  const char *right_type = expr_type(ctx, program, expr->args.items[1], scope);
+  char left_element[128];
+  char right_element[128];
+  if (!span_element_text(left_type, left_element, sizeof(left_element)) || !span_element_text(right_type, right_element, sizeof(right_element))) {
+    char message[256]; snprintf(message, sizeof(message), "%s expects Span<T> arguments", callee);
+    return set_diag_detail(diag, 3012, message, expr->line, expr->column, "two Span<T> values", "non-span argument", "pass spans with matching element types");
+  }
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], "Span<T>", left_type); record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "Span<T>", right_type);
+  if (!types_compatible_in_scope(program, scope, left_element, right_element)) {
+    char message[256]; snprintf(message, sizeof(message), "%s span element types must match", callee);
+    return set_diag_detail(diag, 3012, message, expr->line, expr->column, left_element, right_element, "use spans with the same element type");
+  }
+  bool scalar_items = resolution && resolution->std_helper && resolution->std_helper->emits_runtime_helper;
+  if (scalar_items && (!stdlib_reject_owned_item_element(program, scope, callee, left_element, expr->args.items[0], diag, "compare", "compare non-owned scalar item spans or write a specialized helper for this type") ||
+      !stdlib_require_supported_item_element(program, callee, left_element, expr->args.items[0], diag))) return false;
+  set_expr_resolved_type(expr, "Bool"); return true;
 }
 
 static bool stdlib_validate_item_write_lifetimes(Scope *scope, const char *target_root, const ValueProvenance *origins, const Expr *site, ZDiag *diag, const char *display_name) {
