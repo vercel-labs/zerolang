@@ -2,6 +2,10 @@ fn __zero_std_path_is_sep(byte: u8) -> Bool {
     return byte == 47_u8 || byte == 92_u8
 }
 
+fn __zero_std_path_is_abs(path: String) -> Bool {
+    return std.mem.len(path) > 0 && __zero_std_path_is_sep(path[0])
+}
+
 fn __zero_std_path_segment_end(path: String, index: usize) -> Bool {
     return index >= std.mem.len(path) || __zero_std_path_is_sep(path[index])
 }
@@ -64,6 +68,118 @@ fn __zero_std_path_extension(path: String) -> String {
         return path[end..end]
     }
     return path[dot + 1..end]
+}
+
+fn __zero_std_path_stem(path: String) -> String {
+    let end: usize = __zero_std_path_trim_end(path)
+    var start: usize = end
+    while start > 0 && !__zero_std_path_is_sep(path[start - 1]) {
+        start = start - 1
+    }
+    var dot: usize = end
+    var scan: usize = end
+    while scan > start {
+        scan = scan - 1
+        if path[scan] == 46_u8 {
+            dot = scan
+            scan = start
+        }
+    }
+    if dot == end {
+        return path[start..end]
+    }
+    if dot == start {
+        return path[start..end]
+    }
+    if end - start == 2 && path[start] == 46_u8 && path[start + 1] == 46_u8 {
+        return path[start..end]
+    }
+    return path[start..dot]
+}
+
+fn __zero_std_path_split_dir(path: String) -> String {
+    return __zero_std_path_dirname(path)
+}
+
+fn __zero_std_path_split_base(path: String) -> String {
+    return __zero_std_path_basename(path)
+}
+
+fn __zero_std_path_component_count(path: String) -> usize {
+    var count: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(path) {
+        while index < std.mem.len(path) && __zero_std_path_is_sep(path[index]) {
+            index = index + 1
+        }
+        if index < std.mem.len(path) {
+            count = count + 1
+            while index < std.mem.len(path) && !__zero_std_path_is_sep(path[index]) {
+                index = index + 1
+            }
+        }
+    }
+    return count
+}
+
+fn __zero_std_path_component(path: String, component_index: usize) -> Maybe<String> {
+    var count: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(path) {
+        while index < std.mem.len(path) && __zero_std_path_is_sep(path[index]) {
+            index = index + 1
+        }
+        if index < std.mem.len(path) {
+            let start: usize = index
+            while index < std.mem.len(path) && !__zero_std_path_is_sep(path[index]) {
+                index = index + 1
+            }
+            if count == component_index {
+                return path[start..index]
+            }
+            count = count + 1
+        }
+    }
+    return null
+}
+
+fn __zero_std_path_abs(buffer: MutSpan<u8>, base: String, target: String) -> Maybe<String> {
+    if __zero_std_path_is_abs(target) {
+        return __zero_std_path_copy(buffer, target)
+    }
+    var base_end: usize = __zero_std_path_trim_end(base)
+    if base_end == 0 && (std.mem.len(base) > 0 && __zero_std_path_is_sep(base[0])) {
+        base_end = 1
+    }
+    let base_is_root: Bool = base_end == 1 && __zero_std_path_is_sep(base[0])
+    let target_len: usize = std.mem.len(target)
+    var total: usize = base_end + target_len
+    if base_end > 0 && target_len > 0 && !base_is_root {
+        total = total + 1
+    }
+    if total > std.mem.len(buffer) {
+        return null
+    }
+    var out: usize = 0
+    while out < base_end {
+        if base_is_root && out == 0 {
+            buffer[out] = 47_u8
+        } else {
+            buffer[out] = base[out]
+        }
+        out = out + 1
+    }
+    if base_end > 0 && target_len > 0 && !base_is_root {
+        buffer[out] = 47_u8
+        out = out + 1
+    }
+    var read: usize = 0
+    while read < target_len {
+        buffer[out] = target[read]
+        out = out + 1
+        read = read + 1
+    }
+    return buffer[..out]
 }
 
 fn __zero_std_path_copy(buffer: MutSpan<u8>, source: String) -> Maybe<String> {

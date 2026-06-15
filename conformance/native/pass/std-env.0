@@ -2,8 +2,12 @@ pub fn main(world: World) -> Void raises {
     let value: Maybe<String> = std.env.get("ZERO_CONFORMANCE_ENV")
     let missing: Maybe<String> = std.env.get("ZERO_CONFORMANCE_ENV_MISSING")
     let verbose: Bool = std.env.parseBoolOr("ZERO_CONFORMANCE_ENV_VERBOSE", true)
+    let delta: i32 = std.env.parseI32Or("ZERO_CONFORMANCE_ENV_DELTA", 4)
     let limit: u32 = std.env.parseU32Or("ZERO_CONFORMANCE_ENV_LIMIT", 7)
-    if value.has && std.mem.eql(value.value, "agent-env") && std.env.equals("ZERO_CONFORMANCE_ENV", "agent-env") && !missing.has && verbose && limit == 7_u32 {
+    let workers: usize = std.env.parseUsizeOr("ZERO_CONFORMANCE_ENV_WORKERS", 2)
+    let exact_delta: Maybe<i32> = std.env.parseI32("ZERO_CONFORMANCE_ENV_DELTA")
+    let exact_workers: Maybe<usize> = std.env.parseUsize("ZERO_CONFORMANCE_ENV_WORKERS")
+    if value.has && std.mem.eql(value.value, "agent-env") && std.env.equals("ZERO_CONFORMANCE_ENV", "agent-env") && !missing.has && verbose && delta == -3 && exact_delta.has && exact_delta.value == -3 && limit == 7_u32 && workers == 5 && exact_workers.has && exact_workers.value == 5 {
         check world.out.write("env ok\n")
     }
 }

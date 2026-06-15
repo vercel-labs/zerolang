@@ -3,13 +3,6 @@
 In Zerolang, use `std.fs` for hosted file reads, writes, existence checks, copies, renames,
 and explicit file-resource cleanup.
 
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
-
 Runnable today:
 
 | API | Return | Notes |
@@ -26,14 +19,17 @@ Runnable today:
 | `std.fs.writeAllOrRaise(&mut file, bytes)` | `Void` | Writes all bytes or raises. |
 | `std.fs.fileLen(&mut file)` | `Maybe<usize>` | Reports file length when available. |
 | `std.fs.fileLenOrRaise(&mut file)` | `usize` | Reports the file length or raises. |
+| `std.fs.fileSize(fs, path)` | `Maybe<usize>` | Opens a hosted path through `fs` and reports file length when available. |
 | `std.fs.readAll(alloc, fs, path, limit)` | `Maybe<owned<ByteBuf>>` | Reads through an explicit allocator and size limit. |
 | `std.fs.readAllOrRaise(alloc, fs, path, limit)` | `owned<ByteBuf>` | Reads through an explicit allocator and size limit. |
 | `std.fs.readBytes(path, buf)` | `Maybe<usize>` | Fills caller storage and returns the total file size; a value above `len(buf)` means the buffer holds only the first `len(buf)` bytes. |
 | `std.fs.readBytesAt(path, offset, buf)` | `Maybe<usize>` | Fills caller storage starting at a byte offset and returns the total file size, so bounded buffers can process larger files in chunks. |
 | `std.fs.writeBytes(path, bytes)` | `Maybe<usize>` | Writes byte spans to a hosted path. |
 | `std.fs.exists(path)` | `Bool` | Checks whether a hosted path exists. |
+| `std.fs.isFile(path)` | `Bool` | Checks whether a hosted path opens and reports a file length. |
 | `std.fs.isDir(path)` | `Bool` | Checks whether a hosted path is a directory. |
 | `std.fs.makeDir(path)` | `Bool` | Creates a hosted directory. |
+| `std.fs.ensureDir(path)` | `Bool` | Succeeds when a hosted directory already exists or can be created. |
 | `std.fs.removeDir(path)` | `Bool` | Removes a hosted directory. |
 | `std.fs.remove(path)` | `Bool` | Removes a hosted file path. |
 | `std.fs.rename(old, new)` | `Bool` | Renames a hosted file path. |
@@ -59,9 +55,10 @@ Current limits:
 pub fn main(world: World) -> Void raises [NotFound, TooLarge, Io] {
     let fs: Fs = std.fs.host()
     var buf: [32]u8 = [0_u8; 32]
-    if std.fs.writeFile(fs, ".zero/out/example.txt", "hello\n") {
+    if std.fs.ensureDir(".zero/out") && std.fs.writeFile(fs, ".zero/out/example.txt", "hello\n") {
         let bytes: Maybe<Span<u8>> = std.fs.readFileBytes(fs, ".zero/out/example.txt", buf)
-        if bytes.has && std.fs.readFileEquals(fs, ".zero/out/example.txt", buf, "hello\n") && std.fs.rename(".zero/out/example.txt", ".zero/out/example-renamed.txt") {
+        let size: Maybe<usize> = std.fs.fileSize(fs, ".zero/out/example.txt")
+        if bytes.has && size.has && size.value == 6 && std.fs.isFile(".zero/out/example.txt") && std.fs.readFileEquals(fs, ".zero/out/example.txt", buf, "hello\n") && std.fs.rename(".zero/out/example.txt", ".zero/out/example-renamed.txt") {
             if std.fs.remove(".zero/out/example-renamed.txt") {
                 check world.out.write("fs ok\n")
             }

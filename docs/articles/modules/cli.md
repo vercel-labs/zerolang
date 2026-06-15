@@ -3,13 +3,6 @@
 In Zerolang, use `std.cli` for hosted command-line flag and option helpers that sit one
 level above raw `std.args` access.
 
-This module is graph-backed. The compiler uses its standard-library graph store,
-while the projection snippets below show the human-readable projection that agents may
-export for review. Agents should discover helpers with `zero skills get stdlib`,
-inspect user packages with `zero query [graph-input]` or
-`zero inspect [graph-input]`, and patch user code through the graph instead of
-hand-editing `.0` files.
-
 Runnable today:
 
 | API | Return | Notes |
@@ -23,7 +16,14 @@ Runnable today:
 | `std.cli.hasFlag(name)` | `Bool` | Reports whether an exact flag is present. |
 | `std.cli.optionValue(name)` | `Maybe<String>` | Returns the value immediately after an option name. |
 | `std.cli.optionValueOr(name, fallback)` | `String` | Returns the option value or a fallback. |
+| `std.cli.optionBool(name)` | `Maybe<Bool>` | Parses an option value as `Bool`. |
+| `std.cli.optionBoolOr(name, fallback)` | `Bool` | Parses an option value as `Bool` or returns a fallback. |
+| `std.cli.optionI32(name)` | `Maybe<i32>` | Parses an option value as `i32`. |
+| `std.cli.optionI32Or(name, fallback)` | `i32` | Parses an option value as `i32` or returns a fallback. |
 | `std.cli.optionU32(name)` | `Maybe<u32>` | Parses an option value as `u32`. |
+| `std.cli.optionU32Or(name, fallback)` | `u32` | Parses an option value as `u32` or returns a fallback. |
+| `std.cli.optionUsize(name)` | `Maybe<usize>` | Parses an option value as `usize`. |
+| `std.cli.optionUsizeOr(name, fallback)` | `usize` | Parses an option value as `usize` or returns a fallback. |
 | `std.cli.successExitCode()` | `i32` | Returns the conventional success exit code. |
 | `std.cli.usageExitCode()` | `i32` | Returns the conventional command-line usage error code. |
 

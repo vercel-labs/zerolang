@@ -14,6 +14,14 @@ pub fn main(world: World) -> Void raises {
     let relative: Maybe<String> = std.path.relative(rel_buf, "src", "src/main.0")
     var fallback_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let fallback_relative: Maybe<String> = std.path.relative(fallback_buf, "other", "src/main.0")
+    var abs_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let abs_path: Maybe<String> = std.path.abs(abs_buf, "/workspace", "src/main.0")
+    var already_abs_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let already_abs_path: Maybe<String> = std.path.abs(already_abs_buf, "/workspace", "/tmp/file")
+    var small_abs_buf: [3]u8 = [0, 0, 0]
+    let abs_overflow: Maybe<String> = std.path.abs(small_abs_buf, "/workspace", "src")
+    var root_abs_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let root_abs_path: Maybe<String> = std.path.abs(root_abs_buf, "/", "main.0")
     var small_buf: [3]u8 = [0, 0, 0]
     let overflow: Maybe<String> = std.path.normalize(small_buf, "abcd")
     var root_buf: [32]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -89,6 +97,33 @@ pub fn main(world: World) -> Void raises {
             ok = false
         }
     }
+    if !abs_path.has {
+        ok = false
+    }
+    if abs_path.has {
+        if !std.mem.eql(abs_path.value, "/workspace/src/main.0") {
+            ok = false
+        }
+    }
+    if !already_abs_path.has {
+        ok = false
+    }
+    if already_abs_path.has {
+        if !std.mem.eql(already_abs_path.value, "/tmp/file") {
+            ok = false
+        }
+    }
+    if abs_overflow.has {
+        ok = false
+    }
+    if !root_abs_path.has {
+        ok = false
+    }
+    if root_abs_path.has {
+        if !std.mem.eql(root_abs_path.value, "/main.0") {
+            ok = false
+        }
+    }
     if overflow.has {
         ok = false
     }
@@ -145,6 +180,52 @@ pub fn main(world: World) -> Void raises {
         ok = false
     }
     if !std.mem.eql(std.path.extension("src/main.0"), "0") {
+        ok = false
+    }
+    if !std.mem.eql(std.path.stem("src/main.0"), "main") {
+        ok = false
+    }
+    if !std.mem.eql(std.path.stem("src/.profile"), ".profile") {
+        ok = false
+    }
+    if !std.mem.eql(std.path.stem(".."), "..") {
+        ok = false
+    }
+    if !std.mem.eql(std.path.splitDir("src/main.0"), "src") {
+        ok = false
+    }
+    if !std.mem.eql(std.path.splitBase("src/main.0"), "main.0") {
+        ok = false
+    }
+    if !std.path.isAbs("/src/main.0") {
+        ok = false
+    }
+    if std.path.isAbs("src/main.0") {
+        ok = false
+    }
+    if std.path.componentCount("/src//main.0/") != 2 {
+        ok = false
+    }
+    let first_component: Maybe<String> = std.path.component("/src//main.0/", 0)
+    if !first_component.has {
+        ok = false
+    }
+    if first_component.has {
+        if !std.mem.eql(first_component.value, "src") {
+            ok = false
+        }
+    }
+    let second_component: Maybe<String> = std.path.component("/src//main.0/", 1)
+    if !second_component.has {
+        ok = false
+    }
+    if second_component.has {
+        if !std.mem.eql(second_component.value, "main.0") {
+            ok = false
+        }
+    }
+    let missing_component: Maybe<String> = std.path.component("/src//main.0/", 2)
+    if missing_component.has {
         ok = false
     }
     if std.io.readerCapacity(&reader) != 8 {
