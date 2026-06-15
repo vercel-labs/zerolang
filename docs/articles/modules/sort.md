@@ -26,8 +26,8 @@ Runnable today:
 | `std.sort.dedupeSortedI32(items)` | `usize` | Compacts sorted mutable `i32` storage in place and returns the unique prefix length. |
 | `std.sort.selectNthI32(items, index)` | `Bool` | Partially reorders mutable `i32` storage so `items[index]` contains the nth ascending value. |
 | `std.sort.selectNthDescI32(items, index)` | `Bool` | Partially reorders mutable `i32` storage so `items[index]` contains the nth descending value. |
-| `std.sort.mergeSortedI32(dst, left, right)` | `usize` | Merges ascending sorted `i32` inputs into caller storage and returns the written count. |
-| `std.sort.mergeSortedDescI32(dst, left, right)` | `usize` | Merges descending sorted `i32` inputs into caller storage and returns the written count. |
+| `std.sort.mergeSortedI32(dst, left, right)` | `usize` | Merges ascending sorted `i32` inputs into non-overlapping caller storage and returns the written count. |
+| `std.sort.mergeSortedDescI32(dst, left, right)` | `usize` | Merges descending sorted `i32` inputs into non-overlapping caller storage and returns the written count. |
 | `std.sort.insertionU32(items)` | `Void` | Sorts caller-owned mutable `u32` storage in ascending order. |
 | `std.sort.insertionDescU32(items)` | `Void` | Sorts caller-owned mutable `u32` storage in descending order. |
 | `std.sort.stableU32(items)` | `Void` | Stable ascending sort over caller-owned mutable `u32` storage. |
@@ -47,8 +47,8 @@ Runnable today:
 | `std.sort.dedupeSortedU32(items)` | `usize` | Compacts sorted mutable `u32` storage in place and returns the unique prefix length. |
 | `std.sort.selectNthU32(items, index)` | `Bool` | Partially reorders mutable `u32` storage so `items[index]` contains the nth ascending value. |
 | `std.sort.selectNthDescU32(items, index)` | `Bool` | Partially reorders mutable `u32` storage so `items[index]` contains the nth descending value. |
-| `std.sort.mergeSortedU32(dst, left, right)` | `usize` | Merges ascending sorted `u32` inputs into caller storage and returns the written count. |
-| `std.sort.mergeSortedDescU32(dst, left, right)` | `usize` | Merges descending sorted `u32` inputs into caller storage and returns the written count. |
+| `std.sort.mergeSortedU32(dst, left, right)` | `usize` | Merges ascending sorted `u32` inputs into non-overlapping caller storage and returns the written count. |
+| `std.sort.mergeSortedDescU32(dst, left, right)` | `usize` | Merges descending sorted `u32` inputs into non-overlapping caller storage and returns the written count. |
 | `std.sort.insertionUsize(items)` | `Void` | Sorts caller-owned mutable `usize` storage in ascending order. |
 | `std.sort.insertionDescUsize(items)` | `Void` | Sorts caller-owned mutable `usize` storage in descending order. |
 | `std.sort.stableUsize(items)` | `Void` | Stable ascending sort over caller-owned mutable `usize` storage. |
@@ -68,8 +68,8 @@ Runnable today:
 | `std.sort.dedupeSortedUsize(items)` | `usize` | Compacts sorted mutable `usize` storage in place and returns the unique prefix length. |
 | `std.sort.selectNthUsize(items, index)` | `Bool` | Partially reorders mutable `usize` storage so `items[index]` contains the nth ascending value. |
 | `std.sort.selectNthDescUsize(items, index)` | `Bool` | Partially reorders mutable `usize` storage so `items[index]` contains the nth descending value. |
-| `std.sort.mergeSortedUsize(dst, left, right)` | `usize` | Merges ascending sorted `usize` inputs into caller storage and returns the written count. |
-| `std.sort.mergeSortedDescUsize(dst, left, right)` | `usize` | Merges descending sorted `usize` inputs into caller storage and returns the written count. |
+| `std.sort.mergeSortedUsize(dst, left, right)` | `usize` | Merges ascending sorted `usize` inputs into non-overlapping caller storage and returns the written count. |
+| `std.sort.mergeSortedDescUsize(dst, left, right)` | `usize` | Merges descending sorted `usize` inputs into non-overlapping caller storage and returns the written count. |
 
 The first sort surface is deliberately small and typed. Generic comparator
 sorting should wait for stronger comparator contracts instead of smuggling an

@@ -6903,12 +6903,12 @@ static bool stdlib_provenance_sets_overlap(Scope *scope, const ValueProvenance *
   return false;
 }
 
-static bool stdlib_reject_overlapping_collection_append(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *items_type, const char *values_type) {
+static bool stdlib_reject_overlapping_span_source(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, size_t dst_index, const char *dst_type, size_t src_index, const char *src_type, const char *message, const char *actual, const char *help) {
   ValueProvenance dst_origins = {0};
   ValueProvenance src_origins = {0};
-  bool dst_known = span_view_expr_provenance(ctx, program, expr->args.items[0], scope, items_type, &dst_origins) ||
-                   stdlib_direct_place_provenance(scope, expr->args.items[0], &dst_origins);
-  bool src_known = span_view_expr_provenance(ctx, program, expr->args.items[2], scope, values_type, &src_origins);
+  bool dst_known = span_view_expr_provenance(ctx, program, expr->args.items[dst_index], scope, dst_type, &dst_origins) ||
+                   stdlib_direct_place_provenance(scope, expr->args.items[dst_index], &dst_origins);
+  bool src_known = span_view_expr_provenance(ctx, program, expr->args.items[src_index], scope, src_type, &src_origins);
   if (!dst_known || !src_known) {
     value_provenance_free(&dst_origins);
     value_provenance_free(&src_origins);
@@ -6917,11 +6917,15 @@ static bool stdlib_reject_overlapping_collection_append(CheckContext *ctx, const
   if (stdlib_provenance_sets_overlap(scope, &dst_origins, &src_origins)) {
     value_provenance_free(&dst_origins);
     value_provenance_free(&src_origins);
-    return set_diag_detail(diag, 3012, "std.collections.append source must not overlap destination storage", expr->args.items[2]->line, expr->args.items[2]->column, "separate source storage", "overlapping append source", "copy through a separate scratch buffer or append values from distinct storage");
+    return set_diag_detail(diag, 3012, message, expr->args.items[src_index]->line, expr->args.items[src_index]->column, "separate source storage", actual, help);
   }
   value_provenance_free(&dst_origins);
   value_provenance_free(&src_origins);
   return true;
+}
+
+static bool stdlib_reject_overlapping_collection_append(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *items_type, const char *values_type) {
+  return stdlib_reject_overlapping_span_source(ctx, program, expr, scope, diag, 0, items_type, 2, values_type, "std.collections.append source must not overlap destination storage", "overlapping append source", "copy through a separate scratch buffer or append values from distinct storage");
 }
 
 static bool check_stdlib_collections_append_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
@@ -6946,6 +6950,21 @@ static bool check_stdlib_collections_append_call_expected(CheckContext *ctx, con
   set_expr_resolved_type(expr, "usize");
   z_call_resolution_set_return_type(resolution, "usize");
   stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
+static bool check_stdlib_sort_merge_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution, const char *name) {
+  if (!check_stdlib_table_arg_range_expected(ctx, program, expr, scope, diag, name, 0, true, resolution)) return false;
+  char *dst_type = call_resolution_param_type_text(resolution, 0);
+  char *left_type = call_resolution_param_type_text(resolution, 1);
+  char *right_type = call_resolution_param_type_text(resolution, 2);
+  bool ok = stdlib_reject_overlapping_span_source(ctx, program, expr, scope, diag, 0, dst_type, 1, left_type, "std.sort.mergeSorted source must not overlap destination storage", "overlapping merge source", "merge into a separate destination buffer or copy through scratch storage") &&
+            stdlib_reject_overlapping_span_source(ctx, program, expr, scope, diag, 0, dst_type, 2, right_type, "std.sort.mergeSorted source must not overlap destination storage", "overlapping merge source", "merge into a separate destination buffer or copy through scratch storage");
+  free(dst_type);
+  free(left_type);
+  free(right_type);
+  if (!ok) return false;
+  set_expr_resolved_type(expr, resolution && resolution->return_type ? resolution->return_type : "usize");
   return true;
 }
 
@@ -7870,6 +7889,8 @@ static bool check_stdlib_known_call_expected(CheckContext *ctx, const Program *p
       return check_stdlib_mem_slice_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_MEM_SPAN_USIZE:
       return check_stdlib_mem_span_usize_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_SORT_MERGE:
+      return check_stdlib_sort_merge_call_expected(ctx, program, expr, scope, diag, resolution, name);
     case Z_STD_HELPER_KIND_COLLECTIONS_PUSH:
       return check_stdlib_collections_push_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_COLLECTIONS_APPEND:

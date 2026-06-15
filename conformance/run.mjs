@@ -956,6 +956,14 @@ const passCheckFixtures = [
 ];
 await mapLimit(passCheckFixtures, checkJobs, (fixture, _index, workerIndex) => checkFixtureParallel(fixture, workerIndex));
 
+const stdSortMergeOverlap = await writeImportFailureFixture(`${outDir}/std-sort-merge-overlap.0`, `pub fn main() -> Void {
+    var values: [5]i32 = [1, 3, 5, 2, 4]
+    let written: usize = std.sort.mergeSortedI32(values, std.mem.prefix(values, 3_usize), std.mem.dropPrefix(values, 3_usize))
+}
+`);
+assert.equal(stdSortMergeOverlap.diagnostics[0].code, "STD003");
+assert.match(stdSortMergeOverlap.diagnostics[0].message, /std\.sort\.mergeSorted source must not overlap destination storage/);
+
 // Fixtures using the gated typed graph MIR constructs fail check with the
 // same BLD004 diagnostics zero build reports for their graph stores.
 const gateBlockedCheckFixtures = [
