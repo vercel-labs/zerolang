@@ -756,15 +756,25 @@ static bool graph_semantics_node_is_user_type_decl(const ZProgramGraphNode *node
           node->kind == Z_PROGRAM_GRAPH_NODE_CHOICE);
 }
 
-static bool graph_semantics_graph_declares_type_name(const ZProgramGraph *graph, const char *name) {
+static bool graph_semantics_node_is_stdlib_type_decl(const ZProgramGraphNode *node) {
+  return graph_semantics_node_is_user_type_decl(node) &&
+         (graph_semantics_text_starts_with(node->symbol_id, "symbol:std.") ||
+          graph_semantics_text_starts_with(node->path, "std/"));
+}
+
+static bool graph_semantics_graph_declares_non_std_type_name(const ZProgramGraph *graph, const char *name) {
   for (size_t i = 0; graph && name && i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
-    if (graph_semantics_node_is_user_type_decl(node) && graph_semantics_text_eq(node->name, name)) return true;
+    if (graph_semantics_node_is_user_type_decl(node) &&
+        !graph_semantics_node_is_stdlib_type_decl(node) &&
+        graph_semantics_text_eq(node->name, name)) {
+      return true;
+    }
   }
   return false;
 }
 
-static bool graph_semantics_type_id_resolves_to_user_type_name(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const char *type_id, const char *name) {
+static bool graph_semantics_type_id_resolves_to_non_std_type_name(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const char *type_id, const char *name) {
   if (!graph_semantics_text_present(type_id) || !graph_semantics_text_present(name)) return false;
   for (size_t i = 0; resolution && i < resolution->reference_len; i++) {
     const ZProgramGraphResolutionReference *ref = &resolution->references[i];
@@ -772,7 +782,7 @@ static bool graph_semantics_type_id_resolves_to_user_type_name(const ZProgramGra
     const ZProgramGraphNode *type_ref = graph_semantics_node_by_id(graph, ref->node_id);
     if (!type_ref || !graph_semantics_text_eq(type_ref->type_id, type_id)) continue;
     const ZProgramGraphNode *target = graph_semantics_node_by_id(graph, ref->target_node);
-    if (graph_semantics_node_is_user_type_decl(target)) return true;
+    if (graph_semantics_node_is_user_type_decl(target) && !graph_semantics_node_is_stdlib_type_decl(target)) return true;
   }
   return false;
 }
@@ -801,8 +811,8 @@ static bool graph_semantics_type_token_is_owned_wrapped(const char *type, const 
 }
 
 static bool graph_semantics_resource_name_shadowed(const ZProgramGraph *graph, const ZProgramGraphResolutionFacts *resolution, const char *type, const char *type_id, const char *name, const char *token_start) {
-  if (!graph_semantics_graph_declares_type_name(graph, name)) return false;
-  if (graph_semantics_type_id_resolves_to_user_type_name(graph, resolution, type_id, name)) return true;
+  if (!graph_semantics_graph_declares_non_std_type_name(graph, name)) return false;
+  if (graph_semantics_type_id_resolves_to_non_std_type_name(graph, resolution, type_id, name)) return true;
   if (graph_semantics_text_eq(type, name)) return true;
   return !graph_semantics_type_token_is_owned_wrapped(type, token_start);
 }

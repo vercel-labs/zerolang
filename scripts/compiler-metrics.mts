@@ -204,7 +204,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_test.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_resolve.c": { maxLines: 1430, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_resolve.h": { maxLines: 35, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_semantics.c": { maxLines: 1350, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_semantics.c": { maxLines: 1360, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_semantics.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.c": { maxLines: 55, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_roundtrip.h": { maxLines: 15, maxStrcmpCalls: 0 },

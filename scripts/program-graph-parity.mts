@@ -1058,6 +1058,14 @@ async function assertSemanticFacts() {
   assert(!shadowedStdResource.semantics.ownership.some((item) => item.name === "user_file"), "user-defined File binding should not become an ownership fact");
   assert(shadowedStdResource.semantics.resources.some((item) => item.kind === "binding" && item.type === "owned<File>" && item.resourceKind === "file"), "stdlib File resource binding should survive a user-defined File type");
 
+  const stdIoLines = await zeroJson(["dump", "--json", "conformance/native/pass/std-io-lines.graph"]);
+  assert(stdIoLines.semantics.ownership.some((item) => item.name === "line_reader" && item.type === "FixedReader" && item.ownership === "resource-handle" && item.resource === true), "FixedReader bindings should remain resource handles despite stdlib shape declarations");
+  assert(stdIoLines.semantics.ownership.some((item) => item.name === "writer" && item.type === "FixedWriter" && item.ownership === "resource-handle" && item.resource === true), "FixedWriter bindings should remain resource handles despite stdlib shape declarations");
+  assert(stdIoLines.semantics.ownership.some((item) => item.type === "mutref<FixedReader>" && item.ownership === "mut-borrow" && item.resource === true), "FixedReader borrows should preserve resource facts");
+  assert(stdIoLines.semantics.ownership.some((item) => item.type === "mutref<FixedWriter>" && item.ownership === "mut-borrow" && item.resource === true), "FixedWriter borrows should preserve resource facts");
+  assert(stdIoLines.semantics.resources.some((item) => item.kind === "binding" && item.type === "FixedReader" && item.resourceKind === "resource"), "FixedReader bindings should emit resource facts");
+  assert(stdIoLines.semantics.resources.some((item) => item.kind === "binding" && item.type === "FixedWriter" && item.resourceKind === "resource"), "FixedWriter bindings should emit resource facts");
+
   const searchSort = await zeroJson(["dump", "--json", "conformance/native/pass/std-search-sort-widths.0"]);
   assert(!searchSort.semantics.resources.some((item) => item.qualifiedName === "std.search.binaryU32" || item.qualifiedName === "std.search.binaryUsize"), "no-allocation search helpers should not emit resource facts");
 
