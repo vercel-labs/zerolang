@@ -964,6 +964,17 @@ const stdSortMergeOverlap = await writeImportFailureFixture(`${outDir}/std-sort-
 assert.equal(stdSortMergeOverlap.diagnostics[0].code, "STD003");
 assert.match(stdSortMergeOverlap.diagnostics[0].message, /std\.sort\.mergeSorted source must not overlap destination storage/);
 
+const stdMemStartsWithMismatch = await writeImportFailureFixture(`${outDir}/std-mem-startswith-mismatch.0`, `pub fn main() -> Void {
+    let left_values: [2]i32 = [1, 2]
+    let right_values: [2]u32 = [1_u32, 2_u32]
+    let left: Span<i32> = left_values
+    let right: Span<u32> = right_values
+    let ok: Bool = std.mem.startsWith(left, right)
+}
+`);
+assert.equal(stdMemStartsWithMismatch.diagnostics[0].code, "STD003");
+assert.match(stdMemStartsWithMismatch.diagnostics[0].message, /std\.mem\.startsWith span element types must match/);
+
 // Fixtures using the gated typed graph MIR constructs fail check with the
 // same BLD004 diagnostics zero build reports for their graph stores.
 const gateBlockedCheckFixtures = [

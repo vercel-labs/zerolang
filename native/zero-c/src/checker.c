@@ -6554,18 +6554,23 @@ static bool check_stdlib_mem_get_call_expected(CheckContext *ctx, const Program 
 }
 
 static bool check_stdlib_mem_eql_bytes_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *callee = resolution && resolution->callee_name ? resolution->callee_name : "std.mem.eqlBytes";
   if (!check_expr(ctx, program, expr->args.items[0], scope, diag) || !check_expr(ctx, program, expr->args.items[1], scope, diag)) return false;
   const char *left_type = expr_type(ctx, program, expr->args.items[0], scope);
   const char *right_type = expr_type(ctx, program, expr->args.items[1], scope);
   char left_element[128];
   char right_element[128];
   if (!span_element_text(left_type, left_element, sizeof(left_element)) || !span_element_text(right_type, right_element, sizeof(right_element))) {
-    return set_diag_detail(diag, 3012, "std.mem.eqlBytes expects Span<T> arguments", expr->line, expr->column, "two Span<T> values", "non-span argument", "pass spans with matching element types");
+    char message[256];
+    snprintf(message, sizeof(message), "%s expects Span<T> arguments", callee);
+    return set_diag_detail(diag, 3012, message, expr->line, expr->column, "two Span<T> values", "non-span argument", "pass spans with matching element types");
   }
   record_stdlib_arg_fact(resolution, 0, expr->args.items[0], "Span<T>", left_type);
   record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "Span<T>", right_type);
   if (!types_compatible_in_scope(program, scope, left_element, right_element)) {
-    return set_diag_detail(diag, 3012, "std.mem.eqlBytes span element types must match", expr->line, expr->column, left_element, right_element, "compare spans with the same element type");
+    char message[256];
+    snprintf(message, sizeof(message), "%s span element types must match", callee);
+    return set_diag_detail(diag, 3012, message, expr->line, expr->column, left_element, right_element, "use spans with the same element type");
   }
   set_expr_resolved_type(expr, "Bool");
   return true;

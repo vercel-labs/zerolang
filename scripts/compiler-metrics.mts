@@ -36,7 +36,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   // The static const type and canonical value memos compare binder names with strcmp.
-  "native/zero-c/src/checker.c": { maxLines: 12923, maxStrcmpCalls: 298 },
+  "native/zero-c/src/checker.c": { maxLines: 12928, maxStrcmpCalls: 298 },
   "native/zero-c/src/cli_help.c": { maxLines: 195, maxStrcmpCalls: 1 },
   "native/zero-c/src/cli_help.h": { maxLines: 8, maxStrcmpCalls: 0 },
   "native/zero-c/src/http_listen_runner.c": { maxLines: 600, maxStrcmpCalls: 0 },
