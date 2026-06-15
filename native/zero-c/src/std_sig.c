@@ -752,8 +752,8 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.fs.readFileBytes", "Maybe<Span<u8>>", 3, {"Fs", "String", "MutSpan<u8>"}, {NULL}, "fs", "host", "borrows caller buffer prefix after full file read; null when the file exceeds the buffer", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.readFileEquals", "Bool", 4, {"Fs", "String", "MutSpan<u8>", "Span<u8>"}, {NULL}, "fs", "host", "reads through caller buffer and compares bytes", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.copyFile", "Bool", 3, {"String", "String", "MutSpan<u8>"}, {NULL}, "fs", "host", "copies through caller buffer", true, Z_STD_HELPER_KIND_TABLE},
-  {"std.fs.fileSize", "Maybe<usize>", 2, {"Fs", "String"}, {NULL}, "fs", "host", "reports the total byte size of a hosted file path", true, Z_STD_HELPER_KIND_TABLE},
-  {"std.fs.isFile", "Bool", 1, {"String"}, {NULL}, "fs", "host", "checks whether a hosted path is a regular file", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.fs.fileSize", "Maybe<usize>", 2, {"Fs", "String"}, {NULL}, "fs", "host", "opens through explicit Fs and reports file length when available", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.fs.isFile", "Bool", 1, {"String"}, {NULL}, "fs", "host", "checks whether a hosted path opens and reports a file length", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.ensureDir", "Bool", 1, {"String"}, {NULL}, "fs", "host", "succeeds when a directory already exists or is created", true, Z_STD_HELPER_KIND_TABLE},
   {NULL, NULL, 0, {NULL}, {NULL}, NULL, NULL, NULL, false, Z_STD_HELPER_KIND_TABLE},
 };

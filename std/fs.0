@@ -83,15 +83,20 @@ fn __zero_std_fs_copy_file(from_path: String, to_path: String, buffer: MutSpan<u
 }
 
 fn __zero_std_fs_file_size(fs: Fs, path: String) -> Maybe<usize> {
-    var scratch: [1]u8 = [0_u8; 1]
-    let len: Maybe<usize> = std.fs.readBytes(path, scratch)
-    return len
+    let opened: Maybe<owned<File>> = std.fs.open(fs, path)
+    if opened.has {
+        var file: owned<File> = opened.value
+        let len: Maybe<usize> = std.fs.fileLen(&mut file)
+        std.fs.close(&mut file)
+        return len
+    }
+    return null
 }
 
 fn __zero_std_fs_is_file(path: String) -> Bool {
     let fs: Fs = std.fs.host()
-    let len: Maybe<usize> = std.fs.fileSize(fs, path)
-    return len.has
+    let size: Maybe<usize> = std.fs.fileSize(fs, path)
+    return size.has
 }
 
 fn __zero_std_fs_ensure_dir(path: String) -> Bool {

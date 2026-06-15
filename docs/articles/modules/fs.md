@@ -19,14 +19,14 @@ Runnable today:
 | `std.fs.writeAllOrRaise(&mut file, bytes)` | `Void` | Writes all bytes or raises. |
 | `std.fs.fileLen(&mut file)` | `Maybe<usize>` | Reports file length when available. |
 | `std.fs.fileLenOrRaise(&mut file)` | `usize` | Reports the file length or raises. |
-| `std.fs.fileSize(fs, path)` | `Maybe<usize>` | Reports the total byte size of a hosted file path. |
+| `std.fs.fileSize(fs, path)` | `Maybe<usize>` | Opens a hosted path through `fs` and reports file length when available. |
 | `std.fs.readAll(alloc, fs, path, limit)` | `Maybe<owned<ByteBuf>>` | Reads through an explicit allocator and size limit. |
 | `std.fs.readAllOrRaise(alloc, fs, path, limit)` | `owned<ByteBuf>` | Reads through an explicit allocator and size limit. |
 | `std.fs.readBytes(path, buf)` | `Maybe<usize>` | Fills caller storage and returns the total file size; a value above `len(buf)` means the buffer holds only the first `len(buf)` bytes. |
 | `std.fs.readBytesAt(path, offset, buf)` | `Maybe<usize>` | Fills caller storage starting at a byte offset and returns the total file size, so bounded buffers can process larger files in chunks. |
 | `std.fs.writeBytes(path, bytes)` | `Maybe<usize>` | Writes byte spans to a hosted path. |
 | `std.fs.exists(path)` | `Bool` | Checks whether a hosted path exists. |
-| `std.fs.isFile(path)` | `Bool` | Checks whether a hosted path is a regular file. |
+| `std.fs.isFile(path)` | `Bool` | Checks whether a hosted path opens and reports a file length. |
 | `std.fs.isDir(path)` | `Bool` | Checks whether a hosted path is a directory. |
 | `std.fs.makeDir(path)` | `Bool` | Creates a hosted directory. |
 | `std.fs.ensureDir(path)` | `Bool` | Succeeds when a hosted directory already exists or can be created. |
