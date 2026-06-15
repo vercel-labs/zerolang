@@ -8,7 +8,9 @@ Supported syntax: literals, `.`, character classes with negation, ranges, and
 quantifiers `*` `+` `?` `{m}` `{m,}` `{m,n}`, alternation `|`, and capturing or
 `(?:...)` non-capturing groups (matching only; no capture extraction). Matching
 is by Unicode codepoint over UTF-8 text and searches anywhere in the text unless
-the pattern is anchored, like ECMAScript `RegExp.prototype.test`.
+the pattern is anchored, like ECMAScript `RegExp.prototype.test`. When multiple
+matches start at the same byte, span-returning helpers use the longest end
+position, so `a|ab` finds `ab` in `ab`.
 
 Unsupported constructs never misparse silently. Compilation fails with a
 structured status code: `1` backreference, `2` lookahead, `3` lookbehind,
@@ -86,8 +88,9 @@ naming the construct, and `compileErrorOffset` returns the byte offset for a
 failed compile. One-shot helpers return `null` for invalid patterns; `isMatch`
 returns `false` for malformed program spans or invalid UTF-8 text.
 
-`split` and `splitCount` use non-empty regex matches as separators. Zero-length
-matches are ignored as separators so callers get deterministic field traversal
-without a cursor object.
+`find`, `findNth`, `replace`, `split`, and their index/count variants use the
+leftmost start and longest end for each match. `split` and `splitCount` use
+non-empty regex matches as separators. Zero-length matches are ignored as
+separators so callers get deterministic field traversal without a cursor object.
 
 Target support: current compiler targets.

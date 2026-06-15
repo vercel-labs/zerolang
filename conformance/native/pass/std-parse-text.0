@@ -16,6 +16,11 @@ pub fn main(world: World) -> Void raises {
     let bool_value: Maybe<Bool> = std.parse.parseBool("true")
     let duration_value: Maybe<Duration> = std.parse.parseDuration("1h30m")
     let negative_duration: Maybe<Duration> = std.parse.parseDuration("-250ms")
+    let large_ns_duration: Maybe<Duration> = std.parse.parseDuration("4294967296ns")
+    let max_ns_duration: Maybe<Duration> = std.parse.parseDuration("9223372036854775807ns")
+    let min_ns_duration: Maybe<Duration> = std.parse.parseDuration("-9223372036854775808ns")
+    let positive_duration_overflow: Maybe<Duration> = std.parse.parseDuration("9223372036854775808ns")
+    let negative_duration_overflow: Maybe<Duration> = std.parse.parseDuration("-9223372036854775809ns")
     let invalid_duration: Maybe<Duration> = std.parse.parseDuration("10")
     let byte_size: Maybe<usize> = std.parse.parseByteSize("2MiB")
     let decimal_size: Maybe<usize> = std.parse.parseByteSize("3KB")
@@ -58,7 +63,7 @@ pub fn main(world: World) -> Void raises {
     let scan_ok: Bool = alpha && digit && whitespace && ident_start && ident_len == 6 && digit_prefixed_ident_len == 0 && digit_len == 3 && space_len == 2 && until == 3
     let base_ok: Bool = hex_u32.has && hex_u32.value == 255_u32 && !invalid_hex_u32.has && !invalid_base_u32.has && binary_usize.has && binary_usize.value == 10 && signed_hex.has && signed_hex.value == min_i32 && !signed_hex_overflow.has && signed64_hex.has && signed64_hex.value == min_i64 && unsigned64_hex.has && unsigned64_hex.value == 18446744073709551615_u64
     let prefix_ok: Bool = prefixed_hex.has && prefixed_hex.value == 255_u32 && prefixed_hex64.has && prefixed_hex64.value == 18446744073709551615_u64 && prefixed_binary.has && prefixed_binary.value == 10_u32 && prefixed_octal.has && prefixed_octal.value == 63_u32 && prefixed_decimal.has && prefixed_decimal.value == 42_u32 && prefixed_signed.has && prefixed_signed.value == -42 && prefixed_signed64.has && prefixed_signed64.value == min_i64 && prefixed_plus.has && prefixed_plus.value == 5 && prefixed_usize.has && prefixed_usize.value == 16
-    let unit_ok: Bool = duration_value.has && std.time.asSecondsFloor(duration_value.value) == 5400_i64 && negative_duration.has && std.time.asMsFloor(negative_duration.value) == 0 - 250 && !invalid_duration.has && byte_size.has && byte_size.value == 2097152 && decimal_size.has && decimal_size.value == 3000 && !invalid_size.has
+    let unit_ok: Bool = duration_value.has && std.time.asSecondsFloor(duration_value.value) == 5400_i64 && negative_duration.has && std.time.asMsFloor(negative_duration.value) == 0 - 250 && large_ns_duration.has && std.time.asNs(large_ns_duration.value) == 4294967296_i64 && max_ns_duration.has && std.time.asNs(max_ns_duration.value) == 9223372036854775807_i64 && min_ns_duration.has && std.time.asNs(min_ns_duration.value) == min_i64 && !positive_duration_overflow.has && !negative_duration_overflow.has && !invalid_duration.has && byte_size.has && byte_size.value == 2097152 && decimal_size.has && decimal_size.value == 3000 && !invalid_size.has
     if unsigned_ok && signed_ok && text_ok && scan_ok && base_ok && prefix_ok && unit_ok {
         check world.out.write("std parse text ok\n")
     }

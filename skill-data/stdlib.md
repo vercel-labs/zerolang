@@ -1106,8 +1106,8 @@ isMatch(program: Span<u8>, text: Span<u8>) -> Bool
 matches(pattern: Span<u8>, text: Span<u8>) -> Maybe<Bool>
 ```
 
-Supported pattern subset (ECMA-262-leaning, matching by codepoint, unanchored
-search like `RegExp.prototype.test`): literals, `.`, classes with negation,
+Supported pattern subset (ECMA-262-leaning syntax, matching by codepoint,
+unanchored search like `RegExp.prototype.test`): literals, `.`, classes with negation,
 ranges, and `\d \D \w \W \s \S`, anchors `^` `$`, word boundaries `\b` `\B`,
 greedy quantifiers `* + ? {m} {m,} {m,n}`, alternation `|`, capturing and
 `(?:...)` groups (matching only). Compile once into a caller buffer, then call
@@ -1115,8 +1115,10 @@ greedy quantifiers `* + ? {m} {m,} {m,n}`, alternation `|`, capturing and
 codes: 1 backreference, 2 lookahead, 3 lookbehind, 4 named group, 5 lazy
 quantifier, 6 group modifier, 7 unicode property escape, 8 syntax, 9 quantifier
 range, 10 over buffer/2048-byte program limit, 11 pattern not UTF-8, 12 nesting
-depth over 32. `statusName` names a code for diagnostics. `split` and
-`splitCount` use non-empty matches as separators and ignore zero-length matches.
+depth over 32. `statusName` names a code for diagnostics. Search, split, and
+replace helpers use the leftmost start and longest end for each match; `split`
+and `splitCount` use non-empty matches as separators and ignore zero-length
+matches.
 
 ### std.search
 

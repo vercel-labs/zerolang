@@ -481,7 +481,10 @@ fn __zero_std_parse_parse_duration(value: Span<u8>) -> Maybe<Duration> {
     if index == std.mem.len(value) {
         return null
     }
-    let max: u64 = 9223372036854775807_u64
+    var max: u64 = 9223372036854775807_u64
+    if negative {
+        max = 9223372036854775808_u64
+    }
     var total: u64 = 0_u64
     var saw_component: Bool = false
     while index < std.mem.len(value) {
@@ -492,7 +495,7 @@ fn __zero_std_parse_parse_duration(value: Span<u8>) -> Maybe<Duration> {
         if digit_start == index {
             return null
         }
-        let amount: Maybe<u32> = __zero_std_parse_parse_u32(value[digit_start..index])
+        let amount: Maybe<u64> = __zero_std_parse_parse_u64(value[digit_start..index])
         if !amount.has {
             return null
         }
@@ -507,17 +510,19 @@ fn __zero_std_parse_parse_duration(value: Span<u8>) -> Maybe<Duration> {
         if !multiplier.has {
             return null
         }
-        let amount64: u64 = amount.value as u64
-        if amount64 > (max - total) / multiplier.value {
+        if amount.value > (max - total) / multiplier.value {
             return null
         }
-        total = total + amount64 * multiplier.value
+        total = total + amount.value * multiplier.value
         saw_component = true
     }
     if !saw_component {
         return null
     }
     if negative {
+        if total == 9223372036854775808_u64 {
+            return std.time.ns(0_i64 - 9223372036854775807_i64 - 1_i64)
+        }
         return std.time.ns(0_i64 - (total as i64))
     }
     return std.time.ns(total as i64)

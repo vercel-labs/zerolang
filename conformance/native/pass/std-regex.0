@@ -66,6 +66,15 @@ fn regex_search() -> Bool {
     if !second_index.has || second_index.value != 4 {
         return false
     }
+    let ambiguous: Maybe<Span<u8>> = std.regex.find("a|ab", "ab")
+    if !ambiguous.has || !std.mem.eql(ambiguous.value, "ab") {
+        return false
+    }
+    var ambiguous_replace_storage: [4]u8 = [0; 4]
+    let ambiguous_replaced: Maybe<Span<u8>> = std.regex.replace(ambiguous_replace_storage, "a|ab", "ab", "#")
+    if !ambiguous_replaced.has || !std.mem.eql(ambiguous_replaced.value, "#") {
+        return false
+    }
     var replaced_storage: [16]u8 = [0; 16]
     let replaced: Maybe<Span<u8>> = std.regex.replace(replaced_storage, "\\d+", "a1 b22", "#")
     if !replaced.has || !std.mem.eql(replaced.value, "a# b#") {
