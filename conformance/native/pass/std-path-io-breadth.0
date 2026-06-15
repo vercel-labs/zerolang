@@ -188,6 +188,9 @@ pub fn main(world: World) -> Void raises {
     if !std.mem.eql(std.path.stem("src/.profile"), ".profile") {
         ok = false
     }
+    if !std.mem.eql(std.path.stem(".."), "..") {
+        ok = false
+    }
     if !std.mem.eql(std.path.splitDir("src/main.0"), "src") {
         ok = false
     }

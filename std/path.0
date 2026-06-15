@@ -91,6 +91,9 @@ fn __zero_std_path_stem(path: String) -> String {
     if dot == start {
         return path[start..end]
     }
+    if end - start == 2 && path[start] == 46_u8 && path[start + 1] == 46_u8 {
+        return path[start..end]
+    }
     return path[start..dot]
 }
 
