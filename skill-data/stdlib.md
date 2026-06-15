@@ -19,10 +19,10 @@ Call functions with their module path, such as `std.mem.len(value)`.
 
 ## Target-Neutral Helpers
 
-- `std.mem`: spans, byte copy/fill, non-owned scalar item copy/fill/search, scalar item slicing, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
+- `std.mem`: spans, byte copy/fill, non-owned scalar item copy/fill/search/compare, scalar item slicing, chunking, cursor helpers, length, safe indexed `get`, fixed-buffer allocation, byte buffers, and caller-owned vectors.
 - `std.collections`: fixed-capacity push/pop, deque front/back operations, first/last access, indexed insert/replace/remove, unique insert, append, clear, truncate, fill, reverse, rotate, live-prefix and set/map views, `FixedSet<T>`, `FixedDeque<T>`, `FixedRingBuffer<T>`, and `FixedMap<K,V>` storage wrappers, set/map/ring-buffer capacity state, count, contains, value removal, swap, swap-remove, move-to-front, and parallel key/value map helpers over caller-owned array or allocator-returned span storage plus explicit lengths.
-- `std.search`: generic scalar index search plus typed lower-bound and binary-search helpers.
-- `std.sort`: in-place insertion sort and sortedness checks for `i32`, `u32`, and `usize` storage.
+- `std.search`: generic scalar index search plus typed min/max, lower-bound, upper-bound, and binary-search helpers.
+- `std.sort`: in-place insertion, stable, unstable, swap, rotate, reverse, partition, sorted dedupe, and sortedness helpers for ascending and descending `i32`, `u32`, and `usize` storage.
 - `std.ascii`: ASCII byte predicates, case conversion, and digit value helpers.
 - `std.fmt`: caller-buffer formatting for booleans and integer text.
 - `std.text`: ASCII and UTF-8 byte-backed text validation.
@@ -102,7 +102,15 @@ pub fn main() -> Void {
     var scratch: [4]i32 = [0, 0, 0, 0]
     let copied: usize = std.mem.copyItems(scratch, values)
     let prefix: Span<i32> = std.mem.prefix(scratch, 2)
-    expect copied == 4 && std.mem.contains(prefix, 1)
+    let suffix: Span<i32> = std.mem.suffix(scratch, 2)
+    let before: Span<i32> = std.mem.splitBefore(scratch, 3)
+    let after: Span<i32> = std.mem.splitAfter(scratch, 3)
+    let middle: Span<i32> = std.mem.slice(scratch, 1, 2)
+    let chunk: Span<i32> = std.mem.chunk(scratch, 1_usize, 2_usize)
+    let sliding: Span<i32> = std.mem.window(scratch, 1_usize, 2_usize)
+    let cursor: usize = std.mem.advance(scratch, 0_usize, 2_usize)
+    let rest: Span<i32> = std.mem.remaining(scratch, cursor)
+    expect copied == 4 && std.mem.contains(prefix, 1) && std.mem.compareI32(prefix, suffix) < 0 && std.mem.len(suffix) == 2 && std.mem.len(before) == 2 && std.mem.len(after) == 1 && std.mem.len(middle) == 2 && std.mem.len(chunk) == 2 && std.mem.len(sliding) == 2 && std.mem.len(rest) == 2
 }
 ```
 
@@ -193,9 +201,39 @@ hand-rolling loops:
 ```zero
 pub fn main() -> Void {
     var values: [5]i32 = [5, 1, 4, 2, 3]
-    std.sort.insertionI32(values)
+    std.sort.stableI32(values)
     expect std.sort.isSortedI32(values)
+    std.sort.unstableI32(values)
+    expect std.sort.isSortedI32(values)
+    std.sort.reverseI32(values)
+    expect std.sort.isSortedDescI32(values)
+    let swapped: Bool = std.sort.swapI32(values, 0_usize, 4_usize)
+    expect swapped
+    std.sort.rotateLeftI32(values, 2_usize)
+    expect values[0] == 3
+    std.sort.rotateRightI32(values, 2_usize)
+    expect values[0] == 1
+    std.sort.insertionDescI32(values)
+    expect std.sort.isSortedDescI32(values)
+    std.sort.stableDescI32(values)
+    expect std.sort.isSortedDescI32(values)
+    std.sort.unstableDescI32(values)
+    expect std.sort.isSortedDescI32(values)
+    std.sort.insertionI32(values)
     expect std.search.binaryI32(values, 4) == 3
+    expect std.search.containsSortedI32(values, 4)
+    expect std.search.upperBoundI32(values, 4) == 4
+    expect std.search.countSortedI32(values, 4) == 1
+    std.sort.insertionDescI32(values)
+    expect std.search.binaryDescI32(values, 4) == 1
+    expect std.search.containsSortedDescI32(values, 4)
+    expect std.search.upperBoundDescI32(values, 4) == 2
+    expect std.search.countSortedDescI32(values, 4) == 1
+    let high_len: usize = std.sort.partitionDescI32(values, 3)
+    expect high_len == 2
+    let minimum: Maybe<i32> = std.search.minI32(values)
+    expect minimum.has && minimum.value == 1
+    expect std.search.maxIndexI32(values) == 0
 }
 ```
 
@@ -818,9 +856,29 @@ fillItems(dst: MutSpan<T>, value: T) -> usize
 eql(arg0: String, arg1: String) -> Bool
 span(arg0: String) -> Span<u8>
 contains(items: Span<T>, value: T) -> Bool
+compareI32(arg0: Span<i32>, arg1: Span<i32>) -> i32
+compareU8(arg0: Span<u8>, arg1: Span<u8>) -> i32
+compareBytes(arg0: Span<u8>, arg1: Span<u8>) -> i32
+compareU32(arg0: Span<u32>, arg1: Span<u32>) -> i32
+compareUsize(arg0: Span<usize>, arg1: Span<usize>) -> i32
+startsWith(items: Span<T>, prefix: Span<T>) -> Bool
+endsWith(items: Span<T>, suffix: Span<T>) -> Bool
+splitBefore(items: Span<T>, delimiter: T) -> Span<T>
+splitAfter(items: Span<T>, delimiter: T) -> Span<T>
 isEmpty(items: Span<T>) -> Bool
+chunkCount(items: Span<T>, chunkSize: usize) -> usize
+chunk(items: Span<T>, chunkIndex: usize, chunkSize: usize) -> Span<T>
+windowCount(items: Span<T>, windowSize: usize) -> usize
+window(items: Span<T>, windowIndex: usize, windowSize: usize) -> Span<T>
+advance(items: Span<T>, cursor: usize, count: usize) -> usize
+cursorDone(items: Span<T>, cursor: usize) -> Bool
+remaining(items: Span<T>, cursor: usize) -> Span<T>
+cursorChunk(items: Span<T>, cursor: usize, count: usize) -> Span<T>
 prefix(items: Span<T>, len: usize) -> Span<T>
 dropPrefix(items: Span<T>, len: usize) -> Span<T>
+suffix(items: Span<T>, len: usize) -> Span<T>
+dropSuffix(items: Span<T>, len: usize) -> Span<T>
+slice(items: Span<T>, start: usize, len: usize) -> Span<T>
 len(items: Span<T>) -> usize
 get(items: Span<T>, index: usize) -> Maybe<T>
 eqlBytes(left: Span<T>, right: Span<T>) -> Bool
@@ -946,24 +1004,129 @@ depth over 32. `statusName` names a code for diagnostics.
 
 ```text
 binaryI32(arg0: Span<i32>, arg1: i32) -> usize
+binaryDescI32(arg0: Span<i32>, arg1: i32) -> usize
 binaryU32(arg0: Span<u32>, arg1: u32) -> usize
+binaryDescU32(arg0: Span<u32>, arg1: u32) -> usize
 binaryUsize(arg0: Span<usize>, arg1: usize) -> usize
+binaryDescUsize(arg0: Span<usize>, arg1: usize) -> usize
+containsSortedI32(arg0: Span<i32>, arg1: i32) -> Bool
+containsSortedDescI32(arg0: Span<i32>, arg1: i32) -> Bool
+containsSortedU32(arg0: Span<u32>, arg1: u32) -> Bool
+containsSortedDescU32(arg0: Span<u32>, arg1: u32) -> Bool
+containsSortedUsize(arg0: Span<usize>, arg1: usize) -> Bool
+containsSortedDescUsize(arg0: Span<usize>, arg1: usize) -> Bool
+countSortedI32(arg0: Span<i32>, arg1: i32) -> usize
+countSortedDescI32(arg0: Span<i32>, arg1: i32) -> usize
+countSortedU32(arg0: Span<u32>, arg1: u32) -> usize
+countSortedDescU32(arg0: Span<u32>, arg1: u32) -> usize
+countSortedUsize(arg0: Span<usize>, arg1: usize) -> usize
+countSortedDescUsize(arg0: Span<usize>, arg1: usize) -> usize
+equalRangeI32(arg0: Span<i32>, arg1: i32) -> Span<i32>
+equalRangeDescI32(arg0: Span<i32>, arg1: i32) -> Span<i32>
+equalRangeU32(arg0: Span<u32>, arg1: u32) -> Span<u32>
+equalRangeDescU32(arg0: Span<u32>, arg1: u32) -> Span<u32>
+equalRangeUsize(arg0: Span<usize>, arg1: usize) -> Span<usize>
+equalRangeDescUsize(arg0: Span<usize>, arg1: usize) -> Span<usize>
+partitionPointI32(arg0: Span<i32>, arg1: i32) -> usize
+partitionPointDescI32(arg0: Span<i32>, arg1: i32) -> usize
+partitionPointU32(arg0: Span<u32>, arg1: u32) -> usize
+partitionPointDescU32(arg0: Span<u32>, arg1: u32) -> usize
+partitionPointUsize(arg0: Span<usize>, arg1: usize) -> usize
+partitionPointDescUsize(arg0: Span<usize>, arg1: usize) -> usize
 indexOf(items: Span<T>, value: T) -> usize
 lastIndexOf(items: Span<T>, value: T) -> usize
 lowerBoundI32(arg0: Span<i32>, arg1: i32) -> usize
+lowerBoundDescI32(arg0: Span<i32>, arg1: i32) -> usize
 lowerBoundU32(arg0: Span<u32>, arg1: u32) -> usize
+lowerBoundDescU32(arg0: Span<u32>, arg1: u32) -> usize
 lowerBoundUsize(arg0: Span<usize>, arg1: usize) -> usize
+lowerBoundDescUsize(arg0: Span<usize>, arg1: usize) -> usize
+minI32(arg0: Span<i32>) -> Maybe<i32>
+minU32(arg0: Span<u32>) -> Maybe<u32>
+minUsize(arg0: Span<usize>) -> Maybe<usize>
+minIndexI32(arg0: Span<i32>) -> usize
+minIndexU32(arg0: Span<u32>) -> usize
+minIndexUsize(arg0: Span<usize>) -> usize
+maxI32(arg0: Span<i32>) -> Maybe<i32>
+maxU32(arg0: Span<u32>) -> Maybe<u32>
+maxUsize(arg0: Span<usize>) -> Maybe<usize>
+maxIndexI32(arg0: Span<i32>) -> usize
+maxIndexU32(arg0: Span<u32>) -> usize
+maxIndexUsize(arg0: Span<usize>) -> usize
+upperBoundI32(arg0: Span<i32>, arg1: i32) -> usize
+upperBoundDescI32(arg0: Span<i32>, arg1: i32) -> usize
+upperBoundU32(arg0: Span<u32>, arg1: u32) -> usize
+upperBoundDescU32(arg0: Span<u32>, arg1: u32) -> usize
+upperBoundUsize(arg0: Span<usize>, arg1: usize) -> usize
+upperBoundDescUsize(arg0: Span<usize>, arg1: usize) -> usize
 ```
 
 ### std.sort
 
 ```text
 insertionI32(arg0: MutSpan<i32>) -> Void
+insertionDescI32(arg0: MutSpan<i32>) -> Void
 insertionU32(arg0: MutSpan<u32>) -> Void
+insertionDescU32(arg0: MutSpan<u32>) -> Void
 insertionUsize(arg0: MutSpan<usize>) -> Void
+insertionDescUsize(arg0: MutSpan<usize>) -> Void
+stableI32(arg0: MutSpan<i32>) -> Void
+stableU32(arg0: MutSpan<u32>) -> Void
+stableUsize(arg0: MutSpan<usize>) -> Void
+stableDescI32(arg0: MutSpan<i32>) -> Void
+stableDescU32(arg0: MutSpan<u32>) -> Void
+stableDescUsize(arg0: MutSpan<usize>) -> Void
+unstableI32(arg0: MutSpan<i32>) -> Void
+unstableU32(arg0: MutSpan<u32>) -> Void
+unstableUsize(arg0: MutSpan<usize>) -> Void
+unstableDescI32(arg0: MutSpan<i32>) -> Void
+unstableDescU32(arg0: MutSpan<u32>) -> Void
+unstableDescUsize(arg0: MutSpan<usize>) -> Void
+reverseI32(arg0: MutSpan<i32>) -> Void
+swapI32(arg0: MutSpan<i32>, arg1: usize, arg2: usize) -> Bool
+rotateLeftI32(arg0: MutSpan<i32>, arg1: usize) -> Void
+rotateRightI32(arg0: MutSpan<i32>, arg1: usize) -> Void
+reverseU32(arg0: MutSpan<u32>) -> Void
+swapU32(arg0: MutSpan<u32>, arg1: usize, arg2: usize) -> Bool
+rotateLeftU32(arg0: MutSpan<u32>, arg1: usize) -> Void
+rotateRightU32(arg0: MutSpan<u32>, arg1: usize) -> Void
+reverseUsize(arg0: MutSpan<usize>) -> Void
+swapUsize(arg0: MutSpan<usize>, arg1: usize, arg2: usize) -> Bool
+rotateLeftUsize(arg0: MutSpan<usize>, arg1: usize) -> Void
+rotateRightUsize(arg0: MutSpan<usize>, arg1: usize) -> Void
 isSortedI32(arg0: Span<i32>) -> Bool
+isSortedDescI32(arg0: Span<i32>) -> Bool
 isSortedU32(arg0: Span<u32>) -> Bool
+isSortedDescU32(arg0: Span<u32>) -> Bool
 isSortedUsize(arg0: Span<usize>) -> Bool
+isSortedDescUsize(arg0: Span<usize>) -> Bool
+partitionI32(arg0: MutSpan<i32>, arg1: i32) -> usize
+partitionDescI32(arg0: MutSpan<i32>, arg1: i32) -> usize
+partitionU32(arg0: MutSpan<u32>, arg1: u32) -> usize
+partitionDescU32(arg0: MutSpan<u32>, arg1: u32) -> usize
+partitionUsize(arg0: MutSpan<usize>, arg1: usize) -> usize
+partitionDescUsize(arg0: MutSpan<usize>, arg1: usize) -> usize
+isPartitionedI32(arg0: Span<i32>, arg1: i32) -> Bool
+isPartitionedDescI32(arg0: Span<i32>, arg1: i32) -> Bool
+isPartitionedU32(arg0: Span<u32>, arg1: u32) -> Bool
+isPartitionedDescU32(arg0: Span<u32>, arg1: u32) -> Bool
+isPartitionedUsize(arg0: Span<usize>, arg1: usize) -> Bool
+isPartitionedDescUsize(arg0: Span<usize>, arg1: usize) -> Bool
+selectNthI32(arg0: MutSpan<i32>, arg1: usize) -> Bool
+selectNthDescI32(arg0: MutSpan<i32>, arg1: usize) -> Bool
+selectNthU32(arg0: MutSpan<u32>, arg1: usize) -> Bool
+selectNthDescU32(arg0: MutSpan<u32>, arg1: usize) -> Bool
+selectNthUsize(arg0: MutSpan<usize>, arg1: usize) -> Bool
+selectNthDescUsize(arg0: MutSpan<usize>, arg1: usize) -> Bool
+mergeSortedI32(arg0: MutSpan<i32>, arg1: Span<i32>, arg2: Span<i32>) -> usize
+mergeSortedDescI32(arg0: MutSpan<i32>, arg1: Span<i32>, arg2: Span<i32>) -> usize
+mergeSortedU32(arg0: MutSpan<u32>, arg1: Span<u32>, arg2: Span<u32>) -> usize
+mergeSortedDescU32(arg0: MutSpan<u32>, arg1: Span<u32>, arg2: Span<u32>) -> usize
+mergeSortedUsize(arg0: MutSpan<usize>, arg1: Span<usize>, arg2: Span<usize>) -> usize
+mergeSortedDescUsize(arg0: MutSpan<usize>, arg1: Span<usize>, arg2: Span<usize>) -> usize
+dedupeSortedI32(arg0: MutSpan<i32>) -> usize
+dedupeSortedU32(arg0: MutSpan<u32>) -> usize
+dedupeSortedUsize(arg0: MutSpan<usize>) -> usize
 ```
 
 ### std.str

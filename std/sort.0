@@ -12,6 +12,84 @@ fn __zero_std_sort_insertion_i32(items: MutSpan<i32>) -> Void {
     }
 }
 
+fn __zero_std_sort_stable_i32(items: MutSpan<i32>) -> Void {
+    __zero_std_sort_insertion_i32(items)
+}
+
+fn __zero_std_sort_unstable_i32(items: MutSpan<i32>) -> Void {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < std.mem.len(items) {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: i32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_reverse_i32(items: MutSpan<i32>) -> Void {
+    var left: usize = 0
+    var right: usize = std.mem.len(items)
+    while left < right {
+        right = right - 1
+        if left < right {
+            let value: i32 = items[left]
+            items[left] = items[right]
+            items[right] = value
+            left = left + 1
+        }
+    }
+}
+
+fn __zero_std_sort_swap_i32(items: MutSpan<i32>, left: usize, right: usize) -> Bool {
+    if left >= std.mem.len(items) || right >= std.mem.len(items) {
+        return false
+    }
+    let value: i32 = items[left]
+    items[left] = items[right]
+    items[right] = value
+    return true
+}
+
+fn __zero_std_sort_rotate_left_i32(items: MutSpan<i32>, amount: usize) -> Void {
+    let len: usize = std.mem.len(items)
+    if len == 0 {
+        return
+    }
+    let shift: usize = amount % len
+    var step: usize = 0
+    while step < shift {
+        let first: i32 = items[0]
+        var index: usize = 1
+        while index < len {
+            items[index - 1] = items[index]
+            index = index + 1
+        }
+        items[len - 1] = first
+        step = step + 1
+    }
+}
+
+fn __zero_std_sort_rotate_right_i32(items: MutSpan<i32>, amount: usize) -> Void {
+    let len: usize = std.mem.len(items)
+    if len == 0 {
+        return
+    }
+    let shift: usize = amount % len
+    if shift > 0 {
+        __zero_std_sort_rotate_left_i32(items, len - shift)
+    }
+}
+
 fn __zero_std_sort_is_sorted_i32(items: Span<i32>) -> Bool {
     var index: usize = 1
     while index < std.mem.len(items) {
@@ -21,6 +99,239 @@ fn __zero_std_sort_is_sorted_i32(items: Span<i32>) -> Bool {
         index = index + 1
     }
     return true
+}
+
+fn __zero_std_sort_insertion_desc_i32(items: MutSpan<i32>) -> Void {
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        let value: i32 = items[index]
+        var cursor: usize = index
+        while cursor > 0 && items[cursor - 1] < value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_stable_desc_i32(items: MutSpan<i32>) -> Void {
+    __zero_std_sort_insertion_desc_i32(items)
+}
+
+fn __zero_std_sort_unstable_desc_i32(items: MutSpan<i32>) -> Void {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < std.mem.len(items) {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: i32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_is_sorted_desc_i32(items: Span<i32>) -> Bool {
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_partition_i32(items: MutSpan<i32>, pivot: i32) -> usize {
+    var write: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] < pivot {
+            let value: i32 = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_is_partitioned_i32(items: Span<i32>, pivot: i32) -> Bool {
+    var seen_tail: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] < pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_partition_desc_i32(items: MutSpan<i32>, pivot: i32) -> usize {
+    var write: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] > pivot {
+            let value: i32 = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_is_partitioned_desc_i32(items: Span<i32>, pivot: i32) -> Bool {
+    var seen_tail: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] > pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_dedupe_sorted_i32(items: MutSpan<i32>) -> usize {
+    if std.mem.len(items) == 0 {
+        return 0
+    }
+    var write: usize = 1
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] != items[write - 1] {
+            items[write] = items[index]
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_select_nth_i32(items: MutSpan<i32>, nth: usize) -> Bool {
+    let len: usize = std.mem.len(items)
+    if nth >= len {
+        return false
+    }
+    var index: usize = 0
+    while index <= nth {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < len {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: i32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_select_nth_desc_i32(items: MutSpan<i32>, nth: usize) -> Bool {
+    let len: usize = std.mem.len(items)
+    if nth >= len {
+        return false
+    }
+    var index: usize = 0
+    while index <= nth {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < len {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: i32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_merge_sorted_i32(dst: MutSpan<i32>, left: Span<i32>, right: Span<i32>) -> usize {
+    var written: usize = 0
+    var left_index: usize = 0
+    var right_index: usize = 0
+    let capacity: usize = std.mem.len(dst)
+    while written < capacity && left_index < std.mem.len(left) && right_index < std.mem.len(right) {
+        if left[left_index] <= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < std.mem.len(left) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < std.mem.len(right) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __zero_std_sort_merge_sorted_desc_i32(dst: MutSpan<i32>, left: Span<i32>, right: Span<i32>) -> usize {
+    var written: usize = 0
+    var left_index: usize = 0
+    var right_index: usize = 0
+    let capacity: usize = std.mem.len(dst)
+    while written < capacity && left_index < std.mem.len(left) && right_index < std.mem.len(right) {
+        if left[left_index] >= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < std.mem.len(left) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < std.mem.len(right) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
 }
 
 fn __zero_std_sort_insertion_u32(items: MutSpan<u32>) -> Void {
@@ -37,6 +348,84 @@ fn __zero_std_sort_insertion_u32(items: MutSpan<u32>) -> Void {
     }
 }
 
+fn __zero_std_sort_stable_u32(items: MutSpan<u32>) -> Void {
+    __zero_std_sort_insertion_u32(items)
+}
+
+fn __zero_std_sort_unstable_u32(items: MutSpan<u32>) -> Void {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < std.mem.len(items) {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: u32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_reverse_u32(items: MutSpan<u32>) -> Void {
+    var left: usize = 0
+    var right: usize = std.mem.len(items)
+    while left < right {
+        right = right - 1
+        if left < right {
+            let value: u32 = items[left]
+            items[left] = items[right]
+            items[right] = value
+            left = left + 1
+        }
+    }
+}
+
+fn __zero_std_sort_swap_u32(items: MutSpan<u32>, left: usize, right: usize) -> Bool {
+    if left >= std.mem.len(items) || right >= std.mem.len(items) {
+        return false
+    }
+    let value: u32 = items[left]
+    items[left] = items[right]
+    items[right] = value
+    return true
+}
+
+fn __zero_std_sort_rotate_left_u32(items: MutSpan<u32>, amount: usize) -> Void {
+    let len: usize = std.mem.len(items)
+    if len == 0 {
+        return
+    }
+    let shift: usize = amount % len
+    var step: usize = 0
+    while step < shift {
+        let first: u32 = items[0]
+        var index: usize = 1
+        while index < len {
+            items[index - 1] = items[index]
+            index = index + 1
+        }
+        items[len - 1] = first
+        step = step + 1
+    }
+}
+
+fn __zero_std_sort_rotate_right_u32(items: MutSpan<u32>, amount: usize) -> Void {
+    let len: usize = std.mem.len(items)
+    if len == 0 {
+        return
+    }
+    let shift: usize = amount % len
+    if shift > 0 {
+        __zero_std_sort_rotate_left_u32(items, len - shift)
+    }
+}
+
 fn __zero_std_sort_is_sorted_u32(items: Span<u32>) -> Bool {
     var index: usize = 1
     while index < std.mem.len(items) {
@@ -46,6 +435,239 @@ fn __zero_std_sort_is_sorted_u32(items: Span<u32>) -> Bool {
         index = index + 1
     }
     return true
+}
+
+fn __zero_std_sort_insertion_desc_u32(items: MutSpan<u32>) -> Void {
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        let value: u32 = items[index]
+        var cursor: usize = index
+        while cursor > 0 && items[cursor - 1] < value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_stable_desc_u32(items: MutSpan<u32>) -> Void {
+    __zero_std_sort_insertion_desc_u32(items)
+}
+
+fn __zero_std_sort_unstable_desc_u32(items: MutSpan<u32>) -> Void {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < std.mem.len(items) {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: u32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_is_sorted_desc_u32(items: Span<u32>) -> Bool {
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_partition_u32(items: MutSpan<u32>, pivot: u32) -> usize {
+    var write: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] < pivot {
+            let value: u32 = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_is_partitioned_u32(items: Span<u32>, pivot: u32) -> Bool {
+    var seen_tail: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] < pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_partition_desc_u32(items: MutSpan<u32>, pivot: u32) -> usize {
+    var write: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] > pivot {
+            let value: u32 = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_is_partitioned_desc_u32(items: Span<u32>, pivot: u32) -> Bool {
+    var seen_tail: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] > pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_dedupe_sorted_u32(items: MutSpan<u32>) -> usize {
+    if std.mem.len(items) == 0 {
+        return 0
+    }
+    var write: usize = 1
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] != items[write - 1] {
+            items[write] = items[index]
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_select_nth_u32(items: MutSpan<u32>, nth: usize) -> Bool {
+    let len: usize = std.mem.len(items)
+    if nth >= len {
+        return false
+    }
+    var index: usize = 0
+    while index <= nth {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < len {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: u32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_select_nth_desc_u32(items: MutSpan<u32>, nth: usize) -> Bool {
+    let len: usize = std.mem.len(items)
+    if nth >= len {
+        return false
+    }
+    var index: usize = 0
+    while index <= nth {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < len {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: u32 = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_merge_sorted_u32(dst: MutSpan<u32>, left: Span<u32>, right: Span<u32>) -> usize {
+    var written: usize = 0
+    var left_index: usize = 0
+    var right_index: usize = 0
+    let capacity: usize = std.mem.len(dst)
+    while written < capacity && left_index < std.mem.len(left) && right_index < std.mem.len(right) {
+        if left[left_index] <= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < std.mem.len(left) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < std.mem.len(right) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __zero_std_sort_merge_sorted_desc_u32(dst: MutSpan<u32>, left: Span<u32>, right: Span<u32>) -> usize {
+    var written: usize = 0
+    var left_index: usize = 0
+    var right_index: usize = 0
+    let capacity: usize = std.mem.len(dst)
+    while written < capacity && left_index < std.mem.len(left) && right_index < std.mem.len(right) {
+        if left[left_index] >= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < std.mem.len(left) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < std.mem.len(right) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
 }
 
 fn __zero_std_sort_insertion_usize(items: MutSpan<usize>) -> Void {
@@ -62,6 +684,84 @@ fn __zero_std_sort_insertion_usize(items: MutSpan<usize>) -> Void {
     }
 }
 
+fn __zero_std_sort_stable_usize(items: MutSpan<usize>) -> Void {
+    __zero_std_sort_insertion_usize(items)
+}
+
+fn __zero_std_sort_unstable_usize(items: MutSpan<usize>) -> Void {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < std.mem.len(items) {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: usize = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_reverse_usize(items: MutSpan<usize>) -> Void {
+    var left: usize = 0
+    var right: usize = std.mem.len(items)
+    while left < right {
+        right = right - 1
+        if left < right {
+            let value: usize = items[left]
+            items[left] = items[right]
+            items[right] = value
+            left = left + 1
+        }
+    }
+}
+
+fn __zero_std_sort_swap_usize(items: MutSpan<usize>, left: usize, right: usize) -> Bool {
+    if left >= std.mem.len(items) || right >= std.mem.len(items) {
+        return false
+    }
+    let value: usize = items[left]
+    items[left] = items[right]
+    items[right] = value
+    return true
+}
+
+fn __zero_std_sort_rotate_left_usize(items: MutSpan<usize>, amount: usize) -> Void {
+    let len: usize = std.mem.len(items)
+    if len == 0 {
+        return
+    }
+    let shift: usize = amount % len
+    var step: usize = 0
+    while step < shift {
+        let first: usize = items[0]
+        var index: usize = 1
+        while index < len {
+            items[index - 1] = items[index]
+            index = index + 1
+        }
+        items[len - 1] = first
+        step = step + 1
+    }
+}
+
+fn __zero_std_sort_rotate_right_usize(items: MutSpan<usize>, amount: usize) -> Void {
+    let len: usize = std.mem.len(items)
+    if len == 0 {
+        return
+    }
+    let shift: usize = amount % len
+    if shift > 0 {
+        __zero_std_sort_rotate_left_usize(items, len - shift)
+    }
+}
+
 fn __zero_std_sort_is_sorted_usize(items: Span<usize>) -> Bool {
     var index: usize = 1
     while index < std.mem.len(items) {
@@ -71,4 +771,237 @@ fn __zero_std_sort_is_sorted_usize(items: Span<usize>) -> Bool {
         index = index + 1
     }
     return true
+}
+
+fn __zero_std_sort_insertion_desc_usize(items: MutSpan<usize>) -> Void {
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        let value: usize = items[index]
+        var cursor: usize = index
+        while cursor > 0 && items[cursor - 1] < value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_stable_desc_usize(items: MutSpan<usize>) -> Void {
+    __zero_std_sort_insertion_desc_usize(items)
+}
+
+fn __zero_std_sort_unstable_desc_usize(items: MutSpan<usize>) -> Void {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < std.mem.len(items) {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: usize = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __zero_std_sort_is_sorted_desc_usize(items: Span<usize>) -> Bool {
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_partition_usize(items: MutSpan<usize>, pivot: usize) -> usize {
+    var write: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] < pivot {
+            let value: usize = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_is_partitioned_usize(items: Span<usize>, pivot: usize) -> Bool {
+    var seen_tail: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] < pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_partition_desc_usize(items: MutSpan<usize>, pivot: usize) -> usize {
+    var write: usize = 0
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] > pivot {
+            let value: usize = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_is_partitioned_desc_usize(items: Span<usize>, pivot: usize) -> Bool {
+    var seen_tail: Bool = false
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] > pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_dedupe_sorted_usize(items: MutSpan<usize>) -> usize {
+    if std.mem.len(items) == 0 {
+        return 0
+    }
+    var write: usize = 1
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] != items[write - 1] {
+            items[write] = items[index]
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __zero_std_sort_select_nth_usize(items: MutSpan<usize>, nth: usize) -> Bool {
+    let len: usize = std.mem.len(items)
+    if nth >= len {
+        return false
+    }
+    var index: usize = 0
+    while index <= nth {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < len {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: usize = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_select_nth_desc_usize(items: MutSpan<usize>, nth: usize) -> Bool {
+    let len: usize = std.mem.len(items)
+    if nth >= len {
+        return false
+    }
+    var index: usize = 0
+    while index <= nth {
+        var best: usize = index
+        var scan: usize = index + 1
+        while scan < len {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: usize = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_sort_merge_sorted_usize(dst: MutSpan<usize>, left: Span<usize>, right: Span<usize>) -> usize {
+    var written: usize = 0
+    var left_index: usize = 0
+    var right_index: usize = 0
+    let capacity: usize = std.mem.len(dst)
+    while written < capacity && left_index < std.mem.len(left) && right_index < std.mem.len(right) {
+        if left[left_index] <= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < std.mem.len(left) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < std.mem.len(right) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __zero_std_sort_merge_sorted_desc_usize(dst: MutSpan<usize>, left: Span<usize>, right: Span<usize>) -> usize {
+    var written: usize = 0
+    var left_index: usize = 0
+    var right_index: usize = 0
+    let capacity: usize = std.mem.len(dst)
+    while written < capacity && left_index < std.mem.len(left) && right_index < std.mem.len(right) {
+        if left[left_index] >= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < std.mem.len(left) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < std.mem.len(right) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
 }

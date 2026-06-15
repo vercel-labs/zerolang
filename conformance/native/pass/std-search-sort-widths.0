@@ -1,15 +1,199 @@
 pub fn main(world: World) -> Void raises {
-    var unsigned: [4]u32 = [9_u32, 1_u32, 4_u32, 2_u32]
-    var sizes: [4]usize = [8_usize, 3_usize, 5_usize, 1_usize]
+    var unsigned: [5]u32 = [9_u32, 1_u32, 4_u32, 4_u32, 2_u32]
+    var sizes: [5]usize = [8_usize, 3_usize, 5_usize, 5_usize, 1_usize]
     std.sort.insertionU32(unsigned)
     std.sort.insertionUsize(sizes)
-    let i32s: [4]i32 = [1, 2, 4, 9]
+    let i32s: [5]i32 = [1, 2, 4, 4, 9]
     let low_i32: usize = std.search.lowerBoundI32(i32s, 4)
+    let upper_i32: usize = std.search.upperBoundI32(i32s, 4)
+    let contains_i32: Bool = std.search.containsSortedI32(i32s, 4)
+    let missing_i32: Bool = std.search.containsSortedI32(i32s, 7)
+    let count_i32: usize = std.search.countSortedI32(i32s, 4)
+    let missing_count_i32: usize = std.search.countSortedI32(i32s, 7)
+    let range_i32: Span<i32> = std.search.equalRangeI32(i32s, 4)
+    let partition_point_i32: usize = std.search.partitionPointI32(i32s, 4)
     let lower: usize = std.search.lowerBoundU32(unsigned, 4_u32)
+    let upper: usize = std.search.upperBoundU32(unsigned, 4_u32)
+    let count_u32: usize = std.search.countSortedU32(unsigned, 4_u32)
     let binary_u32: usize = std.search.binaryU32(unsigned, 9_u32)
+    let contains_u32: Bool = std.search.containsSortedU32(unsigned, 9_u32)
+    let missing_u32: Bool = std.search.containsSortedU32(unsigned, 7_u32)
+    let range_u32: Span<u32> = std.search.equalRangeU32(unsigned, 4_u32)
+    let partition_point_u32: usize = std.search.partitionPointU32(unsigned, 4_u32)
     let low_usize: usize = std.search.lowerBoundUsize(sizes, 5_usize)
+    let upper_usize: usize = std.search.upperBoundUsize(sizes, 5_usize)
+    let count_usize: usize = std.search.countSortedUsize(sizes, 5_usize)
     let found: usize = std.search.binaryUsize(sizes, 5_usize)
-    if std.sort.isSortedU32(unsigned) && std.sort.isSortedUsize(sizes) && low_i32 == 2 && lower == 2 && binary_u32 == 3 && low_usize == 2 && found == 2 {
+    let contains_usize: Bool = std.search.containsSortedUsize(sizes, 5_usize)
+    let missing_usize: Bool = std.search.containsSortedUsize(sizes, 6_usize)
+    let range_usize: Span<usize> = std.search.equalRangeUsize(sizes, 5_usize)
+    let partition_point_usize: usize = std.search.partitionPointUsize(sizes, 5_usize)
+    let min_i32: Maybe<i32> = std.search.minI32(i32s)
+    let max_i32: Maybe<i32> = std.search.maxI32(i32s)
+    let empty_i32: Maybe<i32> = std.search.minI32(std.mem.prefix(i32s, 0_usize))
+    let min_index_i32: usize = std.search.minIndexI32(i32s)
+    let max_index_i32: usize = std.search.maxIndexI32(i32s)
+    let empty_min_index_i32: usize = std.search.minIndexI32(std.mem.prefix(i32s, 0_usize))
+    let min_u32: Maybe<u32> = std.search.minU32(unsigned)
+    let max_u32: Maybe<u32> = std.search.maxU32(unsigned)
+    let empty_u32: Maybe<u32> = std.search.maxU32(std.mem.prefix(unsigned, 0_usize))
+    let min_index_u32: usize = std.search.minIndexU32(unsigned)
+    let max_index_u32: usize = std.search.maxIndexU32(unsigned)
+    let empty_max_index_u32: usize = std.search.maxIndexU32(std.mem.prefix(unsigned, 0_usize))
+    let min_usize: Maybe<usize> = std.search.minUsize(sizes)
+    let max_usize: Maybe<usize> = std.search.maxUsize(sizes)
+    let empty_usize: Maybe<usize> = std.search.minUsize(std.mem.prefix(sizes, 0_usize))
+    let min_index_usize: usize = std.search.minIndexUsize(sizes)
+    let max_index_usize: usize = std.search.maxIndexUsize(sizes)
+    let empty_min_index_usize: usize = std.search.minIndexUsize(std.mem.prefix(sizes, 0_usize))
+    var part_i32: [5]i32 = [5, 1, 4, 2, 3]
+    let part_i32_len: usize = std.sort.partitionI32(part_i32, 3)
+    let part_i32_check: Bool = std.sort.isPartitionedI32(part_i32, 3)
+    var part_u32: [4]u32 = [3_u32, 1_u32, 4_u32, 2_u32]
+    let part_u32_len: usize = std.sort.partitionU32(part_u32, 3_u32)
+    let part_u32_check: Bool = std.sort.isPartitionedU32(part_u32, 3_u32)
+    var part_usize: [4]usize = [8_usize, 3_usize, 5_usize, 1_usize]
+    let part_usize_len: usize = std.sort.partitionUsize(part_usize, 5_usize)
+    let part_usize_check: Bool = std.sort.isPartitionedUsize(part_usize, 5_usize)
+    var part_desc_i32: [5]i32 = [5, 1, 4, 2, 3]
+    let part_desc_i32_len: usize = std.sort.partitionDescI32(part_desc_i32, 3)
+    let part_desc_i32_check: Bool = std.sort.isPartitionedDescI32(part_desc_i32, 3)
+    var part_desc_u32: [4]u32 = [3_u32, 1_u32, 4_u32, 2_u32]
+    let part_desc_u32_len: usize = std.sort.partitionDescU32(part_desc_u32, 3_u32)
+    let part_desc_u32_check: Bool = std.sort.isPartitionedDescU32(part_desc_u32, 3_u32)
+    var part_desc_usize: [4]usize = [8_usize, 3_usize, 5_usize, 1_usize]
+    let part_desc_usize_len: usize = std.sort.partitionDescUsize(part_desc_usize, 4_usize)
+    let part_desc_usize_check: Bool = std.sort.isPartitionedDescUsize(part_desc_usize, 4_usize)
+    var dup_i32: [6]i32 = [1, 1, 2, 4, 4, 5]
+    let dup_i32_len: usize = std.sort.dedupeSortedI32(dup_i32)
+    var dup_u32: [5]u32 = [1_u32, 2_u32, 2_u32, 3_u32, 3_u32]
+    let dup_u32_len: usize = std.sort.dedupeSortedU32(dup_u32)
+    var dup_usize: [5]usize = [2_usize, 2_usize, 5_usize, 5_usize, 8_usize]
+    let dup_usize_len: usize = std.sort.dedupeSortedUsize(dup_usize)
+    var desc_i32: [5]i32 = [1, 9, 4, 2, 4]
+    std.sort.insertionDescI32(desc_i32)
+    let desc_low_i32: usize = std.search.lowerBoundDescI32(desc_i32, 4)
+    let desc_upper_i32: usize = std.search.upperBoundDescI32(desc_i32, 4)
+    let desc_binary_i32: usize = std.search.binaryDescI32(desc_i32, 4)
+    let desc_contains_i32: Bool = std.search.containsSortedDescI32(desc_i32, 4)
+    let desc_missing_i32: Bool = std.search.containsSortedDescI32(desc_i32, 7)
+    let desc_count_i32: usize = std.search.countSortedDescI32(desc_i32, 4)
+    let desc_missing_count_i32: usize = std.search.countSortedDescI32(desc_i32, 7)
+    let desc_range_i32: Span<i32> = std.search.equalRangeDescI32(desc_i32, 4)
+    let desc_partition_point_i32: usize = std.search.partitionPointDescI32(desc_i32, 4)
+    var desc_u32: [5]u32 = [1_u32, 9_u32, 4_u32, 2_u32, 4_u32]
+    std.sort.insertionDescU32(desc_u32)
+    let desc_low_u32: usize = std.search.lowerBoundDescU32(desc_u32, 4_u32)
+    let desc_upper_u32: usize = std.search.upperBoundDescU32(desc_u32, 4_u32)
+    let desc_binary_u32: usize = std.search.binaryDescU32(desc_u32, 4_u32)
+    let desc_contains_u32: Bool = std.search.containsSortedDescU32(desc_u32, 4_u32)
+    let desc_missing_u32: Bool = std.search.containsSortedDescU32(desc_u32, 7_u32)
+    let desc_count_u32: usize = std.search.countSortedDescU32(desc_u32, 4_u32)
+    let desc_missing_count_u32: usize = std.search.countSortedDescU32(desc_u32, 7_u32)
+    let desc_range_u32: Span<u32> = std.search.equalRangeDescU32(desc_u32, 4_u32)
+    let desc_partition_point_u32: usize = std.search.partitionPointDescU32(desc_u32, 4_u32)
+    var desc_usize: [5]usize = [1_usize, 8_usize, 5_usize, 3_usize, 5_usize]
+    std.sort.insertionDescUsize(desc_usize)
+    let desc_low_usize: usize = std.search.lowerBoundDescUsize(desc_usize, 5_usize)
+    let desc_upper_usize: usize = std.search.upperBoundDescUsize(desc_usize, 5_usize)
+    let desc_binary_usize: usize = std.search.binaryDescUsize(desc_usize, 5_usize)
+    let desc_contains_usize: Bool = std.search.containsSortedDescUsize(desc_usize, 5_usize)
+    let desc_missing_usize: Bool = std.search.containsSortedDescUsize(desc_usize, 6_usize)
+    let desc_count_usize: usize = std.search.countSortedDescUsize(desc_usize, 5_usize)
+    let desc_missing_count_usize: usize = std.search.countSortedDescUsize(desc_usize, 6_usize)
+    let desc_range_usize: Span<usize> = std.search.equalRangeDescUsize(desc_usize, 5_usize)
+    let desc_partition_point_usize: usize = std.search.partitionPointDescUsize(desc_usize, 5_usize)
+    var stable_i32: [5]i32 = [5, 1, 4, 2, 3]
+    std.sort.stableI32(stable_i32)
+    var stable_u32: [5]u32 = [5_u32, 1_u32, 4_u32, 2_u32, 3_u32]
+    std.sort.stableU32(stable_u32)
+    var stable_usize: [5]usize = [5_usize, 1_usize, 4_usize, 2_usize, 3_usize]
+    std.sort.stableUsize(stable_usize)
+    var stable_desc_i32: [5]i32 = [5, 1, 4, 2, 3]
+    std.sort.stableDescI32(stable_desc_i32)
+    var stable_desc_u32: [5]u32 = [5_u32, 1_u32, 4_u32, 2_u32, 3_u32]
+    std.sort.stableDescU32(stable_desc_u32)
+    var stable_desc_usize: [5]usize = [5_usize, 1_usize, 4_usize, 2_usize, 3_usize]
+    std.sort.stableDescUsize(stable_desc_usize)
+    var unstable_i32: [5]i32 = [5, 1, 4, 2, 3]
+    std.sort.unstableI32(unstable_i32)
+    var unstable_u32: [5]u32 = [5_u32, 1_u32, 4_u32, 2_u32, 3_u32]
+    std.sort.unstableU32(unstable_u32)
+    var unstable_usize: [5]usize = [5_usize, 1_usize, 4_usize, 2_usize, 3_usize]
+    std.sort.unstableUsize(unstable_usize)
+    var unstable_desc_i32: [5]i32 = [5, 1, 4, 2, 3]
+    std.sort.unstableDescI32(unstable_desc_i32)
+    var unstable_desc_u32: [5]u32 = [5_u32, 1_u32, 4_u32, 2_u32, 3_u32]
+    std.sort.unstableDescU32(unstable_desc_u32)
+    var unstable_desc_usize: [5]usize = [5_usize, 1_usize, 4_usize, 2_usize, 3_usize]
+    std.sort.unstableDescUsize(unstable_desc_usize)
+    var reverse_i32: [5]i32 = [1, 2, 3, 4, 5]
+    std.sort.reverseI32(reverse_i32)
+    var reverse_u32: [5]u32 = [1_u32, 2_u32, 3_u32, 4_u32, 5_u32]
+    std.sort.reverseU32(reverse_u32)
+    var reverse_usize: [5]usize = [1_usize, 2_usize, 3_usize, 4_usize, 5_usize]
+    std.sort.reverseUsize(reverse_usize)
+    var swap_i32: [3]i32 = [7, 8, 9]
+    let swap_i32_ok: Bool = std.sort.swapI32(swap_i32, 0_usize, 2_usize)
+    let swap_i32_bad: Bool = std.sort.swapI32(swap_i32, 0_usize, 3_usize)
+    var swap_u32: [3]u32 = [1_u32, 2_u32, 3_u32]
+    let swap_u32_ok: Bool = std.sort.swapU32(swap_u32, 1_usize, 2_usize)
+    let swap_u32_bad: Bool = std.sort.swapU32(swap_u32, 3_usize, 1_usize)
+    var swap_usize: [3]usize = [4_usize, 5_usize, 6_usize]
+    let swap_usize_ok: Bool = std.sort.swapUsize(swap_usize, 0_usize, 1_usize)
+    let swap_usize_bad: Bool = std.sort.swapUsize(swap_usize, 2_usize, 3_usize)
+    var rotate_i32: [5]i32 = [1, 2, 3, 4, 5]
+    std.sort.rotateLeftI32(rotate_i32, 7_usize)
+    std.sort.rotateRightI32(rotate_i32, 2_usize)
+    var rotate_u32: [5]u32 = [1_u32, 2_u32, 3_u32, 4_u32, 5_u32]
+    std.sort.rotateRightU32(rotate_u32, 6_usize)
+    std.sort.rotateLeftU32(rotate_u32, 1_usize)
+    var rotate_usize: [5]usize = [1_usize, 2_usize, 3_usize, 4_usize, 5_usize]
+    std.sort.rotateRightUsize(rotate_usize, 12_usize)
+    std.sort.rotateLeftUsize(rotate_usize, 2_usize)
+    var select_i32: [5]i32 = [9, 1, 4, 7, 2]
+    let select_i32_ok: Bool = std.sort.selectNthI32(select_i32, 2_usize)
+    var select_u32: [5]u32 = [9_u32, 1_u32, 4_u32, 7_u32, 2_u32]
+    let select_u32_ok: Bool = std.sort.selectNthU32(select_u32, 2_usize)
+    var select_usize: [5]usize = [9_usize, 1_usize, 4_usize, 7_usize, 2_usize]
+    let select_usize_ok: Bool = std.sort.selectNthUsize(select_usize, 2_usize)
+    var select_desc_i32: [5]i32 = [9, 1, 4, 7, 2]
+    let select_desc_i32_ok: Bool = std.sort.selectNthDescI32(select_desc_i32, 1_usize)
+    var select_desc_u32: [5]u32 = [9_u32, 1_u32, 4_u32, 7_u32, 2_u32]
+    let select_desc_u32_ok: Bool = std.sort.selectNthDescU32(select_desc_u32, 1_usize)
+    var select_desc_usize: [5]usize = [9_usize, 1_usize, 4_usize, 7_usize, 2_usize]
+    let select_desc_usize_ok: Bool = std.sort.selectNthDescUsize(select_desc_usize, 1_usize)
+    let select_bad: Bool = std.sort.selectNthI32(select_i32, 9_usize)
+    var merge_i32: [6]i32 = [0, 0, 0, 0, 0, 0]
+    let merge_i32_len: usize = std.sort.mergeSortedI32(merge_i32, std.mem.prefix(i32s, 3_usize), std.mem.dropPrefix(i32s, 3_usize))
+    var merge_u32: [6]u32 = [0_u32, 0_u32, 0_u32, 0_u32, 0_u32, 0_u32]
+    let merge_u32_len: usize = std.sort.mergeSortedU32(merge_u32, std.mem.prefix(unsigned, 3_usize), std.mem.dropPrefix(unsigned, 3_usize))
+    var merge_usize: [6]usize = [0_usize, 0_usize, 0_usize, 0_usize, 0_usize, 0_usize]
+    let merge_usize_len: usize = std.sort.mergeSortedUsize(merge_usize, std.mem.prefix(sizes, 3_usize), std.mem.dropPrefix(sizes, 3_usize))
+    var merge_desc_i32: [6]i32 = [0, 0, 0, 0, 0, 0]
+    let merge_desc_i32_len: usize = std.sort.mergeSortedDescI32(merge_desc_i32, std.mem.prefix(desc_i32, 3_usize), std.mem.dropPrefix(desc_i32, 3_usize))
+    var merge_desc_u32: [6]u32 = [0_u32, 0_u32, 0_u32, 0_u32, 0_u32, 0_u32]
+    let merge_desc_u32_len: usize = std.sort.mergeSortedDescU32(merge_desc_u32, std.mem.prefix(desc_u32, 3_usize), std.mem.dropPrefix(desc_u32, 3_usize))
+    var merge_desc_usize: [6]usize = [0_usize, 0_usize, 0_usize, 0_usize, 0_usize, 0_usize]
+    let merge_desc_usize_len: usize = std.sort.mergeSortedDescUsize(merge_desc_usize, std.mem.prefix(desc_usize, 3_usize), std.mem.dropPrefix(desc_usize, 3_usize))
+    let search_range_ok: Bool = std.mem.len(range_i32) == 2 && range_i32[0] == 4 && range_i32[1] == 4 && partition_point_i32 == 2 && std.mem.len(range_u32) == 2 && range_u32[0] == 4_u32 && range_u32[1] == 4_u32 && partition_point_u32 == 2 && std.mem.len(range_usize) == 2 && range_usize[0] == 5_usize && range_usize[1] == 5_usize && partition_point_usize == 2
+    let desc_range_ok: Bool = std.mem.len(desc_range_i32) == 2 && desc_range_i32[0] == 4 && desc_range_i32[1] == 4 && desc_partition_point_i32 == 1 && std.mem.len(desc_range_u32) == 2 && desc_range_u32[0] == 4_u32 && desc_range_u32[1] == 4_u32 && desc_partition_point_u32 == 1 && std.mem.len(desc_range_usize) == 2 && desc_range_usize[0] == 5_usize && desc_range_usize[1] == 5_usize && desc_partition_point_usize == 1
+    let search_ok: Bool = std.sort.isSortedU32(unsigned) && std.sort.isSortedUsize(sizes) && low_i32 == 2 && upper_i32 == 4 && contains_i32 && !missing_i32 && count_i32 == 2 && missing_count_i32 == 0 && lower == 2 && upper == 4 && count_u32 == 2 && binary_u32 == 4 && contains_u32 && !missing_u32 && low_usize == 2 && upper_usize == 4 && count_usize == 2 && found == 2 && contains_usize && !missing_usize && min_i32.has && min_i32.value == 1 && max_i32.has && max_i32.value == 9 && !empty_i32.has && min_index_i32 == 0 && max_index_i32 == 4 && empty_min_index_i32 == 0 && min_u32.has && min_u32.value == 1_u32 && max_u32.has && max_u32.value == 9_u32 && !empty_u32.has && min_index_u32 == 0 && max_index_u32 == 4 && empty_max_index_u32 == 0 && min_usize.has && min_usize.value == 1_usize && max_usize.has && max_usize.value == 8_usize && !empty_usize.has && min_index_usize == 0 && max_index_usize == 4 && empty_min_index_usize == 0 && search_range_ok
+    let partition_ok: Bool = part_i32_len == 2 && part_i32_check && part_i32[0] == 1 && part_i32[1] == 2 && part_u32_len == 2 && part_u32_check && part_u32[0] == 1_u32 && part_u32[1] == 2_u32 && part_usize_len == 2 && part_usize_check && part_usize[0] == 3_usize && part_usize[1] == 1_usize
+    let partition_desc_ok: Bool = part_desc_i32_len == 2 && part_desc_i32_check && part_desc_i32[0] == 5 && part_desc_i32[1] == 4 && part_desc_u32_len == 1 && part_desc_u32_check && part_desc_u32[0] == 4_u32 && part_desc_usize_len == 2 && part_desc_usize_check && part_desc_usize[0] == 8_usize && part_desc_usize[1] == 5_usize
+    let dedupe_ok: Bool = dup_i32_len == 4 && dup_i32[0] == 1 && dup_i32[1] == 2 && dup_i32[2] == 4 && dup_i32[3] == 5 && dup_u32_len == 3 && dup_u32[0] == 1_u32 && dup_u32[1] == 2_u32 && dup_u32[2] == 3_u32 && dup_usize_len == 3 && dup_usize[0] == 2_usize && dup_usize[1] == 5_usize && dup_usize[2] == 8_usize
+    let desc_ok: Bool = std.sort.isSortedDescI32(desc_i32) && !std.sort.isSortedI32(desc_i32) && desc_i32[0] == 9 && desc_i32[4] == 1 && std.sort.isSortedDescU32(desc_u32) && !std.sort.isSortedU32(desc_u32) && desc_u32[0] == 9_u32 && desc_u32[4] == 1_u32 && std.sort.isSortedDescUsize(desc_usize) && !std.sort.isSortedUsize(desc_usize) && desc_usize[0] == 8_usize && desc_usize[4] == 1_usize
+    let desc_search_ok: Bool = desc_low_i32 == 1 && desc_upper_i32 == 3 && desc_binary_i32 == 1 && desc_contains_i32 && !desc_missing_i32 && desc_count_i32 == 2 && desc_missing_count_i32 == 0 && desc_low_u32 == 1 && desc_upper_u32 == 3 && desc_binary_u32 == 1 && desc_contains_u32 && !desc_missing_u32 && desc_count_u32 == 2 && desc_missing_count_u32 == 0 && desc_low_usize == 1 && desc_upper_usize == 3 && desc_binary_usize == 1 && desc_contains_usize && !desc_missing_usize && desc_count_usize == 2 && desc_missing_count_usize == 0
+    let stable_ok: Bool = std.sort.isSortedI32(stable_i32) && stable_i32[0] == 1 && stable_i32[4] == 5 && std.sort.isSortedU32(stable_u32) && stable_u32[0] == 1_u32 && stable_u32[4] == 5_u32 && std.sort.isSortedUsize(stable_usize) && stable_usize[0] == 1_usize && stable_usize[4] == 5_usize
+    let stable_desc_ok: Bool = std.sort.isSortedDescI32(stable_desc_i32) && stable_desc_i32[0] == 5 && stable_desc_i32[4] == 1 && std.sort.isSortedDescU32(stable_desc_u32) && stable_desc_u32[0] == 5_u32 && stable_desc_u32[4] == 1_u32 && std.sort.isSortedDescUsize(stable_desc_usize) && stable_desc_usize[0] == 5_usize && stable_desc_usize[4] == 1_usize
+    let unstable_ok: Bool = std.sort.isSortedI32(unstable_i32) && unstable_i32[0] == 1 && unstable_i32[4] == 5 && std.sort.isSortedU32(unstable_u32) && unstable_u32[0] == 1_u32 && unstable_u32[4] == 5_u32 && std.sort.isSortedUsize(unstable_usize) && unstable_usize[0] == 1_usize && unstable_usize[4] == 5_usize
+    let unstable_desc_ok: Bool = std.sort.isSortedDescI32(unstable_desc_i32) && unstable_desc_i32[0] == 5 && unstable_desc_i32[4] == 1 && std.sort.isSortedDescU32(unstable_desc_u32) && unstable_desc_u32[0] == 5_u32 && unstable_desc_u32[4] == 1_u32 && std.sort.isSortedDescUsize(unstable_desc_usize) && unstable_desc_usize[0] == 5_usize && unstable_desc_usize[4] == 1_usize
+    let reverse_ok: Bool = std.sort.isSortedDescI32(reverse_i32) && reverse_i32[0] == 5 && reverse_i32[4] == 1 && std.sort.isSortedDescU32(reverse_u32) && reverse_u32[0] == 5_u32 && reverse_u32[4] == 1_u32 && std.sort.isSortedDescUsize(reverse_usize) && reverse_usize[0] == 5_usize && reverse_usize[4] == 1_usize
+    let swap_ok: Bool = swap_i32_ok && !swap_i32_bad && swap_i32[0] == 9 && swap_i32[2] == 7 && swap_u32_ok && !swap_u32_bad && swap_u32[1] == 3_u32 && swap_u32[2] == 2_u32 && swap_usize_ok && !swap_usize_bad && swap_usize[0] == 5_usize && swap_usize[1] == 4_usize
+    let rotate_ok: Bool = rotate_i32[0] == 1 && rotate_i32[1] == 2 && rotate_i32[4] == 5 && rotate_u32[0] == 1_u32 && rotate_u32[1] == 2_u32 && rotate_u32[4] == 5_u32 && rotate_usize[0] == 1_usize && rotate_usize[1] == 2_usize && rotate_usize[4] == 5_usize
+    let select_ok: Bool = select_i32_ok && select_i32[2] == 4 && select_u32_ok && select_u32[2] == 4_u32 && select_usize_ok && select_usize[2] == 4_usize && select_desc_i32_ok && select_desc_i32[1] == 7 && select_desc_u32_ok && select_desc_u32[1] == 7_u32 && select_desc_usize_ok && select_desc_usize[1] == 7_usize && !select_bad
+    let merge_ok: Bool = merge_i32_len == 5 && std.sort.isSortedI32(std.mem.prefix(merge_i32, merge_i32_len)) && merge_i32[0] == 1 && merge_i32[4] == 9 && merge_u32_len == 5 && std.sort.isSortedU32(std.mem.prefix(merge_u32, merge_u32_len)) && merge_u32[0] == 1_u32 && merge_u32[4] == 9_u32 && merge_usize_len == 5 && std.sort.isSortedUsize(std.mem.prefix(merge_usize, merge_usize_len)) && merge_usize[0] == 1_usize && merge_usize[4] == 8_usize && merge_desc_i32_len == 5 && std.sort.isSortedDescI32(std.mem.prefix(merge_desc_i32, merge_desc_i32_len)) && merge_desc_i32[0] == 9 && merge_desc_i32[4] == 1 && merge_desc_u32_len == 5 && std.sort.isSortedDescU32(std.mem.prefix(merge_desc_u32, merge_desc_u32_len)) && merge_desc_u32[0] == 9_u32 && merge_desc_u32[4] == 1_u32 && merge_desc_usize_len == 5 && std.sort.isSortedDescUsize(std.mem.prefix(merge_desc_usize, merge_desc_usize_len)) && merge_desc_usize[0] == 8_usize && merge_desc_usize[4] == 1_usize
+    if search_ok && partition_ok && partition_desc_ok && dedupe_ok && desc_ok && desc_search_ok && desc_range_ok && stable_ok && stable_desc_ok && unstable_ok && unstable_desc_ok && reverse_ok && swap_ok && rotate_ok && select_ok && merge_ok {
         check world.out.write("std search sort widths ok\n")
     }
 }

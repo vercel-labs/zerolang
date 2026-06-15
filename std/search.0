@@ -34,12 +34,158 @@ fn __zero_std_search_lower_bound_i32(items: Span<i32>, needle: i32) -> usize {
     return low
 }
 
+fn __zero_std_search_upper_bound_i32(items: Span<i32>, needle: i32) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] <= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
 fn __zero_std_search_binary_i32(items: Span<i32>, needle: i32) -> usize {
     let index: usize = __zero_std_search_lower_bound_i32(items, needle)
     if index < std.mem.len(items) && items[index] == needle {
         return index
     }
     return std.mem.len(items)
+}
+
+fn __zero_std_search_contains_sorted_i32(items: Span<i32>, needle: i32) -> Bool {
+    return __zero_std_search_binary_i32(items, needle) < std.mem.len(items)
+}
+
+fn __zero_std_search_count_sorted_i32(items: Span<i32>, needle: i32) -> usize {
+    return __zero_std_search_upper_bound_i32(items, needle) - __zero_std_search_lower_bound_i32(items, needle)
+}
+
+fn __zero_std_search_equal_range_i32(items: Span<i32>, needle: i32) -> Span<i32> {
+    let start: usize = __zero_std_search_lower_bound_i32(items, needle)
+    let end: usize = __zero_std_search_upper_bound_i32(items, needle)
+    return items[start..end]
+}
+
+fn __zero_std_search_partition_point_i32(items: Span<i32>, pivot: i32) -> usize {
+    return __zero_std_search_lower_bound_i32(items, pivot)
+}
+
+fn __zero_std_search_lower_bound_desc_i32(items: Span<i32>, needle: i32) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] > needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_search_upper_bound_desc_i32(items: Span<i32>, needle: i32) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] >= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_search_binary_desc_i32(items: Span<i32>, needle: i32) -> usize {
+    let index: usize = __zero_std_search_lower_bound_desc_i32(items, needle)
+    if index < std.mem.len(items) && items[index] == needle {
+        return index
+    }
+    return std.mem.len(items)
+}
+
+fn __zero_std_search_contains_sorted_desc_i32(items: Span<i32>, needle: i32) -> Bool {
+    return __zero_std_search_binary_desc_i32(items, needle) < std.mem.len(items)
+}
+
+fn __zero_std_search_count_sorted_desc_i32(items: Span<i32>, needle: i32) -> usize {
+    return __zero_std_search_upper_bound_desc_i32(items, needle) - __zero_std_search_lower_bound_desc_i32(items, needle)
+}
+
+fn __zero_std_search_equal_range_desc_i32(items: Span<i32>, needle: i32) -> Span<i32> {
+    let start: usize = __zero_std_search_lower_bound_desc_i32(items, needle)
+    let end: usize = __zero_std_search_upper_bound_desc_i32(items, needle)
+    return items[start..end]
+}
+
+fn __zero_std_search_partition_point_desc_i32(items: Span<i32>, pivot: i32) -> usize {
+    return __zero_std_search_lower_bound_desc_i32(items, pivot)
+}
+
+fn __zero_std_search_min_i32(items: Span<i32>) -> Maybe<i32> {
+    if std.mem.isEmpty(items) {
+        return null
+    }
+    var best: i32 = items[0]
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] < best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_min_index_i32(items: Span<i32>) -> usize {
+    if std.mem.isEmpty(items) {
+        return std.mem.len(items)
+    }
+    var best: usize = 0
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] < items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_max_i32(items: Span<i32>) -> Maybe<i32> {
+    if std.mem.isEmpty(items) {
+        return null
+    }
+    var best: i32 = items[0]
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_max_index_i32(items: Span<i32>) -> usize {
+    if std.mem.isEmpty(items) {
+        return std.mem.len(items)
+    }
+    var best: usize = 0
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
 }
 
 fn __zero_std_search_lower_bound_u32(items: Span<u32>, needle: u32) -> usize {
@@ -56,12 +202,158 @@ fn __zero_std_search_lower_bound_u32(items: Span<u32>, needle: u32) -> usize {
     return low
 }
 
+fn __zero_std_search_upper_bound_u32(items: Span<u32>, needle: u32) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] <= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
 fn __zero_std_search_binary_u32(items: Span<u32>, needle: u32) -> usize {
     let index: usize = __zero_std_search_lower_bound_u32(items, needle)
     if index < std.mem.len(items) && items[index] == needle {
         return index
     }
     return std.mem.len(items)
+}
+
+fn __zero_std_search_contains_sorted_u32(items: Span<u32>, needle: u32) -> Bool {
+    return __zero_std_search_binary_u32(items, needle) < std.mem.len(items)
+}
+
+fn __zero_std_search_count_sorted_u32(items: Span<u32>, needle: u32) -> usize {
+    return __zero_std_search_upper_bound_u32(items, needle) - __zero_std_search_lower_bound_u32(items, needle)
+}
+
+fn __zero_std_search_equal_range_u32(items: Span<u32>, needle: u32) -> Span<u32> {
+    let start: usize = __zero_std_search_lower_bound_u32(items, needle)
+    let end: usize = __zero_std_search_upper_bound_u32(items, needle)
+    return items[start..end]
+}
+
+fn __zero_std_search_partition_point_u32(items: Span<u32>, pivot: u32) -> usize {
+    return __zero_std_search_lower_bound_u32(items, pivot)
+}
+
+fn __zero_std_search_lower_bound_desc_u32(items: Span<u32>, needle: u32) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] > needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_search_upper_bound_desc_u32(items: Span<u32>, needle: u32) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] >= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_search_binary_desc_u32(items: Span<u32>, needle: u32) -> usize {
+    let index: usize = __zero_std_search_lower_bound_desc_u32(items, needle)
+    if index < std.mem.len(items) && items[index] == needle {
+        return index
+    }
+    return std.mem.len(items)
+}
+
+fn __zero_std_search_contains_sorted_desc_u32(items: Span<u32>, needle: u32) -> Bool {
+    return __zero_std_search_binary_desc_u32(items, needle) < std.mem.len(items)
+}
+
+fn __zero_std_search_count_sorted_desc_u32(items: Span<u32>, needle: u32) -> usize {
+    return __zero_std_search_upper_bound_desc_u32(items, needle) - __zero_std_search_lower_bound_desc_u32(items, needle)
+}
+
+fn __zero_std_search_equal_range_desc_u32(items: Span<u32>, needle: u32) -> Span<u32> {
+    let start: usize = __zero_std_search_lower_bound_desc_u32(items, needle)
+    let end: usize = __zero_std_search_upper_bound_desc_u32(items, needle)
+    return items[start..end]
+}
+
+fn __zero_std_search_partition_point_desc_u32(items: Span<u32>, pivot: u32) -> usize {
+    return __zero_std_search_lower_bound_desc_u32(items, pivot)
+}
+
+fn __zero_std_search_min_u32(items: Span<u32>) -> Maybe<u32> {
+    if std.mem.isEmpty(items) {
+        return null
+    }
+    var best: u32 = items[0]
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] < best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_min_index_u32(items: Span<u32>) -> usize {
+    if std.mem.isEmpty(items) {
+        return std.mem.len(items)
+    }
+    var best: usize = 0
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] < items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_max_u32(items: Span<u32>) -> Maybe<u32> {
+    if std.mem.isEmpty(items) {
+        return null
+    }
+    var best: u32 = items[0]
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_max_index_u32(items: Span<u32>) -> usize {
+    if std.mem.isEmpty(items) {
+        return std.mem.len(items)
+    }
+    var best: usize = 0
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
 }
 
 fn __zero_std_search_lower_bound_usize(items: Span<usize>, needle: usize) -> usize {
@@ -78,10 +370,156 @@ fn __zero_std_search_lower_bound_usize(items: Span<usize>, needle: usize) -> usi
     return low
 }
 
+fn __zero_std_search_upper_bound_usize(items: Span<usize>, needle: usize) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] <= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
 fn __zero_std_search_binary_usize(items: Span<usize>, needle: usize) -> usize {
     let index: usize = __zero_std_search_lower_bound_usize(items, needle)
     if index < std.mem.len(items) && items[index] == needle {
         return index
     }
     return std.mem.len(items)
+}
+
+fn __zero_std_search_contains_sorted_usize(items: Span<usize>, needle: usize) -> Bool {
+    return __zero_std_search_binary_usize(items, needle) < std.mem.len(items)
+}
+
+fn __zero_std_search_count_sorted_usize(items: Span<usize>, needle: usize) -> usize {
+    return __zero_std_search_upper_bound_usize(items, needle) - __zero_std_search_lower_bound_usize(items, needle)
+}
+
+fn __zero_std_search_equal_range_usize(items: Span<usize>, needle: usize) -> Span<usize> {
+    let start: usize = __zero_std_search_lower_bound_usize(items, needle)
+    let end: usize = __zero_std_search_upper_bound_usize(items, needle)
+    return items[start..end]
+}
+
+fn __zero_std_search_partition_point_usize(items: Span<usize>, pivot: usize) -> usize {
+    return __zero_std_search_lower_bound_usize(items, pivot)
+}
+
+fn __zero_std_search_lower_bound_desc_usize(items: Span<usize>, needle: usize) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] > needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_search_upper_bound_desc_usize(items: Span<usize>, needle: usize) -> usize {
+    var low: usize = 0
+    var high: usize = std.mem.len(items)
+    while low < high {
+        let mid: usize = low + (high - low) / 2
+        if items[mid] >= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __zero_std_search_binary_desc_usize(items: Span<usize>, needle: usize) -> usize {
+    let index: usize = __zero_std_search_lower_bound_desc_usize(items, needle)
+    if index < std.mem.len(items) && items[index] == needle {
+        return index
+    }
+    return std.mem.len(items)
+}
+
+fn __zero_std_search_contains_sorted_desc_usize(items: Span<usize>, needle: usize) -> Bool {
+    return __zero_std_search_binary_desc_usize(items, needle) < std.mem.len(items)
+}
+
+fn __zero_std_search_count_sorted_desc_usize(items: Span<usize>, needle: usize) -> usize {
+    return __zero_std_search_upper_bound_desc_usize(items, needle) - __zero_std_search_lower_bound_desc_usize(items, needle)
+}
+
+fn __zero_std_search_equal_range_desc_usize(items: Span<usize>, needle: usize) -> Span<usize> {
+    let start: usize = __zero_std_search_lower_bound_desc_usize(items, needle)
+    let end: usize = __zero_std_search_upper_bound_desc_usize(items, needle)
+    return items[start..end]
+}
+
+fn __zero_std_search_partition_point_desc_usize(items: Span<usize>, pivot: usize) -> usize {
+    return __zero_std_search_lower_bound_desc_usize(items, pivot)
+}
+
+fn __zero_std_search_min_usize(items: Span<usize>) -> Maybe<usize> {
+    if std.mem.isEmpty(items) {
+        return null
+    }
+    var best: usize = items[0]
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] < best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_min_index_usize(items: Span<usize>) -> usize {
+    if std.mem.isEmpty(items) {
+        return std.mem.len(items)
+    }
+    var best: usize = 0
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] < items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_max_usize(items: Span<usize>) -> Maybe<usize> {
+    if std.mem.isEmpty(items) {
+        return null
+    }
+    var best: usize = items[0]
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __zero_std_search_max_index_usize(items: Span<usize>) -> usize {
+    if std.mem.isEmpty(items) {
+        return std.mem.len(items)
+    }
+    var best: usize = 0
+    var index: usize = 1
+    while index < std.mem.len(items) {
+        if items[index] > items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
 }

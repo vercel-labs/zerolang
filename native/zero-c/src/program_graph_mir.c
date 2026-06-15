@@ -3754,6 +3754,9 @@ static bool ir_graph_std_search_runtime_spec(const char *callee_name, IrSearchOp
   if (ir_text_eq(callee_name, "std.search.binaryU32")) { *op = IR_SEARCH_OP_BINARY_U32; *element_type = IR_TYPE_U32; return true; }
   if (ir_text_eq(callee_name, "std.search.lowerBoundUsize")) { *op = IR_SEARCH_OP_LOWER_BOUND_USIZE; *element_type = IR_TYPE_USIZE; return true; }
   if (ir_text_eq(callee_name, "std.search.binaryUsize")) { *op = IR_SEARCH_OP_BINARY_USIZE; *element_type = IR_TYPE_USIZE; return true; }
+  if (ir_text_eq(callee_name, "std.search.upperBoundI32")) { *op = IR_SEARCH_OP_UPPER_BOUND_I32; *element_type = IR_TYPE_I32; return true; }
+  if (ir_text_eq(callee_name, "std.search.upperBoundU32")) { *op = IR_SEARCH_OP_UPPER_BOUND_U32; *element_type = IR_TYPE_U32; return true; }
+  if (ir_text_eq(callee_name, "std.search.upperBoundUsize")) { *op = IR_SEARCH_OP_UPPER_BOUND_USIZE; *element_type = IR_TYPE_USIZE; return true; }
   return false;
 }
 

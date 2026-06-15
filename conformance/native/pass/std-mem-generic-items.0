@@ -5,20 +5,82 @@ pub fn main(world: World) -> Void raises {
     let filled: usize = std.mem.fillItems(scratch[2..], 9)
     let prefix: Span<i32> = std.mem.prefix(scratch, 3)
     let tail: Span<i32> = std.mem.dropPrefix(scratch, 2)
+    let suffix: Span<i32> = std.mem.suffix(scratch, 2)
+    let head: Span<i32> = std.mem.dropSuffix(scratch, 2)
+    let window: Span<i32> = std.mem.slice(scratch, 1_usize, 2_usize)
+    let oversizedWindow: Span<i32> = std.mem.slice(scratch, 2_usize, 9_usize)
+    let emptyWindow: Span<i32> = std.mem.slice(scratch, 9_usize, 2_usize)
+    let splitBefore: Span<i32> = std.mem.splitBefore(scratch, 9)
+    let splitAfter: Span<i32> = std.mem.splitAfter(scratch, 9)
+    let splitBeforeMissing: Span<i32> = std.mem.splitBefore(scratch, 7)
+    let splitAfterMissing: Span<i32> = std.mem.splitAfter(scratch, 7)
     let scratchSpan: Span<i32> = scratch
+    let chunkCount: usize = std.mem.chunkCount(scratchSpan, 2_usize)
+    let chunkFirst: Span<i32> = std.mem.chunk(scratchSpan, 0_usize, 2_usize)
+    let chunkSecond: Span<i32> = std.mem.chunk(scratchSpan, 1_usize, 2_usize)
+    let chunkShort: Span<i32> = std.mem.chunk(scratchSpan, 1_usize, 3_usize)
+    let chunkMissing: Span<i32> = std.mem.chunk(scratchSpan, 2_usize, 2_usize)
+    let chunkZeroCount: usize = std.mem.chunkCount(scratchSpan, 0_usize)
+    let chunkZero: Span<i32> = std.mem.chunk(scratchSpan, 0_usize, 0_usize)
+    let windowCount: usize = std.mem.windowCount(scratchSpan, 2_usize)
+    let windowFirst: Span<i32> = std.mem.window(scratchSpan, 0_usize, 2_usize)
+    let windowMiddle: Span<i32> = std.mem.window(scratchSpan, 1_usize, 2_usize)
+    let windowLast: Span<i32> = std.mem.window(scratchSpan, 2_usize, 2_usize)
+    let windowMissing: Span<i32> = std.mem.window(scratchSpan, 3_usize, 2_usize)
+    let windowZeroCount: usize = std.mem.windowCount(scratchSpan, 0_usize)
+    let windowZero: Span<i32> = std.mem.window(scratchSpan, 0_usize, 0_usize)
+    let windowOversizedCount: usize = std.mem.windowCount(scratchSpan, 5_usize)
+    var cursor: usize = 0
+    let cursorStartDone: Bool = std.mem.cursorDone(scratchSpan, cursor)
+    let cursorFirst: Span<i32> = std.mem.cursorChunk(scratchSpan, cursor, 2_usize)
+    cursor = std.mem.advance(scratchSpan, cursor, 2_usize)
+    let cursorRest: Span<i32> = std.mem.remaining(scratchSpan, cursor)
+    let cursorSecond: Span<i32> = std.mem.cursorChunk(scratchSpan, cursor, 9_usize)
+    cursor = std.mem.advance(scratchSpan, cursor, 99_usize)
+    let cursorEndDone: Bool = std.mem.cursorDone(scratchSpan, cursor)
+    let cursorEmpty: Span<i32> = std.mem.remaining(scratchSpan, cursor)
     let different: [4]i32 = [1, 2, 9, 10]
     let differentSpan: Span<i32> = different
+    let shorter: [3]i32 = [1, 2, 9]
+    let shorterSpan: Span<i32> = shorter
+    let compareI32Ok: Bool = std.mem.compareI32(scratchSpan, scratchSpan) == 0 && std.mem.compareI32(scratchSpan, differentSpan) < 0 && std.mem.compareI32(differentSpan, scratchSpan) > 0 && std.mem.compareI32(shorterSpan, scratchSpan) < 0
+    let u32Left: [3]u32 = [1_u32, 2_u32, 5_u32]
+    let u32Right: [3]u32 = [1_u32, 3_u32, 1_u32]
+    let u32Short: [2]u32 = [1_u32, 2_u32]
+    let compareU32Ok: Bool = std.mem.compareU32(u32Left, u32Left) == 0 && std.mem.compareU32(u32Left, u32Right) < 0 && std.mem.compareU32(u32Right, u32Left) > 0 && std.mem.compareU32(u32Short, u32Left) < 0
+    let usizeLeft: [3]usize = [2_usize, 4_usize, 6_usize]
+    let usizeRight: [3]usize = [2_usize, 4_usize, 7_usize]
+    let usizeShort: [2]usize = [2_usize, 4_usize]
+    let compareUsizeOk: Bool = std.mem.compareUsize(usizeLeft, usizeLeft) == 0 && std.mem.compareUsize(usizeLeft, usizeRight) < 0 && std.mem.compareUsize(usizeRight, usizeLeft) > 0 && std.mem.compareUsize(usizeShort, usizeLeft) < 0
+    let bytesLeft: Span<u8> = std.mem.span("abc")
+    let bytesRight: Span<u8> = std.mem.span("abd")
+    let bytesShort: Span<u8> = std.mem.span("ab")
+    let bytesPrefix: Span<u8> = std.mem.span("ab")
+    let bytesSuffix: Span<u8> = std.mem.span("bc")
+    let compareBytesOk: Bool = std.mem.compareU8(bytesLeft, bytesLeft) == 0 && std.mem.compareU8(bytesLeft, bytesRight) < 0 && std.mem.compareBytes(bytesRight, bytesLeft) > 0 && std.mem.compareBytes(bytesShort, bytesLeft) < 0
+    let predicatesOk: Bool = std.mem.startsWith(scratchSpan, head) && !std.mem.startsWith(scratchSpan, suffix) && std.mem.endsWith(scratchSpan, suffix) && !std.mem.endsWith(scratchSpan, head) && std.mem.startsWith(bytesLeft, bytesPrefix) && std.mem.endsWith(bytesLeft, bytesSuffix)
     var bytes: [5]u8 = [0, 0, 0, 0, 0]
     let byteCopied: usize = std.mem.copy(bytes[1..], std.mem.span("xy"))
     let byteFilled: usize = std.mem.fill(bytes[3..], 122_u8)
     var words: [3]u16 = [10_u16, 20_u16, 30_u16]
     let wordFilled: usize = std.mem.fillItems(words[1..], 7_u16)
+    let wordSpan: Span<u16> = words
     let wordTail: Span<u16> = std.mem.dropPrefix(words, 1)
+    let wordSuffix: Span<u16> = std.mem.suffix(words, 2)
+    let wordBefore: Span<u16> = std.mem.splitBefore(words, 7_u16)
+    let wordAfter: Span<u16> = std.mem.splitAfter(words, 7_u16)
+    let wordChunk: Span<u16> = std.mem.chunk(wordSpan, 1_usize, 2_usize)
+    let wordWindow: Span<u16> = std.mem.window(wordSpan, 1_usize, 2_usize)
+    let wordCursor: usize = std.mem.advance(wordSpan, 0_usize, 1_usize)
+    let wordRemaining: Span<u16> = std.mem.remaining(wordSpan, wordCursor)
     let itemsOk: Bool = copied == 4 && filled == 2 && scratch[0] == 1 && scratch[1] == 2 && scratch[2] == 9 && scratch[3] == 9
-    let spansOk: Bool = std.mem.contains(prefix, 9) && !std.mem.contains(prefix, 4) && std.mem.len(tail) == 2 && !std.mem.isEmpty(tail) && std.mem.isEmpty(std.mem.dropPrefix(tail, 2)) && !std.mem.eqlBytes(scratchSpan, differentSpan)
+    let spansOk: Bool = std.mem.contains(prefix, 9) && !std.mem.contains(prefix, 4) && compareI32Ok && compareU32Ok && compareUsizeOk && compareBytesOk && predicatesOk && std.mem.len(tail) == 2 && !std.mem.isEmpty(tail) && std.mem.isEmpty(std.mem.dropPrefix(tail, 2)) && std.mem.len(suffix) == 2 && suffix[0] == 9 && suffix[1] == 9 && std.mem.len(head) == 2 && head[0] == 1 && head[1] == 2 && std.mem.len(window) == 2 && window[0] == 2 && window[1] == 9 && std.mem.len(oversizedWindow) == 2 && oversizedWindow[0] == 9 && oversizedWindow[1] == 9 && std.mem.isEmpty(emptyWindow) && std.mem.len(splitBefore) == 2 && splitBefore[0] == 1 && splitBefore[1] == 2 && std.mem.len(splitAfter) == 1 && splitAfter[0] == 9 && std.mem.len(splitBeforeMissing) == 4 && std.mem.isEmpty(splitAfterMissing) && !std.mem.eqlBytes(scratchSpan, differentSpan)
+    let chunksOk: Bool = chunkCount == 2 && std.mem.len(chunkFirst) == 2 && chunkFirst[0] == 1 && chunkFirst[1] == 2 && std.mem.len(chunkSecond) == 2 && chunkSecond[0] == 9 && chunkSecond[1] == 9 && std.mem.len(chunkShort) == 1 && chunkShort[0] == 9 && std.mem.isEmpty(chunkMissing) && chunkZeroCount == 0 && std.mem.isEmpty(chunkZero)
+    let windowsOk: Bool = windowCount == 3 && std.mem.len(windowFirst) == 2 && windowFirst[0] == 1 && windowFirst[1] == 2 && std.mem.len(windowMiddle) == 2 && windowMiddle[0] == 2 && windowMiddle[1] == 9 && std.mem.len(windowLast) == 2 && windowLast[0] == 9 && windowLast[1] == 9 && std.mem.isEmpty(windowMissing) && windowZeroCount == 0 && std.mem.isEmpty(windowZero) && windowOversizedCount == 0
+    let cursorsOk: Bool = !cursorStartDone && std.mem.len(cursorFirst) == 2 && cursorFirst[0] == 1 && cursorFirst[1] == 2 && std.mem.len(cursorRest) == 2 && cursorRest[0] == 9 && cursorRest[1] == 9 && std.mem.len(cursorSecond) == 2 && cursorSecond[0] == 9 && cursorSecond[1] == 9 && cursor == std.mem.len(scratchSpan) && cursorEndDone && std.mem.isEmpty(cursorEmpty)
     let bytesOk: Bool = byteCopied == 2 && byteFilled == 2 && bytes[0] == 0 && bytes[1] == 120 && bytes[2] == 121 && bytes[3] == 122 && bytes[4] == 122
-    let wordsOk: Bool = wordFilled == 2 && words[1] == 7_u16 && words[2] == 7_u16 && std.mem.len(wordTail) == 2 && std.mem.contains(wordTail, 7_u16)
-    if itemsOk && spansOk && bytesOk && wordsOk {
+    let wordsOk: Bool = wordFilled == 2 && words[1] == 7_u16 && words[2] == 7_u16 && std.mem.len(wordTail) == 2 && std.mem.contains(wordTail, 7_u16) && std.mem.len(wordSuffix) == 2 && wordSuffix[0] == 7_u16 && wordSuffix[1] == 7_u16 && std.mem.len(wordBefore) == 1 && wordBefore[0] == 10_u16 && std.mem.len(wordAfter) == 1 && wordAfter[0] == 7_u16 && std.mem.len(wordChunk) == 1 && wordChunk[0] == 7_u16 && std.mem.len(wordWindow) == 2 && wordWindow[0] == 7_u16 && wordWindow[1] == 7_u16 && wordCursor == 1 && std.mem.len(wordRemaining) == 2 && wordRemaining[0] == 7_u16 && wordRemaining[1] == 7_u16
+    if itemsOk && spansOk && chunksOk && windowsOk && cursorsOk && bytesOk && wordsOk {
         check world.out.write("std mem generic items ok\n")
     }
 }

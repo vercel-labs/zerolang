@@ -33,6 +33,152 @@ fn __zero_std_mem_contains<T: Type>(items: Span<T>, needle: T) -> Bool {
     return false
 }
 
+fn __zero_std_mem_compare_i32(left: Span<i32>, right: Span<i32>) -> i32 {
+    var index: usize = 0
+    let left_len: usize = std.mem.len(left)
+    let right_len: usize = std.mem.len(right)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __zero_std_mem_compare_u32(left: Span<u32>, right: Span<u32>) -> i32 {
+    var index: usize = 0
+    let left_len: usize = std.mem.len(left)
+    let right_len: usize = std.mem.len(right)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __zero_std_mem_compare_usize(left: Span<usize>, right: Span<usize>) -> i32 {
+    var index: usize = 0
+    let left_len: usize = std.mem.len(left)
+    let right_len: usize = std.mem.len(right)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __zero_std_mem_compare_u8(left: Span<u8>, right: Span<u8>) -> i32 {
+    var index: usize = 0
+    let left_len: usize = std.mem.len(left)
+    let right_len: usize = std.mem.len(right)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __zero_std_mem_compare_bytes(left: Span<u8>, right: Span<u8>) -> i32 {
+    return __zero_std_mem_compare_u8(left, right)
+}
+
+fn __zero_std_mem_starts_with<T: Type>(items: Span<T>, prefix_items: Span<T>) -> Bool {
+    let prefix_len: usize = std.mem.len(prefix_items)
+    if prefix_len > std.mem.len(items) {
+        return false
+    }
+    var index: usize = 0
+    while index < prefix_len {
+        if items[index] != prefix_items[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_mem_ends_with<T: Type>(items: Span<T>, suffix_items: Span<T>) -> Bool {
+    let suffix_len: usize = std.mem.len(suffix_items)
+    let item_len: usize = std.mem.len(items)
+    if suffix_len > item_len {
+        return false
+    }
+    let offset: usize = item_len - suffix_len
+    var index: usize = 0
+    while index < suffix_len {
+        if items[offset + index] != suffix_items[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_mem_split_before<T: Type>(items: Span<T>, delimiter: T) -> Span<T> {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] == delimiter {
+            return items[..index]
+        }
+        index = index + 1
+    }
+    return items
+}
+
+fn __zero_std_mem_split_after<T: Type>(items: Span<T>, delimiter: T) -> Span<T> {
+    var index: usize = 0
+    while index < std.mem.len(items) {
+        if items[index] == delimiter {
+            return items[index + 1..]
+        }
+        index = index + 1
+    }
+    return items[std.mem.len(items)..]
+}
+
 fn __zero_std_mem_is_empty<T: Type>(items: Span<T>) -> Bool {
     return std.mem.len(items) == 0
 }
@@ -51,4 +197,102 @@ fn __zero_std_mem_drop_prefix<T: Type>(items: Span<T>, count: usize) -> Span<T> 
         start = std.mem.len(items)
     }
     return items[start..]
+}
+
+fn __zero_std_mem_suffix<T: Type>(items: Span<T>, count: usize) -> Span<T> {
+    let length: usize = std.mem.len(items)
+    var start: usize = 0
+    if count < length {
+        start = length - count
+    }
+    return items[start..]
+}
+
+fn __zero_std_mem_drop_suffix<T: Type>(items: Span<T>, count: usize) -> Span<T> {
+    var end: usize = std.mem.len(items)
+    if count < end {
+        end = end - count
+    } else {
+        end = 0
+    }
+    return items[..end]
+}
+
+fn __zero_std_mem_slice<T: Type>(items: Span<T>, start: usize, count: usize) -> Span<T> {
+    let length: usize = std.mem.len(items)
+    var begin: usize = start
+    if begin > length {
+        begin = length
+    }
+    var end: usize = begin + count
+    if end < begin || end > length {
+        end = length
+    }
+    return items[begin..end]
+}
+
+fn __zero_std_mem_chunk_count<T: Type>(items: Span<T>, chunk_size: usize) -> usize {
+    if chunk_size == 0 {
+        return 0
+    }
+    let length: usize = std.mem.len(items)
+    let full: usize = length / chunk_size
+    if length % chunk_size == 0 {
+        return full
+    }
+    return full + 1
+}
+
+fn __zero_std_mem_chunk<T: Type>(items: Span<T>, chunk_index: usize, chunk_size: usize) -> Span<T> {
+    let count: usize = __zero_std_mem_chunk_count(items, chunk_size)
+    let length: usize = std.mem.len(items)
+    if chunk_index >= count {
+        return items[length..]
+    }
+    let start: usize = chunk_index * chunk_size
+    return __zero_std_mem_slice(items, start, chunk_size)
+}
+
+fn __zero_std_mem_window_count<T: Type>(items: Span<T>, window_size: usize) -> usize {
+    if window_size == 0 {
+        return 0
+    }
+    let length: usize = std.mem.len(items)
+    if window_size > length {
+        return 0
+    }
+    return length - window_size + 1
+}
+
+fn __zero_std_mem_window<T: Type>(items: Span<T>, window_index: usize, window_size: usize) -> Span<T> {
+    let count: usize = __zero_std_mem_window_count(items, window_size)
+    let length: usize = std.mem.len(items)
+    if window_index >= count {
+        return items[length..]
+    }
+    return __zero_std_mem_slice(items, window_index, window_size)
+}
+
+fn __zero_std_mem_advance<T: Type>(items: Span<T>, cursor: usize, count: usize) -> usize {
+    let length: usize = std.mem.len(items)
+    if cursor >= length {
+        return length
+    }
+    let next: usize = cursor + count
+    if next < cursor || next > length {
+        return length
+    }
+    return next
+}
+
+fn __zero_std_mem_cursor_done<T: Type>(items: Span<T>, cursor: usize) -> Bool {
+    return cursor >= std.mem.len(items)
+}
+
+fn __zero_std_mem_remaining<T: Type>(items: Span<T>, cursor: usize) -> Span<T> {
+    return __zero_std_mem_drop_prefix(items, cursor)
+}
+
+fn __zero_std_mem_cursor_chunk<T: Type>(items: Span<T>, cursor: usize, count: usize) -> Span<T> {
+    return __zero_std_mem_slice(items, cursor, count)
 }

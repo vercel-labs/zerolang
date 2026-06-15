@@ -6774,6 +6774,28 @@ static bool check_stdlib_mem_contains_call_expected(CheckContext *ctx, const Pro
   return true;
 }
 
+static bool check_stdlib_mem_split_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *items_actual = NULL;
+  const char *callee = resolution && resolution->callee_name ? resolution->callee_name : "std.mem.splitBefore";
+  char element_type[128];
+  if (!stdlib_readable_items_arg_element(ctx, program, expr->args.items[0], scope, diag, callee, element_type, sizeof(element_type), &items_actual) ||
+      !stdlib_reject_owned_item_element(program, scope, callee, element_type, expr->args.items[0], diag, "compare", "split around a non-owned delimiter or move owned values explicitly") ||
+      !stdlib_require_supported_item_element(program, callee, element_type, expr->args.items[0], diag)) return false;
+  char expected_items[160];
+  stdlib_span_type_for_element(expected_items, sizeof(expected_items), element_type, false);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_items, items_actual);
+  if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, element_type)) return false;
+  const char *needle_actual = expr_type(ctx, program, expr->args.items[1], scope);
+  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], element_type, needle_actual);
+  if (!types_compatible_in_scope(program, scope, element_type, needle_actual)) {
+    return set_diag_detail(diag, 3012, "std.mem split delimiter type must match item element", expr->args.items[1]->line, expr->args.items[1]->column, element_type, needle_actual, "split around a delimiter with the same element type");
+  }
+  set_expr_resolved_type(expr, expected_items);
+  z_call_resolution_set_return_type(resolution, expected_items);
+  stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
 static bool check_stdlib_mem_slice_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
   const char *items_actual = NULL;
   char element_type[128];
@@ -6784,14 +6806,40 @@ static bool check_stdlib_mem_slice_call_expected(CheckContext *ctx, const Progra
   stdlib_span_type_for_element(result_type, sizeof(result_type), element_type, false);
   stdlib_span_type_for_element(expected_items, sizeof(expected_items), element_type, false);
   record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_items, items_actual);
-  if (!check_expr_expected(ctx, program, expr->args.items[1], scope, diag, "usize")) return false;
-  const char *count_actual = expr_type(ctx, program, expr->args.items[1], scope);
-  record_stdlib_arg_fact(resolution, 1, expr->args.items[1], "usize", count_actual);
-  if (!types_compatible_in_scope(program, scope, "usize", count_actual)) {
-    return set_diag_detail(diag, 3028, "std.mem slice count must be usize", expr->args.items[1]->line, expr->args.items[1]->column, "usize count", count_actual, "pass a usize count");
+  for (size_t i = 1; i < expr->args.len; i++) {
+    if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, "usize")) return false;
+    const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
+    record_stdlib_arg_fact(resolution, i, expr->args.items[i], "usize", actual);
+    if (!types_compatible_in_scope(program, scope, "usize", actual)) {
+      return set_diag_detail(diag, 3028, "std.mem span view bounds must be usize", expr->args.items[i]->line, expr->args.items[i]->column, "usize", actual, "pass usize indices and counts");
+    }
   }
   set_expr_resolved_type(expr, result_type);
   z_call_resolution_set_return_type(resolution, result_type);
+  stdlib_record_single_type_arg(expr, element_type);
+  return true;
+}
+
+static bool check_stdlib_mem_span_usize_call_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, ZCallResolution *resolution) {
+  const char *items_actual = NULL;
+  char element_type[128];
+  const char *name = resolution && resolution->callee_name ? resolution->callee_name : "std.mem helper";
+  if (!stdlib_readable_items_arg_element(ctx, program, expr->args.items[0], scope, diag, name, element_type, sizeof(element_type), &items_actual) ||
+      !stdlib_require_supported_item_element(program, name, element_type, expr->args.items[0], diag)) return false;
+  char expected_items[160];
+  stdlib_span_type_for_element(expected_items, sizeof(expected_items), element_type, false);
+  record_stdlib_arg_fact(resolution, 0, expr->args.items[0], expected_items, items_actual);
+  for (size_t i = 1; i < expr->args.len; i++) {
+    if (!check_expr_expected(ctx, program, expr->args.items[i], scope, diag, "usize")) return false;
+    const char *actual = expr_type(ctx, program, expr->args.items[i], scope);
+    record_stdlib_arg_fact(resolution, i, expr->args.items[i], "usize", actual);
+    if (!types_compatible_in_scope(program, scope, "usize", actual)) {
+      return set_diag_detail(diag, 3028, "std.mem helper bounds must be usize", expr->args.items[i]->line, expr->args.items[i]->column, "usize", actual, "pass usize indices and counts");
+    }
+  }
+  const char *return_type = resolution && resolution->return_type ? resolution->return_type : "usize";
+  set_expr_resolved_type(expr, return_type);
+  z_call_resolution_set_return_type(resolution, return_type);
   stdlib_record_single_type_arg(expr, element_type);
   return true;
 }
@@ -7816,8 +7864,12 @@ static bool check_stdlib_known_call_expected(CheckContext *ctx, const Program *p
     case Z_STD_HELPER_KIND_MEM_CONTAINS:
     case Z_STD_HELPER_KIND_MEM_IS_EMPTY:
       return check_stdlib_mem_contains_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_MEM_SPLIT:
+      return check_stdlib_mem_split_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_MEM_SLICE:
       return check_stdlib_mem_slice_call_expected(ctx, program, expr, scope, diag, resolution);
+    case Z_STD_HELPER_KIND_MEM_SPAN_USIZE:
+      return check_stdlib_mem_span_usize_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_COLLECTIONS_PUSH:
       return check_stdlib_collections_push_call_expected(ctx, program, expr, scope, diag, resolution);
     case Z_STD_HELPER_KIND_COLLECTIONS_APPEND:

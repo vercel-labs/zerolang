@@ -1,7 +1,8 @@
 ## When To Use std.mem
 
-In Zerolang, use `std.mem` for spans, copy/fill, fixed-buffer allocators, explicit
-byte buffers, and memory-budget-visible collection foundations.
+In Zerolang, use `std.mem` for spans, clamped span views, copy/fill,
+fixed-buffer allocators, explicit byte buffers, and memory-budget-visible
+collection foundations.
 
 Runnable today:
 
@@ -17,9 +18,29 @@ types: `Bool`, `u8`, `u16`, `usize`, `i32`, `u32`, `i64`, and `u64`.
 | `std.mem.eql(a, b)` | `Bool` | Compares string-backed byte inputs. |
 | `std.mem.span(value)` | `Span<u8>` | Builds a native `Span<u8>` view over a string literal. |
 | `std.mem.contains(items, needle)` | `Bool` | Searches readable contiguous non-owned scalar `T` storage for a matching value. |
+| `std.mem.compareI32(left, right)` | `i32` | Lexicographically compares two `Span<i32>` values and returns `-1`, `0`, or `1`. |
+| `std.mem.compareU8(left, right)` | `i32` | Lexicographically compares two `Span<u8>` values and returns `-1`, `0`, or `1`. |
+| `std.mem.compareBytes(left, right)` | `i32` | Alias-style byte lexicographic comparison for `Span<u8>` values. |
+| `std.mem.compareU32(left, right)` | `i32` | Lexicographically compares two `Span<u32>` values and returns `-1`, `0`, or `1`. |
+| `std.mem.compareUsize(left, right)` | `i32` | Lexicographically compares two `Span<usize>` values and returns `-1`, `0`, or `1`. |
+| `std.mem.startsWith(items, prefix)` | `Bool` | Checks whether a scalar span begins with a matching prefix span. |
+| `std.mem.endsWith(items, suffix)` | `Bool` | Checks whether a scalar span ends with a matching suffix span. |
+| `std.mem.splitBefore(items, delimiter)` | `Span<T>` | Returns the read-only scalar item prefix before the first delimiter, or the full span when absent. |
+| `std.mem.splitAfter(items, delimiter)` | `Span<T>` | Returns the read-only scalar item suffix after the first delimiter, or an empty span when absent. |
 | `std.mem.isEmpty(items)` | `Bool` | Reports whether readable contiguous scalar item storage has zero items. |
+| `std.mem.chunkCount(items, chunkSize)` | `usize` | Returns the number of non-overlapping chunks needed to cover the span, or `0` when `chunkSize` is zero. |
+| `std.mem.chunk(items, chunkIndex, chunkSize)` | `Span<T>` | Returns a clamped read-only scalar item chunk by zero-based chunk index. |
+| `std.mem.windowCount(items, windowSize)` | `usize` | Returns the number of overlapping fixed-size windows available in a span, or `0` when the size is zero or larger than the span. |
+| `std.mem.window(items, windowIndex, windowSize)` | `Span<T>` | Returns an overlapping read-only scalar item window by zero-based window index. |
+| `std.mem.advance(items, cursor, count)` | `usize` | Returns a clamped cursor advanced by at most `count` items. |
+| `std.mem.cursorDone(items, cursor)` | `Bool` | Reports whether a cursor is at or past the end of a span. |
+| `std.mem.remaining(items, cursor)` | `Span<T>` | Returns the clamped read-only scalar item view from `cursor` to the end. |
+| `std.mem.cursorChunk(items, cursor, count)` | `Span<T>` | Returns a clamped read-only scalar item window beginning at `cursor`. |
 | `std.mem.prefix(items, count)` | `Span<T>` | Returns a clamped read-only scalar item prefix view. |
 | `std.mem.dropPrefix(items, count)` | `Span<T>` | Returns a clamped read-only scalar item view after the first `count` items. |
+| `std.mem.suffix(items, count)` | `Span<T>` | Returns a clamped read-only scalar item suffix view. |
+| `std.mem.dropSuffix(items, count)` | `Span<T>` | Returns a clamped read-only scalar item view before the last `count` items. |
+| `std.mem.slice(items, start, count)` | `Span<T>` | Returns a clamped read-only scalar item window beginning at `start`. |
 | `std.mem.len(bytes)` | `usize` | Returns the length of a fixed array, `Span<T>`, or `MutSpan<T>`. |
 | `std.mem.get(bytes, index)` | `Maybe<T>` | Reads one indexed element from an array/span-like value when the index is in bounds. |
 | `std.mem.eqlBytes(a, b)` | `Bool` | Compares two `Span<T>`/`MutSpan<T>` values with the same element type. |
@@ -70,8 +91,19 @@ pub fn main(world: World) -> Void raises {
     let intSpan: MutSpan<i32> = ints
     let filled: usize = std.mem.fillItems(intSpan, 7)
     let prefix: Span<i32> = std.mem.prefix(intSpan, 2)
+    let suffix: Span<i32> = std.mem.suffix(intSpan, 2)
+    let middle: Span<i32> = std.mem.slice(intSpan, 1, 1)
+    let before: Span<i32> = std.mem.splitBefore(intSpan, 7)
+    let after: Span<i32> = std.mem.splitAfter(intSpan, 7)
+    let chunk: Span<i32> = std.mem.chunk(intSpan, 1_usize, 2_usize)
+    let sliding: Span<i32> = std.mem.window(intSpan, 1_usize, 2_usize)
+    let cursor: usize = std.mem.advance(intSpan, 0_usize, 2_usize)
+    let rest: Span<i32> = std.mem.remaining(intSpan, cursor)
     let view: SliceView = SliceView { bytes: bytes, values: intSpan }
-    if copied == 11 && filled == 3 && std.mem.len(view.bytes) == 11 && std.mem.eqlBytes(view.bytes, same) && std.mem.len(view.values) == 3 && std.mem.contains(view.values, 7) && std.mem.len(prefix) == 2 {
+    let ordered: Bool = std.mem.compareI32(prefix, suffix) == 0
+    let starts: Bool = std.mem.startsWith(view.bytes, std.mem.span("zero"))
+    let ends: Bool = std.mem.endsWith(view.bytes, std.mem.span("memory"))
+    if copied == 11 && filled == 3 && ordered && starts && ends && std.mem.len(view.bytes) == 11 && std.mem.eqlBytes(view.bytes, same) && std.mem.len(view.values) == 3 && std.mem.contains(view.values, 7) && std.mem.isEmpty(before) && std.mem.len(after) == 2 && std.mem.len(prefix) == 2 && std.mem.len(suffix) == 2 && std.mem.len(middle) == 1 && std.mem.len(chunk) == 1 && std.mem.len(sliding) == 2 && std.mem.len(rest) == 1 && !std.mem.cursorDone(intSpan, cursor) {
         check world.out.write("memory type forms runnable\n")
     }
 }

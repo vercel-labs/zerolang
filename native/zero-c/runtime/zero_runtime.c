@@ -891,6 +891,17 @@ static size_t zero_search_lower_bound_i32(const int32_t *items, size_t len, int3
   return low;
 }
 
+static size_t zero_search_upper_bound_i32(const int32_t *items, size_t len, int32_t needle) {
+  size_t low = 0;
+  size_t high = len;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2u;
+    if (items[mid] <= needle) low = mid + 1u;
+    else high = mid;
+  }
+  return low;
+}
+
 static size_t zero_search_lower_bound_u32(const uint32_t *items, size_t len, uint32_t needle) {
   size_t low = 0;
   size_t high = len;
@@ -902,12 +913,34 @@ static size_t zero_search_lower_bound_u32(const uint32_t *items, size_t len, uin
   return low;
 }
 
+static size_t zero_search_upper_bound_u32(const uint32_t *items, size_t len, uint32_t needle) {
+  size_t low = 0;
+  size_t high = len;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2u;
+    if (items[mid] <= needle) low = mid + 1u;
+    else high = mid;
+  }
+  return low;
+}
+
 static size_t zero_search_lower_bound_usize(const uint64_t *items, size_t len, uint64_t needle) {
   size_t low = 0;
   size_t high = len;
   while (low < high) {
     size_t mid = low + (high - low) / 2u;
     if (items[mid] < needle) low = mid + 1u;
+    else high = mid;
+  }
+  return low;
+}
+
+static size_t zero_search_upper_bound_usize(const uint64_t *items, size_t len, uint64_t needle) {
+  size_t low = 0;
+  size_t high = len;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2u;
+    if (items[mid] <= needle) low = mid + 1u;
     else high = mid;
   }
   return low;
@@ -934,6 +967,12 @@ uint64_t zero_search_op(ZeroByteView items, int64_t needle, uint32_t op) {
       size_t index = zero_search_lower_bound_usize((const uint64_t *)items.ptr, items.len, (uint64_t)needle);
       return index < items.len && ((const uint64_t *)items.ptr)[index] == (uint64_t)needle ? index : items.len;
     }
+    case ZERO_SEARCH_OP_UPPER_BOUND_I32:
+      return zero_search_upper_bound_i32((const int32_t *)items.ptr, items.len, (int32_t)needle);
+    case ZERO_SEARCH_OP_UPPER_BOUND_U32:
+      return zero_search_upper_bound_u32((const uint32_t *)items.ptr, items.len, (uint32_t)needle);
+    case ZERO_SEARCH_OP_UPPER_BOUND_USIZE:
+      return zero_search_upper_bound_usize((const uint64_t *)items.ptr, items.len, (uint64_t)needle);
     default:
       return 0;
   }

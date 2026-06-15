@@ -1920,6 +1920,9 @@ static const char *mir_verify_search_op_name(IrSearchOp op) {
     case IR_SEARCH_OP_BINARY_U32: return "std.search.binaryU32";
     case IR_SEARCH_OP_LOWER_BOUND_USIZE: return "std.search.lowerBoundUsize";
     case IR_SEARCH_OP_BINARY_USIZE: return "std.search.binaryUsize";
+    case IR_SEARCH_OP_UPPER_BOUND_I32: return "std.search.upperBoundI32";
+    case IR_SEARCH_OP_UPPER_BOUND_U32: return "std.search.upperBoundU32";
+    case IR_SEARCH_OP_UPPER_BOUND_USIZE: return "std.search.upperBoundUsize";
   }
   return "std.search";
 }
@@ -1928,12 +1931,15 @@ static IrTypeKind mir_verify_search_op_element(IrSearchOp op) {
   switch (op) {
     case IR_SEARCH_OP_LOWER_BOUND_I32:
     case IR_SEARCH_OP_BINARY_I32:
+    case IR_SEARCH_OP_UPPER_BOUND_I32:
       return IR_TYPE_I32;
     case IR_SEARCH_OP_LOWER_BOUND_U32:
     case IR_SEARCH_OP_BINARY_U32:
+    case IR_SEARCH_OP_UPPER_BOUND_U32:
       return IR_TYPE_U32;
     case IR_SEARCH_OP_LOWER_BOUND_USIZE:
     case IR_SEARCH_OP_BINARY_USIZE:
+    case IR_SEARCH_OP_UPPER_BOUND_USIZE:
       return IR_TYPE_USIZE;
   }
   return IR_TYPE_UNSUPPORTED;

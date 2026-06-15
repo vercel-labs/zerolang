@@ -1990,6 +1990,9 @@ static bool ir_std_search_runtime_spec(const char *callee_name, IrSearchOp *op, 
   if (strcmp(callee_name, "std.search.binaryU32") == 0) { *op = IR_SEARCH_OP_BINARY_U32; *element_type = IR_TYPE_U32; return true; }
   if (strcmp(callee_name, "std.search.lowerBoundUsize") == 0) { *op = IR_SEARCH_OP_LOWER_BOUND_USIZE; *element_type = IR_TYPE_USIZE; return true; }
   if (strcmp(callee_name, "std.search.binaryUsize") == 0) { *op = IR_SEARCH_OP_BINARY_USIZE; *element_type = IR_TYPE_USIZE; return true; }
+  if (strcmp(callee_name, "std.search.upperBoundI32") == 0) { *op = IR_SEARCH_OP_UPPER_BOUND_I32; *element_type = IR_TYPE_I32; return true; }
+  if (strcmp(callee_name, "std.search.upperBoundU32") == 0) { *op = IR_SEARCH_OP_UPPER_BOUND_U32; *element_type = IR_TYPE_U32; return true; }
+  if (strcmp(callee_name, "std.search.upperBoundUsize") == 0) { *op = IR_SEARCH_OP_UPPER_BOUND_USIZE; *element_type = IR_TYPE_USIZE; return true; }
   return false;
 }
 
