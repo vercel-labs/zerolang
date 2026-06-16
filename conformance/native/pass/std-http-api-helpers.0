@@ -106,6 +106,9 @@ export c fn main() -> i32 {
     if !std.http.pathMatchesPattern("/users/42/books", "/users/:id/*") || std.http.pathMatchesPattern("/users", "/users/:id") {
         return 62
     }
+    if std.http.pathMatchesPattern("/admin/users/delete", "/admin/*/delete") {
+        return 105
+    }
     let content_length: Maybe<usize> = std.http.requestContentLength(routed_request)
     let routed_content_type: Maybe<Span<u8>> = std.http.requestContentType(routed_request)
     if !content_length.has || content_length.value != 15 || !routed_content_type.has || !std.mem.eql(routed_content_type.value, "application/json") {
@@ -125,6 +128,10 @@ export c fn main() -> i32 {
     let wildcard_q_zero_request: Span<u8> = "GET /plain\naccept: */*;q=0, text/html;q=1\n\n"
     if std.http.requestAccepts(wildcard_q_zero_request, "application/json") || !std.http.requestAccepts(wildcard_q_zero_request, "text/html") {
         return 104
+    }
+    let exact_deny_after_wildcard_request: Span<u8> = "GET /plain\naccept: */*, application/json;q=0\n\n"
+    if std.http.requestAcceptsJson(exact_deny_after_wildcard_request) || !std.http.requestAccepts(exact_deny_after_wildcard_request, "text/html") {
+        return 106
     }
     let routed_name: Maybe<Span<u8>> = std.http.requestJsonField(routed_request, "name", 64)
     if !routed_name.has || !std.mem.eql(routed_name.value, "\"zero\"") {

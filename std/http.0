@@ -942,6 +942,14 @@ fn __zero_std_http_path_matches_pattern(path: Span<u8>, pattern: Span<u8>) -> Bo
     if last_pattern.has {
         wildcard_tail = std.mem.eql(last_pattern.value, "*")
     }
+    var pattern_index: usize = 0
+    while pattern_index + 1 < pattern_count {
+        let pattern_segment: Maybe<Span<u8>> = __zero_std_http_path_segment(pattern, pattern_index)
+        if pattern_segment.has && std.mem.eql(pattern_segment.value, "*") {
+            return false
+        }
+        pattern_index = pattern_index + 1
+    }
     if wildcard_tail {
         if path_count < pattern_count - 1 {
             return false
@@ -1091,24 +1099,18 @@ fn __zero_std_http_accept_q_allows(item: Span<u8>) -> Bool {
     return true
 }
 
-fn __zero_std_http_media_range_matches(range: Span<u8>, media: Span<u8>) -> Bool {
+fn __zero_std_http_media_range_specificity(range: Span<u8>, media: Span<u8>) -> usize {
     let item: Span<u8> = std.str.trimAscii(range)
     if std.mem.len(item) == 0 {
-        return false
-    }
-    if !__zero_std_http_accept_q_allows(item) {
-        return false
+        return 0
     }
     var end: usize = 0
     while end < std.mem.len(item) && item[end] != 59_u8 {
         end = end + 1
     }
     let value: Span<u8> = std.str.trimAscii(item[..end])
-    if std.mem.eql(value, "*/*") {
-        return true
-    }
     if std.str.eqlIgnoreAsciiCase(value, media) {
-        return true
+        return 3
     }
     var slash: usize = 0
     while slash < std.mem.len(value) && value[slash] != 47_u8 {
@@ -1116,10 +1118,15 @@ fn __zero_std_http_media_range_matches(range: Span<u8>, media: Span<u8>) -> Bool
     }
     if slash + 2 == std.mem.len(value) && value[slash + 1] == 42_u8 {
         if std.mem.len(media) > slash && media[slash] == 47_u8 {
-            return std.str.eqlIgnoreAsciiCase(value[..slash], media[..slash])
+            if std.str.eqlIgnoreAsciiCase(value[..slash], media[..slash]) {
+                return 2
+            }
         }
     }
-    return false
+    if std.mem.eql(value, "*/*") {
+        return 1
+    }
+    return 0
 }
 
 fn __zero_std_http_request_accepts(request: Span<u8>, media: Span<u8>) -> Bool {
@@ -1131,20 +1138,27 @@ fn __zero_std_http_request_accepts(request: Span<u8>, media: Span<u8>) -> Bool {
         return true
     }
     var start: usize = 0
+    var best_specificity: usize = 0
+    var best_allowed: Bool = false
     while start <= std.mem.len(header.value) {
         var end: usize = start
         while end < std.mem.len(header.value) && header.value[end] != 44_u8 {
             end = end + 1
         }
-        if __zero_std_http_media_range_matches(header.value[start..end], media) {
-            return true
+        let item: Span<u8> = header.value[start..end]
+        let specificity: usize = __zero_std_http_media_range_specificity(item, media)
+        if specificity > best_specificity {
+            best_specificity = specificity
+            best_allowed = __zero_std_http_accept_q_allows(std.str.trimAscii(item))
+        } else if specificity == best_specificity && specificity > 0 && !best_allowed {
+            best_allowed = __zero_std_http_accept_q_allows(std.str.trimAscii(item))
         }
         if end == std.mem.len(header.value) {
-            return false
+            return best_specificity > 0 && best_allowed
         }
         start = end + 1
     }
-    return false
+    return best_specificity > 0 && best_allowed
 }
 
 fn __zero_std_http_request_accepts_json(request: Span<u8>) -> Bool {
