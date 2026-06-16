@@ -541,8 +541,12 @@ fn __zero_std_toml_value_valid(value: Span<u8>) -> Bool {
     if std.mem.eql(value, "true") || std.mem.eql(value, "false") {
         return true
     }
-    let parsed: Maybe<i32> = std.parse.parseI32(value)
-    return parsed.has
+    let signed: Maybe<i32> = std.parse.parseI32(value)
+    if signed.has {
+        return true
+    }
+    let unsigned: Maybe<u32> = std.parse.parseU32(value)
+    return unsigned.has
 }
 
 fn __zero_std_toml_write_span(buffer: MutSpan<u8>, cursor: usize, bytes: Span<u8>) -> Maybe<usize> {
