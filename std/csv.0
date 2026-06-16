@@ -1,0 +1,373 @@
+fn csv_is_comma(byte: u8) -> Bool {
+    return byte == 44_u8
+}
+
+fn csv_is_quote(byte: u8) -> Bool {
+    return byte == 34_u8
+}
+
+fn csv_is_lf(byte: u8) -> Bool {
+    return byte == 10_u8
+}
+
+fn csv_is_cr(byte: u8) -> Bool {
+    return byte == 13_u8
+}
+
+fn csv_field_needs_quotes(field: Span<u8>) -> Bool {
+    if std.mem.len(field) == 0_usize {
+        return false
+    }
+    var index: usize = 0
+    while index < std.mem.len(field) {
+        let byte: u8 = field[index]
+        if csv_is_comma(byte) || csv_is_quote(byte) || csv_is_lf(byte) || csv_is_cr(byte) {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn csv_encoded_field_len(field: Span<u8>) -> usize {
+    if !csv_field_needs_quotes(field) {
+        return std.mem.len(field)
+    }
+    var length: usize = 2
+    var index: usize = 0
+    while index < std.mem.len(field) {
+        length = length + 1
+        if csv_is_quote(field[index]) {
+            length = length + 1
+        }
+        index = index + 1
+    }
+    return length
+}
+
+fn csv_record_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
+    if start > std.mem.len(bytes) {
+        return null
+    }
+    var index: usize = start
+    var in_quotes: Bool = false
+    var after_quote: Bool = false
+    var at_field_start: Bool = true
+    while index < std.mem.len(bytes) {
+        let byte: u8 = bytes[index]
+        if in_quotes {
+            if csv_is_quote(byte) {
+                if index + 1 < std.mem.len(bytes) && csv_is_quote(bytes[index + 1]) {
+                    index = index + 2
+                } else {
+                    in_quotes = false
+                    after_quote = true
+                    index = index + 1
+                }
+            } else {
+                index = index + 1
+            }
+        } else if after_quote {
+            if csv_is_comma(byte) {
+                after_quote = false
+                at_field_start = true
+                index = index + 1
+            } else if csv_is_lf(byte) || csv_is_cr(byte) {
+                return index
+            } else {
+                return null
+            }
+        } else if at_field_start && csv_is_quote(byte) {
+            in_quotes = true
+            at_field_start = false
+            index = index + 1
+        } else if csv_is_comma(byte) {
+            at_field_start = true
+            index = index + 1
+        } else if csv_is_lf(byte) || csv_is_cr(byte) {
+            return index
+        } else if csv_is_quote(byte) {
+            return null
+        } else {
+            at_field_start = false
+            index = index + 1
+        }
+    }
+    if in_quotes {
+        return null
+    }
+    return std.mem.len(bytes)
+}
+
+fn csv_next_record_start(bytes: Span<u8>, end: usize) -> usize {
+    if end >= std.mem.len(bytes) {
+        return std.mem.len(bytes)
+    }
+    if csv_is_cr(bytes[end]) && end + 1 < std.mem.len(bytes) && csv_is_lf(bytes[end + 1]) {
+        return end + 2
+    }
+    return end + 1
+}
+
+fn csv_valid(bytes: Span<u8>) -> Bool {
+    var start: usize = 0
+    while start < std.mem.len(bytes) {
+        let end: Maybe<usize> = csv_record_end(bytes, start)
+        if !end.has {
+            return false
+        }
+        let fields: Maybe<usize> = csv_field_count(bytes[start..end.value])
+        if !fields.has {
+            return false
+        }
+        start = csv_next_record_start(bytes, end.value)
+    }
+    return true
+}
+
+fn csv_record_count(bytes: Span<u8>) -> Maybe<usize> {
+    var count: usize = 0
+    var start: usize = 0
+    while start < std.mem.len(bytes) {
+        let end: Maybe<usize> = csv_record_end(bytes, start)
+        if !end.has {
+            return null
+        }
+        let fields: Maybe<usize> = csv_field_count(bytes[start..end.value])
+        if !fields.has {
+            return null
+        }
+        count = count + 1
+        start = csv_next_record_start(bytes, end.value)
+    }
+    return count
+}
+
+fn csv_record(bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    var count: usize = 0
+    var start: usize = 0
+    while start < std.mem.len(bytes) {
+        let end: Maybe<usize> = csv_record_end(bytes, start)
+        if !end.has {
+            return null
+        }
+        let fields: Maybe<usize> = csv_field_count(bytes[start..end.value])
+        if !fields.has {
+            return null
+        }
+        if count == ordinal {
+            return bytes[start..end.value]
+        }
+        count = count + 1
+        start = csv_next_record_start(bytes, end.value)
+    }
+    return null
+}
+
+fn csv_field_count(record: Span<u8>) -> Maybe<usize> {
+    var count: usize = 1
+    var index: usize = 0
+    var in_quotes: Bool = false
+    var after_quote: Bool = false
+    var at_field_start: Bool = true
+    while index < std.mem.len(record) {
+        let byte: u8 = record[index]
+        if in_quotes {
+            if csv_is_quote(byte) {
+                if index + 1 < std.mem.len(record) && csv_is_quote(record[index + 1]) {
+                    index = index + 2
+                } else {
+                    in_quotes = false
+                    after_quote = true
+                    index = index + 1
+                }
+            } else {
+                index = index + 1
+            }
+        } else if after_quote {
+            if csv_is_comma(byte) {
+                count = count + 1
+                after_quote = false
+                at_field_start = true
+                index = index + 1
+            } else {
+                return null
+            }
+        } else if at_field_start && csv_is_quote(byte) {
+            in_quotes = true
+            at_field_start = false
+            index = index + 1
+        } else if csv_is_comma(byte) {
+            count = count + 1
+            at_field_start = true
+            index = index + 1
+        } else if csv_is_lf(byte) || csv_is_cr(byte) || csv_is_quote(byte) {
+            return null
+        } else {
+            at_field_start = false
+            index = index + 1
+        }
+    }
+    if in_quotes {
+        return null
+    }
+    return count
+}
+
+fn csv_field(buffer: MutSpan<u8>, record: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    var field_index: usize = 0
+    var input: usize = 0
+    while input <= std.mem.len(record) {
+        var output: usize = 0
+        if input < std.mem.len(record) && csv_is_quote(record[input]) {
+            input = input + 1
+            while input < std.mem.len(record) {
+                let byte: u8 = record[input]
+                if csv_is_quote(byte) {
+                    if input + 1 < std.mem.len(record) && csv_is_quote(record[input + 1]) {
+                        if field_index == ordinal {
+                            if output >= std.mem.len(buffer) {
+                                return null
+                            }
+                            buffer[output] = 34_u8
+                            output = output + 1
+                        }
+                        input = input + 2
+                    } else {
+                        input = input + 1
+                        if input < std.mem.len(record) && !csv_is_comma(record[input]) {
+                            return null
+                        }
+                        if field_index == ordinal {
+                            return buffer[..output]
+                        }
+                        if input < std.mem.len(record) {
+                            input = input + 1
+                        }
+                        break
+                    }
+                } else {
+                    if field_index == ordinal {
+                        if output >= std.mem.len(buffer) {
+                            return null
+                        }
+                        buffer[output] = byte
+                        output = output + 1
+                    }
+                    input = input + 1
+                }
+            }
+            if input >= std.mem.len(record) {
+                return null
+            }
+        } else {
+            while input < std.mem.len(record) && !csv_is_comma(record[input]) {
+                let byte: u8 = record[input]
+                if csv_is_quote(byte) || csv_is_lf(byte) || csv_is_cr(byte) {
+                    return null
+                }
+                if field_index == ordinal {
+                    if output >= std.mem.len(buffer) {
+                        return null
+                    }
+                    buffer[output] = byte
+                    output = output + 1
+                }
+                input = input + 1
+            }
+            if field_index == ordinal {
+                return buffer[..output]
+            }
+            if input < std.mem.len(record) {
+                input = input + 1
+            }
+        }
+        field_index = field_index + 1
+    }
+    return null
+}
+
+fn csv_write_field(buffer: MutSpan<u8>, field: Span<u8>) -> Maybe<Span<u8>> {
+    let length: usize = csv_encoded_field_len(field)
+    if length > std.mem.len(buffer) {
+        return null
+    }
+    if !csv_field_needs_quotes(field) {
+        var index: usize = 0
+        while index < std.mem.len(field) {
+            buffer[index] = field[index]
+            index = index + 1
+        }
+        return buffer[..std.mem.len(field)]
+    }
+    var output: usize = 0
+    buffer[output] = 34_u8
+    output = output + 1
+    var input: usize = 0
+    while input < std.mem.len(field) {
+        let byte: u8 = field[input]
+        buffer[output] = byte
+        output = output + 1
+        if csv_is_quote(byte) {
+            buffer[output] = byte
+            output = output + 1
+        }
+        input = input + 1
+    }
+    buffer[output] = 34_u8
+    return buffer[..output + 1]
+}
+
+fn csv_write_record2(buffer: MutSpan<u8>, left: Span<u8>, right: Span<u8>) -> Maybe<Span<u8>> {
+    let left_len: usize = csv_encoded_field_len(left)
+    let right_len: usize = csv_encoded_field_len(right)
+    let total: usize = left_len + 1 + right_len + 1
+    if total > std.mem.len(buffer) {
+        return null
+    }
+    let left_out: Maybe<Span<u8>> = csv_write_field(buffer, left)
+    if !left_out.has {
+        return null
+    }
+    var offset: usize = std.mem.len(left_out.value)
+    buffer[offset] = 44_u8
+    offset = offset + 1
+    let right_out: Maybe<Span<u8>> = csv_write_field(buffer[offset..], right)
+    if !right_out.has {
+        return null
+    }
+    offset = offset + std.mem.len(right_out.value)
+    buffer[offset] = 10_u8
+    return buffer[..offset + 1]
+}
+
+fn csv_write_record3(buffer: MutSpan<u8>, first: Span<u8>, second: Span<u8>, third: Span<u8>) -> Maybe<Span<u8>> {
+    let first_len: usize = csv_encoded_field_len(first)
+    let second_len: usize = csv_encoded_field_len(second)
+    let third_len: usize = csv_encoded_field_len(third)
+    let total: usize = first_len + 1 + second_len + 1 + third_len + 1
+    if total > std.mem.len(buffer) {
+        return null
+    }
+    let first_out: Maybe<Span<u8>> = csv_write_field(buffer, first)
+    if !first_out.has {
+        return null
+    }
+    var offset: usize = std.mem.len(first_out.value)
+    buffer[offset] = 44_u8
+    offset = offset + 1
+    let second_out: Maybe<Span<u8>> = csv_write_field(buffer[offset..], second)
+    if !second_out.has {
+        return null
+    }
+    offset = offset + std.mem.len(second_out.value)
+    buffer[offset] = 44_u8
+    offset = offset + 1
+    let third_out: Maybe<Span<u8>> = csv_write_field(buffer[offset..], third)
+    if !third_out.has {
+        return null
+    }
+    offset = offset + std.mem.len(third_out.value)
+    buffer[offset] = 10_u8
+    return buffer[..offset + 1]
+}

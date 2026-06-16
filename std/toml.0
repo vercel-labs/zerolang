@@ -132,12 +132,203 @@ fn __zero_std_toml_u32(bytes: Span<u8>, key: Span<u8>) -> Maybe<u32> {
     return std.parse.parseU32(raw.value)
 }
 
+fn __zero_std_toml_i32(bytes: Span<u8>, key: Span<u8>) -> Maybe<i32> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_field(bytes, key)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseI32(raw.value)
+}
+
 fn __zero_std_toml_bool(bytes: Span<u8>, key: Span<u8>) -> Maybe<Bool> {
     let raw: Maybe<Span<u8>> = __zero_std_toml_field(bytes, key)
     if !raw.has {
         return null
     }
     return std.parse.parseBool(raw.value)
+}
+
+fn __zero_std_toml_array_count(value: Span<u8>) -> Maybe<usize> {
+    if !__zero_std_toml_array_valid(value) {
+        return null
+    }
+    var count: usize = 0
+    var index: usize = 1
+    let end: usize = std.mem.len(value) - 1
+    while index < end {
+        index = __zero_std_toml_skip_ws(value, index, end)
+        if index == end {
+            return count
+        }
+        let item_end: Maybe<usize> = __zero_std_toml_array_item_end(value, index, end)
+        if !item_end.has {
+            return null
+        }
+        count = count + 1
+        index = item_end.value
+        index = __zero_std_toml_skip_ws(value, index, end)
+        if index < end {
+            index = index + 1
+        }
+    }
+    return count
+}
+
+fn __zero_std_toml_array_value(value: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    if !__zero_std_toml_array_valid(value) {
+        return null
+    }
+    var count: usize = 0
+    var index: usize = 1
+    let end: usize = std.mem.len(value) - 1
+    while index < end {
+        index = __zero_std_toml_skip_ws(value, index, end)
+        if index == end {
+            return null
+        }
+        let item_end: Maybe<usize> = __zero_std_toml_array_item_end(value, index, end)
+        if !item_end.has {
+            return null
+        }
+        if count == ordinal {
+            return value[index..item_end.value]
+        }
+        count = count + 1
+        index = item_end.value
+        index = __zero_std_toml_skip_ws(value, index, end)
+        if index < end {
+            index = index + 1
+        }
+    }
+    return null
+}
+
+fn __zero_std_toml_array_string(buffer: MutSpan<u8>, value: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_array_value(value, ordinal)
+    if !raw.has {
+        return null
+    }
+    return __zero_std_toml_string_decode(buffer, raw.value)
+}
+
+fn __zero_std_toml_array_u32(value: Span<u8>, ordinal: usize) -> Maybe<u32> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_array_value(value, ordinal)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseU32(raw.value)
+}
+
+fn __zero_std_toml_array_i32(value: Span<u8>, ordinal: usize) -> Maybe<i32> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_array_value(value, ordinal)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseI32(raw.value)
+}
+
+fn __zero_std_toml_array_bool(value: Span<u8>, ordinal: usize) -> Maybe<Bool> {
+    let raw: Maybe<Span<u8>> = __zero_std_toml_array_value(value, ordinal)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseBool(raw.value)
+}
+
+fn __zero_std_toml_write_key_value_string(buffer: MutSpan<u8>, key: Span<u8>, value: Span<u8>) -> Maybe<Span<u8>> {
+    var cursor: usize = 0
+    let key_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, key)
+    if !key_end.has {
+        return null
+    }
+    cursor = key_end.value
+    let sep_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, " = ")
+    if !sep_end.has {
+        return null
+    }
+    cursor = sep_end.value
+    let value_end: Maybe<usize> = __zero_std_toml_write_escaped_string(buffer, cursor, value)
+    if !value_end.has {
+        return null
+    }
+    cursor = value_end.value
+    let line_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, "\n")
+    if !line_end.has {
+        return null
+    }
+    return buffer[..line_end.value]
+}
+
+fn __zero_std_toml_write_key_value_u32(buffer: MutSpan<u8>, key: Span<u8>, value: u32) -> Maybe<Span<u8>> {
+    var cursor: usize = 0
+    let key_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, key)
+    if !key_end.has {
+        return null
+    }
+    cursor = key_end.value
+    let sep_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, " = ")
+    if !sep_end.has {
+        return null
+    }
+    cursor = sep_end.value
+    let digits: Maybe<Span<u8>> = std.fmt.u32(buffer[cursor..], value)
+    if !digits.has {
+        return null
+    }
+    cursor = cursor + std.mem.len(digits.value)
+    let line_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, "\n")
+    if !line_end.has {
+        return null
+    }
+    return buffer[..line_end.value]
+}
+
+fn __zero_std_toml_write_key_value_bool(buffer: MutSpan<u8>, key: Span<u8>, value: Bool) -> Maybe<Span<u8>> {
+    var cursor: usize = 0
+    let key_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, key)
+    if !key_end.has {
+        return null
+    }
+    cursor = key_end.value
+    let sep_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, " = ")
+    if !sep_end.has {
+        return null
+    }
+    cursor = sep_end.value
+    var value_end: Maybe<usize> = null
+    if value {
+        value_end = __zero_std_toml_write_span(buffer, cursor, "true")
+    } else {
+        value_end = __zero_std_toml_write_span(buffer, cursor, "false")
+    }
+    if !value_end.has {
+        return null
+    }
+    cursor = value_end.value
+    let line_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, "\n")
+    if !line_end.has {
+        return null
+    }
+    return buffer[..line_end.value]
+}
+
+fn __zero_std_toml_write_table_header(buffer: MutSpan<u8>, table: Span<u8>) -> Maybe<Span<u8>> {
+    var cursor: usize = 0
+    let open_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, "[")
+    if !open_end.has {
+        return null
+    }
+    cursor = open_end.value
+    let table_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, table)
+    if !table_end.has {
+        return null
+    }
+    cursor = table_end.value
+    let close_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, "]\n")
+    if !close_end.has {
+        return null
+    }
+    return buffer[..close_end.value]
 }
 
 fn __zero_std_toml_line_end(bytes: Span<u8>, start: usize) -> usize {
@@ -256,11 +447,11 @@ fn __zero_std_toml_array_valid(value: Span<u8>) -> Bool {
         if index == end {
             return true
         }
-        let item_end: Maybe<usize> = __zero_std_toml_string_value_end(value[index..end])
+        let item_end: Maybe<usize> = __zero_std_toml_array_item_end(value, index, end)
         if !item_end.has {
             return false
         }
-        index = index + item_end.value
+        index = item_end.value
         index = __zero_std_toml_skip_ws(value, index, end)
         if index < end {
             if value[index] != 44_u8 {
@@ -270,6 +461,31 @@ fn __zero_std_toml_array_valid(value: Span<u8>) -> Bool {
         }
     }
     return true
+}
+
+fn __zero_std_toml_array_item_end(value: Span<u8>, start: usize, end: usize) -> Maybe<usize> {
+    if start >= end {
+        return null
+    }
+    if value[start] == 34_u8 {
+        let item_end: Maybe<usize> = __zero_std_toml_string_value_end(value[start..end])
+        if !item_end.has {
+            return null
+        }
+        return start + item_end.value
+    }
+    var index: usize = start
+    while index < end && value[index] != 44_u8 {
+        index = index + 1
+    }
+    let trimmed: usize = __zero_std_toml_trim_end(value, start, index)
+    if trimmed == start {
+        return null
+    }
+    if __zero_std_toml_value_valid(value[start..trimmed]) {
+        return trimmed
+    }
+    return null
 }
 
 fn __zero_std_toml_value_valid(value: Span<u8>) -> Bool {
@@ -288,6 +504,70 @@ fn __zero_std_toml_value_valid(value: Span<u8>) -> Bool {
     }
     let parsed: Maybe<i32> = std.parse.parseI32(value)
     return parsed.has
+}
+
+fn __zero_std_toml_write_span(buffer: MutSpan<u8>, cursor: usize, bytes: Span<u8>) -> Maybe<usize> {
+    if cursor + std.mem.len(bytes) > std.mem.len(buffer) {
+        return null
+    }
+    var index: usize = 0
+    while index < std.mem.len(bytes) {
+        buffer[cursor + index] = bytes[index]
+        index = index + 1
+    }
+    return cursor + std.mem.len(bytes)
+}
+
+fn __zero_std_toml_write_escaped_string(buffer: MutSpan<u8>, cursor: usize, value: Span<u8>) -> Maybe<usize> {
+    var output: usize = cursor
+    let open_end: Maybe<usize> = __zero_std_toml_write_span(buffer, output, "\"")
+    if !open_end.has {
+        return null
+    }
+    output = open_end.value
+    var index: usize = 0
+    while index < std.mem.len(value) {
+        let byte: u8 = value[index]
+        if byte == 34_u8 {
+            let next: Maybe<usize> = __zero_std_toml_write_span(buffer, output, "\\\"")
+            if !next.has {
+                return null
+            }
+            output = next.value
+        } else if byte == 92_u8 {
+            let next: Maybe<usize> = __zero_std_toml_write_span(buffer, output, "\\\\")
+            if !next.has {
+                return null
+            }
+            output = next.value
+        } else if byte == 10_u8 {
+            let next: Maybe<usize> = __zero_std_toml_write_span(buffer, output, "\\n")
+            if !next.has {
+                return null
+            }
+            output = next.value
+        } else if byte == 13_u8 {
+            let next: Maybe<usize> = __zero_std_toml_write_span(buffer, output, "\\r")
+            if !next.has {
+                return null
+            }
+            output = next.value
+        } else if byte == 9_u8 {
+            let next: Maybe<usize> = __zero_std_toml_write_span(buffer, output, "\\t")
+            if !next.has {
+                return null
+            }
+            output = next.value
+        } else {
+            if byte < 32_u8 || output >= std.mem.len(buffer) {
+                return null
+            }
+            buffer[output] = byte
+            output = output + 1
+        }
+        index = index + 1
+    }
+    return __zero_std_toml_write_span(buffer, output, "\"")
 }
 
 fn __zero_std_toml_span_eq(left: Span<u8>, right: Span<u8>) -> Bool {

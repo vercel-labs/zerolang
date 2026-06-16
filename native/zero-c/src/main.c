@@ -9382,6 +9382,7 @@ static const char *helper_module_name(const ZStdHelperInfo *helper) {
   if (strncmp(name, "std.unicode.", strlen("std.unicode.")) == 0) return "std.unicode";
   if (strncmp(name, "std.io.", strlen("std.io.")) == 0) return "std.io";
   if (strncmp(name, "std.codec.", strlen("std.codec.")) == 0) return "std.codec";
+  if (strncmp(name, "std.csv.", strlen("std.csv.")) == 0) return "std.csv";
   if (strncmp(name, "std.mem.", strlen("std.mem.")) == 0) return "std.mem";
   if (strncmp(name, "std.parse.", strlen("std.parse.")) == 0) return "std.parse";
   if (strncmp(name, "std.json.", strlen("std.json.")) == 0) return "std.json";
@@ -9437,6 +9438,7 @@ static const char *helper_example_path(const ZStdHelperInfo *helper) {
   if (strcmp(module, "std.args") == 0 || strcmp(module, "std.env") == 0) return "examples/cli-file.0";
   if (strcmp(module, "std.fs") == 0) return "examples/zero-hash/";
   if (strcmp(module, "std.codec") == 0 || strcmp(module, "std.json") == 0) return "examples/std-data-formats.0";
+  if (strcmp(module, "std.csv") == 0) return "conformance/native/pass/std-csv.0";
   if (helper && helper->name && strncmp(helper->name, "std.url.", strlen("std.url.")) == 0) return "conformance/native/pass/std-codec-json-url.0";
   if (strcmp(module, "std.parse") == 0) return "examples/parse-cursor.0";
   if (strcmp(module, "std.regex") == 0) return "conformance/native/pass/std-regex.0";

@@ -29,14 +29,15 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.unicode`: strict UTF-8 codepoint decode/encode iteration, cursor status helpers, and codepoint-class helpers; pair with `std.text.utf8Valid`/`std.text.utf8Len` for whole-span validation and counting.
 - `std.math`: fixed-width min/max/clamp, checked and saturating integer arithmetic, GCD/LCM, powers, modular power, roots, combinatorics, primality, and divisor routines.
 - `std.path`: target-neutral lexical path basename, dirname, extension, stem, component, abs, join, normalize, and relative helpers.
-- `std.codec`: byte reads, endian reads/writes, varint sizing/encode/decode, base64/hex encode/decode, CRC helpers, and byte checksums.
+- `std.codec`: endian reads/writes, unsigned and signed varints, base32/base64/hex encode/decode, CRC helpers, and byte checksums.
+- `std.csv`: allocation-free CSV validation, record scanning, field decoding, and fixed-arity writers.
 - `std.parse`: byte scanners plus decimal, radix, prefix integer width, bool, duration, and byte-size parsers returning `Maybe<T>`.
 - `std.regex`: compile-once and one-shot regular expression matching/search/split/replace for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes and offsets.
 - `std.inet`: target-neutral IPv4/IPv6/hostname literal validation and parsing; no network capability needed.
 - `std.time`: duration construction, conversion, comparison, elapsed-window helpers, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
 - `std.rand`: explicit deterministic random sources, random bits, target entropy helpers, and caller-buffer entropy IDs.
 - `std.crypto`: small hash, fixed-width hash text, byte-oriented crypto helpers, and caller-buffer IDs.
-- `std.json`: explicit-buffer JSON validation, structured status codes, shallow field lookup, typed scalar decode, parsing, and string/object writing helpers.
+- `std.json`: explicit-buffer JSON validation, structured status codes, object/array cursor lookup, typed scalar decode, parsing, and string/object writing helpers.
 - `std.toml`: no-allocation TOML validation, shallow/dotted field lookup, and typed scalar decode helpers.
 - `std.url`: target-neutral URL splitting, percent/query/form encoding and decoding, query/form lookup, and query append helpers.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
@@ -399,25 +400,49 @@ usageExitCode() -> i32
 crc32(arg0: String) -> u32
 crc32Bytes(arg0: Span<u8>) -> u32
 encodedVarintLen(arg0: u32) -> usize
+encodedVarintLen64(arg0: u64) -> usize
+encodedSignedVarintLen(arg0: i32) -> usize
+encodedSignedVarintLen64(arg0: i64) -> usize
 hexDecodedLen(arg0: Span<u8>) -> Maybe<usize>
 hexDecode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base32EncodedLen(arg0: usize) -> usize
+base32Encode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base32DecodedLen(arg0: Span<u8>) -> Maybe<usize>
+base32Decode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base32RawEncodedLen(arg0: usize) -> usize
+base32RawEncode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base32RawDecodedLen(arg0: Span<u8>) -> Maybe<usize>
+base32RawDecode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 base64DecodedLen(arg0: Span<u8>) -> Maybe<usize>
 base64Decode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
-readU8(arg0: String) -> u8
-readU16(arg0: String) -> u16
-readU32(arg0: String) -> u32
-writeU16(arg0: u32) -> u32
-writeU32(arg0: u32) -> u32
+base64RawEncodedLen(arg0: usize) -> usize
+base64RawEncode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base64RawDecodedLen(arg0: Span<u8>) -> Maybe<usize>
+base64RawDecode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base64UrlEncodedLen(arg0: usize) -> usize
+base64UrlEncode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+base64UrlDecodedLen(arg0: Span<u8>) -> Maybe<usize>
+base64UrlDecode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 readU16Le(arg0: Span<u8>) -> Maybe<u16>
 readU16Be(arg0: Span<u8>) -> Maybe<u16>
 readU32Le(arg0: Span<u8>) -> Maybe<u32>
 readU32Be(arg0: Span<u8>) -> Maybe<u32>
+readU64Le(arg0: Span<u8>) -> Maybe<u64>
+readU64Be(arg0: Span<u8>) -> Maybe<u64>
 writeU16Le(arg0: MutSpan<u8>, arg1: u16) -> Maybe<Span<u8>>
 writeU16Be(arg0: MutSpan<u8>, arg1: u16) -> Maybe<Span<u8>>
 writeU32Le(arg0: MutSpan<u8>, arg1: u32) -> Maybe<Span<u8>>
 writeU32Be(arg0: MutSpan<u8>, arg1: u32) -> Maybe<Span<u8>>
+writeU64Le(arg0: MutSpan<u8>, arg1: u64) -> Maybe<Span<u8>>
+writeU64Be(arg0: MutSpan<u8>, arg1: u64) -> Maybe<Span<u8>>
 varintEncode(arg0: MutSpan<u8>, arg1: u32) -> Maybe<Span<u8>>
 varintDecode(arg0: Span<u8>) -> Maybe<u32>
+varintEncode64(arg0: MutSpan<u8>, arg1: u64) -> Maybe<Span<u8>>
+varintDecode64(arg0: Span<u8>) -> Maybe<u64>
+signedVarintEncode(arg0: MutSpan<u8>, arg1: i32) -> Maybe<Span<u8>>
+signedVarintDecode(arg0: Span<u8>) -> Maybe<i32>
+signedVarintEncode64(arg0: MutSpan<u8>, arg1: i64) -> Maybe<Span<u8>>
+signedVarintDecode64(arg0: Span<u8>) -> Maybe<i64>
 base64EncodedLen(arg0: usize) -> usize
 base64Encode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<String>
 hexEncode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<String>
@@ -541,6 +566,20 @@ hashHex32(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 hmacHex32(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 stableId32(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 randomId32(arg0: MutSpan<u8>) -> Maybe<Span<u8>>
+```
+
+### std.csv
+
+```text
+valid(arg0: Span<u8>) -> Bool
+recordCount(arg0: Span<u8>) -> Maybe<usize>
+record(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+fieldCount(arg0: Span<u8>) -> Maybe<usize>
+field(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
+encodedFieldLen(arg0: Span<u8>) -> usize
+writeField(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+writeRecord2(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writeRecord3(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ### std.env
@@ -838,6 +877,15 @@ errorInvalid() -> u32
 errorTrailing() -> u32
 validateError(arg0: Span<u8>) -> u32
 field(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+objectFieldCount(arg0: Span<u8>) -> Maybe<usize>
+objectKey(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
+objectValue(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+arrayCount(arg0: Span<u8>) -> Maybe<usize>
+arrayValue(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+path(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+pathString(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+pathU32(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<u32>
+pathBool(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Bool>
 stringDecode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 string(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 u32(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<u32>
@@ -868,7 +916,18 @@ field(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 stringDecode(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 string(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 u32(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<u32>
+i32(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<i32>
 bool(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Bool>
+arrayCount(arg0: Span<u8>) -> Maybe<usize>
+arrayValue(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+arrayString(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
+arrayU32(arg0: Span<u8>, arg1: usize) -> Maybe<u32>
+arrayI32(arg0: Span<u8>, arg1: usize) -> Maybe<i32>
+arrayBool(arg0: Span<u8>, arg1: usize) -> Maybe<Bool>
+writeKeyValueString(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writeKeyValueU32(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: u32) -> Maybe<Span<u8>>
+writeKeyValueBool(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Bool) -> Maybe<Span<u8>>
+writeTableHeader(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ### std.log
@@ -1380,6 +1439,7 @@ authority(arg0: Span<u8>) -> Maybe<Span<u8>>
 host(arg0: Span<u8>) -> Maybe<Span<u8>>
 path(arg0: Span<u8>) -> Span<u8>
 query(arg0: Span<u8>) -> Maybe<Span<u8>>
+fragment(arg0: Span<u8>) -> Maybe<Span<u8>>
 queryValue(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 queryValueDecoded(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 writeQueryParam(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
@@ -1387,6 +1447,8 @@ writeFormField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<
 appendFormField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 formValue(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 appendQuery(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writeUrl(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+appendFragment(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ## Maybe Pattern

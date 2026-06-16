@@ -756,7 +756,9 @@ const passCheckFixtures = [
   "conformance/native/pass/std-http-cors-helpers.0",
   "conformance/native/pass/std-http-auth-helpers.0",
   "conformance/native/pass/std-data-formats.0",
+  "conformance/native/pass/std-csv.0",
   "conformance/native/pass/std-codec-json-url.0",
+  "conformance/native/pass/std-json-cursors.0",
   "conformance/native/pass/std-json-bytes.0",
   "conformance/native/pass/std-json-inline-bytes.0",
   "conformance/native/pass/std-json-duplicate-keys.0",
@@ -4936,7 +4938,9 @@ for (const runtimeFixture of [
   ["conformance/native/pass/std-io-lines.0", "std-io-lines", { stdout: "std io lines ok\n" }],
   ["conformance/native/pass/integer-widths.0", "integer-widths", { stdout: "integer widths ok\n" }],
   ["conformance/native/pass/std-codec-widths.0", "std-codec-widths", { stdout: "codec widths ok\n" }],
+  ["conformance/native/pass/std-csv.0", "std-csv", { stdout: "std csv ok\n" }],
   ["conformance/native/pass/std-codec-json-url.0", "std-codec-json-url", { stdout: "std codec json url ok\n" }],
+  ["conformance/native/pass/std-json-cursors.0", "std-json-cursors", { stdout: "std json cursors ok\n" }],
   ["conformance/native/pass/std-crypto-hmac32.0", "std-crypto-hmac32", { stdout: "crypto hmac32 ok\n" }],
   ["conformance/native/pass/parse-integers.0", "parse-integers", { stdout: "parse integers ok\n" }],
   ["conformance/native/pass/std-parse-text.0", "std-parse-text", { stdout: "std parse text ok\n" }],
@@ -5143,9 +5147,9 @@ pub fn main(world: World) -> Void raises {
     }
 }
 `);
-assert.equal(codecReadU32Body.diagnostics[0].code, "BLD004");
-assert.match(codecReadU32Body.diagnostics[0].message, /call target is unsupported/);
-assert.equal(codecReadU32Body.diagnostics[0].actual, "readU32");
+assert.equal(codecReadU32Body.diagnostics[0].code, "STD002");
+assert.match(codecReadU32Body.diagnostics[0].message, /unknown std helper/);
+assert.equal(codecReadU32Body.diagnostics[0].actual, "unknown std helper");
 assert.equal(codecReadU32Body.diagnostics[0].line, 4);
 
 const enumLocalPackage = `${outDir}/enum-local-package`;

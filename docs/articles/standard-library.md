@@ -60,7 +60,7 @@ Program surfaces:
 
 - `std.args`, `std.cli`, `std.env`: command-line and environment helpers.
 - `std.io`, `std.fs`, `std.path`: caller-buffer I/O, hosted filesystem helpers, and lexical paths.
-- `std.json`, `std.toml`, `std.url`, `std.log`: data formats and structured output.
+- `std.json`, `std.toml`, `std.url`, `std.csv`, `std.log`: data formats and structured output.
 - `std.testing`: test-block predicates.
 
 Runtime and web:

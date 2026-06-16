@@ -223,6 +223,14 @@ export const docs: Doc[] = [
     section: "Text And Data",
   },
   {
+    slug: "module-csv",
+    title: "std.csv",
+    description: "Allocation-free CSV validation, record scanning, field decoding, and small writers.",
+    path: "/modules/csv",
+    sourcePath: "/articles/modules/csv.md",
+    section: "Text And Data",
+  },
+  {
     slug: "module-mem",
     title: "std.mem",
     description: "Span metadata, copy and equality helpers, and the allocator surface.",

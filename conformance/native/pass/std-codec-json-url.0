@@ -20,6 +20,37 @@ pub fn main(world: World) -> Void raises {
     if !b64_len.has || b64_len.value != 4_usize || !b64.has || !std.mem.eql(b64.value, "zero") || bad_b64.has || bad_b64_one_pad_bits.has || bad_b64_two_pad_bits.has {
         ok = false
     }
+    let raw_b64_len: Maybe<usize> = std.codec.base64RawDecodedLen("emVybw")
+    var raw_b64_buf: [4]u8 = [0_u8; 4]
+    let raw_b64: Maybe<Span<u8>> = std.codec.base64RawDecode(raw_b64_buf, "emVybw")
+    var raw_b64_out_buf: [8]u8 = [0_u8; 8]
+    let raw_b64_out: Maybe<Span<u8>> = std.codec.base64RawEncode(raw_b64_out_buf, "zero")
+    let bad_raw_b64: Maybe<Span<u8>> = std.codec.base64RawDecode(raw_b64_buf, "AB")
+    var url_b64_buf: [2]u8 = [0_u8; 2]
+    let url_b64_len: Maybe<usize> = std.codec.base64UrlDecodedLen("-_8")
+    let url_b64: Maybe<Span<u8>> = std.codec.base64UrlDecode(url_b64_buf, "-_8")
+    var url_b64_out_buf: [4]u8 = [0_u8; 4]
+    let url_b64_out: Maybe<Span<u8>> = std.codec.base64UrlEncode(url_b64_out_buf, "\xfb\xff")
+    let bad_url_b64: Maybe<Span<u8>> = std.codec.base64UrlDecode(url_b64_buf, "+/8")
+    if std.codec.base64RawEncodedLen(4_usize) != 6_usize || std.codec.base64UrlEncodedLen(2_usize) != 3_usize || !raw_b64_len.has || raw_b64_len.value != 4_usize || !raw_b64.has || !std.mem.eql(raw_b64.value, "zero") || !raw_b64_out.has || !std.mem.eql(raw_b64_out.value, "emVybw") || bad_raw_b64.has || !url_b64_len.has || url_b64_len.value != 2_usize || !url_b64.has || !std.mem.eql(url_b64.value, "\xfb\xff") || !url_b64_out.has || !std.mem.eql(url_b64_out.value, "-_8") || bad_url_b64.has {
+        ok = false
+    }
+    let b32_len: Maybe<usize> = std.codec.base32DecodedLen("PJSXE3Y=")
+    var b32_buf: [4]u8 = [0_u8; 4]
+    let b32: Maybe<Span<u8>> = std.codec.base32Decode(b32_buf, "PJSXE3Y=")
+    var b32_out_buf: [8]u8 = [0_u8; 8]
+    let b32_out: Maybe<Span<u8>> = std.codec.base32Encode(b32_out_buf, "zero")
+    let raw_b32_len: Maybe<usize> = std.codec.base32RawDecodedLen("PJSXE3Y")
+    var raw_b32_buf: [4]u8 = [0_u8; 4]
+    let raw_b32: Maybe<Span<u8>> = std.codec.base32RawDecode(raw_b32_buf, "PJSXE3Y")
+    var raw_b32_out_buf: [8]u8 = [0_u8; 8]
+    let raw_b32_out: Maybe<Span<u8>> = std.codec.base32RawEncode(raw_b32_out_buf, "zero")
+    var b32_pair_buf: [2]u8 = [0_u8; 2]
+    let b32_pair: Maybe<Span<u8>> = std.codec.base32Decode(b32_pair_buf, "7P7Q====")
+    let bad_b32_pad_bits: Maybe<Span<u8>> = std.codec.base32Decode(b32_pair_buf, "AB======")
+    if std.codec.base32EncodedLen(4_usize) != 8_usize || std.codec.base32RawEncodedLen(4_usize) != 7_usize || !b32_len.has || b32_len.value != 4_usize || !b32.has || !std.mem.eql(b32.value, "zero") || !b32_out.has || !std.mem.eql(b32_out.value, "PJSXE3Y=") || !raw_b32_len.has || raw_b32_len.value != 4_usize || !raw_b32.has || !std.mem.eql(raw_b32.value, "zero") || !raw_b32_out.has || !std.mem.eql(raw_b32_out.value, "PJSXE3Y") || !b32_pair.has || !std.mem.eql(b32_pair.value, "\xfb\xff") || bad_b32_pad_bits.has {
+        ok = false
+    }
 
     let le16: Maybe<u16> = std.codec.readU16Le("AB")
     let be16: Maybe<u16> = std.codec.readU16Be("AB")
@@ -104,8 +135,9 @@ pub fn main(world: World) -> Void raises {
     let relative_path: Span<u8> = std.url.path("search?q=zero")
     let rootless_scheme_path: Span<u8> = std.url.path("mailto:user@example.com")
     let query: Maybe<Span<u8>> = std.url.query(url)
+    let fragment: Maybe<Span<u8>> = std.url.fragment(url)
     let fragment_query: Maybe<Span<u8>> = std.url.query("https://example.com/path#frag?q=1")
-    if !scheme.has || !std.mem.eql(scheme.value, "https") || !authority.has || !std.mem.eql(authority.value, "user@example.com:443") || !host.has || !std.mem.eql(host.value, "example.com") || !ipv6_host.has || !std.mem.eql(ipv6_host.value, "[::1]") || malformed_ipv6_host.has || !std.mem.eql(path, "/path/to") || !std.mem.eql(relative_path, "search") || !std.mem.eql(rootless_scheme_path, "user@example.com") || !query.has {
+    if !scheme.has || !std.mem.eql(scheme.value, "https") || !authority.has || !std.mem.eql(authority.value, "user@example.com:443") || !host.has || !std.mem.eql(host.value, "example.com") || !ipv6_host.has || !std.mem.eql(ipv6_host.value, "[::1]") || malformed_ipv6_host.has || !std.mem.eql(path, "/path/to") || !std.mem.eql(relative_path, "search") || !std.mem.eql(rootless_scheme_path, "user@example.com") || !query.has || !fragment.has || !std.mem.eql(fragment.value, "frag") {
         ok = false
     }
     if query.has {
@@ -136,6 +168,21 @@ pub fn main(world: World) -> Void raises {
         appended = std.url.appendQuery(append_buf, "https://example.com/path", query_param.value)
     }
     if !appended.has || !std.mem.eql(appended.value, "https://example.com/path?q=zero+lang") {
+        ok = false
+    }
+    var built_url_buf: [48]u8 = [0_u8; 48]
+    let built_url: Maybe<Span<u8>> = std.url.writeUrl(built_url_buf, "https", "example.com", "path")
+    var built_query_url_buf: [64]u8 = [0_u8; 64]
+    var built_query_url: Maybe<Span<u8>> = null
+    if built_url.has && query_param.has {
+        built_query_url = std.url.appendQuery(built_query_url_buf, built_url.value, query_param.value)
+    }
+    var built_fragment_buf: [72]u8 = [0_u8; 72]
+    var built_fragment: Maybe<Span<u8>> = null
+    if built_query_url.has {
+        built_fragment = std.url.appendFragment(built_fragment_buf, built_query_url.value, "section-1")
+    }
+    if !built_url.has || !std.mem.eql(built_url.value, "https://example.com/path") || !built_query_url.has || !std.mem.eql(built_query_url.value, "https://example.com/path?q=zero+lang") || !built_fragment.has || !std.mem.eql(built_fragment.value, "https://example.com/path?q=zero+lang#section-1") {
         ok = false
     }
     var append_fragment_buf: [56]u8 = [0_u8; 56]

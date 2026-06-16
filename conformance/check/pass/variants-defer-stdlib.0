@@ -22,10 +22,10 @@ pub fn main(world: World) -> Void raises {
     defer cleanup()
     let status: Status = Status.ready
     let result: Result = Result.ok
-    let bytes: u32 = std.codec.readU32("abcd")
+    let bytes: Maybe<u32> = std.codec.readU32Le("abcd")
     let digits: usize = std.parse.scanDigits("123abc")
     let duration: Duration = std.time.add(std.time.ms(1), std.time.seconds(1))
-    if digits == 3 && bytes > 0 && std.time.asMsFloor(duration) > 0 {
+    if digits == 3 && bytes.has && bytes.value > 0_u32 && std.time.asMsFloor(duration) > 0 {
         check world.out.write("variants std\n")
     }
 }

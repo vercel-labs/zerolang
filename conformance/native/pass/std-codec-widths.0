@@ -1,11 +1,47 @@
 pub fn main(world: World) -> Void raises {
-    let byte: u8 = std.codec.readU8("A")
-    let word: u16 = std.codec.readU16("AB")
-    let number: u32 = std.codec.readU32("ABCD")
+    let word: Maybe<u16> = std.codec.readU16Le("AB")
+    let number: Maybe<u32> = std.codec.readU32Le("ABCD")
     let length: usize = std.codec.encodedVarintLen(300)
-    let packed_word: u32 = std.codec.writeU16(16961)
-    let packed_number: u32 = std.codec.writeU32(number)
-    if byte == 65 && word == 16961 && number > 0 && length == 2 && packed_word == 16961 && packed_number == number {
+    let length64: usize = std.codec.encodedVarintLen64(18446744073709551615_u64)
+    let signed_length: usize = std.codec.encodedSignedVarintLen(-150)
+    let signed_length64: usize = std.codec.encodedSignedVarintLen64(-9223372036854775807_i64 - 1_i64)
+    var word64_le_buf: [8]u8 = [0_u8; 8]
+    var word64_be_buf: [8]u8 = [0_u8; 8]
+    let word64_le: Maybe<Span<u8>> = std.codec.writeU64Le(word64_le_buf, 0x0102030405060708_u64)
+    let word64_be: Maybe<Span<u8>> = std.codec.writeU64Be(word64_be_buf, 0x0102030405060708_u64)
+    var word64_le_ok: Bool = false
+    var word64_be_ok: Bool = false
+    if word64_le.has {
+        let read64_le: Maybe<u64> = std.codec.readU64Le(word64_le.value)
+        word64_le_ok = read64_le.has && read64_le.value == 0x0102030405060708_u64 && std.mem.eql(word64_le.value, "\x08\x07\x06\x05\x04\x03\x02\x01")
+    }
+    if word64_be.has {
+        let read64_be: Maybe<u64> = std.codec.readU64Be(word64_be.value)
+        word64_be_ok = read64_be.has && read64_be.value == 0x0102030405060708_u64 && std.mem.eql(word64_be.value, "\x01\x02\x03\x04\x05\x06\x07\x08")
+    }
+    var varint64_buf: [10]u8 = [0_u8; 10]
+    let varint64: Maybe<Span<u8>> = std.codec.varintEncode64(varint64_buf, 18446744073709551615_u64)
+    var varint64_ok: Bool = false
+    if varint64.has {
+        let decoded64: Maybe<u64> = std.codec.varintDecode64(varint64.value)
+        varint64_ok = std.mem.len(varint64.value) == 10_usize && decoded64.has && decoded64.value == 18446744073709551615_u64
+    }
+    var signed_buf: [5]u8 = [0_u8; 5]
+    let signed: Maybe<Span<u8>> = std.codec.signedVarintEncode(signed_buf, -150)
+    var signed_ok: Bool = false
+    if signed.has {
+        let decoded_signed: Maybe<i32> = std.codec.signedVarintDecode(signed.value)
+        signed_ok = decoded_signed.has && decoded_signed.value == -150
+    }
+    var signed64_buf: [10]u8 = [0_u8; 10]
+    let signed64: Maybe<Span<u8>> = std.codec.signedVarintEncode64(signed64_buf, -9223372036854775807_i64 - 1_i64)
+    var signed64_ok: Bool = false
+    if signed64.has {
+        let decoded_signed64: Maybe<i64> = std.codec.signedVarintDecode64(signed64.value)
+        signed64_ok = decoded_signed64.has && decoded_signed64.value == -9223372036854775807_i64 - 1_i64
+    }
+    let invalid64: Maybe<u64> = std.codec.varintDecode64("\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff")
+    if word.has && word.value == 16961 && number.has && number.value > 0_u32 && length == 2 && length64 == 10 && signed_length == 2 && signed_length64 == 10 && word64_le_ok && word64_be_ok && varint64_ok && signed_ok && signed64_ok && !invalid64.has {
         check world.out.write("codec widths ok\n")
     }
 }

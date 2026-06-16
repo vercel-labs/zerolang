@@ -246,6 +246,17 @@ fn __zero_std_url_query(url: Span<u8>) -> Maybe<Span<u8>> {
     return url[start..end]
 }
 
+fn __zero_std_url_fragment(url: Span<u8>) -> Maybe<Span<u8>> {
+    var start: usize = 0
+    while start < std.mem.len(url) && url[start] != 35_u8 {
+        start = start + 1
+    }
+    if start >= std.mem.len(url) {
+        return null
+    }
+    return url[start + 1..]
+}
+
 fn __zero_std_url_query_value(query: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
     var start: usize = 0
     while start <= std.mem.len(query) {
@@ -409,4 +420,72 @@ fn __zero_std_url_append_query(buffer: MutSpan<u8>, base: Span<u8>, query: Span<
         fragment_index = fragment_index + 1
     }
     return buffer[..output]
+}
+
+fn __zero_std_url_write_url(buffer: MutSpan<u8>, scheme: Span<u8>, host: Span<u8>, path: Span<u8>) -> Maybe<Span<u8>> {
+    if std.mem.len(scheme) == 0 || std.mem.len(host) == 0 {
+        return null
+    }
+    var output: usize = 0
+    let scheme_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, scheme)
+    if !scheme_end.has {
+        return null
+    }
+    output = scheme_end.value
+    let sep_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, "://")
+    if !sep_end.has {
+        return null
+    }
+    output = sep_end.value
+    let host_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, host)
+    if !host_end.has {
+        return null
+    }
+    output = host_end.value
+    if std.mem.len(path) > 0 {
+        if path[0] != 47_u8 {
+            let slash_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, "/")
+            if !slash_end.has {
+                return null
+            }
+            output = slash_end.value
+        }
+        let path_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, path)
+        if !path_end.has {
+            return null
+        }
+        output = path_end.value
+    }
+    return buffer[..output]
+}
+
+fn __zero_std_url_append_fragment(buffer: MutSpan<u8>, base: Span<u8>, fragment: Span<u8>) -> Maybe<Span<u8>> {
+    var output: usize = 0
+    let base_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, base)
+    if !base_end.has {
+        return null
+    }
+    output = base_end.value
+    let marker_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, "#")
+    if !marker_end.has {
+        return null
+    }
+    output = marker_end.value
+    let fragment_end: Maybe<usize> = __zero_std_url_write_span(buffer, output, fragment)
+    if !fragment_end.has {
+        return null
+    }
+    return buffer[..fragment_end.value]
+}
+
+fn __zero_std_url_write_span(buffer: MutSpan<u8>, cursor: usize, bytes: Span<u8>) -> Maybe<usize> {
+    if cursor + std.mem.len(bytes) > std.mem.len(buffer) {
+        return null
+    }
+    var index: usize = 0
+    while index < std.mem.len(bytes) {
+        buffer[cursor + index] = bytes[index]
+        index = index + 1
+    }
+    return cursor + std.mem.len(bytes)
 }

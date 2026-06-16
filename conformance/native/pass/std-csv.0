@@ -1,0 +1,97 @@
+pub fn main(world: World) -> Void raises {
+    var ok: Bool = true
+
+    let input: Span<u8> = "name,quote\nAda,\"a,b\"\nBob,\"he said \"\"ok\"\"\"\n"
+    let count: Maybe<usize> = std.csv.recordCount(input)
+    if !std.csv.valid(input) || !count.has || count.value != 3_usize {
+        ok = false
+    }
+
+    let header: Maybe<Span<u8>> = std.csv.record(input, 0_usize)
+    let ada: Maybe<Span<u8>> = std.csv.record(input, 1_usize)
+    let bob: Maybe<Span<u8>> = std.csv.record(input, 2_usize)
+    let missing: Maybe<Span<u8>> = std.csv.record(input, 3_usize)
+    if !header.has || !ada.has || !bob.has || missing.has {
+        ok = false
+    }
+
+    if header.has {
+        let header_fields: Maybe<usize> = std.csv.fieldCount(header.value)
+        var left_buf: [8]u8 = [0_u8; 8]
+        var right_buf: [8]u8 = [0_u8; 8]
+        let left: Maybe<Span<u8>> = std.csv.field(left_buf, header.value, 0_usize)
+        let right: Maybe<Span<u8>> = std.csv.field(right_buf, header.value, 1_usize)
+        if !header_fields.has || header_fields.value != 2_usize || !left.has || !std.mem.eql(left.value, "name") || !right.has || !std.mem.eql(right.value, "quote") {
+            ok = false
+        }
+    }
+
+    if ada.has {
+        let ada_fields: Maybe<usize> = std.csv.fieldCount(ada.value)
+        var name_buf: [8]u8 = [0_u8; 8]
+        var ada_quote_buf: [8]u8 = [0_u8; 8]
+        let name: Maybe<Span<u8>> = std.csv.field(name_buf, ada.value, 0_usize)
+        let ada_quote: Maybe<Span<u8>> = std.csv.field(ada_quote_buf, ada.value, 1_usize)
+        if !ada_fields.has || ada_fields.value != 2_usize || !name.has || !std.mem.eql(name.value, "Ada") || !ada_quote.has || !std.mem.eql(ada_quote.value, "a,b") {
+            ok = false
+        }
+    }
+
+    if bob.has {
+        var bob_quote_buf: [16]u8 = [0_u8; 16]
+        let bob_quote: Maybe<Span<u8>> = std.csv.field(bob_quote_buf, bob.value, 1_usize)
+        if !bob_quote.has || !std.mem.eql(bob_quote.value, "he said \"ok\"") {
+            ok = false
+        }
+    }
+
+    let multiline: Span<u8> = "id,note\n1,\"line one\nline two\"\n"
+    let multiline_count: Maybe<usize> = std.csv.recordCount(multiline)
+    let multiline_record: Maybe<Span<u8>> = std.csv.record(multiline, 1_usize)
+    if !std.csv.valid(multiline) || !multiline_count.has || multiline_count.value != 2_usize || !multiline_record.has {
+        ok = false
+    }
+    if multiline_record.has {
+        var note_buf: [32]u8 = [0_u8; 32]
+        let note: Maybe<Span<u8>> = std.csv.field(note_buf, multiline_record.value, 1_usize)
+        if !note.has || !std.mem.eql(note.value, "line one\nline two") {
+            ok = false
+        }
+    }
+
+    if std.csv.valid("a,\"unterminated") || std.csv.valid("a\"b") {
+        ok = false
+    }
+    let bad_count: Maybe<usize> = std.csv.fieldCount("a,\"unterminated")
+    var bad_buf: [8]u8 = [0_u8; 8]
+    let bad_field: Maybe<Span<u8>> = std.csv.field(bad_buf, "a,\"unterminated", 1_usize)
+    if bad_count.has || bad_field.has {
+        ok = false
+    }
+
+    var field_buf: [8]u8 = [0_u8; 8]
+    let field: Maybe<Span<u8>> = std.csv.writeField(field_buf, "a,b")
+    var quote_field_buf: [12]u8 = [0_u8; 12]
+    let quote_field: Maybe<Span<u8>> = std.csv.writeField(quote_field_buf, "a\"b")
+    var tiny_field_buf: [3]u8 = [0_u8; 3]
+    let tiny_field: Maybe<Span<u8>> = std.csv.writeField(tiny_field_buf, "a,b")
+    if std.csv.encodedFieldLen("plain") != 5_usize || std.csv.encodedFieldLen("a,b") != 5_usize || std.csv.encodedFieldLen("a\"b") != 6_usize || !field.has || !std.mem.eql(field.value, "\"a,b\"") || !quote_field.has || !std.mem.eql(quote_field.value, "\"a\"\"b\"") || tiny_field.has {
+        ok = false
+    }
+
+    var record2_buf: [24]u8 = [0_u8; 24]
+    let record2: Maybe<Span<u8>> = std.csv.writeRecord2(record2_buf, "Ada", "a,b")
+    var record3_buf: [24]u8 = [0_u8; 24]
+    let record3: Maybe<Span<u8>> = std.csv.writeRecord3(record3_buf, "x", "y\"z", "")
+    var small_record_buf: [8]u8 = [0_u8; 8]
+    let small_record: Maybe<Span<u8>> = std.csv.writeRecord2(small_record_buf, "Ada", "a,b")
+    if !record2.has || !std.mem.eql(record2.value, "Ada,\"a,b\"\n") || !record3.has || !std.mem.eql(record3.value, "x,\"y\"\"z\",\n") || small_record.has {
+        ok = false
+    }
+
+    if ok {
+        check world.out.write("std csv ok\n")
+        return
+    }
+    check world.err.write("std csv failed\n")
+}

@@ -1,0 +1,24 @@
+pub fn main(world: World) -> Void raises {
+    let data: Span<u8> = "{\"user\":{\"name\":\"zero\",\"count\":42,\"active\":true,\"scores\":[7,42]},\"empty\":[],\"items\":[{\"id\":1},{\"id\":2}]}"
+    let object_count: Maybe<usize> = std.json.objectFieldCount(data)
+    var key_buf: [16]u8 = [0_u8; 16]
+    let key0: Maybe<Span<u8>> = std.json.objectKey(key_buf, data, 0)
+    let value0: Maybe<Span<u8>> = std.json.objectValue(data, 0)
+    let user: Maybe<Span<u8>> = std.json.field(data, "user")
+    let scores: Maybe<Span<u8>> = std.json.path(data, "user.scores")
+    let score_count: Maybe<usize> = std.json.arrayCount("[7,42]")
+    let score1: Maybe<Span<u8>> = std.json.arrayValue("[7,42]", 1)
+    var name_buf: [16]u8 = [0_u8; 16]
+    let name: Maybe<Span<u8>> = std.json.pathString(name_buf, data, "user.name")
+    let count: Maybe<u32> = std.json.pathU32(data, "user.count")
+    let active: Maybe<Bool> = std.json.pathBool(data, "user.active")
+    let empty_count: Maybe<usize> = std.json.arrayCount("[]")
+    let empty_object_count: Maybe<usize> = std.json.objectFieldCount("{}")
+    let bad_array: Maybe<usize> = std.json.arrayCount("[1,]")
+    let bad_path: Maybe<Span<u8>> = std.json.path(data, "user.")
+    if object_count.has && object_count.value == 3_usize && key0.has && std.mem.eql(key0.value, "user") && value0.has && user.has && std.mem.eql(value0.value, user.value) && scores.has && std.mem.eql(scores.value, "[7,42]") && score_count.has && score_count.value == 2_usize && score1.has && std.mem.eql(score1.value, "42") && name.has && std.mem.eql(name.value, "zero") && count.has && count.value == 42_u32 && active.has && active.value && empty_count.has && empty_count.value == 0_usize && empty_object_count.has && empty_object_count.value == 0_usize && !bad_array.has && !bad_path.has {
+        check world.out.write("std json cursors ok\n")
+        return
+    }
+    check world.err.write("std json cursors failed\n")
+}

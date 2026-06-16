@@ -1,7 +1,7 @@
 ## When To Use std.json
 
-In Zerolang, use `std.json` for validation, shallow field lookup, explicit-allocator parsing,
-and caller-buffer JSON writing.
+In Zerolang, use `std.json` for validation, shallow field lookup, object and
+array cursor access, explicit-allocator parsing, and caller-buffer JSON writing.
 
 Runnable today:
 
@@ -20,6 +20,15 @@ Runnable today:
 | `std.json.errorTrailing()` | `u32` | Validation status for trailing non-whitespace bytes. |
 | `std.json.validateError(bytes)` | `u32` | Validates a byte span and returns a structured status code. |
 | `std.json.field(bytes, key)` | `Maybe<Span<u8>>` | Returns the raw top-level object field value. |
+| `std.json.objectFieldCount(bytes)` | `Maybe<usize>` | Counts fields in a JSON object slice. |
+| `std.json.objectKey(buffer, bytes, ordinal)` | `Maybe<Span<u8>>` | Decodes an ordinal object key into caller storage. |
+| `std.json.objectValue(bytes, ordinal)` | `Maybe<Span<u8>>` | Returns an ordinal object value as a raw JSON slice. |
+| `std.json.arrayCount(bytes)` | `Maybe<usize>` | Counts items in a JSON array slice. |
+| `std.json.arrayValue(bytes, ordinal)` | `Maybe<Span<u8>>` | Returns an ordinal array value as a raw JSON slice. |
+| `std.json.path(bytes, path)` | `Maybe<Span<u8>>` | Returns a raw value for a dot-separated object path. |
+| `std.json.pathString(buffer, bytes, path)` | `Maybe<Span<u8>>` | Looks up and decodes a string at a dot-separated object path. |
+| `std.json.pathU32(bytes, path)` | `Maybe<u32>` | Looks up and decodes a `u32` at a dot-separated object path. |
+| `std.json.pathBool(bytes, path)` | `Maybe<Bool>` | Looks up and decodes a bool at a dot-separated object path. |
 | `std.json.stringDecode(buffer, value)` | `Maybe<Span<u8>>` | Decodes a JSON string value, including Unicode escapes as UTF-8, into caller storage. |
 | `std.json.string(buffer, bytes, key)` | `Maybe<Span<u8>>` | Looks up and decodes a top-level string field. |
 | `std.json.u32(bytes, key)` | `Maybe<u32>` | Looks up and decodes a top-level unsigned integer field. |
@@ -101,6 +110,24 @@ pub fn main(world: World) -> Void raises {
 }
 ```
 
+Object and array cursors return borrowed raw JSON slices. Object keys are
+decoded into caller-owned storage:
+
+```zero
+pub fn main(world: World) -> Void raises {
+    let input: Span<u8> = "{\"user\":{\"name\":\"zero\",\"count\":42},\"items\":[1,2]}"
+    let field_count: Maybe<usize> = std.json.objectFieldCount(input)
+    var key_buf: [8]u8 = [0_u8; 8]
+    let first_key: Maybe<Span<u8>> = std.json.objectKey(key_buf, input, 0)
+    let items: Maybe<Span<u8>> = std.json.field(input, "items")
+    var name_buf: [8]u8 = [0_u8; 8]
+    let name: Maybe<Span<u8>> = std.json.pathString(name_buf, input, "user.name")
+    if field_count.has && first_key.has && items.has && std.json.arrayCount(items.value).has && name.has {
+        check world.out.write("json cursors ok\n")
+    }
+}
+```
+
 Small array responses use the same caller-buffer pattern:
 
 ```zero
@@ -122,4 +149,8 @@ Unicode escapes and rejects malformed surrogate pairs.
 Parsing into an owned document requires an explicit allocator. The current
 `JsonDoc` value is opaque; examples inspect `Maybe.has` and use token streaming
 for allocation-free summaries. Field lookup is intentionally shallow: it reads
-top-level object fields and returns raw slices or typed scalar decodes.
+top-level object fields and returns raw slices or typed scalar decodes. Object
+path lookup follows dot-separated object keys; array indexing remains explicit
+through `arrayValue`. When an object contains duplicate keys, name-based lookup
+returns the first matching value, while ordinal object cursors preserve the
+source order and expose every field.

@@ -240,6 +240,549 @@ fn __zero_std_codec_base64_decode(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<
     return buffer[..output]
 }
 
+fn __zero_std_codec_base64_any_char(value: u8, url: Bool) -> u8 {
+    if url && value == 62_u8 {
+        return 45_u8
+    }
+    if url && value == 63_u8 {
+        return 95_u8
+    }
+    return __zero_std_codec_base64_char(value)
+}
+
+fn __zero_std_codec_base64_any_value(byte: u8, url: Bool) -> Maybe<u8> {
+    if url {
+        if byte >= 65_u8 && byte <= 90_u8 {
+            return byte - 65_u8
+        }
+        if byte >= 97_u8 && byte <= 122_u8 {
+            return byte - 71_u8
+        }
+        if byte >= 48_u8 && byte <= 57_u8 {
+            return byte + 4_u8
+        }
+        if byte == 45_u8 {
+            return 62_u8
+        }
+        if byte == 95_u8 {
+            return 63_u8
+        }
+        return null
+    }
+    return __zero_std_codec_base64_value(byte)
+}
+
+fn __zero_std_codec_base64_raw_encoded_len(len: usize) -> usize {
+    let full: usize = (len / 3_usize) * 4_usize
+    let rem: usize = len % 3_usize
+    if rem == 0 {
+        return full
+    }
+    if rem == 1 {
+        return full + 2_usize
+    }
+    return full + 3_usize
+}
+
+fn __zero_std_codec_base64_no_pad_encode(buffer: MutSpan<u8>, bytes: Span<u8>, url: Bool) -> Maybe<Span<u8>> {
+    let encoded_len: usize = __zero_std_codec_base64_raw_encoded_len(std.mem.len(bytes))
+    if encoded_len > std.mem.len(buffer) {
+        return null
+    }
+    var input: usize = 0
+    var output: usize = 0
+    while input < std.mem.len(bytes) {
+        let b0: u8 = bytes[input]
+        var b1: u8 = 0_u8
+        var b2: u8 = 0_u8
+        let has1: Bool = input + 1 < std.mem.len(bytes)
+        let has2: Bool = input + 2 < std.mem.len(bytes)
+        if has1 {
+            b1 = bytes[input + 1]
+        }
+        if has2 {
+            b2 = bytes[input + 2]
+        }
+        buffer[output] = __zero_std_codec_base64_any_char(b0 / 4_u8, url)
+        buffer[output + 1] = __zero_std_codec_base64_any_char((b0 % 4_u8) * 16_u8 + (b1 / 16_u8), url)
+        output = output + 2
+        if has1 {
+            buffer[output] = __zero_std_codec_base64_any_char((b1 % 16_u8) * 4_u8 + (b2 / 64_u8), url)
+            output = output + 1
+        }
+        if has2 {
+            buffer[output] = __zero_std_codec_base64_any_char(b2 % 64_u8, url)
+            output = output + 1
+        }
+        input = input + 3
+    }
+    return buffer[..output]
+}
+
+fn __zero_std_codec_base64_raw_encode(buffer: MutSpan<u8>, bytes: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base64_no_pad_encode(buffer, bytes, false)
+}
+
+fn __zero_std_codec_base64_url_encoded_len(len: usize) -> usize {
+    return __zero_std_codec_base64_raw_encoded_len(len)
+}
+
+fn __zero_std_codec_base64_url_encode(buffer: MutSpan<u8>, bytes: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base64_no_pad_encode(buffer, bytes, true)
+}
+
+fn __zero_std_codec_base64_no_pad_decoded_len(text: Span<u8>, url: Bool) -> Maybe<usize> {
+    let len: usize = std.mem.len(text)
+    if len == 0 {
+        return 0_usize
+    }
+    let rem: usize = len % 4_usize
+    if rem == 1 {
+        return null
+    }
+    var index: usize = 0
+    while index < len {
+        let value: Maybe<u8> = __zero_std_codec_base64_any_value(text[index], url)
+        if !value.has {
+            return null
+        }
+        index = index + 1
+    }
+    if rem == 2 {
+        let c1: Maybe<u8> = __zero_std_codec_base64_any_value(text[len - 1], url)
+        if !c1.has || c1.value % 16_u8 != 0_u8 {
+            return null
+        }
+        return (len / 4_usize) * 3_usize + 1_usize
+    }
+    if rem == 3 {
+        let c2: Maybe<u8> = __zero_std_codec_base64_any_value(text[len - 1], url)
+        if !c2.has || c2.value % 4_u8 != 0_u8 {
+            return null
+        }
+        return (len / 4_usize) * 3_usize + 2_usize
+    }
+    return (len / 4_usize) * 3_usize
+}
+
+fn __zero_std_codec_base64_raw_decoded_len(text: Span<u8>) -> Maybe<usize> {
+    return __zero_std_codec_base64_no_pad_decoded_len(text, false)
+}
+
+fn __zero_std_codec_base64_url_decoded_len(text: Span<u8>) -> Maybe<usize> {
+    return __zero_std_codec_base64_no_pad_decoded_len(text, true)
+}
+
+fn __zero_std_codec_base64_no_pad_decode(buffer: MutSpan<u8>, text: Span<u8>, url: Bool) -> Maybe<Span<u8>> {
+    let decoded_len: Maybe<usize> = __zero_std_codec_base64_no_pad_decoded_len(text, url)
+    if !decoded_len.has || decoded_len.value > std.mem.len(buffer) {
+        return null
+    }
+    var input: usize = 0
+    var output: usize = 0
+    while input < std.mem.len(text) {
+        let remaining: usize = std.mem.len(text) - input
+        if remaining < 2_usize {
+            return null
+        }
+        let c0: Maybe<u8> = __zero_std_codec_base64_any_value(text[input], url)
+        let c1: Maybe<u8> = __zero_std_codec_base64_any_value(text[input + 1], url)
+        if !c0.has || !c1.has {
+            return null
+        }
+        var value2: u8 = 0_u8
+        var value3: u8 = 0_u8
+        let has2: Bool = remaining > 2_usize
+        let has3: Bool = remaining > 3_usize
+        if has2 {
+            let c2: Maybe<u8> = __zero_std_codec_base64_any_value(text[input + 2], url)
+            if !c2.has {
+                return null
+            }
+            value2 = c2.value
+        }
+        if has3 {
+            let c3: Maybe<u8> = __zero_std_codec_base64_any_value(text[input + 3], url)
+            if !c3.has {
+                return null
+            }
+            value3 = c3.value
+        }
+        if output < decoded_len.value {
+            buffer[output] = c0.value * 4_u8 + c1.value / 16_u8
+            output = output + 1
+        }
+        if has2 && output < decoded_len.value {
+            buffer[output] = (c1.value % 16_u8) * 16_u8 + value2 / 4_u8
+            output = output + 1
+        }
+        if has3 && output < decoded_len.value {
+            buffer[output] = (value2 % 4_u8) * 64_u8 + value3
+            output = output + 1
+        }
+        input = input + 4
+    }
+    return buffer[..output]
+}
+
+fn __zero_std_codec_base64_raw_decode(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base64_no_pad_decode(buffer, text, false)
+}
+
+fn __zero_std_codec_base64_url_decode(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base64_no_pad_decode(buffer, text, true)
+}
+
+fn __zero_std_codec_base32_char(value: u8) -> u8 {
+    if value < 26_u8 {
+        return 65_u8 + value
+    }
+    return 50_u8 + value - 26_u8
+}
+
+fn __zero_std_codec_base32_value(byte: u8) -> Maybe<u8> {
+    if byte >= 65_u8 && byte <= 90_u8 {
+        return byte - 65_u8
+    }
+    if byte >= 97_u8 && byte <= 122_u8 {
+        return byte - 97_u8
+    }
+    if byte >= 50_u8 && byte <= 55_u8 {
+        return byte - 24_u8
+    }
+    return null
+}
+
+fn __zero_std_codec_base32_encoded_len(len: usize) -> usize {
+    if len == 0 {
+        return 0_usize
+    }
+    return ((len + 4_usize) / 5_usize) * 8_usize
+}
+
+fn __zero_std_codec_base32_raw_encoded_len(len: usize) -> usize {
+    let full: usize = (len / 5_usize) * 8_usize
+    let rem: usize = len % 5_usize
+    if rem == 0 {
+        return full
+    }
+    if rem == 1 {
+        return full + 2_usize
+    }
+    if rem == 2 {
+        return full + 4_usize
+    }
+    if rem == 3 {
+        return full + 5_usize
+    }
+    return full + 7_usize
+}
+
+fn __zero_std_codec_base32_encode_impl(buffer: MutSpan<u8>, bytes: Span<u8>, padding: Bool) -> Maybe<Span<u8>> {
+    var encoded_len: usize = __zero_std_codec_base32_raw_encoded_len(std.mem.len(bytes))
+    if padding {
+        encoded_len = __zero_std_codec_base32_encoded_len(std.mem.len(bytes))
+    }
+    if encoded_len > std.mem.len(buffer) {
+        return null
+    }
+    var input: usize = 0
+    var output: usize = 0
+    while input < std.mem.len(bytes) {
+        let b0: u8 = bytes[input]
+        var b1: u8 = 0_u8
+        var b2: u8 = 0_u8
+        var b3: u8 = 0_u8
+        var b4: u8 = 0_u8
+        let has1: Bool = input + 1 < std.mem.len(bytes)
+        let has2: Bool = input + 2 < std.mem.len(bytes)
+        let has3: Bool = input + 3 < std.mem.len(bytes)
+        let has4: Bool = input + 4 < std.mem.len(bytes)
+        if has1 {
+            b1 = bytes[input + 1]
+        }
+        if has2 {
+            b2 = bytes[input + 2]
+        }
+        if has3 {
+            b3 = bytes[input + 3]
+        }
+        if has4 {
+            b4 = bytes[input + 4]
+        }
+        buffer[output] = __zero_std_codec_base32_char(b0 / 8_u8)
+        buffer[output + 1] = __zero_std_codec_base32_char((b0 % 8_u8) * 4_u8 + b1 / 64_u8)
+        output = output + 2
+        if has1 {
+            buffer[output] = __zero_std_codec_base32_char((b1 / 2_u8) % 32_u8)
+            buffer[output + 1] = __zero_std_codec_base32_char((b1 % 2_u8) * 16_u8 + b2 / 16_u8)
+            output = output + 2
+        } else if padding {
+            var pad: usize = 0
+            while pad < 6_usize {
+                buffer[output] = 61_u8
+                output = output + 1
+                pad = pad + 1
+            }
+        }
+        if has2 {
+            buffer[output] = __zero_std_codec_base32_char((b2 % 16_u8) * 2_u8 + b3 / 128_u8)
+            output = output + 1
+        } else if has1 && padding {
+            var pad2: usize = 0
+            while pad2 < 4_usize {
+                buffer[output] = 61_u8
+                output = output + 1
+                pad2 = pad2 + 1
+            }
+        }
+        if has3 {
+            buffer[output] = __zero_std_codec_base32_char((b3 / 4_u8) % 32_u8)
+            buffer[output + 1] = __zero_std_codec_base32_char((b3 % 4_u8) * 8_u8 + b4 / 32_u8)
+            output = output + 2
+        } else if has2 && padding {
+            var pad3: usize = 0
+            while pad3 < 3_usize {
+                buffer[output] = 61_u8
+                output = output + 1
+                pad3 = pad3 + 1
+            }
+        }
+        if has4 {
+            buffer[output] = __zero_std_codec_base32_char(b4 % 32_u8)
+            output = output + 1
+        } else if has3 && padding {
+            buffer[output] = 61_u8
+            output = output + 1
+        }
+        input = input + 5
+    }
+    return buffer[..output]
+}
+
+fn __zero_std_codec_base32_encode(buffer: MutSpan<u8>, bytes: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base32_encode_impl(buffer, bytes, true)
+}
+
+fn __zero_std_codec_base32_raw_encode(buffer: MutSpan<u8>, bytes: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base32_encode_impl(buffer, bytes, false)
+}
+
+fn __zero_std_codec_base32_decoded_len(text: Span<u8>) -> Maybe<usize> {
+    let len: usize = std.mem.len(text)
+    if len == 0 {
+        return 0_usize
+    }
+    if len % 8_usize != 0_usize {
+        return null
+    }
+    var padding: usize = 0
+    while padding < len && text[len - 1_usize - padding] == 61_u8 {
+        padding = padding + 1
+    }
+    if padding != 0_usize && padding != 1_usize && padding != 3_usize && padding != 4_usize && padding != 6_usize {
+        return null
+    }
+    var index: usize = 0
+    while index < len {
+        let byte: u8 = text[index]
+        if byte == 61_u8 {
+            if index < len - padding {
+                return null
+            }
+        } else {
+            let value: Maybe<u8> = __zero_std_codec_base32_value(byte)
+            if !value.has {
+                return null
+            }
+        }
+        index = index + 1
+    }
+    if padding == 6_usize {
+        let c1: Maybe<u8> = __zero_std_codec_base32_value(text[len - 7_usize])
+        if !c1.has || c1.value % 4_u8 != 0_u8 {
+            return null
+        }
+        return (len / 8_usize) * 5_usize - 4_usize
+    }
+    if padding == 4_usize {
+        let c3: Maybe<u8> = __zero_std_codec_base32_value(text[len - 5_usize])
+        if !c3.has || c3.value % 16_u8 != 0_u8 {
+            return null
+        }
+        return (len / 8_usize) * 5_usize - 3_usize
+    }
+    if padding == 3_usize {
+        let c4: Maybe<u8> = __zero_std_codec_base32_value(text[len - 4_usize])
+        if !c4.has || c4.value % 2_u8 != 0_u8 {
+            return null
+        }
+        return (len / 8_usize) * 5_usize - 2_usize
+    }
+    if padding == 1_usize {
+        let c6: Maybe<u8> = __zero_std_codec_base32_value(text[len - 2_usize])
+        if !c6.has || c6.value % 8_u8 != 0_u8 {
+            return null
+        }
+        return (len / 8_usize) * 5_usize - 1_usize
+    }
+    return (len / 8_usize) * 5_usize
+}
+
+fn __zero_std_codec_base32_raw_decoded_len(text: Span<u8>) -> Maybe<usize> {
+    let len: usize = std.mem.len(text)
+    if len == 0 {
+        return 0_usize
+    }
+    var index: usize = 0
+    while index < len {
+        let value: Maybe<u8> = __zero_std_codec_base32_value(text[index])
+        if !value.has {
+            return null
+        }
+        index = index + 1
+    }
+    let rem: usize = len % 8_usize
+    let full: usize = (len / 8_usize) * 5_usize
+    if rem == 0_usize {
+        return full
+    }
+    if rem == 2_usize {
+        let c1: Maybe<u8> = __zero_std_codec_base32_value(text[len - 1_usize])
+        if !c1.has || c1.value % 4_u8 != 0_u8 {
+            return null
+        }
+        return full + 1_usize
+    }
+    if rem == 4_usize {
+        let c3: Maybe<u8> = __zero_std_codec_base32_value(text[len - 1_usize])
+        if !c3.has || c3.value % 16_u8 != 0_u8 {
+            return null
+        }
+        return full + 2_usize
+    }
+    if rem == 5_usize {
+        let c4: Maybe<u8> = __zero_std_codec_base32_value(text[len - 1_usize])
+        if !c4.has || c4.value % 2_u8 != 0_u8 {
+            return null
+        }
+        return full + 3_usize
+    }
+    if rem == 7_usize {
+        let c6: Maybe<u8> = __zero_std_codec_base32_value(text[len - 1_usize])
+        if !c6.has || c6.value % 8_u8 != 0_u8 {
+            return null
+        }
+        return full + 4_usize
+    }
+    return null
+}
+
+fn __zero_std_codec_base32_decode_impl(buffer: MutSpan<u8>, text: Span<u8>, padding: Bool) -> Maybe<Span<u8>> {
+    var decoded_len: Maybe<usize> = __zero_std_codec_base32_raw_decoded_len(text)
+    if padding {
+        decoded_len = __zero_std_codec_base32_decoded_len(text)
+    }
+    if !decoded_len.has || decoded_len.value > std.mem.len(buffer) {
+        return null
+    }
+    var input: usize = 0
+    var output: usize = 0
+    while input < std.mem.len(text) {
+        let remaining: usize = std.mem.len(text) - input
+        var chunk: usize = remaining
+        if chunk > 8_usize {
+            chunk = 8_usize
+        }
+        if chunk < 2_usize {
+            return null
+        }
+        let c0: Maybe<u8> = __zero_std_codec_base32_value(text[input])
+        let c1: Maybe<u8> = __zero_std_codec_base32_value(text[input + 1])
+        if !c0.has || !c1.has {
+            return null
+        }
+        var v2: u8 = 0_u8
+        var v3: u8 = 0_u8
+        var v4: u8 = 0_u8
+        var v5: u8 = 0_u8
+        var v6: u8 = 0_u8
+        var v7: u8 = 0_u8
+        if chunk > 2_usize && text[input + 2] != 61_u8 {
+            let c2: Maybe<u8> = __zero_std_codec_base32_value(text[input + 2])
+            if !c2.has {
+                return null
+            }
+            v2 = c2.value
+        }
+        if chunk > 3_usize && text[input + 3] != 61_u8 {
+            let c3: Maybe<u8> = __zero_std_codec_base32_value(text[input + 3])
+            if !c3.has {
+                return null
+            }
+            v3 = c3.value
+        }
+        if chunk > 4_usize && text[input + 4] != 61_u8 {
+            let c4: Maybe<u8> = __zero_std_codec_base32_value(text[input + 4])
+            if !c4.has {
+                return null
+            }
+            v4 = c4.value
+        }
+        if chunk > 5_usize && text[input + 5] != 61_u8 {
+            let c5: Maybe<u8> = __zero_std_codec_base32_value(text[input + 5])
+            if !c5.has {
+                return null
+            }
+            v5 = c5.value
+        }
+        if chunk > 6_usize && text[input + 6] != 61_u8 {
+            let c6: Maybe<u8> = __zero_std_codec_base32_value(text[input + 6])
+            if !c6.has {
+                return null
+            }
+            v6 = c6.value
+        }
+        if chunk > 7_usize && text[input + 7] != 61_u8 {
+            let c7: Maybe<u8> = __zero_std_codec_base32_value(text[input + 7])
+            if !c7.has {
+                return null
+            }
+            v7 = c7.value
+        }
+        if output < decoded_len.value {
+            buffer[output] = c0.value * 8_u8 + c1.value / 4_u8
+            output = output + 1
+        }
+        if output < decoded_len.value {
+            buffer[output] = (c1.value % 4_u8) * 64_u8 + v2 * 2_u8 + v3 / 16_u8
+            output = output + 1
+        }
+        if output < decoded_len.value {
+            buffer[output] = (v3 % 16_u8) * 16_u8 + v4 / 2_u8
+            output = output + 1
+        }
+        if output < decoded_len.value {
+            buffer[output] = (v4 % 2_u8) * 128_u8 + v5 * 4_u8 + v6 / 8_u8
+            output = output + 1
+        }
+        if output < decoded_len.value {
+            buffer[output] = (v6 % 8_u8) * 32_u8 + v7
+            output = output + 1
+        }
+        input = input + 8
+    }
+    return buffer[..output]
+}
+
+fn __zero_std_codec_base32_decode(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base32_decode_impl(buffer, text, true)
+}
+
+fn __zero_std_codec_base32_raw_decode(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_codec_base32_decode_impl(buffer, text, false)
+}
+
 fn __zero_std_codec_read_u16_le(bytes: Span<u8>) -> Maybe<u16> {
     if std.mem.len(bytes) < 2 {
         return null
@@ -308,6 +851,62 @@ fn __zero_std_codec_write_u32_be(buffer: MutSpan<u8>, value: u32) -> Maybe<Span<
     return buffer[..4]
 }
 
+fn __zero_std_codec_read_u64_le(bytes: Span<u8>) -> Maybe<u64> {
+    if std.mem.len(bytes) < 8 {
+        return null
+    }
+    var value: u64 = 0_u64
+    var scale: u64 = 1_u64
+    var index: usize = 0
+    while index < 8_usize {
+        value = value + (bytes[index] as u64) * scale
+        scale = scale * 256_u64
+        index = index + 1
+    }
+    return value
+}
+
+fn __zero_std_codec_read_u64_be(bytes: Span<u8>) -> Maybe<u64> {
+    if std.mem.len(bytes) < 8 {
+        return null
+    }
+    var value: u64 = 0_u64
+    var index: usize = 0
+    while index < 8_usize {
+        value = value * 256_u64 + (bytes[index] as u64)
+        index = index + 1
+    }
+    return value
+}
+
+fn __zero_std_codec_write_u64_le(buffer: MutSpan<u8>, value: u64) -> Maybe<Span<u8>> {
+    if std.mem.len(buffer) < 8 {
+        return null
+    }
+    var remaining: u64 = value
+    var index: usize = 0
+    while index < 8_usize {
+        buffer[index] = (remaining % 256_u64) as u8
+        remaining = remaining / 256_u64
+        index = index + 1
+    }
+    return buffer[..8]
+}
+
+fn __zero_std_codec_write_u64_be(buffer: MutSpan<u8>, value: u64) -> Maybe<Span<u8>> {
+    if std.mem.len(buffer) < 8 {
+        return null
+    }
+    var remaining: u64 = value
+    var index: usize = 0
+    while index < 8_usize {
+        buffer[7_usize - index] = (remaining % 256_u64) as u8
+        remaining = remaining / 256_u64
+        index = index + 1
+    }
+    return buffer[..8]
+}
+
 fn __zero_std_codec_encoded_varint_len(value: u32) -> usize {
     var remaining: u32 = value
     var len: usize = 1
@@ -358,6 +957,128 @@ fn __zero_std_codec_varint_decode(bytes: Span<u8>) -> Maybe<u32> {
         }
         multiplier = multiplier * 128_u32
         index = index + 1
+    }
+    return null
+}
+
+fn __zero_std_codec_encoded_varint_len64(value: u64) -> usize {
+    var remaining: u64 = value
+    var len: usize = 1
+    while remaining >= 128_u64 {
+        remaining = remaining / 128_u64
+        len = len + 1
+    }
+    return len
+}
+
+fn __zero_std_codec_varint_encode64(buffer: MutSpan<u8>, value: u64) -> Maybe<Span<u8>> {
+    var remaining: u64 = value
+    var output: usize = 0
+    while remaining >= 128_u64 {
+        if output >= std.mem.len(buffer) {
+            return null
+        }
+        buffer[output] = ((remaining % 128_u64) as u8) + 128_u8
+        remaining = remaining / 128_u64
+        output = output + 1
+    }
+    if output >= std.mem.len(buffer) {
+        return null
+    }
+    buffer[output] = remaining as u8
+    return buffer[..output + 1]
+}
+
+fn __zero_std_codec_varint_decode64(bytes: Span<u8>) -> Maybe<u64> {
+    var index: usize = 0
+    var multiplier: u64 = 1_u64
+    var value: u64 = 0_u64
+    while index < std.mem.len(bytes) && index < 10_usize {
+        let byte: u8 = bytes[index]
+        let chunk: u64 = (byte % 128_u8) as u64
+        if chunk > (18446744073709551615_u64 - value) / multiplier {
+            return null
+        }
+        value = value + chunk * multiplier
+        if byte < 128_u8 {
+            if index + 1 != std.mem.len(bytes) {
+                return null
+            }
+            return value
+        }
+        if multiplier > 144115188075855872_u64 {
+            return null
+        }
+        multiplier = multiplier * 128_u64
+        index = index + 1
+    }
+    return null
+}
+
+fn __zero_std_codec_zigzag_i32(value: i32) -> u32 {
+    if value < 0 {
+        return ((-(value + 1_i32)) as u32) * 2_u32 + 1_u32
+    }
+    return (value as u32) * 2_u32
+}
+
+fn __zero_std_codec_unzigzag_i32(value: u32) -> i32 {
+    let half: u32 = value / 2_u32
+    if value % 2_u32 == 0_u32 {
+        return half as i32
+    }
+    if half == 2147483647_u32 {
+        return -2147483647_i32 - 1_i32
+    }
+    return -((half as i32) + 1_i32)
+}
+
+fn __zero_std_codec_zigzag_i64(value: i64) -> u64 {
+    if value < 0_i64 {
+        return ((-(value + 1_i64)) as u64) * 2_u64 + 1_u64
+    }
+    return (value as u64) * 2_u64
+}
+
+fn __zero_std_codec_unzigzag_i64(value: u64) -> i64 {
+    let half: u64 = value / 2_u64
+    if value % 2_u64 == 0_u64 {
+        return half as i64
+    }
+    if half == 9223372036854775807_u64 {
+        return -9223372036854775807_i64 - 1_i64
+    }
+    return -((half as i64) + 1_i64)
+}
+
+fn __zero_std_codec_encoded_signed_varint_len(value: i32) -> usize {
+    return __zero_std_codec_encoded_varint_len(__zero_std_codec_zigzag_i32(value))
+}
+
+fn __zero_std_codec_encoded_signed_varint_len64(value: i64) -> usize {
+    return __zero_std_codec_encoded_varint_len64(__zero_std_codec_zigzag_i64(value))
+}
+
+fn __zero_std_codec_signed_varint_encode(buffer: MutSpan<u8>, value: i32) -> Maybe<Span<u8>> {
+    return __zero_std_codec_varint_encode(buffer, __zero_std_codec_zigzag_i32(value))
+}
+
+fn __zero_std_codec_signed_varint_decode(bytes: Span<u8>) -> Maybe<i32> {
+    let raw: Maybe<u32> = __zero_std_codec_varint_decode(bytes)
+    if raw.has {
+        return __zero_std_codec_unzigzag_i32(raw.value)
+    }
+    return null
+}
+
+fn __zero_std_codec_signed_varint_encode64(buffer: MutSpan<u8>, value: i64) -> Maybe<Span<u8>> {
+    return __zero_std_codec_varint_encode64(buffer, __zero_std_codec_zigzag_i64(value))
+}
+
+fn __zero_std_codec_signed_varint_decode64(bytes: Span<u8>) -> Maybe<i64> {
+    let raw: Maybe<u64> = __zero_std_codec_varint_decode64(bytes)
+    if raw.has {
+        return __zero_std_codec_unzigzag_i64(raw.value)
     }
     return null
 }

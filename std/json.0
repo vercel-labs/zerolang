@@ -872,6 +872,290 @@ fn __zero_std_json_field(bytes: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
     return null
 }
 
+fn __zero_std_json_object_field_count(bytes: Span<u8>) -> Maybe<usize> {
+    let start: usize = __zero_std_json_skip_ws(bytes, 0)
+    if start >= std.mem.len(bytes) || bytes[start] != 123_u8 {
+        return null
+    }
+    var index: usize = __zero_std_json_skip_ws(bytes, start + 1)
+    if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+        let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        if trailing == std.mem.len(bytes) {
+            return 0_usize
+        }
+        return null
+    }
+    var count: usize = 0
+    while index < std.mem.len(bytes) {
+        let key_end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
+        if !key_end.has {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, key_end.value)
+        if index >= std.mem.len(bytes) || bytes[index] != 58_u8 {
+            return null
+        }
+        let value_start: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        let value_end: Maybe<usize> = __zero_std_json_value_end(bytes, value_start)
+        if !value_end.has {
+            return null
+        }
+        count = count + 1
+        index = __zero_std_json_skip_ws(bytes, value_end.value)
+        if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+            let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+            if trailing == std.mem.len(bytes) {
+                return count
+            }
+            return null
+        }
+        if index >= std.mem.len(bytes) || bytes[index] != 44_u8 {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, index + 1)
+        if index >= std.mem.len(bytes) || bytes[index] == 125_u8 {
+            return null
+        }
+    }
+    return null
+}
+
+fn __zero_std_json_object_key(buffer: MutSpan<u8>, bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    let start: usize = __zero_std_json_skip_ws(bytes, 0)
+    if start >= std.mem.len(bytes) || bytes[start] != 123_u8 {
+        return null
+    }
+    var index: usize = __zero_std_json_skip_ws(bytes, start + 1)
+    if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+        let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        if trailing == std.mem.len(bytes) {
+            return null
+        }
+        return null
+    }
+    var count: usize = 0
+    while index < std.mem.len(bytes) {
+        let key_end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
+        if !key_end.has {
+            return null
+        }
+        let key_start: usize = index
+        index = __zero_std_json_skip_ws(bytes, key_end.value)
+        if index >= std.mem.len(bytes) || bytes[index] != 58_u8 {
+            return null
+        }
+        let value_start: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        let value_end: Maybe<usize> = __zero_std_json_value_end(bytes, value_start)
+        if !value_end.has {
+            return null
+        }
+        if count == ordinal {
+            return __zero_std_json_string_decode(buffer, bytes[key_start..key_end.value])
+        }
+        count = count + 1
+        index = __zero_std_json_skip_ws(bytes, value_end.value)
+        if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+            let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+            if trailing == std.mem.len(bytes) {
+                return null
+            }
+            return null
+        }
+        if index >= std.mem.len(bytes) || bytes[index] != 44_u8 {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, index + 1)
+        if index >= std.mem.len(bytes) || bytes[index] == 125_u8 {
+            return null
+        }
+    }
+    return null
+}
+
+fn __zero_std_json_object_value(bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    let start: usize = __zero_std_json_skip_ws(bytes, 0)
+    if start >= std.mem.len(bytes) || bytes[start] != 123_u8 {
+        return null
+    }
+    var index: usize = __zero_std_json_skip_ws(bytes, start + 1)
+    if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+        let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        if trailing == std.mem.len(bytes) {
+            return null
+        }
+        return null
+    }
+    var count: usize = 0
+    while index < std.mem.len(bytes) {
+        let key_end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
+        if !key_end.has {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, key_end.value)
+        if index >= std.mem.len(bytes) || bytes[index] != 58_u8 {
+            return null
+        }
+        let value_start: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        let value_end: Maybe<usize> = __zero_std_json_value_end(bytes, value_start)
+        if !value_end.has {
+            return null
+        }
+        if count == ordinal {
+            return bytes[value_start..value_end.value]
+        }
+        count = count + 1
+        index = __zero_std_json_skip_ws(bytes, value_end.value)
+        if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
+            let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+            if trailing == std.mem.len(bytes) {
+                return null
+            }
+            return null
+        }
+        if index >= std.mem.len(bytes) || bytes[index] != 44_u8 {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, index + 1)
+        if index >= std.mem.len(bytes) || bytes[index] == 125_u8 {
+            return null
+        }
+    }
+    return null
+}
+
+fn __zero_std_json_array_count(bytes: Span<u8>) -> Maybe<usize> {
+    let start: usize = __zero_std_json_skip_ws(bytes, 0)
+    if start >= std.mem.len(bytes) || bytes[start] != 91_u8 {
+        return null
+    }
+    var index: usize = __zero_std_json_skip_ws(bytes, start + 1)
+    if index < std.mem.len(bytes) && bytes[index] == 93_u8 {
+        let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        if trailing == std.mem.len(bytes) {
+            return 0_usize
+        }
+        return null
+    }
+    var count: usize = 0
+    while index < std.mem.len(bytes) {
+        let value_end: Maybe<usize> = __zero_std_json_value_end(bytes, index)
+        if !value_end.has {
+            return null
+        }
+        count = count + 1
+        index = __zero_std_json_skip_ws(bytes, value_end.value)
+        if index < std.mem.len(bytes) && bytes[index] == 93_u8 {
+            let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+            if trailing == std.mem.len(bytes) {
+                return count
+            }
+            return null
+        }
+        if index >= std.mem.len(bytes) || bytes[index] != 44_u8 {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, index + 1)
+        if index >= std.mem.len(bytes) || bytes[index] == 93_u8 {
+            return null
+        }
+    }
+    return null
+}
+
+fn __zero_std_json_array_value(bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    let start: usize = __zero_std_json_skip_ws(bytes, 0)
+    if start >= std.mem.len(bytes) || bytes[start] != 91_u8 {
+        return null
+    }
+    var index: usize = __zero_std_json_skip_ws(bytes, start + 1)
+    if index < std.mem.len(bytes) && bytes[index] == 93_u8 {
+        let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+        if trailing == std.mem.len(bytes) {
+            return null
+        }
+        return null
+    }
+    var count: usize = 0
+    while index < std.mem.len(bytes) {
+        let value_start: usize = index
+        let value_end: Maybe<usize> = __zero_std_json_value_end(bytes, value_start)
+        if !value_end.has {
+            return null
+        }
+        if count == ordinal {
+            return bytes[value_start..value_end.value]
+        }
+        count = count + 1
+        index = __zero_std_json_skip_ws(bytes, value_end.value)
+        if index < std.mem.len(bytes) && bytes[index] == 93_u8 {
+            let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
+            if trailing == std.mem.len(bytes) {
+                return null
+            }
+            return null
+        }
+        if index >= std.mem.len(bytes) || bytes[index] != 44_u8 {
+            return null
+        }
+        index = __zero_std_json_skip_ws(bytes, index + 1)
+        if index >= std.mem.len(bytes) || bytes[index] == 93_u8 {
+            return null
+        }
+    }
+    return null
+}
+
+fn __zero_std_json_path(bytes: Span<u8>, path: Span<u8>) -> Maybe<Span<u8>> {
+    if std.mem.len(path) == 0 {
+        return null
+    }
+    var current: Span<u8> = bytes
+    var segment_start: usize = 0
+    while segment_start < std.mem.len(path) {
+        var segment_end: usize = segment_start
+        while segment_end < std.mem.len(path) && path[segment_end] != 46_u8 {
+            segment_end = segment_end + 1
+        }
+        if segment_end == segment_start {
+            return null
+        }
+        let next: Maybe<Span<u8>> = __zero_std_json_field(current, path[segment_start..segment_end])
+        if !next.has {
+            return null
+        }
+        if segment_end == std.mem.len(path) {
+            return next.value
+        }
+        current = next.value
+        segment_start = segment_end + 1
+    }
+    return null
+}
+
+fn __zero_std_json_path_string(buffer: MutSpan<u8>, bytes: Span<u8>, path: Span<u8>) -> Maybe<Span<u8>> {
+    let raw: Maybe<Span<u8>> = __zero_std_json_path(bytes, path)
+    if !raw.has {
+        return null
+    }
+    return __zero_std_json_string_decode(buffer, raw.value)
+}
+
+fn __zero_std_json_path_u32(bytes: Span<u8>, path: Span<u8>) -> Maybe<u32> {
+    let raw: Maybe<Span<u8>> = __zero_std_json_path(bytes, path)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseU32(raw.value)
+}
+
+fn __zero_std_json_path_bool(bytes: Span<u8>, path: Span<u8>) -> Maybe<Bool> {
+    let raw: Maybe<Span<u8>> = __zero_std_json_path(bytes, path)
+    if !raw.has {
+        return null
+    }
+    return std.parse.parseBool(raw.value)
+}
+
 fn __zero_std_json_string_decode(buffer: MutSpan<u8>, value: Span<u8>) -> Maybe<Span<u8>> {
     let end: Maybe<usize> = __zero_std_json_string_end(value, 0)
     if !end.has || end.value != std.mem.len(value) {
