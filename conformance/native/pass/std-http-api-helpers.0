@@ -147,6 +147,11 @@ export c fn main() -> i32 {
     if !header_request.has || !std.str.contains(header_request.value, "accept: application/json") {
         return 66
     }
+    var bad_single_header_request_buf: [160]u8 = [0_u8; 160]
+    let bad_single_header_request: Maybe<Span<u8>> = std.http.writeRequestWithHeader(bad_single_header_request_buf, "GET /api", "accept: application/json\n", "")
+    if bad_single_header_request.has {
+        return 107
+    }
     if !std.http.headerBlockSafe("accept: application/json\nx-client: zero") || std.http.headerBlockSafe("bad\rname: value") {
         return 70
     }
@@ -260,6 +265,11 @@ export c fn main() -> i32 {
     let custom_header_response: Maybe<Span<u8>> = std.http.writeResponseWithHeader(custom_header_buf, 202_u16, "x-request-id: abc123", "accepted")
     if !custom_header_response.has || !std.str.contains(custom_header_response.value, "202 Accepted") || !std.str.contains(custom_header_response.value, "x-request-id: abc123") {
         return 67
+    }
+    var bad_single_header_response_buf: [160]u8 = [0_u8; 160]
+    let bad_single_header_response: Maybe<Span<u8>> = std.http.writeResponseWithHeader(bad_single_header_response_buf, 200_u16, "x-request-id: abc123\r\n", "ok")
+    if bad_single_header_response.has {
+        return 108
     }
     var json_header_buf: [192]u8 = [0_u8; 192]
     let json_header_response: Maybe<Span<u8>> = std.http.writeJsonResponseWithHeader(json_header_buf, 200_u16, "cache-control: no-store", "{\"ok\":true}")
