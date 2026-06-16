@@ -686,6 +686,43 @@ fn __zero_std_http_response_body(response: Span<u8>, result: HttpResult) -> Mayb
     return response[offset..offset + len]
 }
 
+fn __zero_std_http_error_name(code: u32) -> String {
+    if code == 0_u32 {
+        return "ok"
+    }
+    if code == 1_u32 {
+        return "invalid_url"
+    }
+    if code == 2_u32 {
+        return "unsupported_protocol"
+    }
+    if code == 3_u32 {
+        return "dns"
+    }
+    if code == 4_u32 {
+        return "connect"
+    }
+    if code == 5_u32 {
+        return "tls"
+    }
+    if code == 6_u32 {
+        return "timeout"
+    }
+    if code == 7_u32 {
+        return "too_large"
+    }
+    if code == 8_u32 {
+        return "provider_unavailable"
+    }
+    if code == 9_u32 {
+        return "io"
+    }
+    if code == 10_u32 {
+        return "invalid_request"
+    }
+    return "unknown"
+}
+
 fn __zero_std_http_write_json_ok(buffer: MutSpan<u8>, body: Span<u8>) -> Maybe<Span<u8>> {
     return std.http.writeJsonResponse(buffer, 200_u16, body)
 }

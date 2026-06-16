@@ -228,6 +228,9 @@ pub fn main(world: World) -> Void raises {
     if std.json.errorNone() != 0_u32 || std.json.errorInvalid() != 1_u32 || std.json.errorTrailing() != 2_u32 {
         ok = false
     }
+    if !std.mem.eql(std.json.errorName(std.json.errorNone()), "ok") || !std.mem.eql(std.json.errorName(std.json.errorInvalid()), "invalid") || !std.mem.eql(std.json.errorName(std.json.errorTrailing()), "trailing") || !std.mem.eql(std.json.errorName(99_u32), "unknown") {
+        ok = false
+    }
     if std.json.validateError(json) != std.json.errorNone() || std.json.validateError("\"\\u20ac\"") != std.json.errorNone() || std.json.validateError("\"\\ud834\\udd1e\"") != std.json.errorNone() || std.json.validateError("\"\\ud800\"") != std.json.errorInvalid() || std.json.validateError("\"\xff\"") != std.json.errorInvalid() || std.json.validateError("{") != std.json.errorInvalid() || std.json.validateError("{} x") != std.json.errorTrailing() || std.json.validateError("[1,]") != std.json.errorInvalid() || std.json.validateError("{\"a\":1,}") != std.json.errorInvalid() {
         ok = false
     }

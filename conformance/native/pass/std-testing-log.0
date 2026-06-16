@@ -30,6 +30,28 @@ fn testing_helpers_ok() -> Bool {
     if !std.testing.endsWith(bytes, "lang") {
         return false
     }
+    if !std.testing.notEqualBytes("zero", "lang") {
+        return false
+    }
+    let diff: Maybe<usize> = std.testing.diffIndexBytes("zero", "zeta")
+    if !diff.has || diff.value != 2 {
+        return false
+    }
+    let same: Maybe<usize> = std.testing.diffIndexBytes("zero", "zero")
+    if same.has {
+        return false
+    }
+    if !std.testing.jsonFieldEquals("{\"ok\":true,\"count\":2}", "count", "2") {
+        return false
+    }
+    if !std.testing.jsonPathEquals("{\"user\":{\"name\":\"zero\"}}", "user.name", "\"zero\"") {
+        return false
+    }
+    var case_storage: [32]u8 = [0_u8; 32]
+    let case_name: Maybe<Span<u8>> = std.testing.caseName(case_storage, "json", 3)
+    if !case_name.has || !std.testing.equalBytes(case_name.value, "json[3]") {
+        return false
+    }
     return true
 }
 
@@ -63,8 +85,51 @@ fn log_key_value_ok() -> Bool {
     return false
 }
 
+fn log_message_field_ok() -> Bool {
+    var storage: [160]u8 = [0_u8; 160]
+    var field_storage: [64]u8 = [0_u8; 64]
+    let field: Maybe<Span<u8>> = std.log.stringField(field_storage, "route", "/health")
+    if field.has {
+        let entry: Maybe<Span<u8>> = std.log.messageField(storage, std.log.levelInfo(), "request handled", field.value)
+        if !entry.has {
+            return false
+        }
+        if !std.testing.startsWith(entry.value, "{\"level\":\"info\"") {
+            return false
+        }
+        if !std.testing.containsBytes(entry.value, "\"message\":\"request handled\"") {
+            return false
+        }
+        return std.testing.containsBytes(entry.value, "\"route\":\"/health\"")
+    }
+    return false
+}
+
+fn log_redacted_ok() -> Bool {
+    var storage: [128]u8 = [0_u8; 128]
+    let entry: Maybe<Span<u8>> = std.log.redacted(storage, std.log.levelWarn(), "authorization")
+    if entry.has {
+        if !std.testing.containsBytes(entry.value, "\"key\":\"authorization\"") {
+            return false
+        }
+        return std.testing.containsBytes(entry.value, "\"redacted\":true")
+    }
+    return false
+}
+
+fn log_level_names_ok() -> Bool {
+    var debug_storage: [96]u8 = [0_u8; 96]
+    var error_storage: [96]u8 = [0_u8; 96]
+    let debug_entry: Maybe<Span<u8>> = std.log.message(debug_storage, std.log.levelDebug(), "debug path")
+    let error_entry: Maybe<Span<u8>> = std.log.message(error_storage, std.log.levelError(), "error path")
+    if !debug_entry.has || !error_entry.has {
+        return false
+    }
+    return std.testing.containsBytes(debug_entry.value, "\"level\":\"debug\"") && std.testing.containsBytes(error_entry.value, "\"level\":\"error\"")
+}
+
 pub fn main(world: World) -> Void raises {
-    if testing_helpers_ok() && log_message_ok() && log_key_value_ok() {
+    if testing_helpers_ok() && log_message_ok() && (log_key_value_ok() && log_message_field_ok()) && (log_redacted_ok() && log_level_names_ok()) {
         check world.out.write("std testing log ok\n")
     } else {
         check world.out.write("std testing log failed\n")

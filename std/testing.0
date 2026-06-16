@@ -37,3 +37,66 @@ fn __zero_std_testing_starts_with(actual: Span<u8>, prefix: Span<u8>) -> Bool {
 fn __zero_std_testing_ends_with(actual: Span<u8>, suffix: Span<u8>) -> Bool {
     return std.str.endsWith(actual, suffix)
 }
+
+fn __zero_std_testing_not_equal_bytes(actual: Span<u8>, expected: Span<u8>) -> Bool {
+    return !std.mem.eqlBytes(actual, expected)
+}
+
+fn __zero_std_testing_diff_index_bytes(actual: Span<u8>, expected: Span<u8>) -> Maybe<usize> {
+    var index: usize = 0
+    while index < std.mem.len(actual) && index < std.mem.len(expected) {
+        if actual[index] != expected[index] {
+            return index
+        }
+        index = index + 1
+    }
+    if std.mem.len(actual) != std.mem.len(expected) {
+        return index
+    }
+    return null
+}
+
+fn __zero_std_testing_json_field_equals(actual: Span<u8>, key: Span<u8>, expected: Span<u8>) -> Bool {
+    let field: Maybe<Span<u8>> = std.json.field(actual, key)
+    if field.has {
+        return std.mem.eqlBytes(field.value, expected)
+    }
+    return false
+}
+
+fn __zero_std_testing_json_path_equals(actual: Span<u8>, path: Span<u8>, expected: Span<u8>) -> Bool {
+    let value: Maybe<Span<u8>> = std.json.path(actual, path)
+    if value.has {
+        return std.mem.eqlBytes(value.value, expected)
+    }
+    return false
+}
+
+fn __zero_std_testing_case_name(buffer: MutSpan<u8>, suite: Span<u8>, index: usize) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let wrote_suite: Maybe<usize> = std.io.writeSpan(buffer, offset, suite)
+    if !wrote_suite.has {
+        return null
+    }
+    offset = wrote_suite.value
+    let open: Maybe<usize> = std.io.writeSpan(buffer, offset, "[")
+    if !open.has {
+        return null
+    }
+    offset = open.value
+    var index_storage: [24]u8 = [0_u8; 24]
+    let index_text: Maybe<Span<u8>> = std.fmt.usize(index_storage, index)
+    if !index_text.has {
+        return null
+    }
+    let wrote_index: Maybe<usize> = std.io.writeSpan(buffer, offset, index_text.value)
+    if !wrote_index.has {
+        return null
+    }
+    offset = wrote_index.value
+    let close: Maybe<usize> = std.io.writeSpan(buffer, offset, "]")
+    if close.has {
+        return buffer[..close.value]
+    }
+    return null
+}

@@ -14,7 +14,7 @@ if (process.env.ZERO_NATIVE_TEST_SANDBOX !== "1" && process.env.ZERO_NATIVE_TEST
 }
 
 const outDir = ".zero/command-contracts";
-const execMaxBuffer = 16 * 1024 * 1024;
+const execMaxBuffer = 64 * 1024 * 1024;
 const zeroBin = process.env.ZERO_BIN || (existsSync(".zero/bin/zero") ? resolve(".zero/bin/zero") : resolve("bin/zero"));
 mkdirSync(outDir, { recursive: true });
 
@@ -8359,13 +8359,17 @@ assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "__zero
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "std.parse.parseU32"));
 
 const httpErrorsGraph = json(["inspect", "--json", "conformance/native/pass/std-http-errors.0"]).body;
-assert.deepEqual(httpErrorsGraph.requiresCapabilities, []);
+assert.deepEqual(httpErrorsGraph.requiresCapabilities, ["memory", "parse", "net"]);
 const httpTimeoutHelper = httpErrorsGraph.stdlibHelpers.find((helper) => helper.name === "std.http.errorTimeout");
 assert.equal(httpTimeoutHelper.returnType, "HttpError");
 assert.equal(httpTimeoutHelper.capability, "none");
 assert.deepEqual(httpTimeoutHelper.effects, []);
 assert.equal(httpTimeoutHelper.allocationBehavior, "no allocation");
 assert.equal(httpTimeoutHelper.ownershipNotes, "no ownership transfer");
+const httpErrorNameHelper = httpErrorsGraph.stdlibHelpers.find((helper) => helper.name === "std.http.errorName");
+assert.equal(httpErrorNameHelper.returnType, "String");
+assert.equal(httpErrorNameHelper.capability, "none");
+assert.equal(httpErrorNameHelper.targetSupport, "target-neutral");
 
 const coreGraph = json(["inspect", "--json", "examples/static-method.0"]).body;
 const counterShape = coreGraph.shapes.find((shape) => shape.name === "Counter");

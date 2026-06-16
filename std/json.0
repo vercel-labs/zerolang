@@ -38,6 +38,19 @@ fn __zero_std_json_error_trailing() -> u32 {
     return 2_u32
 }
 
+fn __zero_std_json_error_name(code: u32) -> String {
+    if code == __zero_std_json_error_none() {
+        return "ok"
+    }
+    if code == __zero_std_json_error_invalid() {
+        return "invalid"
+    }
+    if code == __zero_std_json_error_trailing() {
+        return "trailing"
+    }
+    return "unknown"
+}
+
 fn __zero_std_json_is_ws(byte: u8) -> Bool {
     return byte == 32_u8 || byte == 9_u8 || byte == 10_u8 || byte == 13_u8
 }

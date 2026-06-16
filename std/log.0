@@ -80,3 +80,112 @@ fn __zero_std_log_key_value(buffer: MutSpan<u8>, level: Span<u8>, key: Span<u8>,
     }
     return null
 }
+
+fn __zero_std_log_level_debug() -> String {
+    return "debug"
+}
+
+fn __zero_std_log_level_info() -> String {
+    return "info"
+}
+
+fn __zero_std_log_level_warn() -> String {
+    return "warn"
+}
+
+fn __zero_std_log_level_error() -> String {
+    return "error"
+}
+
+fn __zero_std_log_write_string_field(buffer: MutSpan<u8>, offset: usize, key: Span<u8>, value: Span<u8>) -> Maybe<usize> {
+    let wrote_key: Maybe<usize> = __zero_std_log_write_json(buffer, offset, key)
+    if !wrote_key.has {
+        return null
+    }
+    var cursor: usize = wrote_key.value
+    let colon: Maybe<usize> = __zero_std_log_write(buffer, cursor, ":")
+    if !colon.has {
+        return null
+    }
+    cursor = colon.value
+    return __zero_std_log_write_json(buffer, cursor, value)
+}
+
+fn __zero_std_log_string_field(buffer: MutSpan<u8>, key: Span<u8>, value: Span<u8>) -> Maybe<Span<u8>> {
+    let written: Maybe<usize> = __zero_std_log_write_string_field(buffer, 0, key, value)
+    if written.has {
+        return buffer[..written.value]
+    }
+    return null
+}
+
+fn __zero_std_log_message_field(buffer: MutSpan<u8>, level: Span<u8>, message: Span<u8>, field: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let opened: Maybe<usize> = __zero_std_log_write(buffer, offset, "{\"level\":")
+    if !opened.has {
+        return null
+    }
+    offset = opened.value
+    let wrote_level: Maybe<usize> = __zero_std_log_write_json(buffer, offset, level)
+    if !wrote_level.has {
+        return null
+    }
+    offset = wrote_level.value
+    let wrote_message_key: Maybe<usize> = __zero_std_log_write(buffer, offset, ",\"message\":")
+    if !wrote_message_key.has {
+        return null
+    }
+    offset = wrote_message_key.value
+    let wrote_message: Maybe<usize> = __zero_std_log_write_json(buffer, offset, message)
+    if !wrote_message.has {
+        return null
+    }
+    offset = wrote_message.value
+    let comma: Maybe<usize> = __zero_std_log_write(buffer, offset, ",")
+    if !comma.has {
+        return null
+    }
+    offset = comma.value
+    let wrote_field: Maybe<usize> = __zero_std_log_write(buffer, offset, field)
+    if !wrote_field.has {
+        return null
+    }
+    offset = wrote_field.value
+    let closed: Maybe<usize> = __zero_std_log_write(buffer, offset, "}\n")
+    if closed.has {
+        if !std.json.validateBytes(buffer[..closed.value - 1]) {
+            return null
+        }
+        return buffer[..closed.value]
+    }
+    return null
+}
+
+fn __zero_std_log_redacted(buffer: MutSpan<u8>, level: Span<u8>, key: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let opened: Maybe<usize> = __zero_std_log_write(buffer, offset, "{\"level\":")
+    if !opened.has {
+        return null
+    }
+    offset = opened.value
+    let wrote_level: Maybe<usize> = __zero_std_log_write_json(buffer, offset, level)
+    if !wrote_level.has {
+        return null
+    }
+    offset = wrote_level.value
+    let key_label: Maybe<usize> = __zero_std_log_write(buffer, offset, ",\"key\":")
+    if !key_label.has {
+        return null
+    }
+    offset = key_label.value
+    let wrote_key: Maybe<usize> = __zero_std_log_write_json(buffer, offset, key)
+    if !wrote_key.has {
+        return null
+    }
+    offset = wrote_key.value
+    let closed: Maybe<usize> = __zero_std_log_write(buffer, offset, ",\"redacted\":true}\n")
+    if closed.has {
+        return buffer[..closed.value]
+    }
+    return null
+}

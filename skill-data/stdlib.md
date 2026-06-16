@@ -320,6 +320,7 @@ or agents:
 test "output shape" {
     expect std.testing.equalBytes("zero", "zero")
     expect std.testing.containsBytes("zerolang", "lang")
+    expect std.testing.jsonPathEquals("{\"service\":{\"ok\":true}}", "service.ok", "true")
 }
 ```
 
@@ -329,9 +330,13 @@ through an explicit output capability:
 ```zero
 pub fn main(world: World) -> Void raises {
     var storage: [128]u8 = [0_u8; 128]
-    let entry: Maybe<Span<u8>> = std.log.keyValue(storage, "info", "event", "startup")
-    if entry.has {
-        check world.out.write(entry.value)
+    var field_storage: [64]u8 = [0_u8; 64]
+    let field: Maybe<Span<u8>> = std.log.stringField(field_storage, "event", "startup")
+    if field.has {
+        let entry: Maybe<Span<u8>> = std.log.messageField(storage, std.log.levelInfo(), "started", field.value)
+        if entry.has {
+            check world.out.write(entry.value)
+        }
     }
 }
 ```
@@ -700,6 +705,7 @@ errorTooLarge() -> HttpError
 errorProviderUnavailable() -> HttpError
 errorIo() -> HttpError
 errorInvalidRequest() -> HttpError
+errorName(arg0: HttpError) -> String
 responseLen(arg0: Span<u8>) -> usize
 responseHeadersLen(arg0: Span<u8>) -> usize
 responseBodyOffset(arg0: Span<u8>) -> usize
@@ -937,6 +943,7 @@ decodeBoundary() -> String
 errorNone() -> u32
 errorInvalid() -> u32
 errorTrailing() -> u32
+errorName(arg0: u32) -> String
 validateError(arg0: Span<u8>) -> u32
 field(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 objectFieldCount(arg0: Span<u8>) -> Maybe<usize>
@@ -997,6 +1004,13 @@ writeTableHeader(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 ```text
 message(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 keyValue(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+levelDebug() -> String
+levelInfo() -> String
+levelWarn() -> String
+levelError() -> String
+stringField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+messageField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+redacted(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ### std.math
@@ -1413,6 +1427,11 @@ equalBytes(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 containsBytes(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 startsWith(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 endsWith(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+notEqualBytes(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+diffIndexBytes(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<usize>
+jsonFieldEquals(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Bool
+jsonPathEquals(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Bool
+caseName(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
 ```
 
 ### std.text

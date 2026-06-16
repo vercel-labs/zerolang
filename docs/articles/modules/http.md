@@ -28,6 +28,7 @@ Runnable today:
 | `std.http.errorProviderUnavailable()` | `HttpError` | The hosted HTTP provider is unavailable. |
 | `std.http.errorIo()` | `HttpError` | The provider reported an I/O failure. |
 | `std.http.errorInvalidRequest()` | `HttpError` | The request envelope was invalid. |
+| `std.http.errorName(error)` | `String` | Returns a stable label for a transport error. |
 | `std.http.responseLen(response)` | `usize` | Reads the response byte count written after the internal metadata prefix. |
 | `std.http.responseHeadersLen(response)` | `usize` | Reads the raw response header byte count. |
 | `std.http.responseBodyOffset(response)` | `usize` | Reads the body start offset within the response buffer. |
@@ -397,8 +398,9 @@ without allocating. Prefer `headerBytes` and `responseBody` when you need a
 borrowed byte span and want metadata bounds checked in one call.
 
 Compare `resultError` with the named `HttpError` helpers rather than raw
-numbers. `errorNone` means the transport succeeded; HTTP non-2xx statuses still
-carry `errorNone` and can be inspected with `resultStatus`.
+numbers. Use `errorName(resultError(result))` for diagnostics and logs.
+`errorNone` means the transport succeeded; HTTP non-2xx statuses still carry
+`errorNone` and can be inspected with `resultStatus`.
 
 The module does not expose raw socket read/write APIs, streaming bodies, a
 global router, or a heap-allocated response object.

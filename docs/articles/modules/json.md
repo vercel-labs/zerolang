@@ -18,6 +18,7 @@ Runnable today:
 | `std.json.errorNone()` | `u32` | Validation status for a clean payload. |
 | `std.json.errorInvalid()` | `u32` | Validation status for malformed JSON. |
 | `std.json.errorTrailing()` | `u32` | Validation status for trailing non-whitespace bytes. |
+| `std.json.errorName(code)` | `String` | Returns a stable label for a validation status. |
 | `std.json.validateError(bytes)` | `u32` | Validates a byte span and returns a structured status code. |
 | `std.json.field(bytes, key)` | `Maybe<Span<u8>>` | Returns the raw top-level object field value. |
 | `std.json.objectFieldCount(bytes)` | `Maybe<usize>` | Counts fields in a JSON object slice. |
