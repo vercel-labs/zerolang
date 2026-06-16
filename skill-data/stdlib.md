@@ -889,18 +889,39 @@ countLines(arg0: Span<u8>) -> usize
 ```text
 isIpv4(text: Span<u8>) -> Bool
 parseIpv4(text: Span<u8>) -> Maybe<u32>
+writeIpv4(buffer: MutSpan<u8>, value: u32) -> Maybe<Span<u8>>
+isIpv4Unspecified(value: u32) -> Bool
+isIpv4Loopback(value: u32) -> Bool
+isIpv4Private(value: u32) -> Bool
+isIpv4LinkLocal(value: u32) -> Bool
+isIpv4Multicast(value: u32) -> Bool
 isIpv6(text: Span<u8>) -> Bool
 parseIpv6(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>>
+isIp(text: Span<u8>) -> Bool
+parseIp(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>>
+isIpv6Unspecified(bytes: Span<u8>) -> Bool
+isIpv6Loopback(bytes: Span<u8>) -> Bool
+isIpv6Multicast(bytes: Span<u8>) -> Bool
+isIpv6LinkLocal(bytes: Span<u8>) -> Bool
+isIpv6Private(bytes: Span<u8>) -> Bool
+isIpv6UniqueLocal(bytes: Span<u8>) -> Bool
+isIpv6MappedIpv4(bytes: Span<u8>) -> Bool
+ipv6MappedIpv4(bytes: Span<u8>) -> Maybe<u32>
 isHostname(text: Span<u8>) -> Bool
 ```
 
 Internet address literal helpers, kept separate from `std.net` so they stay
 usable on targets without the Net capability. `isIpv4`/`parseIpv4` accept
 strict dotted quads (four 0-255 octets, no leading zeros; the parse packs
-big-endian). `isIpv6`/`parseIpv6` accept RFC 4291 forms including `::`
-compression and embedded IPv4, writing 16 network-order bytes into the caller
-buffer. `isHostname` enforces RFC 1123: dot-separated labels of 1-63
-alphanumeric/hyphen bytes, no leading/trailing hyphens, 253 bytes total.
+big-endian), and `writeIpv4` writes a packed value back to dotted-quad text.
+IPv4 classification helpers cover unspecified, loopback, RFC 1918 private,
+link-local, and multicast ranges. `isIpv6`/`parseIpv6` accept RFC 4291 forms
+including `::` compression and embedded IPv4, writing 16 network-order bytes
+into the caller buffer. IPv6 helpers classify unspecified, loopback,
+multicast, link-local, unique-local/private, and IPv4-mapped addresses;
+`parseIp` accepts either family and writes 4 or 16 network-order bytes.
+`isHostname` enforces RFC 1123: dot-separated labels of 1-63 alphanumeric/hyphen
+bytes, no leading/trailing hyphens, 253 bytes total.
 
 ### std.json
 
@@ -1428,6 +1449,9 @@ isZero(arg0: Duration) -> Bool
 abs(arg0: Duration) -> Duration
 between(arg0: Duration, arg1: Duration) -> Duration
 hasElapsed(arg0: Duration, arg1: Duration, arg2: Duration) -> Bool
+deadlineAfter(arg0: Duration, arg1: Duration) -> Duration
+remainingUntil(arg0: Duration, arg1: Duration) -> Duration
+deadlineExpired(arg0: Duration, arg1: Duration) -> Bool
 isRfc3339Date(text: Span<u8>) -> Bool
 isRfc3339Time(text: Span<u8>) -> Bool
 isRfc3339DateTime(text: Span<u8>) -> Bool
@@ -1449,6 +1473,11 @@ mapping a valid leap second to the same epoch second as `:59`; it returns the
 fallback for invalid text.
 Use `writeDurationNs`, `writeDurationMs`, or `writeDurationSeconds` when a
 typed `Duration` needs a compact textual value in caller-owned storage.
+Use `deadlineAfter`, `remainingUntil`, and `deadlineExpired` to model request
+budgets against monotonic `Duration` instants without observing the clock inside
+the helper.
+`std.time` does not expose public sleep, timer, or fake-clock handles in the
+current surface.
 
 ### std.unicode
 

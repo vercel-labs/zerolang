@@ -92,6 +92,21 @@ fn __zero_std_time_has_elapsed(start: Duration, now: Duration, timeout: Duration
     return !std.time.lessThan(elapsed, timeout)
 }
 
+fn __zero_std_time_deadline_after(start: Duration, timeout: Duration) -> Duration {
+    return std.time.add(start, timeout)
+}
+
+fn __zero_std_time_remaining_until(deadline: Duration, now: Duration) -> Duration {
+    if !std.time.lessThan(now, deadline) {
+        return std.time.zero()
+    }
+    return std.time.sub(deadline, now)
+}
+
+fn __zero_std_time_deadline_expired(deadline: Duration, now: Duration) -> Bool {
+    return !std.time.lessThan(now, deadline)
+}
+
 fn __zero_std_time_rfc_is_digit(byte: u8) -> Bool {
     return byte >= 48_u8 && byte <= 57_u8
 }

@@ -61,8 +61,17 @@ fn time_duration_format_checks() -> Bool {
     return second_text.has && std.mem.eql(second_text.value, "120s")
 }
 
+fn time_deadline_checks() -> Bool {
+    let start: Duration = std.time.seconds(10)
+    let timeout: Duration = std.time.ms(250)
+    let deadline: Duration = std.time.deadlineAfter(start, timeout)
+    let remaining: Duration = std.time.remainingUntil(deadline, std.time.seconds(10))
+    let past: Duration = std.time.remainingUntil(deadline, std.time.seconds(11))
+    return std.time.asMsFloor(deadline) == 10250 && (std.time.asMsFloor(remaining) == 250 && std.time.isZero(past)) && (!std.time.deadlineExpired(deadline, std.time.seconds(10)) && std.time.deadlineExpired(deadline, deadline))
+}
+
 pub fn main(world: World) -> Void raises {
-    if time_date_checks() && (time_time_checks() && time_leap_second_checks()) && (time_datetime_checks() && (time_epoch_checks() && (time_calendar_checks() && time_duration_format_checks()))) {
+    if time_date_checks() && (time_time_checks() && time_leap_second_checks()) && (time_datetime_checks() && (time_epoch_checks() && (time_calendar_checks() && (time_duration_format_checks() && time_deadline_checks())))) {
         check world.out.write("std time rfc3339 ok\n")
     } else {
         check world.out.write("std time rfc3339 failed\n")
