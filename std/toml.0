@@ -235,7 +235,37 @@ fn __zero_std_toml_array_bool(value: Span<u8>, ordinal: usize) -> Maybe<Bool> {
     return std.parse.parseBool(raw.value)
 }
 
+fn __zero_std_toml_key_byte_valid(byte: u8) -> Bool {
+    return (byte >= 65_u8 && byte <= 90_u8) || (byte >= 97_u8 && byte <= 122_u8) || (byte >= 48_u8 && byte <= 57_u8) || byte == 45_u8 || byte == 95_u8
+}
+
+fn __zero_std_toml_dotted_key_valid(key: Span<u8>) -> Bool {
+    if std.mem.len(key) == 0 {
+        return false
+    }
+    var index: usize = 0
+    var segment_has_byte: Bool = false
+    while index < std.mem.len(key) {
+        let byte: u8 = key[index]
+        if byte == 46_u8 {
+            if !segment_has_byte {
+                return false
+            }
+            segment_has_byte = false
+        } else if __zero_std_toml_key_byte_valid(byte) {
+            segment_has_byte = true
+        } else {
+            return false
+        }
+        index = index + 1
+    }
+    return segment_has_byte
+}
+
 fn __zero_std_toml_write_key_value_string(buffer: MutSpan<u8>, key: Span<u8>, value: Span<u8>) -> Maybe<Span<u8>> {
+    if !__zero_std_toml_dotted_key_valid(key) {
+        return null
+    }
     var cursor: usize = 0
     let key_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, key)
     if !key_end.has {
@@ -260,6 +290,9 @@ fn __zero_std_toml_write_key_value_string(buffer: MutSpan<u8>, key: Span<u8>, va
 }
 
 fn __zero_std_toml_write_key_value_u32(buffer: MutSpan<u8>, key: Span<u8>, value: u32) -> Maybe<Span<u8>> {
+    if !__zero_std_toml_dotted_key_valid(key) {
+        return null
+    }
     var cursor: usize = 0
     let key_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, key)
     if !key_end.has {
@@ -284,6 +317,9 @@ fn __zero_std_toml_write_key_value_u32(buffer: MutSpan<u8>, key: Span<u8>, value
 }
 
 fn __zero_std_toml_write_key_value_bool(buffer: MutSpan<u8>, key: Span<u8>, value: Bool) -> Maybe<Span<u8>> {
+    if !__zero_std_toml_dotted_key_valid(key) {
+        return null
+    }
     var cursor: usize = 0
     let key_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, key)
     if !key_end.has {
@@ -313,6 +349,9 @@ fn __zero_std_toml_write_key_value_bool(buffer: MutSpan<u8>, key: Span<u8>, valu
 }
 
 fn __zero_std_toml_write_table_header(buffer: MutSpan<u8>, table: Span<u8>) -> Maybe<Span<u8>> {
+    if !__zero_std_toml_dotted_key_valid(table) {
+        return null
+    }
     var cursor: usize = 0
     let open_end: Maybe<usize> = __zero_std_toml_write_span(buffer, cursor, "[")
     if !open_end.has {

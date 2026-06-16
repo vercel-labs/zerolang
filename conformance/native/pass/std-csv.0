@@ -69,6 +69,18 @@ pub fn main(world: World) -> Void raises {
         ok = false
     }
 
+    let trailing_record: Span<u8> = "\"a\","
+    let trailing_count: Maybe<usize> = std.csv.fieldCount(trailing_record)
+    var trailing_buf: [4]u8 = [0_u8; 4]
+    let trailing_empty: Maybe<Span<u8>> = std.csv.field(trailing_buf, trailing_record, 1_usize)
+    var trailing_missing_buf: [4]u8 = [0_u8; 4]
+    let trailing_missing: Maybe<Span<u8>> = std.csv.field(trailing_missing_buf, trailing_record, 2_usize)
+    var plain_missing_buf: [4]u8 = [0_u8; 4]
+    let plain_missing: Maybe<Span<u8>> = std.csv.field(plain_missing_buf, "a", 1_usize)
+    if !trailing_count.has || trailing_count.value != 2_usize || !trailing_empty.has || std.mem.len(trailing_empty.value) != 0_usize || trailing_missing.has || plain_missing.has {
+        ok = false
+    }
+
     var field_buf: [8]u8 = [0_u8; 8]
     let field: Maybe<Span<u8>> = std.csv.writeField(field_buf, "a,b")
     var quote_field_buf: [12]u8 = [0_u8; 12]

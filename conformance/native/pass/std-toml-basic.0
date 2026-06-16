@@ -38,7 +38,15 @@ pub fn main(world: World) -> Void raises {
     let string_line: Maybe<Span<u8>> = std.toml.writeKeyValueString(string_line_buffer, "name", "ze\"ro")
     let u32_line: Maybe<Span<u8>> = std.toml.writeKeyValueU32(u32_line_buffer, "count", 42_u32)
     let bool_line: Maybe<Span<u8>> = std.toml.writeKeyValueBool(bool_line_buffer, "graph", true)
-    if std.toml.validate("[package]\nname = \"demo\"\n") && std.toml.validateBytes(input) && raw_name.has && std.mem.eql(raw_name.value, "\"demo\"") && decoded.has && std.mem.eql(decoded.value, "demo") && name.has && std.mem.eql(name.value, "demo") && count.has && count.value == 42 && signed.has && signed.value == 0 - 5 && graph.has && graph.value && names_count.has && names_count.value == 2_usize && first_name.has && std.mem.eql(first_name.value, "one") && second_num_raw.has && std.mem.eql(second_num_raw.value, "2") && second_num_i32.has && second_num_i32.value == 2 && third_num.has && third_num.value == 3_u32 && second_flag.has && !second_flag.value && table_line.has && std.mem.eql(table_line.value, "[package]\n") && string_line.has && std.mem.eql(string_line.value, "name = \"ze\\\"ro\"\n") && u32_line.has && std.mem.eql(u32_line.value, "count = 42\n") && bool_line.has && std.mem.eql(bool_line.value, "graph = true\n") {
+    var invalid_string_line_buffer: [32]u8 = [0_u8; 32]
+    var invalid_u32_line_buffer: [16]u8 = [0_u8; 16]
+    var invalid_bool_line_buffer: [24]u8 = [0_u8; 24]
+    var invalid_table_buffer: [32]u8 = [0_u8; 32]
+    let invalid_string_line: Maybe<Span<u8>> = std.toml.writeKeyValueString(invalid_string_line_buffer, "a = 1\nb", "x")
+    let invalid_u32_line: Maybe<Span<u8>> = std.toml.writeKeyValueU32(invalid_u32_line_buffer, "bad key", 1_u32)
+    let invalid_bool_line: Maybe<Span<u8>> = std.toml.writeKeyValueBool(invalid_bool_line_buffer, "bad..key", true)
+    let invalid_table_line: Maybe<Span<u8>> = std.toml.writeTableHeader(invalid_table_buffer, "package]\nadmin")
+    if std.toml.validate("[package]\nname = \"demo\"\n") && std.toml.validateBytes(input) && raw_name.has && std.mem.eql(raw_name.value, "\"demo\"") && decoded.has && std.mem.eql(decoded.value, "demo") && name.has && std.mem.eql(name.value, "demo") && count.has && count.value == 42 && signed.has && signed.value == 0 - 5 && graph.has && graph.value && names_count.has && names_count.value == 2_usize && first_name.has && std.mem.eql(first_name.value, "one") && second_num_raw.has && std.mem.eql(second_num_raw.value, "2") && second_num_i32.has && second_num_i32.value == 2 && third_num.has && third_num.value == 3_u32 && second_flag.has && !second_flag.value && table_line.has && std.mem.eql(table_line.value, "[package]\n") && string_line.has && std.mem.eql(string_line.value, "name = \"ze\\\"ro\"\n") && u32_line.has && std.mem.eql(u32_line.value, "count = 42\n") && bool_line.has && std.mem.eql(bool_line.value, "graph = true\n") && !invalid_string_line.has && !invalid_u32_line.has && !invalid_bool_line.has && !invalid_table_line.has {
         check world.out.write("toml ok\n")
     }
 }

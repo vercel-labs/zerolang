@@ -934,6 +934,9 @@ fn __zero_std_json_object_key(buffer: MutSpan<u8>, bytes: Span<u8>, ordinal: usi
         return null
     }
     var count: usize = 0
+    var found: Bool = false
+    var found_start: usize = 0
+    var found_end: usize = 0
     while index < std.mem.len(bytes) {
         let key_end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
         if !key_end.has {
@@ -949,14 +952,19 @@ fn __zero_std_json_object_key(buffer: MutSpan<u8>, bytes: Span<u8>, ordinal: usi
         if !value_end.has {
             return null
         }
-        if count == ordinal {
-            return __zero_std_json_string_decode(buffer, bytes[key_start..key_end.value])
+        if count == ordinal && !found {
+            found = true
+            found_start = key_start
+            found_end = key_end.value
         }
         count = count + 1
         index = __zero_std_json_skip_ws(bytes, value_end.value)
         if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
             let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
             if trailing == std.mem.len(bytes) {
+                if found {
+                    return __zero_std_json_string_decode(buffer, bytes[found_start..found_end])
+                }
                 return null
             }
             return null
@@ -986,6 +994,9 @@ fn __zero_std_json_object_value(bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u
         return null
     }
     var count: usize = 0
+    var found: Bool = false
+    var found_start: usize = 0
+    var found_end: usize = 0
     while index < std.mem.len(bytes) {
         let key_end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
         if !key_end.has {
@@ -1000,14 +1011,19 @@ fn __zero_std_json_object_value(bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u
         if !value_end.has {
             return null
         }
-        if count == ordinal {
-            return bytes[value_start..value_end.value]
+        if count == ordinal && !found {
+            found = true
+            found_start = value_start
+            found_end = value_end.value
         }
         count = count + 1
         index = __zero_std_json_skip_ws(bytes, value_end.value)
         if index < std.mem.len(bytes) && bytes[index] == 125_u8 {
             let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
             if trailing == std.mem.len(bytes) {
+                if found {
+                    return bytes[found_start..found_end]
+                }
                 return null
             }
             return null
@@ -1076,20 +1092,28 @@ fn __zero_std_json_array_value(bytes: Span<u8>, ordinal: usize) -> Maybe<Span<u8
         return null
     }
     var count: usize = 0
+    var found: Bool = false
+    var found_start: usize = 0
+    var found_end: usize = 0
     while index < std.mem.len(bytes) {
         let value_start: usize = index
         let value_end: Maybe<usize> = __zero_std_json_value_end(bytes, value_start)
         if !value_end.has {
             return null
         }
-        if count == ordinal {
-            return bytes[value_start..value_end.value]
+        if count == ordinal && !found {
+            found = true
+            found_start = value_start
+            found_end = value_end.value
         }
         count = count + 1
         index = __zero_std_json_skip_ws(bytes, value_end.value)
         if index < std.mem.len(bytes) && bytes[index] == 93_u8 {
             let trailing: usize = __zero_std_json_skip_ws(bytes, index + 1)
             if trailing == std.mem.len(bytes) {
+                if found {
+                    return bytes[found_start..found_end]
+                }
                 return null
             }
             return null

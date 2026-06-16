@@ -221,6 +221,7 @@ fn csv_field(buffer: MutSpan<u8>, record: Span<u8>, ordinal: usize) -> Maybe<Spa
         var output: usize = 0
         if input < std.mem.len(record) && csv_is_quote(record[input]) {
             input = input + 1
+            var closed: Bool = false
             while input < std.mem.len(record) {
                 let byte: u8 = record[input]
                 if csv_is_quote(byte) {
@@ -241,9 +242,11 @@ fn csv_field(buffer: MutSpan<u8>, record: Span<u8>, ordinal: usize) -> Maybe<Spa
                         if field_index == ordinal {
                             return buffer[..output]
                         }
-                        if input < std.mem.len(record) {
-                            input = input + 1
+                        if input >= std.mem.len(record) {
+                            return null
                         }
+                        input = input + 1
+                        closed = true
                         break
                     }
                 } else {
@@ -257,7 +260,7 @@ fn csv_field(buffer: MutSpan<u8>, record: Span<u8>, ordinal: usize) -> Maybe<Spa
                     input = input + 1
                 }
             }
-            if input >= std.mem.len(record) {
+            if !closed {
                 return null
             }
         } else {
@@ -280,6 +283,8 @@ fn csv_field(buffer: MutSpan<u8>, record: Span<u8>, ordinal: usize) -> Maybe<Spa
             }
             if input < std.mem.len(record) {
                 input = input + 1
+            } else {
+                return null
             }
         }
         field_index = field_index + 1

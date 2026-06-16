@@ -16,7 +16,10 @@ pub fn main(world: World) -> Void raises {
     let empty_object_count: Maybe<usize> = std.json.objectFieldCount("{}")
     let bad_array: Maybe<usize> = std.json.arrayCount("[1,]")
     let bad_path: Maybe<Span<u8>> = std.json.path(data, "user.")
-    if object_count.has && object_count.value == 3_usize && key0.has && std.mem.eql(key0.value, "user") && value0.has && user.has && std.mem.eql(value0.value, user.value) && scores.has && std.mem.eql(scores.value, "[7,42]") && score_count.has && score_count.value == 2_usize && score1.has && std.mem.eql(score1.value, "42") && name.has && std.mem.eql(name.value, "zero") && count.has && count.value == 42_u32 && active.has && active.value && empty_count.has && empty_count.value == 0_usize && empty_object_count.has && empty_object_count.value == 0_usize && !bad_array.has && !bad_path.has {
+    let bad_key: Maybe<Span<u8>> = std.json.objectKey(key_buf, "{\"a\":1,}", 0_usize)
+    let bad_object_value: Maybe<Span<u8>> = std.json.objectValue("{\"a\":1,}", 0_usize)
+    let bad_array_value: Maybe<Span<u8>> = std.json.arrayValue("[1,]", 0_usize)
+    if object_count.has && object_count.value == 3_usize && key0.has && std.mem.eql(key0.value, "user") && value0.has && user.has && std.mem.eql(value0.value, user.value) && scores.has && std.mem.eql(scores.value, "[7,42]") && score_count.has && score_count.value == 2_usize && score1.has && std.mem.eql(score1.value, "42") && name.has && std.mem.eql(name.value, "zero") && count.has && count.value == 42_u32 && active.has && active.value && empty_count.has && empty_count.value == 0_usize && empty_object_count.has && empty_object_count.value == 0_usize && !bad_array.has && !bad_path.has && !bad_key.has && !bad_object_value.has && !bad_array_value.has {
         check world.out.write("std json cursors ok\n")
         return
     }
