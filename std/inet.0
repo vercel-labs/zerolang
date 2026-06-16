@@ -50,8 +50,62 @@ fn __zero_std_inet_parse_ipv4(text: Span<u8>) -> Maybe<u32> {
     return (core % 4294967296_u64) as u32
 }
 
+fn __zero_std_inet_ipv4_to_bytes(buffer: MutSpan<u8>, value: u32) -> Maybe<Span<u8>> {
+    if std.mem.len(buffer) < 4 {
+        return null
+    }
+    buffer[0] = (value / 16777216_u32) as u8
+    buffer[1] = ((value / 65536_u32) % 256_u32) as u8
+    buffer[2] = ((value / 256_u32) % 256_u32) as u8
+    buffer[3] = (value % 256_u32) as u8
+    return buffer[..4]
+}
+
+fn __zero_std_inet_write_ipv4(buffer: MutSpan<u8>, value: u32) -> Maybe<Span<u8>> {
+    var writer: FixedWriter = std.io.fixedWriter(buffer, 0_usize)
+    let a: u32 = value / 16777216_u32
+    let b: u32 = (value / 65536_u32) % 256_u32
+    let c: u32 = (value / 256_u32) % 256_u32
+    let d: u32 = value % 256_u32
+    if std.fmt.writeU32(&mut writer, a) && (std.io.fixedWriterWriteByte(&mut writer, 46_u8) && std.fmt.writeU32(&mut writer, b)) && (std.io.fixedWriterWriteByte(&mut writer, 46_u8) && std.fmt.writeU32(&mut writer, c)) && (std.io.fixedWriterWriteByte(&mut writer, 46_u8) && std.fmt.writeU32(&mut writer, d)) {
+        return std.io.fixedWriterView(&writer)
+    }
+    return null
+}
+
 fn __zero_std_inet_is_ipv4(text: Span<u8>) -> Bool {
     return __zero_std_inet_ipv4_core(text) != 0
+}
+
+fn __zero_std_inet_is_ipv4_unspecified(value: u32) -> Bool {
+    return value == 0_u32
+}
+
+fn __zero_std_inet_is_ipv4_loopback(value: u32) -> Bool {
+    return value / 16777216_u32 == 127_u32
+}
+
+fn __zero_std_inet_is_ipv4_private(value: u32) -> Bool {
+    let first: u32 = value / 16777216_u32
+    let second: u32 = (value / 65536_u32) % 256_u32
+    if first == 10_u32 {
+        return true
+    }
+    if first == 172_u32 && (second >= 16_u32 && second <= 31_u32) {
+        return true
+    }
+    return first == 192_u32 && second == 168_u32
+}
+
+fn __zero_std_inet_is_ipv4_link_local(value: u32) -> Bool {
+    let first: u32 = value / 16777216_u32
+    let second: u32 = (value / 65536_u32) % 256_u32
+    return first == 169_u32 && second == 254_u32
+}
+
+fn __zero_std_inet_is_ipv4_multicast(value: u32) -> Bool {
+    let first: u32 = value / 16777216_u32
+    return first >= 224_u32 && first <= 239_u32
 }
 
 fn __zero_std_inet_hex_value(byte: u8) -> u32 {
@@ -205,6 +259,83 @@ fn __zero_std_inet_is_ipv6(text: Span<u8>) -> Bool {
     let buffer: MutSpan<u8> = storage
     let parsed: Maybe<Span<u8>> = __zero_std_inet_parse_ipv6(buffer, text)
     return parsed.has
+}
+
+fn __zero_std_inet_is_ip(text: Span<u8>) -> Bool {
+    return __zero_std_inet_is_ipv4(text) || __zero_std_inet_is_ipv6(text)
+}
+
+fn __zero_std_inet_parse_ip(buffer: MutSpan<u8>, text: Span<u8>) -> Maybe<Span<u8>> {
+    let ipv4: Maybe<u32> = __zero_std_inet_parse_ipv4(text)
+    if ipv4.has {
+        return __zero_std_inet_ipv4_to_bytes(buffer, ipv4.value)
+    }
+    return __zero_std_inet_parse_ipv6(buffer, text)
+}
+
+fn __zero_std_inet_is_ipv6_unspecified(bytes: Span<u8>) -> Bool {
+    if std.mem.len(bytes) != 16 {
+        return false
+    }
+    var index: usize = 0
+    while index < 16 {
+        if bytes[index] != 0_u8 {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_inet_is_ipv6_loopback(bytes: Span<u8>) -> Bool {
+    if std.mem.len(bytes) != 16 {
+        return false
+    }
+    var index: usize = 0
+    while index < 15 {
+        if bytes[index] != 0_u8 {
+            return false
+        }
+        index = index + 1
+    }
+    return bytes[15] == 1_u8
+}
+
+fn __zero_std_inet_is_ipv6_multicast(bytes: Span<u8>) -> Bool {
+    return std.mem.len(bytes) == 16 && bytes[0] == 255_u8
+}
+
+fn __zero_std_inet_is_ipv6_link_local(bytes: Span<u8>) -> Bool {
+    return std.mem.len(bytes) == 16 && (bytes[0] == 254_u8 && (bytes[1] >= 128_u8 && bytes[1] <= 191_u8))
+}
+
+fn __zero_std_inet_is_ipv6_private(bytes: Span<u8>) -> Bool {
+    return std.mem.len(bytes) == 16 && (bytes[0] == 252_u8 || bytes[0] == 253_u8)
+}
+
+fn __zero_std_inet_is_ipv6_unique_local(bytes: Span<u8>) -> Bool {
+    return __zero_std_inet_is_ipv6_private(bytes)
+}
+
+fn __zero_std_inet_is_ipv6_mapped_ipv4(bytes: Span<u8>) -> Bool {
+    if std.mem.len(bytes) != 16 {
+        return false
+    }
+    var index: usize = 0
+    while index < 10 {
+        if bytes[index] != 0_u8 {
+            return false
+        }
+        index = index + 1
+    }
+    return bytes[10] == 255_u8 && bytes[11] == 255_u8
+}
+
+fn __zero_std_inet_ipv6_mapped_ipv4(bytes: Span<u8>) -> Maybe<u32> {
+    if !__zero_std_inet_is_ipv6_mapped_ipv4(bytes) {
+        return null
+    }
+    return (bytes[12] as u32) * 16777216_u32 + (bytes[13] as u32) * 65536_u32 + (bytes[14] as u32) * 256_u32 + (bytes[15] as u32)
 }
 
 fn __zero_std_inet_is_hostname(text: Span<u8>) -> Bool {

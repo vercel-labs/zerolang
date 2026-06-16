@@ -3,8 +3,32 @@ fn inet_ipv4_checks() -> Bool {
     if !parsed.has || parsed.value != 3232235521_u32 {
         return false
     }
+    var text_storage: [16]u8 = [0_u8; 16]
+    let text: Maybe<Span<u8>> = std.inet.writeIpv4(text_storage, parsed.value)
+    if !text.has || !std.mem.eql(text.value, "192.168.0.1") {
+        return false
+    }
+    if !std.inet.isIpv4Private(parsed.value) || std.inet.isIpv4Loopback(parsed.value) {
+        return false
+    }
     let broadcast: Maybe<u32> = std.inet.parseIpv4("255.255.255.255")
     if !broadcast.has || broadcast.value != 4294967295_u32 {
+        return false
+    }
+    let loopback: Maybe<u32> = std.inet.parseIpv4("127.0.0.1")
+    if !loopback.has || !std.inet.isIpv4Loopback(loopback.value) {
+        return false
+    }
+    let link_local: Maybe<u32> = std.inet.parseIpv4("169.254.10.20")
+    if !link_local.has || !std.inet.isIpv4LinkLocal(link_local.value) {
+        return false
+    }
+    let multicast: Maybe<u32> = std.inet.parseIpv4("224.0.0.1")
+    if !multicast.has || !std.inet.isIpv4Multicast(multicast.value) {
+        return false
+    }
+    let unspecified: Maybe<u32> = std.inet.parseIpv4("0.0.0.0")
+    if !unspecified.has || !std.inet.isIpv4Unspecified(unspecified.value) {
         return false
     }
     let leading_zero: Maybe<u32> = std.inet.parseIpv4("01.2.3.4")
@@ -37,7 +61,45 @@ fn inet_ipv6_checks() -> Bool {
         return false
     }
     let bytes: Span<u8> = mapped.value
+    let extracted: Maybe<u32> = std.inet.ipv6MappedIpv4(bytes)
+    if !std.inet.isIpv6MappedIpv4(bytes) || (!extracted.has || extracted.value != 3232235777_u32) {
+        return false
+    }
     return bytes[10] == 255_u8 && (bytes[11] == 255_u8 && (bytes[12] == 192_u8 && bytes[15] == 1_u8))
+}
+
+fn inet_ip_family_checks() -> Bool {
+    var storage: [16]u8 = [0_u8; 16]
+    let buffer: MutSpan<u8> = storage
+    let ipv4: Maybe<Span<u8>> = std.inet.parseIp(buffer, "203.0.113.7")
+    if !ipv4.has || std.mem.len(ipv4.value) != 4 {
+        return false
+    }
+    let ipv4_bytes: Span<u8> = ipv4.value
+    if ipv4_bytes[0] != 203_u8 || (ipv4_bytes[1] != 0_u8 || (ipv4_bytes[2] != 113_u8 || ipv4_bytes[3] != 7_u8)) {
+        return false
+    }
+    let loopback: Maybe<Span<u8>> = std.inet.parseIp(buffer, "::1")
+    if !loopback.has || !std.inet.isIpv6Loopback(loopback.value) {
+        return false
+    }
+    let unspecified: Maybe<Span<u8>> = std.inet.parseIp(buffer, "::")
+    if !unspecified.has || !std.inet.isIpv6Unspecified(unspecified.value) {
+        return false
+    }
+    let link_local: Maybe<Span<u8>> = std.inet.parseIp(buffer, "fe80::1")
+    if !link_local.has || !std.inet.isIpv6LinkLocal(link_local.value) {
+        return false
+    }
+    let unique_local: Maybe<Span<u8>> = std.inet.parseIp(buffer, "fd00::1")
+    if !unique_local.has || (!std.inet.isIpv6Private(unique_local.value) || !std.inet.isIpv6UniqueLocal(unique_local.value)) {
+        return false
+    }
+    let multicast: Maybe<Span<u8>> = std.inet.parseIp(buffer, "ff02::1")
+    if !multicast.has || !std.inet.isIpv6Multicast(multicast.value) {
+        return false
+    }
+    return std.inet.isIp("192.0.2.1") && (std.inet.isIp("2001:db8::1") && !std.inet.isIp("not-an-ip"))
 }
 
 fn inet_hostname_checks() -> Bool {
@@ -45,7 +107,7 @@ fn inet_hostname_checks() -> Bool {
 }
 
 pub fn main(world: World) -> Void raises {
-    if inet_ipv4_checks() && (inet_ipv6_checks() && inet_hostname_checks()) {
+    if inet_ipv4_checks() && (inet_ipv6_checks() && (inet_ip_family_checks() && inet_hostname_checks())) {
         check world.out.write("std inet ok\n")
     } else {
         check world.out.write("std inet failed\n")

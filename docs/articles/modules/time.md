@@ -22,6 +22,9 @@ Runnable today:
 | `std.time.abs(value)` | `Duration` | Returns a non-negative duration magnitude. |
 | `std.time.between(start, end)` | `Duration` | Returns the non-negative duration between two values. |
 | `std.time.hasElapsed(start, now, timeout)` | `Bool` | Reports whether a timeout window has elapsed. |
+| `std.time.deadlineAfter(start, timeout)` | `Duration` | Builds a deadline by adding a timeout to a start instant. |
+| `std.time.remainingUntil(deadline, now)` | `Duration` | Returns remaining time or zero once the deadline has passed. |
+| `std.time.deadlineExpired(deadline, now)` | `Bool` | Reports whether `now` is at or past `deadline`. |
 | `std.time.asNs(value)` | `i64` | Converts to nanoseconds. |
 | `std.time.asUsFloor(value)` | `i64` | Converts to whole microseconds. |
 | `std.time.asMsFloor(value)` | `i32` | Converts to whole milliseconds. |
@@ -42,9 +45,8 @@ Runnable today:
 
 Current limits:
 
-- Monotonic instants.
-- Deadlines and request budgets.
 - Target-specific clock availability diagnostics.
+- There are no public sleep, timer, or fake-clock handles in `std.time`.
 
 Metadata labels:
 
@@ -63,9 +65,11 @@ pub fn main(world: World) -> Void raises {
     let b: Duration = std.time.seconds(1)
     let total: Duration = std.time.add(a, b)
     let span: Duration = std.time.between(std.time.seconds(2), std.time.ms(250))
+    let deadline: Duration = std.time.deadlineAfter(std.time.seconds(10), std.time.ms(500))
+    let remaining: Duration = std.time.remainingUntil(deadline, std.time.seconds(10))
     var text_storage: [32]u8 = [0_u8; 32]
     let text: Maybe<Span<u8>> = std.time.writeDurationMs(text_storage, total)
-    if std.time.asMsFloor(total) == 1250 && std.time.asMsFloor(span) == 1750 && text.has {
+    if std.time.asMsFloor(total) == 1250 && std.time.asMsFloor(span) == 1750 && (std.time.asMsFloor(remaining) == 500 && text.has) {
         check world.out.write("duration ok\n")
     }
 }
@@ -93,3 +97,4 @@ pub fn main(world: World) -> Void raises {
 Time is an effect when it observes the outside world.
 
 Pure duration math can stay allocation-free and target-independent.
+Sleep, timer, and fake-clock APIs are not exposed in the current public surface.
