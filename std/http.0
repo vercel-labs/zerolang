@@ -1033,9 +1033,70 @@ fn __zero_std_http_request_content_type(request: Span<u8>) -> Maybe<Span<u8>> {
     return std.str.trimAscii(trimmed[..end])
 }
 
+fn __zero_std_http_q_value_zero(value: Span<u8>) -> Bool {
+    if std.mem.len(value) == 0 || value[0] != 48_u8 {
+        return false
+    }
+    if std.mem.len(value) == 1 {
+        return true
+    }
+    if value[1] != 46_u8 {
+        return false
+    }
+    var index: usize = 2
+    while index < std.mem.len(value) {
+        let byte: u8 = value[index]
+        if byte < 48_u8 || byte > 57_u8 {
+            return false
+        }
+        if byte != 48_u8 {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __zero_std_http_accept_q_allows(item: Span<u8>) -> Bool {
+    var start: usize = 0
+    while start < std.mem.len(item) && item[start] != 59_u8 {
+        start = start + 1
+    }
+    if start >= std.mem.len(item) {
+        return true
+    }
+    start = start + 1
+    while start < std.mem.len(item) {
+        var end: usize = start
+        while end < std.mem.len(item) && item[end] != 59_u8 {
+            end = end + 1
+        }
+        let parameter: Span<u8> = std.str.trimAscii(item[start..end])
+        var eq: usize = 0
+        while eq < std.mem.len(parameter) && parameter[eq] != 61_u8 {
+            eq = eq + 1
+        }
+        if eq > 0 && eq < std.mem.len(parameter) {
+            let name: Span<u8> = std.str.trimAscii(parameter[..eq])
+            if std.str.eqlIgnoreAsciiCase(name, "q") {
+                let q_value: Span<u8> = std.str.trimAscii(parameter[eq + 1..])
+                return !__zero_std_http_q_value_zero(q_value)
+            }
+        }
+        if end == std.mem.len(item) {
+            return true
+        }
+        start = end + 1
+    }
+    return true
+}
+
 fn __zero_std_http_media_range_matches(range: Span<u8>, media: Span<u8>) -> Bool {
     let item: Span<u8> = std.str.trimAscii(range)
     if std.mem.len(item) == 0 {
+        return false
+    }
+    if !__zero_std_http_accept_q_allows(item) {
         return false
     }
     var end: usize = 0
@@ -1062,9 +1123,12 @@ fn __zero_std_http_media_range_matches(range: Span<u8>, media: Span<u8>) -> Bool
 }
 
 fn __zero_std_http_request_accepts(request: Span<u8>, media: Span<u8>) -> Bool {
+    if std.mem.len(media) == 0 {
+        return false
+    }
     let header: Maybe<Span<u8>> = __zero_std_http_request_header(request, "accept")
     if !header.has {
-        return false
+        return true
     }
     var start: usize = 0
     while start <= std.mem.len(header.value) {

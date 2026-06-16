@@ -114,6 +114,18 @@ export c fn main() -> i32 {
     if !std.http.requestAcceptsJson(routed_request) || !std.http.requestAccepts(routed_request, "text/plain") || std.http.requestAccepts(routed_request, "application/xml") {
         return 64
     }
+    let no_accept_request: Span<u8> = "GET /plain\n\n"
+    if !std.http.requestAcceptsJson(no_accept_request) || !std.http.requestAccepts(no_accept_request, "text/plain") {
+        return 102
+    }
+    let q_zero_accept_request: Span<u8> = "GET /plain\naccept: application/json;q=0, text/html\n\n"
+    if std.http.requestAcceptsJson(q_zero_accept_request) || !std.http.requestAccepts(q_zero_accept_request, "text/html") {
+        return 103
+    }
+    let wildcard_q_zero_request: Span<u8> = "GET /plain\naccept: */*;q=0, text/html;q=1\n\n"
+    if std.http.requestAccepts(wildcard_q_zero_request, "application/json") || !std.http.requestAccepts(wildcard_q_zero_request, "text/html") {
+        return 104
+    }
     let routed_name: Maybe<Span<u8>> = std.http.requestJsonField(routed_request, "name", 64)
     if !routed_name.has || !std.mem.eql(routed_name.value, "\"zero\"") {
         return 65

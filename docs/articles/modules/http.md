@@ -105,7 +105,7 @@ Runnable today:
 | `std.http.requestCookie(request, name)` | `Maybe<Span<u8>>` | Borrows a named cookie value from the `Cookie` request header. |
 | `std.http.requestContentLength(request)` | `Maybe<usize>` | Parses the `Content-Length` request header. |
 | `std.http.requestContentType(request)` | `Maybe<Span<u8>>` | Borrows the media type from `Content-Type`, excluding parameters. |
-| `std.http.requestAccepts(request, media)` | `Bool` | Checks whether `Accept` allows an exact media type, type wildcard, or `*/*`. |
+| `std.http.requestAccepts(request, media)` | `Bool` | Checks whether `Accept` allows an exact media type, type wildcard, or `*/*`; absent `Accept` allows any media and `q=0` rejects a range. |
 | `std.http.requestAcceptsJson(request)` | `Bool` | Checks whether `Accept` allows `application/json`. |
 | `std.http.requestBody(request)` | `Maybe<Span<u8>>` | Borrows the request body after the blank line. |
 | `std.http.requestBodyWithin(request, max)` | `Maybe<Span<u8>>` | Borrows the request body only when it is at most `max` bytes. |
@@ -215,7 +215,7 @@ pub fn main(world: World) -> Void raises {
     let net: Net = std.net.host()
     let client: HttpClient = std.http.client(net)
     var request_buf: [256]u8 = [0_u8; 256]
-    let request: Maybe<Span<u8>> = std.http.writeRequestWithHeader(request_buf, "POST https://example.com/api", "accept: application/json", "{\"ping\":1}")
+    let request: Maybe<Span<u8>> = std.http.writeJsonRequestWithHeader(request_buf, "POST https://example.com/api", "accept: application/json", "{\"ping\":1}")
     var response: [512]u8 = [0_u8; 512]
     if request.has {
         let result: HttpResult = std.http.fetch(client, request.value, response, std.time.ms(1000))
