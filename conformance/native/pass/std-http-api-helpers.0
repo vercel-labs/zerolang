@@ -151,6 +151,13 @@ export c fn main() -> i32 {
     if !delete_short.has || !std.mem.eql(delete_short.value, "DELETE /users/7\r\n\r\n") {
         return 90
     }
+    var long_target: [520]u8 = [97_u8; 520]
+    long_target[0] = 47_u8
+    var long_get_buf: [700]u8 = [0_u8; 700]
+    let long_get: Maybe<Span<u8>> = std.http.writeGetRequest(long_get_buf, long_target)
+    if !long_get.has || !std.http.requestIsGet(long_get.value, long_target) {
+        return 96
+    }
     var post_json_buf: [160]u8 = [0_u8; 160]
     let post_json: Maybe<Span<u8>> = std.http.writePostJsonRequest(post_json_buf, "/users", "{\"name\":\"zero\"}")
     if !post_json.has || !std.str.contains(post_json.value, "POST /users") || !std.str.contains(post_json.value, "content-type: application/json") {
@@ -185,6 +192,16 @@ export c fn main() -> i32 {
     let json_headers_request: Maybe<Span<u8>> = std.http.writeJsonRequestWithHeaders(json_headers_request_buf, "PATCH /api", "authorization: Bearer token\nx-client: zero", "{\"ok\":true}")
     if !json_headers_request.has || !std.str.contains(json_headers_request.value, "x-client: zero") || !std.http.requestIsPatch(json_headers_request.value, "/api") {
         return 76
+    }
+    var bad_request_header_buf: [160]u8 = [0_u8; 160]
+    let bad_request_header: Maybe<Span<u8>> = std.http.writeRequestWithHeaders(bad_request_header_buf, "POST /api", "content-length: 999", "x")
+    if bad_request_header.has {
+        return 97
+    }
+    var bad_json_request_header_buf: [160]u8 = [0_u8; 160]
+    let bad_json_request_header: Maybe<Span<u8>> = std.http.writeJsonRequestWithHeader(bad_json_request_header_buf, "POST /api", "content-type: text/plain", "{}")
+    if bad_json_request_header.has {
+        return 98
     }
     if !std.http.methodAllowed("PATCH", "GET, PATCH") || !std.http.requestMethodAllowed("PATCH /users/7\n\n", "GET, PATCH") || !std.http.requestRouteMethodAllowed("PATCH /users/7\n\n", "/users/:id", "PATCH, DELETE") {
         return 77
@@ -255,6 +272,16 @@ export c fn main() -> i32 {
     if !plain_multi_header_response.has || !std.http.responseMatches(plain_multi_header_response.value, 202_u16, "text/plain", "accepted") {
         return 94
     }
+    var bad_response_header_buf: [160]u8 = [0_u8; 160]
+    let bad_response_header: Maybe<Span<u8>> = std.http.writeResponseWithHeaders(bad_response_header_buf, 200_u16, "connection: keep-alive", "ok")
+    if bad_response_header.has {
+        return 99
+    }
+    var bad_json_response_header_buf: [160]u8 = [0_u8; 160]
+    let bad_json_response_header: Maybe<Span<u8>> = std.http.writeJsonResponseWithHeader(bad_json_response_header_buf, 200_u16, "content-type: text/plain", "{}")
+    if bad_json_response_header.has {
+        return 100
+    }
     if !std.mem.eql(std.http.contentTypeForPath("/assets/app.js"), "text/javascript; charset=utf-8") || !std.mem.eql(std.http.contentTypeForPath("/data.bin"), "application/octet-stream") {
         return 83
     }
@@ -267,6 +294,16 @@ export c fn main() -> i32 {
     let cookie_response: Maybe<Span<u8>> = std.http.writeJsonResponseWithCookie(cookie_buf, 200_u16, "sid=abc123", "{\"ok\":true}")
     if !cookie_response.has || !std.str.contains(cookie_response.value, "set-cookie: sid=abc123") {
         return 69
+    }
+    var long_cookie: [300]u8 = [97_u8; 300]
+    var long_cookie_buf: [512]u8 = [0_u8; 512]
+    let long_cookie_response: Maybe<Span<u8>> = std.http.writeJsonResponseWithCookie(long_cookie_buf, 200_u16, long_cookie, "{\"ok\":true}")
+    var long_cookie_header: Maybe<Span<u8>> = null
+    if long_cookie_response.has {
+        long_cookie_header = std.http.responseHeader(long_cookie_response.value, "set-cookie")
+    }
+    if !long_cookie_response.has || !long_cookie_header.has || !std.mem.eql(long_cookie_header.value, long_cookie[..]) {
+        return 101
     }
     var ok_buf: [128]u8 = [0_u8; 128]
     let ok_response: Maybe<Span<u8>> = std.http.writeJsonOk(ok_buf, "{\"ok\":true}")

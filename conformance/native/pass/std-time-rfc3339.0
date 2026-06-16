@@ -43,14 +43,19 @@ fn time_calendar_checks() -> Bool {
 fn time_duration_format_checks() -> Bool {
     var ns_storage: [32]u8 = [0_u8; 32]
     var ms_storage: [32]u8 = [0_u8; 32]
+    var big_ms_storage: [32]u8 = [0_u8; 32]
     var second_storage: [32]u8 = [0_u8; 32]
     let ns_text: Maybe<Span<u8>> = std.time.writeDurationNs(ns_storage, std.time.ns(42_i64))
     let ms_text: Maybe<Span<u8>> = std.time.writeDurationMs(ms_storage, std.time.add(std.time.seconds(1), std.time.ms(250)))
+    let big_ms_text: Maybe<Span<u8>> = std.time.writeDurationMs(big_ms_storage, std.time.ns(3000000000000000_i64))
     let second_text: Maybe<Span<u8>> = std.time.writeDurationSeconds(second_storage, std.time.minutes(2))
     if !ns_text.has || !std.mem.eql(ns_text.value, "42ns") {
         return false
     }
     if !ms_text.has || !std.mem.eql(ms_text.value, "1250ms") {
+        return false
+    }
+    if !big_ms_text.has || !std.mem.eql(big_ms_text.value, "3000000000ms") {
         return false
     }
     return second_text.has && std.mem.eql(second_text.value, "120s")

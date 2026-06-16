@@ -330,7 +330,14 @@ fn __zero_std_time_write_duration_ns(buffer: MutSpan<u8>, value: Duration) -> Ma
 }
 
 fn __zero_std_time_write_duration_ms(buffer: MutSpan<u8>, value: Duration) -> Maybe<Span<u8>> {
-    return __zero_std_time_write_i64_unit(buffer, std.time.asMsFloor(value) as i64, "ms")
+    let ns: i64 = std.time.asNs(value)
+    let quotient: i64 = ns / 1000000_i64
+    let remainder: i64 = ns % 1000000_i64
+    var milliseconds: i64 = quotient
+    if ns < 0_i64 && remainder != 0_i64 {
+        milliseconds = quotient - 1_i64
+    }
+    return __zero_std_time_write_i64_unit(buffer, milliseconds, "ms")
 }
 
 fn __zero_std_time_write_duration_seconds(buffer: MutSpan<u8>, value: Duration) -> Maybe<Span<u8>> {
