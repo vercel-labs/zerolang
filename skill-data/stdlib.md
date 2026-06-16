@@ -715,9 +715,22 @@ statusIsRedirect(arg0: u16) -> Bool
 statusIsClientError(arg0: u16) -> Bool
 statusIsServerError(arg0: u16) -> Bool
 writeRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writeMethodRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeGetRequest(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+writeHeadRequest(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+writeDeleteRequest(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeJsonRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writeJsonMethodRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writePostJsonRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writePutJsonRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+writePatchJsonRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 writeResponse(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>) -> Maybe<Span<u8>>
 writeJsonResponse(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>) -> Maybe<Span<u8>>
+writeResponseWithHeader(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeResponseWithHeaders(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeJsonResponseWithHeader(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeJsonResponseWithHeaders(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeJsonResponseWithCookie(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 writeJsonError(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>) -> Maybe<Span<u8>>
 writeCorsPreflight(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 writeCorsJsonResponse(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
@@ -730,6 +743,8 @@ writeFound(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeSeeOther(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeMovedPermanently(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writePermanentRedirect(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+contentTypeForPath(arg0: Span<u8>) -> String
+writeStaticResponse(arg0: MutSpan<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 writeJsonOk(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeJsonCreated(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeJsonBadRequest(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
@@ -742,11 +757,17 @@ writeJsonUnprocessable(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeJsonTooManyRequests(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeJsonInternalServerError(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeNoContent(arg0: MutSpan<u8>) -> Maybe<Span<u8>>
+writeRequestWithHeader(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeRequestWithHeaders(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeJsonRequestWithHeader(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+writeJsonRequestWithHeaders(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 requestMethodName(arg0: Span<u8>) -> Maybe<Span<u8>>
 requestTarget(arg0: Span<u8>) -> Maybe<Span<u8>>
 requestPath(arg0: Span<u8>) -> Maybe<Span<u8>>
 pathSegmentCount(arg0: Span<u8>) -> usize
 pathSegment(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+pathMatchesPattern(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+pathParam(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 requestPathSegmentCount(arg0: Span<u8>) -> usize
 requestPathSegment(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
 requestQuery(arg0: Span<u8>) -> Maybe<Span<u8>>
@@ -754,11 +775,18 @@ requestQueryValue(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 requestHeader(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 requestBearerToken(arg0: Span<u8>) -> Maybe<Span<u8>>
 requestCookie(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+requestContentLength(arg0: Span<u8>) -> Maybe<usize>
+requestContentType(arg0: Span<u8>) -> Maybe<Span<u8>>
+requestAccepts(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+requestAcceptsJson(arg0: Span<u8>) -> Bool
 requestBody(arg0: Span<u8>) -> Maybe<Span<u8>>
 requestBodyWithin(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
 requestHasJsonContentType(arg0: Span<u8>) -> Bool
 requestJsonBodyWithin(arg0: Span<u8>, arg1: usize) -> Maybe<Span<u8>>
+requestJsonField(arg0: Span<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
 requestMatches(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Bool
+methodAllowed(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+requestMethodAllowed(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 requestMethodIs(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 requestIsGet(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 requestIsHead(arg0: Span<u8>, arg1: Span<u8>) -> Bool
@@ -769,9 +797,22 @@ requestIsPatch(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 requestIsDelete(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 requestPathStartsWith(arg0: Span<u8>, arg1: Span<u8>) -> Bool
 requestPathTailAfter(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+requestRouteMatches(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Bool
+requestRouteMethodAllowed(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Bool
+requestPathParam(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+headerBlockSafe(arg0: Span<u8>) -> Bool
 headerBytes(arg0: Span<u8>, arg1: HttpHeaderValue) -> Maybe<Span<u8>>
 responseBody(arg0: Span<u8>, arg1: HttpResult) -> Maybe<Span<u8>>
 responseBodyBytes(arg0: Span<u8>) -> Maybe<Span<u8>>
+responseBodyEquals(arg0: Span<u8>, arg1: Span<u8>) -> Bool
+responseStatus(arg0: Span<u8>) -> Maybe<u16>
+responseStatusIs(arg0: Span<u8>, arg1: u16) -> Bool
+responseHeader(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+responseContentType(arg0: Span<u8>) -> Maybe<Span<u8>>
+responseRedirectLocation(arg0: Span<u8>) -> Maybe<Span<u8>>
+responseMatches(arg0: Span<u8>, arg1: u16, arg2: Span<u8>, arg3: Span<u8>) -> Bool
+testRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+testJsonRequest(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ### std.io
@@ -1393,6 +1434,9 @@ isRfc3339DateTime(text: Span<u8>) -> Bool
 parseRfc3339DateTimeOr(text: Span<u8>, fallback: i64) -> i64
 isLeapYear(year: u32) -> Bool
 daysInMonth(year: u32, month: u32) -> u32
+writeDurationNs(arg0: MutSpan<u8>, arg1: Duration) -> Maybe<Span<u8>>
+writeDurationMs(arg0: MutSpan<u8>, arg1: Duration) -> Maybe<Span<u8>>
+writeDurationSeconds(arg0: MutSpan<u8>, arg1: Duration) -> Maybe<Span<u8>>
 ```
 
 The RFC 3339 helpers are target-neutral and validate calendar dates (leap
@@ -1403,6 +1447,8 @@ wrapping modulo 24 hours (`00:29:60+00:30` is valid; `23:59:60-01:00` is not).
 `parseRfc3339DateTimeOr` returns UTC epoch seconds, truncating fractions and
 mapping a valid leap second to the same epoch second as `:59`; it returns the
 fallback for invalid text.
+Use `writeDurationNs`, `writeDurationMs`, or `writeDurationSeconds` when a
+typed `Duration` needs a compact textual value in caller-owned storage.
 
 ### std.unicode
 
@@ -1485,7 +1531,9 @@ Read `maybeValue.value` only inside a visible `if maybeValue.has { ... }` guard.
 Use the request/response envelope helpers instead of hand-building byte
 headers when possible. `std.http.writeRequest` and
 `std.http.writeJsonRequest` take a start line such as `"GET /health"` or
-`"POST https://example.com/api"` and write into caller-owned storage.
+`"POST https://example.com/api"` and write into caller-owned storage. Use
+`std.http.writeMethodRequest`, `std.http.writeGetRequest`, and the POST/PUT/PATCH
+JSON request helpers when method and target are already separate values.
 
 ```zero
 pub fn main() -> Void {
@@ -1499,13 +1547,21 @@ For API-style handlers, parse the request envelope with route helpers such as
 `std.http.requestIsGet`, `std.http.requestIsHead`,
 `std.http.requestIsOptions`, `std.http.requestIsPost`,
 `std.http.requestPathStartsWith`, `std.http.requestPathTailAfter`,
+`std.http.requestRouteMatches`, `std.http.requestPathParam`,
+`std.http.pathMatchesPattern`, `std.http.pathParam`,
 `std.http.pathSegmentCount`, `std.http.pathSegment`,
 `std.http.requestPathSegmentCount`, `std.http.requestPathSegment`,
 `std.http.requestQueryValue`, `std.http.requestHeader`,
+`std.http.requestContentLength`, `std.http.requestContentType`,
+`std.http.requestAccepts`, `std.http.requestAcceptsJson`,
 `std.http.requestBearerToken`, `std.http.requestCookie`,
-`std.http.requestHasJsonContentType`, and `std.http.requestJsonBodyWithin`.
-Use path segment helpers for resource routes such as `/users/7`; they borrow
-zero-based, non-empty segments and ignore leading, trailing, or repeated `/`.
+`std.http.requestHasJsonContentType`, `std.http.requestJsonBodyWithin`, and
+`std.http.requestJsonField`. Use `std.http.methodAllowed`,
+`std.http.requestMethodAllowed`, and `std.http.requestRouteMethodAllowed` for
+explicit handler dispatch across a comma-separated method allow list. Use path
+segment helpers for resource routes such as `/users/7`; they borrow zero-based,
+non-empty segments and ignore leading, trailing, or repeated `/`. Pattern routes
+match literal segments, `:name` parameters, and a trailing `*` wildcard.
 Prefer the status-specific JSON writers for common success responses and
 `std.http.writeJsonError(response, status, code)` for conventional
 `{"error":"code"}` failures. `writeJsonError` validates the code before writing
@@ -1521,17 +1577,29 @@ body writers remain available:
 and `std.http.writeCorsJsonResponse` when a JSON response also needs
 `access-control-allow-origin`. `writeCorsJsonResponse` takes a status-line
 fragment such as `"200 OK"` or `"422 Unprocessable Entity"`. Use
-`std.http.writeTextOk` or `std.http.writeHtmlOk` for simple non-JSON responses
-such as health text, `robots.txt`, or a small HTML page. Use redirect helpers
-such as `std.http.writeFound`, `std.http.writeSeeOther`,
+`std.http.writeResponseWithHeader`, `std.http.writeJsonResponseWithHeader`, or
+`std.http.writeJsonResponseWithCookie` when a response needs one explicit safe
+header line or cookie value. Use the `WithHeaders` variants with
+`std.http.headerBlockSafe` for newline-separated header blocks. Use
+`std.http.writeRequestWithHeader`, `std.http.writeRequestWithHeaders`,
+`std.http.writeJsonRequestWithHeader`, or
+`std.http.writeJsonRequestWithHeaders` for outbound request envelopes with
+explicit safe headers. Use `std.http.writeTextOk` or
+`std.http.writeHtmlOk` for simple non-JSON responses such as health text,
+`robots.txt`, or a small HTML page. Use `std.http.contentTypeForPath` and
+`std.http.writeStaticResponse` for small static responses whose media type can
+come from a path suffix. Use redirect helpers such as
+`std.http.writeFound`, `std.http.writeSeeOther`,
 `std.http.writeMovedPermanently`, or `std.http.writePermanentRedirect` instead
 of hand-writing `Location` headers; they reject empty or control-character
 location values before writing. Use
-`std.http.responseBodyBytes` to read the body from a response envelope produced
-locally by `writeResponse`, a JSON writer, a redirect writer, or a text/html
-writer. When smoke-testing a JSON API, hit success plus missing/invalid input,
-unknown-route, and wrong-method paths. Check HTTP status codes and JSON bodies,
-not just happy-path response text.
+`std.http.responseStatus`, `std.http.responseStatusIs`,
+`std.http.responseHeader`, `std.http.responseContentType`,
+`std.http.responseRedirectLocation`, `std.http.responseBodyBytes`,
+`std.http.responseBodyEquals`, and `std.http.responseMatches` to inspect a
+local response envelope produced by the response writers. Use
+`std.http.testRequest` and `std.http.testJsonRequest` to build synthetic request
+envelopes for handler checks without opening a socket.
 
 For a runnable local API server, define a same-module handler and call
 `std.http.listen(world)` from `main`. The handler signature is
@@ -1539,8 +1607,8 @@ For a runnable local API server, define a same-module handler and call
 When no port is passed, `std.http.listen(world)` starts at development port
 `3000` and increments by one until it finds a free loopback port. It prints the
 actual URL, such as `listening on http://127.0.0.1:3001`; use that printed port
-for curl or browser checks. Do not assume `3000`, because the user may already
-have another local server there. When a port is explicit,
+for local HTTP requests. Do not assume `3000`, because another local server may
+already be using it. When a port is explicit,
 `std.http.listen(world, 3000_u16)` tries exactly that port and fails with a bind
 diagnostic if it is occupied.
 

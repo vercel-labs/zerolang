@@ -6,7 +6,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const execMaxBuffer = 16 * 1024 * 1024;
+const execMaxBuffer = 128 * 1024 * 1024;
 const zero = process.env.ZERO_BIN || (existsSync(".zero/bin/zero") ? ".zero/bin/zero" : "bin/zero");
 const outDir = `/tmp/zero-program-graph-parity-${process.pid}`;
 const requireStableNodeIds = process.argv.includes("--require-stable-node-ids");

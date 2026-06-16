@@ -40,8 +40,24 @@ fn time_calendar_checks() -> Bool {
     return std.time.isLeapYear(2000) && !std.time.isLeapYear(1900) && std.time.isLeapYear(2024) && std.time.daysInMonth(2024, 2) == 29 && std.time.daysInMonth(2023, 2) == 28 && std.time.daysInMonth(2024, 4) == 30 && std.time.daysInMonth(2024, 13) == 0
 }
 
+fn time_duration_format_checks() -> Bool {
+    var ns_storage: [32]u8 = [0_u8; 32]
+    var ms_storage: [32]u8 = [0_u8; 32]
+    var second_storage: [32]u8 = [0_u8; 32]
+    let ns_text: Maybe<Span<u8>> = std.time.writeDurationNs(ns_storage, std.time.ns(42_i64))
+    let ms_text: Maybe<Span<u8>> = std.time.writeDurationMs(ms_storage, std.time.add(std.time.seconds(1), std.time.ms(250)))
+    let second_text: Maybe<Span<u8>> = std.time.writeDurationSeconds(second_storage, std.time.minutes(2))
+    if !ns_text.has || !std.mem.eql(ns_text.value, "42ns") {
+        return false
+    }
+    if !ms_text.has || !std.mem.eql(ms_text.value, "1250ms") {
+        return false
+    }
+    return second_text.has && std.mem.eql(second_text.value, "120s")
+}
+
 pub fn main(world: World) -> Void raises {
-    if time_date_checks() && (time_time_checks() && time_leap_second_checks()) && (time_datetime_checks() && (time_epoch_checks() && time_calendar_checks())) {
+    if time_date_checks() && (time_time_checks() && time_leap_second_checks()) && (time_datetime_checks() && (time_epoch_checks() && (time_calendar_checks() && time_duration_format_checks()))) {
         check world.out.write("std time rfc3339 ok\n")
     } else {
         check world.out.write("std time rfc3339 failed\n")

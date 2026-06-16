@@ -43,9 +43,26 @@ Runnable today:
 | `std.http.statusIsClientError(status)` | `Bool` | True for 4xx statuses. |
 | `std.http.statusIsServerError(status)` | `Bool` | True for 5xx statuses. |
 | `std.http.writeRequest(buffer, startLine, body)` | `Maybe<Span<u8>>` | Writes `METHOD URL`, optional content length, blank line, and body into caller storage. |
+| `std.http.writeRequestWithHeader(buffer, startLine, headerLine, body)` | `Maybe<Span<u8>>` | Writes a request envelope with one validated `name: value` header line. |
+| `std.http.writeRequestWithHeaders(buffer, startLine, headers, body)` | `Maybe<Span<u8>>` | Writes a request envelope with a validated newline-separated header block. |
+| `std.http.writeMethodRequest(buffer, method, target, body)` | `Maybe<Span<u8>>` | Writes a request envelope from separate method and target spans. |
+| `std.http.writeGetRequest(buffer, target)` | `Maybe<Span<u8>>` | Writes an empty GET request envelope. |
+| `std.http.writeHeadRequest(buffer, target)` | `Maybe<Span<u8>>` | Writes an empty HEAD request envelope. |
+| `std.http.writeDeleteRequest(buffer, target)` | `Maybe<Span<u8>>` | Writes an empty DELETE request envelope. |
 | `std.http.writeJsonRequest(buffer, startLine, body)` | `Maybe<Span<u8>>` | Writes a JSON request envelope with `content-type` and `content-length`. |
+| `std.http.writeJsonMethodRequest(buffer, method, target, body)` | `Maybe<Span<u8>>` | Writes a JSON request envelope from separate method and target spans. |
+| `std.http.writeJsonRequestWithHeader(buffer, startLine, headerLine, body)` | `Maybe<Span<u8>>` | Writes a JSON request envelope with one validated extra header line. |
+| `std.http.writeJsonRequestWithHeaders(buffer, startLine, headers, body)` | `Maybe<Span<u8>>` | Writes a JSON request envelope with a validated extra header block. |
+| `std.http.writePostJsonRequest(buffer, target, body)` | `Maybe<Span<u8>>` | Writes a POST JSON request envelope. |
+| `std.http.writePutJsonRequest(buffer, target, body)` | `Maybe<Span<u8>>` | Writes a PUT JSON request envelope. |
+| `std.http.writePatchJsonRequest(buffer, target, body)` | `Maybe<Span<u8>>` | Writes a PATCH JSON request envelope. |
 | `std.http.writeResponse(buffer, status, body)` | `Maybe<Span<u8>>` | Writes an HTTP/1.1 response envelope into caller storage. |
+| `std.http.writeResponseWithHeader(buffer, status, headerLine, body)` | `Maybe<Span<u8>>` | Writes a response envelope with one validated `name: value` header line. |
+| `std.http.writeResponseWithHeaders(buffer, status, headers, body)` | `Maybe<Span<u8>>` | Writes a response envelope with a validated newline-separated header block. |
 | `std.http.writeJsonResponse(buffer, status, body)` | `Maybe<Span<u8>>` | Writes a JSON HTTP/1.1 response envelope into caller storage. |
+| `std.http.writeJsonResponseWithHeader(buffer, status, headerLine, body)` | `Maybe<Span<u8>>` | Writes a JSON response envelope with one validated `name: value` header line. |
+| `std.http.writeJsonResponseWithHeaders(buffer, status, headers, body)` | `Maybe<Span<u8>>` | Writes a JSON response envelope with a validated extra header block. |
+| `std.http.writeJsonResponseWithCookie(buffer, status, cookie, body)` | `Maybe<Span<u8>>` | Writes a JSON response envelope with one `Set-Cookie` header value. |
 | `std.http.writeJsonError(buffer, status, code)` | `Maybe<Span<u8>>` | Writes `{"error":"code"}` after validating the code is JSON-safe lower-case ASCII, digits, `_`, or `-`. |
 | `std.http.writeCorsPreflight(buffer, allowOrigin, allowMethods, allowHeaders)` | `Maybe<Span<u8>>` | Writes a 204 CORS preflight response with caller-provided allow headers. |
 | `std.http.writeCorsJsonResponse(buffer, statusLine, body, allowOrigin)` | `Maybe<Span<u8>>` | Writes a JSON response with `access-control-allow-origin`; `statusLine` is a fragment such as `"200 OK"`. |
@@ -58,6 +75,8 @@ Runnable today:
 | `std.http.writeSeeOther(buffer, location)` | `Maybe<Span<u8>>` | Writes a 303 redirect response. |
 | `std.http.writeMovedPermanently(buffer, location)` | `Maybe<Span<u8>>` | Writes a 301 redirect response. |
 | `std.http.writePermanentRedirect(buffer, location)` | `Maybe<Span<u8>>` | Writes a 308 redirect response. |
+| `std.http.contentTypeForPath(path)` | `String` | Returns a small static-file media type from a path suffix. |
+| `std.http.writeStaticResponse(buffer, status, path, body)` | `Maybe<Span<u8>>` | Writes a response with `content-type` inferred from the path suffix. |
 | `std.http.writeJsonOk(buffer, body)` | `Maybe<Span<u8>>` | Writes a 200 JSON response envelope into caller storage. |
 | `std.http.writeJsonCreated(buffer, body)` | `Maybe<Span<u8>>` | Writes a 201 JSON response envelope into caller storage. |
 | `std.http.writeJsonBadRequest(buffer, body)` | `Maybe<Span<u8>>` | Writes a 400 JSON response envelope into caller storage. |
@@ -75,6 +94,8 @@ Runnable today:
 | `std.http.requestPath(request)` | `Maybe<Span<u8>>` | Borrows the path from an absolute or origin-form request target. |
 | `std.http.pathSegmentCount(path)` | `usize` | Counts non-empty path segments in a path span. |
 | `std.http.pathSegment(path, index)` | `Maybe<Span<u8>>` | Borrows a zero-based non-empty path segment from a path span. |
+| `std.http.pathMatchesPattern(path, pattern)` | `Bool` | Matches path segments against literals, `:params`, and a trailing `*` wildcard. |
+| `std.http.pathParam(path, pattern, name)` | `Maybe<Span<u8>>` | Borrows a named path parameter from a matched path pattern. |
 | `std.http.requestPathSegmentCount(request)` | `usize` | Counts non-empty path segments from a request envelope path. |
 | `std.http.requestPathSegment(request, index)` | `Maybe<Span<u8>>` | Borrows a zero-based non-empty request path segment. |
 | `std.http.requestQuery(request)` | `Maybe<Span<u8>>` | Borrows the query string from a request target. |
@@ -82,11 +103,18 @@ Runnable today:
 | `std.http.requestHeader(request, name)` | `Maybe<Span<u8>>` | Borrows a case-insensitive request header value. |
 | `std.http.requestBearerToken(request)` | `Maybe<Span<u8>>` | Borrows the bearer token from the `Authorization` request header. |
 | `std.http.requestCookie(request, name)` | `Maybe<Span<u8>>` | Borrows a named cookie value from the `Cookie` request header. |
+| `std.http.requestContentLength(request)` | `Maybe<usize>` | Parses the `Content-Length` request header. |
+| `std.http.requestContentType(request)` | `Maybe<Span<u8>>` | Borrows the media type from `Content-Type`, excluding parameters. |
+| `std.http.requestAccepts(request, media)` | `Bool` | Checks whether `Accept` allows an exact media type, type wildcard, or `*/*`. |
+| `std.http.requestAcceptsJson(request)` | `Bool` | Checks whether `Accept` allows `application/json`. |
 | `std.http.requestBody(request)` | `Maybe<Span<u8>>` | Borrows the request body after the blank line. |
 | `std.http.requestBodyWithin(request, max)` | `Maybe<Span<u8>>` | Borrows the request body only when it is at most `max` bytes. |
 | `std.http.requestHasJsonContentType(request)` | `Bool` | True when the request content type is `application/json`, ignoring ASCII case and allowing parameters. |
 | `std.http.requestJsonBodyWithin(request, max)` | `Maybe<Span<u8>>` | Borrows the body only when content type is JSON, body length is within `max`, and bytes validate as JSON. |
+| `std.http.requestJsonField(request, name, max)` | `Maybe<Span<u8>>` | Borrows a top-level JSON field from a bounded JSON request body. |
 | `std.http.requestMatches(request, method, path)` | `Bool` | True when a request envelope has the exact method and normalized path. |
+| `std.http.methodAllowed(method, allowed)` | `Bool` | Checks a method against a comma-separated allow list. |
+| `std.http.requestMethodAllowed(request, allowed)` | `Bool` | Checks a request method against a comma-separated allow list. |
 | `std.http.requestMethodIs(request, method)` | `Bool` | True when a request envelope has the exact method. |
 | `std.http.requestIsGet(request, path)` | `Bool` | True when a request envelope is `GET` for the normalized path. |
 | `std.http.requestIsHead(request, path)` | `Bool` | True when a request envelope is `HEAD` for the normalized path. |
@@ -97,9 +125,22 @@ Runnable today:
 | `std.http.requestIsDelete(request, path)` | `Bool` | True when a request envelope is `DELETE` for the normalized path. |
 | `std.http.requestPathStartsWith(request, prefix)` | `Bool` | True when the normalized request path starts with `prefix`. |
 | `std.http.requestPathTailAfter(request, prefix)` | `Maybe<Span<u8>>` | Borrows the normalized request path after `prefix`, or `null` when it does not match. |
+| `std.http.requestRouteMatches(request, method, pattern)` | `Bool` | True when the method matches and the path matches a segment pattern. |
+| `std.http.requestRouteMethodAllowed(request, pattern, allowed)` | `Bool` | True when the path pattern matches and the method is in a comma-separated allow list. |
+| `std.http.requestPathParam(request, pattern, name)` | `Maybe<Span<u8>>` | Borrows a named request path parameter from a matched pattern. |
+| `std.http.headerBlockSafe(headers)` | `Bool` | Validates a newline-separated header block before writing it. |
 | `std.http.headerBytes(response, value)` | `Maybe<Span<u8>>` | Borrows a response header value after validating packed metadata. |
 | `std.http.responseBody(response, result)` | `Maybe<Span<u8>>` | Borrows the response body when the transport result succeeded. |
 | `std.http.responseBodyBytes(response)` | `Maybe<Span<u8>>` | Borrows the body bytes from a local response envelope written by response helpers. |
+| `std.http.responseStatus(response)` | `Maybe<u16>` | Parses the status code from a local response envelope. |
+| `std.http.responseStatusIs(response, status)` | `Bool` | Checks the status code in a local response envelope. |
+| `std.http.responseHeader(response, name)` | `Maybe<Span<u8>>` | Borrows a case-insensitive header value from a local response envelope. |
+| `std.http.responseContentType(response)` | `Maybe<Span<u8>>` | Borrows the media type from a local response envelope. |
+| `std.http.responseRedirectLocation(response)` | `Maybe<Span<u8>>` | Borrows a redirect `Location` header from a local response envelope. |
+| `std.http.responseBodyEquals(response, expected)` | `Bool` | Compares a local response body with expected bytes. |
+| `std.http.responseMatches(response, status, contentType, body)` | `Bool` | Checks local response status, optional content type, and body bytes. |
+| `std.http.testRequest(buffer, method, target, body)` | `Maybe<Span<u8>>` | Writes a synthetic request envelope for handler tests. |
+| `std.http.testJsonRequest(buffer, method, target, body)` | `Maybe<Span<u8>>` | Writes a synthetic JSON request envelope for handler tests. |
 
 Metadata labels:
 
@@ -169,7 +210,7 @@ pub fn main(world: World) -> Void raises {
     let net: Net = std.net.host()
     let client: HttpClient = std.http.client(net)
     var request_buf: [256]u8 = [0_u8; 256]
-    let request: Maybe<Span<u8>> = std.http.writeJsonRequest(request_buf, "POST https://example.com/api", "{\"ping\":1}")
+    let request: Maybe<Span<u8>> = std.http.writeRequestWithHeader(request_buf, "POST https://example.com/api", "accept: application/json", "{\"ping\":1}")
     var response: [512]u8 = [0_u8; 512]
     if request.has {
         let result: HttpResult = std.http.fetch(client, request.value, response, std.time.ms(1000))
@@ -186,13 +227,13 @@ Request routing:
 
 ```zero
 pub fn main(world: World) -> Void raises {
-    let request: Span<u8> = std.mem.span("POST /users?tenant=demo\ncontent-type: application/json\n\n{\"id\":7}")
+    let request: Span<u8> = std.mem.span("POST /users/7?tenant=demo\naccept: application/json\ncontent-type: application/json; charset=utf-8\n\n{\"id\":7}")
     var response: [256]u8 = [0_u8; 256]
-    let body: Maybe<Span<u8>> = std.http.requestJsonBodyWithin(request, 64)
+    let id: Maybe<Span<u8>> = std.http.requestPathParam(request, "/users/:id", "id")
+    let body_id: Maybe<Span<u8>> = std.http.requestJsonField(request, "id", 64)
     let tenant: Maybe<Span<u8>> = std.http.requestQueryValue(request, "tenant")
-    let resource: Maybe<Span<u8>> = std.http.requestPathSegment(request, 0)
-    if std.http.requestIsPost(request, "/users") && resource.has && std.mem.eql(resource.value, "users") && tenant.has && body.has {
-        let written: Maybe<Span<u8>> = std.http.writeJsonCreated(response, "{\"created\":true}")
+    if std.http.requestRouteMatches(request, "POST", "/users/:id") && id.has && tenant.has && body_id.has && std.http.requestAcceptsJson(request) {
+        let written: Maybe<Span<u8>> = std.http.writeJsonResponseWithHeader(response, 201_u16, "location: /users/7", "{\"created\":true}")
         if written.has {
             check world.out.write("http route ok\n")
             return
@@ -296,10 +337,35 @@ curl -sS -i http://127.0.0.1:3001/ping
 ```
 
 When no port is passed, `listen(world)` starts at `3000` and increments by one
-until it finds a free loopback port. This lets agent-run examples coexist with
-a user's docs server or other local development process. When the program passes
-an explicit port, such as `std.http.listen(world, 3000_u16)`, Zero tries exactly
-that port and reports the bind failure instead of auto-incrementing.
+until it finds a free loopback port. This lets small local services coexist on a
+development machine. When the program passes an explicit port, such as
+`std.http.listen(world, 3000_u16)`, Zero tries exactly that port and reports the
+bind failure instead of auto-incrementing.
+
+Synthetic handler check:
+
+```zero
+fn handle(request: Span<u8>, response: MutSpan<u8>) -> Maybe<Span<u8>> {
+    if std.http.requestRouteMethodAllowed(request, "/users/:id", "GET, HEAD") {
+        return std.http.writeJsonResponseWithHeaders(response, 200_u16, "cache-control: no-store", "{\"ok\":true}")
+    }
+    return std.http.writeJsonError(response, 404_u16, "not_found")
+}
+
+pub fn main(world: World) -> Void raises {
+    var request_storage: [128]u8 = [0_u8; 128]
+    var response_storage: [256]u8 = [0_u8; 256]
+    let request: Maybe<Span<u8>> = std.http.testRequest(request_storage, "GET", "/users/7", "")
+    if request.has {
+        let response: Maybe<Span<u8>> = handle(request.value, response_storage)
+        if response.has && std.http.responseMatches(response.value, 200_u16, "application/json", "{\"ok\":true}") {
+            check world.out.write("handler ok\n")
+            return
+        }
+    }
+    check world.err.write("handler failed\n")
+}
+```
 
 ## Design Notes
 
@@ -328,6 +394,5 @@ Compare `resultError` with the named `HttpError` helpers rather than raw
 numbers. `errorNone` means the transport succeeded; HTTP non-2xx statuses still
 carry `errorNone` and can be inspected with `resultStatus`.
 
-The module does not expose raw socket read/write APIs, structured header
-collections, streaming bodies, redirects, a global router, or a heap-allocated
-response object.
+The module does not expose raw socket read/write APIs, streaming bodies, a
+global router, or a heap-allocated response object.

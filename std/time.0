@@ -307,3 +307,32 @@ fn __zero_std_time_parse_rfc3339_datetime_or(text: Span<u8>, fallback: i64) -> i
     let days: i64 = __zero_std_time_days_from_civil(year, month, day)
     return days * 86400_i64 + hh * 3600_i64 + mm * 60_i64 + ss - offset_minutes * 60_i64
 }
+
+fn __zero_std_time_write_i64_unit(buffer: MutSpan<u8>, value: i64, unit: Span<u8>) -> Maybe<Span<u8>> {
+    var digits_storage: [24]u8 = [0_u8; 24]
+    let digits: Maybe<Span<u8>> = std.fmt.i64(digits_storage, value)
+    if !digits.has {
+        return null
+    }
+    let wrote_digits: Maybe<usize> = std.io.writeSpan(buffer, 0, digits.value)
+    if !wrote_digits.has {
+        return null
+    }
+    let wrote_unit: Maybe<usize> = std.io.writeSpan(buffer, wrote_digits.value, unit)
+    if !wrote_unit.has {
+        return null
+    }
+    return buffer[..wrote_unit.value]
+}
+
+fn __zero_std_time_write_duration_ns(buffer: MutSpan<u8>, value: Duration) -> Maybe<Span<u8>> {
+    return __zero_std_time_write_i64_unit(buffer, std.time.asNs(value), "ns")
+}
+
+fn __zero_std_time_write_duration_ms(buffer: MutSpan<u8>, value: Duration) -> Maybe<Span<u8>> {
+    return __zero_std_time_write_i64_unit(buffer, std.time.asMsFloor(value) as i64, "ms")
+}
+
+fn __zero_std_time_write_duration_seconds(buffer: MutSpan<u8>, value: Duration) -> Maybe<Span<u8>> {
+    return __zero_std_time_write_i64_unit(buffer, std.time.asSecondsFloor(value), "s")
+}

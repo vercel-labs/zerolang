@@ -36,6 +36,9 @@ Runnable today:
 | `std.time.parseRfc3339DateTimeOr(text, fallback)` | `i64` | Parses a date-time into UTC epoch seconds; returns the fallback when invalid. Fractional seconds truncate; a valid leap second maps to the same epoch second as `:59`. |
 | `std.time.isLeapYear(year)` | `Bool` | Gregorian leap-year predicate. |
 | `std.time.daysInMonth(year, month)` | `u32` | Days in a month; returns `0` for invalid months. |
+| `std.time.writeDurationNs(buffer, value)` | `Maybe<Span<u8>>` | Writes nanoseconds with an `ns` suffix into caller storage. |
+| `std.time.writeDurationMs(buffer, value)` | `Maybe<Span<u8>>` | Writes whole milliseconds with an `ms` suffix into caller storage. |
+| `std.time.writeDurationSeconds(buffer, value)` | `Maybe<Span<u8>>` | Writes whole seconds with an `s` suffix into caller storage. |
 
 Current limits:
 
@@ -60,7 +63,9 @@ pub fn main(world: World) -> Void raises {
     let b: Duration = std.time.seconds(1)
     let total: Duration = std.time.add(a, b)
     let span: Duration = std.time.between(std.time.seconds(2), std.time.ms(250))
-    if std.time.asMsFloor(total) == 1250 && std.time.asMsFloor(span) == 1750 {
+    var text_storage: [32]u8 = [0_u8; 32]
+    let text: Maybe<Span<u8>> = std.time.writeDurationMs(text_storage, total)
+    if std.time.asMsFloor(total) == 1250 && std.time.asMsFloor(span) == 1750 && text.has {
         check world.out.write("duration ok\n")
     }
 }
