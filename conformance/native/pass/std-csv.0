@@ -59,7 +59,13 @@ pub fn main(world: World) -> Void raises {
         }
     }
 
-    if std.csv.valid("a,\"unterminated") || std.csv.valid("a\"b") {
+    let crlf_count: Maybe<usize> = std.csv.recordCount("a\r\nb")
+    let bare_cr_count: Maybe<usize> = std.csv.recordCount("a\rb")
+    var early_bad_buf: [8]u8 = [0_u8; 8]
+    let early_bad_field: Maybe<Span<u8>> = std.csv.field(early_bad_buf, "ok,b\"ad", 0_usize)
+    var early_quoted_bad_buf: [8]u8 = [0_u8; 8]
+    let early_quoted_bad_field: Maybe<Span<u8>> = std.csv.field(early_quoted_bad_buf, "\"ok\",b\"ad", 0_usize)
+    if std.csv.valid("a,\"unterminated") || std.csv.valid("a\"b") || !std.csv.valid("a\r\nb") || !crlf_count.has || crlf_count.value != 2_usize || std.csv.valid("a\rb") || bare_cr_count.has || early_bad_field.has || early_quoted_bad_field.has {
         ok = false
     }
     let bad_count: Maybe<usize> = std.csv.fieldCount("a,\"unterminated")

@@ -72,8 +72,13 @@ fn csv_record_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
                 after_quote = false
                 at_field_start = true
                 index = index + 1
-            } else if csv_is_lf(byte) || csv_is_cr(byte) {
+            } else if csv_is_lf(byte) {
                 return index
+            } else if csv_is_cr(byte) {
+                if index + 1 < std.mem.len(bytes) && csv_is_lf(bytes[index + 1]) {
+                    return index
+                }
+                return null
             } else {
                 return null
             }
@@ -84,8 +89,13 @@ fn csv_record_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
         } else if csv_is_comma(byte) {
             at_field_start = true
             index = index + 1
-        } else if csv_is_lf(byte) || csv_is_cr(byte) {
+        } else if csv_is_lf(byte) {
             return index
+        } else if csv_is_cr(byte) {
+            if index + 1 < std.mem.len(bytes) && csv_is_lf(bytes[index + 1]) {
+                return index
+            }
+            return null
         } else if csv_is_quote(byte) {
             return null
         } else {
@@ -215,6 +225,10 @@ fn csv_field_count(record: Span<u8>) -> Maybe<usize> {
 }
 
 fn csv_field(buffer: MutSpan<u8>, record: Span<u8>, ordinal: usize) -> Maybe<Span<u8>> {
+    let fields: Maybe<usize> = csv_field_count(record)
+    if !fields.has || ordinal >= fields.value {
+        return null
+    }
     var field_index: usize = 0
     var input: usize = 0
     while input <= std.mem.len(record) {
