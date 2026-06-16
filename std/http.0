@@ -757,7 +757,7 @@ fn __zero_std_http_response_status(response: Span<u8>) -> Maybe<u16> {
         return null
     }
     let code: Maybe<usize> = std.parse.parseUsize(response[9..12])
-    if !code.has || code.value > 65535_usize {
+    if !code.has || code.value < 100_usize || code.value > 999_usize || (line_end.value > 12 && response[12] != 32_u8) {
         return null
     }
     return code.value as u16
@@ -1696,7 +1696,7 @@ fn __zero_std_http_write_response_with_header(buffer: MutSpan<u8>, status: u16, 
         header_colon = header_colon + 1
     }
     let header_name: Span<u8> = header_line[..header_colon]
-    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || std.str.eqlIgnoreAsciiCase(header_name, "connection") {
+    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") || std.str.eqlIgnoreAsciiCase(header_name, "connection")) {
         return null
     }
     var offset: usize = 0
@@ -1773,7 +1773,7 @@ fn __zero_std_http_write_response_with_headers(buffer: MutSpan<u8>, status: u16,
             header_colon = header_colon + 1
         }
         let header_name: Span<u8> = headers[header_start..header_colon]
-        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || std.str.eqlIgnoreAsciiCase(header_name, "connection") {
+        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") || std.str.eqlIgnoreAsciiCase(header_name, "connection")) {
             return null
         }
         if header_end == std.mem.len(headers) {
@@ -1841,7 +1841,7 @@ fn __zero_std_http_write_json_response_with_header(buffer: MutSpan<u8>, status: 
         header_colon = header_colon + 1
     }
     let header_name: Span<u8> = header_line[..header_colon]
-    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "content-type") || std.str.eqlIgnoreAsciiCase(header_name, "connection")) {
+    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") || (std.str.eqlIgnoreAsciiCase(header_name, "content-type") || std.str.eqlIgnoreAsciiCase(header_name, "connection"))) {
         return null
     }
     var offset: usize = 0
@@ -1918,7 +1918,7 @@ fn __zero_std_http_write_json_response_with_headers(buffer: MutSpan<u8>, status:
             header_colon = header_colon + 1
         }
         let header_name: Span<u8> = headers[header_start..header_colon]
-        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "content-type") || std.str.eqlIgnoreAsciiCase(header_name, "connection")) {
+        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") || (std.str.eqlIgnoreAsciiCase(header_name, "content-type") || std.str.eqlIgnoreAsciiCase(header_name, "connection"))) {
             return null
         }
         if header_end == std.mem.len(headers) {
@@ -2057,7 +2057,7 @@ fn __zero_std_http_write_request_with_header(buffer: MutSpan<u8>, start_line: Sp
         header_colon = header_colon + 1
     }
     let header_name: Span<u8> = header_line[..header_colon]
-    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") {
+    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") {
         return null
     }
     var offset: usize = 0
@@ -2119,7 +2119,7 @@ fn __zero_std_http_write_request_with_headers(buffer: MutSpan<u8>, start_line: S
             header_colon = header_colon + 1
         }
         let header_name: Span<u8> = headers[header_start..header_colon]
-        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") {
+        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") {
             return null
         }
         if header_end == std.mem.len(headers) {
@@ -2172,7 +2172,7 @@ fn __zero_std_http_write_json_request_with_header(buffer: MutSpan<u8>, start_lin
         header_colon = header_colon + 1
     }
     let header_name: Span<u8> = header_line[..header_colon]
-    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || std.str.eqlIgnoreAsciiCase(header_name, "content-type") {
+    if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") || std.str.eqlIgnoreAsciiCase(header_name, "content-type")) {
         return null
     }
     var offset: usize = 0
@@ -2232,7 +2232,7 @@ fn __zero_std_http_write_json_request_with_headers(buffer: MutSpan<u8>, start_li
             header_colon = header_colon + 1
         }
         let header_name: Span<u8> = headers[header_start..header_colon]
-        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || std.str.eqlIgnoreAsciiCase(header_name, "content-type") {
+        if std.str.eqlIgnoreAsciiCase(header_name, "content-length") || (std.str.eqlIgnoreAsciiCase(header_name, "transfer-encoding") || std.str.eqlIgnoreAsciiCase(header_name, "content-type")) {
             return null
         }
         if header_end == std.mem.len(headers) {

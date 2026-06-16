@@ -143,9 +143,10 @@ Runnable today:
 | `std.http.testJsonRequest(buffer, method, target, body)` | `Maybe<Span<u8>>` | Writes a synthetic JSON request envelope for handler tests. |
 
 The `WithHeader` and `WithHeaders` writers reject header names they manage
-themselves. Request writers reject `content-length`; JSON request writers also
-reject `content-type`; response writers reject `content-length` and
-`connection`; JSON response writers also reject `content-type`.
+themselves. Request writers reject `content-length` and `transfer-encoding`;
+JSON request writers also reject `content-type`; response writers reject
+`content-length`, `transfer-encoding`, and `connection`; JSON response writers
+also reject `content-type`.
 
 Metadata labels:
 

@@ -1585,9 +1585,10 @@ header line or cookie value. Use the `WithHeaders` variants with
 `std.http.writeJsonRequestWithHeader`, or
 `std.http.writeJsonRequestWithHeaders` for outbound request envelopes with
 explicit safe headers. These writers reject headers they manage themselves:
-request writers reject `content-length`; JSON request writers also reject
-`content-type`; response writers reject `content-length` and `connection`; JSON
-response writers also reject `content-type`. Use `std.http.writeTextOk` or
+request writers reject `content-length` and `transfer-encoding`; JSON request
+writers also reject `content-type`; response writers reject `content-length`,
+`transfer-encoding`, and `connection`; JSON response writers also reject
+`content-type`. Use `std.http.writeTextOk` or
 `std.http.writeHtmlOk` for simple non-JSON responses such as health text,
 `robots.txt`, or a small HTML page. Use `std.http.contentTypeForPath` and
 `std.http.writeStaticResponse` for small static responses whose media type can

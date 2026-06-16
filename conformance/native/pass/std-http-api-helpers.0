@@ -222,10 +222,20 @@ export c fn main() -> i32 {
     if bad_request_header.has {
         return 97
     }
+    var bad_transfer_request_header_buf: [160]u8 = [0_u8; 160]
+    let bad_transfer_request_header: Maybe<Span<u8>> = std.http.writeRequestWithHeader(bad_transfer_request_header_buf, "POST /api", "transfer-encoding: chunked", "x")
+    if bad_transfer_request_header.has {
+        return 109
+    }
     var bad_json_request_header_buf: [160]u8 = [0_u8; 160]
     let bad_json_request_header: Maybe<Span<u8>> = std.http.writeJsonRequestWithHeader(bad_json_request_header_buf, "POST /api", "content-type: text/plain", "{}")
     if bad_json_request_header.has {
         return 98
+    }
+    var bad_json_transfer_request_header_buf: [192]u8 = [0_u8; 192]
+    let bad_json_transfer_request_header: Maybe<Span<u8>> = std.http.writeJsonRequestWithHeaders(bad_json_transfer_request_header_buf, "POST /api", "transfer-encoding: chunked", "{}")
+    if bad_json_transfer_request_header.has {
+        return 110
     }
     if !std.http.methodAllowed("PATCH", "GET, PATCH") || !std.http.requestMethodAllowed("PATCH /users/7\n\n", "GET, PATCH") || !std.http.requestRouteMethodAllowed("PATCH /users/7\n\n", "/users/:id", "PATCH, DELETE") {
         return 77
@@ -279,6 +289,13 @@ export c fn main() -> i32 {
     if !std.http.responseStatusIs(json_header_response.value, 200_u16) || std.http.responseStatusIs(json_header_response.value, 404_u16) {
         return 78
     }
+    if std.http.responseStatusIs("HTTP/1.1 2000 nope\r\n\r\n", 200_u16) || std.http.responseStatusIs("HTTP/1.1 200OK\r\n\r\n", 200_u16) {
+        return 111
+    }
+    let invalid_short_status: Maybe<u16> = std.http.responseStatus("HTTP/1.1 099 Weird\r\n\r\n")
+    if invalid_short_status.has {
+        return 112
+    }
     let json_header_type: Maybe<Span<u8>> = std.http.responseContentType(json_header_response.value)
     let json_cache_header: Maybe<Span<u8>> = std.http.responseHeader(json_header_response.value, "cache-control")
     if !json_header_type.has || !std.mem.eql(json_header_type.value, "application/json") || !json_cache_header.has || !std.mem.eql(json_cache_header.value, "no-store") {
@@ -306,10 +323,20 @@ export c fn main() -> i32 {
     if bad_response_header.has {
         return 99
     }
+    var bad_transfer_response_header_buf: [160]u8 = [0_u8; 160]
+    let bad_transfer_response_header: Maybe<Span<u8>> = std.http.writeResponseWithHeader(bad_transfer_response_header_buf, 200_u16, "transfer-encoding: chunked", "ok")
+    if bad_transfer_response_header.has {
+        return 113
+    }
     var bad_json_response_header_buf: [160]u8 = [0_u8; 160]
     let bad_json_response_header: Maybe<Span<u8>> = std.http.writeJsonResponseWithHeader(bad_json_response_header_buf, 200_u16, "content-type: text/plain", "{}")
     if bad_json_response_header.has {
         return 100
+    }
+    var bad_json_transfer_response_header_buf: [192]u8 = [0_u8; 192]
+    let bad_json_transfer_response_header: Maybe<Span<u8>> = std.http.writeJsonResponseWithHeaders(bad_json_transfer_response_header_buf, 200_u16, "transfer-encoding: chunked", "{}")
+    if bad_json_transfer_response_header.has {
+        return 114
     }
     if !std.mem.eql(std.http.contentTypeForPath("/assets/app.js"), "text/javascript; charset=utf-8") || !std.mem.eql(std.http.contentTypeForPath("/data.bin"), "application/octet-stream") {
         return 83
