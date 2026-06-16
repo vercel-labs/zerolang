@@ -1,7 +1,9 @@
 #include "program_graph_build.h"
 #include "program_graph_std_deps.h"
+#include "program_graph_std_prune.h"
 #include "std_source.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
@@ -517,6 +519,12 @@ static bool std_merge_module_name_seen(char **items, size_t len, const char *mod
 static bool std_merge_embedded_std_graph_modules_impl(ZProgramGraph *graph, const SourceInput *input, SourceInput *profile, ZDiag *diag) {
   char *input_graph_hash = std_merge_strdup(graph ? graph->graph_hash : NULL);
   if (std_merge_cache_try_load(graph, profile)) {
+    size_t cached_node_len = graph ? graph->node_len : 0;
+    size_t cached_edge_len = graph ? graph->edge_len : 0;
+    z_program_graph_prune_unreachable_std_source_functions(graph);
+    if (graph && (graph->node_len != cached_node_len || graph->edge_len != cached_edge_len)) {
+      z_program_graph_finalize_identities(graph);
+    }
     free(input_graph_hash);
     return true;
   }
@@ -562,6 +570,7 @@ static bool std_merge_embedded_std_graph_modules_impl(ZProgramGraph *graph, cons
       std_merge_canonicalize_module_root(&module_graph, module);
       std_merge_graph(graph, &module_graph, profile);
       z_program_graph_free(&module_graph);
+      z_program_graph_prune_unreachable_std_source_functions(graph);
       merged = true;
       pass_merged = true;
     }

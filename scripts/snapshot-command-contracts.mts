@@ -8329,13 +8329,15 @@ const codecReadOnlySourceGraph = importProjectionSidecar(codecReadOnlySource);
 const codecReadOnlyGraph = json(["inspect", "--json", codecReadOnlySource]).body;
 assert(codecReadOnlyGraph.sourceFiles.some((path) => path.endsWith("std/codec.0")));
 assert(!codecReadOnlyGraph.sourceFiles.some((path) => path.endsWith("std/ascii.0")));
-assert(codecReadOnlyGraph.requiresCapabilities.includes("parse"));
+assert(codecReadOnlyGraph.requiresCapabilities.includes("codec"));
+assert(!codecReadOnlyGraph.requiresCapabilities.includes("parse"));
 const codecReadOnlySize = json(["size", "--json", codecReadOnlySourceGraph]).body;
 assert.equal(codecReadOnlySize.sizeBreakdown.summary.functionCount, 2);
-assert.equal(codecReadOnlySize.sizeBreakdown.summary.stdlibHelperCount, 6);
+assert.equal(codecReadOnlySize.sizeBreakdown.summary.stdlibHelperCount, 2);
 assert(codecReadOnlySize.topLargestEmittedHelpers.some((helper) => helper.name === "std.codec.readU16Le"));
 assert(!codecReadOnlySize.retentionReasons.some((item) => item.name === "__zero_std_codec_hex_decode"));
-assert(codecReadOnlySize.retentionReasons.some((item) => item.name === "std.ascii.hexValue"));
+assert(!codecReadOnlySize.retentionReasons.some((item) => item.name === "std.ascii.hexValue"));
+assert(!codecReadOnlySize.retentionReasons.some((item) => item.name === "std.url.percentEncode"));
 
 const jsonStatusOnlySource = join(outDir, "std-json-status-only.0");
 writeProjectionFile(jsonStatusOnlySource, `export c fn main() -> i32 {
@@ -8358,8 +8360,63 @@ assert.equal(jsonStatusOnlySize.objectBackend.directFacts.functionCount, 1);
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "__zero_std_json_validate_error"));
 assert(!jsonStatusOnlySize.retentionReasons.some((item) => item.name === "std.parse.parseU32"));
 
+const httpErrorNameOnlySource = join(outDir, "std-http-error-name-only.0");
+writeProjectionFile(httpErrorNameOnlySource, `export c fn main() -> i32 {
+    let name: String = std.http.errorName(std.http.errorTimeout())
+    if std.mem.len(name) > 0_usize {
+        return 0
+    }
+    return 1
+}
+`);
+const httpErrorNameOnlyGraphPath = importProjectionSidecar(httpErrorNameOnlySource);
+const httpErrorNameOnlyGraph = json(["inspect", "--json", "--target", "linux-musl-x64", httpErrorNameOnlySource]).body;
+assert.deepEqual(httpErrorNameOnlyGraph.requiresCapabilities, ["memory"]);
+assert.equal(json(["check", "--json", "--target", "linux-musl-x64", httpErrorNameOnlyGraphPath]).body.ok, true);
+
+const testingEqualU32OnlySource = join(outDir, "std-testing-equal-u32-only.0");
+writeProjectionFile(testingEqualU32OnlySource, `export c fn main() -> i32 {
+    if std.testing.equalU32(42_u32, 42_u32) {
+        return 0
+    }
+    return 1
+}
+`);
+importProjectionSidecar(testingEqualU32OnlySource);
+const testingEqualU32OnlyGraph = json(["inspect", "--json", testingEqualU32OnlySource]).body;
+assert.deepEqual(testingEqualU32OnlyGraph.requiresCapabilities, []);
+
+const logMessageOnlySource = join(outDir, "std-log-message-only.0");
+writeProjectionFile(logMessageOnlySource, `export c fn main() -> i32 {
+    var storage: [64]u8 = [0_u8; 64]
+    let entry: Maybe<Span<u8>> = std.log.message(storage, "info", "ready")
+    if entry.has {
+        return 0
+    }
+    return 1
+}
+`);
+importProjectionSidecar(logMessageOnlySource);
+const logMessageOnlyGraph = json(["inspect", "--json", logMessageOnlySource]).body;
+assert.deepEqual(logMessageOnlyGraph.requiresCapabilities, ["memory"]);
+
+const logMessageFieldSource = join(outDir, "std-log-message-field.0");
+writeProjectionFile(logMessageFieldSource, `export c fn main() -> i32 {
+    var storage: [96]u8 = [0_u8; 96]
+    let entry: Maybe<Span<u8>> = std.log.messageField(storage, "info", "ready", "\\"event\\":\\"startup\\"")
+    if entry.has {
+        return 0
+    }
+    return 1
+}
+`);
+importProjectionSidecar(logMessageFieldSource);
+const logMessageFieldGraph = json(["inspect", "--json", logMessageFieldSource]).body;
+assert.deepEqual(logMessageFieldGraph.requiresCapabilities, ["memory", "parse"]);
+
 const httpErrorsGraph = json(["inspect", "--json", "conformance/native/pass/std-http-errors.0"]).body;
-assert.deepEqual(httpErrorsGraph.requiresCapabilities, ["memory", "parse", "net"]);
+assert.deepEqual(httpErrorsGraph.requiresCapabilities, ["memory"]);
+assert.equal(json(["check", "--json", "--target", "linux-musl-x64", "conformance/native/pass/std-http-errors.graph"]).body.ok, true);
 const httpTimeoutHelper = httpErrorsGraph.stdlibHelpers.find((helper) => helper.name === "std.http.errorTimeout");
 assert.equal(httpTimeoutHelper.returnType, "HttpError");
 assert.equal(httpTimeoutHelper.capability, "none");

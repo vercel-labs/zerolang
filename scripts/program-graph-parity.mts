@@ -917,7 +917,7 @@ async function assertStdGraphDependencyMerge() {
   const orders = functionEdges.map((edge) => edge.order).sort((a, b) => a - b);
   assert.deepEqual(orders, [...orders.keys()], "shared std module function edges should be compact after merging partial std graphs");
   const functionNames = new Set(functionEdges.map((edge) => nodeById.get(edge.to)?.name));
-  assert(functionNames.has("__zero_std_url_percent_encode"), "std.codec dependency should contribute URL encoding helpers");
+  assert(!functionNames.has("__zero_std_url_percent_encode"), "unused std.codec URL dependency helpers should be pruned");
   assert(functionNames.has("__zero_std_url_query_value"), "std.http dependency should contribute URL query helpers");
 }
 

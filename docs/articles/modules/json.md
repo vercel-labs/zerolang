@@ -52,8 +52,8 @@ Runnable today:
 
 Metadata labels:
 
-- effects: parse or alloc
-- allocation behavior: validation and streaming are allocation-free; parse uses explicit allocator only; writeString writes caller buffer
+- effects: memory, parse, or alloc
+- allocation behavior: validation and streaming are allocation-free; parse uses explicit allocator only; direct writers write caller buffers
 - target support: target-neutral
 - error behavior: `Maybe` helpers return null on failure
 - ownership notes: parsed documents are owned by explicit allocator storage in this compiler slice
