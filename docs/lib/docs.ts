@@ -329,7 +329,7 @@ export const docs: Doc[] = [
   {
     slug: "module-term",
     title: "std.term",
-    description: "ANSI terminal style, cursor, clear, and alternate-screen sequences.",
+    description: "ANSI terminal sequences and target-neutral key-byte decoding.",
     path: "/modules/term",
     sourcePath: "/articles/modules/term.md",
     section: "Programs",

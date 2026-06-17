@@ -770,6 +770,70 @@ uint64_t zero_text_op(ZeroByteView text, uint32_t op) {
   }
 }
 
+#define ZERO_TERM_KEY_ARROW_UP UINT32_C(1114113)
+#define ZERO_TERM_KEY_ARROW_DOWN UINT32_C(1114114)
+#define ZERO_TERM_KEY_ARROW_RIGHT UINT32_C(1114115)
+#define ZERO_TERM_KEY_ARROW_LEFT UINT32_C(1114116)
+#define ZERO_TERM_KEY_DELETE UINT32_C(1114117)
+
+static uint32_t zero_term_utf8_key(ZeroByteView text, size_t *width_out) {
+  if (text.len == 0 || !text.ptr) return 0;
+  unsigned char first = text.ptr[0];
+  size_t width = zero_text_utf8_sequence_len(first);
+  if (width == 0 || width > text.len) return 0;
+  uint32_t code = first;
+  if (width == 2) {
+    unsigned char second = text.ptr[1];
+    if (!zero_text_is_cont(second)) return 0;
+    code = ((uint32_t)(first & 0x1fu) << 6) | (uint32_t)(second & 0x3fu);
+  } else if (width == 3) {
+    unsigned char second = text.ptr[1];
+    unsigned char third = text.ptr[2];
+    if (!zero_text_is_cont(second) || !zero_text_is_cont(third)) return 0;
+    if (first == 224u && second < 160u) return 0;
+    if (first == 237u && second > 159u) return 0;
+    code = ((uint32_t)(first & 0x0fu) << 12) | ((uint32_t)(second & 0x3fu) << 6) | (uint32_t)(third & 0x3fu);
+  } else if (width == 4) {
+    unsigned char second = text.ptr[1];
+    unsigned char third = text.ptr[2];
+    unsigned char fourth = text.ptr[3];
+    if (!zero_text_is_cont(second) || !zero_text_is_cont(third) || !zero_text_is_cont(fourth)) return 0;
+    if (first == 240u && second < 144u) return 0;
+    if (first == 244u && second > 143u) return 0;
+    code = ((uint32_t)(first & 0x07u) << 18) | ((uint32_t)(second & 0x3fu) << 12) | ((uint32_t)(third & 0x3fu) << 6) | (uint32_t)(fourth & 0x3fu);
+  }
+  if (width_out) *width_out = width;
+  return code;
+}
+
+static uint32_t zero_term_key_decode(ZeroByteView text, int return_len) {
+  if (!zero_str_view_valid(text) || text.len == 0) return 0;
+  unsigned char first = text.ptr[0];
+  if (first == 0x1bu) {
+    if (text.len == 1) return return_len ? 1u : 27u;
+    if (text.len >= 3 && (text.ptr[1] == '[' || text.ptr[1] == 'O')) {
+      unsigned char code = text.ptr[2];
+      if (code == 'A') return return_len ? 3u : ZERO_TERM_KEY_ARROW_UP;
+      if (code == 'B') return return_len ? 3u : ZERO_TERM_KEY_ARROW_DOWN;
+      if (code == 'C') return return_len ? 3u : ZERO_TERM_KEY_ARROW_RIGHT;
+      if (code == 'D') return return_len ? 3u : ZERO_TERM_KEY_ARROW_LEFT;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '3' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_DELETE;
+    }
+    return 0;
+  }
+  if (first == '\r' || first == '\n') return return_len ? 1u : 13u;
+  if (first == '\t') return return_len ? 1u : 9u;
+  if (first == 0x7fu || first == 0x08u) return return_len ? 1u : 127u;
+  if (first < 32u) return return_len ? 1u : (uint32_t)first;
+  if (first < 128u) return return_len ? 1u : (uint32_t)first;
+  size_t width = 0;
+  uint32_t code = zero_term_utf8_key(text, &width);
+  if (!code) return 0;
+  return return_len ? (uint32_t)width : code;
+}
+
 static int zero_parse_ascii_digit(unsigned char byte) {
   return byte >= '0' && byte <= '9';
 }
@@ -842,6 +906,10 @@ uint64_t zero_parse_op(ZeroByteView text, uint32_t arg, uint32_t op) {
       return zero_parse_u32_max(text, UINT8_MAX);
     case ZERO_PARSE_OP_PARSE_U16:
       return zero_parse_u32_max(text, UINT16_MAX);
+    case ZERO_PARSE_OP_TERM_KEY_CODE:
+      return zero_term_key_decode(text, 0);
+    case ZERO_PARSE_OP_TERM_KEY_BYTE_LEN:
+      return zero_term_key_decode(text, 1);
     default:
       return 0;
   }

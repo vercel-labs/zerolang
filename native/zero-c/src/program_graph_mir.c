@@ -2968,6 +2968,29 @@ static const char *ir_graph_term_sequence(const char *name) {
   return NULL;
 }
 
+static bool ir_graph_term_key_constant(const char *name, unsigned long long *out) {
+  static const struct { const char *name; unsigned long long code; } entries[] = {
+    {"std.term.keyNone", 0ull},
+    {"std.term.keyEscape", 27ull},
+    {"std.term.keyEnter", 13ull},
+    {"std.term.keyTab", 9ull},
+    {"std.term.keyBackspace", 127ull},
+    {"std.term.keyCtrlC", 3ull},
+    {"std.term.keyArrowUp", 1114113ull},
+    {"std.term.keyArrowDown", 1114114ull},
+    {"std.term.keyArrowRight", 1114115ull},
+    {"std.term.keyArrowLeft", 1114116ull},
+    {"std.term.keyDelete", 1114117ull},
+  };
+  for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
+    if (ir_text_eq(name, entries[i].name)) {
+      *out = entries[i].code;
+      return true;
+    }
+  }
+  return false;
+}
+
 static int ir_graph_http_error_code(const char *name) {
   static const char *codes[] = {"std.http.errorNone", "std.http.errorInvalidUrl", "std.http.errorUnsupportedProtocol", "std.http.errorDns", "std.http.errorConnect", "std.http.errorTls", "std.http.errorTimeout", "std.http.errorTooLarge", "std.http.errorProviderUnavailable", "std.http.errorIo", "std.http.errorInvalidRequest"};
   for (int i = 0; name && i < (int)(sizeof(codes) / sizeof(codes[0])); i++) if (ir_text_eq(name, codes[i])) return i;
@@ -3488,6 +3511,8 @@ static bool ir_graph_lower_std_parse_call(const ZProgramGraph *graph, IrProgram 
   if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseU8")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_U8, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U8, 1, out);
   if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseU16")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_U16, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U16, 1, out);
   if (arg_count == 1 && ir_text_eq(callee_name, "std.parse.parseUsize")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_PARSE_USIZE, IR_TYPE_MAYBE_SCALAR, IR_TYPE_USIZE, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.term.keyCode")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_TERM_KEY_CODE, IR_TYPE_U32, IR_TYPE_UNSUPPORTED, 1, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.term.keyByteLen")) return ir_graph_make_std_parse_runtime_value(graph, ir, fun, expr, IR_PARSE_OP_TERM_KEY_BYTE_LEN, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1, out);
   *handled = false;
   return true;
 }
@@ -5107,6 +5132,12 @@ static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const
     bool ok = ir_make_string_literal_value(ir, term_sequence, ir_graph_line(expr), ir_graph_column(expr), out);
     free(qualified);
     return ok;
+  }
+  unsigned long long term_key_code = 0;
+  if (arg_count == 0 && ir_graph_term_key_constant(callee_name, &term_key_code)) {
+    *out = ir_new_integer_literal_value(ir, IR_TYPE_U32, term_key_code, ir_graph_line(expr), ir_graph_column(expr));
+    free(qualified);
+    return true;
   }
   bool handled = false;
   if (!ir_graph_lower_http_std_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) { free(qualified); return false; }

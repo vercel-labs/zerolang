@@ -909,6 +909,14 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
           element_type = IR_TYPE_USIZE;
           name = "std.parse.parseUsize";
           break;
+        case IR_PARSE_OP_TERM_KEY_CODE:
+          result_type = IR_TYPE_U32;
+          name = "std.term.keyCode";
+          break;
+        case IR_PARSE_OP_TERM_KEY_BYTE_LEN:
+          result_type = IR_TYPE_USIZE;
+          name = "std.term.keyByteLen";
+          break;
         default:
           mir_verify_mark_unsupported(ir, "MIR verifier found unknown std.parse runtime op", value->line, value->column, "invalid std.parse op");
           return false;

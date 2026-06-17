@@ -1,4 +1,17 @@
 pub fn main(world: World) -> Void raises {
+    let enter: u32 = std.term.keyCode("\n")
+    let enter_len: usize = std.term.keyByteLen("\n")
+    let up: u32 = std.term.keyCode("\x1b[A")
+    let up_len: usize = std.term.keyByteLen("\x1b[A")
+    let left: u32 = std.term.keyCode("\x1b[D")
+    let delete: u32 = std.term.keyCode("\x1b[3~")
+    let lambda: u32 = std.term.keyCode("λ")
+    let lambda_len: usize = std.term.keyByteLen("λ")
+    let bad: u32 = std.term.keyCode("\x1b[")
+    if enter != std.term.keyEnter() || enter_len != 1_usize || up != std.term.keyArrowUp() || up_len != 3_usize || left != std.term.keyArrowLeft() || delete != std.term.keyDelete() || lambda != 955_u32 || lambda_len != 2_usize || bad != std.term.keyNone() {
+        check world.err.write("term key decode failed\n")
+        return
+    }
     check world.out.write(std.term.enterAltScreen())
     check world.out.write(std.term.clearScreen())
     check world.out.write(std.term.cursorHome())

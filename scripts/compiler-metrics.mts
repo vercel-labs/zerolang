@@ -30,9 +30,9 @@ type FileBudget = {
 };
 
 const fileBudgets: Record<string, FileBudget> = {
-  "native/zero-c/include/zero.h": { maxLines: 1292, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 1294, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
-  "native/zero-c/include/zero_runtime.h": { maxLines: 264, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero_runtime.h": { maxLines: 267, maxStrcmpCalls: 0 },
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   // The static const type and canonical value memos compare binder names with strcmp.
@@ -46,7 +46,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/main.c": { maxLines: 16688, maxStrcmpCalls: 454, maxShellCalls: 0 },
-  "native/zero-c/src/ir.c": { maxLines: 6378, maxStrcmpCalls: 333 },
+  "native/zero-c/src/ir.c": { maxLines: 6405, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -107,7 +107,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/process_exec.h": { maxLines: 26, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.c": { maxLines: 110, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.h": { maxLines: 10, maxStrcmpCalls: 0, maxShellCalls: 0 },
-  "native/zero-c/src/mir_verify.c": { maxLines: 2626, maxStrcmpCalls: 0 },
+  "native/zero-c/src/mir_verify.c": { maxLines: 2634, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   // Shared sorted node/edge index used by validation, lowering, views, and resolution.
@@ -153,7 +153,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 6495, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 6526, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 24, maxStrcmpCalls: 0 },
@@ -224,7 +224,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/safety_contract.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_sig.c": { maxLines: 1011, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.c": { maxLines: 1024, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_sig.h": { maxLines: 108, maxStrcmpCalls: 0 },
   "native/zero-c/src/std_source.c": { maxLines: 961, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_source.h": { maxLines: 30, maxStrcmpCalls: 0 },
@@ -240,7 +240,7 @@ const fileBudgets: Record<string, FileBudget> = {
 
 const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/program_graph_mir.c|bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {", 144],
-  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 2150],
+  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 2155],
   ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 144],
 
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
@@ -258,9 +258,9 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 207],
   ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 785],
   ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 245],
-  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 404],
+  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 412],
   ["native/zero-c/src/main.c|static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit *audit) {", 206],
-  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTypeKind preferred_return_type, IrValue **out) {", 244],
+  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTypeKind preferred_return_type, IrValue **out) {", 250],
   ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFunction *fun, const ZProgramGraphNode *stmt, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {", 236],
   ["native/zero-c/src/emit_elf64.c|static bool elf_emit_str_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 163],
   ["native/zero-c/src/emit_macho_x64.c|static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {", 163],

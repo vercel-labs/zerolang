@@ -275,33 +275,53 @@ static const char *ir_std_json_error_label(unsigned long long code, bool expecte
   return "unknown";
 }
 
-static const char *ir_std_term_sequence(const char *name) {
-  static const struct { const char *name; const char *sequence; } sequences[] = {
-    {"std.term.reset", "\x1b[0m"},
-    {"std.term.bold", "\x1b[1m"},
-    {"std.term.dim", "\x1b[2m"},
-    {"std.term.inverse", "\x1b[7m"},
-    {"std.term.fgDefault", "\x1b[39m"},
-    {"std.term.fgRed", "\x1b[31m"},
-    {"std.term.fgGreen", "\x1b[32m"},
-    {"std.term.fgYellow", "\x1b[33m"},
-    {"std.term.fgBlue", "\x1b[34m"},
-    {"std.term.fgMagenta", "\x1b[35m"},
-    {"std.term.fgCyan", "\x1b[36m"},
-    {"std.term.fgWhite", "\x1b[37m"},
-    {"std.term.clearScreen", "\x1b[2J"},
-    {"std.term.clearLine", "\x1b[2K"},
-    {"std.term.cursorHome", "\x1b[H"},
-    {"std.term.hideCursor", "\x1b[?25l"},
-    {"std.term.showCursor", "\x1b[?25h"},
-    {"std.term.enterAltScreen", "\x1b[?1049h"},
-    {"std.term.leaveAltScreen", "\x1b[?1049l"},
+typedef struct {
+  const char *sequence;
+  unsigned long long key_code;
+  bool has_key_code;
+} IrStdTermHelper;
+
+static IrStdTermHelper ir_std_term_helper(const char *name) {
+  static const struct { const char *name; const char *sequence; unsigned long long key_code; bool has_key_code; } entries[] = {
+    {"std.term.reset", "\x1b[0m", 0ull, false},
+    {"std.term.bold", "\x1b[1m", 0ull, false},
+    {"std.term.dim", "\x1b[2m", 0ull, false},
+    {"std.term.inverse", "\x1b[7m", 0ull, false},
+    {"std.term.fgDefault", "\x1b[39m", 0ull, false},
+    {"std.term.fgRed", "\x1b[31m", 0ull, false},
+    {"std.term.fgGreen", "\x1b[32m", 0ull, false},
+    {"std.term.fgYellow", "\x1b[33m", 0ull, false},
+    {"std.term.fgBlue", "\x1b[34m", 0ull, false},
+    {"std.term.fgMagenta", "\x1b[35m", 0ull, false},
+    {"std.term.fgCyan", "\x1b[36m", 0ull, false},
+    {"std.term.fgWhite", "\x1b[37m", 0ull, false},
+    {"std.term.clearScreen", "\x1b[2J", 0ull, false},
+    {"std.term.clearLine", "\x1b[2K", 0ull, false},
+    {"std.term.cursorHome", "\x1b[H", 0ull, false},
+    {"std.term.hideCursor", "\x1b[?25l", 0ull, false},
+    {"std.term.showCursor", "\x1b[?25h", 0ull, false},
+    {"std.term.enterAltScreen", "\x1b[?1049h", 0ull, false},
+    {"std.term.leaveAltScreen", "\x1b[?1049l", 0ull, false},
+    {"std.term.keyNone", NULL, 0ull, true},
+    {"std.term.keyEscape", NULL, 27ull, true},
+    {"std.term.keyEnter", NULL, 13ull, true},
+    {"std.term.keyTab", NULL, 9ull, true},
+    {"std.term.keyBackspace", NULL, 127ull, true},
+    {"std.term.keyCtrlC", NULL, 3ull, true},
+    {"std.term.keyArrowUp", NULL, 1114113ull, true},
+    {"std.term.keyArrowDown", NULL, 1114114ull, true},
+    {"std.term.keyArrowRight", NULL, 1114115ull, true},
+    {"std.term.keyArrowLeft", NULL, 1114116ull, true},
+    {"std.term.keyDelete", NULL, 1114117ull, true},
   };
-  if (!name) return NULL;
-  for (size_t i = 0; i < sizeof(sequences) / sizeof(sequences[0]); i++) {
-    if (strcmp(name, sequences[i].name) == 0) return sequences[i].sequence;
+  IrStdTermHelper missing = {NULL, 0ull, false};
+  if (!name) return missing;
+  for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
+    if (strcmp(name, entries[i].name) == 0) {
+      return (IrStdTermHelper){entries[i].sequence, entries[i].key_code, entries[i].has_key_code};
+    }
   }
-  return NULL;
+  return missing;
 }
 
 static bool ir_std_http_status_class_bounds(const char *name, unsigned *lower, unsigned *upper) {
@@ -1770,6 +1790,8 @@ static const IrStdParseSpec *ir_std_parse_spec(const char *callee_name) {
     {"std.parse.parseU8", IR_PARSE_OP_PARSE_U8, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U8, 1},
     {"std.parse.parseU16", IR_PARSE_OP_PARSE_U16, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U16, 1},
     {"std.parse.parseUsize", IR_PARSE_OP_PARSE_USIZE, IR_TYPE_MAYBE_SCALAR, IR_TYPE_USIZE, 1},
+    {"std.term.keyCode", IR_PARSE_OP_TERM_KEY_CODE, IR_TYPE_U32, IR_TYPE_UNSUPPORTED, 1},
+    {"std.term.keyByteLen", IR_PARSE_OP_TERM_KEY_BYTE_LEN, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1},
   };
   for (size_t i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
     if (strcmp(callee_name, specs[i].name) == 0) return &specs[i];
@@ -4118,11 +4140,16 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      const char *term_sequence = ir_std_term_sequence(callee_name);
-      if (term_sequence && expr->args.len == 0) {
-        bool ok = ir_make_string_literal_value(ir, term_sequence, expr->line, expr->column, out);
+      IrStdTermHelper term_helper = ir_std_term_helper(callee_name);
+      if (term_helper.sequence && expr->args.len == 0) {
+        bool ok = ir_make_string_literal_value(ir, term_helper.sequence, expr->line, expr->column, out);
         free(callee_name);
         return ok;
+      }
+      if (expr->args.len == 0 && term_helper.has_key_code) {
+        *out = ir_new_integer_literal_value(ir, IR_TYPE_U32, term_helper.key_code, expr->line, expr->column);
+        free(callee_name);
+        return true;
       }
       if (!ir_lower_std_fmt_direct_call(program, ir, fun, expr, std_call, &handled, out)) {
         free(callee_name);

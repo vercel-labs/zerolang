@@ -1,7 +1,7 @@
 ## When To Use std.term
 
-In Zerolang, use `std.term` when terminal output needs ANSI control sequences
-for style, cursor visibility, clearing, or alternate-screen rendering.
+In Zerolang, use `std.term` when terminal code needs ANSI output sequences or
+when a terminal UI needs to decode key bytes already read from input.
 
 Runnable today:
 
@@ -26,6 +26,19 @@ Runnable today:
 | `std.term.showCursor()` | `String` | Show the terminal cursor. |
 | `std.term.enterAltScreen()` | `String` | Enter the alternate screen buffer. |
 | `std.term.leaveAltScreen()` | `String` | Leave the alternate screen buffer. |
+| `std.term.keyNone()` | `u32` | Sentinel returned for incomplete or unsupported key bytes. |
+| `std.term.keyEscape()` | `u32` | Escape key code. |
+| `std.term.keyEnter()` | `u32` | Enter key code for `\r` or `\n`. |
+| `std.term.keyTab()` | `u32` | Tab key code. |
+| `std.term.keyBackspace()` | `u32` | Backspace key code for `0x7f` or `0x08`. |
+| `std.term.keyCtrlC()` | `u32` | Ctrl-C key code. |
+| `std.term.keyArrowUp()` | `u32` | Up-arrow key code above the Unicode scalar range. |
+| `std.term.keyArrowDown()` | `u32` | Down-arrow key code above the Unicode scalar range. |
+| `std.term.keyArrowRight()` | `u32` | Right-arrow key code above the Unicode scalar range. |
+| `std.term.keyArrowLeft()` | `u32` | Left-arrow key code above the Unicode scalar range. |
+| `std.term.keyDelete()` | `u32` | Delete key code above the Unicode scalar range. |
+| `std.term.keyCode(bytes)` | `u32` | Decodes one key from caller-provided bytes, returning Unicode scalar values for printable UTF-8 and named constants for control keys. |
+| `std.term.keyByteLen(bytes)` | `usize` | Returns the decoded key width in bytes, or `0` for incomplete or unsupported input. |
 
 Metadata labels:
 
@@ -51,5 +64,6 @@ pub fn main(world: World) -> Void raises {
 }
 ```
 
-`std.term` currently only provides output sequences. Raw mode, terminal size,
-and key input helpers are separate hosted terminal capabilities.
+Key decoding is target-neutral: it parses bytes the caller already has. Raw
+mode, terminal size, and reading terminal input are separate hosted terminal
+capabilities.

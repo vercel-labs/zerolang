@@ -65,7 +65,7 @@ Program surfaces:
 
 Runtime and web:
 
-- `std.time`, `std.rand`, `std.proc`, `std.term`, `std.crypto`: hosted/runtime helper surfaces and terminal helpers.
+- `std.time`, `std.rand`, `std.proc`, `std.term`, `std.crypto`: hosted/runtime helper surfaces, terminal sequences, and key decoding.
 - `std.net`, `std.http`: network metadata, HTTP client/server metadata, request parsing, response writing, hosted fetch, and local listen support.
 
 ## Inspect What A Program Uses
