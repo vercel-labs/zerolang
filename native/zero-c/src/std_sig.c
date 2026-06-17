@@ -830,6 +830,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.regex.isMatch", "Bool", 2, {"Span<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.regex.matches", "Maybe<Bool>", 2, {"Span<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "no allocation; null on invalid pattern", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.spawn", "ProcStatus", 1, {"String"}, {NULL}, "proc", "host", "explicit process capability", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.proc.spawnInherit", "ProcStatus", 1, {"String"}, {NULL}, "proc", "host", "runs an argv-style command with inherited stdin, stdout, and stderr", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.exitCode", "i32", 1, {"ProcStatus"}, {NULL}, "proc", "host", "no allocation", false, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.succeeded", "Bool", 1, {"ProcStatus"}, {NULL}, "proc", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.failed", "Bool", 1, {"ProcStatus"}, {NULL}, "proc", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},

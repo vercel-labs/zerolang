@@ -9,6 +9,7 @@ Runnable today:
 | API | Return | Notes |
 | --- | --- | --- |
 | `std.proc.spawn(command)` | `ProcStatus` | Creates a process status through the explicit proc capability surface. |
+| `std.proc.spawnInherit(command)` | `ProcStatus` | Runs an argv-style command while inheriting stdin, stdout, and stderr from the parent process. |
 | `std.proc.exitCode(status)` | `i32` | Reads the process status code. |
 | `std.proc.succeeded(status)` | `Bool` | Reports whether the status exit code is `0`. |
 | `std.proc.failed(status)` | `Bool` | Reports whether the status exit code is nonzero. |
@@ -31,7 +32,7 @@ Metadata labels:
 - effects: proc
 - allocation behavior: no allocation
 - target support: host
-- error behavior: `spawn`, `captureFiles`, and `wait` return `ProcStatus`; `exitCode` is infallible; `capture` and child I/O helpers return `null` when they cannot produce a complete result
+- error behavior: `spawn`, `spawnInherit`, `captureFiles`, and `wait` return `ProcStatus`; `exitCode` is infallible; `capture` and child I/O helpers return `null` when they cannot produce a complete result
 - ownership notes: `ProcChild` values name runtime-owned process slots; call `wait` when process status matters and `close` when the handle is no longer needed
 - example: `examples/std-platform.graph`
 
@@ -78,6 +79,10 @@ They should not compile a placeholder process implementation.
 argv-style command text and support quoted arguments. `capture` captures stdout
 only into caller storage. `captureFiles` redirects stdout and stderr to
 separate hosted paths.
+
+`spawnInherit` uses the same argv-style parser and leaves stdin, stdout, and
+stderr connected to the parent process. Use it for editor, pager, and terminal
+program launches where captured pipes would be the wrong interface.
 
 Child handles use the same command parser. Stdout, stderr, and stdin are
 nonblocking pipes so event loops can poll process state and terminal input

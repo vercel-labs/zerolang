@@ -1002,6 +1002,17 @@ static bool a64_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction *
   return true;
 }
 
+static bool a64_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return a64_diag(diag, "direct AArch64 std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_INHERIT, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
 static bool a64_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (!value || !value->left) {
     return a64_diag(diag, "direct AArch64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
@@ -1784,6 +1795,8 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
       return a64_emit_proc_capture_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CAPTURE_FILES:
       return a64_emit_proc_capture_files_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+      return a64_emit_proc_spawn_inherit_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CHILD_SPAWN:
       return a64_emit_proc_child_spawn_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CHILD_OP:

@@ -344,6 +344,7 @@ static bool build_aarch64_fmt_runtime(const ZBuildability *ctx, const IrFunction
 
 static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
   if (value->kind != IR_VALUE_PROC_CAPTURE &&
+      value->kind != IR_VALUE_PROC_SPAWN_INHERIT &&
       value->kind != IR_VALUE_PROC_CAPTURE_FILES &&
       value->kind != IR_VALUE_PROC_CHILD_SPAWN &&
       value->kind != IR_VALUE_PROC_CHILD_OP &&
@@ -355,7 +356,8 @@ static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunctio
   if (scratch_slot + required >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
     return z_build_diag(ctx, diag, message, value->line, value->column, "expression too deep");
   }
-  if ((value->kind == IR_VALUE_PROC_CAPTURE ||
+  if ((value->kind == IR_VALUE_PROC_SPAWN_INHERIT ||
+       value->kind == IR_VALUE_PROC_CAPTURE ||
        value->kind == IR_VALUE_PROC_CAPTURE_FILES ||
        value->kind == IR_VALUE_PROC_CHILD_SPAWN) &&
       !z_build_check_aarch64_byte_view(ctx, fun, value->left, diag)) return false;

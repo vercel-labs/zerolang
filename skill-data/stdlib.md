@@ -1280,6 +1280,7 @@ relative(arg0: MutSpan<u8>, arg1: String, arg2: String) -> Maybe<String>
 
 ```text
 spawn(arg0: String) -> ProcStatus
+spawnInherit(arg0: String) -> ProcStatus
 exitCode(arg0: ProcStatus) -> i32
 succeeded(arg0: ProcStatus) -> Bool
 failed(arg0: ProcStatus) -> Bool

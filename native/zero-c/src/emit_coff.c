@@ -1402,6 +1402,20 @@ static bool coff_emit_proc_capture_files_value(ZBuf *text, const IrFunction *fun
   return true;
 }
 
+static bool coff_emit_proc_spawn_inherit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return coff_diag_at(diag, "direct COFF std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 2, &temp_base, &total_stack);
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PROC_SPAWN_INHERIT, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
 static bool coff_emit_proc_child_spawn_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value || !value->left) {
     return coff_diag_at(diag, "direct COFF std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
@@ -1926,6 +1940,8 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       return coff_emit_proc_capture_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE_FILES:
       return coff_emit_proc_capture_files_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+      return coff_emit_proc_spawn_inherit_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CHILD_SPAWN:
       return coff_emit_proc_child_spawn_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CHILD_OP:

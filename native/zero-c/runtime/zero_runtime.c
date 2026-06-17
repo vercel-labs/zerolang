@@ -343,6 +343,34 @@ static int zero_runtime_proc_parse_command(ZeroByteView command, char storage[ZE
   return 1;
 }
 
+int32_t zero_proc_spawn_inherit(ZeroByteView command) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 127;
+
+#if defined(_WIN32)
+  (void)argv;
+  return 127;
+#else
+  pid_t pid = fork();
+  if (pid < 0) return 127;
+
+  if (pid == 0) {
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    return 127;
+  }
+  if (WIFEXITED(status)) return (int32_t)WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return (int32_t)(128 + WTERMSIG(status));
+  return 127;
+#endif
+}
+
 ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
   if (!buffer.ptr) return zero_runtime_none_usize();
   char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];

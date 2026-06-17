@@ -224,6 +224,7 @@ ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMut
 ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes);
 uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op);
 uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path);
+int32_t zero_proc_spawn_inherit(ZeroByteView command);
 ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
 int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
 int32_t zero_proc_spawn_child(ZeroByteView command);

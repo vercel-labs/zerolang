@@ -59,6 +59,7 @@ static const char *const runtime_helper_symbols[COFF_RUNTIME_HELPER_COUNT] = {
   "zero_http_request_method_name",
   "zero_http_request_path",
   "zero_http_request_body_within",
+  "zero_proc_spawn_inherit",
   "zero_proc_capture",
   "zero_proc_capture_files",
   "zero_proc_spawn_child",
