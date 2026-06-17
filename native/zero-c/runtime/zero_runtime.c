@@ -7,6 +7,7 @@
 
 #if defined(_WIN32)
 #include <io.h>
+#include <process.h>
 typedef int ZeroWriteResult;
 typedef int ZeroReadResult;
 typedef struct _stat ZeroRuntimeStat;
@@ -19,6 +20,7 @@ typedef struct _stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_OPEN_FLAGS (_O_RDONLY | _O_BINARY)
 #define ZERO_RUNTIME_IS_REGULAR(mode) (((mode) & _S_IFREG) != 0)
 #else
+#include <sys/wait.h>
 #include <unistd.h>
 typedef ssize_t ZeroWriteResult;
 typedef ssize_t ZeroReadResult;
@@ -35,6 +37,8 @@ typedef struct stat ZeroRuntimeStat;
 
 #define ZERO_RUNTIME_PATH_BYTES 4096u
 #define ZERO_RUNTIME_READ_CHUNK 1048576u
+#define ZERO_RUNTIME_PROC_COMMAND_BYTES 4096u
+#define ZERO_RUNTIME_PROC_MAX_ARGS 64u
 
 static ZeroMaybeUsize zero_runtime_none_usize(void) {
   return (ZeroMaybeUsize){0, 0};
@@ -142,6 +146,122 @@ ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMut
      offset += len(buffer) until offset reaches the returned total. */
   if (read_len > 0 && offset + read_len > total) total = offset + read_len;
   return (ZeroMaybeUsize){1, total};
+}
+
+static int zero_runtime_ascii_space(unsigned char byte) {
+  return byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == '\f' || byte == '\v';
+}
+
+static int zero_runtime_proc_parse_command(ZeroByteView command, char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES], char *argv[ZERO_RUNTIME_PROC_MAX_ARGS]) {
+  if (!command.ptr || command.len == 0 || command.len >= ZERO_RUNTIME_PROC_COMMAND_BYTES) return 0;
+  for (size_t i = 0; i < command.len; i++) {
+    if (command.ptr[i] == 0) return 0;
+  }
+
+  size_t read = 0;
+  size_t write = 0;
+  size_t argc = 0;
+  while (read < command.len) {
+    while (read < command.len && zero_runtime_ascii_space(command.ptr[read])) read++;
+    if (read >= command.len) break;
+    if (argc + 1 >= ZERO_RUNTIME_PROC_MAX_ARGS) return 0;
+
+    size_t token_start = write;
+    argv[argc++] = &storage[token_start];
+    while (read < command.len && !zero_runtime_ascii_space(command.ptr[read])) {
+      if (command.ptr[read] == '\'') {
+        read++;
+        int closed = 0;
+        while (read < command.len) {
+          if (command.ptr[read] == '\'') {
+            closed = 1;
+            read++;
+            break;
+          }
+          storage[write++] = (char)command.ptr[read++];
+        }
+        if (!closed) return 0;
+      } else if (command.ptr[read] == '\\' && read + 1 < command.len) {
+        read++;
+        storage[write++] = (char)command.ptr[read++];
+      } else {
+        storage[write++] = (char)command.ptr[read++];
+      }
+    }
+    if (write == token_start) {
+      argc--;
+    } else {
+      storage[write++] = 0;
+    }
+  }
+  if (argc == 0) return 0;
+  argv[argc] = NULL;
+  return 1;
+}
+
+ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
+  if (!buffer.ptr) return zero_runtime_none_usize();
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return zero_runtime_none_usize();
+
+#if defined(_WIN32)
+  (void)argv;
+  return zero_runtime_none_usize();
+#else
+  int pipe_fd[2];
+  if (pipe(pipe_fd) != 0) return zero_runtime_none_usize();
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+    ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+    return zero_runtime_none_usize();
+  }
+
+  if (pid == 0) {
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+    if (dup2(pipe_fd[1], STDOUT_FILENO) < 0) _exit(127);
+    ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+  uint64_t total = 0;
+  int too_large = 0;
+  int read_ok = 1;
+  unsigned char chunk[4096];
+  for (;;) {
+    ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      read_ok = 0;
+      break;
+    }
+    if (n == 0) break;
+    for (ZeroReadResult i = 0; i < n; i++) {
+      if (total < buffer.len) {
+        buffer.ptr[total] = chunk[i];
+      } else {
+        too_large = 1;
+      }
+      total++;
+    }
+  }
+  ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+
+  int status = 0;
+  int wait_ok = 1;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    wait_ok = 0;
+    break;
+  }
+  if (!read_ok || !wait_ok || too_large) return zero_runtime_none_usize();
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return zero_runtime_none_usize();
+  return (ZeroMaybeUsize){1, total};
+#endif
 }
 
 uint64_t zero_parse_u32(ZeroByteView text) {

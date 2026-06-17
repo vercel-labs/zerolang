@@ -327,6 +327,14 @@ static bool build_aarch64_fmt_runtime(const ZBuildability *ctx, const IrFunction
   return true;
 }
 
+static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
+  if (value->kind != IR_VALUE_PROC_CAPTURE) return true;
+  if (scratch_slot + 3 >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
+    return z_build_diag(ctx, diag, "direct AArch64 std.proc.capture exceeds scratch register spill capacity", value->line, value->column, "expression too deep");
+  }
+  return z_build_check_aarch64_byte_view(ctx, fun, value->left, diag) && z_build_check_aarch64_byte_view(ctx, fun, value->right, diag);
+}
+
 static bool build_check_binary_operator(const ZBuildability *ctx, const IrValue *value, unsigned scratch_slot, unsigned *right_slot, ZDiag *diag) {
   if (value->kind != IR_VALUE_BINARY) return true;
   bool supported = true;
@@ -550,6 +558,10 @@ static bool build_check_macho64_json_http(const ZBuildability *ctx, const IrFunc
     if (!build_check_macho64_capacity(ctx, value, scratch_slot, 4, "direct AArch64 Mach-O HTTP JSON response helper exceeds scratch register spill capacity", diag)) return false;
     return build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag);
   }
+  if (value->kind == IR_VALUE_PROC_CAPTURE) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 4, "direct AArch64 Mach-O std.proc.capture exceeds scratch register spill capacity", diag)) return false;
+    return build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag);
+  }
   return true;
 }
 
@@ -579,6 +591,7 @@ bool z_build_check_target_value(const ZBuildability *ctx, const IrFunction *fun,
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_str_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_text_parse_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_fmt_runtime(ctx, fun, value, scratch_slot, diag)) return false;
+  if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_proc_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_time_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_math_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   return build_check_binary_operator(ctx, value, scratch_slot, right_slot, diag) &&

@@ -959,6 +959,24 @@ static bool a64_emit_search_runtime_to_reg_at(ZBuf *text, const IrFunction *fun,
   return true;
 }
 
+static bool a64_emit_proc_capture_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return a64_diag(diag, "direct AArch64 std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!a64_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!a64_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE, diag, value);
+}
+
 static bool a64_emit_sort_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (!value || !value->left) return a64_diag(diag, "direct AArch64 std.sort helper requires a span", value ? value->line : 1, value ? value->column : 1, "invalid std.sort input");
   if (!a64_emit_byte_view_to_scratch(text, fun, value->left, scratch_slot, frame_size, scratch_slot, ctx, diag)) return false;
@@ -1671,6 +1689,9 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
     case IR_VALUE_TIME_RUNTIME: return a64_emit_time_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return a64_emit_math_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return a64_emit_search_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE:
+      (void)reg;
+      return a64_emit_proc_capture_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return a64_emit_sort_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
@@ -1841,7 +1862,7 @@ static bool a64_emit_local_set(ZBuf *text, const IrFunction *fun, const IrInstr 
          instr->value->kind == IR_VALUE_PARSE_I32 ||
          instr->value->kind == IR_VALUE_PARSE_U32 ||
          instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
-         instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+         instr->value->kind == IR_VALUE_MATH_RUNTIME || instr->value->kind == IR_VALUE_PROC_CAPTURE ||
          instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
          instr->value->kind == IR_VALUE_RAND_RANGE_U32) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
       if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
@@ -2017,7 +2038,7 @@ static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
            instr->value->kind == IR_VALUE_PARSE_I32 ||
            instr->value->kind == IR_VALUE_PARSE_U32 ||
            instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
-           instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+           instr->value->kind == IR_VALUE_MATH_RUNTIME || instr->value->kind == IR_VALUE_PROC_CAPTURE ||
            instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
            instr->value->kind == IR_VALUE_RAND_RANGE_U32) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
         if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;

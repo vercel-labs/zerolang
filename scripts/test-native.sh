@@ -210,6 +210,7 @@ expected_output() {
     conformance/native/pass/std-io-lines.graph) printf "std io lines ok" ;;
     conformance/native/pass/std-path-io-breadth.graph) printf "std path io breadth ok" ;;
     conformance/native/pass/std-fs-file-helpers.graph) printf "std fs file helpers ok" ;;
+    conformance/native/pass/std-proc-capture.graph) printf "std proc capture ok" ;;
     conformance/native/pass/std-str-breadth.graph) printf "std str breadth ok" ;;
     conformance/native/pass/std-testing-log.graph) printf "std testing log ok" ;;
     examples/std-str.graph) printf "std str ok" ;;
@@ -261,6 +262,7 @@ examples=(
   conformance/native/pass/std-io-lines.graph
   conformance/native/pass/std-path-io-breadth.graph
   conformance/native/pass/std-fs-file-helpers.graph
+  conformance/native/pass/std-proc-capture.graph
   conformance/native/pass/std-str-breadth.graph
   conformance/native/pass/std-testing-log.graph
 )

@@ -2500,6 +2500,7 @@ static char *ir_expr_callee_name(const Expr *expr) {
 typedef enum {
   IR_DIRECT_STD_CALL_UNKNOWN,
   IR_DIRECT_STD_PROC_SPAWN,
+  IR_DIRECT_STD_PROC_CAPTURE,
   IR_DIRECT_STD_PROC_EXIT_CODE,
   IR_DIRECT_STD_PROC_SUCCEEDED,
   IR_DIRECT_STD_PROC_FAILED,
@@ -2538,6 +2539,7 @@ typedef struct {
 static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
   static const IrDirectStdCallSpec specs[] = {
     {"std.proc.spawn", IR_DIRECT_STD_PROC_SPAWN},
+    {"std.proc.capture", IR_DIRECT_STD_PROC_CAPTURE},
     {"std.proc.exitCode", IR_DIRECT_STD_PROC_EXIT_CODE},
     {"std.proc.succeeded", IR_DIRECT_STD_PROC_SUCCEEDED},
     {"std.proc.failed", IR_DIRECT_STD_PROC_FAILED},
@@ -2595,6 +2597,24 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
   if (id == IR_DIRECT_STD_PROC_SPAWN && call->args.len == 1) {
     IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, call->line, call->column);
     value->int_value = 0;
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE && call->args.len == 2) {
+    IrValue *command = NULL;
+    IrValue *buffer = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[1], &buffer)) {
+      ir_free_value(command);
+      ir_free_value(buffer);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
+    value->left = command;
+    value->right = buffer;
+    value->element_type = IR_TYPE_USIZE;
+    ir_require_helper_counts(ir, 1, 0);
     *handled = true;
     *out = value;
     return true;

@@ -1475,6 +1475,20 @@ static bool elf_emit_http_request_body_within_value(ZBuf *code, const IrFunction
   return true;
 }
 
+static bool elf_emit_proc_capture_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return elf_diag(diag, "direct ELF64 std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 8, 10, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 8);
+  z_x64_emit_push_reg64(code, 10);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_PROC_CAPTURE, patch, diag, value);
+}
+
 static bool elf_emit_http_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_HTTP_STATUS_CLASS:
@@ -2901,6 +2915,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       !((value->kind == IR_VALUE_STR_RUNTIME) && (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
       !((value->kind == IR_VALUE_SORT_RUNTIME) && value->type == IR_TYPE_VOID) &&
+      !((value->kind == IR_VALUE_PROC_CAPTURE) && value->type == IR_TYPE_MAYBE_SCALAR) &&
       !((value->kind == IR_VALUE_FMT_BOOL || value->kind == IR_VALUE_FMT_HEX_U32 || value->kind == IR_VALUE_FMT_I32 ||
          value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
@@ -2931,6 +2946,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_args_find_value(code, fun, value, ctx, diag);
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
       return elf_emit_fmt_u32_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE:
+      return elf_emit_proc_capture_value(code, fun, value, ctx, diag);
     case IR_VALUE_ASCII_RUNTIME:
       return elf_emit_ascii_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_TEXT_RUNTIME:
@@ -3433,6 +3450,7 @@ static bool elf_emit_maybe_scalar_local_set(ZBuf *text, const IrFunction *fun, c
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+      instr->value->kind == IR_VALUE_PROC_CAPTURE ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
@@ -3615,6 +3633,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
                    instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
                    instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+                   instr->value->kind == IR_VALUE_PROC_CAPTURE ||
                    instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {

@@ -73,6 +73,7 @@ static const char *const runtime_helper_symbols[ELF_RUNTIME_HELPER_COUNT] = {
   "zero_fmt_i32",
   "zero_fmt_u32",
   "zero_fmt_usize",
+  "zero_proc_capture",
 };
 
 static bool elf_emit_state_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {

@@ -4240,6 +4240,24 @@ static bool ir_graph_lower_std_cli_arg_call(const ZProgramGraph *graph, IrProgra
   return true;
 }
 
+static bool ir_graph_lower_std_proc_capture_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  IrValue *command = NULL;
+  IrValue *buffer = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &command) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &buffer)) {
+    ir_free_value(command);
+    ir_free_value(buffer);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = command;
+  value->right = buffer;
+  value->element_type = IR_TYPE_USIZE;
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
 static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
   *handled = true;
   if (ir_text_eq(callee_name, "std.args.len") && arg_count == 0) {
@@ -4404,6 +4422,7 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, ir_graph_line(expr), ir_graph_column(expr));
     return true;
   }
+  if (ir_text_eq(callee_name, "std.proc.capture") && arg_count == 2) return ir_graph_lower_std_proc_capture_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.exitCode") && arg_count == 1) {
     return ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I32, out);
   }

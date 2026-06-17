@@ -160,7 +160,8 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
           value->kind == IR_VALUE_FMT_HEX_U32 ||
           value->kind == IR_VALUE_FMT_I32 ||
           value->kind == IR_VALUE_FMT_U32 ||
-          value->kind == IR_VALUE_FMT_USIZE) {
+          value->kind == IR_VALUE_FMT_USIZE ||
+          value->kind == IR_VALUE_PROC_CAPTURE) {
         return true;
       }
       break;
@@ -428,6 +429,15 @@ static bool mir_verify_value_type(IrProgram *ir, const IrValue *value, IrTypeKin
 
 static bool mir_verify_helper_result_type(IrProgram *ir, const IrValue *value, IrTypeKind expected, const char *role) {
   return mir_verify_value_type(ir, value, expected, "MIR verifier found helper result type mismatch", role);
+}
+
+static bool mir_verify_maybe_scalar_result(IrProgram *ir, const IrValue *value, IrTypeKind element_type, const char *message, const char *role);
+static bool mir_verify_mutable_byte_storage(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, const char *message, const char *role);
+
+static bool mir_verify_proc_capture_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
+  if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found process capture result type mismatch", "process capture")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
+  return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process capture buffer", "process capture buffer");
 }
 
 static bool mir_verify_value_is_integer(IrProgram *ir, const IrValue *value, const char *message, const char *role) {
@@ -994,6 +1004,7 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid fmt output buffer", buffer)) return false;
       return mir_verify_value_type(ir, value->right, number_type, "MIR verifier found invalid fmt value", number);
     }
+    case IR_VALUE_PROC_CAPTURE: mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.capture"); mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.capture"); return mir_verify_proc_capture_contract(ir, fun, state, value);
     default:
       return true;
   }
@@ -1402,6 +1413,7 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
     case IR_VALUE_FS_WRITE_BYTES_PATH:
       if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem write result type mismatch", "filesystem write bytes")) return false;
       return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid filesystem write input", "filesystem write path", "filesystem write bytes");
+    case IR_VALUE_PROC_CAPTURE: return mir_verify_proc_capture_contract(ir, fun, state, value);
     case IR_VALUE_FS_READ_ALL:
       if (value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
         if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem readAll result")) return false;
@@ -2248,7 +2260,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_HTTP_STATUS_CLASS:
     case IR_VALUE_PARSE_RUNTIME: case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32: case IR_VALUE_ARGS_PARSE_U32: case IR_VALUE_ARGS_FIND: case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER: case IR_VALUE_ARGS_VALUE_AFTER_OR: case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:
-    case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
+    case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE: case IR_VALUE_PROC_CAPTURE:
       return mir_verify_direct_helper_value_contract(ir, fun, state, value, requirements);
     case IR_VALUE_MAYBE_HAS:
     case IR_VALUE_MAYBE_VALUE:

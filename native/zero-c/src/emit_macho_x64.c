@@ -1591,6 +1591,20 @@ static bool machx64_emit_http_request_span_value(ZBuf *text, const IrFunction *f
   return true;
 }
 
+static bool machx64_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 8, 10, ctx, diag)) return false;
+  z_x64_emit_push_reg64(text, 8);
+  z_x64_emit_push_reg64(text, 10);
+  if (!machx64_emit_byte_view_pair(text, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE, patch, value, diag);
+}
+
 static bool machx64_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.time helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.time arity");
@@ -1749,6 +1763,7 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
     case IR_VALUE_STR_RUNTIME: return machx64_emit_str_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_TIME_RUNTIME: return machx64_emit_time_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return machx64_emit_math_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE: return machx64_emit_proc_capture_value(text, fun, value, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return machx64_emit_search_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return machx64_emit_sort_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
@@ -1844,6 +1859,7 @@ static bool machx64_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fu
        instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
        instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
        instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
@@ -2097,6 +2113,7 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
              instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
              instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
              instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+             instr->value->kind == IR_VALUE_PROC_CAPTURE ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {

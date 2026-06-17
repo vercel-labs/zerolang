@@ -795,6 +795,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.proc.failed", "Bool", 1, {"ProcStatus"}, {NULL}, "proc", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.runOk", "Bool", 1, {"String"}, {NULL}, "proc", "host", "explicit process capability; no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.runCode", "i32", 1, {"String"}, {NULL}, "proc", "host", "explicit process capability; no allocation", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.proc.capture", "Maybe<usize>", 2, {"String", "MutSpan<u8>"}, {NULL}, "proc", "host", "runs argv-style command text and captures stdout into caller storage; null on failure, nonzero exit, unsupported target, or truncation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.crypto.hash32", "u32", 1, {"Span<u8>"}, {NULL}, "codec", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.crypto.hmac32", "u32", 2, {"Span<u8>", "Span<u8>"}, {NULL}, "codec", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.crypto.constantTimeEql", "Bool", 2, {"Span<u8>", "Span<u8>"}, {NULL}, "memory", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},

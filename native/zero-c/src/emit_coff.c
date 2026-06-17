@@ -1365,6 +1365,26 @@ static bool coff_emit_fmt_value(ZBuf *text, const IrFunction *fun, const IrValue
   return true;
 }
 
+static bool coff_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return coff_diag_at(diag, "direct COFF std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  const unsigned abi_slots = 5;
+  const unsigned result_slot = 5;
+  coff_emit_runtime_call_begin_with_temps(text, abi_slots, result_slot + 2u, &temp_base, &total_stack);
+  coff_emit_runtime_arg_stack_ptr(text, temp_base, result_slot, &slot);
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PROC_CAPTURE, abi_slots, temp_base, value, diag)) return false;
+  coff_emit_runtime_temp_slot_load(text, temp_base, result_slot, 0);
+  coff_emit_runtime_temp_slot_load(text, temp_base, result_slot + 1u, 2);
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
 static bool coff_emit_math_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) {
     return coff_diag_at(diag, "direct COFF std.math helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.math arity");
@@ -1797,6 +1817,8 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
     case IR_VALUE_FMT_U32:
     case IR_VALUE_FMT_USIZE:
       return coff_emit_fmt_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE:
+      return coff_emit_proc_capture_value(text, fun, value, ctx, diag);
     case IR_VALUE_STR_RUNTIME: return coff_emit_str_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_TIME_RUNTIME: return coff_emit_time_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return coff_emit_math_runtime_value(text, fun, value, ctx, diag);
@@ -1953,6 +1975,7 @@ static bool coff_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun, 
        instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
        instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
        instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
@@ -2179,6 +2202,7 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
              instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
              instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
              instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+             instr->value->kind == IR_VALUE_PROC_CAPTURE ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
