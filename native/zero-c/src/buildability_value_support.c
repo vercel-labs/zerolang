@@ -83,7 +83,7 @@ static bool build_value_supported_macho_x64(IrValueKind kind) {
     case IR_VALUE_BYTE_VIEW_EQ:
     case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_RECORD_ADDR: case IR_VALUE_CHECK:
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL: case IR_VALUE_MAYBE_SCALAR_LITERAL:
-    case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_CRC32_BYTES:
+    case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_RAND_NEXT_BELOW: case IR_VALUE_RAND_RANGE_U32: case IR_VALUE_CRC32_BYTES:
     case IR_VALUE_ASCII_RUNTIME: case IR_VALUE_TEXT_RUNTIME: case IR_VALUE_PARSE_RUNTIME:
     case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32:
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
@@ -134,7 +134,7 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
       return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_RAND_NEXT_BELOW:
     case IR_VALUE_RAND_RANGE_U32:
-      return build_backend_is_native_graph_runtime(ctx->backend);
+      return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_FS_HOST:
       return build_backend_is_native_graph_runtime(ctx->backend);
     case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH:

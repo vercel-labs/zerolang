@@ -385,6 +385,7 @@ command() -> Maybe<String>
 commandOr(arg0: String) -> String
 commandEquals(arg0: String) -> Bool
 argOr(arg0: usize, arg1: String) -> String
+argU32Or(arg0: usize, arg1: u32) -> u32
 hasFlag(arg0: String) -> Bool
 optionValue(arg0: String) -> Maybe<String>
 optionValueOr(arg0: String, arg1: String) -> String

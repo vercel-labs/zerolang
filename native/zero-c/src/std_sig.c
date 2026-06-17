@@ -26,6 +26,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.cli.commandOr", "String", 1, {"String"}, {NULL}, "args", "host", "borrows process argv or fallback", true, Z_STD_HELPER_KIND_TABLE},
   {"std.cli.commandEquals", "Bool", 1, {"String"}, {NULL}, "args", "host", "borrows process argv", true, Z_STD_HELPER_KIND_TABLE},
   {"std.cli.argOr", "String", 2, {"usize", "String"}, {NULL}, "args", "host", "borrows process argv or fallback", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.cli.argU32Or", "u32", 2, {"usize", "u32"}, {NULL}, "args", "host", "borrows process argv or fallback; no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.cli.hasFlag", "Bool", 1, {"String"}, {NULL}, "args", "host", "borrows process argv", true, Z_STD_HELPER_KIND_TABLE},
   {"std.cli.optionValue", "Maybe<String>", 1, {"String"}, {NULL}, "args", "host", "borrows process argv", true, Z_STD_HELPER_KIND_TABLE},
   {"std.cli.optionValueOr", "String", 2, {"String", "String"}, {NULL}, "args", "host", "borrows process argv or fallback", true, Z_STD_HELPER_KIND_TABLE},

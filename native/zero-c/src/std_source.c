@@ -135,6 +135,7 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.diag.lineText", "diag_line_text", "std.diag"},
   {"std.diag.rangeLen", "diag_range_len", "std.diag"},
   {"std.diag.rangeText", "diag_range_text", "std.diag"},
+  {"std.cli.argU32Or", "__zero_std_cli_arg_u32_or", "std.cli"},
   {"std.cli.commandIn2", "__zero_std_cli_command_in2", "std.cli"},
   {"std.cli.commandIn3", "__zero_std_cli_command_in3", "std.cli"},
   {"std.cli.formatCommand", "__zero_std_cli_format_command", "std.cli"},

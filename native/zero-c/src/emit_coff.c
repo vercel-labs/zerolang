@@ -1610,6 +1610,69 @@ static bool coff_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, cons
   return true;
 }
 
+static bool coff_emit_rand_bounded_from_r8(ZBuf *text, const IrFunction *fun, const IrValue *value, bool add_low) {
+  z_x64_emit_test_reg_reg(text, 8, false);
+  size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
+
+  z_x64_emit_xor_reg_reg(text, 0, false);
+  z_x64_emit_sub_reg_reg(text, 0, 8, false);
+  z_x64_emit_mov_reg_from_reg(text, 1, 8, false);
+  z_x64_emit_div_rax_rcx(text, false, true, true);
+  z_x64_emit_mov_reg_from_rax(text, 9, false);
+
+  size_t loop = text->len;
+  coff_emit_load_local_slot_eax(text, fun, value->local_index, 0);
+  z_x64_emit_imul_reg_i32(text, 0, 1664525, false);
+  z_x64_emit_add_rax_u32(text, 1013904223u, false);
+  coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 0, 0, false);
+  z_x64_emit_cmp_reg_reg(text, 0, 9, false);
+  size_t retry = z_x64_emit_jcc32_placeholder(text, 0x82);
+
+  z_x64_emit_mov_reg_from_reg(text, 1, 8, false);
+  z_x64_emit_div_rax_rcx(text, false, true, true);
+  if (add_low) z_x64_emit_add_reg_reg(text, 0, 10, false);
+  z_x64_emit_mov_reg_from_rax(text, 2, false);
+  z_x64_emit_mov_eax_u32(text, 1);
+  size_t done = z_x64_emit_jmp32_placeholder(text, 0xe9);
+
+  z_x64_patch_rel32(text, retry, loop);
+  z_x64_patch_rel32(text, none, text->len);
+  z_x64_emit_xor_reg_reg(text, 2, false);
+  z_x64_emit_xor_reg_reg(text, 0, false);
+  z_x64_patch_rel32(text, done, text->len);
+  return true;
+}
+
+static bool coff_emit_rand_maybe_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!fun || !value || value->local_index >= fun->local_len) {
+    return coff_diag_at(diag, "direct COFF std.rand bounded local is out of range", value ? value->line : 1, value ? value->column : 1, "invalid RandSource");
+  }
+  if (value->kind == IR_VALUE_RAND_NEXT_BELOW) {
+    if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_rax(text, 8, false);
+    return coff_emit_rand_bounded_from_r8(text, fun, value, false);
+  }
+  if (value->kind == IR_VALUE_RAND_RANGE_U32) {
+    if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+    z_x64_emit_push_rax(text);
+    if (!coff_emit_value(text, fun, value->right, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_rax(text, 8, false);
+    z_x64_emit_pop_reg64(text, 1);
+    z_x64_emit_mov_reg_from_reg(text, 10, 1, false);
+    z_x64_emit_cmp_reg_reg(text, 8, 1, false);
+    size_t empty = z_x64_emit_jcc32_placeholder(text, 0x86);
+    z_x64_emit_sub_reg_reg(text, 8, 1, false);
+    bool ok = coff_emit_rand_bounded_from_r8(text, fun, value, true);
+    size_t done = z_x64_emit_jmp32_placeholder(text, 0xe9);
+    z_x64_patch_rel32(text, empty, text->len);
+    z_x64_emit_xor_reg_reg(text, 2, false);
+    z_x64_emit_xor_reg_reg(text, 0, false);
+    z_x64_patch_rel32(text, done, text->len);
+    return ok;
+  }
+  return coff_diag_at(diag, "direct COFF std.rand bounded helper is invalid", value->line, value->column, "invalid rand helper");
+}
+
 static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value) return coff_diag_at(diag, "direct COFF expression is missing", 1, 1, "missing expression");
   switch (value->kind) {
@@ -1635,6 +1698,9 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       z_x64_emit_add_rax_u32(text, 1013904223u, false);
       coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 0, 0, false);
       return true;
+    case IR_VALUE_RAND_NEXT_BELOW:
+    case IR_VALUE_RAND_RANGE_U32:
+      return coff_emit_rand_maybe_value(text, fun, value, ctx, diag);
     case IR_VALUE_VEC_LEN:
     case IR_VALUE_VEC_CAPACITY:
       if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec helper requires a Vec local", value->line, value->column, "invalid Vec local");
@@ -1838,6 +1904,8 @@ static bool coff_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun, 
        instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
        instr->value->kind == IR_VALUE_PARSE_I32 ||
        instr->value->kind == IR_VALUE_PARSE_U32 ||
+       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
+       instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
        instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
@@ -2062,6 +2130,8 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
              instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
              instr->value->kind == IR_VALUE_PARSE_I32 ||
              instr->value->kind == IR_VALUE_PARSE_U32 ||
+             instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
+             instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
              instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
