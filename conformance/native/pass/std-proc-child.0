@@ -72,6 +72,26 @@ pub fn main(world: World) -> Void raises {
     }
     let pid_closed: Bool = std.proc.close(pid_child)
 
+    let group_kill_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"exit 143\" TERM; while true; do sleep 1; done'")
+    var group_kill_ok: Bool = false
+    let group_kill_pid: i32 = std.proc.pid(group_kill_child)
+    if std.proc.childValid(group_kill_child) && group_kill_pid > 0 && std.proc.pidRunning(group_kill_pid) {
+        let killed_group: Bool = std.proc.killGroupPid(group_kill_pid)
+        let group_kill_status: ProcStatus = std.proc.wait(group_kill_child)
+        group_kill_ok = killed_group && std.proc.exitCode(group_kill_status) != 0
+    }
+    let group_kill_closed: Bool = std.proc.close(group_kill_child)
+
+    let group_interrupt_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"exit 130\" INT; while true; do sleep 1; done'")
+    var group_interrupt_ok: Bool = false
+    let group_interrupt_pid: i32 = std.proc.pid(group_interrupt_child)
+    if std.proc.childValid(group_interrupt_child) && group_interrupt_pid > 0 && std.proc.pidRunning(group_interrupt_pid) {
+        let interrupted_group: Bool = std.proc.interruptGroupPid(group_interrupt_pid)
+        let group_interrupt_status: ProcStatus = std.proc.wait(group_interrupt_child)
+        group_interrupt_ok = interrupted_group && std.proc.exitCode(group_interrupt_status) != 0
+    }
+    let group_interrupt_closed: Bool = std.proc.close(group_interrupt_child)
+
     let env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf env:$ZERO_PROC_ENV_TEST:$ZERO_PROC_ENV_TWO'", ".", "ZERO_PROC_ENV_TEST=alpha\nZERO_PROC_ENV_TWO=beta")
     var env_buf: [64]u8 = [0_u8; 64]
     var env_ok: Bool = false
@@ -128,7 +148,7 @@ pub fn main(world: World) -> Void raises {
         files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
     }
 
-    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && pid_ok && pid_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
         check world.out.write("std proc child ok\n")
     }
 }

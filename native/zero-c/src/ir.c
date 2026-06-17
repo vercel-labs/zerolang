@@ -2677,7 +2677,7 @@ typedef enum {
   IR_DIRECT_STD_PROC_PID,
   IR_DIRECT_STD_PROC_PID_RUNNING,
   IR_DIRECT_STD_PROC_KILL_PID,
-  IR_DIRECT_STD_PROC_INTERRUPT_PID,
+  IR_DIRECT_STD_PROC_INTERRUPT_PID, IR_DIRECT_STD_PROC_KILL_GROUP_PID, IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID,
   IR_DIRECT_STD_PROC_READ_STDOUT,
   IR_DIRECT_STD_PROC_READ_STDERR,
   IR_DIRECT_STD_PROC_WRITE_STDIN,
@@ -2753,7 +2753,7 @@ static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
     {"std.proc.pid", IR_DIRECT_STD_PROC_PID},
     {"std.proc.pidRunning", IR_DIRECT_STD_PROC_PID_RUNNING},
     {"std.proc.killPid", IR_DIRECT_STD_PROC_KILL_PID},
-    {"std.proc.interruptPid", IR_DIRECT_STD_PROC_INTERRUPT_PID},
+    {"std.proc.interruptPid", IR_DIRECT_STD_PROC_INTERRUPT_PID}, {"std.proc.killGroupPid", IR_DIRECT_STD_PROC_KILL_GROUP_PID}, {"std.proc.interruptGroupPid", IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID},
     {"std.proc.readStdout", IR_DIRECT_STD_PROC_READ_STDOUT},
     {"std.proc.readStderr", IR_DIRECT_STD_PROC_READ_STDERR},
     {"std.proc.writeStdin", IR_DIRECT_STD_PROC_WRITE_STDIN},
@@ -3013,7 +3013,7 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
        id == IR_DIRECT_STD_PROC_PID ||
        id == IR_DIRECT_STD_PROC_PID_RUNNING ||
        id == IR_DIRECT_STD_PROC_KILL_PID ||
-       id == IR_DIRECT_STD_PROC_INTERRUPT_PID ||
+       id == IR_DIRECT_STD_PROC_INTERRUPT_PID || id == IR_DIRECT_STD_PROC_KILL_GROUP_PID || id == IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID ||
        id == IR_DIRECT_STD_PTY_VALID ||
        id == IR_DIRECT_STD_PTY_RUNNING ||
        id == IR_DIRECT_STD_PTY_WAIT ||
@@ -3039,7 +3039,7 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     else if (id == IR_DIRECT_STD_PROC_PID || id == IR_DIRECT_STD_PTY_PID) { op = IR_PROC_CHILD_OP_PID; result_type = IR_TYPE_I32; }
     else if (id == IR_DIRECT_STD_PROC_PID_RUNNING) op = IR_PROC_CHILD_OP_PID_RUNNING;
     else if (id == IR_DIRECT_STD_PROC_KILL_PID) op = IR_PROC_CHILD_OP_KILL_PID;
-    else if (id == IR_DIRECT_STD_PROC_INTERRUPT_PID) op = IR_PROC_CHILD_OP_INTERRUPT_PID;
+    else if (id == IR_DIRECT_STD_PROC_INTERRUPT_PID) op = IR_PROC_CHILD_OP_INTERRUPT_PID; else if (id == IR_DIRECT_STD_PROC_KILL_GROUP_PID) op = IR_PROC_CHILD_OP_KILL_GROUP_PID; else if (id == IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID) op = IR_PROC_CHILD_OP_INTERRUPT_GROUP_PID;
     IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_OP, result_type, call->line, call->column);
     value->left = child;
     value->int_value = (unsigned long long)op;

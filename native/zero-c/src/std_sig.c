@@ -909,7 +909,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.proc.pid", "i32", 1, {"ProcChild"}, {NULL}, "proc", "host", "returns the hosted process id for a child handle, or 0 when unavailable", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.pidRunning", "Bool", 1, {"i32"}, {NULL}, "proc", "host", "reports whether a hosted process id appears to be running", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.killPid", "Bool", 1, {"i32"}, {NULL}, "proc", "host", "requests termination for a hosted process id", true, Z_STD_HELPER_KIND_TABLE},
-  {"std.proc.interruptPid", "Bool", 1, {"i32"}, {NULL}, "proc", "host", "requests interrupt for a hosted process id", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.proc.interruptPid", "Bool", 1, {"i32"}, {NULL}, "proc", "host", "requests interrupt for a hosted process id", true, Z_STD_HELPER_KIND_TABLE}, {"std.proc.killGroupPid", "Bool", 1, {"i32"}, {NULL}, "proc", "host", "requests termination for a hosted process group id", true, Z_STD_HELPER_KIND_TABLE}, {"std.proc.interruptGroupPid", "Bool", 1, {"i32"}, {NULL}, "proc", "host", "requests interrupt for a hosted process group id", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.readStdout", "Maybe<usize>", 2, {"ProcChild", "MutSpan<u8>"}, {NULL}, "proc", "host", "reads currently available child stdout bytes without blocking", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.readStderr", "Maybe<usize>", 2, {"ProcChild", "MutSpan<u8>"}, {NULL}, "proc", "host", "reads currently available child stderr bytes without blocking", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.writeStdin", "Maybe<usize>", 2, {"ProcChild", "Span<u8>"}, {NULL}, "proc", "host", "writes child stdin bytes without blocking", true, Z_STD_HELPER_KIND_TABLE},

@@ -1363,6 +1363,8 @@ pid(arg0: ProcChild) -> i32
 pidRunning(arg0: i32) -> Bool
 killPid(arg0: i32) -> Bool
 interruptPid(arg0: i32) -> Bool
+killGroupPid(arg0: i32) -> Bool
+interruptGroupPid(arg0: i32) -> Bool
 readStdout(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
 readStderr(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
 writeStdin(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>

@@ -35,6 +35,8 @@ Runnable today:
 | `std.proc.pidRunning(pid)` | `Bool` | Reports whether a hosted process id appears to be running. |
 | `std.proc.killPid(pid)` | `Bool` | Sends a termination signal to a hosted process id on supported hosts. |
 | `std.proc.interruptPid(pid)` | `Bool` | Sends an interrupt signal to a hosted process id on supported hosts. |
+| `std.proc.killGroupPid(pid)` | `Bool` | Sends a termination signal to the hosted process group whose id is `pid` on supported hosts. |
+| `std.proc.interruptGroupPid(pid)` | `Bool` | Sends an interrupt signal to the hosted process group whose id is `pid` on supported hosts. |
 | `std.proc.readStdout(child, buffer)` | `Maybe<usize>` | Nonblocking read from the child's stdout pipe into caller storage. Returns `null` when no bytes are currently available or the stream is closed. |
 | `std.proc.readStderr(child, buffer)` | `Maybe<usize>` | Nonblocking read from the child's stderr pipe into caller storage. Returns `null` when no bytes are currently available or the stream is closed. |
 | `std.proc.writeStdin(child, bytes)` | `Maybe<usize>` | Nonblocking write to the child's stdin pipe. Returns `null` when the stream is not writable. |
@@ -106,6 +108,10 @@ non-empty line in `args` becomes one following argv entry with spaces preserved.
 stdout and stderr to hosted paths, and `spawnChildArgs` returns nonblocking
 pipes so event loops can poll process state and terminal input without owning
 threads.
+
+Hosted child helpers start children in their own process group where the target
+platform supports it. Use `killGroupPid` or `interruptGroupPid` when a stored
+pid should stop a command tree instead of only the direct parent process.
 
 `spawnChildInEnv`, `spawnInheritArgs`, and `spawnChildArgs` accept a
 newline-separated env block such as `"TOKEN=...\nMODE=batch"`. Empty lines are
