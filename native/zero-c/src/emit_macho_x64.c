@@ -966,8 +966,8 @@ static unsigned machx64_json_write_runtime_abi_slots(IrJsonWriteOp op) {
   return 0u;
 }
 
-static void machx64_emit_runtime_call_begin(ZBuf *text, unsigned abi_slots, unsigned *temp_base, unsigned *total_stack) {
-  unsigned stack_slots = abi_slots > 6u ? abi_slots - 6u : 0u;
+static void machx64_emit_runtime_call_begin(ZBuf *text, unsigned abi_slots, unsigned register_slots, unsigned *temp_base, unsigned *total_stack) {
+  unsigned stack_slots = abi_slots > register_slots ? abi_slots - register_slots : 0u;
   unsigned call_frame = stack_slots * 8u;
   *temp_base = call_frame;
   *total_stack = (unsigned)machx64_align(call_frame + abi_slots * 8u, 16);
@@ -1034,13 +1034,12 @@ static bool machx64_emit_json_write_runtime_args(ZBuf *text, const IrFunction *f
   return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
 }
 
-static bool machx64_emit_runtime_call(ZBuf *text, MachOEmitContext *ctx, MachORuntimeHelper helper, unsigned abi_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
+static bool machx64_emit_runtime_call(ZBuf *text, MachOEmitContext *ctx, MachORuntimeHelper helper, unsigned abi_slots, unsigned register_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
   static const unsigned param_regs[] = {7, 6, 2, 1, 8, 9};
-  for (unsigned slot = 6; slot < abi_slots; slot++) {
+  for (unsigned slot = register_slots; slot < abi_slots; slot++) {
     machx64_emit_runtime_temp_slot_load(text, temp_base, slot, 0);
-    z_x64_emit_store_rsp_offset_reg(text, 0, (slot - 6u) * 8u, true);
+    z_x64_emit_store_rsp_offset_reg(text, 0, (slot - register_slots) * 8u, true);
   }
-  unsigned register_slots = abi_slots < 6u ? abi_slots : 6u;
   for (unsigned slot = 0; slot < register_slots; slot++) {
     machx64_emit_runtime_temp_slot_load(text, temp_base, slot, param_regs[slot]);
   }
@@ -1057,9 +1056,10 @@ static bool machx64_emit_json_write_runtime_call(ZBuf *text, const IrFunction *f
   unsigned temp_base = 0;
   unsigned total_stack = 0;
   unsigned slot = 0;
-  machx64_emit_runtime_call_begin(text, abi_slots, &temp_base, &total_stack);
+  unsigned register_slots = ((op == IR_JSON_WRITE_OBJECT2_U32_FIELD || op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) && abi_slots > 5u) ? 5u : (abi_slots < 6u ? abi_slots : 6u);
+  machx64_emit_runtime_call_begin(text, abi_slots, register_slots, &temp_base, &total_stack);
   if (!machx64_emit_json_write_runtime_args(text, fun, value, temp_base, &slot, ctx, diag)) return false;
-  if (!machx64_emit_runtime_call(text, ctx, helper, abi_slots, temp_base, value, diag)) return false;
+  if (!machx64_emit_runtime_call(text, ctx, helper, abi_slots, register_slots, temp_base, value, diag)) return false;
   machx64_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
   machx64_emit_packed_span_result(text);
   z_x64_emit_add_rsp(text, total_stack);

@@ -635,8 +635,8 @@ static unsigned elf_json_write_runtime_abi_slots(IrJsonWriteOp op) {
   return 0u;
 }
 
-static void elf_emit_runtime_call_begin(ZBuf *code, unsigned abi_slots, unsigned *temp_base, unsigned *total_stack) {
-  unsigned stack_slots = abi_slots > 6u ? abi_slots - 6u : 0u;
+static void elf_emit_runtime_call_begin(ZBuf *code, unsigned abi_slots, unsigned register_slots, unsigned *temp_base, unsigned *total_stack) {
+  unsigned stack_slots = abi_slots > register_slots ? abi_slots - register_slots : 0u;
   unsigned call_frame = stack_slots * 8u;
   *temp_base = call_frame;
   *total_stack = (unsigned)z_elf_align(call_frame + abi_slots * 8u, 16);
@@ -703,13 +703,12 @@ static bool elf_emit_json_write_runtime_args(ZBuf *code, const IrFunction *fun, 
   return elf_diag(diag, "direct ELF64 JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
 }
 
-static bool elf_emit_runtime_call(ZBuf *code, ElfEmitContext *ctx, ElfRuntimeHelper helper, unsigned abi_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
+static bool elf_emit_runtime_call(ZBuf *code, ElfEmitContext *ctx, ElfRuntimeHelper helper, unsigned abi_slots, unsigned register_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
   static const unsigned param_regs[] = {7, 6, 2, 1, 8, 9};
-  for (unsigned slot = 6; slot < abi_slots; slot++) {
+  for (unsigned slot = register_slots; slot < abi_slots; slot++) {
     elf_emit_runtime_temp_slot_load(code, temp_base, slot, 0);
-    z_x64_emit_store_rsp_offset_reg(code, 0, (slot - 6u) * 8u, true);
+    z_x64_emit_store_rsp_offset_reg(code, 0, (slot - register_slots) * 8u, true);
   }
-  unsigned register_slots = abi_slots < 6u ? abi_slots : 6u;
   for (unsigned slot = 0; slot < register_slots; slot++) {
     elf_emit_runtime_temp_slot_load(code, temp_base, slot, param_regs[slot]);
   }
@@ -726,9 +725,10 @@ static bool elf_emit_json_write_runtime_call(ZBuf *code, const IrFunction *fun, 
   unsigned temp_base = 0;
   unsigned total_stack = 0;
   unsigned slot = 0;
-  elf_emit_runtime_call_begin(code, abi_slots, &temp_base, &total_stack);
+  unsigned register_slots = ((op == IR_JSON_WRITE_OBJECT2_U32_FIELD || op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) && abi_slots > 5u) ? 5u : (abi_slots < 6u ? abi_slots : 6u);
+  elf_emit_runtime_call_begin(code, abi_slots, register_slots, &temp_base, &total_stack);
   if (!elf_emit_json_write_runtime_args(code, fun, value, temp_base, &slot, ctx, diag)) return false;
-  if (!elf_emit_runtime_call(code, ctx, helper, abi_slots, temp_base, value, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, helper, abi_slots, register_slots, temp_base, value, diag)) return false;
   elf_emit_runtime_temp_slot_load(code, temp_base, 0, 2);
   elf_emit_http_packed_span_result(code);
   z_x64_emit_add_rsp(code, total_stack);
