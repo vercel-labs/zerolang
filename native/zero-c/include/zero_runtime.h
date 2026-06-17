@@ -189,7 +189,8 @@ typedef enum {
   ZERO_TERM_OP_WIDTH_OR = 2,
   ZERO_TERM_OP_HEIGHT_OR = 3,
   ZERO_TERM_OP_ENTER_RAW_MODE = 4,
-  ZERO_TERM_OP_LEAVE_RAW_MODE = 5
+  ZERO_TERM_OP_LEAVE_RAW_MODE = 5,
+  ZERO_TERM_OP_READ_INPUT = 6
 } ZeroTermOp;
 
 #define ZERO_HTTP_RESPONSE_META_BYTES 24u
@@ -234,6 +235,7 @@ uint64_t zero_search_op(ZeroByteView items, int64_t needle, uint32_t op);
 void zero_sort_op(ZeroMutByteView items, uint32_t op);
 uint32_t zero_sort_is_sorted_op(ZeroByteView items, uint32_t op);
 uint64_t zero_term_op(uint64_t fallback, uint32_t op);
+ZeroMaybeUsize zero_term_read_input(ZeroMutByteView buffer);
 uint32_t zero_str_contains(ZeroByteView text, ZeroByteView needle);
 uint32_t zero_str_buffer_op(ZeroMutByteView buffer, ZeroByteView text, uint32_t op);
 uint32_t zero_str_concat(ZeroMutByteView buffer, ZeroByteView left, ZeroByteView right);

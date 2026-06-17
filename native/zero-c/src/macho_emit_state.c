@@ -50,6 +50,7 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_parse_usize",
   "_zero_time_op",
   "_zero_term_op",
+  "_zero_term_read_input",
   "_zero_math_op",
   "_zero_math_usize_op",
   "_zero_search_op",

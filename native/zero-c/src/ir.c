@@ -323,6 +323,7 @@ static IrStdTermHelper ir_std_term_helper(const char *name) {
     {"std.term.heightOr", NULL, 0ull, IR_TERM_OP_HEIGHT_OR, IR_TYPE_USIZE, 1, false, true},
     {"std.term.enterRawMode", NULL, 0ull, IR_TERM_OP_ENTER_RAW_MODE, IR_TYPE_BOOL, 0, false, true},
     {"std.term.leaveRawMode", NULL, 0ull, IR_TERM_OP_LEAVE_RAW_MODE, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.readInput", NULL, 0ull, IR_TERM_OP_READ_INPUT, IR_TYPE_MAYBE_SCALAR, 1, false, true},
   };
   IrStdTermHelper missing = {NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false};
   if (!name) return missing;
@@ -2008,7 +2009,15 @@ static bool ir_make_std_term_runtime_value(const Program *program, IrProgram *ir
   }
   IrValue *value = ir_new_value(ir, IR_VALUE_TERM_RUNTIME, return_type, call->line, call->column);
   value->int_value = (unsigned long long)op;
-  if (expected_args == 1) {
+  if (op == IR_TERM_OP_READ_INPUT) {
+    IrValue *buffer = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &buffer)) {
+      ir_free_value(value);
+      return false;
+    }
+    value->left = buffer;
+    value->element_type = IR_TYPE_USIZE;
+  } else if (expected_args == 1) {
     IrValue *fallback = NULL;
     if (!ir_lower_call_arg(program, ir, fun, call->args.items[0], IR_TYPE_USIZE, &fallback)) {
       ir_free_value(value);

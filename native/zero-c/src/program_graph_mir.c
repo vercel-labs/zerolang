@@ -3584,7 +3584,15 @@ static bool ir_graph_make_std_term_runtime_value(const ZProgramGraph *graph, IrP
   }
   IrValue *value = ir_new_value(ir, IR_VALUE_TERM_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
   value->int_value = (unsigned long long)op;
-  if (expected_args == 1) {
+  if (op == IR_TERM_OP_READ_INPUT) {
+    IrValue *buffer = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), &buffer)) {
+      ir_free_value(value);
+      return false;
+    }
+    value->left = buffer;
+    value->element_type = IR_TYPE_USIZE;
+  } else if (expected_args == 1) {
     IrValue *fallback = NULL;
     if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &fallback)) {
       ir_free_value(value);
@@ -3622,6 +3630,9 @@ static bool ir_graph_lower_std_term_runtime_call(const ZProgramGraph *graph, IrP
   }
   if (arg_count == 0 && ir_text_eq(callee_name, "std.term.leaveRawMode")) {
     return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_LEAVE_RAW_MODE, IR_TYPE_BOOL, 0, out);
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.term.readInput")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_READ_INPUT, IR_TYPE_MAYBE_SCALAR, 1, out);
   }
   *handled = false;
   return true;

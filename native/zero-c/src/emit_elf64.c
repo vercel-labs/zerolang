@@ -2121,6 +2121,17 @@ static bool elf_emit_time_runtime_value(ZBuf *code, const IrFunction *fun, const
 }
 
 static bool elf_emit_term_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && (IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    if (!value->left) return elf_diag(diag, "direct ELF64 std.term.readInput requires a caller buffer", value->line, value->column, "missing terminal input buffer");
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 2, 2, &temp_base, &total_stack);
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_TERM_READ_INPUT, 2, 2, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
   if (!value || value->arg_len > 1) return elf_diag(diag, "direct ELF64 std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
   if (value->arg_len == 1) {
     if (!elf_emit_value(code, fun, value->args[0], ctx, diag)) return false;
@@ -3486,6 +3497,7 @@ static bool elf_emit_maybe_scalar_local_set(ZBuf *text, const IrFunction *fun, c
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+      instr->value->kind == IR_VALUE_TERM_RUNTIME ||
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
@@ -3669,6 +3681,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
                    instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
                    instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+                   instr->value->kind == IR_VALUE_TERM_RUNTIME ||
                    instr->value->kind == IR_VALUE_PROC_CAPTURE ||
                    instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;

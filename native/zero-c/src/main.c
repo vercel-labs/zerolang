@@ -6542,6 +6542,7 @@ typedef struct {
   bool zero_text_op;
   bool zero_time_op;
   bool zero_term_op;
+  bool zero_term_read_input;
   bool zero_math_op;
   bool zero_math_usize_op;
   bool zero_search_op;
@@ -6739,9 +6740,7 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_TIME_RUNTIME:
       audit->zero_time_op = true;
       break;
-    case IR_VALUE_TERM_RUNTIME:
-      audit->zero_term_op = true;
-      break;
+    case IR_VALUE_TERM_RUNTIME: if ((IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) audit->zero_term_read_input = true; else audit->zero_term_op = true; break;
     case IR_VALUE_MATH_RUNTIME:
       if (value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE) audit->zero_math_usize_op = true;
       else audit->zero_math_op = true;
@@ -6996,6 +6995,7 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_text_op) count++;
   if (audit->zero_time_op) count++;
   if (audit->zero_term_op) count++;
+  if (audit->zero_term_read_input) count++;
   if (audit->zero_math_op) count++;
   if (audit->zero_math_usize_op) count++;
   if (audit->zero_search_op) count++;
@@ -7087,6 +7087,7 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_text_op) append_json_string_array_item(buf, &first, "zero_text_op");
   if (audit && audit->zero_time_op) append_json_string_array_item(buf, &first, "zero_time_op");
   if (audit && audit->zero_term_op) append_json_string_array_item(buf, &first, "zero_term_op");
+  if (audit && audit->zero_term_read_input) append_json_string_array_item(buf, &first, "zero_term_read_input");
   if (audit && audit->zero_math_op) append_json_string_array_item(buf, &first, "zero_math_op");
   if (audit && audit->zero_math_usize_op) append_json_string_array_item(buf, &first, "zero_math_usize_op");
   if (audit && audit->zero_search_op) append_json_string_array_item(buf, &first, "zero_search_op");

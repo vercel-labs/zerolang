@@ -160,6 +160,7 @@ static const char *coff_a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper he
     case A64_DIRECT_RUNTIME_FMT_USIZE: return "zero_fmt_usize";
     case A64_DIRECT_RUNTIME_TIME_OP: return "zero_time_op";
     case A64_DIRECT_RUNTIME_TERM_OP: return "zero_term_op";
+    case A64_DIRECT_RUNTIME_TERM_READ_INPUT: return "zero_term_read_input";
     case A64_DIRECT_RUNTIME_MATH_OP: return "zero_math_op";
     case A64_DIRECT_RUNTIME_MATH_USIZE_OP: return "zero_math_usize_op";
     case A64_DIRECT_RUNTIME_SEARCH_OP: return "zero_search_op";

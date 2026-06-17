@@ -1643,6 +1643,19 @@ static bool machx64_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, c
 }
 
 static bool machx64_emit_term_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && (IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    if (!value->left) {
+      return machx64_diag_at(diag, "direct x86_64 Mach-O std.term.readInput requires a caller buffer", value->line, value->column, "missing terminal input buffer");
+    }
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    machx64_emit_runtime_call_begin(text, 2, 2, &temp_base, &total_stack);
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_TERM_READ_INPUT, 2, 2, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || value->arg_len > 1) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
   }
@@ -1895,6 +1908,7 @@ static bool machx64_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fu
        instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
        instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
        instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+       instr->value->kind == IR_VALUE_TERM_RUNTIME ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
@@ -2149,6 +2163,7 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
              instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
              instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
              instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+             instr->value->kind == IR_VALUE_TERM_RUNTIME ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {

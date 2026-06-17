@@ -6,11 +6,13 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #if defined(_WIN32)
+#include <conio.h>
 #include <io.h>
 #include <process.h>
 #include <windows.h>
@@ -32,6 +34,7 @@ typedef struct _stat ZeroRuntimeStat;
 #define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
 #endif
 #else
+#include <sys/select.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -965,6 +968,78 @@ static uint64_t zero_term_leave_raw_mode(void) {
   return 1;
 }
 #endif
+
+static size_t zero_term_read_chunk_len(size_t len) {
+  return len > (size_t)UINT_MAX ? (size_t)UINT_MAX : len;
+}
+
+ZeroMaybeUsize zero_term_read_input(ZeroMutByteView buffer) {
+  if (!buffer.ptr || buffer.len == 0) return zero_runtime_none_usize();
+  size_t chunk = zero_term_read_chunk_len(buffer.len);
+#if defined(_WIN32)
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return zero_runtime_none_usize();
+  if (ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDIN_FD)) {
+    if (!_kbhit()) return zero_runtime_none_usize();
+    int first = _getch();
+    if (first == 0 || first == 0xe0) {
+      if (!_kbhit()) return zero_runtime_none_usize();
+      int second = _getch();
+      const unsigned char *sequence = NULL;
+      size_t len = 0;
+      static const unsigned char up[] = {0x1b, '[', 'A'};
+      static const unsigned char down[] = {0x1b, '[', 'B'};
+      static const unsigned char right[] = {0x1b, '[', 'C'};
+      static const unsigned char left[] = {0x1b, '[', 'D'};
+      static const unsigned char del[] = {0x1b, '[', '3', '~'};
+      if (second == 72) { sequence = up; len = sizeof(up); }
+      else if (second == 80) { sequence = down; len = sizeof(down); }
+      else if (second == 77) { sequence = right; len = sizeof(right); }
+      else if (second == 75) { sequence = left; len = sizeof(left); }
+      else if (second == 83) { sequence = del; len = sizeof(del); }
+      if (!sequence || len > buffer.len) return zero_runtime_none_usize();
+      memcpy(buffer.ptr, sequence, len);
+      return (ZeroMaybeUsize){1, (uint64_t)len};
+    }
+    buffer.ptr[0] = (unsigned char)first;
+    return (ZeroMaybeUsize){1, 1};
+  }
+  DWORD type = GetFileType(input);
+  if (type == FILE_TYPE_PIPE) {
+    DWORD available = 0;
+    if (!PeekNamedPipe(input, NULL, 0, NULL, &available, NULL) || available == 0) return zero_runtime_none_usize();
+    if ((uint64_t)chunk > (uint64_t)available) chunk = (size_t)available;
+  } else if (type != FILE_TYPE_DISK) {
+    return zero_runtime_none_usize();
+  }
+  int got = ZERO_RUNTIME_READ(ZERO_RUNTIME_STDIN_FD, buffer.ptr, (unsigned)chunk);
+  if (got <= 0) return zero_runtime_none_usize();
+  return (ZeroMaybeUsize){1, (uint64_t)got};
+#else
+  for (;;) {
+    fd_set read_set;
+    FD_ZERO(&read_set);
+    FD_SET(ZERO_RUNTIME_STDIN_FD, &read_set);
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+    int ready = select(ZERO_RUNTIME_STDIN_FD + 1, &read_set, NULL, NULL, &timeout);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      return zero_runtime_none_usize();
+    }
+    if (ready == 0) return zero_runtime_none_usize();
+    ZeroReadResult got = ZERO_RUNTIME_READ(ZERO_RUNTIME_STDIN_FD, buffer.ptr, (unsigned)chunk);
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      if (errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();
+      return zero_runtime_none_usize();
+    }
+    if (got == 0) return zero_runtime_none_usize();
+    return (ZeroMaybeUsize){1, (uint64_t)got};
+  }
+#endif
+}
 
 uint64_t zero_term_op(uint64_t fallback, uint32_t op) {
   switch ((ZeroTermOp)op) {

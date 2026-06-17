@@ -50,6 +50,7 @@ static const char *const runtime_helper_symbols[COFF_RUNTIME_HELPER_COUNT] = {
   "zero_fmt_usize",
   "zero_time_op",
   "zero_term_op",
+  "zero_term_read_input",
   "zero_math_op",
   "zero_math_usize_op",
   "zero_search_op",

@@ -1,7 +1,8 @@
 ## When To Use std.term
 
 In Zerolang, use `std.term` when terminal code needs ANSI output sequences,
-hosted terminal metadata, or key decoding for bytes already read from input.
+hosted terminal metadata, nonblocking input reads, or key decoding for bytes
+already read from input.
 
 Runnable today:
 
@@ -45,13 +46,14 @@ Runnable today:
 | `std.term.heightOr(fallback)` | `usize` | Returns terminal rows, or `fallback` when unavailable. |
 | `std.term.enterRawMode()` | `Bool` | Puts standard input into raw, nonblocking terminal mode when supported. |
 | `std.term.leaveRawMode()` | `Bool` | Restores the terminal mode saved by `enterRawMode()`. |
+| `std.term.readInput(buffer)` | `Maybe<usize>` | Fills the caller buffer with currently available stdin bytes without blocking; returns `null` when no bytes are available or the input source is unsupported. |
 
 Metadata labels:
 
-- effects: ANSI/key helpers are pure; TTY/size helpers read hosted terminal metadata; raw-mode helpers update the hosted terminal
+- effects: ANSI/key helpers are pure; TTY/size helpers read hosted terminal metadata; raw-mode helpers update the hosted terminal; `readInput` reads from hosted stdin
 - allocation behavior: no allocation
-- target support: ANSI/key helpers are target-neutral; TTY/size/raw-mode helpers require hosted runtime support
-- error behavior: ANSI/key helpers are infallible; hosted helpers return fallbacks or `false` when unavailable
+- target support: ANSI/key helpers are target-neutral; TTY/size/raw-mode/input helpers require hosted runtime support
+- error behavior: ANSI/key helpers are infallible; hosted helpers return fallbacks, `false`, or `null` when unavailable
 - ownership notes: ANSI sequences are borrowed static byte views
 - example: `conformance/native/pass/std-term-ansi.graph`
 
@@ -67,6 +69,15 @@ pub fn main(world: World) -> Void raises {
     let width: usize = std.term.widthOr(80_usize)
     let height: usize = std.term.heightOr(24_usize)
     let raw: Bool = std.term.enterRawMode()
+    var input: [16]u8 = [0_u8; 16]
+    let pending: Maybe<usize> = std.term.readInput(input)
+    if pending.has {
+        let bytes: Span<u8> = std.mem.prefix(input, pending.value)
+        let key: u32 = std.term.keyCode(bytes)
+        if key == std.term.keyCtrlC() {
+            check world.out.write("cancel")
+        }
+    }
     check world.out.write("ready")
     if raw {
         let restored: Bool = std.term.leaveRawMode()
@@ -83,3 +94,6 @@ Key decoding is target-neutral: it parses bytes the caller already has. TTY and
 size helpers are hosted metadata calls and return caller fallbacks when a
 terminal size is unavailable. Raw mode is a hosted terminal capability: call
 `leaveRawMode()` before returning to normal line-oriented terminal input.
+`readInput()` is nonblocking; in raw mode it can be polled by interactive
+programs, and on noninteractive stdin it returns available piped bytes when the
+host exposes them.

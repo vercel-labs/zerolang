@@ -750,6 +750,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.term.heightOr", "usize", 1, {"usize"}, {NULL}, "none", "hosted", "returns terminal height or caller fallback", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.enterRawMode", "Bool", 0, {NULL}, {NULL}, "terminal", "hosted", "puts stdin into raw, nonblocking terminal mode when supported", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.leaveRawMode", "Bool", 0, {NULL}, {NULL}, "terminal", "hosted", "restores stdin terminal mode after enterRawMode", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.term.readInput", "Maybe<usize>", 1, {"MutSpan<u8>"}, {NULL}, "terminal", "hosted", "fills caller buffer with currently available stdin bytes without blocking", true, Z_STD_HELPER_KIND_TABLE},
   {"std.url.percentEncode", "Maybe<Span<u8>>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "percent-encodes bytes into caller storage", true, Z_STD_HELPER_KIND_TABLE},
   {"std.url.percentDecode", "Maybe<Span<u8>>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "percent-decodes bytes into caller storage", true, Z_STD_HELPER_KIND_TABLE},
   {"std.url.queryEscape", "Maybe<Span<u8>>", 2, {"MutSpan<u8>", "Span<u8>"}, {NULL}, "parse", "target-neutral", "query-escapes bytes into caller storage", true, Z_STD_HELPER_KIND_TABLE},

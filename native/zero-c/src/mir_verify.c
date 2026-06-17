@@ -1897,15 +1897,17 @@ static const char *mir_verify_term_op_name(IrTermOp op) {
     case IR_TERM_OP_HEIGHT_OR: return "std.term.heightOr";
     case IR_TERM_OP_ENTER_RAW_MODE: return "std.term.enterRawMode";
     case IR_TERM_OP_LEAVE_RAW_MODE: return "std.term.leaveRawMode";
+    case IR_TERM_OP_READ_INPUT: return "std.term.readInput";
   }
   return "std.term";
 }
 
-static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {
+static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {
   mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, mir_verify_term_op_name((IrTermOp)value->int_value));
   mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, mir_verify_term_op_name((IrTermOp)value->int_value));
   size_t expected_args = 0;
   IrTypeKind expected_result = IR_TYPE_BOOL;
+  IrTypeKind expected_element = IR_TYPE_VOID;
   switch ((IrTermOp)value->int_value) {
     case IR_TERM_OP_STDIN_IS_TTY:
     case IR_TERM_OP_STDOUT_IS_TTY:
@@ -1919,6 +1921,11 @@ static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrValue *value
       expected_args = 1;
       expected_result = IR_TYPE_USIZE;
       break;
+    case IR_TERM_OP_READ_INPUT:
+      expected_args = 0;
+      expected_result = IR_TYPE_MAYBE_SCALAR;
+      expected_element = IR_TYPE_USIZE;
+      break;
     default:
       mir_verify_mark_unsupported(ir, "MIR verifier found unknown std.term runtime operation", value->line, value->column, "unknown std.term operation");
       return false;
@@ -1928,6 +1935,13 @@ static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrValue *value
     return false;
   }
   if (!mir_verify_helper_result_type(ir, value, expected_result, "std.term runtime result")) return false;
+  if (expected_result == IR_TYPE_MAYBE_SCALAR && value->element_type != expected_element) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found std.term Maybe result element mismatch", value->line, value->column, mir_type_kind_name(value->element_type));
+    return false;
+  }
+  if ((IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    return mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid terminal input buffer", "terminal input buffer");
+  }
   if (expected_args == 1 && !mir_verify_value_type(ir, value->args[0], IR_TYPE_USIZE, "MIR verifier found invalid std.term fallback argument", "std.term fallback")) return false;
   return true;
 }
@@ -2280,7 +2294,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_TIME_RUNTIME:
       return mir_verify_time_runtime_contract(ir, value, requirements);
     case IR_VALUE_TERM_RUNTIME:
-      return mir_verify_term_runtime_contract(ir, value, requirements);
+      return mir_verify_term_runtime_contract(ir, fun, state, value, requirements);
     case IR_VALUE_MATH_RUNTIME:
       return mir_verify_math_runtime_contract(ir, value, requirements);
     case IR_VALUE_SEARCH_RUNTIME:

@@ -16,6 +16,21 @@ pub fn main(world: World) -> Void raises {
     let stdout_tty: Bool = std.term.stdoutIsTty()
     let width: usize = std.term.widthOr(80_usize)
     let height: usize = std.term.heightOr(24_usize)
+    var input: [16]u8 = [0_u8; 16]
+    let pending: Maybe<usize> = std.term.readInput(input)
+    if pending.has {
+        if pending.value == 0_usize || pending.value > std.mem.len(input) {
+            check world.err.write("term input read failed\n")
+            return
+        }
+        let input_bytes: Span<u8> = std.mem.prefix(input, pending.value)
+        let input_key: u32 = std.term.keyCode(input_bytes)
+        let input_key_len: usize = std.term.keyByteLen(input_bytes)
+        if input_key == std.term.keyNone() || input_key_len == 0_usize || input_key_len > pending.value {
+            check world.err.write("term input decode failed\n")
+            return
+        }
+    }
     var raw_checked: Bool = true
     if stdin_tty {
         raw_checked = std.term.enterRawMode()
