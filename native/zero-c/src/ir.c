@@ -1380,6 +1380,26 @@ static bool ir_make_string_literal_value(IrProgram *ir, const char *text, int li
   return true;
 }
 
+static bool ir_make_json_error_label_value(IrProgram *ir, IrValue *code, bool expected, int line, int column, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_JSON_ERROR_LABEL, IR_TYPE_BYTE_VIEW, line, column);
+  value->left = code;
+  value->int_value = expected ? 1u : 0u;
+  value->element_type = IR_TYPE_U8;
+  for (unsigned i = 0; i < 4; i++) {
+    const char *label = NULL;
+    if (i < 3) label = ir_std_json_error_label(i, expected);
+    else label = "unknown";
+    IrValue *literal = NULL;
+    if (!ir_make_string_literal_value(ir, label, line, column, &literal)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_value_push_arg(ir, value, literal);
+  }
+  *out = value;
+  return true;
+}
+
 static bool ir_lower_string_literal_byte_view(IrProgram *ir, const Expr *expr, IrValue **out) {
   return ir_make_string_literal_value(ir, expr && expr->text ? expr->text : "", expr ? expr->line : 1, expr ? expr->column : 1, out);
 }
@@ -3757,21 +3777,21 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if ((strcmp(callee_name, "std.json.errorName") == 0 || strcmp(callee_name, "std.json.errorExpected") == 0) && expr->args.len == 1) {
+      bool json_error_expected = strcmp(callee_name, "std.json.errorExpected") == 0;
+      if ((json_error_expected || strcmp(callee_name, "std.json.errorName") == 0) && expr->args.len == 1) {
         IrValue *code = NULL;
         if (!ir_lower_call_arg(program, ir, fun, expr->args.items[0], IR_TYPE_U32, &code)) {
           free(callee_name);
           return false;
         }
-        if (!code || code->kind != IR_VALUE_INT) {
+        if (code && code->kind == IR_VALUE_INT) {
+          const char *label = ir_std_json_error_label(code->int_value, json_error_expected);
           ir_free_value(code);
-          ir_mark_unsupported(ir, "direct backend std.json error label expects a constant status code", expr->args.items[0] ? expr->args.items[0]->line : expr->line, expr->args.items[0] ? expr->args.items[0]->column : expr->column, "non-constant status code");
+          bool ok = ir_make_string_literal_value(ir, label, expr->line, expr->column, out);
           free(callee_name);
-          return false;
+          return ok;
         }
-        const char *label = ir_std_json_error_label(code->int_value, strcmp(callee_name, "std.json.errorExpected") == 0);
-        ir_free_value(code);
-        bool ok = ir_make_string_literal_value(ir, label, expr->line, expr->column, out);
+        bool ok = ir_make_json_error_label_value(ir, code, json_error_expected, expr->line, expr->column, out);
         free(callee_name);
         return ok;
       }

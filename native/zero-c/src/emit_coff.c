@@ -330,6 +330,9 @@ static bool coff_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrV
     z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
     return true;
   }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return coff_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
+  }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     return coff_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
   }
@@ -365,6 +368,7 @@ static bool coff_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrV
   }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_byte_view_pair(text, fun, view, 0, 2, ctx, diag);
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
     if (local->is_record_ref) {
@@ -411,6 +415,45 @@ static void coff_emit_move_byte_view_pair(ZBuf *text, unsigned ptr_reg, unsigned
   if (len_reg != src_len_reg) z_x64_emit_mov_reg_from_reg(text, len_reg, src_len_reg, true);
 }
 
+static bool coff_emit_json_error_label_arm(ZBuf *text, const IrValue *view, unsigned index, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!view || index >= view->arg_len || !view->args[index] || view->args[index]->kind != IR_VALUE_STRING_LITERAL) {
+    return coff_diag_at(diag, "direct COFF JSON error label requires string literal arms", view ? view->line : 1, view ? view->column : 1, "invalid JSON error label");
+  }
+  const IrValue *label = view->args[index];
+  if (!coff_emit_rodata_ptr_rax(text, label->data_offset, ctx, label, diag)) return false;
+  z_x64_emit_mov_reg_u32(text, 2, label->data_len);
+  return true;
+}
+
+static bool coff_emit_json_error_label_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!view || !view->left) return coff_diag_at(diag, "direct COFF JSON error label requires a status code", view ? view->line : 1, view ? view->column : 1, "missing JSON status");
+  if (view->arg_len != 4) return coff_diag_at(diag, "direct COFF JSON error label requires four labels", view->line, view->column, "invalid JSON error label");
+  if (!coff_emit_value(text, fun, view->left, ctx, diag)) return false;
+  z_x64_emit_cmp_reg_i8(text, 0, 0, false);
+  size_t code0 = z_x64_emit_jcc32_placeholder(text, 0x84);
+  z_x64_emit_cmp_reg_i8(text, 0, 1, false);
+  size_t code1 = z_x64_emit_jcc32_placeholder(text, 0x84);
+  z_x64_emit_cmp_reg_i8(text, 0, 2, false);
+  size_t code2 = z_x64_emit_jcc32_placeholder(text, 0x84);
+  if (!coff_emit_json_error_label_arm(text, view, 3, ctx, diag)) return false;
+  size_t done3 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, code0, text->len);
+  if (!coff_emit_json_error_label_arm(text, view, 0, ctx, diag)) return false;
+  size_t done0 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, code1, text->len);
+  if (!coff_emit_json_error_label_arm(text, view, 1, ctx, diag)) return false;
+  size_t done1 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, code2, text->len);
+  if (!coff_emit_json_error_label_arm(text, view, 2, ctx, diag)) return false;
+  size_t done2 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, done3, text->len);
+  z_x64_patch_rel32(text, done0, text->len);
+  z_x64_patch_rel32(text, done1, text->len);
+  z_x64_patch_rel32(text, done2, text->len);
+  coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
+  return true;
+}
+
 static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, CoffEmitContext *ctx, ZDiag *diag) {
   if (ptr_reg == len_reg) return coff_diag_at(diag, "direct COFF byte-view pair requires distinct destination registers", view ? view->line : 1, view ? view->column : 1, "invalid byte-view registers");
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
@@ -422,6 +465,9 @@ static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const Ir
     if (!coff_emit_value(text, fun, view, ctx, diag)) return false;
     coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
     return true;
+  }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return coff_emit_json_error_label_pair(text, fun, view, ptr_reg, len_reg, ctx, diag);
   }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     if (!view->index && !view->right) return coff_emit_byte_view_pair(text, fun, view->left, ptr_reg, len_reg, ctx, diag);

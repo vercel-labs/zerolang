@@ -86,6 +86,7 @@ static bool build_byte_view_direct_result(const IrFunction *fun, const IrValue *
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && fun && view->local_index < fun->local_len &&
       (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (build_runtime_byte_view_result(view)) return true;
   return false;
 }
@@ -136,6 +137,7 @@ static bool build_check_macho_byte_view_ptr(const ZBuildability *ctx, const IrFu
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && fun && view->local_index < fun->local_len &&
       (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (build_runtime_byte_view_result(view)) return true;
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && fun && view->array_index < fun->local_len) {
     if (!build_array_byte_view_has_storage(fun, view)) return z_build_diag(ctx, diag, "direct AArch64 Mach-O byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
@@ -174,6 +176,7 @@ bool z_build_check_macho_byte_view_len(const ZBuildability *ctx, const IrFunctio
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_FIELD_LOAD && view->type == IR_TYPE_BYTE_VIEW && fun && view->local_index < fun->local_len &&
       (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (build_runtime_byte_view_result(view)) return true;
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     return z_build_check_macho_byte_view_len(ctx, fun, view->left, diag);

@@ -594,6 +594,27 @@ static bool ir_make_string_literal_value(IrProgram *ir, const char *text, int li
   return true;
 }
 
+static bool ir_graph_make_json_error_label_value(IrProgram *ir, IrValue *code, bool expected, int line, int column, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_JSON_ERROR_LABEL, IR_TYPE_BYTE_VIEW, line, column);
+  value->left = code;
+  value->int_value = expected ? 1u : 0u;
+  value->element_type = IR_TYPE_U8;
+  for (unsigned i = 0; i < 4; i++) {
+    const char *label = "unknown";
+    if (i == 0) label = expected ? "none" : "ok";
+    else if (i == 1) label = expected ? "valid-json" : "invalid";
+    else if (i == 2) label = expected ? "end-of-input" : "trailing";
+    IrValue *literal = NULL;
+    if (!ir_make_string_literal_value(ir, label, line, column, &literal)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_value_push_arg(ir, value, literal);
+  }
+  *out = value;
+  return true;
+}
+
 static void ir_instr_vec_push(IrProgram *ir, IrInstr **items, size_t *len, size_t *cap, IrInstr instr) {
   *items = ir_grow_tracked_items(ir, *items, *len, cap, 4, sizeof(IrInstr));
   (*items)[(*len)++] = instr;
@@ -4334,14 +4355,12 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
   if ((ir_text_eq(callee_name, "std.json.errorName") || ir_text_eq(callee_name, "std.json.errorExpected")) && arg_count == 1) {
     IrValue *code = NULL;
     if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_U32, &code)) return false;
-    if (!code || code->kind != IR_VALUE_INT) {
+    if (code && code->kind == IR_VALUE_INT) {
+      const char *label = ir_graph_json_error_label(code->int_value, ir_text_eq(callee_name, "std.json.errorExpected"));
       ir_free_value(code);
-      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.json error label expects a constant status code", "non-constant status code");
-      return false;
+      return ir_make_string_literal_value(ir, label, ir_graph_line(expr), ir_graph_column(expr), out);
     }
-    const char *label = ir_graph_json_error_label(code->int_value, ir_text_eq(callee_name, "std.json.errorExpected"));
-    ir_free_value(code);
-    return ir_make_string_literal_value(ir, label, ir_graph_line(expr), ir_graph_column(expr), out);
+    return ir_graph_make_json_error_label_value(ir, code, ir_text_eq(callee_name, "std.json.errorExpected"), ir_graph_line(expr), ir_graph_column(expr), out);
   }
   int json_error_code = ir_graph_json_error_code(callee_name);
   if (json_error_code >= 0 && arg_count == 0) {

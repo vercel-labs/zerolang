@@ -828,6 +828,9 @@ static bool elf_emit_byte_view_len(ZBuf *code, const IrFunction *fun, const IrVa
     z_x64_emit_mov_reg_from_reg(code, 0, 2, true);
     return true;
   }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return elf_emit_byte_view_pair(code, fun, view, 8, 0, ctx, diag);
+  }
   if (view && (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR)) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return elf_emit_args_value_after_pair(code, fun, view, 8, 0, ctx, diag);
     return elf_emit_args_get_or_pair(code, fun, view, 8, 0, ctx, diag);
@@ -913,11 +916,53 @@ static bool elf_emit_byte_view_ptr(ZBuf *code, const IrFunction *fun, const IrVa
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) {
     return elf_emit_value(code, fun, view, ctx, diag);
   }
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return elf_emit_byte_view_pair(code, fun, view, 0, 2, ctx, diag);
+  }
   if (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return elf_emit_args_value_after_pair(code, fun, view, 0, 2, ctx, diag);
     return elf_emit_args_get_or_pair(code, fun, view, 0, 2, ctx, diag);
   }
   return elf_diag(diag, "direct ELF64 value is not a supported byte view", view->line, view->column, "unsupported byte view");
+}
+
+static bool elf_emit_json_error_label_arm(ZBuf *code, const IrValue *view, unsigned index, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!view || index >= view->arg_len || !view->args[index] || view->args[index]->kind != IR_VALUE_STRING_LITERAL) {
+    return elf_diag(diag, "direct ELF64 JSON error label requires string literal arms", view ? view->line : 1, view ? view->column : 1, "invalid JSON error label");
+  }
+  const IrValue *label = view->args[index];
+  if (!elf_emit_rodata_ptr_rax(code, label->data_offset, ctx, diag, label)) return false;
+  z_x64_emit_mov_reg_u32(code, 2, label->data_len);
+  return true;
+}
+
+static bool elf_emit_json_error_label_pair(ZBuf *code, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!view || !view->left) return elf_diag(diag, "direct ELF64 JSON error label requires a status code", view ? view->line : 1, view ? view->column : 1, "missing JSON status");
+  if (view->arg_len != 4) return elf_diag(diag, "direct ELF64 JSON error label requires four labels", view->line, view->column, "invalid JSON error label");
+  if (!elf_emit_value(code, fun, view->left, ctx, diag)) return false;
+  z_x64_emit_cmp_reg_i8(code, 0, 0, false);
+  size_t code0 = z_x64_emit_jcc32_placeholder(code, 0x84);
+  z_x64_emit_cmp_reg_i8(code, 0, 1, false);
+  size_t code1 = z_x64_emit_jcc32_placeholder(code, 0x84);
+  z_x64_emit_cmp_reg_i8(code, 0, 2, false);
+  size_t code2 = z_x64_emit_jcc32_placeholder(code, 0x84);
+  if (!elf_emit_json_error_label_arm(code, view, 3, ctx, diag)) return false;
+  size_t done3 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, code0, code->len);
+  if (!elf_emit_json_error_label_arm(code, view, 0, ctx, diag)) return false;
+  size_t done0 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, code1, code->len);
+  if (!elf_emit_json_error_label_arm(code, view, 1, ctx, diag)) return false;
+  size_t done1 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, code2, code->len);
+  if (!elf_emit_json_error_label_arm(code, view, 2, ctx, diag)) return false;
+  size_t done2 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, done3, code->len);
+  z_x64_patch_rel32(code, done0, code->len);
+  z_x64_patch_rel32(code, done1, code->len);
+  z_x64_patch_rel32(code, done2, code->len);
+  elf_emit_move_byte_view_pair(code, ptr_reg, len_reg, 0, 2);
+  return true;
 }
 
 static bool elf_emit_byte_view_pair(ZBuf *code, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, ElfEmitContext *ctx, ZDiag *diag) {
@@ -931,6 +976,9 @@ static bool elf_emit_byte_view_pair(ZBuf *code, const IrFunction *fun, const IrV
     if (!elf_emit_value(code, fun, view, ctx, diag)) return false;
     elf_emit_move_byte_view_pair(code, ptr_reg, len_reg, 0, 2);
     return true;
+  }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return elf_emit_json_error_label_pair(code, fun, view, ptr_reg, len_reg, ctx, diag);
   }
   if (view && (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR)) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return elf_emit_args_value_after_pair(code, fun, view, ptr_reg, len_reg, ctx, diag);

@@ -234,6 +234,16 @@ pub fn main(world: World) -> Void raises {
     if !std.mem.eql(std.json.errorExpected(std.json.errorNone()), "none") || !std.mem.eql(std.json.errorExpected(std.json.errorInvalid()), "valid-json") || !std.mem.eql(std.json.errorExpected(std.json.errorTrailing()), "end-of-input") || !std.mem.eql(std.json.errorExpected(99_u32), "unknown") {
         ok = false
     }
+    let dynamic_ok_status: u32 = std.json.validateError(json)
+    let dynamic_invalid_status: u32 = std.json.validateError("{")
+    let dynamic_trailing_status: u32 = std.json.validateError("{} x")
+    let dynamic_unknown_status: u32 = dynamic_trailing_status + 97_u32
+    if !std.mem.eql(std.json.errorName(dynamic_ok_status), "ok") || !std.mem.eql(std.json.errorExpected(dynamic_ok_status), "none") || !std.mem.eql(std.json.errorName(dynamic_unknown_status), "unknown") || !std.mem.eql(std.json.errorExpected(dynamic_unknown_status), "unknown") {
+        ok = false
+    }
+    if !std.mem.eql(std.json.errorName(dynamic_invalid_status), "invalid") || !std.mem.eql(std.json.errorExpected(dynamic_invalid_status), "valid-json") || !std.mem.eql(std.json.errorName(dynamic_trailing_status), "trailing") || !std.mem.eql(std.json.errorExpected(dynamic_trailing_status), "end-of-input") {
+        ok = false
+    }
     if std.json.validateError(json) != std.json.errorNone() || std.json.validateError("\"\\u20ac\"") != std.json.errorNone() || std.json.validateError("\"\\ud834\\udd1e\"") != std.json.errorNone() || std.json.validateError("\"\\ud800\"") != std.json.errorInvalid() || std.json.validateError("\"\xff\"") != std.json.errorInvalid() || std.json.validateError("{") != std.json.errorInvalid() || std.json.validateError("{} x") != std.json.errorTrailing() || std.json.validateError("[1,]") != std.json.errorInvalid() || std.json.validateError("{\"a\":1,}") != std.json.errorInvalid() {
         ok = false
     }

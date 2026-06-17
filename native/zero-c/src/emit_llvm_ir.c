@@ -186,6 +186,7 @@ static void llvm_append_data_globals(ZBuf *buf, const IrProgram *program) {
 
 static bool llvm_emit_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag);
 static bool llvm_emit_call(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag);
+static bool llvm_emit_byte_view(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag);
 
 static bool llvm_emit_trap_if_false(LlvmEmit *emit, const char *cond) {
   unsigned ok_label = llvm_label(emit), trap_label = llvm_label(emit);
@@ -265,6 +266,49 @@ static bool llvm_ensure_byte_view_pair(LlvmEmit *emit, LlvmValue *value, const I
   return true;
 }
 
+static bool llvm_emit_json_error_label_byte_view(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag) {
+  if (!value || !value->left || value->arg_len != 4) {
+    llvm_set_diag(diag, emit->program, value ? value->line : 1, value ? value->column : 1, "LLVM IR backend JSON error label requires a status and four labels", "invalid JSON error label", "lower");
+    return false;
+  }
+  LlvmValue code;
+  if (!llvm_emit_value(emit, value->left, &code, diag)) return false;
+  if (code.type != IR_TYPE_U32) {
+    llvm_set_diag(diag, emit->program, value->line, value->column, "LLVM IR backend JSON error label status must be u32", "invalid JSON status", "lower");
+    return false;
+  }
+  LlvmValue labels[4];
+  for (unsigned i = 0; i < 4; i++) {
+    if (!value->args[i] || value->args[i]->kind != IR_VALUE_STRING_LITERAL ||
+        !llvm_emit_byte_view(emit, value->args[i], &labels[i], diag) ||
+        !llvm_ensure_byte_view_pair(emit, &labels[i], value->args[i], diag)) {
+      llvm_set_diag(diag, emit->program, value->line, value->column, "LLVM IR backend JSON error label requires string literal labels", "invalid JSON error label", "lower");
+      return false;
+    }
+  }
+  LlvmValue is0, is1, is2;
+  llvm_temp(emit, &is0, IR_TYPE_BOOL);
+  zbuf_appendf(emit->out, "  %s = icmp eq i32 %s, 0\n", is0.text, code.text);
+  llvm_temp(emit, &is1, IR_TYPE_BOOL);
+  zbuf_appendf(emit->out, "  %s = icmp eq i32 %s, 1\n", is1.text, code.text);
+  llvm_temp(emit, &is2, IR_TYPE_BOOL);
+  zbuf_appendf(emit->out, "  %s = icmp eq i32 %s, 2\n", is2.text, code.text);
+  LlvmValue ptr2, len2, ptr1, len1, ptr0, len0;
+  llvm_temp(emit, &ptr2, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, ptr %s, ptr %s\n", ptr2.text, is2.text, labels[2].ptr, labels[3].ptr);
+  llvm_temp(emit, &len2, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, i64 %s, i64 %s\n", len2.text, is2.text, labels[2].len, labels[3].len);
+  llvm_temp(emit, &ptr1, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, ptr %s, ptr %s\n", ptr1.text, is1.text, labels[1].ptr, ptr2.text);
+  llvm_temp(emit, &len1, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, i64 %s, i64 %s\n", len1.text, is1.text, labels[1].len, len2.text);
+  llvm_temp(emit, &ptr0, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, ptr %s, ptr %s\n", ptr0.text, is0.text, labels[0].ptr, ptr1.text);
+  llvm_temp(emit, &len0, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = select i1 %s, i64 %s, i64 %s\n", len0.text, is0.text, labels[0].len, len1.text);
+  return llvm_make_byte_view(emit, ptr0.text, len0.text, IR_TYPE_U8, out);
+}
+
 static bool llvm_emit_byte_view(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag) {
   if (!value) {
     llvm_set_diag(diag, emit->program, 1, 1, "LLVM IR backend byte view is missing", "missing byte view", "emit");
@@ -329,6 +373,8 @@ static bool llvm_emit_byte_view(LlvmEmit *emit, const IrValue *value, LlvmValue 
       zbuf_appendf(emit->out, "  %s = sub i64 %s, %s\n", len.text, end.text, start.text);
       return llvm_make_byte_view(emit, ptr.text, len.text, base.element_type, out);
     }
+    case IR_VALUE_JSON_ERROR_LABEL:
+      return llvm_emit_json_error_label_byte_view(emit, value, out, diag);
     case IR_VALUE_LOCAL: {
       const IrLocal *local = llvm_local(emit->fun, value->local_index);
       if (!local || local->type != IR_TYPE_BYTE_VIEW) {
@@ -695,6 +741,7 @@ static bool llvm_emit_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out
     case IR_VALUE_STRING_LITERAL:
     case IR_VALUE_ARRAY_BYTE_VIEW:
     case IR_VALUE_BYTE_SLICE:
+    case IR_VALUE_JSON_ERROR_LABEL:
       return llvm_emit_byte_view(emit, value, out, diag);
     case IR_VALUE_BYTE_VIEW_LEN:
       return llvm_emit_byte_view_len_value(emit, value, out, diag);

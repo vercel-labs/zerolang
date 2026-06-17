@@ -133,6 +133,7 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_JSON_STRING_FIELD:
     case IR_VALUE_JSON_WRITE_STRING:
     case IR_VALUE_JSON_WRITE_RUNTIME:
+    case IR_VALUE_JSON_ERROR_LABEL:
     case IR_VALUE_CRC32_BYTES:
       caps->codec = true;
       caps->memory = true;

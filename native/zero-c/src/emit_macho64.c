@@ -831,6 +831,10 @@ static bool macho_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const
     if (reg != 1) z_aarch64_emit_mov_w(text, reg, 1);
     return true;
   }
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    unsigned ptr_tmp = reg == 11 ? 12 : 11;
+    return macho_emit_byte_view_pair_at(text, fun, view, ptr_tmp, reg, frame_size, scratch_slot, ctx, diag);
+  }
   if (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return macho_emit_args_value_after_pair_at(text, fun, view, 11, reg, frame_size, scratch_slot, ctx, diag);
     return macho_emit_args_get_or_pair_at(text, fun, view, 11, reg, frame_size, scratch_slot, ctx, diag);
@@ -892,6 +896,10 @@ static bool macho_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const
     if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
     return true;
   }
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    unsigned len_tmp = reg == 10 ? 11 : 10;
+    return macho_emit_byte_view_pair_at(text, fun, view, reg, len_tmp, frame_size, scratch_slot, ctx, diag);
+  }
   if (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return macho_emit_args_value_after_pair_at(text, fun, view, reg, 10, frame_size, scratch_slot, ctx, diag);
     return macho_emit_args_get_or_pair_at(text, fun, view, reg, 10, frame_size, scratch_slot, ctx, diag);
@@ -930,12 +938,57 @@ static bool macho_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const
   return macho_diag_at(diag, "direct AArch64 Mach-O value is not a supported byte view", view->line, view->column, "unsupported byte view");
 }
 
+static bool macho_emit_json_error_label_arm(ZBuf *text, const IrValue *view, unsigned index, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!view || index >= view->arg_len || !view->args[index] || view->args[index]->kind != IR_VALUE_STRING_LITERAL) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O JSON error label requires string literal arms", view ? view->line : 1, view ? view->column : 1, "invalid JSON error label");
+  }
+  const IrValue *label = view->args[index];
+  if (!macho_emit_rodata_ptr_literal(text, 0, label->data_offset, ctx, label, diag)) return false;
+  z_aarch64_emit_movz_w(text, 1, label->data_len);
+  return true;
+}
+
+static bool macho_emit_json_error_label_pair_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!view || !view->left) return macho_diag_at(diag, "direct AArch64 Mach-O JSON error label requires a status code", view ? view->line : 1, view ? view->column : 1, "missing JSON status");
+  if (view->arg_len != 4) return macho_diag_at(diag, "direct AArch64 Mach-O JSON error label requires four labels", view->line, view->column, "invalid JSON error label");
+  if (!macho_emit_value_to_reg_at(text, fun, view->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  z_aarch64_emit_movz_w(text, 9, 0);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t code0 = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_movz_w(text, 9, 1);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t code1 = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_movz_w(text, 9, 2);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t code2 = z_aarch64_emit_b_cond_placeholder(text, 0);
+  if (!macho_emit_json_error_label_arm(text, view, 3, ctx, diag)) return false;
+  size_t done3 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, code0, text->len);
+  if (!macho_emit_json_error_label_arm(text, view, 0, ctx, diag)) return false;
+  size_t done0 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, code1, text->len);
+  if (!macho_emit_json_error_label_arm(text, view, 1, ctx, diag)) return false;
+  size_t done1 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, code2, text->len);
+  if (!macho_emit_json_error_label_arm(text, view, 2, ctx, diag)) return false;
+  size_t done2 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_branch26(text, done3, text->len);
+  z_aarch64_patch_branch26(text, done0, text->len);
+  z_aarch64_patch_branch26(text, done1, text->len);
+  z_aarch64_patch_branch26(text, done2, text->len);
+  macho_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 1);
+  return true;
+}
+
 static bool macho_emit_byte_view_pair_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (ptr_reg == len_reg) return macho_diag_at(diag, "direct AArch64 Mach-O byte-view pair requires distinct destination registers", view ? view->line : 1, view ? view->column : 1, "invalid byte-view registers");
   if (view && (view->kind == IR_VALUE_CALL || view->kind == IR_VALUE_STR_RUNTIME) && view->type == IR_TYPE_BYTE_VIEW) {
     if (!macho_emit_value_to_reg_at(text, fun, view, 0, frame_size, scratch_slot, ctx, diag)) return false;
     macho_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 1);
     return true;
+  }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return macho_emit_json_error_label_pair_at(text, fun, view, ptr_reg, len_reg, frame_size, scratch_slot, ctx, diag);
   }
   if (view && (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR)) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return macho_emit_args_value_after_pair_at(text, fun, view, ptr_reg, len_reg, frame_size, scratch_slot, ctx, diag);

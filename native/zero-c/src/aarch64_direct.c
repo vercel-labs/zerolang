@@ -440,6 +440,10 @@ static bool a64_emit_byte_view_len_at(ZBuf *text, const IrFunction *fun, const I
     if (reg != 1) z_aarch64_emit_mov_w(text, reg, 1);
     return true;
   }
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    unsigned ptr_tmp = reg == 11 ? 12 : 11;
+    return a64_emit_byte_view_pair_at(text, fun, view, ptr_tmp, reg, frame_size, scratch_slot, ctx, diag);
+  }
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     unsigned ptr_tmp = reg == 11 ? 12 : 11;
     return a64_emit_byte_view_pair_at(text, fun, view, ptr_tmp, reg, frame_size, scratch_slot, ctx, diag);
@@ -479,6 +483,10 @@ static bool a64_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const I
     if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
     return true;
   }
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    unsigned len_tmp = reg == 10 ? 11 : 10;
+    return a64_emit_byte_view_pair_at(text, fun, view, reg, len_tmp, frame_size, scratch_slot, ctx, diag);
+  }
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
     if (!((local->is_array && view->field_offset == 0) || local->is_record)) return a64_diag(diag, "direct AArch64 byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
@@ -506,6 +514,48 @@ static bool a64_emit_byte_view_ptr_at(ZBuf *text, const IrFunction *fun, const I
   return a64_diag(diag, "direct AArch64 value is not a supported byte view", view->line, view->column, "unsupported byte view");
 }
 
+static bool a64_emit_json_error_label_arm(ZBuf *text, const IrValue *view, unsigned index, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!view || index >= view->arg_len || !view->args[index] || view->args[index]->kind != IR_VALUE_STRING_LITERAL) {
+    return a64_diag(diag, "direct AArch64 JSON error label requires string literal arms", view ? view->line : 1, view ? view->column : 1, "invalid JSON error label");
+  }
+  const IrValue *label = view->args[index];
+  if (!a64_emit_rodata_ptr_literal(text, 0, label->data_offset, ctx, label, diag)) return false;
+  z_aarch64_emit_movz_w(text, 1, label->data_len);
+  return true;
+}
+
+static bool a64_emit_json_error_label_pair_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!view || !view->left) return a64_diag(diag, "direct AArch64 JSON error label requires a status code", view ? view->line : 1, view ? view->column : 1, "missing JSON status");
+  if (view->arg_len != 4) return a64_diag(diag, "direct AArch64 JSON error label requires four labels", view->line, view->column, "invalid JSON error label");
+  if (!a64_emit_value_to_reg_at(text, fun, view->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  z_aarch64_emit_movz_w(text, 9, 0);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t code0 = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_movz_w(text, 9, 1);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t code1 = z_aarch64_emit_b_cond_placeholder(text, 0);
+  z_aarch64_emit_movz_w(text, 9, 2);
+  z_aarch64_emit_cmp_w(text, 8, 9);
+  size_t code2 = z_aarch64_emit_b_cond_placeholder(text, 0);
+  if (!a64_emit_json_error_label_arm(text, view, 3, ctx, diag)) return false;
+  size_t done3 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, code0, text->len);
+  if (!a64_emit_json_error_label_arm(text, view, 0, ctx, diag)) return false;
+  size_t done0 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, code1, text->len);
+  if (!a64_emit_json_error_label_arm(text, view, 1, ctx, diag)) return false;
+  size_t done1 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_cond19(text, code2, text->len);
+  if (!a64_emit_json_error_label_arm(text, view, 2, ctx, diag)) return false;
+  size_t done2 = z_aarch64_emit_b_placeholder(text);
+  z_aarch64_patch_branch26(text, done3, text->len);
+  z_aarch64_patch_branch26(text, done0, text->len);
+  z_aarch64_patch_branch26(text, done1, text->len);
+  z_aarch64_patch_branch26(text, done2, text->len);
+  a64_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 1);
+  return true;
+}
+
 static bool a64_emit_byte_view_pair_at(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (ptr_reg == len_reg) return a64_diag(diag, "direct AArch64 byte-view pair requires distinct destination registers", view ? view->line : 1, view ? view->column : 1, "invalid byte-view registers");
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
@@ -517,6 +567,9 @@ static bool a64_emit_byte_view_pair_at(ZBuf *text, const IrFunction *fun, const 
     if (!a64_emit_value_to_reg_at(text, fun, view, 0, frame_size, scratch_slot, ctx, diag)) return false;
     a64_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 1);
     return true;
+  }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return a64_emit_json_error_label_pair_at(text, fun, view, ptr_reg, len_reg, frame_size, scratch_slot, ctx, diag);
   }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     if (!view->index && !view->right) return a64_emit_byte_view_pair_at(text, fun, view->left, ptr_reg, len_reg, frame_size, scratch_slot, ctx, diag);

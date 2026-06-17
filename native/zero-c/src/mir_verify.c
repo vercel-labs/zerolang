@@ -1155,6 +1155,22 @@ static bool mir_verify_byte_view_value_contract(IrProgram *ir, const IrValue *va
   return true;
 }
 
+static bool mir_verify_json_error_label_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_value_type(ir, value, IR_TYPE_BYTE_VIEW, "MIR verifier found JSON error label result type mismatch", "JSON error label result")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_U32, "MIR verifier found invalid JSON error label status", "JSON error status")) return false;
+  if (value->arg_len != 4) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found invalid JSON error label arity", value->line, value->column, "JSON error label requires four labels");
+    return false;
+  }
+  for (size_t i = 0; i < value->arg_len; i++) {
+    if (!value->args[i] || value->args[i]->kind != IR_VALUE_STRING_LITERAL ||
+        !mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON error label literal", "JSON error label")) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool mir_verify_byte_mutation_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
   if (!ir || !ir->mir_valid || !value) return false;
   if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, value->kind == IR_VALUE_BYTE_COPY ? "byte copy result" : "byte fill result")) return false;
@@ -2145,6 +2161,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
       return mir_verify_array_load_contract(ir, fun, value);
     case IR_VALUE_STRING_LITERAL:
       return mir_verify_value_type(ir, value, IR_TYPE_BYTE_VIEW, "MIR verifier found string literal type mismatch", "string literal");
+    case IR_VALUE_JSON_ERROR_LABEL:
+      return mir_verify_json_error_label_contract(ir, value);
     case IR_VALUE_ARRAY_BYTE_VIEW:
       return mir_verify_array_byte_view_contract(ir, fun, value);
     case IR_VALUE_BYTE_SLICE:

@@ -279,6 +279,14 @@ export const docs: Doc[] = [
     section: "Programs",
   },
   {
+    slug: "module-diag",
+    title: "std.diag",
+    description: "Source offsets, line spans, and diagnostic location formatting.",
+    path: "/modules/diag",
+    sourcePath: "/articles/modules/diag.md",
+    section: "Text And Data",
+  },
+  {
     slug: "module-fmt",
     title: "std.fmt",
     description: "Caller-buffer formatting for booleans and integer text.",
