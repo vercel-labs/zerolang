@@ -1883,6 +1883,8 @@ static const char *mir_verify_term_op_name(IrTermOp op) {
     case IR_TERM_OP_STDOUT_IS_TTY: return "std.term.stdoutIsTty";
     case IR_TERM_OP_WIDTH_OR: return "std.term.widthOr";
     case IR_TERM_OP_HEIGHT_OR: return "std.term.heightOr";
+    case IR_TERM_OP_ENTER_RAW_MODE: return "std.term.enterRawMode";
+    case IR_TERM_OP_LEAVE_RAW_MODE: return "std.term.leaveRawMode";
   }
   return "std.term";
 }
@@ -1895,6 +1897,8 @@ static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrValue *value
   switch ((IrTermOp)value->int_value) {
     case IR_TERM_OP_STDIN_IS_TTY:
     case IR_TERM_OP_STDOUT_IS_TTY:
+    case IR_TERM_OP_ENTER_RAW_MODE:
+    case IR_TERM_OP_LEAVE_RAW_MODE:
       expected_args = 0;
       expected_result = IR_TYPE_BOOL;
       break;

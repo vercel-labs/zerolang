@@ -2,12 +2,14 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #if defined(_WIN32)
 #include <io.h>
 #include <process.h>
+#include <windows.h>
 typedef int ZeroWriteResult;
 typedef int ZeroReadResult;
 typedef struct _stat ZeroRuntimeStat;
@@ -22,9 +24,13 @@ typedef struct _stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_ISATTY _isatty
 #define ZERO_RUNTIME_STDIN_FD 0
 #define ZERO_RUNTIME_STDOUT_FD 1
+#ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
+#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+#endif
 #else
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 typedef ssize_t ZeroWriteResult;
 typedef ssize_t ZeroReadResult;
@@ -852,6 +858,90 @@ static uint64_t zero_term_size_or(uint64_t fallback, int height) {
   return fallback;
 }
 
+#if defined(_WIN32)
+static DWORD zero_term_original_mode;
+static int zero_term_raw_active;
+static int zero_term_restore_registered;
+
+static void zero_term_restore_at_exit(void) {
+  if (!zero_term_raw_active) return;
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return;
+  SetConsoleMode(input, zero_term_original_mode);
+  zero_term_raw_active = 0;
+}
+
+static uint64_t zero_term_enter_raw_mode(void) {
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return 0;
+  DWORD mode = 0;
+  if (!GetConsoleMode(input, &mode)) return 0;
+  if (zero_term_raw_active) return 1;
+  DWORD raw = mode;
+  raw &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+  raw |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+  if (!SetConsoleMode(input, raw)) return 0;
+  zero_term_original_mode = mode;
+  zero_term_raw_active = 1;
+  if (!zero_term_restore_registered) {
+    atexit(zero_term_restore_at_exit);
+    zero_term_restore_registered = 1;
+  }
+  return 1;
+}
+
+static uint64_t zero_term_leave_raw_mode(void) {
+  if (!zero_term_raw_active) return 1;
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return 0;
+  if (!SetConsoleMode(input, zero_term_original_mode)) return 0;
+  zero_term_raw_active = 0;
+  return 1;
+}
+#else
+static struct termios zero_term_original_mode;
+static int zero_term_raw_active;
+static int zero_term_restore_registered;
+
+static void zero_term_restore_at_exit(void) {
+  if (!zero_term_raw_active) return;
+  tcsetattr(ZERO_RUNTIME_STDIN_FD, TCSAFLUSH, &zero_term_original_mode);
+  zero_term_raw_active = 0;
+}
+
+static uint64_t zero_term_enter_raw_mode(void) {
+  if (!ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDIN_FD)) return 0;
+  struct termios mode;
+  if (tcgetattr(ZERO_RUNTIME_STDIN_FD, &mode) != 0) return 0;
+  if (zero_term_raw_active) return 1;
+  zero_term_original_mode = mode;
+  mode.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  mode.c_oflag &= ~(OPOST);
+  mode.c_cflag |= CS8;
+#if defined(IEXTEN)
+  mode.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+#else
+  mode.c_lflag &= ~(ECHO | ICANON | ISIG);
+#endif
+  mode.c_cc[VMIN] = 0;
+  mode.c_cc[VTIME] = 0;
+  if (tcsetattr(ZERO_RUNTIME_STDIN_FD, TCSAFLUSH, &mode) != 0) return 0;
+  zero_term_raw_active = 1;
+  if (!zero_term_restore_registered) {
+    atexit(zero_term_restore_at_exit);
+    zero_term_restore_registered = 1;
+  }
+  return 1;
+}
+
+static uint64_t zero_term_leave_raw_mode(void) {
+  if (!zero_term_raw_active) return 1;
+  if (tcsetattr(ZERO_RUNTIME_STDIN_FD, TCSAFLUSH, &zero_term_original_mode) != 0) return 0;
+  zero_term_raw_active = 0;
+  return 1;
+}
+#endif
+
 uint64_t zero_term_op(uint64_t fallback, uint32_t op) {
   switch ((ZeroTermOp)op) {
     case ZERO_TERM_OP_STDIN_IS_TTY:
@@ -862,6 +952,10 @@ uint64_t zero_term_op(uint64_t fallback, uint32_t op) {
       return zero_term_size_or(fallback, 0);
     case ZERO_TERM_OP_HEIGHT_OR:
       return zero_term_size_or(fallback, 1);
+    case ZERO_TERM_OP_ENTER_RAW_MODE:
+      return zero_term_enter_raw_mode();
+    case ZERO_TERM_OP_LEAVE_RAW_MODE:
+      return zero_term_leave_raw_mode();
     default:
       return fallback;
   }

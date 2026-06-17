@@ -321,6 +321,8 @@ static IrStdTermHelper ir_std_term_helper(const char *name) {
     {"std.term.stdoutIsTty", NULL, 0ull, IR_TERM_OP_STDOUT_IS_TTY, IR_TYPE_BOOL, 0, false, true},
     {"std.term.widthOr", NULL, 0ull, IR_TERM_OP_WIDTH_OR, IR_TYPE_USIZE, 1, false, true},
     {"std.term.heightOr", NULL, 0ull, IR_TERM_OP_HEIGHT_OR, IR_TYPE_USIZE, 1, false, true},
+    {"std.term.enterRawMode", NULL, 0ull, IR_TERM_OP_ENTER_RAW_MODE, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.leaveRawMode", NULL, 0ull, IR_TERM_OP_LEAVE_RAW_MODE, IR_TYPE_BOOL, 0, false, true},
   };
   IrStdTermHelper missing = {NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false};
   if (!name) return missing;

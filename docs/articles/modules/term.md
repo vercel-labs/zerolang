@@ -43,14 +43,16 @@ Runnable today:
 | `std.term.stdoutIsTty()` | `Bool` | Reports whether standard output is attached to a terminal. |
 | `std.term.widthOr(fallback)` | `usize` | Returns terminal columns, or `fallback` when unavailable. |
 | `std.term.heightOr(fallback)` | `usize` | Returns terminal rows, or `fallback` when unavailable. |
+| `std.term.enterRawMode()` | `Bool` | Puts standard input into raw, nonblocking terminal mode when supported. |
+| `std.term.leaveRawMode()` | `Bool` | Restores the terminal mode saved by `enterRawMode()`. |
 
 Metadata labels:
 
-- effects: ANSI/key helpers are pure; TTY/size helpers read hosted terminal metadata
+- effects: ANSI/key helpers are pure; TTY/size helpers read hosted terminal metadata; raw-mode helpers update the hosted terminal
 - allocation behavior: no allocation
-- target support: ANSI/key helpers are target-neutral; TTY/size helpers require hosted runtime support
-- error behavior: infallible static string views
-- ownership notes: borrowed static byte views
+- target support: ANSI/key helpers are target-neutral; TTY/size/raw-mode helpers require hosted runtime support
+- error behavior: ANSI/key helpers are infallible; hosted helpers return fallbacks or `false` when unavailable
+- ownership notes: ANSI sequences are borrowed static byte views
 - example: `conformance/native/pass/std-term-ansi.graph`
 
 Example:
@@ -64,7 +66,14 @@ pub fn main(world: World) -> Void raises {
     check world.out.write(std.term.fgCyan())
     let width: usize = std.term.widthOr(80_usize)
     let height: usize = std.term.heightOr(24_usize)
+    let raw: Bool = std.term.enterRawMode()
     check world.out.write("ready")
+    if raw {
+        let restored: Bool = std.term.leaveRawMode()
+        if !restored {
+            return
+        }
+    }
     check world.out.write(std.term.reset())
     check world.out.write(std.term.leaveAltScreen())
 }
@@ -72,5 +81,5 @@ pub fn main(world: World) -> Void raises {
 
 Key decoding is target-neutral: it parses bytes the caller already has. TTY and
 size helpers are hosted metadata calls and return caller fallbacks when a
-terminal size is unavailable. Raw mode and reading terminal input are separate
-hosted terminal capabilities.
+terminal size is unavailable. Raw mode is a hosted terminal capability: call
+`leaveRawMode()` before returning to normal line-oriented terminal input.

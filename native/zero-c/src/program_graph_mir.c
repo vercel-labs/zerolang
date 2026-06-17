@@ -3617,6 +3617,12 @@ static bool ir_graph_lower_std_term_runtime_call(const ZProgramGraph *graph, IrP
   if (arg_count == 1 && ir_text_eq(callee_name, "std.term.heightOr")) {
     return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_HEIGHT_OR, IR_TYPE_USIZE, 1, out);
   }
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.term.enterRawMode")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_ENTER_RAW_MODE, IR_TYPE_BOOL, 0, out);
+  }
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.term.leaveRawMode")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_LEAVE_RAW_MODE, IR_TYPE_BOOL, 0, out);
+  }
   *handled = false;
   return true;
 }
