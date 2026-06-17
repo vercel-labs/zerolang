@@ -49,6 +49,7 @@ static const char *const runtime_helper_symbols[ELF_RUNTIME_HELPER_COUNT] = {
   "zero_parse_op",
   "zero_parse_usize",
   "zero_time_op",
+  "zero_term_op",
   "zero_math_op",
   "zero_math_usize_op",
   "zero_search_op",

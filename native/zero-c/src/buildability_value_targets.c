@@ -286,6 +286,21 @@ static bool build_aarch64_time_runtime(const ZBuildability *ctx, const IrFunctio
   return true;
 }
 
+static bool build_aarch64_term_runtime(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
+  if (value->kind != IR_VALUE_TERM_RUNTIME) return true;
+  if (ctx->backend != Z_DIRECT_BACKEND_ELF_AARCH64 && ctx->backend != Z_DIRECT_BACKEND_COFF_AARCH64) {
+    return z_build_diag(ctx, diag, "direct AArch64 std.term runtime helpers require an object target with runtime relocations", value->line, value->column, "unsupported std.term runtime");
+  }
+  if (value->arg_len > 1) {
+    return z_build_diag(ctx, diag, "direct AArch64 std.term helper supports at most one fallback argument", value->line, value->column, "invalid std.term arity");
+  }
+  if (scratch_slot + 1 >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
+    return z_build_diag(ctx, diag, "direct AArch64 std.term helper exceeds scratch register spill capacity", value->line, value->column, "expression too deep");
+  }
+  if (value->arg_len == 1 && !z_build_check_value(ctx, fun, value->args[0], false, scratch_slot, diag)) return false;
+  return true;
+}
+
 static bool build_aarch64_text_parse_runtime(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
   if (value->kind == IR_VALUE_TEXT_RUNTIME) {
     if (value->arg_len != 1) {
@@ -606,6 +621,7 @@ bool z_build_check_target_value(const ZBuildability *ctx, const IrFunction *fun,
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_fmt_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_proc_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_time_runtime(ctx, fun, value, scratch_slot, diag)) return false;
+  if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_term_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   if (z_build_backend_is_aarch64_direct(ctx->backend) && !build_aarch64_math_runtime(ctx, fun, value, scratch_slot, diag)) return false;
   return build_check_binary_operator(ctx, value, scratch_slot, right_slot, diag) &&
          build_check_compare(ctx, value, scratch_slot, right_slot, diag) &&

@@ -1877,6 +1877,45 @@ static bool mir_verify_time_runtime_contract(IrProgram *ir, const IrValue *value
   return true;
 }
 
+static const char *mir_verify_term_op_name(IrTermOp op) {
+  switch (op) {
+    case IR_TERM_OP_STDIN_IS_TTY: return "std.term.stdinIsTty";
+    case IR_TERM_OP_STDOUT_IS_TTY: return "std.term.stdoutIsTty";
+    case IR_TERM_OP_WIDTH_OR: return "std.term.widthOr";
+    case IR_TERM_OP_HEIGHT_OR: return "std.term.heightOr";
+  }
+  return "std.term";
+}
+
+static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {
+  mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, mir_verify_term_op_name((IrTermOp)value->int_value));
+  mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, mir_verify_term_op_name((IrTermOp)value->int_value));
+  size_t expected_args = 0;
+  IrTypeKind expected_result = IR_TYPE_BOOL;
+  switch ((IrTermOp)value->int_value) {
+    case IR_TERM_OP_STDIN_IS_TTY:
+    case IR_TERM_OP_STDOUT_IS_TTY:
+      expected_args = 0;
+      expected_result = IR_TYPE_BOOL;
+      break;
+    case IR_TERM_OP_WIDTH_OR:
+    case IR_TERM_OP_HEIGHT_OR:
+      expected_args = 1;
+      expected_result = IR_TYPE_USIZE;
+      break;
+    default:
+      mir_verify_mark_unsupported(ir, "MIR verifier found unknown std.term runtime operation", value->line, value->column, "unknown std.term operation");
+      return false;
+  }
+  if (value->arg_len != expected_args) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found invalid std.term runtime arity", value->line, value->column, "wrong std.term arity");
+    return false;
+  }
+  if (!mir_verify_helper_result_type(ir, value, expected_result, "std.term runtime result")) return false;
+  if (expected_args == 1 && !mir_verify_value_type(ir, value->args[0], IR_TYPE_USIZE, "MIR verifier found invalid std.term fallback argument", "std.term fallback")) return false;
+  return true;
+}
+
 static const char *mir_verify_math_op_name(IrMathOp op) {
   switch (op) {
     case IR_MATH_OP_MIN_I32: return "std.math.minI32";
@@ -2224,6 +2263,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
       return mir_verify_text_runtime_contract(ir, value, requirements);
     case IR_VALUE_TIME_RUNTIME:
       return mir_verify_time_runtime_contract(ir, value, requirements);
+    case IR_VALUE_TERM_RUNTIME:
+      return mir_verify_term_runtime_contract(ir, value, requirements);
     case IR_VALUE_MATH_RUNTIME:
       return mir_verify_math_runtime_contract(ir, value, requirements);
     case IR_VALUE_SEARCH_RUNTIME:

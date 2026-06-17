@@ -1280,6 +1280,26 @@ static bool a64_emit_time_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, c
   return true;
 }
 
+static bool a64_emit_term_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 1) {
+    return a64_diag(diag, "direct AArch64 std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  }
+  if (value->arg_len == 1) {
+    if (!a64_emit_value_to_reg_at(text, fun, value->args[0], 0, frame_size, scratch_slot, ctx, diag)) return false;
+  } else {
+    z_aarch64_emit_movz_x(text, 0, 0);
+  }
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_TERM_OP, diag, value)) return false;
+  if (a64_type_is_scalar64(value->type)) {
+    if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
+  } else {
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  }
+  return true;
+}
+
 static bool a64_emit_cast_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (!a64_emit_value_to_reg_at(text, fun, value->left, reg, frame_size, scratch_slot, ctx, diag)) return false;
   a64_emit_cast_normalize_reg(text, reg, value->left ? value->left->type : IR_TYPE_UNSUPPORTED, value->type);
@@ -1712,6 +1732,7 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
       return a64_emit_fmt_to_maybe_byte_view_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_STR_RUNTIME: return a64_emit_str_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_TIME_RUNTIME: return a64_emit_time_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME: return a64_emit_term_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return a64_emit_math_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return a64_emit_search_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CAPTURE:

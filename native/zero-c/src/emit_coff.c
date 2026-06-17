@@ -1693,6 +1693,26 @@ static bool coff_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, cons
   return true;
 }
 
+static bool coff_emit_term_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 1) {
+    return coff_diag_at(diag, "direct COFF std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  coff_emit_runtime_call_begin(text, 2, &temp_base, &total_stack);
+  if (value->arg_len == 1) {
+    if (!coff_emit_runtime_arg_value(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+  } else {
+    coff_emit_runtime_arg_u32(text, 0, temp_base, &slot);
+  }
+  coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_TERM_OP, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
 static bool coff_emit_rand_bounded_from_r8(ZBuf *text, const IrFunction *fun, const IrValue *value, bool add_low) {
   z_x64_emit_test_reg_reg(text, 8, false);
   size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
@@ -1840,6 +1860,7 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       return coff_emit_proc_capture_files_value(text, fun, value, ctx, diag);
     case IR_VALUE_STR_RUNTIME: return coff_emit_str_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_TIME_RUNTIME: return coff_emit_time_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME: return coff_emit_term_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return coff_emit_math_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return coff_emit_search_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return coff_emit_sort_runtime_value(text, fun, value, ctx, diag);

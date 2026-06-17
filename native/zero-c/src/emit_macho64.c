@@ -366,6 +366,7 @@ static MachORuntimeHelper macho_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return MACHO_RUNTIME_FS_READ_BYTES_AT;
     case IR_VALUE_PARSE_RUNTIME: return MACHO_RUNTIME_PARSE_OP;
     case IR_VALUE_TIME_RUNTIME: return MACHO_RUNTIME_TIME_OP;
+    case IR_VALUE_TERM_RUNTIME: return MACHO_RUNTIME_TERM_OP;
     case IR_VALUE_MATH_RUNTIME: return MACHO_RUNTIME_MATH_OP;
     case IR_VALUE_SEARCH_RUNTIME: return MACHO_RUNTIME_SEARCH_OP;
     case IR_VALUE_PROC_CAPTURE: return MACHO_RUNTIME_PROC_CAPTURE;
@@ -1710,6 +1711,24 @@ static bool macho_emit_time_runtime_to_reg_at(ZBuf *text, const IrFunction *fun,
   return true;
 }
 
+static bool macho_emit_term_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 1) return macho_diag_at(diag, "direct AArch64 Mach-O std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  if (value->arg_len == 1) {
+    if (!macho_emit_value_to_reg_at(text, fun, value->args[0], 0, frame_size, scratch_slot, ctx, diag)) return false;
+  } else {
+    z_aarch64_emit_movz_x(text, 0, 0);
+  }
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_TERM_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_BOOL) {
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  } else {
+    if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
+  }
+  return true;
+}
+
 static bool macho_emit_math_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) return macho_diag_at(diag, "direct AArch64 Mach-O std.math helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.math arity");
   for (size_t i = 0; i < value->arg_len; i++) {
@@ -2596,6 +2615,8 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return macho_emit_parse_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_TIME_RUNTIME:
       return macho_emit_time_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME:
+      return macho_emit_term_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_MATH_RUNTIME:
       return macho_emit_math_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME:

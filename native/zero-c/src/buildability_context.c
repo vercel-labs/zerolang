@@ -47,6 +47,7 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_TEXT_RUNTIME: return "IR_VALUE_TEXT_RUNTIME";
     case IR_VALUE_PARSE_RUNTIME: return "IR_VALUE_PARSE_RUNTIME";
     case IR_VALUE_TIME_RUNTIME: return "IR_VALUE_TIME_RUNTIME";
+    case IR_VALUE_TERM_RUNTIME: return "IR_VALUE_TERM_RUNTIME";
     case IR_VALUE_MATH_RUNTIME: return "IR_VALUE_MATH_RUNTIME";
     case IR_VALUE_SEARCH_RUNTIME: return "IR_VALUE_SEARCH_RUNTIME";
     case IR_VALUE_SORT_RUNTIME: return "IR_VALUE_SORT_RUNTIME";

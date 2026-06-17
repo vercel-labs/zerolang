@@ -19,7 +19,11 @@ typedef struct _stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_LSEEK _lseeki64
 #define ZERO_RUNTIME_OPEN_FLAGS (_O_RDONLY | _O_BINARY)
 #define ZERO_RUNTIME_IS_REGULAR(mode) (((mode) & _S_IFREG) != 0)
+#define ZERO_RUNTIME_ISATTY _isatty
+#define ZERO_RUNTIME_STDIN_FD 0
+#define ZERO_RUNTIME_STDOUT_FD 1
 #else
+#include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 typedef ssize_t ZeroWriteResult;
@@ -33,6 +37,9 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_LSEEK lseek
 #define ZERO_RUNTIME_OPEN_FLAGS O_RDONLY
 #define ZERO_RUNTIME_IS_REGULAR(mode) S_ISREG(mode)
+#define ZERO_RUNTIME_ISATTY isatty
+#define ZERO_RUNTIME_STDIN_FD STDIN_FILENO
+#define ZERO_RUNTIME_STDOUT_FD STDOUT_FILENO
 #endif
 
 #define ZERO_RUNTIME_PATH_BYTES 4096u
@@ -832,6 +839,32 @@ static uint32_t zero_term_key_decode(ZeroByteView text, int return_len) {
   uint32_t code = zero_term_utf8_key(text, &width);
   if (!code) return 0;
   return return_len ? (uint32_t)width : code;
+}
+
+static uint64_t zero_term_size_or(uint64_t fallback, int height) {
+#if !defined(_WIN32) && defined(TIOCGWINSZ)
+  struct winsize size;
+  if (ioctl(ZERO_RUNTIME_STDOUT_FD, TIOCGWINSZ, &size) == 0) {
+    unsigned value = height ? size.ws_row : size.ws_col;
+    if (value > 0) return value;
+  }
+#endif
+  return fallback;
+}
+
+uint64_t zero_term_op(uint64_t fallback, uint32_t op) {
+  switch ((ZeroTermOp)op) {
+    case ZERO_TERM_OP_STDIN_IS_TTY:
+      return ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDIN_FD) ? 1u : 0u;
+    case ZERO_TERM_OP_STDOUT_IS_TTY:
+      return ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDOUT_FD) ? 1u : 0u;
+    case ZERO_TERM_OP_WIDTH_OR:
+      return zero_term_size_or(fallback, 0);
+    case ZERO_TERM_OP_HEIGHT_OR:
+      return zero_term_size_or(fallback, 1);
+    default:
+      return fallback;
+  }
 }
 
 static int zero_parse_ascii_digit(unsigned char byte) {

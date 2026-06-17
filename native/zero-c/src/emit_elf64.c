@@ -224,6 +224,7 @@ static ElfRuntimeHelper elf_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_TEXT_RUNTIME: return ELF_RUNTIME_TEXT_OP;
     case IR_VALUE_PARSE_RUNTIME: return ELF_RUNTIME_PARSE_OP;
     case IR_VALUE_TIME_RUNTIME: return ELF_RUNTIME_TIME_OP;
+    case IR_VALUE_TERM_RUNTIME: return ELF_RUNTIME_TERM_OP;
     case IR_VALUE_MATH_RUNTIME: return ELF_RUNTIME_MATH_OP;
     case IR_VALUE_SEARCH_RUNTIME: return ELF_RUNTIME_SEARCH_OP;
     case IR_VALUE_ARGS_FIND:
@@ -2119,6 +2120,21 @@ static bool elf_emit_time_runtime_value(ZBuf *code, const IrFunction *fun, const
   return true;
 }
 
+static bool elf_emit_term_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 1) return elf_diag(diag, "direct ELF64 std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  if (value->arg_len == 1) {
+    if (!elf_emit_value(code, fun, value->args[0], ctx, diag)) return false;
+    z_x64_emit_mov_rdi_from_rax(code);
+  } else {
+    z_x64_emit_xor_reg_reg(code, 7, true);
+  }
+  z_x64_emit_mov_reg_u32(code, 6, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_TERM_OP, patch, diag, value)) return false;
+  if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
+  return true;
+}
+
 static bool elf_emit_math_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) return elf_diag(diag, "direct ELF64 std.math helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.math arity");
   for (size_t i = 0; i < value->arg_len; i++) {
@@ -2976,6 +2992,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_parse_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_TIME_RUNTIME:
       return elf_emit_time_runtime_value(code, fun, value, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME:
+      return elf_emit_term_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME:
       return elf_emit_math_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME:

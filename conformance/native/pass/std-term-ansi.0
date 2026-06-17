@@ -12,6 +12,14 @@ pub fn main(world: World) -> Void raises {
         check world.err.write("term key decode failed\n")
         return
     }
+    let stdin_tty: Bool = std.term.stdinIsTty()
+    let stdout_tty: Bool = std.term.stdoutIsTty()
+    let width: usize = std.term.widthOr(80_usize)
+    let height: usize = std.term.heightOr(24_usize)
+    if width == 0_usize || height == 0_usize || (stdin_tty && !stdin_tty) || (stdout_tty && !stdout_tty) {
+        check world.err.write("term metadata failed\n")
+        return
+    }
     check world.out.write(std.term.enterAltScreen())
     check world.out.write(std.term.clearScreen())
     check world.out.write(std.term.cursorHome())

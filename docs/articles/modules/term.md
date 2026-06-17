@@ -1,7 +1,7 @@
 ## When To Use std.term
 
-In Zerolang, use `std.term` when terminal code needs ANSI output sequences or
-when a terminal UI needs to decode key bytes already read from input.
+In Zerolang, use `std.term` when terminal code needs ANSI output sequences,
+hosted terminal metadata, or key decoding for bytes already read from input.
 
 Runnable today:
 
@@ -39,12 +39,16 @@ Runnable today:
 | `std.term.keyDelete()` | `u32` | Delete key code above the Unicode scalar range. |
 | `std.term.keyCode(bytes)` | `u32` | Decodes one key from caller-provided bytes, returning Unicode scalar values for printable UTF-8 and named constants for control keys. |
 | `std.term.keyByteLen(bytes)` | `usize` | Returns the decoded key width in bytes, or `0` for incomplete or unsupported input. |
+| `std.term.stdinIsTty()` | `Bool` | Reports whether standard input is attached to a terminal. |
+| `std.term.stdoutIsTty()` | `Bool` | Reports whether standard output is attached to a terminal. |
+| `std.term.widthOr(fallback)` | `usize` | Returns terminal columns, or `fallback` when unavailable. |
+| `std.term.heightOr(fallback)` | `usize` | Returns terminal rows, or `fallback` when unavailable. |
 
 Metadata labels:
 
-- effects: none
+- effects: ANSI/key helpers are pure; TTY/size helpers read hosted terminal metadata
 - allocation behavior: no allocation
-- target support: target-neutral
+- target support: ANSI/key helpers are target-neutral; TTY/size helpers require hosted runtime support
 - error behavior: infallible static string views
 - ownership notes: borrowed static byte views
 - example: `conformance/native/pass/std-term-ansi.graph`
@@ -58,12 +62,15 @@ pub fn main(world: World) -> Void raises {
     check world.out.write(std.term.cursorHome())
     check world.out.write(std.term.bold())
     check world.out.write(std.term.fgCyan())
+    let width: usize = std.term.widthOr(80_usize)
+    let height: usize = std.term.heightOr(24_usize)
     check world.out.write("ready")
     check world.out.write(std.term.reset())
     check world.out.write(std.term.leaveAltScreen())
 }
 ```
 
-Key decoding is target-neutral: it parses bytes the caller already has. Raw
-mode, terminal size, and reading terminal input are separate hosted terminal
-capabilities.
+Key decoding is target-neutral: it parses bytes the caller already has. TTY and
+size helpers are hosted metadata calls and return caller fallbacks when a
+terminal size is unavailable. Raw mode and reading terminal input are separate
+hosted terminal capabilities.

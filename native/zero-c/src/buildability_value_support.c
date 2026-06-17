@@ -55,6 +55,7 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
     case IR_VALUE_FMT_U32:
     case IR_VALUE_FMT_USIZE:
     case IR_VALUE_TIME_RUNTIME:
+    case IR_VALUE_TERM_RUNTIME:
     case IR_VALUE_MATH_RUNTIME:
     case IR_VALUE_SEARCH_RUNTIME:
     case IR_VALUE_SORT_RUNTIME:
@@ -91,7 +92,7 @@ static bool build_value_supported_macho_x64(IrValueKind kind) {
     case IR_VALUE_ASCII_RUNTIME: case IR_VALUE_TEXT_RUNTIME: case IR_VALUE_PARSE_RUNTIME:
     case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32:
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
-    case IR_VALUE_STR_RUNTIME: case IR_VALUE_TIME_RUNTIME: case IR_VALUE_MATH_RUNTIME:
+    case IR_VALUE_STR_RUNTIME: case IR_VALUE_TIME_RUNTIME: case IR_VALUE_TERM_RUNTIME: case IR_VALUE_MATH_RUNTIME:
     case IR_VALUE_SEARCH_RUNTIME: case IR_VALUE_SORT_RUNTIME:
     case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES: case IR_VALUE_JSON_DIAGNOSTIC_BYTES: case IR_VALUE_JSON_FIELD: case IR_VALUE_JSON_LOOKUP_SCALAR: case IR_VALUE_JSON_STRING_DECODE: case IR_VALUE_JSON_STRING_FIELD: case IR_VALUE_JSON_WRITE_STRING: case IR_VALUE_JSON_WRITE_RUNTIME:
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
@@ -176,6 +177,8 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_PROC_CAPTURE_FILES:
       return build_backend_supports_hosted_runtime(ctx);
     case IR_VALUE_TIME_RUNTIME:
+      return build_backend_supports_hosted_runtime(ctx);
+    case IR_VALUE_TERM_RUNTIME:
       return build_backend_supports_hosted_runtime(ctx);
     case IR_VALUE_MATH_RUNTIME:
       return build_backend_supports_hosted_runtime(ctx);

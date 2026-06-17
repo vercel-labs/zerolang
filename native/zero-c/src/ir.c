@@ -278,47 +278,55 @@ static const char *ir_std_json_error_label(unsigned long long code, bool expecte
 typedef struct {
   const char *sequence;
   unsigned long long key_code;
+  IrTermOp term_op;
+  IrTypeKind runtime_type;
+  size_t runtime_args;
   bool has_key_code;
+  bool has_runtime;
 } IrStdTermHelper;
 
 static IrStdTermHelper ir_std_term_helper(const char *name) {
-  static const struct { const char *name; const char *sequence; unsigned long long key_code; bool has_key_code; } entries[] = {
-    {"std.term.reset", "\x1b[0m", 0ull, false},
-    {"std.term.bold", "\x1b[1m", 0ull, false},
-    {"std.term.dim", "\x1b[2m", 0ull, false},
-    {"std.term.inverse", "\x1b[7m", 0ull, false},
-    {"std.term.fgDefault", "\x1b[39m", 0ull, false},
-    {"std.term.fgRed", "\x1b[31m", 0ull, false},
-    {"std.term.fgGreen", "\x1b[32m", 0ull, false},
-    {"std.term.fgYellow", "\x1b[33m", 0ull, false},
-    {"std.term.fgBlue", "\x1b[34m", 0ull, false},
-    {"std.term.fgMagenta", "\x1b[35m", 0ull, false},
-    {"std.term.fgCyan", "\x1b[36m", 0ull, false},
-    {"std.term.fgWhite", "\x1b[37m", 0ull, false},
-    {"std.term.clearScreen", "\x1b[2J", 0ull, false},
-    {"std.term.clearLine", "\x1b[2K", 0ull, false},
-    {"std.term.cursorHome", "\x1b[H", 0ull, false},
-    {"std.term.hideCursor", "\x1b[?25l", 0ull, false},
-    {"std.term.showCursor", "\x1b[?25h", 0ull, false},
-    {"std.term.enterAltScreen", "\x1b[?1049h", 0ull, false},
-    {"std.term.leaveAltScreen", "\x1b[?1049l", 0ull, false},
-    {"std.term.keyNone", NULL, 0ull, true},
-    {"std.term.keyEscape", NULL, 27ull, true},
-    {"std.term.keyEnter", NULL, 13ull, true},
-    {"std.term.keyTab", NULL, 9ull, true},
-    {"std.term.keyBackspace", NULL, 127ull, true},
-    {"std.term.keyCtrlC", NULL, 3ull, true},
-    {"std.term.keyArrowUp", NULL, 1114113ull, true},
-    {"std.term.keyArrowDown", NULL, 1114114ull, true},
-    {"std.term.keyArrowRight", NULL, 1114115ull, true},
-    {"std.term.keyArrowLeft", NULL, 1114116ull, true},
-    {"std.term.keyDelete", NULL, 1114117ull, true},
+  static const struct { const char *name; const char *sequence; unsigned long long key_code; IrTermOp term_op; IrTypeKind runtime_type; size_t runtime_args; bool has_key_code; bool has_runtime; } entries[] = {
+    {"std.term.reset", "\x1b[0m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bold", "\x1b[1m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.dim", "\x1b[2m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.inverse", "\x1b[7m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgDefault", "\x1b[39m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgRed", "\x1b[31m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgGreen", "\x1b[32m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgYellow", "\x1b[33m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgBlue", "\x1b[34m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgMagenta", "\x1b[35m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgCyan", "\x1b[36m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgWhite", "\x1b[37m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearScreen", "\x1b[2J", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearLine", "\x1b[2K", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.cursorHome", "\x1b[H", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.hideCursor", "\x1b[?25l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.showCursor", "\x1b[?25h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.enterAltScreen", "\x1b[?1049h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.leaveAltScreen", "\x1b[?1049l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.keyNone", NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyEscape", NULL, 27ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyEnter", NULL, 13ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyTab", NULL, 9ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyBackspace", NULL, 127ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlC", NULL, 3ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowUp", NULL, 1114113ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowDown", NULL, 1114114ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowRight", NULL, 1114115ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowLeft", NULL, 1114116ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyDelete", NULL, 1114117ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.stdinIsTty", NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.stdoutIsTty", NULL, 0ull, IR_TERM_OP_STDOUT_IS_TTY, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.widthOr", NULL, 0ull, IR_TERM_OP_WIDTH_OR, IR_TYPE_USIZE, 1, false, true},
+    {"std.term.heightOr", NULL, 0ull, IR_TERM_OP_HEIGHT_OR, IR_TYPE_USIZE, 1, false, true},
   };
-  IrStdTermHelper missing = {NULL, 0ull, false};
+  IrStdTermHelper missing = {NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false};
   if (!name) return missing;
   for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
     if (strcmp(name, entries[i].name) == 0) {
-      return (IrStdTermHelper){entries[i].sequence, entries[i].key_code, entries[i].has_key_code};
+      return (IrStdTermHelper){entries[i].sequence, entries[i].key_code, entries[i].term_op, entries[i].runtime_type, entries[i].runtime_args, entries[i].has_key_code, entries[i].has_runtime};
     }
   }
   return missing;
@@ -1986,6 +1994,42 @@ static bool ir_lower_std_time_extra_call(const Program *program, IrProgram *ir, 
   }
   ir_mark_unsupported(ir, "direct backend std.time helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.time arity");
   return false;
+}
+
+static bool ir_make_std_term_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrTermOp op, IrTypeKind return_type, size_t expected_args, IrValue **out) {
+  if (!call || call->args.len != expected_args || expected_args > 1) {
+    ir_mark_unsupported(ir, "direct backend std.term helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.term arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TERM_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (expected_args == 1) {
+    IrValue *fallback = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, call->args.items[0], IR_TYPE_USIZE, &fallback)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!fallback || fallback->type != IR_TYPE_USIZE) {
+      ir_free_value(fallback);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend std.term fallback argument must be usize", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, "non-usize argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, fallback);
+  }
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_term_runtime_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  IrStdTermHelper helper = ir_std_term_helper(callee_name);
+  if (!helper.has_runtime) {
+    *handled = false;
+    return true;
+  }
+  *handled = true;
+  return ir_make_std_term_runtime_value(program, ir, fun, call, helper.term_op, helper.runtime_type, helper.runtime_args, out);
 }
 
 static bool ir_std_math_runtime_spec(const char *callee_name, size_t arg_count, IrMathOp *op, IrTypeKind *arg_type, IrTypeKind *return_type, IrTypeKind *return_element_type, size_t *expected_args) {
@@ -4148,6 +4192,14 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
       }
       if (expr->args.len == 0 && term_helper.has_key_code) {
         *out = ir_new_integer_literal_value(ir, IR_TYPE_U32, term_helper.key_code, expr->line, expr->column);
+        free(callee_name);
+        return true;
+      }
+      if (!ir_lower_std_term_runtime_call(program, ir, fun, expr, callee_name, &handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (handled) {
         free(callee_name);
         return true;
       }

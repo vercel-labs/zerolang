@@ -329,7 +329,7 @@ export const docs: Doc[] = [
   {
     slug: "module-term",
     title: "std.term",
-    description: "ANSI terminal sequences and target-neutral key-byte decoding.",
+    description: "ANSI terminal sequences, key-byte decoding, and hosted terminal metadata.",
     path: "/modules/term",
     sourcePath: "/articles/modules/term.md",
     section: "Programs",

@@ -1642,6 +1642,23 @@ static bool machx64_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, c
   return true;
 }
 
+static bool machx64_emit_term_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len > 1) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  }
+  if (value->arg_len == 1) {
+    if (!machx64_emit_value(text, fun, value->args[0], ctx, diag)) return false;
+    z_x64_emit_mov_rdi_from_rax(text);
+  } else {
+    z_x64_emit_xor_reg_reg(text, 7, true);
+  }
+  z_x64_emit_mov_reg_u32(text, 6, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_TERM_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(text, 0, 0, false);
+  return true;
+}
+
 static bool machx64_emit_rand_bounded_from_r8(ZBuf *text, const IrFunction *fun, const IrValue *value, bool add_low) {
   z_x64_emit_test_reg_reg(text, 8, false);
   size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
@@ -1778,6 +1795,7 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
       return machx64_emit_fmt_value(text, fun, value, ctx, diag);
     case IR_VALUE_STR_RUNTIME: return machx64_emit_str_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_TIME_RUNTIME: return machx64_emit_time_runtime_value(text, fun, value, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME: return machx64_emit_term_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return machx64_emit_math_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE: return machx64_emit_proc_capture_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE_FILES: return machx64_emit_proc_capture_files_value(text, fun, value, ctx, diag);

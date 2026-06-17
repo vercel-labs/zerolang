@@ -43,7 +43,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
 - `std.io`: buffered reader/writer surfaces, cursor writes, line scanning, and byte copy over caller-owned storage.
 - `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
-- `std.term`: ANSI terminal style, cursor, clear, alternate-screen sequence helpers, and target-neutral key-byte decoding.
+- `std.term`: ANSI terminal style, cursor, clear, alternate-screen sequence helpers, target-neutral key-byte decoding, and hosted TTY/size metadata.
 - `std.log`: explicit-buffer JSON Lines record formatting.
 
 Prefer `Maybe<T>` return checks over assuming an operation succeeded.
@@ -1077,6 +1077,10 @@ keyArrowLeft() -> u32
 keyDelete() -> u32
 keyCode(arg0: Span<u8>) -> u32
 keyByteLen(arg0: Span<u8>) -> usize
+stdinIsTty() -> Bool
+stdoutIsTty() -> Bool
+widthOr(arg0: usize) -> usize
+heightOr(arg0: usize) -> usize
 ```
 
 ### std.math

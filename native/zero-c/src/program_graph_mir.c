@@ -3577,6 +3577,50 @@ static bool ir_graph_make_std_time_runtime_value(const ZProgramGraph *graph, IrP
   return true;
 }
 
+static bool ir_graph_make_std_term_runtime_value(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTermOp op, IrTypeKind return_type, size_t expected_args, IrValue **out) {
+  if (ir_graph_edge_count(graph, expr ? expr->id : NULL, "arg") != expected_args || expected_args > 1) {
+    ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.term helper has unsupported arity", "wrong std.term arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TERM_RUNTIME, return_type, ir_graph_line(expr), ir_graph_column(expr));
+  value->int_value = (unsigned long long)op;
+  if (expected_args == 1) {
+    IrValue *fallback = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &fallback)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!fallback || fallback->type != IR_TYPE_USIZE) {
+      ir_free_value(fallback);
+      ir_free_value(value);
+      ir_graph_mark_unsupported(ir, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), "typed graph MIR std.term fallback argument must be usize", "non-usize argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, fallback);
+  }
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_term_runtime_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.term.stdinIsTty")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_BOOL, 0, out);
+  }
+  if (arg_count == 0 && ir_text_eq(callee_name, "std.term.stdoutIsTty")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_STDOUT_IS_TTY, IR_TYPE_BOOL, 0, out);
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.term.widthOr")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_WIDTH_OR, IR_TYPE_USIZE, 1, out);
+  }
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.term.heightOr")) {
+    return ir_graph_make_std_term_runtime_value(graph, ir, fun, expr, IR_TERM_OP_HEIGHT_OR, IR_TYPE_USIZE, 1, out);
+  }
+  *handled = false;
+  return true;
+}
+
 static bool ir_graph_lower_std_time_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
   *handled = true;
   unsigned long long scale = 0;
@@ -5140,6 +5184,8 @@ static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const
     return true;
   }
   bool handled = false;
+  if (!ir_graph_lower_std_term_runtime_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) { free(qualified); return false; }
+  if (handled) { free(qualified); return true; }
   if (!ir_graph_lower_http_std_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) { free(qualified); return false; }
   if (handled) { free(qualified); return true; }
   if (!ir_graph_lower_std_str_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) { free(qualified); return false; }

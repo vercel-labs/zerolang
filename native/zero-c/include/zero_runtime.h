@@ -180,6 +180,13 @@ typedef enum {
   ZERO_SORT_OP_IS_SORTED_USIZE = 5
 } ZeroSortOp;
 
+typedef enum {
+  ZERO_TERM_OP_STDIN_IS_TTY = 0,
+  ZERO_TERM_OP_STDOUT_IS_TTY = 1,
+  ZERO_TERM_OP_WIDTH_OR = 2,
+  ZERO_TERM_OP_HEIGHT_OR = 3
+} ZeroTermOp;
+
 #define ZERO_HTTP_RESPONSE_META_BYTES 24u
 
 int zero_world_write(int fd, const char *buf, unsigned len);
@@ -220,6 +227,7 @@ ZeroMaybeUsize zero_math_usize_op(uint64_t a, uint64_t b, uint64_t c, uint32_t o
 uint64_t zero_search_op(ZeroByteView items, int64_t needle, uint32_t op);
 void zero_sort_op(ZeroMutByteView items, uint32_t op);
 uint32_t zero_sort_is_sorted_op(ZeroByteView items, uint32_t op);
+uint64_t zero_term_op(uint64_t fallback, uint32_t op);
 uint32_t zero_str_contains(ZeroByteView text, ZeroByteView needle);
 uint32_t zero_str_buffer_op(ZeroMutByteView buffer, ZeroByteView text, uint32_t op);
 uint32_t zero_str_concat(ZeroMutByteView buffer, ZeroByteView left, ZeroByteView right);
