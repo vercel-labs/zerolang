@@ -839,6 +839,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.proc.capture", "Maybe<usize>", 2, {"String", "MutSpan<u8>"}, {NULL}, "proc", "host", "runs argv-style command text and captures stdout into caller storage; null on failure, nonzero exit, unsupported target, or truncation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.captureFiles", "ProcStatus", 3, {"String", "String", "String"}, {NULL}, "proc", "host", "runs argv-style command text and writes stdout and stderr to hosted paths", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.spawnChild", "ProcChild", 1, {"String"}, {NULL}, "proc", "host", "spawns an argv-style command with piped stdin, stdout, and stderr; returns an invalid handle on failure", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.proc.spawnChildIn", "ProcChild", 2, {"String", "String"}, {NULL}, "proc", "host", "spawns an argv-style command in a hosted working directory with piped stdin, stdout, and stderr", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.childValid", "Bool", 1, {"ProcChild"}, {NULL}, "proc", "host", "reports whether a child handle refers to a runtime slot", false, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.running", "Bool", 1, {"ProcChild"}, {NULL}, "proc", "host", "polls a child process without blocking and reports whether it is still running", true, Z_STD_HELPER_KIND_TABLE},
   {"std.proc.wait", "ProcStatus", 1, {"ProcChild"}, {NULL}, "proc", "host", "waits for a child process and returns its exit status", true, Z_STD_HELPER_KIND_TABLE},

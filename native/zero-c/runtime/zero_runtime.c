@@ -26,9 +26,12 @@ typedef struct _stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_READ _read
 #define ZERO_RUNTIME_CLOSE _close
 #define ZERO_RUNTIME_FSTAT _fstat
+#define ZERO_RUNTIME_STAT _stat
 #define ZERO_RUNTIME_LSEEK _lseeki64
+#define ZERO_RUNTIME_CHDIR _chdir
 #define ZERO_RUNTIME_OPEN_FLAGS (_O_RDONLY | _O_BINARY)
 #define ZERO_RUNTIME_IS_REGULAR(mode) (((mode) & _S_IFREG) != 0)
+#define ZERO_RUNTIME_IS_DIR(mode) (((mode) & _S_IFDIR) != 0)
 #define ZERO_RUNTIME_ISATTY _isatty
 #define ZERO_RUNTIME_STDIN_FD 0
 #define ZERO_RUNTIME_STDOUT_FD 1
@@ -51,9 +54,12 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_READ read
 #define ZERO_RUNTIME_CLOSE close
 #define ZERO_RUNTIME_FSTAT fstat
+#define ZERO_RUNTIME_STAT stat
 #define ZERO_RUNTIME_LSEEK lseek
+#define ZERO_RUNTIME_CHDIR chdir
 #define ZERO_RUNTIME_OPEN_FLAGS O_RDONLY
 #define ZERO_RUNTIME_IS_REGULAR(mode) S_ISREG(mode)
+#define ZERO_RUNTIME_IS_DIR(mode) S_ISDIR(mode)
 #define ZERO_RUNTIME_ISATTY isatty
 #define ZERO_RUNTIME_STDIN_FD STDIN_FILENO
 #define ZERO_RUNTIME_STDOUT_FD STDOUT_FILENO
@@ -141,6 +147,11 @@ static int zero_runtime_fd_regular_size(int fd, uint64_t *size_out) {
   if (!ZERO_RUNTIME_IS_REGULAR(st.st_mode)) return 0;
   if (size_out) *size_out = st.st_size < 0 ? 0 : (uint64_t)st.st_size;
   return 1;
+}
+
+static int zero_runtime_path_is_dir(const char *path) {
+  ZeroRuntimeStat st;
+  return path && ZERO_RUNTIME_STAT(path, &st) == 0 && ZERO_RUNTIME_IS_DIR(st.st_mode);
 }
 
 static int zero_runtime_close_fd(int fd) {
@@ -586,14 +597,16 @@ static int zero_proc_child_reap(ZeroRuntimeProcChild *child, int nohang) {
 }
 #endif
 
-int32_t zero_proc_spawn_child(ZeroByteView command) {
+static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd) {
 #if defined(_WIN32)
   (void)command;
+  (void)cwd;
   return 0;
 #else
   char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
   char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
   if (!zero_runtime_proc_parse_command(command, storage, argv)) return 0;
+  if (cwd && !zero_runtime_path_is_dir(cwd)) return 0;
   int index = zero_proc_child_alloc();
   if (index < 0) return 0;
 
@@ -616,6 +629,7 @@ int32_t zero_proc_spawn_child(ZeroByteView command) {
   }
 
   if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
     ZERO_RUNTIME_CLOSE(stdin_pipe[1]);
     ZERO_RUNTIME_CLOSE(stdout_pipe[0]);
     ZERO_RUNTIME_CLOSE(stderr_pipe[0]);
@@ -657,6 +671,16 @@ int32_t zero_proc_spawn_child(ZeroByteView command) {
   };
   return (int32_t)(index + 1);
 #endif
+}
+
+int32_t zero_proc_spawn_child(ZeroByteView command) {
+  return zero_proc_spawn_child_impl(command, NULL);
+}
+
+int32_t zero_proc_spawn_child_in(ZeroByteView command, ZeroByteView cwd) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf)) return 0;
+  return zero_proc_spawn_child_impl(command, cwd_buf);
 }
 
 int32_t zero_proc_child_op(int32_t child, uint32_t op) {

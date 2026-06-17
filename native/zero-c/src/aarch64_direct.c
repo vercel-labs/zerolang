@@ -1018,8 +1018,9 @@ static bool a64_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fu
     return a64_diag(diag, "direct AArch64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
   if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (value->right && !a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD, diag, value)) return false;
+  if (!a64_record_runtime_patch(ctx, patch, value->right ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN : A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD, diag, value)) return false;
   if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
   return true;
 }

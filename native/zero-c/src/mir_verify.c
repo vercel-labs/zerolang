@@ -454,7 +454,9 @@ static bool mir_verify_proc_spawn_inherit_contract(IrProgram *ir, const IrValue 
 
 static bool mir_verify_proc_child_spawn_contract(IrProgram *ir, const IrValue *value) {
   if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child handle")) return false;
-  return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command");
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
+  if (value->right && !mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process cwd", "process cwd")) return false;
+  return true;
 }
 
 static bool mir_verify_proc_child_op_contract(IrProgram *ir, const IrValue *value) {
@@ -1060,8 +1062,8 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.captureFiles");
       return mir_verify_proc_capture_files_contract(ir, value);
     case IR_VALUE_PROC_CHILD_SPAWN:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.spawnChild");
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.spawnChild");
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild");
       return mir_verify_proc_child_spawn_contract(ir, value);
     case IR_VALUE_PROC_CHILD_OP:
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child op");

@@ -1648,9 +1648,11 @@ static bool machx64_emit_proc_child_spawn_value(ZBuf *text, const IrFunction *fu
   unsigned temp_base = 0;
   unsigned total_stack = 0;
   unsigned slot = 0;
-  machx64_emit_runtime_call_begin(text, 2, 2, &temp_base, &total_stack);
+  unsigned abi_slots = value->right ? 4 : 2;
+  machx64_emit_runtime_call_begin(text, abi_slots, abi_slots, &temp_base, &total_stack);
   if (!machx64_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
-  if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_SPAWN_CHILD, 2, 2, temp_base, value, diag)) return false;
+  if (value->right && !machx64_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_call(text, ctx, value->right ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN : MACHO_RUNTIME_PROC_SPAWN_CHILD, abi_slots, abi_slots, temp_base, value, diag)) return false;
   z_x64_emit_add_rsp(text, total_stack);
   return true;
 }

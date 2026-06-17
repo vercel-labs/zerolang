@@ -172,6 +172,7 @@ static const char *coff_a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper he
     case A64_DIRECT_RUNTIME_PROC_CAPTURE: return "zero_proc_capture";
     case A64_DIRECT_RUNTIME_PROC_CAPTURE_FILES: return "zero_proc_capture_files";
     case A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD: return "zero_proc_spawn_child";
+    case A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN: return "zero_proc_spawn_child_in";
     case A64_DIRECT_RUNTIME_PROC_CHILD_OP: return "zero_proc_child_op";
     case A64_DIRECT_RUNTIME_PROC_CHILD_IO: return "zero_proc_child_io";
     case A64_DIRECT_RUNTIME_HELPER_COUNT: break;

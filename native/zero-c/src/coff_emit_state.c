@@ -63,6 +63,7 @@ static const char *const runtime_helper_symbols[COFF_RUNTIME_HELPER_COUNT] = {
   "zero_proc_capture",
   "zero_proc_capture_files",
   "zero_proc_spawn_child",
+  "zero_proc_spawn_child_in",
   "zero_proc_child_op",
   "zero_proc_child_io",
 };

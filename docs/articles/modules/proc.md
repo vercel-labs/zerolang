@@ -18,6 +18,7 @@ Runnable today:
 | `std.proc.capture(command, buffer)` | `Maybe<usize>` | Runs an argv-style command and captures stdout into caller storage. Returns `null` on parse failure, spawn failure, nonzero exit, unsupported target, or output truncation. |
 | `std.proc.captureFiles(command, stdoutPath, stderrPath)` | `ProcStatus` | Runs an argv-style command and writes stdout and stderr to hosted paths. Returns `127` when the command cannot be parsed, spawned, waited on, or the output files cannot be opened. |
 | `std.proc.spawnChild(command)` | `ProcChild` | Starts a hosted child process with piped stdin, stdout, and stderr. Returns an invalid handle when the process cannot be created. |
+| `std.proc.spawnChildIn(command, cwd)` | `ProcChild` | Starts a hosted child process in a working directory with piped stdin, stdout, and stderr. Returns an invalid handle when the cwd is invalid or the process cannot be created. |
 | `std.proc.childValid(child)` | `Bool` | Reports whether the handle currently names an open child slot. |
 | `std.proc.running(child)` | `Bool` | Polls the child process without blocking. |
 | `std.proc.wait(child)` | `ProcStatus` | Waits for process exit and returns its status. |

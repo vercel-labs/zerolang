@@ -6588,6 +6588,7 @@ typedef struct {
   bool zero_http_request_body_within;
   bool zero_proc_spawn_inherit;
   bool zero_proc_spawn_child;
+  bool zero_proc_spawn_child_in;
   bool zero_proc_child_op;
   bool zero_proc_child_io;
 } RuntimeImportAudit;
@@ -6701,7 +6702,8 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
       audit->zero_proc_spawn_inherit = true;
       break;
     case IR_VALUE_PROC_CHILD_SPAWN:
-      audit->zero_proc_spawn_child = true;
+      if (value->right) audit->zero_proc_spawn_child_in = true;
+      else audit->zero_proc_spawn_child = true;
       break;
     case IR_VALUE_PROC_CHILD_OP:
       audit->zero_proc_child_op = true;
@@ -7066,6 +7068,7 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_http_request_body_within) count++;
   if (audit->zero_proc_spawn_inherit) count++;
   if (audit->zero_proc_spawn_child) count++;
+  if (audit->zero_proc_spawn_child_in) count++;
   if (audit->zero_proc_child_op) count++;
   if (audit->zero_proc_child_io) count++;
   return count;
@@ -7162,6 +7165,7 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_http_request_body_within) append_json_string_array_item(buf, &first, "zero_http_request_body_within");
   if (audit && audit->zero_proc_spawn_inherit) append_json_string_array_item(buf, &first, "zero_proc_spawn_inherit");
   if (audit && audit->zero_proc_spawn_child) append_json_string_array_item(buf, &first, "zero_proc_spawn_child");
+  if (audit && audit->zero_proc_spawn_child_in) append_json_string_array_item(buf, &first, "zero_proc_spawn_child_in");
   if (audit && audit->zero_proc_child_op) append_json_string_array_item(buf, &first, "zero_proc_child_op");
   if (audit && audit->zero_proc_child_io) append_json_string_array_item(buf, &first, "zero_proc_child_io");
   zbuf_append(buf, "]");
