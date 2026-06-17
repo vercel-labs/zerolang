@@ -262,6 +262,19 @@ static int ir_std_json_error_code(const char *name) {
   return -1;
 }
 
+static const char *ir_std_json_error_label(unsigned long long code, bool expected) {
+  if (expected) {
+    if (code == 0) return "none";
+    if (code == 1) return "valid-json";
+    if (code == 2) return "end-of-input";
+    return "unknown";
+  }
+  if (code == 0) return "ok";
+  if (code == 1) return "invalid";
+  if (code == 2) return "trailing";
+  return "unknown";
+}
+
 static bool ir_std_http_status_class_bounds(const char *name, unsigned *lower, unsigned *upper) {
   if (!name || !lower || !upper) return false;
   if (strcmp(name, "std.http.statusIsInformational") == 0) { *lower = 100; *upper = 200; return true; }
@@ -1620,6 +1633,10 @@ static const IrStdStrSpec *ir_std_str_spec(const char *callee_name) {
     {"std.path.basename", IR_STR_OP_PATH_BASENAME, IR_TYPE_BYTE_VIEW, one_view, 1, false},
     {"std.path.dirname", IR_STR_OP_PATH_DIRNAME, IR_TYPE_BYTE_VIEW, one_view, 1, false},
     {"std.path.extension", IR_STR_OP_PATH_EXTENSION, IR_TYPE_BYTE_VIEW, one_view, 1, false},
+    {"std.crypto.sha256", IR_STR_OP_CRYPTO_SHA256, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, true},
+    {"std.crypto.sha256Hex", IR_STR_OP_CRYPTO_SHA256_HEX, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, true},
+    {"std.crypto.hmacSha256", IR_STR_OP_CRYPTO_HMAC_SHA256, IR_TYPE_MAYBE_BYTE_VIEW, three_views, 3, true},
+    {"std.crypto.hmacSha256Hex", IR_STR_OP_CRYPTO_HMAC_SHA256_HEX, IR_TYPE_MAYBE_BYTE_VIEW, three_views, 3, true},
   };
   for (size_t i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
     if (strcmp(callee_name, specs[i].name) == 0) return &specs[i];
@@ -2487,6 +2504,10 @@ typedef enum {
   IR_DIRECT_STD_CLI_SUCCESS_EXIT_CODE,
   IR_DIRECT_STD_CLI_USAGE_EXIT_CODE,
   IR_DIRECT_STD_CLI_ARG_EQUALS,
+  IR_DIRECT_STD_CLI_COMMAND,
+  IR_DIRECT_STD_CLI_COMMAND_OR,
+  IR_DIRECT_STD_CLI_COMMAND_EQUALS,
+  IR_DIRECT_STD_CLI_ARG_OR,
 } IrDirectStdCallId;
 
 typedef struct {
@@ -2521,6 +2542,10 @@ static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
     {"std.cli.successExitCode", IR_DIRECT_STD_CLI_SUCCESS_EXIT_CODE},
     {"std.cli.usageExitCode", IR_DIRECT_STD_CLI_USAGE_EXIT_CODE},
     {"std.cli.argEquals", IR_DIRECT_STD_CLI_ARG_EQUALS},
+    {"std.cli.command", IR_DIRECT_STD_CLI_COMMAND},
+    {"std.cli.commandOr", IR_DIRECT_STD_CLI_COMMAND_OR},
+    {"std.cli.commandEquals", IR_DIRECT_STD_CLI_COMMAND_EQUALS},
+    {"std.cli.argOr", IR_DIRECT_STD_CLI_ARG_OR},
   };
   for (size_t i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
     if (strcmp(callee_name, specs[i].name) == 0) return specs[i].id;
@@ -2797,12 +2822,81 @@ static bool ir_lower_std_arg_equals_direct_call(const Program *program, IrProgra
   return true;
 }
 
+static bool ir_lower_std_cli_command_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {
+  (void)program;
+  (void)fun;
+  if (id != IR_DIRECT_STD_CLI_COMMAND && id != IR_DIRECT_STD_CLI_COMMAND_OR && id != IR_DIRECT_STD_CLI_COMMAND_EQUALS) {
+    *handled = false;
+    return true;
+  }
+  *handled = true;
+  if (id == IR_DIRECT_STD_CLI_COMMAND) {
+    if (call->args.len != 0) {
+      *handled = false;
+      return true;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET, IR_TYPE_MAYBE_BYTE_VIEW, call->line, call->column);
+    value->left = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 1, call->line, call->column);
+    *out = value;
+    return true;
+  }
+  if (call->args.len != 1) {
+    *handled = false;
+    return true;
+  }
+  IrValue *text = NULL;
+  if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &text)) return false;
+  if (id == IR_DIRECT_STD_CLI_COMMAND_EQUALS) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_EQ, IR_TYPE_BOOL, call->line, call->column);
+    value->left = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 1, call->line, call->column);
+    value->right = text;
+    *out = value;
+    return true;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET_OR, IR_TYPE_BYTE_VIEW, call->line, call->column);
+  value->left = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 1, call->line, call->column);
+  value->right = text;
+  value->element_type = IR_TYPE_U8;
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_cli_arg_or_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {
+  if (id != IR_DIRECT_STD_CLI_ARG_OR) {
+    *handled = false;
+    return true;
+  }
+  *handled = true;
+  if (call->args.len != 2) {
+    *handled = false;
+    return true;
+  }
+  IrValue *index = NULL;
+  IrValue *fallback = NULL;
+  if (!ir_lower_integer_value_arg(program, ir, fun, call, 0, "direct backend std.cli.argOr index must be an integer value", &index) ||
+      !ir_lower_byte_view(program, ir, fun, call->args.items[1], &fallback)) {
+    ir_free_value(index);
+    ir_free_value(fallback);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET_OR, IR_TYPE_BYTE_VIEW, call->line, call->column);
+  value->left = index;
+  value->right = fallback;
+  value->element_type = IR_TYPE_U8;
+  *out = value;
+  return true;
+}
+
 static bool ir_lower_std_args_cli_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {
   if (id == IR_DIRECT_STD_ARGS_LEN) {
     *handled = call->args.len == 0;
     if (*handled) *out = ir_new_value(ir, IR_VALUE_ARGS_LEN, IR_TYPE_USIZE, call->line, call->column);
     return true;
   }
+  if (!ir_lower_std_cli_command_direct_call(program, ir, fun, call, id, handled, out)) return false;
+  if (*handled) return true;
+  if (!ir_lower_std_cli_arg_or_direct_call(program, ir, fun, call, id, handled, out)) return false;
+  if (*handled) return true;
   if (!ir_lower_std_indexed_arg_direct_call(program, ir, fun, call, id, handled, out)) return false;
   if (*handled) return true;
   if (id == IR_DIRECT_STD_ARGS_GET_OR) return ir_lower_std_args_get_or_direct_call(program, ir, fun, call, handled, out);
@@ -3305,6 +3399,49 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if (strcmp(callee_name, "std.rand.nextBelow") == 0 && expr->args.len == 2) {
+        const IrLocal *rng = ir_find_mutable_rand_source_local(ir, fun, expr->args.items[0], callee_name);
+        if (!rng) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *bound = NULL;
+        if (!ir_lower_call_arg(program, ir, fun, expr->args.items[1], IR_TYPE_U32, &bound)) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_RAND_NEXT_BELOW, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->element_type = IR_TYPE_U32;
+        value->local_index = rng->index;
+        value->left = bound;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.rand.rangeU32") == 0 && expr->args.len == 3) {
+        const IrLocal *rng = ir_find_mutable_rand_source_local(ir, fun, expr->args.items[0], callee_name);
+        if (!rng) {
+          free(callee_name);
+          return false;
+        }
+        IrValue *low = NULL;
+        IrValue *high = NULL;
+        if (!ir_lower_call_arg(program, ir, fun, expr->args.items[1], IR_TYPE_U32, &low) ||
+            !ir_lower_call_arg(program, ir, fun, expr->args.items[2], IR_TYPE_U32, &high)) {
+          ir_free_value(low);
+          ir_free_value(high);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_RAND_RANGE_U32, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->element_type = IR_TYPE_U32;
+        value->local_index = rng->index;
+        value->left = low;
+        value->right = high;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (expr->args.len == 0 && ir_is_std_rand_entropy_call(callee_name)) {
         IrValue *value = ir_new_value(ir, IR_VALUE_RAND_ENTROPY_U32, IR_TYPE_U32, expr->line, expr->column);
         free(callee_name);
@@ -3431,6 +3568,185 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if ((strcmp(callee_name, "std.json.validate") == 0 ||
+           strcmp(callee_name, "std.json.validateBytes") == 0 ||
+           strcmp(callee_name, "std.json.streamTokens") == 0 ||
+           strcmp(callee_name, "std.json.streamTokensBytes") == 0 ||
+           strcmp(callee_name, "std.json.validateError") == 0 ||
+           strcmp(callee_name, "std.json.errorOffset") == 0 ||
+           strcmp(callee_name, "std.json.errorLine") == 0 ||
+           strcmp(callee_name, "std.json.errorColumn") == 0) &&
+          expr->args.len == 1) {
+        IrValue *view = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &view)) {
+          free(callee_name);
+          return false;
+        }
+        bool validate = strcmp(callee_name, "std.json.validate") == 0 || strcmp(callee_name, "std.json.validateBytes") == 0;
+        bool stream = strcmp(callee_name, "std.json.streamTokens") == 0 || strcmp(callee_name, "std.json.streamTokensBytes") == 0;
+        IrValueKind kind = validate ? IR_VALUE_JSON_VALIDATE_BYTES : (stream ? IR_VALUE_JSON_STREAM_TOKENS_BYTES : IR_VALUE_JSON_DIAGNOSTIC_BYTES);
+        IrTypeKind type = validate ? IR_TYPE_BOOL : (stream ? IR_TYPE_USIZE : (strcmp(callee_name, "std.json.validateError") == 0 ? IR_TYPE_U32 : IR_TYPE_USIZE));
+        IrValue *value = ir_new_value(ir, kind, type, expr->line, expr->column);
+        if (kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES) {
+          if (strcmp(callee_name, "std.json.validateError") == 0) value->int_value = 0;
+          else if (strcmp(callee_name, "std.json.errorOffset") == 0) value->int_value = 1;
+          else if (strcmp(callee_name, "std.json.errorLine") == 0) value->int_value = 2;
+          else value->int_value = 3;
+        }
+        value->left = view;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.json.field") == 0 && expr->args.len == 2) {
+        IrValue *input = NULL;
+        IrValue *key = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &input) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &key)) {
+          ir_free_value(input);
+          ir_free_value(key);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_JSON_FIELD, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = input;
+        value->right = key;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if ((strcmp(callee_name, "std.json.u32") == 0 ||
+           strcmp(callee_name, "std.json.bool") == 0) &&
+          expr->args.len == 2) {
+        IrValue *input = NULL;
+        IrValue *key = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &input) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &key)) {
+          ir_free_value(input);
+          ir_free_value(key);
+          free(callee_name);
+          return false;
+        }
+        IrTypeKind element = strcmp(callee_name, "std.json.bool") == 0 ? IR_TYPE_BOOL : IR_TYPE_U32;
+        IrValue *value = ir_new_value(ir, IR_VALUE_JSON_LOOKUP_SCALAR, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
+        value->element_type = element;
+        value->int_value = element == IR_TYPE_BOOL ? 1 : 0;
+        value->left = input;
+        value->right = key;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.json.stringDecode") == 0 && expr->args.len == 2) {
+        IrValue *buffer = NULL;
+        IrValue *raw = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buffer) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &raw)) {
+          ir_free_value(buffer);
+          ir_free_value(raw);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_JSON_STRING_DECODE, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buffer;
+        value->right = raw;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.json.writeStringBytes") == 0 && expr->args.len == 2) {
+        IrValue *buffer = NULL;
+        IrValue *text = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buffer) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &text)) {
+          ir_free_value(buffer);
+          ir_free_value(text);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_JSON_WRITE_STRING, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buffer;
+        value->right = text;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      IrJsonWriteOp json_write_op = IR_JSON_WRITE_FIELD_RAW;
+      bool json_write = true;
+      if (strcmp(callee_name, "std.json.writeFieldRaw") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_FIELD_RAW;
+      else if (strcmp(callee_name, "std.json.writeFieldString") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_FIELD_STRING;
+      else if (strcmp(callee_name, "std.json.writeFieldU32") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_FIELD_U32;
+      else if (strcmp(callee_name, "std.json.writeFieldBool") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_FIELD_BOOL;
+      else if (strcmp(callee_name, "std.json.writeObject1String") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_OBJECT1_STRING;
+      else if (strcmp(callee_name, "std.json.writeObject1U32") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_OBJECT1_U32;
+      else if (strcmp(callee_name, "std.json.writeObject1Bool") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_OBJECT1_BOOL;
+      else if (strcmp(callee_name, "std.json.writeObject2Fields") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_OBJECT2_FIELDS;
+      else if (strcmp(callee_name, "std.json.writeObject2StringField") == 0 && expr->args.len == 4) json_write_op = IR_JSON_WRITE_OBJECT2_STRING_FIELD;
+      else if (strcmp(callee_name, "std.json.writeObject2U32Field") == 0 && expr->args.len == 4) json_write_op = IR_JSON_WRITE_OBJECT2_U32_FIELD;
+      else if (strcmp(callee_name, "std.json.writeObject2BoolField") == 0 && expr->args.len == 4) json_write_op = IR_JSON_WRITE_OBJECT2_BOOL_FIELD;
+      else if (strcmp(callee_name, "std.json.writeArray2Strings") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_ARRAY2_STRINGS;
+      else if (strcmp(callee_name, "std.json.writeArray2U32") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_ARRAY2_U32;
+      else if (strcmp(callee_name, "std.json.writeArray2Bools") == 0 && expr->args.len == 3) json_write_op = IR_JSON_WRITE_ARRAY2_BOOLS;
+      else json_write = false;
+      if (json_write) {
+        IrValue *value = ir_new_value(ir, IR_VALUE_JSON_WRITE_RUNTIME, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->int_value = (unsigned long long)json_write_op;
+        for (size_t i = 0; i < expr->args.len; i++) {
+          IrTypeKind type = IR_TYPE_BYTE_VIEW;
+          if ((json_write_op == IR_JSON_WRITE_FIELD_U32 || json_write_op == IR_JSON_WRITE_OBJECT1_U32) && i == 2) type = IR_TYPE_U32;
+          if ((json_write_op == IR_JSON_WRITE_FIELD_BOOL || json_write_op == IR_JSON_WRITE_OBJECT1_BOOL) && i == 2) type = IR_TYPE_BOOL;
+          if ((json_write_op == IR_JSON_WRITE_OBJECT2_U32_FIELD || json_write_op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) && i == 2) type = json_write_op == IR_JSON_WRITE_OBJECT2_U32_FIELD ? IR_TYPE_U32 : IR_TYPE_BOOL;
+          if ((json_write_op == IR_JSON_WRITE_ARRAY2_U32 || json_write_op == IR_JSON_WRITE_ARRAY2_BOOLS) && i > 0) type = json_write_op == IR_JSON_WRITE_ARRAY2_U32 ? IR_TYPE_U32 : IR_TYPE_BOOL;
+          IrValue *arg = NULL;
+          bool ok = type == IR_TYPE_BYTE_VIEW ?
+            ir_lower_byte_view(program, ir, fun, expr->args.items[i], &arg) :
+            ir_lower_call_arg(program, ir, fun, expr->args.items[i], type, &arg);
+          if (!ok) {
+            ir_free_value(value);
+            free(callee_name);
+            return false;
+          }
+          ir_value_push_arg(ir, value, arg);
+        }
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.json.string") == 0 && expr->args.len == 3) {
+        IrValue *buffer = NULL;
+        IrValue *input = NULL;
+        IrValue *key = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buffer) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &input) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[2], &key)) {
+          ir_free_value(buffer);
+          ir_free_value(input);
+          ir_free_value(key);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_JSON_STRING_FIELD, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buffer;
+        value->right = input;
+        value->index = key;
+        if (ir->direct_runtime_helper_count < 1) ir->direct_runtime_helper_count = 1;
+        if (ir->direct_host_runtime_import_count < 1) ir->direct_host_runtime_import_count = 1;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (strcmp(callee_name, "std.json.decodeBoundary") == 0 && expr->args.len == 0) {
         IrValue *value = NULL;
         if (!ir_make_string_literal_value(ir, "typed-decode-explicit-shape", expr->line, expr->column, &value)) {
@@ -3440,6 +3756,24 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         free(callee_name);
         *out = value;
         return true;
+      }
+      if ((strcmp(callee_name, "std.json.errorName") == 0 || strcmp(callee_name, "std.json.errorExpected") == 0) && expr->args.len == 1) {
+        IrValue *code = NULL;
+        if (!ir_lower_call_arg(program, ir, fun, expr->args.items[0], IR_TYPE_U32, &code)) {
+          free(callee_name);
+          return false;
+        }
+        if (!code || code->kind != IR_VALUE_INT) {
+          ir_free_value(code);
+          ir_mark_unsupported(ir, "direct backend std.json error label expects a constant status code", expr->args.items[0] ? expr->args.items[0]->line : expr->line, expr->args.items[0] ? expr->args.items[0]->column : expr->column, "non-constant status code");
+          free(callee_name);
+          return false;
+        }
+        const char *label = ir_std_json_error_label(code->int_value, strcmp(callee_name, "std.json.errorExpected") == 0);
+        ir_free_value(code);
+        bool ok = ir_make_string_literal_value(ir, label, expr->line, expr->column, out);
+        free(callee_name);
+        return ok;
       }
       int json_error_code = ir_std_json_error_code(callee_name);
       if (json_error_code >= 0 && expr->args.len == 0) {

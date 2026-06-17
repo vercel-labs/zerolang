@@ -1,0 +1,17 @@
+pub fn main(world: World) -> Void raises {
+    var abc_hex_buffer: [64]u8 = [0_u8; 64]
+    var empty_hex_buffer: [64]u8 = [0_u8; 64]
+    var hmac_hex_buffer: [64]u8 = [0_u8; 64]
+    var digest_buffer: [32]u8 = [0_u8; 32]
+    var hmac_digest_buffer: [32]u8 = [0_u8; 32]
+    var tiny_buffer: [31]u8 = [0_u8; 31]
+    let abc_hex: Maybe<Span<u8>> = std.crypto.sha256Hex(abc_hex_buffer, std.mem.span("abc"))
+    let empty_hex: Maybe<Span<u8>> = std.crypto.sha256Hex(empty_hex_buffer, std.mem.span(""))
+    let digest: Maybe<Span<u8>> = std.crypto.sha256(digest_buffer, std.mem.span("abc"))
+    let hmac_hex: Maybe<Span<u8>> = std.crypto.hmacSha256Hex(hmac_hex_buffer, std.mem.span("key"), std.mem.span("The quick brown fox jumps over the lazy dog"))
+    let hmac_digest: Maybe<Span<u8>> = std.crypto.hmacSha256(hmac_digest_buffer, std.mem.span("key"), std.mem.span("The quick brown fox jumps over the lazy dog"))
+    let tiny_hmac: Maybe<Span<u8>> = std.crypto.hmacSha256(tiny_buffer, std.mem.span("key"), std.mem.span("message"))
+    if abc_hex.has && empty_hex.has && digest.has && hmac_hex.has && hmac_digest.has && !tiny_hmac.has && std.mem.eql(abc_hex.value, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") && std.mem.eql(empty_hex.value, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") && std.mem.eql(hmac_hex.value, "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8") && std.mem.len(digest.value) == 32 && digest.value[0] == 186_u8 && digest.value[1] == 120_u8 && digest.value[30] == 21_u8 && digest.value[31] == 173_u8 && std.mem.len(hmac_digest.value) == 32 && hmac_digest.value[0] == 247_u8 && hmac_digest.value[1] == 188_u8 && hmac_digest.value[30] == 60_u8 && hmac_digest.value[31] == 216_u8 {
+        check world.out.write("crypto sha256 hmac ok\n")
+    }
+}

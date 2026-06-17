@@ -1,0 +1,73 @@
+fn diag_locations_ok() -> Bool {
+    let source: Span<u8> = "alpha\nbeta\r\ngamma"
+    if std.diag.line(source, 0) != 1 {
+        return false
+    }
+    if std.diag.line(source, 6) != 2 {
+        return false
+    }
+    if std.diag.column(source, 7) != 2 {
+        return false
+    }
+    if std.diag.lineStart(source, 7) != 6 {
+        return false
+    }
+    if std.diag.lineEnd(source, 7) != 10 {
+        return false
+    }
+    if !std.mem.eql(std.diag.lineText(source, 7), "beta") {
+        return false
+    }
+    if std.diag.line(source, 100) != 3 {
+        return false
+    }
+    if std.diag.column(source, 100) != 6 {
+        return false
+    }
+    return true
+}
+
+fn diag_ranges_ok() -> Bool {
+    let source: Span<u8> = "0123456789"
+    if std.diag.rangeLen(source, 2, 5) != 3 {
+        return false
+    }
+    if std.diag.rangeLen(source, 8, 4) != 0 {
+        return false
+    }
+    if std.diag.rangeLen(source, 8, 40) != 2 {
+        return false
+    }
+    if !std.mem.eql(std.diag.rangeText(source, 2, 5), "234") {
+        return false
+    }
+    if !std.mem.eql(std.diag.rangeText(source, 8, 4), "") {
+        return false
+    }
+    return std.mem.eql(std.diag.rangeText(source, 8, 40), "89")
+}
+
+fn diag_format_ok() -> Bool {
+    let source: Span<u8> = "alpha\nbeta\r\ngamma"
+    var storage: [32]u8 = [0_u8; 32]
+    let formatted: Maybe<Span<u8>> = std.diag.formatOffsetLocation(storage, "input.0", source, 7)
+    var direct_storage: [32]u8 = [0_u8; 32]
+    let direct: Maybe<Span<u8>> = std.diag.formatLocation(direct_storage, "input.0", 2, 2)
+    var small_storage: [4]u8 = [0_u8; 4]
+    let small: Maybe<Span<u8>> = std.diag.formatLocation(small_storage, "input.0", 2, 2)
+    if !formatted.has || !direct.has {
+        return false
+    }
+    if small.has {
+        return false
+    }
+    return std.mem.eql(formatted.value, "input.0:2:2") && std.mem.eql(direct.value, "input.0:2:2")
+}
+
+pub fn main(world: World) -> Void raises {
+    if diag_locations_ok() && diag_ranges_ok() && diag_format_ok() {
+        check world.out.write("std diag ok\n")
+    } else {
+        check world.out.write("std diag failed\n")
+    }
+}

@@ -573,6 +573,13 @@ static ZAArch64DirectRuntimeHelper a64_str_runtime_helper(IrStrOp op) {
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
       return A64_DIRECT_RUNTIME_STR_BUFFER_OP;
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
+      return A64_DIRECT_RUNTIME_CRYPTO_DIGEST;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+      return A64_DIRECT_RUNTIME_CRYPTO_HMAC_SHA256;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      return A64_DIRECT_RUNTIME_CRYPTO_HMAC_SHA256_HEX;
     case IR_STR_OP_CONCAT:
       return A64_DIRECT_RUNTIME_STR_CONCAT;
     case IR_STR_OP_REPEAT:
@@ -601,6 +608,10 @@ static ZAArch64DirectRuntimeHelper a64_str_runtime_helper(IrStrOp op) {
   return A64_DIRECT_RUNTIME_HELPER_COUNT;
 }
 
+static uint32_t a64_crypto_digest_op(IrStrOp op) {
+  return op == IR_STR_OP_CRYPTO_SHA256_HEX ? 1u : 0u;
+}
+
 static void a64_emit_encoded_len_to_maybe_byte_view_regs(ZBuf *text) {
   z_aarch64_emit_mov_w(text, 2, 0);
   z_aarch64_emit_movz_w(text, 0, 0);
@@ -620,12 +631,14 @@ static bool a64_emit_str_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, co
     case IR_STR_OP_COPY:
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
       if (value->arg_len != 2) return a64_diag(diag, "direct AArch64 std.str buffer helper requires two arguments", value->line, value->column, "invalid std.str arity");
       if (!a64_emit_byte_view_to_scratch(text, fun, value->args[0], scratch_slot, frame_size, scratch_slot, ctx, diag)) return false;
       if (!a64_emit_byte_view_to_scratch(text, fun, value->args[1], scratch_slot + 2, frame_size, scratch_slot, ctx, diag)) return false;
       if (!a64_emit_load_byte_view_from_scratch(text, value->args[0], 0, 1, scratch_slot, diag)) return false;
       if (!a64_emit_load_byte_view_from_scratch(text, value->args[1], 2, 3, scratch_slot + 2, diag)) return false;
-      z_aarch64_emit_movz_w(text, 4, (uint32_t)op);
+      z_aarch64_emit_movz_w(text, 4, helper == A64_DIRECT_RUNTIME_CRYPTO_DIGEST ? a64_crypto_digest_op(op) : (uint32_t)op);
       {
         size_t patch = z_aarch64_emit_bl_placeholder(text);
         if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
@@ -635,7 +648,9 @@ static bool a64_emit_str_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, co
       a64_emit_encoded_len_to_maybe_byte_view_regs(text);
       return true;
     case IR_STR_OP_CONCAT:
-      if (value->arg_len != 3) return a64_diag(diag, "direct AArch64 std.str.concat requires three arguments", value->line, value->column, "invalid std.str arity");
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      if (value->arg_len != 3) return a64_diag(diag, "direct AArch64 std.str three-view helper requires three arguments", value->line, value->column, "invalid std.str arity");
       if (!a64_emit_byte_view_to_scratch(text, fun, value->args[0], scratch_slot, frame_size, scratch_slot, ctx, diag)) return false;
       if (!a64_emit_byte_view_to_scratch(text, fun, value->args[1], scratch_slot + 2, frame_size, scratch_slot, ctx, diag)) return false;
       if (!a64_emit_byte_view_to_scratch(text, fun, value->args[2], scratch_slot + 4, frame_size, scratch_slot, ctx, diag)) return false;
@@ -906,8 +921,9 @@ static bool a64_emit_sort_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, c
 static bool a64_emit_json_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (!value || !value->left) return a64_diag(diag, "direct AArch64 JSON helper requires a byte view", value ? value->line : 1, value ? value->column : 1, "invalid JSON input");
   if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES) z_aarch64_emit_movz_w(text, 2, (uint32_t)value->int_value);
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_JSON_PARSE_BYTES, diag, value)) return false;
+  if (!a64_record_runtime_patch(ctx, patch, value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ? A64_DIRECT_RUNTIME_JSON_DIAGNOSTIC : A64_DIRECT_RUNTIME_JSON_PARSE_BYTES, diag, value)) return false;
   if (value->kind == IR_VALUE_JSON_VALIDATE_BYTES) {
     z_aarch64_emit_cmp_x(text, 0, 31);
     z_aarch64_emit_movz_w(text, reg, 0);
@@ -925,6 +941,201 @@ static bool a64_emit_json_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, c
   } else if (reg != 0) {
     z_aarch64_emit_mov_x(text, reg, 0);
   }
+  return true;
+}
+
+static bool a64_emit_json_field_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) return a64_diag(diag, "direct AArch64 JSON field helper requires bytes and key", value ? value->line : 1, value ? value->column : 1, "invalid JSON field input");
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_JSON_FIELD, diag, value)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot + 2, value, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 8, IR_TYPE_U64, scratch_slot + 2, value, diag)) return false;
+  z_aarch64_emit_mov_w(text, 9, 8);
+  z_aarch64_emit_add_x_reg(text, 1, 1, 9);
+  z_aarch64_emit_lsr_x_imm(text, 2, 8, 32);
+  z_aarch64_emit_movz_w(text, 10, 0x7fffffffu);
+  z_aarch64_emit_and_w_reg(text, 2, 2, 10);
+  z_aarch64_emit_lsr_x_imm(text, 0, 8, 63);
+  return true;
+}
+
+static bool a64_emit_json_lookup_scalar_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) return a64_diag(diag, "direct AArch64 JSON scalar helper requires bytes and key", value ? value->line : 1, value ? value->column : 1, "invalid JSON scalar input");
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  z_aarch64_emit_movz_w(text, 4, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_JSON_LOOKUP_SCALAR, diag, value)) return false;
+  a64_emit_parse_u32_result_to_maybe_regs(text);
+  return true;
+}
+
+static bool a64_emit_json_string_decode_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) return a64_diag(diag, "direct AArch64 JSON string decode helper requires a buffer and string", value ? value->line : 1, value ? value->column : 1, "invalid JSON string decode input");
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  ZAArch64DirectRuntimeHelper helper = value->kind == IR_VALUE_JSON_WRITE_STRING ? A64_DIRECT_RUNTIME_JSON_WRITE_STRING : A64_DIRECT_RUNTIME_JSON_STRING_DECODE;
+  if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot + 2, value, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 8, IR_TYPE_U64, scratch_slot + 2, value, diag)) return false;
+  z_aarch64_emit_mov_w(text, 9, 8);
+  z_aarch64_emit_add_x_reg(text, 1, 1, 9);
+  z_aarch64_emit_lsr_x_imm(text, 2, 8, 32);
+  z_aarch64_emit_movz_w(text, 10, 0x7fffffffu);
+  z_aarch64_emit_and_w_reg(text, 2, 2, 10);
+  z_aarch64_emit_lsr_x_imm(text, 0, 8, 63);
+  return true;
+}
+
+static bool a64_emit_json_string_field_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) return a64_diag(diag, "direct AArch64 JSON string field helper requires a buffer, bytes, and key", value ? value->line : 1, value ? value->column : 1, "invalid JSON string field input");
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!a64_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->index, 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!a64_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_JSON_STRING_FIELD, diag, value)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot + 4, value, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 8, IR_TYPE_U64, scratch_slot + 4, value, diag)) return false;
+  z_aarch64_emit_mov_w(text, 9, 8);
+  z_aarch64_emit_add_x_reg(text, 1, 1, 9);
+  z_aarch64_emit_lsr_x_imm(text, 2, 8, 32);
+  z_aarch64_emit_movz_w(text, 10, 0x7fffffffu);
+  z_aarch64_emit_and_w_reg(text, 2, 2, 10);
+  z_aarch64_emit_lsr_x_imm(text, 0, 8, 63);
+  return true;
+}
+
+static ZAArch64DirectRuntimeHelper a64_json_write_runtime_helper(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW: return A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_RAW;
+    case IR_JSON_WRITE_FIELD_STRING: return A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_STRING;
+    case IR_JSON_WRITE_FIELD_U32: return A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_U32;
+    case IR_JSON_WRITE_FIELD_BOOL: return A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_BOOL;
+    case IR_JSON_WRITE_OBJECT1_STRING: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT1_STRING;
+    case IR_JSON_WRITE_OBJECT1_U32: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT1_U32;
+    case IR_JSON_WRITE_OBJECT1_BOOL: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT1_BOOL;
+    case IR_JSON_WRITE_OBJECT2_FIELDS: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_FIELDS;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_STRING_FIELD;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_U32_FIELD;
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD: return A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_BOOL_FIELD;
+    case IR_JSON_WRITE_ARRAY2_STRINGS: return A64_DIRECT_RUNTIME_JSON_WRITE_ARRAY2_STRINGS;
+    case IR_JSON_WRITE_ARRAY2_U32: return A64_DIRECT_RUNTIME_JSON_WRITE_ARRAY2_U32;
+    case IR_JSON_WRITE_ARRAY2_BOOLS: return A64_DIRECT_RUNTIME_JSON_WRITE_ARRAY2_BOOLS;
+  }
+  return A64_DIRECT_RUNTIME_HELPER_COUNT;
+}
+
+static bool a64_emit_json_writer_store_view_arg(ZBuf *text, const IrFunction *fun, const IrValue *value, size_t arg_index, unsigned pair_slot, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || arg_index >= value->arg_len) return a64_diag(diag, "direct AArch64 JSON writer is missing a span argument", value ? value->line : 1, value ? value->column : 1, "missing JSON writer argument");
+  if (!a64_emit_byte_view_pair_at(text, fun, value->args[arg_index], 8, 9, frame_size, scratch_slot + pair_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 8, IR_TYPE_U64, scratch_slot + pair_slot, value->args[arg_index], diag)) return false;
+  return a64_emit_store_scratch(text, 9, IR_TYPE_U32, scratch_slot + pair_slot + 1, value->args[arg_index], diag);
+}
+
+static bool a64_emit_json_writer_store_scalar_arg(ZBuf *text, const IrFunction *fun, const IrValue *value, size_t arg_index, unsigned slot, IrTypeKind type, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || arg_index >= value->arg_len) return a64_diag(diag, "direct AArch64 JSON writer is missing a scalar argument", value ? value->line : 1, value ? value->column : 1, "missing JSON writer argument");
+  if (!a64_emit_value_to_reg_at(text, fun, value->args[arg_index], 8, frame_size, scratch_slot + slot, ctx, diag)) return false;
+  return a64_emit_store_scratch(text, 8, type, scratch_slot + slot, value->args[arg_index], diag);
+}
+
+static bool a64_emit_json_writer_load_view_arg(ZBuf *text, const IrValue *value, size_t arg_index, unsigned pair_slot, unsigned ptr_reg, unsigned len_reg, unsigned scratch_slot, ZDiag *diag) {
+  if (!a64_emit_load_scratch(text, ptr_reg, IR_TYPE_U64, scratch_slot + pair_slot, value->args[arg_index], diag)) return false;
+  return a64_emit_load_scratch(text, len_reg, IR_TYPE_U32, scratch_slot + pair_slot + 1, value->args[arg_index], diag);
+}
+
+static bool a64_emit_json_write_runtime_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len < 3) return a64_diag(diag, "direct AArch64 JSON writer requires arguments", value ? value->line : 1, value ? value->column : 1, "invalid JSON writer");
+  IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+  ZAArch64DirectRuntimeHelper helper = a64_json_write_runtime_helper(op);
+  if (helper == A64_DIRECT_RUNTIME_HELPER_COUNT) return a64_diag(diag, "direct AArch64 JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+  if (!a64_emit_json_writer_store_view_arg(text, fun, value, 0, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 1, 2, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 2, 4, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 0, 0, 0, 1, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 1, 2, 2, 3, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 2, 4, 4, 5, scratch_slot, diag)) return false;
+      break;
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 1, 2, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_scalar_arg(text, fun, value, 2, 4, op == IR_JSON_WRITE_FIELD_BOOL || op == IR_JSON_WRITE_OBJECT1_BOOL ? IR_TYPE_BOOL : IR_TYPE_U32, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 0, 0, 0, 1, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 1, 2, 2, 3, scratch_slot, diag)) return false;
+      if (!a64_emit_load_scratch(text, 4, op == IR_JSON_WRITE_FIELD_BOOL || op == IR_JSON_WRITE_OBJECT1_BOOL ? IR_TYPE_BOOL : IR_TYPE_U32, scratch_slot + 4, value->args[2], diag)) return false;
+      break;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 1, 2, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 2, 4, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 3, 6, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 0, 0, 0, 1, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 1, 2, 2, 3, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 2, 4, 4, 5, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 3, 6, 6, 7, scratch_slot, diag)) return false;
+      break;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 1, 2, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_scalar_arg(text, fun, value, 2, 4, op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD ? IR_TYPE_BOOL : IR_TYPE_U32, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_view_arg(text, fun, value, 3, 5, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 0, 0, 0, 1, scratch_slot, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 1, 2, 2, 3, scratch_slot, diag)) return false;
+      if (!a64_emit_load_scratch(text, 4, op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD ? IR_TYPE_BOOL : IR_TYPE_U32, scratch_slot + 4, value->args[2], diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 3, 5, 5, 6, scratch_slot, diag)) return false;
+      break;
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      if (!a64_emit_json_writer_store_scalar_arg(text, fun, value, 1, 2, op == IR_JSON_WRITE_ARRAY2_BOOLS ? IR_TYPE_BOOL : IR_TYPE_U32, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_store_scalar_arg(text, fun, value, 2, 3, op == IR_JSON_WRITE_ARRAY2_BOOLS ? IR_TYPE_BOOL : IR_TYPE_U32, frame_size, scratch_slot, ctx, diag)) return false;
+      if (!a64_emit_json_writer_load_view_arg(text, value, 0, 0, 0, 1, scratch_slot, diag)) return false;
+      if (!a64_emit_load_scratch(text, 2, op == IR_JSON_WRITE_ARRAY2_BOOLS ? IR_TYPE_BOOL : IR_TYPE_U32, scratch_slot + 2, value->args[1], diag)) return false;
+      if (!a64_emit_load_scratch(text, 3, op == IR_JSON_WRITE_ARRAY2_BOOLS ? IR_TYPE_BOOL : IR_TYPE_U32, scratch_slot + 3, value->args[2], diag)) return false;
+      break;
+  }
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
+  if (!a64_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot + 7, value, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->args[0], diag)) return false;
+  if (!a64_emit_load_scratch(text, 8, IR_TYPE_U64, scratch_slot + 7, value, diag)) return false;
+  z_aarch64_emit_mov_w(text, 9, 8);
+  z_aarch64_emit_add_x_reg(text, 1, 1, 9);
+  z_aarch64_emit_lsr_x_imm(text, 2, 8, 32);
+  z_aarch64_emit_movz_w(text, 10, 0x7fffffffu);
+  z_aarch64_emit_and_w_reg(text, 2, 2, 10);
+  z_aarch64_emit_lsr_x_imm(text, 0, 8, 63);
   return true;
 }
 
@@ -1044,6 +1255,63 @@ static bool a64_emit_compare_to_reg_at(ZBuf *text, const IrFunction *fun, const 
   z_aarch64_emit_movz_w(text, reg, 1);
   z_aarch64_patch_cond19(text, false_patch, text->len);
   return true;
+}
+
+static bool a64_emit_rand_bounded_from_w8(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, bool add_low) {
+  size_t none = z_aarch64_emit_cbz_w_placeholder(text, 8);
+
+  z_aarch64_emit_movz_w(text, 9, 0);
+  z_aarch64_emit_sub_w_reg(text, 9, 9, 8);
+  z_aarch64_emit_div_reg(text, 10, 9, 8, true, false);
+  z_aarch64_emit_msub_reg(text, 9, 10, 8, 9, false);
+
+  size_t loop = text->len;
+  a64_emit_load_local_w(text, fun, 11, value->local_index, 0, frame_size);
+  z_aarch64_emit_movz_w(text, 12, 1664525u);
+  z_aarch64_emit_mul_w_reg(text, 11, 11, 12);
+  z_aarch64_emit_movz_w(text, 12, 1013904223u);
+  z_aarch64_emit_add_w_reg(text, 11, 11, 12);
+  a64_emit_store_local_w(text, fun, 11, value->local_index, 0, frame_size);
+  z_aarch64_emit_cmp_w(text, 11, 9);
+  size_t retry = z_aarch64_emit_b_cond_placeholder(text, 3);
+
+  z_aarch64_emit_div_reg(text, 12, 11, 8, true, false);
+  z_aarch64_emit_msub_reg(text, 1, 12, 8, 11, false);
+  if (add_low) z_aarch64_emit_add_w_reg(text, 1, 1, 13);
+  z_aarch64_emit_movz_w(text, 0, 1);
+  size_t done = z_aarch64_emit_b_placeholder(text);
+
+  z_aarch64_patch_cond19(text, retry, loop);
+  z_aarch64_patch_cond19(text, none, text->len);
+  z_aarch64_emit_movz_w(text, 0, 0);
+  z_aarch64_emit_movz_w(text, 1, 0);
+  z_aarch64_patch_branch26(text, done, text->len);
+  return true;
+}
+
+static bool a64_emit_rand_maybe_to_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || value->local_index >= fun->local_len) return a64_diag(diag, "direct AArch64 std.rand bounded local is out of range", value ? value->line : 1, value ? value->column : 1, "invalid RandSource");
+  if (value->kind == IR_VALUE_RAND_NEXT_BELOW) {
+    if (!a64_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+    return a64_emit_rand_bounded_from_w8(text, fun, value, frame_size, false);
+  }
+  if (value->kind == IR_VALUE_RAND_RANGE_U32) {
+    if (!a64_emit_value_to_reg_at(text, fun, value->left, 13, frame_size, scratch_slot, ctx, diag)) return false;
+    if (!a64_emit_store_scratch(text, 13, IR_TYPE_U32, scratch_slot, value->left, diag)) return false;
+    if (!a64_emit_value_to_reg_at(text, fun, value->right, 8, frame_size, scratch_slot + 1, ctx, diag)) return false;
+    if (!a64_emit_load_scratch(text, 13, IR_TYPE_U32, scratch_slot, value->left, diag)) return false;
+    z_aarch64_emit_cmp_w(text, 8, 13);
+    size_t empty = z_aarch64_emit_b_cond_placeholder(text, 9);
+    z_aarch64_emit_sub_w_reg(text, 8, 8, 13);
+    bool ok = a64_emit_rand_bounded_from_w8(text, fun, value, frame_size, true);
+    size_t done = z_aarch64_emit_b_placeholder(text);
+    z_aarch64_patch_cond19(text, empty, text->len);
+    z_aarch64_emit_movz_w(text, 0, 0);
+    z_aarch64_emit_movz_w(text, 1, 0);
+    z_aarch64_patch_branch26(text, done, text->len);
+    return ok;
+  }
+  return a64_diag(diag, "direct AArch64 std.rand bounded helper is invalid", value->line, value->column, "invalid rand helper");
 }
 
 static bool a64_emit_byte_copy_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
@@ -1354,7 +1622,26 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
       return a64_emit_json_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_JSON_FIELD:
+      (void)reg;
+      return a64_emit_json_field_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+      (void)reg;
+      return a64_emit_json_lookup_scalar_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_JSON_STRING_DECODE:
+      (void)reg;
+      return a64_emit_json_string_decode_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_JSON_WRITE_STRING:
+      (void)reg;
+      return a64_emit_json_string_decode_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_JSON_WRITE_RUNTIME:
+      (void)reg;
+      return a64_emit_json_write_runtime_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_JSON_STRING_FIELD:
+      (void)reg;
+      return a64_emit_json_string_field_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
     case IR_VALUE_HTTP_REQUEST_PATH:
       (void)reg;
@@ -1369,6 +1656,10 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
       a64_emit_store_local_w(text, fun, 8, value->local_index, 0, frame_size);
       if (reg != 8) z_aarch64_emit_mov_w(text, reg, 8);
       return true;
+    case IR_VALUE_RAND_NEXT_BELOW:
+    case IR_VALUE_RAND_RANGE_U32:
+      (void)reg;
+      return a64_emit_rand_maybe_to_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_MAYBE_HAS:
       if (value->local_index >= fun->local_len ||
           (fun->locals[value->local_index].type != IR_TYPE_MAYBE_BYTE_VIEW && fun->locals[value->local_index].type != IR_TYPE_MAYBE_SCALAR)) {
@@ -1466,6 +1757,11 @@ static bool a64_emit_local_set(ZBuf *text, const IrFunction *fun, const IrInstr 
          instr->value->kind == IR_VALUE_FMT_I32 ||
          instr->value->kind == IR_VALUE_FMT_U32 ||
          instr->value->kind == IR_VALUE_FMT_USIZE ||
+         instr->value->kind == IR_VALUE_JSON_FIELD ||
+         instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+         instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+         instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+         instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
          instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
          instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
       if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
@@ -1491,7 +1787,10 @@ static bool a64_emit_local_set(ZBuf *text, const IrFunction *fun, const IrInstr 
          instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
          instr->value->kind == IR_VALUE_PARSE_I32 ||
          instr->value->kind == IR_VALUE_PARSE_U32 ||
-         instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+         instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+         instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+         instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
+         instr->value->kind == IR_VALUE_RAND_RANGE_U32) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
       if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
       a64_emit_store_local_w(text, fun, 0, instr->local_index, 0, frame_size);
       a64_emit_store_local_x(text, fun, 1, instr->local_index, 8, frame_size);
@@ -1634,6 +1933,11 @@ static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
            instr->value->kind == IR_VALUE_FMT_I32 ||
            instr->value->kind == IR_VALUE_FMT_U32 ||
            instr->value->kind == IR_VALUE_FMT_USIZE ||
+           instr->value->kind == IR_VALUE_JSON_FIELD ||
+           instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+           instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+           instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+           instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
            instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
            instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
         if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
@@ -1659,7 +1963,10 @@ static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
            instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
            instr->value->kind == IR_VALUE_PARSE_I32 ||
            instr->value->kind == IR_VALUE_PARSE_U32 ||
-           instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
+           instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+           instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+           instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
+           instr->value->kind == IR_VALUE_RAND_RANGE_U32) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
         if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
       } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
         z_aarch64_emit_movz_w(text, 0, instr->value->data_len ? 1u : 0u);

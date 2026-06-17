@@ -35,9 +35,9 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.regex`: compile-once and one-shot regular expression matching/search/split/replace for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes and offsets.
 - `std.inet`: target-neutral IPv4/IPv6/hostname literal validation and parsing; no network capability needed.
 - `std.time`: duration construction, conversion, comparison, elapsed-window helpers, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
-- `std.rand`: explicit deterministic random sources, random bits, target entropy helpers, and caller-buffer entropy IDs.
-- `std.crypto`: small hash, fixed-width hash text, byte-oriented crypto helpers, and caller-buffer IDs.
-- `std.json`: explicit-buffer JSON validation, structured status codes, object/array cursor lookup, typed scalar decode, parsing, and string/object writing helpers.
+- `std.rand`: explicit deterministic random sources, random bits, unbiased bounded/range helpers, target entropy helpers, and caller-buffer entropy IDs.
+- `std.crypto`: small hashes, SHA-256 digest writers, fixed-width hash text, byte-oriented crypto helpers, and caller-buffer IDs.
+- `std.json`: explicit-buffer JSON validation, structured status/location diagnostics, object/array cursor lookup, typed scalar decode, parsing, and string/object writing helpers.
 - `std.toml`: no-allocation TOML validation, shallow/dotted field lookup, and typed scalar decode helpers.
 - `std.url`: target-neutral URL splitting, percent/query/form encoding and decoding, query/form lookup, and query append helpers.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
@@ -308,8 +308,10 @@ pub fn main() -> Void {
     var rng: RandSource = std.rand.seed(7_u32)
     let first: u32 = std.rand.nextU32(&mut rng)
     let bit: Bool = std.rand.nextBool(&mut rng)
+    let bounded: Maybe<u32> = std.rand.nextBelow(&mut rng, 10_u32)
+    let ranged: Maybe<u32> = std.rand.rangeU32(&mut rng, 40_u32, 50_u32)
     let delay: Duration = std.time.add(std.time.ms(250), std.time.seconds(1))
-    expect first == 1025555898_u32 && bit && std.time.asMsFloor(delay) == 1250
+    expect first == 1025555898_u32 && bit && bounded.has && ranged.has && std.time.asMsFloor(delay) == 1250
 }
 ```
 
@@ -383,20 +385,23 @@ command() -> Maybe<String>
 commandOr(arg0: String) -> String
 commandEquals(arg0: String) -> Bool
 argOr(arg0: usize, arg1: String) -> String
-argU32Or(arg0: usize, arg1: u32) -> u32
 hasFlag(arg0: String) -> Bool
 optionValue(arg0: String) -> Maybe<String>
 optionValueOr(arg0: String, arg1: String) -> String
-optionBool(arg0: String) -> Maybe<Bool>
-optionBoolOr(arg0: String, arg1: Bool) -> Bool
-optionI32(arg0: String) -> Maybe<i32>
-optionI32Or(arg0: String, arg1: i32) -> i32
 optionU32(arg0: String) -> Maybe<u32>
-optionU32Or(arg0: String, arg1: u32) -> u32
-optionUsize(arg0: String) -> Maybe<usize>
-optionUsizeOr(arg0: String, arg1: usize) -> usize
 successExitCode() -> i32
 usageExitCode() -> i32
+isHelp(arg0: Span<u8>) -> Bool
+needsHelp() -> Bool
+commandIn2(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Bool
+commandIn3(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Bool
+formatUsage(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+formatCommand(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+formatOption(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+formatError(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+formatUnknownCommand(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+formatMissingOperand(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+formatInvalidOption(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ### std.codec
@@ -571,6 +576,10 @@ hashHex32(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 hmacHex32(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 stableId32(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 randomId32(arg0: MutSpan<u8>) -> Maybe<Span<u8>>
+sha256(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+sha256Hex(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+hmacSha256(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+hmacSha256Hex(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 ```
 
 ### std.csv
@@ -585,6 +594,20 @@ encodedFieldLen(arg0: Span<u8>) -> usize
 writeField(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 writeRecord2(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 writeRecord3(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+```
+
+### std.diag
+
+```text
+column(arg0: Span<u8>, arg1: usize) -> usize
+formatLocation(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize, arg3: usize) -> Maybe<Span<u8>>
+formatOffsetLocation(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: usize) -> Maybe<Span<u8>>
+line(arg0: Span<u8>, arg1: usize) -> usize
+lineEnd(arg0: Span<u8>, arg1: usize) -> usize
+lineStart(arg0: Span<u8>, arg1: usize) -> usize
+lineText(arg0: Span<u8>, arg1: usize) -> Span<u8>
+rangeLen(arg0: Span<u8>, arg1: usize, arg2: usize) -> usize
+rangeText(arg0: Span<u8>, arg1: usize, arg2: usize) -> Span<u8>
 ```
 
 ### std.env
@@ -944,7 +967,11 @@ errorNone() -> u32
 errorInvalid() -> u32
 errorTrailing() -> u32
 errorName(arg0: u32) -> String
+errorExpected(arg0: u32) -> String
 validateError(arg0: Span<u8>) -> u32
+errorOffset(arg0: Span<u8>) -> usize
+errorLine(arg0: Span<u8>) -> usize
+errorColumn(arg0: Span<u8>) -> usize
 field(arg0: Span<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 objectFieldCount(arg0: Span<u8>) -> Maybe<usize>
 objectKey(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: usize) -> Maybe<Span<u8>>
@@ -1216,6 +1243,8 @@ runCode(arg0: String) -> i32
 seed(arg0: u32) -> RandSource
 nextU32(arg0: mutref<RandSource>) -> u32
 nextBool(arg0: mutref<RandSource>) -> Bool
+nextBelow(arg0: mutref<RandSource>, arg1: u32) -> Maybe<u32>
+rangeU32(arg0: mutref<RandSource>, arg1: u32, arg2: u32) -> Maybe<u32>
 entropyU32() -> u32
 entropySeed() -> RandSource
 entropyHex32(arg0: MutSpan<u8>) -> Maybe<Span<u8>>

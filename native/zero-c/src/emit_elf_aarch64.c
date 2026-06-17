@@ -92,6 +92,26 @@ static bool a64_elf_record_call_patch(void *user, size_t patch_offset, unsigned 
 static const char *a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper helper) {
   switch (helper) {
     case A64_DIRECT_RUNTIME_JSON_PARSE_BYTES: return "zero_json_parse_bytes";
+    case A64_DIRECT_RUNTIME_JSON_DIAGNOSTIC: return "zero_json_diagnostic";
+    case A64_DIRECT_RUNTIME_JSON_FIELD: return "zero_json_field";
+    case A64_DIRECT_RUNTIME_JSON_LOOKUP_SCALAR: return "zero_json_lookup_scalar";
+    case A64_DIRECT_RUNTIME_JSON_STRING_DECODE: return "zero_json_string_decode";
+    case A64_DIRECT_RUNTIME_JSON_STRING_FIELD: return "zero_json_string_field";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_STRING: return "zero_json_write_string";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_RAW: return "zero_json_write_field_raw";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_STRING: return "zero_json_write_field_string";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_U32: return "zero_json_write_field_u32";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_FIELD_BOOL: return "zero_json_write_field_bool";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT1_STRING: return "zero_json_write_object1_string";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT1_U32: return "zero_json_write_object1_u32";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT1_BOOL: return "zero_json_write_object1_bool";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_FIELDS: return "zero_json_write_object2_fields";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_STRING_FIELD: return "zero_json_write_object2_string_field";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_U32_FIELD: return "zero_json_write_object2_u32_field";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_OBJECT2_BOOL_FIELD: return "zero_json_write_object2_bool_field";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_ARRAY2_STRINGS: return "zero_json_write_array2_strings";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_ARRAY2_U32: return "zero_json_write_array2_u32";
+    case A64_DIRECT_RUNTIME_JSON_WRITE_ARRAY2_BOOLS: return "zero_json_write_array2_bools";
     case A64_DIRECT_RUNTIME_STR_BUFFER_OP: return "zero_str_buffer_op";
     case A64_DIRECT_RUNTIME_STR_CONCAT: return "zero_str_concat";
     case A64_DIRECT_RUNTIME_STR_REPEAT: return "zero_str_repeat";
@@ -99,6 +119,9 @@ static const char *a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper helper)
     case A64_DIRECT_RUNTIME_STR_PAIR_OP: return "zero_str_pair_op";
     case A64_DIRECT_RUNTIME_STR_COUNT_BYTE: return "zero_str_count_byte";
     case A64_DIRECT_RUNTIME_STR_WORD_COUNT_ASCII: return "zero_str_word_count_ascii";
+    case A64_DIRECT_RUNTIME_CRYPTO_DIGEST: return "zero_crypto_digest";
+    case A64_DIRECT_RUNTIME_CRYPTO_HMAC_SHA256: return "zero_crypto_hmac_sha256";
+    case A64_DIRECT_RUNTIME_CRYPTO_HMAC_SHA256_HEX: return "zero_crypto_hmac_sha256_hex";
     case A64_DIRECT_RUNTIME_ASCII_OP: return "zero_ascii_op";
     case A64_DIRECT_RUNTIME_TEXT_OP: return "zero_text_op";
     case A64_DIRECT_RUNTIME_PARSE_OP: return "zero_parse_op";

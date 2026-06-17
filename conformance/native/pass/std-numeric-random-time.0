@@ -60,6 +60,28 @@ pub fn main(world: World) -> Void raises {
     if bit_one || !bit_two || !bit_three {
         ok = false
     }
+    var bounded_rng: RandSource = std.rand.seed(99_u32)
+    let below_ten: Maybe<u32> = std.rand.nextBelow(&mut bounded_rng, 10_u32)
+    if below_ten.has {
+        if below_ten.value >= 10_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let in_range: Maybe<u32> = std.rand.rangeU32(&mut bounded_rng, 40_u32, 50_u32)
+    if in_range.has {
+        if in_range.value < 40_u32 || in_range.value >= 50_u32 {
+            ok = false
+        }
+    } else {
+        ok = false
+    }
+    let empty_below: Maybe<u32> = std.rand.nextBelow(&mut bounded_rng, 0_u32)
+    let empty_range: Maybe<u32> = std.rand.rangeU32(&mut bounded_rng, 4_u32, 4_u32)
+    if empty_below.has || empty_range.has {
+        ok = false
+    }
     let factorial: Maybe<u32> = std.math.factorialU32(5_u32)
     if factorial.has {
         if factorial.value != 120_u32 {

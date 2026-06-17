@@ -830,7 +830,250 @@ static bool machx64_emit_json_parse_bytes_call(ZBuf *text, const IrFunction *fun
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_JSON_PARSE_BYTES, patch, value, diag);
 }
 
+static bool machx64_emit_json_diagnostic_call(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value->left) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON helper requires a byte view", value->line, value->column, "missing byte view");
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_mov_reg_u32(text, 2, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_JSON_DIAGNOSTIC, patch, value, diag);
+}
+
+static void machx64_emit_normalize_u32_maybe_result(ZBuf *text);
+
+static void machx64_emit_packed_span_result(ZBuf *text) {
+  z_x64_emit_mov_reg_from_reg(text, 8, 0, true);
+  z_x64_emit_mov_reg_from_reg(text, 0, 8, true);
+  z_x64_emit_shr_reg_imm8(text, 0, 32, true);
+  z_x64_emit_and_reg_u32(text, 0, 0x7fffffffu, false);
+  z_x64_emit_mov_rcx_from_rax(text, false);
+  z_x64_emit_mov_reg_from_reg(text, 0, 8, false);
+  z_x64_emit_add_reg_reg(text, 2, 0, true);
+  z_x64_emit_mov_reg_from_reg(text, 0, 8, true);
+  z_x64_emit_shr_reg_imm8(text, 0, 63, true);
+}
+
+static bool machx64_emit_json_field_call(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value->left || !value->right) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON field helper requires bytes and key", value->line, value->column, "missing JSON field input");
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 6);
+  if (!machx64_emit_byte_view_pair(text, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_JSON_FIELD, patch, value, diag)) return false;
+  z_x64_emit_pop_reg64(text, 2);
+  machx64_emit_packed_span_result(text);
+  return true;
+}
+
+static bool machx64_emit_json_lookup_scalar_call(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value->left || !value->right) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON scalar helper requires bytes and key", value->line, value->column, "missing JSON scalar input");
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 6);
+  if (!machx64_emit_byte_view_pair(text, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_mov_reg_u32(text, 8, (uint32_t)value->int_value);
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_JSON_LOOKUP_SCALAR, patch, value, diag)) return false;
+  machx64_emit_normalize_u32_maybe_result(text);
+  return true;
+}
+
+static bool machx64_emit_json_string_decode_call(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value->left || !value->right) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON string decode helper requires a buffer and string", value->line, value->column, "missing JSON string decode input");
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 6);
+  if (!machx64_emit_byte_view_pair(text, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  MachORuntimeHelper helper = value->kind == IR_VALUE_JSON_WRITE_STRING ? MACHO_RUNTIME_JSON_WRITE_STRING : MACHO_RUNTIME_JSON_STRING_DECODE;
+  if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+  z_x64_emit_pop_reg64(text, 2);
+  machx64_emit_packed_span_result(text);
+  return true;
+}
+
+static bool machx64_emit_json_string_field_call(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value->left || !value->right || !value->index) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON string field helper requires a buffer, bytes, and key", value->line, value->column, "missing JSON string field input");
+  if (!machx64_emit_byte_view_pair(text, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 7);
+  z_x64_emit_push_reg64(text, 6);
+  if (!machx64_emit_byte_view_pair(text, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_push_reg64(text, 2);
+  z_x64_emit_push_reg64(text, 1);
+  if (!machx64_emit_byte_view_pair(text, fun, value->index, 8, 9, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(text, 1);
+  z_x64_emit_pop_reg64(text, 2);
+  z_x64_emit_pop_reg64(text, 6);
+  z_x64_emit_pop_reg64(text, 7);
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_JSON_STRING_FIELD, patch, value, diag)) return false;
+  z_x64_emit_pop_reg64(text, 2);
+  machx64_emit_packed_span_result(text);
+  return true;
+}
+
+static MachORuntimeHelper machx64_json_write_runtime_helper(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW: return MACHO_RUNTIME_JSON_WRITE_FIELD_RAW;
+    case IR_JSON_WRITE_FIELD_STRING: return MACHO_RUNTIME_JSON_WRITE_FIELD_STRING;
+    case IR_JSON_WRITE_FIELD_U32: return MACHO_RUNTIME_JSON_WRITE_FIELD_U32;
+    case IR_JSON_WRITE_FIELD_BOOL: return MACHO_RUNTIME_JSON_WRITE_FIELD_BOOL;
+    case IR_JSON_WRITE_OBJECT1_STRING: return MACHO_RUNTIME_JSON_WRITE_OBJECT1_STRING;
+    case IR_JSON_WRITE_OBJECT1_U32: return MACHO_RUNTIME_JSON_WRITE_OBJECT1_U32;
+    case IR_JSON_WRITE_OBJECT1_BOOL: return MACHO_RUNTIME_JSON_WRITE_OBJECT1_BOOL;
+    case IR_JSON_WRITE_OBJECT2_FIELDS: return MACHO_RUNTIME_JSON_WRITE_OBJECT2_FIELDS;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD: return MACHO_RUNTIME_JSON_WRITE_OBJECT2_STRING_FIELD;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD: return MACHO_RUNTIME_JSON_WRITE_OBJECT2_U32_FIELD;
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD: return MACHO_RUNTIME_JSON_WRITE_OBJECT2_BOOL_FIELD;
+    case IR_JSON_WRITE_ARRAY2_STRINGS: return MACHO_RUNTIME_JSON_WRITE_ARRAY2_STRINGS;
+    case IR_JSON_WRITE_ARRAY2_U32: return MACHO_RUNTIME_JSON_WRITE_ARRAY2_U32;
+    case IR_JSON_WRITE_ARRAY2_BOOLS: return MACHO_RUNTIME_JSON_WRITE_ARRAY2_BOOLS;
+  }
+  return MACHO_RUNTIME_HELPER_COUNT;
+}
+
+static unsigned machx64_json_write_runtime_abi_slots(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      return 6u;
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      return 5u;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      return 8u;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      return 7u;
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      return 4u;
+  }
+  return 0u;
+}
+
+static void machx64_emit_runtime_call_begin(ZBuf *text, unsigned abi_slots, unsigned *temp_base, unsigned *total_stack) {
+  unsigned stack_slots = abi_slots > 6u ? abi_slots - 6u : 0u;
+  unsigned call_frame = stack_slots * 8u;
+  *temp_base = call_frame;
+  *total_stack = (unsigned)machx64_align(call_frame + abi_slots * 8u, 16);
+  z_x64_emit_sub_rsp(text, *total_stack);
+}
+
+static void machx64_emit_runtime_temp_slot_store(ZBuf *text, unsigned temp_base, unsigned slot, unsigned reg) {
+  z_x64_emit_store_rsp_offset_reg(text, reg, temp_base + slot * 8u, true);
+}
+
+static void machx64_emit_runtime_temp_slot_load(ZBuf *text, unsigned temp_base, unsigned slot, unsigned reg) {
+  z_x64_emit_load_rsp_offset_reg(text, reg, temp_base + slot * 8u, true);
+}
+
+static bool machx64_emit_runtime_arg_byte_view(ZBuf *text, const IrFunction *fun, const IrValue *arg, unsigned temp_base, unsigned *slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!machx64_emit_byte_view_pair(text, fun, arg, 0, 2, ctx, diag)) return false;
+  machx64_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  machx64_emit_runtime_temp_slot_store(text, temp_base, *slot + 1u, 2);
+  *slot += 2u;
+  return true;
+}
+
+static bool machx64_emit_runtime_arg_value(ZBuf *text, const IrFunction *fun, const IrValue *arg, unsigned temp_base, unsigned *slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!machx64_emit_value(text, fun, arg, ctx, diag)) return false;
+  machx64_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  *slot += 1u;
+  return true;
+}
+
+static bool machx64_emit_json_write_runtime_args(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned temp_base, unsigned *slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len < 3) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer requires arguments", value ? value->line : 1, value ? value->column : 1, "invalid JSON writer");
+  IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+  if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, slot, ctx, diag)) return false;
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return machx64_emit_runtime_arg_byte_view(text, fun, value->args[2], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return machx64_emit_runtime_arg_value(text, fun, value->args[2], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      if (value->arg_len < 4) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer object2 string field requires four arguments", value->line, value->column, "invalid JSON writer arity");
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[2], temp_base, slot, ctx, diag)) return false;
+      return machx64_emit_runtime_arg_byte_view(text, fun, value->args[3], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      if (value->arg_len < 4) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer object2 scalar field requires four arguments", value->line, value->column, "invalid JSON writer arity");
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      if (!machx64_emit_runtime_arg_value(text, fun, value->args[2], temp_base, slot, ctx, diag)) return false;
+      return machx64_emit_runtime_arg_byte_view(text, fun, value->args[3], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      if (!machx64_emit_runtime_arg_value(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return machx64_emit_runtime_arg_value(text, fun, value->args[2], temp_base, slot, ctx, diag);
+  }
+  return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+}
+
+static bool machx64_emit_runtime_call(ZBuf *text, MachOEmitContext *ctx, MachORuntimeHelper helper, unsigned abi_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
+  static const unsigned param_regs[] = {7, 6, 2, 1, 8, 9};
+  for (unsigned slot = 6; slot < abi_slots; slot++) {
+    machx64_emit_runtime_temp_slot_load(text, temp_base, slot, 0);
+    z_x64_emit_store_rsp_offset_reg(text, 0, (slot - 6u) * 8u, true);
+  }
+  unsigned register_slots = abi_slots < 6u ? abi_slots : 6u;
+  for (unsigned slot = 0; slot < register_slots; slot++) {
+    machx64_emit_runtime_temp_slot_load(text, temp_base, slot, param_regs[slot]);
+  }
+  size_t patch = z_x64_emit_call32_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag);
+}
+
+static bool machx64_emit_json_write_runtime_call(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer requires a value", 1, 1, "invalid JSON writer");
+  IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+  MachORuntimeHelper helper = machx64_json_write_runtime_helper(op);
+  unsigned abi_slots = machx64_json_write_runtime_abi_slots(op);
+  if (helper == MACHO_RUNTIME_HELPER_COUNT || abi_slots == 0) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  machx64_emit_runtime_call_begin(text, abi_slots, &temp_base, &total_stack);
+  if (!machx64_emit_json_write_runtime_args(text, fun, value, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_call(text, ctx, helper, abi_slots, temp_base, value, diag)) return false;
+  machx64_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+  machx64_emit_packed_span_result(text);
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
 static bool machx64_emit_json_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES) return machx64_emit_json_diagnostic_call(text, fun, value, ctx, diag);
+  if (value->kind == IR_VALUE_JSON_FIELD) return machx64_emit_json_field_call(text, fun, value, ctx, diag);
+  if (value->kind == IR_VALUE_JSON_LOOKUP_SCALAR) return machx64_emit_json_lookup_scalar_call(text, fun, value, ctx, diag);
+  if (value->kind == IR_VALUE_JSON_STRING_DECODE) return machx64_emit_json_string_decode_call(text, fun, value, ctx, diag);
+  if (value->kind == IR_VALUE_JSON_WRITE_STRING) return machx64_emit_json_string_decode_call(text, fun, value, ctx, diag);
+  if (value->kind == IR_VALUE_JSON_STRING_FIELD) return machx64_emit_json_string_field_call(text, fun, value, ctx, diag);
+  if (value->kind == IR_VALUE_JSON_WRITE_RUNTIME) return machx64_emit_json_write_runtime_call(text, fun, value, ctx, diag);
   if (!machx64_emit_json_parse_bytes_call(text, fun, value, ctx, diag)) return false;
   if (value->kind == IR_VALUE_JSON_VALIDATE_BYTES) {
     z_x64_emit_cmp_reg_i8(text, 0, 0, true);
@@ -892,6 +1135,13 @@ static MachORuntimeHelper machx64_str_runtime_helper(IrStrOp op) {
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
       return MACHO_RUNTIME_STR_BUFFER_OP;
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
+      return MACHO_RUNTIME_CRYPTO_DIGEST;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+      return MACHO_RUNTIME_CRYPTO_HMAC_SHA256;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      return MACHO_RUNTIME_CRYPTO_HMAC_SHA256_HEX;
     case IR_STR_OP_CONCAT:
       return MACHO_RUNTIME_STR_CONCAT;
     case IR_STR_OP_REPEAT:
@@ -920,6 +1170,10 @@ static MachORuntimeHelper machx64_str_runtime_helper(IrStrOp op) {
   return MACHO_RUNTIME_HELPER_COUNT;
 }
 
+static uint32_t machx64_crypto_digest_op(IrStrOp op) {
+  return op == IR_STR_OP_CRYPTO_SHA256_HEX ? 1u : 0u;
+}
+
 static void machx64_emit_encoded_len_to_maybe_byte_view_regs(ZBuf *text) {
   z_x64_emit_mov_rcx_from_rax(text, false);
   z_x64_emit_test_rax_rax(text, true);
@@ -940,6 +1194,8 @@ static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, co
     case IR_STR_OP_COPY:
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
       if (value->arg_len != 2) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str buffer helper requires two arguments", value->line, value->column, "invalid std.str arity");
       if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
       z_x64_emit_push_rax(text);
@@ -952,7 +1208,7 @@ static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, co
       z_x64_emit_pop_reg64(text, 2);
       z_x64_emit_pop_reg64(text, 6);
       z_x64_emit_pop_reg64(text, 7);
-      z_x64_emit_mov_reg_u32(text, 8, (uint32_t)op);
+      z_x64_emit_mov_reg_u32(text, 8, helper == MACHO_RUNTIME_CRYPTO_DIGEST ? machx64_crypto_digest_op(op) : (uint32_t)op);
       {
         size_t patch = z_x64_emit_call32_placeholder(text);
         if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
@@ -961,7 +1217,9 @@ static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, co
       machx64_emit_encoded_len_to_maybe_byte_view_regs(text);
       return true;
     case IR_STR_OP_CONCAT:
-      if (value->arg_len != 3) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str.concat requires three arguments", value->line, value->column, "invalid std.str arity");
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      if (value->arg_len != 3) return machx64_diag_at(diag, "direct x86_64 Mach-O std.str three-view helper requires three arguments", value->line, value->column, "invalid std.str arity");
       if (!machx64_emit_byte_view_pair(text, fun, value->args[0], 0, 2, ctx, diag)) return false;
       z_x64_emit_push_rax(text);
       z_x64_emit_push_rax(text);
@@ -1356,6 +1614,13 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+    case IR_VALUE_JSON_FIELD:
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+    case IR_VALUE_JSON_STRING_DECODE:
+    case IR_VALUE_JSON_STRING_FIELD:
+    case IR_VALUE_JSON_WRITE_STRING:
+    case IR_VALUE_JSON_WRITE_RUNTIME:
       return machx64_emit_json_value(text, fun, value, ctx, diag);
     case IR_VALUE_ASCII_RUNTIME: return machx64_emit_ascii_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_TEXT_RUNTIME: return machx64_emit_text_runtime_value(text, fun, value, ctx, diag);
@@ -1433,6 +1698,11 @@ static bool machx64_emit_local_set_maybe_byte_view(ZBuf *text, const IrFunction 
        instr->value->kind == IR_VALUE_FMT_I32 ||
        instr->value->kind == IR_VALUE_FMT_U32 ||
        instr->value->kind == IR_VALUE_FMT_USIZE ||
+       instr->value->kind == IR_VALUE_JSON_FIELD ||
+       instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+       instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+       instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+       instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
        instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
        instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
@@ -1459,6 +1729,7 @@ static bool machx64_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fu
        instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
        instr->value->kind == IR_VALUE_PARSE_I32 ||
        instr->value->kind == IR_VALUE_PARSE_U32 ||
+       instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
     machx64_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
@@ -1679,6 +1950,11 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
              instr->value->kind == IR_VALUE_FMT_I32 ||
              instr->value->kind == IR_VALUE_FMT_U32 ||
              instr->value->kind == IR_VALUE_FMT_USIZE ||
+             instr->value->kind == IR_VALUE_JSON_FIELD ||
+             instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+             instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+             instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+             instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
              instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
              instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
@@ -1704,6 +1980,7 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
              instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
              instr->value->kind == IR_VALUE_PARSE_I32 ||
              instr->value->kind == IR_VALUE_PARSE_U32 ||
+             instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
