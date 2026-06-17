@@ -1297,6 +1297,7 @@ capture(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
 captureFiles(arg0: String, arg1: String, arg2: String) -> ProcStatus
 spawnChild(arg0: String) -> ProcChild
 spawnChildIn(arg0: String, arg1: String) -> ProcChild
+spawnChildInEnv(arg0: String, arg1: String, arg2: Span<u8>) -> ProcChild
 childValid(arg0: ProcChild) -> Bool
 running(arg0: ProcChild) -> Bool
 wait(arg0: ProcChild) -> ProcStatus

@@ -87,6 +87,7 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_proc_capture_files",
   "_zero_proc_spawn_child",
   "_zero_proc_spawn_child_in",
+  "_zero_proc_spawn_child_in_env",
   "_zero_proc_child_op",
   "_zero_proc_child_io",
 };

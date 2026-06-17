@@ -31,7 +31,23 @@ pub fn main(world: World) -> Void raises {
     }
     let stdin_closed: Bool = std.proc.close(stdin_child)
 
-    if valid && was_running && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed {
+    let env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf env:$ZERO_PROC_ENV_TEST:$ZERO_PROC_ENV_TWO'", ".", "ZERO_PROC_ENV_TEST=alpha\nZERO_PROC_ENV_TWO=beta")
+    var env_buf: [64]u8 = [0_u8; 64]
+    var env_ok: Bool = false
+    let env_valid: Bool = std.proc.childValid(env_child)
+    if env_valid {
+        let env_status: ProcStatus = std.proc.wait(env_child)
+        let env_read: Maybe<usize> = std.proc.readStdout(env_child, env_buf)
+        if env_read.has {
+            let env_bytes: Span<u8> = std.io.written(env_buf, env_read.value)
+            env_ok = std.proc.succeeded(env_status) && std.mem.eql(env_bytes, "env:alpha:beta")
+        }
+    }
+    let env_closed: Bool = std.proc.close(env_child)
+    let invalid_env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf nope'", ".", "ZERO_PROC_BAD_ENV")
+    let invalid_env_rejected: Bool = !std.proc.childValid(invalid_env_child)
+
+    if valid && was_running && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && env_ok && env_closed && invalid_env_rejected {
         check world.out.write("std proc child ok\n")
     }
 }

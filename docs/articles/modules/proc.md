@@ -19,6 +19,7 @@ Runnable today:
 | `std.proc.captureFiles(command, stdoutPath, stderrPath)` | `ProcStatus` | Runs an argv-style command and writes stdout and stderr to hosted paths. Returns `127` when the command cannot be parsed, spawned, waited on, or the output files cannot be opened. |
 | `std.proc.spawnChild(command)` | `ProcChild` | Starts a hosted child process with piped stdin, stdout, and stderr. Returns an invalid handle when the process cannot be created. |
 | `std.proc.spawnChildIn(command, cwd)` | `ProcChild` | Starts a hosted child process in a working directory with piped stdin, stdout, and stderr. Returns an invalid handle when the cwd is invalid or the process cannot be created. |
+| `std.proc.spawnChildInEnv(command, cwd, env)` | `ProcChild` | Starts a hosted child process in a working directory with piped stdin/stdout/stderr and explicit newline-separated `KEY=value` environment bindings. |
 | `std.proc.childValid(child)` | `Bool` | Reports whether the handle currently names an open child slot. |
 | `std.proc.running(child)` | `Bool` | Polls the child process without blocking. |
 | `std.proc.wait(child)` | `ProcStatus` | Waits for process exit and returns its status. |
@@ -88,3 +89,7 @@ program launches where captured pipes would be the wrong interface.
 Child handles use the same command parser. Stdout, stderr, and stdin are
 nonblocking pipes so event loops can poll process state and terminal input
 without owning threads.
+
+`spawnChildInEnv` accepts a newline-separated env block such as
+`"TOKEN=...\nMODE=batch"`. Empty lines are ignored. Invalid
+entries or oversized env blocks make the returned child handle invalid.

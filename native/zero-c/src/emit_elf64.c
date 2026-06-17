@@ -1534,11 +1534,12 @@ static bool elf_emit_proc_child_spawn_value(ZBuf *code, const IrFunction *fun, c
   unsigned temp_base = 0;
   unsigned total_stack = 0;
   unsigned slot = 0;
-  unsigned abi_slots = value->right ? 4 : 2;
+  unsigned abi_slots = value->index ? 6 : (value->right ? 4 : 2);
   elf_emit_runtime_call_begin(code, abi_slots, abi_slots, &temp_base, &total_stack);
   if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
   if (value->right && !elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
-  if (!elf_emit_runtime_call(code, ctx, value->right ? ELF_RUNTIME_PROC_SPAWN_CHILD_IN : ELF_RUNTIME_PROC_SPAWN_CHILD, abi_slots, abi_slots, temp_base, value, diag)) return false;
+  if (value->index && !elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, value->index ? ELF_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? ELF_RUNTIME_PROC_SPAWN_CHILD_IN : ELF_RUNTIME_PROC_SPAWN_CHILD), abi_slots, abi_slots, temp_base, value, diag)) return false;
   z_x64_emit_add_rsp(code, total_stack);
   return true;
 }

@@ -354,6 +354,7 @@ static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunctio
   if (value->kind == IR_VALUE_PROC_CAPTURE || value->kind == IR_VALUE_PROC_CHILD_IO) required = 3;
   if (value->kind == IR_VALUE_PROC_CAPTURE_FILES) required = 5;
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->right) required = 4;
+  if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->index) required = 6;
   if (scratch_slot + required >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
     return z_build_diag(ctx, diag, message, value->line, value->column, "expression too deep");
   }
@@ -367,6 +368,7 @@ static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunctio
        value->kind == IR_VALUE_PROC_CHILD_IO) &&
       !z_build_check_aarch64_byte_view(ctx, fun, value->right, diag)) return false;
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->right && !z_build_check_aarch64_byte_view(ctx, fun, value->right, diag)) return false;
+  if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->index && !z_build_check_aarch64_byte_view(ctx, fun, value->index, diag)) return false;
   if (value->kind == IR_VALUE_PROC_CAPTURE_FILES && !z_build_check_aarch64_byte_view(ctx, fun, value->index, diag)) return false;
   return true;
 }
@@ -605,8 +607,10 @@ static bool build_check_macho64_json_http(const ZBuildability *ctx, const IrFunc
     return z_build_check_macho_byte_view(ctx, fun, value->index, diag);
   }
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->right) {
-    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 4, "direct AArch64 Mach-O std.proc.spawnChildIn exceeds scratch register spill capacity", diag)) return false;
-    return build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag);
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, value->index ? 6 : 4, value->index ? "direct AArch64 Mach-O std.proc.spawnChildInEnv exceeds scratch register spill capacity" : "direct AArch64 Mach-O std.proc.spawnChildIn exceeds scratch register spill capacity", diag)) return false;
+    if (!build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag)) return false;
+    if (value->index && !z_build_check_macho_byte_view(ctx, fun, value->index, diag)) return false;
+    return true;
   }
   return true;
 }

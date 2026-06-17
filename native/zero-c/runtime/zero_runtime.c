@@ -68,6 +68,7 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_PATH_BYTES 4096u
 #define ZERO_RUNTIME_READ_CHUNK 1048576u
 #define ZERO_RUNTIME_PROC_COMMAND_BYTES 4096u
+#define ZERO_RUNTIME_PROC_ENV_BYTES 4096u
 #define ZERO_RUNTIME_PROC_MAX_ARGS 64u
 #define ZERO_RUNTIME_PROC_CHILD_MAX 64u
 
@@ -378,6 +379,47 @@ static int zero_runtime_proc_parse_command(ZeroByteView command, char storage[ZE
   return 1;
 }
 
+static int zero_runtime_proc_copy_env_block(ZeroByteView env, char storage[ZERO_RUNTIME_PROC_ENV_BYTES]) {
+  if (!env.ptr && env.len > 0) return 0;
+  if (env.len >= ZERO_RUNTIME_PROC_ENV_BYTES) return 0;
+  for (size_t i = 0; i < env.len; i++) {
+    if (env.ptr[i] == 0) return 0;
+  }
+  size_t line_start = 0;
+  while (line_start < env.len) {
+    size_t line_end = line_start;
+    while (line_end < env.len && env.ptr[line_end] != '\n') line_end++;
+    if (line_end > line_start) {
+      size_t equals = line_start;
+      while (equals < line_end && env.ptr[equals] != '=') equals++;
+      if (equals == line_start || equals == line_end) return 0;
+    }
+    line_start = line_end + 1;
+  }
+  if (env.len > 0) memcpy(storage, env.ptr, env.len);
+  storage[env.len] = '\0';
+  return 1;
+}
+
+static int zero_runtime_proc_apply_env_block(char *env) {
+  if (!env || !env[0]) return 1;
+  char *cursor = env;
+  while (*cursor) {
+    char *line = cursor;
+    while (*cursor && *cursor != '\n') cursor++;
+    if (*cursor == '\n') {
+      *cursor = '\0';
+      cursor++;
+    }
+    if (!line[0]) continue;
+    char *equals = strchr(line, '=');
+    if (!equals || equals == line) return 0;
+    *equals = '\0';
+    if (setenv(line, equals + 1, 1) != 0) return 0;
+  }
+  return 1;
+}
+
 int32_t zero_proc_spawn_inherit(ZeroByteView command) {
   char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
   char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
@@ -597,10 +639,11 @@ static int zero_proc_child_reap(ZeroRuntimeProcChild *child, int nohang) {
 }
 #endif
 
-static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd) {
+static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd, char *env) {
 #if defined(_WIN32)
   (void)command;
   (void)cwd;
+  (void)env;
   return 0;
 #else
   char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
@@ -630,6 +673,7 @@ static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd)
 
   if (pid == 0) {
     if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
     ZERO_RUNTIME_CLOSE(stdin_pipe[1]);
     ZERO_RUNTIME_CLOSE(stdout_pipe[0]);
     ZERO_RUNTIME_CLOSE(stderr_pipe[0]);
@@ -674,13 +718,20 @@ static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd)
 }
 
 int32_t zero_proc_spawn_child(ZeroByteView command) {
-  return zero_proc_spawn_child_impl(command, NULL);
+  return zero_proc_spawn_child_impl(command, NULL, NULL);
 }
 
 int32_t zero_proc_spawn_child_in(ZeroByteView command, ZeroByteView cwd) {
   char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
   if (!zero_runtime_path_copy(cwd, cwd_buf)) return 0;
-  return zero_proc_spawn_child_impl(command, cwd_buf);
+  return zero_proc_spawn_child_impl(command, cwd_buf, NULL);
+}
+
+int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf) || !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_proc_spawn_child_impl(command, cwd_buf, env_buf);
 }
 
 int32_t zero_proc_child_op(int32_t child, uint32_t op) {

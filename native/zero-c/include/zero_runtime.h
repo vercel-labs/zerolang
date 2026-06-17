@@ -230,6 +230,7 @@ ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
 int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
 int32_t zero_proc_spawn_child(ZeroByteView command);
 int32_t zero_proc_spawn_child_in(ZeroByteView command, ZeroByteView cwd);
+int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env);
 int32_t zero_proc_child_op(int32_t child, uint32_t op);
 ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_t op);
 
