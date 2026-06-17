@@ -365,6 +365,7 @@ static MachORuntimeHelper macho_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_FS_READ_BYTES_PATH: return MACHO_RUNTIME_FS_READ_BYTES;
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return MACHO_RUNTIME_FS_READ_BYTES_AT;
     case IR_VALUE_FS_WRITE_BYTES_PATH: return MACHO_RUNTIME_FS_WRITE_BYTES;
+    case IR_VALUE_FS_APPEND_BYTES_PATH: return MACHO_RUNTIME_FS_APPEND_BYTES;
     case IR_VALUE_PARSE_RUNTIME: return MACHO_RUNTIME_PARSE_OP;
     case IR_VALUE_TIME_RUNTIME: return MACHO_RUNTIME_TIME_OP;
     case IR_VALUE_TERM_RUNTIME: return MACHO_RUNTIME_TERM_OP;
@@ -2043,9 +2044,9 @@ static bool macho_emit_fs_read_bytes_at_to_maybe_regs_at(ZBuf *text, const IrFun
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_READ_BYTES_AT, patch, value, diag);
 }
 
-static bool macho_emit_fs_write_bytes_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+static bool macho_emit_fs_write_bytes_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, MachORuntimeHelper helper, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || !value->left || !value->right) {
-    return macho_diag_at(diag, "direct AArch64 Mach-O std.fs.writeBytes requires a path and byte span", value ? value->line : 1, value ? value->column : 1, "missing writeBytes input");
+    return macho_diag_at(diag, "direct AArch64 Mach-O filesystem write requires a path and byte span", value ? value->line : 1, value ? value->column : 1, "missing write input");
   }
   if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
   if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
@@ -2058,7 +2059,7 @@ static bool macho_emit_fs_write_bytes_to_maybe_regs_at(ZBuf *text, const IrFunct
   if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
   if (!macho_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_WRITE_BYTES, patch, value, diag);
+  return z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag);
 }
 
 static bool macho_emit_fs_path_op_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
@@ -2577,7 +2578,8 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return true;
     case IR_VALUE_FS_READ_BYTES_PATH: return macho_emit_fs_read_bytes_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return macho_emit_fs_read_bytes_at_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
-    case IR_VALUE_FS_WRITE_BYTES_PATH: return macho_emit_fs_write_bytes_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_WRITE_BYTES_PATH: return macho_emit_fs_write_bytes_to_maybe_regs_at(text, fun, value, MACHO_RUNTIME_FS_WRITE_BYTES, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_APPEND_BYTES_PATH: return macho_emit_fs_write_bytes_to_maybe_regs_at(text, fun, value, MACHO_RUNTIME_FS_APPEND_BYTES, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_FS_EXISTS:
     case IR_VALUE_FS_REMOVE:
     case IR_VALUE_FS_MAKE_DIR:
@@ -3080,7 +3082,8 @@ static bool macho_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun,
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
       instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH) {
+      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH ||
+      instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) {
     if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     macho_emit_store_local_w(text, fun, 0, instr->local_index, 0, frame_size);
     macho_emit_store_local_x(text, fun, 1, instr->local_index, 8, frame_size);
@@ -3168,7 +3171,8 @@ static bool macho_emit_return_maybe_scalar(ZBuf *text, const IrFunction *fun, co
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
       instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH) {
+      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH ||
+      instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) {
     return macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag);
   }
   if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {

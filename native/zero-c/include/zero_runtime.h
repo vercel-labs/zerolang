@@ -222,6 +222,7 @@ int zero_world_write(int fd, const char *buf, unsigned len);
 ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes);
+ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes);
 uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op);
 uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path);
 int32_t zero_proc_spawn_inherit(ZeroByteView command);

@@ -270,6 +270,7 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.fs.readFileEquals", "__zero_std_fs_read_file_equals", "std.fs"},
   {"std.fs.readFile", "__zero_std_fs_read_file", "std.fs"},
   {"std.fs.writeFile", "__zero_std_fs_write_file", "std.fs"},
+  {"std.fs.appendFile", "__zero_std_fs_append_file", "std.fs"},
   {"std.fmt.i64", "__zero_std_fmt_i64", "std.fmt"},
   {"std.fmt.i64Base", "__zero_std_fmt_i64_base", "std.fmt"},
   {"std.fmt.i64Sign", "__zero_std_fmt_i64_sign", "std.fmt"},

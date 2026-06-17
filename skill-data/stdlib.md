@@ -679,6 +679,7 @@ exists(arg0: String) -> Bool
 readBytes(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
 readBytesAt(arg0: String, arg1: usize, arg2: MutSpan<u8>) -> Maybe<usize>
 writeBytes(arg0: String, arg1: Span<u8>) -> Maybe<usize>
+appendBytes(arg0: String, arg1: Span<u8>) -> Maybe<usize>
 isDir(arg0: String) -> Bool
 makeDir(arg0: String) -> Bool
 removeDir(arg0: String) -> Bool
@@ -691,6 +692,7 @@ fileLen(arg0: mutref<File>) -> Maybe<usize>
 close(arg0: mutref<File>) -> Void
 readFile(arg0: Fs, arg1: String, arg2: MutSpan<u8>) -> Maybe<usize>
 writeFile(arg0: Fs, arg1: String, arg2: Span<u8>) -> Bool
+appendFile(arg0: Fs, arg1: String, arg2: Span<u8>) -> Bool
 readFileBytes(arg0: Fs, arg1: String, arg2: MutSpan<u8>) -> Maybe<Span<u8>>
 readFileEquals(arg0: Fs, arg1: String, arg2: MutSpan<u8>, arg3: Span<u8>) -> Bool
 copyFile(arg0: String, arg1: String, arg2: MutSpan<u8>) -> Bool
@@ -1821,7 +1823,7 @@ Hosted file APIs can use explicit handles:
 pub fn main(world: World) -> Void raises {
     let fs: Fs = std.fs.host()
     var read_buf: [32]u8 = [0_u8; 32]
-    if std.fs.writeFile(fs, ".zero/out/log.txt", "hello\n") && std.fs.readFileEquals(fs, ".zero/out/log.txt", read_buf, "hello\n") {
+    if std.fs.writeFile(fs, ".zero/out/log.txt", "hello\n") && std.fs.appendFile(fs, ".zero/out/log.txt", "again\n") && std.fs.readFileEquals(fs, ".zero/out/log.txt", read_buf, "hello\nagain\n") {
         check world.out.write("wrote\n")
     }
 }

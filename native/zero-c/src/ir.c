@@ -4391,7 +4391,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if ((strcmp(callee_name, "std.fs.write") == 0 || strcmp(callee_name, "std.fs.writeBytes") == 0) && expr->args.len == 2) {
+      if ((strcmp(callee_name, "std.fs.write") == 0 || strcmp(callee_name, "std.fs.writeBytes") == 0 || strcmp(callee_name, "std.fs.appendBytes") == 0) && expr->args.len == 2) {
         IrValue *path = NULL;
         IrValue *bytes = NULL;
         if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &path) ||
@@ -4402,7 +4402,9 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           return false;
         }
         bool maybe = strcmp(callee_name, "std.fs.writeBytes") == 0;
-        IrValue *value = ir_new_value(ir, maybe ? IR_VALUE_FS_WRITE_BYTES_PATH : IR_VALUE_FS_WRITE_PATH, maybe ? IR_TYPE_MAYBE_SCALAR : IR_TYPE_USIZE, expr->line, expr->column);
+        bool append = strcmp(callee_name, "std.fs.appendBytes") == 0;
+        IrValueKind kind = append ? IR_VALUE_FS_APPEND_BYTES_PATH : (maybe ? IR_VALUE_FS_WRITE_BYTES_PATH : IR_VALUE_FS_WRITE_PATH);
+        IrValue *value = ir_new_value(ir, kind, maybe || append ? IR_TYPE_MAYBE_SCALAR : IR_TYPE_USIZE, expr->line, expr->column);
         value->left = path;
         value->right = bytes;
         value->element_type = IR_TYPE_USIZE;

@@ -40,6 +40,11 @@ fn __zero_std_fs_write_file(fs: Fs, path: String, bytes: Span<u8>) -> Bool {
     return count.has && count.value == std.mem.len(bytes)
 }
 
+fn __zero_std_fs_append_file(fs: Fs, path: String, bytes: Span<u8>) -> Bool {
+    let count: Maybe<usize> = std.fs.appendBytes(path, bytes)
+    return count.has && count.value == std.mem.len(bytes)
+}
+
 fn __zero_std_fs_copy_file(from_path: String, to_path: String, buffer: MutSpan<u8>) -> Bool {
     if std.mem.len(buffer) == 0 {
         return false

@@ -70,6 +70,7 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_fs_read_bytes",
   "_zero_fs_read_bytes_at",
   "_zero_fs_write_bytes",
+  "_zero_fs_append_bytes",
   "_zero_fs_path_op",
   "_zero_fs_rename",
   "_zero_args_find",

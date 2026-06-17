@@ -1350,8 +1350,9 @@ static bool elf_emit_fs_path_io_value(ZBuf *code, const IrFunction *fun, const I
       elf_emit_fs_read_total_size_tail(code, open_fail);
       return true;
     }
-    case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: {
-      if (!elf_emit_openat_path(code, fun, value->left, 577, 0644, ctx, diag)) return false;
+    case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: case IR_VALUE_FS_APPEND_BYTES_PATH: {
+      uint32_t flags = value->kind == IR_VALUE_FS_APPEND_BYTES_PATH ? 1089u : 577u;
+      if (!elf_emit_openat_path(code, fun, value->left, flags, 0644, ctx, diag)) return false;
       z_x64_emit_test_rax_rax(code, true);
       size_t open_fail = elf_emit_js_placeholder(code);
       z_x64_emit_push_rax(code);
@@ -3096,7 +3097,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_fs_atomic_write_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_FILE_LEN: case IR_VALUE_FS_READ_FILE: case IR_VALUE_FS_WRITE_ALL_FILE:
       return elf_emit_fs_file_handle_value(code, fun, value, ctx, diag);
-    case IR_VALUE_FS_READ_PATH: case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH: case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_READ_PATH: case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH: case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: case IR_VALUE_FS_APPEND_BYTES_PATH:
       return elf_emit_fs_path_io_value(code, fun, value, ctx, diag);
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_VEC_LEN: case IR_VALUE_VEC_CAPACITY:
     case IR_VALUE_VEC_PUSH: case IR_VALUE_VEC_GET: case IR_VALUE_VEC_SET: case IR_VALUE_VEC_CLEAR: case IR_VALUE_VEC_POP: case IR_VALUE_VEC_TRUNCATE: case IR_VALUE_VEC_REMOVE_SWAP:

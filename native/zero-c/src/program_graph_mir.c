@@ -3849,7 +3849,7 @@ static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir
     *out = value;
     return true;
   }
-  if (arg_count == 2 && (ir_text_eq(callee_name, "std.fs.write") || ir_text_eq(callee_name, "std.fs.writeBytes"))) {
+  if (arg_count == 2 && (ir_text_eq(callee_name, "std.fs.write") || ir_text_eq(callee_name, "std.fs.writeBytes") || ir_text_eq(callee_name, "std.fs.appendBytes"))) {
     IrValue *path = NULL;
     IrValue *bytes = NULL;
     if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &path) ||
@@ -3859,7 +3859,9 @@ static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir
       return false;
     }
     bool maybe = ir_text_eq(callee_name, "std.fs.writeBytes");
-    IrValue *value = ir_new_value(ir, maybe ? IR_VALUE_FS_WRITE_BYTES_PATH : IR_VALUE_FS_WRITE_PATH, maybe ? IR_TYPE_MAYBE_SCALAR : IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    bool append = ir_text_eq(callee_name, "std.fs.appendBytes");
+    IrValueKind kind = append ? IR_VALUE_FS_APPEND_BYTES_PATH : (maybe ? IR_VALUE_FS_WRITE_BYTES_PATH : IR_VALUE_FS_WRITE_PATH);
+    IrValue *value = ir_new_value(ir, kind, maybe || append ? IR_TYPE_MAYBE_SCALAR : IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
     value->left = path;
     value->right = bytes;
     value->element_type = IR_TYPE_USIZE;

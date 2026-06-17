@@ -1479,6 +1479,9 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
     case IR_VALUE_FS_WRITE_BYTES_PATH:
       if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem write result type mismatch", "filesystem write bytes")) return false;
       return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid filesystem write input", "filesystem write path", "filesystem write bytes");
+    case IR_VALUE_FS_APPEND_BYTES_PATH:
+      if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem append result type mismatch", "filesystem append bytes")) return false;
+      return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid filesystem append input", "filesystem append path", "filesystem append bytes");
     case IR_VALUE_PROC_SPAWN_INHERIT: return mir_verify_proc_spawn_inherit_contract(ir, value);
     case IR_VALUE_PROC_CAPTURE: return mir_verify_proc_capture_contract(ir, fun, state, value);
     case IR_VALUE_PROC_CAPTURE_FILES: return mir_verify_proc_capture_files_contract(ir, value);
@@ -2440,6 +2443,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_FS_READ_BYTES_PATH:
     case IR_VALUE_FS_READ_BYTES_AT_PATH:
     case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH:
     case IR_VALUE_FS_READ_ALL:
     case IR_VALUE_FS_READ_FILE:
     case IR_VALUE_FS_WRITE_ALL_FILE:

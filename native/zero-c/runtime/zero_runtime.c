@@ -119,6 +119,22 @@ static int zero_runtime_open_write_truncate(const char *path) {
 #endif
 }
 
+static int zero_runtime_open_write_append(const char *path) {
+#if defined(_WIN32)
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, _O_WRONLY | _O_CREAT | _O_APPEND | _O_BINARY, _S_IREAD | _S_IWRITE);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#else
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, O_WRONLY | O_CREAT | O_APPEND, 0666);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#endif
+}
+
 static int zero_runtime_fd_regular_size(int fd, uint64_t *size_out) {
   ZeroRuntimeStat st;
   if (ZERO_RUNTIME_FSTAT(fd, &st) != 0) return 0;
@@ -208,11 +224,11 @@ ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMut
   return (ZeroMaybeUsize){1, total};
 }
 
-ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes) {
+static ZeroMaybeUsize zero_runtime_write_bytes_to_path(ZeroByteView path, ZeroByteView bytes, int append) {
   if (!bytes.ptr && bytes.len > 0) return zero_runtime_none_usize();
   char path_buf[ZERO_RUNTIME_PATH_BYTES];
   if (!zero_runtime_path_copy(path, path_buf)) return zero_runtime_none_usize();
-  int fd = zero_runtime_open_write_truncate(path_buf);
+  int fd = append ? zero_runtime_open_write_append(path_buf) : zero_runtime_open_write_truncate(path_buf);
   if (fd < 0) return zero_runtime_none_usize();
 
   size_t total = 0;
@@ -235,6 +251,14 @@ ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes) {
   int closed = zero_runtime_close_fd(fd);
   if (!ok || !closed) return zero_runtime_none_usize();
   return (ZeroMaybeUsize){1, (uint64_t)total};
+}
+
+ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes) {
+  return zero_runtime_write_bytes_to_path(path, bytes, 0);
+}
+
+ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes) {
+  return zero_runtime_write_bytes_to_path(path, bytes, 1);
 }
 
 static int zero_runtime_stat_path(const char *path, ZeroRuntimeStat *st) {
