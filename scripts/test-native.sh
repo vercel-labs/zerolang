@@ -199,6 +199,7 @@ expected_output() {
     examples/grep-scan.graph) printf "grep scan ok" ;;
     examples/std-testing-log.graph) printf '{"level":"info","key":"event","value":"startup"}' ;;
     conformance/native/pass/std-crypto-hmac32.graph) printf "crypto hmac32 ok" ;;
+    conformance/native/pass/std-crypto-sha256.graph) printf "crypto sha256 ok" ;;
     conformance/native/pass/string-byte-ergonomics.graph) printf "string byte ergonomics ok" ;;
     conformance/native/pass/std-math-breadth.graph) printf "std math breadth ok" ;;
     conformance/native/pass/std-numeric-random-time.graph) printf "std numeric random time ok" ;;
@@ -249,6 +250,7 @@ examples=(
   examples/file-copy.graph
   examples/grep-scan.graph
   conformance/native/pass/std-crypto-hmac32.graph
+  conformance/native/pass/std-crypto-sha256.graph
   conformance/native/pass/string-byte-ergonomics.graph
   conformance/native/pass/std-math-breadth.graph
   conformance/native/pass/std-numeric-random-time.graph

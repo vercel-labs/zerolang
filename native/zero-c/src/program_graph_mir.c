@@ -594,6 +594,27 @@ static bool ir_make_string_literal_value(IrProgram *ir, const char *text, int li
   return true;
 }
 
+static bool ir_graph_make_json_error_label_value(IrProgram *ir, IrValue *code, bool expected, int line, int column, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_JSON_ERROR_LABEL, IR_TYPE_BYTE_VIEW, line, column);
+  value->left = code;
+  value->int_value = expected ? 1u : 0u;
+  value->element_type = IR_TYPE_U8;
+  for (unsigned i = 0; i < 4; i++) {
+    const char *label = "unknown";
+    if (i == 0) label = expected ? "none" : "ok";
+    else if (i == 1) label = expected ? "valid-json" : "invalid";
+    else if (i == 2) label = expected ? "end-of-input" : "trailing";
+    IrValue *literal = NULL;
+    if (!ir_make_string_literal_value(ir, label, line, column, &literal)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_value_push_arg(ir, value, literal);
+  }
+  *out = value;
+  return true;
+}
+
 static void ir_instr_vec_push(IrProgram *ir, IrInstr **items, size_t *len, size_t *cap, IrInstr instr) {
   *items = ir_grow_tracked_items(ir, *items, *len, cap, 4, sizeof(IrInstr));
   (*items)[(*len)++] = instr;
@@ -2905,6 +2926,19 @@ static int ir_graph_json_error_code(const char *name) {
   return -1;
 }
 
+static const char *ir_graph_json_error_label(unsigned long long code, bool expected) {
+  if (expected) {
+    if (code == 0) return "none";
+    if (code == 1) return "valid-json";
+    if (code == 2) return "end-of-input";
+    return "unknown";
+  }
+  if (code == 0) return "ok";
+  if (code == 1) return "invalid";
+  if (code == 2) return "trailing";
+  return "unknown";
+}
+
 static int ir_graph_http_error_code(const char *name) {
   static const char *codes[] = {"std.http.errorNone", "std.http.errorInvalidUrl", "std.http.errorUnsupportedProtocol", "std.http.errorDns", "std.http.errorConnect", "std.http.errorTls", "std.http.errorTimeout", "std.http.errorTooLarge", "std.http.errorProviderUnavailable", "std.http.errorIo", "std.http.errorInvalidRequest"};
   for (int i = 0; name && i < (int)(sizeof(codes) / sizeof(codes[0])); i++) if (ir_text_eq(name, codes[i])) return i;
@@ -3308,6 +3342,10 @@ static bool ir_graph_lower_std_str_call(const ZProgramGraph *graph, IrProgram *i
   if (arg_count == 1 && ir_text_eq(callee_name, "std.path.basename")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PATH_BASENAME, IR_TYPE_BYTE_VIEW, one_view, 1, out);
   if (arg_count == 1 && ir_text_eq(callee_name, "std.path.dirname")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PATH_DIRNAME, IR_TYPE_BYTE_VIEW, one_view, 1, out);
   if (arg_count == 1 && ir_text_eq(callee_name, "std.path.extension")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_PATH_EXTENSION, IR_TYPE_BYTE_VIEW, one_view, 1, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.crypto.sha256")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_CRYPTO_SHA256, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, out);
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.crypto.sha256Hex")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_CRYPTO_SHA256_HEX, IR_TYPE_MAYBE_BYTE_VIEW, two_views, 2, out);
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.crypto.hmacSha256")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_CRYPTO_HMAC_SHA256, IR_TYPE_MAYBE_BYTE_VIEW, three_views, 3, out);
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.crypto.hmacSha256Hex")) return ir_graph_make_std_str_runtime_value(graph, ir, fun, expr, IR_STR_OP_CRYPTO_HMAC_SHA256_HEX, IR_TYPE_MAYBE_BYTE_VIEW, three_views, 3, out);
   *handled = false;
   return true;
 }
@@ -3590,6 +3628,37 @@ static bool ir_graph_lower_std_rand_call(const ZProgramGraph *graph, IrProgram *
     IrValue *next = ir_new_value(ir, IR_VALUE_RAND_NEXT_U32, IR_TYPE_U32, ir_graph_line(expr), ir_graph_column(expr));
     next->local_index = rng->index;
     *out = ir_new_compare_value(ir, IR_CMP_GE, next, ir_new_integer_literal_value(ir, IR_TYPE_U32, 2147483648ull, ir_graph_line(expr), ir_graph_column(expr)), ir_graph_line(expr), ir_graph_column(expr));
+    return true;
+  }
+  if (arg_count == 2 && ir_text_eq(callee_name, "std.rand.nextBelow")) {
+    const IrLocal *rng = ir_graph_find_mutable_rand_source_local(graph, ir, fun, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), callee_name);
+    if (!rng) return false;
+    IrValue *bound = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_U32, &bound)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_RAND_NEXT_BELOW, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->element_type = IR_TYPE_U32;
+    value->local_index = rng->index;
+    value->left = bound;
+    *out = value;
+    return true;
+  }
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.rand.rangeU32")) {
+    const IrLocal *rng = ir_graph_find_mutable_rand_source_local(graph, ir, fun, ir_graph_ordered_node(graph, expr ? expr->id : NULL, "arg", 0), callee_name);
+    if (!rng) return false;
+    IrValue *low = NULL;
+    IrValue *high = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 1, IR_TYPE_U32, &low) ||
+        !ir_graph_lower_ordered_arg(graph, ir, fun, expr, 2, IR_TYPE_U32, &high)) {
+      ir_free_value(low);
+      ir_free_value(high);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_RAND_RANGE_U32, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->element_type = IR_TYPE_U32;
+    value->local_index = rng->index;
+    value->left = low;
+    value->right = high;
+    *out = value;
     return true;
   }
   if (arg_count == 0 && ir_graph_is_std_rand_entropy_call(callee_name)) {
@@ -4117,6 +4186,60 @@ static bool ir_graph_lower_std_env_get_call(const ZProgramGraph *graph, IrProgra
   return true;
 }
 
+static bool ir_graph_lower_std_cli_arg_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
+  *handled = true;
+  if (ir_text_eq(callee_name, "std.cli.command") && arg_count == 0) {
+    IrValue *index = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 1, ir_graph_line(expr), ir_graph_column(expr));
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = index;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.commandOr") && arg_count == 1) {
+    IrValue *fallback = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &fallback)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET_OR, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 1, ir_graph_line(expr), ir_graph_column(expr));
+    value->right = fallback;
+    value->element_type = IR_TYPE_U8;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.commandEquals") && arg_count == 1) {
+    IrValue *expected = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &expected)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_EQ, IR_TYPE_BOOL, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = ir_new_integer_literal_value(ir, IR_TYPE_USIZE, 1, ir_graph_line(expr), ir_graph_column(expr));
+    value->right = expected;
+    *out = value;
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.cli.argOr") && arg_count == 2) {
+    IrValue *index = NULL;
+    IrValue *fallback = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &fallback)) {
+      ir_free_value(index);
+      ir_free_value(fallback);
+      return false;
+    }
+    if (!ir_type_is_value(index->type)) {
+      ir_free_value(index);
+      ir_free_value(fallback);
+      ir_graph_mark_unsupported(ir, expr, "typed graph MIR std.cli.argOr index must be an integer value", "non-integer index");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_ARGS_GET_OR, IR_TYPE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = index;
+    value->right = fallback;
+    value->element_type = IR_TYPE_U8;
+    *out = value;
+    return true;
+  }
+  *handled = false;
+  return true;
+}
+
 static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
   *handled = true;
   if (ir_text_eq(callee_name, "std.args.len") && arg_count == 0) {
@@ -4135,6 +4258,9 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     *out = value;
     return true;
   }
+  if (!ir_graph_lower_std_cli_arg_call(graph, ir, fun, expr, callee_name, arg_count, handled, out)) return false;
+  if (*handled) return true;
+  *handled = true;
   if (ir_text_eq(callee_name, "std.args.has") && arg_count == 1) {
     IrValue *index = NULL;
     if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_USIZE, &index)) return false;
@@ -4225,6 +4351,16 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
   if (ir_text_eq(callee_name, "std.cli.usageExitCode") && arg_count == 0) {
     *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 2, ir_graph_line(expr), ir_graph_column(expr));
     return true;
+  }
+  if ((ir_text_eq(callee_name, "std.json.errorName") || ir_text_eq(callee_name, "std.json.errorExpected")) && arg_count == 1) {
+    IrValue *code = NULL;
+    if (!ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_U32, &code)) return false;
+    if (code && code->kind == IR_VALUE_INT) {
+      const char *label = ir_graph_json_error_label(code->int_value, ir_text_eq(callee_name, "std.json.errorExpected"));
+      ir_free_value(code);
+      return ir_make_string_literal_value(ir, label, ir_graph_line(expr), ir_graph_column(expr), out);
+    }
+    return ir_graph_make_json_error_label_value(ir, code, ir_text_eq(callee_name, "std.json.errorExpected"), ir_graph_line(expr), ir_graph_column(expr), out);
   }
   int json_error_code = ir_graph_json_error_code(callee_name);
   if (json_error_code >= 0 && arg_count == 0) {
@@ -4928,12 +5064,160 @@ static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const
     if (ir->direct_allocator_helper_count < 2) ir->direct_allocator_helper_count = 2;
     ir_graph_require_runtime_helper(ir); *out = value; free(qualified); return true;
   }
-  if ((ir_text_eq(callee_name, "std.json.validate") || ir_text_eq(callee_name, "std.json.validateBytes") || ir_text_eq(callee_name, "std.json.streamTokens") || ir_text_eq(callee_name, "std.json.streamTokensBytes")) && arg_count == 1) {
+  if ((ir_text_eq(callee_name, "std.json.validate") || ir_text_eq(callee_name, "std.json.validateBytes") || ir_text_eq(callee_name, "std.json.streamTokens") || ir_text_eq(callee_name, "std.json.streamTokensBytes") || ir_text_eq(callee_name, "std.json.validateError") || ir_text_eq(callee_name, "std.json.errorOffset") || ir_text_eq(callee_name, "std.json.errorLine") || ir_text_eq(callee_name, "std.json.errorColumn")) && arg_count == 1) {
     IrValue *view = NULL;
     if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &view)) { free(qualified); return false; }
     bool validate = ir_text_eq(callee_name, "std.json.validate") || ir_text_eq(callee_name, "std.json.validateBytes");
-    IrValue *value = ir_new_value(ir, validate ? IR_VALUE_JSON_VALIDATE_BYTES : IR_VALUE_JSON_STREAM_TOKENS_BYTES, validate ? IR_TYPE_BOOL : IR_TYPE_USIZE, ir_graph_line(expr), ir_graph_column(expr));
+    bool stream = ir_text_eq(callee_name, "std.json.streamTokens") || ir_text_eq(callee_name, "std.json.streamTokensBytes");
+    IrValueKind kind = validate ? IR_VALUE_JSON_VALIDATE_BYTES : (stream ? IR_VALUE_JSON_STREAM_TOKENS_BYTES : IR_VALUE_JSON_DIAGNOSTIC_BYTES);
+    IrTypeKind type = validate ? IR_TYPE_BOOL : (stream ? IR_TYPE_USIZE : (ir_text_eq(callee_name, "std.json.validateError") ? IR_TYPE_U32 : IR_TYPE_USIZE));
+    IrValue *value = ir_new_value(ir, kind, type, ir_graph_line(expr), ir_graph_column(expr));
+    if (kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES) {
+      if (ir_text_eq(callee_name, "std.json.validateError")) value->int_value = 0;
+      else if (ir_text_eq(callee_name, "std.json.errorOffset")) value->int_value = 1;
+      else if (ir_text_eq(callee_name, "std.json.errorLine")) value->int_value = 2;
+      else value->int_value = 3;
+    }
     value->left = view; ir_graph_require_runtime_helper(ir); *out = value; free(qualified); return true;
+  }
+  if (ir_text_eq(callee_name, "std.json.field") && arg_count == 2) {
+    IrValue *input = NULL;
+    IrValue *key = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &input) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &key)) {
+      ir_free_value(input);
+      ir_free_value(key);
+      free(qualified);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_JSON_FIELD, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = input;
+    value->right = key;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    free(qualified);
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.json.u32") || ir_text_eq(callee_name, "std.json.bool")) && arg_count == 2) {
+    IrValue *input = NULL;
+    IrValue *key = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &input) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &key)) {
+      ir_free_value(input);
+      ir_free_value(key);
+      free(qualified);
+      return false;
+    }
+    IrTypeKind element = ir_text_eq(callee_name, "std.json.bool") ? IR_TYPE_BOOL : IR_TYPE_U32;
+    IrValue *value = ir_new_value(ir, IR_VALUE_JSON_LOOKUP_SCALAR, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+    value->element_type = element;
+    value->int_value = element == IR_TYPE_BOOL ? 1 : 0;
+    value->left = input;
+    value->right = key;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    free(qualified);
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.json.stringDecode") && arg_count == 2) {
+    IrValue *buffer = NULL;
+    IrValue *raw = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buffer) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &raw)) {
+      ir_free_value(buffer);
+      ir_free_value(raw);
+      free(qualified);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_JSON_STRING_DECODE, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = buffer;
+    value->right = raw;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    free(qualified);
+    return true;
+  }
+  if ((ir_text_eq(callee_name, "std.json.writeString") || ir_text_eq(callee_name, "std.json.writeStringBytes") || ir_text_eq(callee_name, "__zero_std_json_write_string") || ir_text_eq(callee_name, "__zero_std_json_write_string_bytes")) && arg_count == 2) {
+    IrValue *buffer = NULL;
+    IrValue *text = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buffer) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &text)) {
+      ir_free_value(buffer);
+      ir_free_value(text);
+      free(qualified);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_JSON_WRITE_STRING, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = buffer;
+    value->right = text;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    free(qualified);
+    return true;
+  }
+  IrJsonWriteOp json_write_op = IR_JSON_WRITE_FIELD_RAW;
+  bool json_write = true;
+  if (ir_text_eq(callee_name, "std.json.writeFieldRaw") && arg_count == 3) json_write_op = IR_JSON_WRITE_FIELD_RAW;
+  else if (ir_text_eq(callee_name, "std.json.writeFieldString") && arg_count == 3) json_write_op = IR_JSON_WRITE_FIELD_STRING;
+  else if (ir_text_eq(callee_name, "std.json.writeFieldU32") && arg_count == 3) json_write_op = IR_JSON_WRITE_FIELD_U32;
+  else if (ir_text_eq(callee_name, "std.json.writeFieldBool") && arg_count == 3) json_write_op = IR_JSON_WRITE_FIELD_BOOL;
+  else if (ir_text_eq(callee_name, "std.json.writeObject1String") && arg_count == 3) json_write_op = IR_JSON_WRITE_OBJECT1_STRING;
+  else if (ir_text_eq(callee_name, "std.json.writeObject1U32") && arg_count == 3) json_write_op = IR_JSON_WRITE_OBJECT1_U32;
+  else if (ir_text_eq(callee_name, "std.json.writeObject1Bool") && arg_count == 3) json_write_op = IR_JSON_WRITE_OBJECT1_BOOL;
+  else if (ir_text_eq(callee_name, "std.json.writeObject2Fields") && arg_count == 3) json_write_op = IR_JSON_WRITE_OBJECT2_FIELDS;
+  else if (ir_text_eq(callee_name, "std.json.writeObject2StringField") && arg_count == 4) json_write_op = IR_JSON_WRITE_OBJECT2_STRING_FIELD;
+  else if (ir_text_eq(callee_name, "std.json.writeObject2U32Field") && arg_count == 4) json_write_op = IR_JSON_WRITE_OBJECT2_U32_FIELD;
+  else if (ir_text_eq(callee_name, "std.json.writeObject2BoolField") && arg_count == 4) json_write_op = IR_JSON_WRITE_OBJECT2_BOOL_FIELD;
+  else if (ir_text_eq(callee_name, "std.json.writeArray2Strings") && arg_count == 3) json_write_op = IR_JSON_WRITE_ARRAY2_STRINGS;
+  else if (ir_text_eq(callee_name, "std.json.writeArray2U32") && arg_count == 3) json_write_op = IR_JSON_WRITE_ARRAY2_U32;
+  else if (ir_text_eq(callee_name, "std.json.writeArray2Bools") && arg_count == 3) json_write_op = IR_JSON_WRITE_ARRAY2_BOOLS;
+  else json_write = false;
+  if (json_write) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_JSON_WRITE_RUNTIME, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->int_value = (unsigned long long)json_write_op;
+    for (size_t i = 0; i < arg_count; i++) {
+      IrTypeKind type = IR_TYPE_BYTE_VIEW;
+      if ((json_write_op == IR_JSON_WRITE_FIELD_U32 || json_write_op == IR_JSON_WRITE_OBJECT1_U32) && i == 2) type = IR_TYPE_U32;
+      if ((json_write_op == IR_JSON_WRITE_FIELD_BOOL || json_write_op == IR_JSON_WRITE_OBJECT1_BOOL) && i == 2) type = IR_TYPE_BOOL;
+      if ((json_write_op == IR_JSON_WRITE_OBJECT2_U32_FIELD || json_write_op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) && i == 2) type = json_write_op == IR_JSON_WRITE_OBJECT2_U32_FIELD ? IR_TYPE_U32 : IR_TYPE_BOOL;
+      if ((json_write_op == IR_JSON_WRITE_ARRAY2_U32 || json_write_op == IR_JSON_WRITE_ARRAY2_BOOLS) && i > 0) type = json_write_op == IR_JSON_WRITE_ARRAY2_U32 ? IR_TYPE_U32 : IR_TYPE_BOOL;
+      IrValue *arg = NULL;
+      bool ok = type == IR_TYPE_BYTE_VIEW ?
+        ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", i), &arg) :
+        ir_graph_lower_ordered_arg(graph, ir, fun, expr, i, type, &arg);
+      if (!ok) {
+        ir_free_value(value);
+        free(qualified);
+        return false;
+      }
+      ir_value_push_arg(ir, value, arg);
+    }
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    free(qualified);
+    return true;
+  }
+  if (ir_text_eq(callee_name, "std.json.string") && arg_count == 3) {
+    IrValue *buffer = NULL;
+    IrValue *input = NULL;
+    IrValue *key = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buffer) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &input) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &key)) {
+      ir_free_value(buffer);
+      ir_free_value(input);
+      ir_free_value(key);
+      free(qualified);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_JSON_STRING_FIELD, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = buffer;
+    value->right = input;
+    value->index = key;
+    ir_graph_require_runtime_helper(ir);
+    *out = value;
+    free(qualified);
+    return true;
   }
   if ((ir_text_eq(callee_name, "std.codec.crc32") || ir_text_eq(callee_name, "std.codec.crc32Bytes") || ir_text_eq(callee_name, "std.crypto.hash32")) && arg_count == 1) {
     IrValue *view = NULL;

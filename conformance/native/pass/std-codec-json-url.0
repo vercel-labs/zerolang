@@ -231,7 +231,27 @@ pub fn main(world: World) -> Void raises {
     if !std.mem.eql(std.json.errorName(std.json.errorNone()), "ok") || !std.mem.eql(std.json.errorName(std.json.errorInvalid()), "invalid") || !std.mem.eql(std.json.errorName(std.json.errorTrailing()), "trailing") || !std.mem.eql(std.json.errorName(99_u32), "unknown") {
         ok = false
     }
+    if !std.mem.eql(std.json.errorExpected(std.json.errorNone()), "none") || !std.mem.eql(std.json.errorExpected(std.json.errorInvalid()), "valid-json") || !std.mem.eql(std.json.errorExpected(std.json.errorTrailing()), "end-of-input") || !std.mem.eql(std.json.errorExpected(99_u32), "unknown") {
+        ok = false
+    }
+    let dynamic_ok_status: u32 = std.json.validateError(json)
+    let dynamic_invalid_status: u32 = std.json.validateError("{")
+    let dynamic_trailing_status: u32 = std.json.validateError("{} x")
+    let dynamic_unknown_status: u32 = dynamic_trailing_status + 97_u32
+    if !std.mem.eql(std.json.errorName(dynamic_ok_status), "ok") || !std.mem.eql(std.json.errorExpected(dynamic_ok_status), "none") || !std.mem.eql(std.json.errorName(dynamic_unknown_status), "unknown") || !std.mem.eql(std.json.errorExpected(dynamic_unknown_status), "unknown") {
+        ok = false
+    }
+    if !std.mem.eql(std.json.errorName(dynamic_invalid_status), "invalid") || !std.mem.eql(std.json.errorExpected(dynamic_invalid_status), "valid-json") || !std.mem.eql(std.json.errorName(dynamic_trailing_status), "trailing") || !std.mem.eql(std.json.errorExpected(dynamic_trailing_status), "end-of-input") {
+        ok = false
+    }
     if std.json.validateError(json) != std.json.errorNone() || std.json.validateError("\"\\u20ac\"") != std.json.errorNone() || std.json.validateError("\"\\ud834\\udd1e\"") != std.json.errorNone() || std.json.validateError("\"\\ud800\"") != std.json.errorInvalid() || std.json.validateError("\"\xff\"") != std.json.errorInvalid() || std.json.validateError("{") != std.json.errorInvalid() || std.json.validateError("{} x") != std.json.errorTrailing() || std.json.validateError("[1,]") != std.json.errorInvalid() || std.json.validateError("{\"a\":1,}") != std.json.errorInvalid() {
+        ok = false
+    }
+    let invalid_json: Span<u8> = "{\n  \"ok\": tru\n}"
+    let trailing_json: Span<u8> = "{} x"
+    var json_location_buf: [24]u8 = [0_u8; 24]
+    let json_location: Maybe<Span<u8>> = std.diag.formatOffsetLocation(json_location_buf, "config.json", invalid_json, std.json.errorOffset(invalid_json))
+    if std.json.errorOffset(json) != std.mem.len(json) || std.json.errorOffset(invalid_json) != 13 || std.json.errorLine(invalid_json) != 2 || std.json.errorColumn(invalid_json) != 12 || !json_location.has || !std.mem.eql(json_location.value, "config.json:2:12") || std.json.errorOffset(trailing_json) != 3 || std.json.errorLine(trailing_json) != 1 || std.json.errorColumn(trailing_json) != 4 || std.json.errorOffset("[1,]") != 3 || std.json.errorOffset("{\"a\":1,}") != 7 {
         ok = false
     }
     let count_field: Maybe<Span<u8>> = std.json.field(json, "count")

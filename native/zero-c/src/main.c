@@ -6518,6 +6518,26 @@ typedef struct {
   bool path_unlink_file;
   bool path_rename;
   bool zero_json_parse_bytes;
+  bool zero_json_diagnostic;
+  bool zero_json_field;
+  bool zero_json_lookup_scalar;
+  bool zero_json_string_decode;
+  bool zero_json_string_field;
+  bool zero_json_write_string;
+  bool zero_json_write_field_raw;
+  bool zero_json_write_field_string;
+  bool zero_json_write_field_u32;
+  bool zero_json_write_field_bool;
+  bool zero_json_write_object1_string;
+  bool zero_json_write_object1_u32;
+  bool zero_json_write_object1_bool;
+  bool zero_json_write_object2_fields;
+  bool zero_json_write_object2_string_field;
+  bool zero_json_write_object2_u32_field;
+  bool zero_json_write_object2_bool_field;
+  bool zero_json_write_array2_strings;
+  bool zero_json_write_array2_u32;
+  bool zero_json_write_array2_bools;
   bool zero_ascii_op;
   bool zero_text_op;
   bool zero_time_op;
@@ -6534,6 +6554,9 @@ typedef struct {
   bool zero_str_pair_op;
   bool zero_str_count_byte;
   bool zero_str_word_count_ascii;
+  bool zero_crypto_digest;
+  bool zero_crypto_hmac_sha256;
+  bool zero_crypto_hmac_sha256_hex;
   bool zero_args_find;
   bool zero_parse_op;
   bool zero_parse_usize;
@@ -6579,6 +6602,16 @@ static void runtime_import_audit_mark_str_runtime(RuntimeImportAudit *audit, con
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
       audit->zero_str_buffer_op = true;
+      break;
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
+      audit->zero_crypto_digest = true;
+      break;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+      audit->zero_crypto_hmac_sha256 = true;
+      break;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      audit->zero_crypto_hmac_sha256_hex = true;
       break;
     case IR_STR_OP_CONCAT:
       audit->zero_str_concat = true;
@@ -6659,6 +6692,42 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
       audit->zero_json_parse_bytes = true;
+      break;
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+      audit->zero_json_diagnostic = true;
+      break;
+    case IR_VALUE_JSON_FIELD:
+      audit->zero_json_field = true;
+      break;
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+      audit->zero_json_lookup_scalar = true;
+      break;
+    case IR_VALUE_JSON_STRING_DECODE:
+      audit->zero_json_string_decode = true;
+      break;
+    case IR_VALUE_JSON_STRING_FIELD:
+      audit->zero_json_string_field = true;
+      break;
+    case IR_VALUE_JSON_WRITE_STRING:
+      audit->zero_json_write_string = true;
+      break;
+    case IR_VALUE_JSON_WRITE_RUNTIME:
+      switch ((IrJsonWriteOp)value->int_value) {
+        case IR_JSON_WRITE_FIELD_RAW: audit->zero_json_write_field_raw = true; break;
+        case IR_JSON_WRITE_FIELD_STRING: audit->zero_json_write_field_string = true; break;
+        case IR_JSON_WRITE_FIELD_U32: audit->zero_json_write_field_u32 = true; break;
+        case IR_JSON_WRITE_FIELD_BOOL: audit->zero_json_write_field_bool = true; break;
+        case IR_JSON_WRITE_OBJECT1_STRING: audit->zero_json_write_object1_string = true; break;
+        case IR_JSON_WRITE_OBJECT1_U32: audit->zero_json_write_object1_u32 = true; break;
+        case IR_JSON_WRITE_OBJECT1_BOOL: audit->zero_json_write_object1_bool = true; break;
+        case IR_JSON_WRITE_OBJECT2_FIELDS: audit->zero_json_write_object2_fields = true; break;
+        case IR_JSON_WRITE_OBJECT2_STRING_FIELD: audit->zero_json_write_object2_string_field = true; break;
+        case IR_JSON_WRITE_OBJECT2_U32_FIELD: audit->zero_json_write_object2_u32_field = true; break;
+        case IR_JSON_WRITE_OBJECT2_BOOL_FIELD: audit->zero_json_write_object2_bool_field = true; break;
+        case IR_JSON_WRITE_ARRAY2_STRINGS: audit->zero_json_write_array2_strings = true; break;
+        case IR_JSON_WRITE_ARRAY2_U32: audit->zero_json_write_array2_u32 = true; break;
+        case IR_JSON_WRITE_ARRAY2_BOOLS: audit->zero_json_write_array2_bools = true; break;
+      }
       break;
     case IR_VALUE_ASCII_RUNTIME:
       audit->zero_ascii_op = true;
@@ -6810,6 +6879,13 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
   if (value->kind == IR_VALUE_JSON_PARSE_BYTES ||
       value->kind == IR_VALUE_JSON_VALIDATE_BYTES ||
       value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
+      value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ||
+      value->kind == IR_VALUE_JSON_FIELD ||
+      value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
+      value->kind == IR_VALUE_JSON_STRING_DECODE ||
+      value->kind == IR_VALUE_JSON_STRING_FIELD ||
+      value->kind == IR_VALUE_JSON_WRITE_STRING ||
+      value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
       value->kind == IR_VALUE_ASCII_RUNTIME ||
       value->kind == IR_VALUE_TEXT_RUNTIME ||
       value->kind == IR_VALUE_TIME_RUNTIME ||
@@ -6889,6 +6965,26 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (!audit) return 0;
   size_t count = 0;
   if (audit->zero_json_parse_bytes) count++;
+  if (audit->zero_json_diagnostic) count++;
+  if (audit->zero_json_field) count++;
+  if (audit->zero_json_lookup_scalar) count++;
+  if (audit->zero_json_string_decode) count++;
+  if (audit->zero_json_string_field) count++;
+  if (audit->zero_json_write_string) count++;
+  if (audit->zero_json_write_field_raw) count++;
+  if (audit->zero_json_write_field_string) count++;
+  if (audit->zero_json_write_field_u32) count++;
+  if (audit->zero_json_write_field_bool) count++;
+  if (audit->zero_json_write_object1_string) count++;
+  if (audit->zero_json_write_object1_u32) count++;
+  if (audit->zero_json_write_object1_bool) count++;
+  if (audit->zero_json_write_object2_fields) count++;
+  if (audit->zero_json_write_object2_string_field) count++;
+  if (audit->zero_json_write_object2_u32_field) count++;
+  if (audit->zero_json_write_object2_bool_field) count++;
+  if (audit->zero_json_write_array2_strings) count++;
+  if (audit->zero_json_write_array2_u32) count++;
+  if (audit->zero_json_write_array2_bools) count++;
   if (audit->zero_ascii_op) count++;
   if (audit->zero_text_op) count++;
   if (audit->zero_time_op) count++;
@@ -6905,6 +7001,9 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_str_pair_op) count++;
   if (audit->zero_str_count_byte) count++;
   if (audit->zero_str_word_count_ascii) count++;
+  if (audit->zero_crypto_digest) count++;
+  if (audit->zero_crypto_hmac_sha256) count++;
+  if (audit->zero_crypto_hmac_sha256_hex) count++;
   if (audit->zero_args_find) count++;
   if (audit->zero_parse_op) count++;
   if (audit->zero_parse_usize) count++;
@@ -6956,6 +7055,26 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   bool first = true;
   zbuf_append(buf, "[");
   if (audit && audit->zero_json_parse_bytes) append_json_string_array_item(buf, &first, "zero_json_parse_bytes");
+  if (audit && audit->zero_json_diagnostic) append_json_string_array_item(buf, &first, "zero_json_diagnostic");
+  if (audit && audit->zero_json_field) append_json_string_array_item(buf, &first, "zero_json_field");
+  if (audit && audit->zero_json_lookup_scalar) append_json_string_array_item(buf, &first, "zero_json_lookup_scalar");
+  if (audit && audit->zero_json_string_decode) append_json_string_array_item(buf, &first, "zero_json_string_decode");
+  if (audit && audit->zero_json_string_field) append_json_string_array_item(buf, &first, "zero_json_string_field");
+  if (audit && audit->zero_json_write_string) append_json_string_array_item(buf, &first, "zero_json_write_string");
+  if (audit && audit->zero_json_write_field_raw) append_json_string_array_item(buf, &first, "zero_json_write_field_raw");
+  if (audit && audit->zero_json_write_field_string) append_json_string_array_item(buf, &first, "zero_json_write_field_string");
+  if (audit && audit->zero_json_write_field_u32) append_json_string_array_item(buf, &first, "zero_json_write_field_u32");
+  if (audit && audit->zero_json_write_field_bool) append_json_string_array_item(buf, &first, "zero_json_write_field_bool");
+  if (audit && audit->zero_json_write_object1_string) append_json_string_array_item(buf, &first, "zero_json_write_object1_string");
+  if (audit && audit->zero_json_write_object1_u32) append_json_string_array_item(buf, &first, "zero_json_write_object1_u32");
+  if (audit && audit->zero_json_write_object1_bool) append_json_string_array_item(buf, &first, "zero_json_write_object1_bool");
+  if (audit && audit->zero_json_write_object2_fields) append_json_string_array_item(buf, &first, "zero_json_write_object2_fields");
+  if (audit && audit->zero_json_write_object2_string_field) append_json_string_array_item(buf, &first, "zero_json_write_object2_string_field");
+  if (audit && audit->zero_json_write_object2_u32_field) append_json_string_array_item(buf, &first, "zero_json_write_object2_u32_field");
+  if (audit && audit->zero_json_write_object2_bool_field) append_json_string_array_item(buf, &first, "zero_json_write_object2_bool_field");
+  if (audit && audit->zero_json_write_array2_strings) append_json_string_array_item(buf, &first, "zero_json_write_array2_strings");
+  if (audit && audit->zero_json_write_array2_u32) append_json_string_array_item(buf, &first, "zero_json_write_array2_u32");
+  if (audit && audit->zero_json_write_array2_bools) append_json_string_array_item(buf, &first, "zero_json_write_array2_bools");
   if (audit && audit->zero_ascii_op) append_json_string_array_item(buf, &first, "zero_ascii_op");
   if (audit && audit->zero_text_op) append_json_string_array_item(buf, &first, "zero_text_op");
   if (audit && audit->zero_time_op) append_json_string_array_item(buf, &first, "zero_time_op");
@@ -6972,6 +7091,9 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_str_pair_op) append_json_string_array_item(buf, &first, "zero_str_pair_op");
   if (audit && audit->zero_str_count_byte) append_json_string_array_item(buf, &first, "zero_str_count_byte");
   if (audit && audit->zero_str_word_count_ascii) append_json_string_array_item(buf, &first, "zero_str_word_count_ascii");
+  if (audit && audit->zero_crypto_digest) append_json_string_array_item(buf, &first, "zero_crypto_digest");
+  if (audit && audit->zero_crypto_hmac_sha256) append_json_string_array_item(buf, &first, "zero_crypto_hmac_sha256");
+  if (audit && audit->zero_crypto_hmac_sha256_hex) append_json_string_array_item(buf, &first, "zero_crypto_hmac_sha256_hex");
   if (audit && audit->zero_args_find) append_json_string_array_item(buf, &first, "zero_args_find");
   if (audit && audit->zero_parse_op) append_json_string_array_item(buf, &first, "zero_parse_op");
   if (audit && audit->zero_parse_usize) append_json_string_array_item(buf, &first, "zero_parse_usize");

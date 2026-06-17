@@ -35,12 +35,13 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
   switch (kind) {
     case IR_VALUE_INT: case IR_VALUE_BOOL: case IR_VALUE_LOCAL: case IR_VALUE_CAST: case IR_VALUE_BINARY: case IR_VALUE_COMPARE: case IR_VALUE_CALL:
     case IR_VALUE_STRING_LITERAL: case IR_VALUE_ARRAY_BYTE_VIEW: case IR_VALUE_BYTE_SLICE: case IR_VALUE_BYTE_VIEW_LEN: case IR_VALUE_BYTE_VIEW_REMAINING:
+    case IR_VALUE_JSON_ERROR_LABEL:
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL:
     case IR_VALUE_ITEM_COPY: case IR_VALUE_ITEM_FILL: case IR_VALUE_ITEM_CONTAINS:
     case IR_VALUE_BYTE_VIEW_EQ:
     case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_RECORD_ADDR:
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL:
-    case IR_VALUE_MAYBE_SCALAR_LITERAL: case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_CRC32_BYTES:
+    case IR_VALUE_MAYBE_SCALAR_LITERAL: case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_RAND_NEXT_BELOW: case IR_VALUE_RAND_RANGE_U32: case IR_VALUE_CRC32_BYTES:
       return true;
     case IR_VALUE_ASCII_RUNTIME:
     case IR_VALUE_TEXT_RUNTIME:
@@ -59,6 +60,13 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
     case IR_VALUE_SORT_RUNTIME:
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+    case IR_VALUE_JSON_FIELD:
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+    case IR_VALUE_JSON_STRING_DECODE:
+    case IR_VALUE_JSON_STRING_FIELD:
+    case IR_VALUE_JSON_WRITE_STRING:
+    case IR_VALUE_JSON_WRITE_RUNTIME:
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
     case IR_VALUE_HTTP_REQUEST_PATH:
       return build_backend_supports_aarch64_hosted_runtime(backend);
@@ -71,18 +79,19 @@ static bool build_value_supported_macho_x64(IrValueKind kind) {
   switch (kind) {
     case IR_VALUE_INT: case IR_VALUE_BOOL: case IR_VALUE_LOCAL: case IR_VALUE_CAST: case IR_VALUE_BINARY: case IR_VALUE_COMPARE: case IR_VALUE_CALL:
     case IR_VALUE_STRING_LITERAL: case IR_VALUE_ARRAY_BYTE_VIEW: case IR_VALUE_BYTE_SLICE: case IR_VALUE_BYTE_VIEW_LEN: case IR_VALUE_BYTE_VIEW_REMAINING:
+    case IR_VALUE_JSON_ERROR_LABEL:
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL:
     case IR_VALUE_ITEM_COPY: case IR_VALUE_ITEM_FILL: case IR_VALUE_ITEM_CONTAINS:
     case IR_VALUE_BYTE_VIEW_EQ:
     case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_RECORD_ADDR: case IR_VALUE_CHECK:
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL: case IR_VALUE_MAYBE_SCALAR_LITERAL:
-    case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_CRC32_BYTES:
+    case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_RAND_NEXT_BELOW: case IR_VALUE_RAND_RANGE_U32: case IR_VALUE_CRC32_BYTES:
     case IR_VALUE_ASCII_RUNTIME: case IR_VALUE_TEXT_RUNTIME: case IR_VALUE_PARSE_RUNTIME:
     case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32:
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
     case IR_VALUE_STR_RUNTIME: case IR_VALUE_TIME_RUNTIME: case IR_VALUE_MATH_RUNTIME:
     case IR_VALUE_SEARCH_RUNTIME: case IR_VALUE_SORT_RUNTIME:
-    case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES: case IR_VALUE_JSON_DIAGNOSTIC_BYTES: case IR_VALUE_JSON_FIELD: case IR_VALUE_JSON_LOOKUP_SCALAR: case IR_VALUE_JSON_STRING_DECODE: case IR_VALUE_JSON_STRING_FIELD: case IR_VALUE_JSON_WRITE_STRING: case IR_VALUE_JSON_WRITE_RUNTIME:
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
       return true;
     default:
@@ -94,6 +103,7 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
   switch (value->kind) {
     case IR_VALUE_INT: case IR_VALUE_BOOL: case IR_VALUE_LOCAL: case IR_VALUE_CAST: case IR_VALUE_BINARY: case IR_VALUE_COMPARE: case IR_VALUE_CALL:
     case IR_VALUE_STRING_LITERAL: case IR_VALUE_ARRAY_BYTE_VIEW: case IR_VALUE_BYTE_SLICE: case IR_VALUE_BYTE_VIEW_LEN: case IR_VALUE_BYTE_VIEW_REMAINING:
+    case IR_VALUE_JSON_ERROR_LABEL:
     case IR_VALUE_BYTE_VIEW_INDEX_LOAD: case IR_VALUE_INDEX_LOAD: case IR_VALUE_FIELD_LOAD: case IR_VALUE_RECORD_ADDR:
       return true;
     case IR_VALUE_MAYBE_BYTE_VIEW_LITERAL:
@@ -124,6 +134,9 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_RAND_ENTROPY_U32:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64;
     case IR_VALUE_RAND_NEXT_U32:
+      return build_backend_has_byte_runtime(ctx->backend);
+    case IR_VALUE_RAND_NEXT_BELOW:
+    case IR_VALUE_RAND_RANGE_U32:
       return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_FS_HOST:
       return build_backend_is_native_graph_runtime(ctx->backend);
@@ -171,7 +184,7 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
       return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_JSON_PARSE_BYTES:
       return build_backend_supports_json_parse(ctx);
-    case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES: case IR_VALUE_JSON_DIAGNOSTIC_BYTES: case IR_VALUE_JSON_FIELD: case IR_VALUE_JSON_LOOKUP_SCALAR: case IR_VALUE_JSON_STRING_DECODE: case IR_VALUE_JSON_STRING_FIELD: case IR_VALUE_JSON_WRITE_STRING: case IR_VALUE_JSON_WRITE_RUNTIME:
       return build_backend_supports_json_validate(ctx);
     case IR_VALUE_HTTP_FETCH: case IR_VALUE_HTTP_RESULT_OK: case IR_VALUE_HTTP_RESULT_STATUS: case IR_VALUE_HTTP_RESULT_BODY_LEN:
     case IR_VALUE_HTTP_RESULT_ERROR: case IR_VALUE_HTTP_RESPONSE_LEN: case IR_VALUE_HTTP_RESPONSE_HEADERS_LEN:

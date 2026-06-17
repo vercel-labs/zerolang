@@ -6,14 +6,24 @@ export c fn main() -> i32 {
     var hash_buf: [8]u8 = [0_u8; 8]
     var hmac_buf: [8]u8 = [0_u8; 8]
     var id_buf: [8]u8 = [0_u8; 8]
+    var sha_buf: [64]u8 = [0_u8; 64]
+    var hmac_sha_buf: [64]u8 = [0_u8; 64]
     let fixed: Maybe<Span<u8>> = std.crypto.fixedHex32(fixed_buf, 48879_u32)
     let hash_hex: Maybe<Span<u8>> = std.crypto.hashHex32(hash_buf, std.mem.span("message"))
     let hmac_hex: Maybe<Span<u8>> = std.crypto.hmacHex32(hmac_buf, std.mem.span("key"), std.mem.span("message"))
     let stable_id: Maybe<Span<u8>> = std.crypto.stableId32(id_buf, std.mem.span("message"))
+    let sha: Maybe<Span<u8>> = std.crypto.sha256Hex(sha_buf, std.mem.span("abc"))
+    let hmac_sha: Maybe<Span<u8>> = std.crypto.hmacSha256Hex(hmac_sha_buf, std.mem.span("key"), std.mem.span("The quick brown fox jumps over the lazy dog"))
     if crc_text != 2883514770_u32 || crc_bytes != 1120241454_u32 || hash != 3065852031_u32 {
         return 1
     }
     if !fixed.has || !hash_hex.has || !hmac_hex.has || !stable_id.has {
+        return 1
+    }
+    if !sha.has {
+        return 1
+    }
+    if !hmac_sha.has {
         return 1
     }
     if !std.mem.eql(fixed.value, "0000beef") {
@@ -26,6 +36,12 @@ export c fn main() -> i32 {
         return 1
     }
     if !std.mem.eql(stable_id.value, "b6bd307f") {
+        return 1
+    }
+    if !std.mem.eql(sha.value, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
+        return 1
+    }
+    if !std.mem.eql(hmac_sha.value, "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8") {
         return 1
     }
     return 0

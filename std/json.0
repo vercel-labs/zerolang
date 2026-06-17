@@ -51,6 +51,19 @@ fn __zero_std_json_error_name(code: u32) -> String {
     return "unknown"
 }
 
+fn __zero_std_json_error_expected(code: u32) -> String {
+    if code == __zero_std_json_error_none() {
+        return "none"
+    }
+    if code == __zero_std_json_error_invalid() {
+        return "valid-json"
+    }
+    if code == __zero_std_json_error_trailing() {
+        return "end-of-input"
+    }
+    return "unknown"
+}
+
 fn __zero_std_json_is_ws(byte: u8) -> Bool {
     return byte == 32_u8 || byte == 9_u8 || byte == 10_u8 || byte == 13_u8
 }
@@ -79,6 +92,37 @@ fn __zero_std_json_literal_end(bytes: Span<u8>, start: usize, literal: Span<u8>)
         index = index + 1
     }
     return start + std.mem.len(literal)
+}
+
+fn __zero_std_json_literal_error_offset(bytes: Span<u8>, start: usize, literal: Span<u8>) -> usize {
+    var index: usize = 0
+    while index < std.mem.len(literal) {
+        let offset: usize = start + index
+        if offset >= std.mem.len(bytes) {
+            return offset
+        }
+        if bytes[offset] != literal[index] {
+            return offset
+        }
+        index = index + 1
+    }
+    return start + std.mem.len(literal)
+}
+
+fn __zero_std_json_hex_error_offset(bytes: Span<u8>, start: usize) -> usize {
+    var index: usize = 0
+    while index < 4 {
+        let offset: usize = start + index
+        if offset >= std.mem.len(bytes) {
+            return offset
+        }
+        let digit: Maybe<u8> = std.ascii.hexValue(bytes[offset])
+        if !digit.has {
+            return offset
+        }
+        index = index + 1
+    }
+    return start + 4
 }
 
 fn __zero_std_json_hex_u16(bytes: Span<u8>, start: usize) -> Maybe<u16> {
@@ -267,6 +311,76 @@ fn __zero_std_json_string_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
     return null
 }
 
+fn __zero_std_json_string_error_offset(bytes: Span<u8>, start: usize) -> usize {
+    if start >= std.mem.len(bytes) || bytes[start] != 34_u8 {
+        return start
+    }
+    var index: usize = start + 1
+    while index < std.mem.len(bytes) {
+        let byte: u8 = bytes[index]
+        if byte == 34_u8 {
+            return index + 1
+        }
+        if byte < 32_u8 {
+            return index
+        }
+        if byte == 92_u8 {
+            index = index + 1
+            if index >= std.mem.len(bytes) {
+                return index
+            }
+            let escaped: u8 = bytes[index]
+            if escaped == 117_u8 {
+                let hex_end: usize = __zero_std_json_hex_error_offset(bytes, index + 1)
+                if hex_end != index + 5 {
+                    return hex_end
+                }
+                let unit: Maybe<u16> = __zero_std_json_hex_u16(bytes, index + 1)
+                if !unit.has {
+                    return index + 1
+                }
+                if __zero_std_json_is_high_surrogate(unit.value) {
+                    if index + 10 >= std.mem.len(bytes) {
+                        return std.mem.len(bytes)
+                    }
+                    if bytes[index + 5] != 92_u8 {
+                        return index + 5
+                    }
+                    if bytes[index + 6] != 117_u8 {
+                        return index + 6
+                    }
+                    let low_hex_end: usize = __zero_std_json_hex_error_offset(bytes, index + 7)
+                    if low_hex_end != index + 11 {
+                        return low_hex_end
+                    }
+                    let low: Maybe<u16> = __zero_std_json_hex_u16(bytes, index + 7)
+                    if !low.has || !__zero_std_json_is_low_surrogate(low.value) {
+                        return index + 7
+                    }
+                    index = index + 11
+                } else if __zero_std_json_is_low_surrogate(unit.value) {
+                    return index
+                } else {
+                    index = index + 5
+                }
+            } else if escaped == 34_u8 || escaped == 92_u8 || escaped == 47_u8 || escaped == 98_u8 || escaped == 102_u8 || escaped == 110_u8 || escaped == 114_u8 || escaped == 116_u8 {
+                index = index + 1
+            } else {
+                return index
+            }
+        } else if byte >= 128_u8 {
+            let width: Maybe<usize> = __zero_std_json_raw_utf8_width(bytes, index, std.mem.len(bytes))
+            if !width.has {
+                return index
+            }
+            index = index + width.value
+        } else {
+            index = index + 1
+        }
+    }
+    return std.mem.len(bytes)
+}
+
 fn __zero_std_json_number_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
     var index: usize = start
     if index < std.mem.len(bytes) && bytes[index] == 45_u8 {
@@ -305,6 +419,49 @@ fn __zero_std_json_number_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
         }
         if first_exp == index {
             return null
+        }
+    }
+    return index
+}
+
+fn __zero_std_json_number_error_offset(bytes: Span<u8>, start: usize) -> usize {
+    var index: usize = start
+    if index < std.mem.len(bytes) && bytes[index] == 45_u8 {
+        index = index + 1
+    }
+    if index >= std.mem.len(bytes) {
+        return index
+    }
+    if bytes[index] == 48_u8 {
+        index = index + 1
+    } else if bytes[index] >= 49_u8 && bytes[index] <= 57_u8 {
+        while index < std.mem.len(bytes) && __zero_std_json_is_digit(bytes[index]) {
+            index = index + 1
+        }
+    } else {
+        return index
+    }
+    if index < std.mem.len(bytes) && bytes[index] == 46_u8 {
+        index = index + 1
+        let first_fraction: usize = index
+        while index < std.mem.len(bytes) && __zero_std_json_is_digit(bytes[index]) {
+            index = index + 1
+        }
+        if first_fraction == index {
+            return index
+        }
+    }
+    if index < std.mem.len(bytes) && (bytes[index] == 101_u8 || bytes[index] == 69_u8) {
+        index = index + 1
+        if index < std.mem.len(bytes) && (bytes[index] == 43_u8 || bytes[index] == 45_u8) {
+            index = index + 1
+        }
+        let first_exp: usize = index
+        while index < std.mem.len(bytes) && __zero_std_json_is_digit(bytes[index]) {
+            index = index + 1
+        }
+        if first_exp == index {
+            return index
         }
     }
     return index
@@ -520,6 +677,218 @@ fn __zero_std_json_value_end(bytes: Span<u8>, start: usize) -> Maybe<usize> {
         }
     }
     return null
+}
+
+fn __zero_std_json_value_error_offset(bytes: Span<u8>, start: usize) -> usize {
+    var index: usize = __zero_std_json_skip_ws(bytes, start)
+    if index >= std.mem.len(bytes) {
+        return index
+    }
+    var states: [64]u8 = [0_u8; 64]
+    var depth: usize = 0
+    while index < std.mem.len(bytes) {
+        if depth == 0 {
+            let byte: u8 = bytes[index]
+            if byte == 123_u8 {
+                states[depth] = 2_u8
+                depth = depth + 1
+                index = index + 1
+            } else if byte == 91_u8 {
+                states[depth] = 0_u8
+                depth = depth + 1
+                index = index + 1
+            } else if byte == 34_u8 {
+                return __zero_std_json_string_error_offset(bytes, index)
+            } else if byte == 116_u8 {
+                return __zero_std_json_literal_error_offset(bytes, index, "true")
+            } else if byte == 102_u8 {
+                return __zero_std_json_literal_error_offset(bytes, index, "false")
+            } else if byte == 110_u8 {
+                return __zero_std_json_literal_error_offset(bytes, index, "null")
+            } else {
+                return __zero_std_json_number_error_offset(bytes, index)
+            }
+        } else {
+            index = __zero_std_json_skip_ws(bytes, index)
+            if index >= std.mem.len(bytes) {
+                return index
+            }
+            let state: u8 = states[depth - 1]
+            if state == 0_u8 {
+                let byte: u8 = bytes[index]
+                if byte == 93_u8 {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else if byte == 123_u8 {
+                    states[depth - 1] = 1_u8
+                    if depth >= 64 {
+                        return index
+                    }
+                    states[depth] = 2_u8
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == 91_u8 {
+                    states[depth - 1] = 1_u8
+                    if depth >= 64 {
+                        return index
+                    }
+                    states[depth] = 0_u8
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == 34_u8 {
+                    let end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
+                    if !end.has {
+                        return __zero_std_json_string_error_offset(bytes, index)
+                    }
+                    index = end.value
+                    states[depth - 1] = 1_u8
+                } else if byte == 116_u8 {
+                    let end: Maybe<usize> = __zero_std_json_literal_end(bytes, index, "true")
+                    if !end.has {
+                        return __zero_std_json_literal_error_offset(bytes, index, "true")
+                    }
+                    index = end.value
+                    states[depth - 1] = 1_u8
+                } else if byte == 102_u8 {
+                    let end: Maybe<usize> = __zero_std_json_literal_end(bytes, index, "false")
+                    if !end.has {
+                        return __zero_std_json_literal_error_offset(bytes, index, "false")
+                    }
+                    index = end.value
+                    states[depth - 1] = 1_u8
+                } else if byte == 110_u8 {
+                    let end: Maybe<usize> = __zero_std_json_literal_end(bytes, index, "null")
+                    if !end.has {
+                        return __zero_std_json_literal_error_offset(bytes, index, "null")
+                    }
+                    index = end.value
+                    states[depth - 1] = 1_u8
+                } else {
+                    let end: Maybe<usize> = __zero_std_json_number_end(bytes, index)
+                    if !end.has {
+                        return __zero_std_json_number_error_offset(bytes, index)
+                    }
+                    index = end.value
+                    states[depth - 1] = 1_u8
+                }
+            } else if state == 1_u8 {
+                if bytes[index] == 44_u8 {
+                    index = index + 1
+                    let next: usize = __zero_std_json_skip_ws(bytes, index)
+                    if next >= std.mem.len(bytes) || bytes[next] == 93_u8 {
+                        return next
+                    }
+                    states[depth - 1] = 0_u8
+                } else if bytes[index] == 93_u8 {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else {
+                    return index
+                }
+            } else if state == 2_u8 {
+                if bytes[index] == 125_u8 {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else {
+                    let end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
+                    if !end.has {
+                        return __zero_std_json_string_error_offset(bytes, index)
+                    }
+                    index = end.value
+                    states[depth - 1] = 3_u8
+                }
+            } else if state == 3_u8 {
+                if bytes[index] != 58_u8 {
+                    return index
+                }
+                states[depth - 1] = 4_u8
+                index = index + 1
+            } else if state == 4_u8 {
+                let byte: u8 = bytes[index]
+                if byte == 123_u8 {
+                    states[depth - 1] = 5_u8
+                    if depth >= 64 {
+                        return index
+                    }
+                    states[depth] = 2_u8
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == 91_u8 {
+                    states[depth - 1] = 5_u8
+                    if depth >= 64 {
+                        return index
+                    }
+                    states[depth] = 0_u8
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == 34_u8 {
+                    let end: Maybe<usize> = __zero_std_json_string_end(bytes, index)
+                    if !end.has {
+                        return __zero_std_json_string_error_offset(bytes, index)
+                    }
+                    index = end.value
+                    states[depth - 1] = 5_u8
+                } else if byte == 116_u8 {
+                    let end: Maybe<usize> = __zero_std_json_literal_end(bytes, index, "true")
+                    if !end.has {
+                        return __zero_std_json_literal_error_offset(bytes, index, "true")
+                    }
+                    index = end.value
+                    states[depth - 1] = 5_u8
+                } else if byte == 102_u8 {
+                    let end: Maybe<usize> = __zero_std_json_literal_end(bytes, index, "false")
+                    if !end.has {
+                        return __zero_std_json_literal_error_offset(bytes, index, "false")
+                    }
+                    index = end.value
+                    states[depth - 1] = 5_u8
+                } else if byte == 110_u8 {
+                    let end: Maybe<usize> = __zero_std_json_literal_end(bytes, index, "null")
+                    if !end.has {
+                        return __zero_std_json_literal_error_offset(bytes, index, "null")
+                    }
+                    index = end.value
+                    states[depth - 1] = 5_u8
+                } else {
+                    let end: Maybe<usize> = __zero_std_json_number_end(bytes, index)
+                    if !end.has {
+                        return __zero_std_json_number_error_offset(bytes, index)
+                    }
+                    index = end.value
+                    states[depth - 1] = 5_u8
+                }
+            } else if state == 5_u8 {
+                if bytes[index] == 44_u8 {
+                    index = index + 1
+                    let next: usize = __zero_std_json_skip_ws(bytes, index)
+                    if next >= std.mem.len(bytes) || bytes[next] == 125_u8 {
+                        return next
+                    }
+                    states[depth - 1] = 2_u8
+                } else if bytes[index] == 125_u8 {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else {
+                    return index
+                }
+            } else {
+                return index
+            }
+        }
+    }
+    return std.mem.len(bytes)
 }
 
 fn __zero_std_json_token_count(bytes: Span<u8>) -> Maybe<usize> {
@@ -748,6 +1117,31 @@ fn __zero_std_json_validate_error(bytes: Span<u8>) -> u32 {
         return __zero_std_json_error_trailing()
     }
     return __zero_std_json_error_none()
+}
+
+fn __zero_std_json_error_offset(bytes: Span<u8>) -> usize {
+    let start: usize = __zero_std_json_skip_ws(bytes, 0)
+    let end: Maybe<usize> = __zero_std_json_value_end(bytes, start)
+    if !end.has {
+        return __zero_std_json_value_error_offset(bytes, start)
+    }
+    let trailing: usize = __zero_std_json_skip_ws(bytes, end.value)
+    if trailing != std.mem.len(bytes) {
+        return trailing
+    }
+    return std.mem.len(bytes)
+}
+
+fn __zero_std_json_error_line(bytes: Span<u8>) -> usize {
+    return std.diag.line(bytes, __zero_std_json_error_offset(bytes))
+}
+
+fn __zero_std_json_error_column(bytes: Span<u8>) -> usize {
+    return std.diag.column(bytes, __zero_std_json_error_offset(bytes))
+}
+
+fn __zero_std_json_format_error_location(buffer: MutSpan<u8>, path: Span<u8>, bytes: Span<u8>) -> Maybe<Span<u8>> {
+    return std.diag.formatOffsetLocation(buffer, path, bytes, __zero_std_json_error_offset(bytes))
 }
 
 fn __zero_std_json_key_matches(bytes: Span<u8>, start: usize, end: usize, key: Span<u8>) -> Bool {

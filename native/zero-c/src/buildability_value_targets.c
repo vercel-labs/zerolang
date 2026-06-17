@@ -31,6 +31,18 @@ static IrTypeKind build_view_element_type(const IrValue *view) {
   return view && view->element_type != IR_TYPE_UNSUPPORTED ? view->element_type : IR_TYPE_U8;
 }
 
+static bool build_check_json_error_label(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
+  if (!value || value->kind != IR_VALUE_JSON_ERROR_LABEL) return true;
+  if (!value->left) return z_build_diag(ctx, diag, "direct backend JSON error label is missing a status code", value->line, value->column, "missing JSON status");
+  if (value->arg_len != 4) return z_build_diag(ctx, diag, "direct backend JSON error label requires four label literals", value->line, value->column, "invalid JSON error labels");
+  for (size_t i = 0; i < value->arg_len; i++) {
+    if (!value->args[i] || value->args[i]->kind != IR_VALUE_STRING_LITERAL || value->args[i]->type != IR_TYPE_BYTE_VIEW) {
+      return z_build_diag(ctx, diag, "direct backend JSON error label requires string literal labels", value->line, value->column, "invalid JSON error label");
+    }
+  }
+  return z_build_check_value(ctx, fun, value->left, false, scratch_slot, diag);
+}
+
 static unsigned build_type_index_shift(IrTypeKind type) {
   if (type == IR_TYPE_U8 || type == IR_TYPE_BOOL) return 0;
   if (type == IR_TYPE_U16) return 1;
@@ -103,6 +115,7 @@ static bool build_aarch64_byte_view_ptr(const ZBuildability *ctx, const IrFuncti
       (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW &&
       (ctx->backend == Z_DIRECT_BACKEND_ELF_AARCH64 || ctx->backend == Z_DIRECT_BACKEND_COFF_AARCH64)) return true;
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && fun && view->array_index < fun->local_len) {
     if (!build_array_byte_view_has_storage(fun, view)) return z_build_diag(ctx, diag, "direct AArch64 byte-view array requires a fixed array or record array field", view->line, view->column, "unsupported array view");
     return true;
@@ -135,6 +148,7 @@ bool z_build_check_aarch64_byte_view_len(const ZBuildability *ctx, const IrFunct
       (fun->locals[view->local_index].is_record || fun->locals[view->local_index].is_record_ref)) return true;
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW &&
       (ctx->backend == Z_DIRECT_BACKEND_ELF_AARCH64 || ctx->backend == Z_DIRECT_BACKEND_COFF_AARCH64)) return true;
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return true;
   if (view->kind == IR_VALUE_BYTE_SLICE) {
     return z_build_check_aarch64_byte_view_len(ctx, fun, view->left, diag);
   }
@@ -191,6 +205,7 @@ static bool build_aarch64_byte_operation(const ZBuildability *ctx, const IrFunct
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && scratch_slot >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) return z_build_diag(ctx, diag, "direct AArch64 byte-view indexed load exceeds scratch register spill capacity", value->line, value->column, "expression too deep");
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && !build_check_aarch64_byte_view_len_spill(ctx, fun, value->left, scratch_slot + 1, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 byte-view indexed load exceeds scratch register spill capacity", diag)) return false;
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && !z_build_check_aarch64_byte_view(ctx, fun, value->left, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_ERROR_LABEL && !build_check_json_error_label(ctx, fun, value, scratch_slot, diag)) return false;
   if (value->kind == IR_VALUE_CRC32_BYTES) {
     if (scratch_slot + 3 >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
       return z_build_diag(ctx, diag, "direct AArch64 CRC32 exceeds scratch register spill capacity", value->line, value->column, "expression too deep");
@@ -199,13 +214,24 @@ static bool build_aarch64_byte_operation(const ZBuildability *ctx, const IrFunct
     if (!build_check_aarch64_byte_view_ptr_spill(ctx, fun, value->left, scratch_slot, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 CRC32 exceeds scratch register spill capacity", diag)) return false;
     if (!build_check_aarch64_byte_view_len_spill(ctx, fun, value->left, scratch_slot + 1, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 CRC32 exceeds scratch register spill capacity", diag)) return false;
   }
-  if (value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES) {
-    if (scratch_slot + 1 >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
+  if (value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES || value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ||
+      value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_STRING_FIELD ||
+      value->kind == IR_VALUE_JSON_WRITE_STRING) {
+    bool two_views = value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_WRITE_STRING;
+    bool three_views = value->kind == IR_VALUE_JSON_STRING_FIELD;
+    unsigned needed_slots = three_views ? 8u : (two_views ? 6u : 2u);
+    if (scratch_slot + needed_slots - 1u >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
       return z_build_diag(ctx, diag, "direct AArch64 JSON helper exceeds scratch register spill capacity", value->line, value->column, "expression too deep");
     }
     if (!z_build_check_aarch64_byte_view(ctx, fun, value->left, diag)) return false;
+    if ((two_views || three_views) && !z_build_check_aarch64_byte_view(ctx, fun, value->right, diag)) return false;
+    if (three_views && !z_build_check_aarch64_byte_view(ctx, fun, value->index, diag)) return false;
     if (!build_check_aarch64_byte_view_ptr_spill(ctx, fun, value->left, scratch_slot, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 JSON helper exceeds scratch register spill capacity", diag)) return false;
     if (!build_check_aarch64_byte_view_len_spill(ctx, fun, value->left, scratch_slot + 1, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 JSON helper exceeds scratch register spill capacity", diag)) return false;
+    if ((two_views || three_views) && !build_check_aarch64_byte_view_ptr_spill(ctx, fun, value->right, scratch_slot + 2, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 JSON helper exceeds scratch register spill capacity", diag)) return false;
+    if ((two_views || three_views) && !build_check_aarch64_byte_view_len_spill(ctx, fun, value->right, scratch_slot + 3, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 JSON helper exceeds scratch register spill capacity", diag)) return false;
+    if (three_views && !build_check_aarch64_byte_view_ptr_spill(ctx, fun, value->index, scratch_slot + 4, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 JSON helper exceeds scratch register spill capacity", diag)) return false;
+    if (three_views && !build_check_aarch64_byte_view_len_spill(ctx, fun, value->index, scratch_slot + 5, BUILD_AARCH64_SCRATCH_SLOT_COUNT, "direct AArch64 JSON helper exceeds scratch register spill capacity", diag)) return false;
   }
   if (value->kind == IR_VALUE_BYTE_VIEW_LEN || value->kind == IR_VALUE_BYTE_VIEW_REMAINING || value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD) *skip_left = true;
   return true;
@@ -378,12 +404,20 @@ static bool build_check_linear_byte_view_target(const ZBuildability *ctx, const 
   if (value->kind == IR_VALUE_BYTE_FILL && !check_view(ctx, fun, value->right, diag)) return false;
   if (value->kind == IR_VALUE_BYTE_VIEW_EQ && !build_check_two_byte_views(ctx, fun, value, check_view, diag)) return false;
   if (value->kind == IR_VALUE_CRC32_BYTES && !check_view(ctx, fun, value->left, diag)) return false;
-  if ((value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
+  if ((value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES || value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ||
        (include_json_parse && value->kind == IR_VALUE_JSON_PARSE_BYTES)) &&
       !check_view(ctx, fun, value->left, diag)) return false;
+  if ((value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_WRITE_STRING) && !build_check_two_byte_views(ctx, fun, value, check_view, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_STRING_FIELD && !(check_view(ctx, fun, value->left, diag) && check_view(ctx, fun, value->right, diag) && check_view(ctx, fun, value->index, diag))) return false;
+  if (value->kind == IR_VALUE_JSON_WRITE_RUNTIME) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (value->args[i] && value->args[i]->type == IR_TYPE_BYTE_VIEW && !check_view(ctx, fun, value->args[i], diag)) return false;
+    }
+  }
   if (build_kind_is_fmt_buffer_use(value->kind) && !check_view(ctx, fun, value->left, diag)) return false;
   if ((value->kind == IR_VALUE_BYTE_VIEW_LEN || value->kind == IR_VALUE_BYTE_VIEW_REMAINING) && !check_len(ctx, fun, value->left, diag)) return false;
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && !check_view(ctx, fun, value->left, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_ERROR_LABEL && !build_check_json_error_label(ctx, fun, value, 0, diag)) return false;
   if (include_alloc_skip_left && (value->kind == IR_VALUE_FIXED_BUF_ALLOC || value->kind == IR_VALUE_VEC_INIT) && !check_view(ctx, fun, value->left, diag)) return false;
   if (build_kind_is_skip_left_view(value->kind) || (include_alloc_skip_left && (value->kind == IR_VALUE_FIXED_BUF_ALLOC || value->kind == IR_VALUE_VEC_INIT))) {
     if (skip_left) *skip_left = true;
@@ -471,6 +505,7 @@ static bool build_check_macho64_view_operation(const ZBuildability *ctx, const I
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && scratch_slot >= BUILD_MACHO_SCRATCH_SLOT_COUNT) return z_build_diag(ctx, diag, "direct AArch64 Mach-O byte-view indexed load exceeds scratch register spill capacity", value->line, value->column, "expression too deep");
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && !build_check_aarch64_byte_view_len_spill(ctx, fun, value->left, scratch_slot + 1, BUILD_MACHO_SCRATCH_SLOT_COUNT, "direct AArch64 Mach-O byte-view indexed load exceeds scratch register spill capacity", diag)) return false;
   if (value->kind == IR_VALUE_BYTE_VIEW_INDEX_LOAD && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_ERROR_LABEL && !build_check_json_error_label(ctx, fun, value, scratch_slot, diag)) return false;
   if (value->kind == IR_VALUE_CRC32_BYTES) {
     const char *message = "direct AArch64 Mach-O CRC32 exceeds scratch register spill capacity";
     if (!build_check_macho64_capacity(ctx, value, scratch_slot, 3, message, diag)) return false;
@@ -483,7 +518,20 @@ static bool build_check_macho64_view_operation(const ZBuildability *ctx, const I
 
 static bool build_check_macho64_json_http(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
   if ((value->kind == IR_VALUE_FIXED_BUF_ALLOC || value->kind == IR_VALUE_VEC_INIT) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
-  if ((value->kind == IR_VALUE_JSON_PARSE_BYTES || value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+  if ((value->kind == IR_VALUE_JSON_PARSE_BYTES || value->kind == IR_VALUE_JSON_VALIDATE_BYTES || value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES || value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+  if ((value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_WRITE_STRING) && !build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_STRING_FIELD) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 8, "direct AArch64 Mach-O JSON helper exceeds scratch register spill capacity", diag)) return false;
+    if (!z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
+    if (!z_build_check_macho_byte_view(ctx, fun, value->right, diag)) return false;
+    return z_build_check_macho_byte_view(ctx, fun, value->index, diag);
+  }
+  if (value->kind == IR_VALUE_JSON_WRITE_RUNTIME) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 8, "direct AArch64 Mach-O JSON writer exceeds scratch register spill capacity", diag)) return false;
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (value->args[i] && value->args[i]->type == IR_TYPE_BYTE_VIEW && !z_build_check_macho_byte_view(ctx, fun, value->args[i], diag)) return false;
+    }
+  }
   if (value->kind == IR_VALUE_HTTP_FETCH && !build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag)) return false;
   if ((value->kind == IR_VALUE_HTTP_RESPONSE_LEN || value->kind == IR_VALUE_HTTP_RESPONSE_HEADERS_LEN || value->kind == IR_VALUE_HTTP_RESPONSE_BODY_OFFSET) && !z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
   if (value->kind == IR_VALUE_HTTP_HEADER_VALUE && !build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag)) return false;

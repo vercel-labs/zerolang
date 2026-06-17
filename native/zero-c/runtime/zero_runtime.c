@@ -310,6 +310,215 @@ static unsigned char zero_str_upper(unsigned char byte) {
   return byte >= 'a' && byte <= 'z' ? (unsigned char)(byte - ('a' - 'A')) : byte;
 }
 
+typedef struct {
+  uint32_t state[8];
+  uint64_t bit_len;
+  unsigned char block[64];
+  size_t block_len;
+} ZeroSha256;
+
+static uint32_t zero_sha256_rotr(uint32_t value, unsigned bits) {
+  return (value >> bits) | (value << (32u - bits));
+}
+
+static uint32_t zero_sha256_load_be32(const unsigned char *ptr) {
+  return ((uint32_t)ptr[0] << 24) |
+         ((uint32_t)ptr[1] << 16) |
+         ((uint32_t)ptr[2] << 8) |
+         (uint32_t)ptr[3];
+}
+
+static void zero_sha256_store_be32(unsigned char *ptr, uint32_t value) {
+  ptr[0] = (unsigned char)((value >> 24) & 0xffu);
+  ptr[1] = (unsigned char)((value >> 16) & 0xffu);
+  ptr[2] = (unsigned char)((value >> 8) & 0xffu);
+  ptr[3] = (unsigned char)(value & 0xffu);
+}
+
+static void zero_sha256_transform(ZeroSha256 *sha, const unsigned char block[64]) {
+  static const uint32_t k[64] = {
+    UINT32_C(0x428a2f98), UINT32_C(0x71374491), UINT32_C(0xb5c0fbcf), UINT32_C(0xe9b5dba5),
+    UINT32_C(0x3956c25b), UINT32_C(0x59f111f1), UINT32_C(0x923f82a4), UINT32_C(0xab1c5ed5),
+    UINT32_C(0xd807aa98), UINT32_C(0x12835b01), UINT32_C(0x243185be), UINT32_C(0x550c7dc3),
+    UINT32_C(0x72be5d74), UINT32_C(0x80deb1fe), UINT32_C(0x9bdc06a7), UINT32_C(0xc19bf174),
+    UINT32_C(0xe49b69c1), UINT32_C(0xefbe4786), UINT32_C(0x0fc19dc6), UINT32_C(0x240ca1cc),
+    UINT32_C(0x2de92c6f), UINT32_C(0x4a7484aa), UINT32_C(0x5cb0a9dc), UINT32_C(0x76f988da),
+    UINT32_C(0x983e5152), UINT32_C(0xa831c66d), UINT32_C(0xb00327c8), UINT32_C(0xbf597fc7),
+    UINT32_C(0xc6e00bf3), UINT32_C(0xd5a79147), UINT32_C(0x06ca6351), UINT32_C(0x14292967),
+    UINT32_C(0x27b70a85), UINT32_C(0x2e1b2138), UINT32_C(0x4d2c6dfc), UINT32_C(0x53380d13),
+    UINT32_C(0x650a7354), UINT32_C(0x766a0abb), UINT32_C(0x81c2c92e), UINT32_C(0x92722c85),
+    UINT32_C(0xa2bfe8a1), UINT32_C(0xa81a664b), UINT32_C(0xc24b8b70), UINT32_C(0xc76c51a3),
+    UINT32_C(0xd192e819), UINT32_C(0xd6990624), UINT32_C(0xf40e3585), UINT32_C(0x106aa070),
+    UINT32_C(0x19a4c116), UINT32_C(0x1e376c08), UINT32_C(0x2748774c), UINT32_C(0x34b0bcb5),
+    UINT32_C(0x391c0cb3), UINT32_C(0x4ed8aa4a), UINT32_C(0x5b9cca4f), UINT32_C(0x682e6ff3),
+    UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208),
+    UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)
+  };
+  uint32_t w[64];
+  for (size_t i = 0; i < 16; i++) w[i] = zero_sha256_load_be32(block + i * 4u);
+  for (size_t i = 16; i < 64; i++) {
+    uint32_t s0 = zero_sha256_rotr(w[i - 15u], 7) ^ zero_sha256_rotr(w[i - 15u], 18) ^ (w[i - 15u] >> 3);
+    uint32_t s1 = zero_sha256_rotr(w[i - 2u], 17) ^ zero_sha256_rotr(w[i - 2u], 19) ^ (w[i - 2u] >> 10);
+    w[i] = w[i - 16u] + s0 + w[i - 7u] + s1;
+  }
+
+  uint32_t a = sha->state[0];
+  uint32_t b = sha->state[1];
+  uint32_t c = sha->state[2];
+  uint32_t d = sha->state[3];
+  uint32_t e = sha->state[4];
+  uint32_t f = sha->state[5];
+  uint32_t g = sha->state[6];
+  uint32_t h = sha->state[7];
+
+  for (size_t i = 0; i < 64; i++) {
+    uint32_t s1 = zero_sha256_rotr(e, 6) ^ zero_sha256_rotr(e, 11) ^ zero_sha256_rotr(e, 25);
+    uint32_t ch = (e & f) ^ ((~e) & g);
+    uint32_t temp1 = h + s1 + ch + k[i] + w[i];
+    uint32_t s0 = zero_sha256_rotr(a, 2) ^ zero_sha256_rotr(a, 13) ^ zero_sha256_rotr(a, 22);
+    uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+    uint32_t temp2 = s0 + maj;
+    h = g;
+    g = f;
+    f = e;
+    e = d + temp1;
+    d = c;
+    c = b;
+    b = a;
+    a = temp1 + temp2;
+  }
+
+  sha->state[0] += a;
+  sha->state[1] += b;
+  sha->state[2] += c;
+  sha->state[3] += d;
+  sha->state[4] += e;
+  sha->state[5] += f;
+  sha->state[6] += g;
+  sha->state[7] += h;
+}
+
+static void zero_sha256_init(ZeroSha256 *sha) {
+  sha->state[0] = UINT32_C(0x6a09e667);
+  sha->state[1] = UINT32_C(0xbb67ae85);
+  sha->state[2] = UINT32_C(0x3c6ef372);
+  sha->state[3] = UINT32_C(0xa54ff53a);
+  sha->state[4] = UINT32_C(0x510e527f);
+  sha->state[5] = UINT32_C(0x9b05688c);
+  sha->state[6] = UINT32_C(0x1f83d9ab);
+  sha->state[7] = UINT32_C(0x5be0cd19);
+  sha->bit_len = 0;
+  sha->block_len = 0;
+}
+
+static void zero_sha256_update(ZeroSha256 *sha, const unsigned char *bytes, size_t len) {
+  if (!bytes && len > 0) return;
+  while (len > 0) {
+    size_t take = 64u - sha->block_len;
+    if (take > len) take = len;
+    memcpy(sha->block + sha->block_len, bytes, take);
+    sha->block_len += take;
+    bytes += take;
+    len -= take;
+    if (sha->block_len == 64u) {
+      zero_sha256_transform(sha, sha->block);
+      sha->bit_len += 512u;
+      sha->block_len = 0;
+    }
+  }
+}
+
+static void zero_sha256_final(ZeroSha256 *sha, unsigned char digest[32]) {
+  uint64_t total_bits = sha->bit_len + (uint64_t)sha->block_len * 8u;
+  sha->block[sha->block_len++] = 0x80u;
+  if (sha->block_len > 56u) {
+    while (sha->block_len < 64u) sha->block[sha->block_len++] = 0;
+    zero_sha256_transform(sha, sha->block);
+    sha->block_len = 0;
+  }
+  while (sha->block_len < 56u) sha->block[sha->block_len++] = 0;
+  for (size_t i = 0; i < 8; i++) sha->block[63u - i] = (unsigned char)((total_bits >> (i * 8u)) & 0xffu);
+  zero_sha256_transform(sha, sha->block);
+  for (size_t i = 0; i < 8; i++) zero_sha256_store_be32(digest + i * 4u, sha->state[i]);
+}
+
+static void zero_sha256_hash(ZeroByteView bytes, unsigned char digest[32]) {
+  ZeroSha256 sha;
+  zero_sha256_init(&sha);
+  zero_sha256_update(&sha, bytes.ptr, bytes.len);
+  zero_sha256_final(&sha, digest);
+}
+
+static void zero_sha256_hmac(ZeroByteView key, ZeroByteView bytes, unsigned char digest[32]) {
+  unsigned char key_block[64];
+  unsigned char key_hash[32];
+  unsigned char ipad[64];
+  unsigned char opad[64];
+  unsigned char inner[32];
+  memset(key_block, 0, sizeof(key_block));
+  if (key.len > 64u) {
+    zero_sha256_hash(key, key_hash);
+    memcpy(key_block, key_hash, sizeof(key_hash));
+  } else if (key.len > 0) {
+    memcpy(key_block, key.ptr, key.len);
+  }
+  for (size_t i = 0; i < 64u; i++) {
+    ipad[i] = (unsigned char)(key_block[i] ^ 0x36u);
+    opad[i] = (unsigned char)(key_block[i] ^ 0x5cu);
+  }
+
+  ZeroSha256 sha;
+  zero_sha256_init(&sha);
+  zero_sha256_update(&sha, ipad, sizeof(ipad));
+  zero_sha256_update(&sha, bytes.ptr, bytes.len);
+  zero_sha256_final(&sha, inner);
+
+  zero_sha256_init(&sha);
+  zero_sha256_update(&sha, opad, sizeof(opad));
+  zero_sha256_update(&sha, inner, sizeof(inner));
+  zero_sha256_final(&sha, digest);
+}
+
+static uint32_t zero_crypto_write_digest_hex(ZeroMutByteView buffer, const unsigned char digest[32]) {
+  if (buffer.len < 64u) return 0;
+  static const unsigned char hex[] = "0123456789abcdef";
+  for (size_t i = 0; i < 32u; i++) {
+    buffer.ptr[i * 2u] = hex[digest[i] >> 4];
+    buffer.ptr[i * 2u + 1u] = hex[digest[i] & 0x0fu];
+  }
+  return zero_str_some_len(64u);
+}
+
+uint32_t zero_crypto_digest(ZeroMutByteView buffer, ZeroByteView bytes, uint32_t op) {
+  if (!buffer.ptr || !zero_str_view_valid(bytes)) return 0;
+  unsigned char digest[32];
+  zero_sha256_hash(bytes, digest);
+  if (op == ZERO_CRYPTO_DIGEST_SHA256) {
+    if (buffer.len < 32u) return 0;
+    memcpy(buffer.ptr, digest, 32u);
+    return zero_str_some_len(32u);
+  }
+  if (op == ZERO_CRYPTO_DIGEST_SHA256_HEX) {
+    return zero_crypto_write_digest_hex(buffer, digest);
+  }
+  return 0;
+}
+
+uint32_t zero_crypto_hmac_sha256(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView bytes) {
+  if (!buffer.ptr || !zero_str_view_valid(key) || !zero_str_view_valid(bytes) || buffer.len < 32u) return 0;
+  unsigned char digest[32];
+  zero_sha256_hmac(key, bytes, digest);
+  memcpy(buffer.ptr, digest, sizeof(digest));
+  return zero_str_some_len(sizeof(digest));
+}
+
+uint32_t zero_crypto_hmac_sha256_hex(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView bytes) {
+  if (!buffer.ptr || !zero_str_view_valid(key) || !zero_str_view_valid(bytes)) return 0;
+  unsigned char digest[32];
+  zero_sha256_hmac(key, bytes, digest);
+  return zero_crypto_write_digest_hex(buffer, digest);
+}
+
 static int zero_str_ascii_space(unsigned char byte) {
   return byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r';
 }
@@ -1241,7 +1450,72 @@ typedef struct {
   size_t len;
   size_t pos;
   size_t tokens;
+  size_t error_pos;
 } ZeroJsonScanner;
+
+static int zero_json_fail(ZeroJsonScanner *scanner, size_t pos) {
+  if (scanner) scanner->error_pos = pos;
+  return 0;
+}
+
+static int zero_json_hex_value(unsigned char ch) {
+  if (ch >= '0' && ch <= '9') return (int)(ch - '0');
+  if (ch >= 'a' && ch <= 'f') return (int)(ch - 'a' + 10);
+  if (ch >= 'A' && ch <= 'F') return (int)(ch - 'A' + 10);
+  return -1;
+}
+
+static int zero_json_hex4_value(const unsigned char *ptr, size_t len, size_t pos, uint16_t *out) {
+  if (!ptr || pos + 4 > len) return 0;
+  uint16_t value = 0;
+  for (size_t i = 0; i < 4; i++) {
+    int digit = zero_json_hex_value(ptr[pos + i]);
+    if (digit < 0) return 0;
+    value = (uint16_t)((value << 4) | (uint16_t)digit);
+  }
+  if (out) *out = value;
+  return 1;
+}
+
+static int zero_json_high_surrogate(uint16_t value) {
+  return value >= 0xd800u && value <= 0xdbffu;
+}
+
+static int zero_json_low_surrogate(uint16_t value) {
+  return value >= 0xdc00u && value <= 0xdfffu;
+}
+
+static uint32_t zero_json_surrogate_codepoint(uint16_t high, uint16_t low) {
+  uint32_t high_part = (uint32_t)high - 0xd800u;
+  uint32_t low_part = (uint32_t)low - 0xdc00u;
+  return 0x10000u + ((high_part << 10) | low_part);
+}
+
+static size_t zero_json_write_utf8_bytes(uint32_t codepoint, unsigned char out[4]) {
+  if (codepoint <= 0x7fu) {
+    out[0] = (unsigned char)codepoint;
+    return 1;
+  }
+  if (codepoint <= 0x7ffu) {
+    out[0] = (unsigned char)(0xc0u | (codepoint >> 6));
+    out[1] = (unsigned char)(0x80u | (codepoint & 0x3fu));
+    return 2;
+  }
+  if (codepoint <= 0xffffu) {
+    out[0] = (unsigned char)(0xe0u | (codepoint >> 12));
+    out[1] = (unsigned char)(0x80u | ((codepoint >> 6) & 0x3fu));
+    out[2] = (unsigned char)(0x80u | (codepoint & 0x3fu));
+    return 3;
+  }
+  if (codepoint <= 0x10ffffu) {
+    out[0] = (unsigned char)(0xf0u | (codepoint >> 18));
+    out[1] = (unsigned char)(0x80u | ((codepoint >> 12) & 0x3fu));
+    out[2] = (unsigned char)(0x80u | ((codepoint >> 6) & 0x3fu));
+    out[3] = (unsigned char)(0x80u | (codepoint & 0x3fu));
+    return 4;
+  }
+  return 0;
+}
 
 static void zero_json_skip_ws(ZeroJsonScanner *scanner) {
   while (scanner->pos < scanner->len) {
@@ -1251,35 +1525,62 @@ static void zero_json_skip_ws(ZeroJsonScanner *scanner) {
   }
 }
 
+static size_t zero_json_skip_ws_at(ZeroByteView input, size_t pos) {
+  while (pos < input.len) {
+    unsigned char ch = input.ptr[pos];
+    if (ch != ' ' && ch != '\n' && ch != '\r' && ch != '\t') break;
+    pos++;
+  }
+  return pos;
+}
+
 static int zero_json_parse_value(ZeroJsonScanner *scanner, unsigned depth);
+static size_t zero_json_utf8_char_len(const unsigned char *ptr, size_t len, size_t pos);
 
 static int zero_json_parse_string(ZeroJsonScanner *scanner) {
-  if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != '"') return 0;
+  if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != '"') return zero_json_fail(scanner, scanner->pos);
   scanner->pos++;
   while (scanner->pos < scanner->len) {
+    size_t char_pos = scanner->pos;
     unsigned char ch = scanner->ptr[scanner->pos++];
     if (ch == '"') return 1;
-    if (ch < 0x20u) return 0;
+    if (ch < 0x20u) return zero_json_fail(scanner, char_pos);
+    if (ch >= 0x80u) {
+      size_t width = zero_json_utf8_char_len(scanner->ptr, scanner->len, char_pos);
+      if (width == 0) return zero_json_fail(scanner, char_pos);
+      scanner->pos = char_pos + width;
+      continue;
+    }
     if (ch != '\\') continue;
-    if (scanner->pos >= scanner->len) return 0;
+    if (scanner->pos >= scanner->len) return zero_json_fail(scanner, scanner->pos);
+    size_t escape_pos = scanner->pos;
     unsigned char esc = scanner->ptr[scanner->pos++];
     if (esc == '"' || esc == '\\' || esc == '/' || esc == 'b' || esc == 'f' || esc == 'n' || esc == 'r' || esc == 't') continue;
-    if (esc != 'u' || scanner->pos + 4 > scanner->len) return 0;
-    for (unsigned i = 0; i < 4; i++) {
-      unsigned char hex = scanner->ptr[scanner->pos++];
-      int ok = (hex >= '0' && hex <= '9') || (hex >= 'a' && hex <= 'f') || (hex >= 'A' && hex <= 'F');
-      if (!ok) return 0;
+    if (esc != 'u') return zero_json_fail(scanner, escape_pos);
+    uint16_t unit = 0;
+    if (!zero_json_hex4_value(scanner->ptr, scanner->len, scanner->pos, &unit)) return zero_json_fail(scanner, scanner->pos);
+    scanner->pos += 4;
+    if (zero_json_high_surrogate(unit)) {
+      size_t pair_pos = scanner->pos;
+      if (scanner->pos + 6 > scanner->len || scanner->ptr[scanner->pos] != '\\' || scanner->ptr[scanner->pos + 1] != 'u') return zero_json_fail(scanner, pair_pos);
+      scanner->pos += 2;
+      uint16_t low = 0;
+      if (!zero_json_hex4_value(scanner->ptr, scanner->len, scanner->pos, &low) || !zero_json_low_surrogate(low)) return zero_json_fail(scanner, scanner->pos);
+      scanner->pos += 4;
+    } else if (zero_json_low_surrogate(unit)) {
+      return zero_json_fail(scanner, escape_pos);
     }
   }
-  return 0;
+  return zero_json_fail(scanner, scanner->len);
 }
 
 static int zero_json_match_literal(ZeroJsonScanner *scanner, const char *literal) {
   size_t start = scanner->pos;
   for (size_t i = 0; literal[i]; i++) {
     if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != (unsigned char)literal[i]) {
+      size_t error_pos = scanner->pos;
       scanner->pos = start;
-      return 0;
+      return zero_json_fail(scanner, error_pos);
     }
     scanner->pos++;
   }
@@ -1290,24 +1591,27 @@ static int zero_json_parse_number(ZeroJsonScanner *scanner) {
   size_t start = scanner->pos;
   if (scanner->pos < scanner->len && scanner->ptr[scanner->pos] == '-') scanner->pos++;
   if (scanner->pos >= scanner->len) {
+    size_t error_pos = scanner->pos;
     scanner->pos = start;
-    return 0;
+    return zero_json_fail(scanner, error_pos);
   }
   if (scanner->ptr[scanner->pos] == '0') {
     scanner->pos++;
   } else if (scanner->ptr[scanner->pos] >= '1' && scanner->ptr[scanner->pos] <= '9') {
     while (scanner->pos < scanner->len && scanner->ptr[scanner->pos] >= '0' && scanner->ptr[scanner->pos] <= '9') scanner->pos++;
   } else {
+    size_t error_pos = scanner->pos;
     scanner->pos = start;
-    return 0;
+    return zero_json_fail(scanner, error_pos);
   }
   if (scanner->pos < scanner->len && scanner->ptr[scanner->pos] == '.') {
     scanner->pos++;
     size_t digits = scanner->pos;
     while (scanner->pos < scanner->len && scanner->ptr[scanner->pos] >= '0' && scanner->ptr[scanner->pos] <= '9') scanner->pos++;
     if (scanner->pos == digits) {
+      size_t error_pos = scanner->pos;
       scanner->pos = start;
-      return 0;
+      return zero_json_fail(scanner, error_pos);
     }
   }
   if (scanner->pos < scanner->len && (scanner->ptr[scanner->pos] == 'e' || scanner->ptr[scanner->pos] == 'E')) {
@@ -1316,15 +1620,16 @@ static int zero_json_parse_number(ZeroJsonScanner *scanner) {
     size_t digits = scanner->pos;
     while (scanner->pos < scanner->len && scanner->ptr[scanner->pos] >= '0' && scanner->ptr[scanner->pos] <= '9') scanner->pos++;
     if (scanner->pos == digits) {
+      size_t error_pos = scanner->pos;
       scanner->pos = start;
-      return 0;
+      return zero_json_fail(scanner, error_pos);
     }
   }
   return 1;
 }
 
 static int zero_json_parse_array(ZeroJsonScanner *scanner, unsigned depth) {
-  if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != '[') return 0;
+  if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != '[') return zero_json_fail(scanner, scanner->pos);
   scanner->tokens++;
   scanner->pos++;
   zero_json_skip_ws(scanner);
@@ -1339,14 +1644,14 @@ static int zero_json_parse_array(ZeroJsonScanner *scanner, unsigned depth) {
       scanner->pos++;
       return 1;
     }
-    if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != ',') return 0;
+    if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != ',') return zero_json_fail(scanner, scanner->pos);
     scanner->pos++;
     zero_json_skip_ws(scanner);
   }
 }
 
 static int zero_json_parse_object(ZeroJsonScanner *scanner, unsigned depth) {
-  if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != '{') return 0;
+  if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != '{') return zero_json_fail(scanner, scanner->pos);
   scanner->tokens++;
   scanner->pos++;
   zero_json_skip_ws(scanner);
@@ -1358,7 +1663,7 @@ static int zero_json_parse_object(ZeroJsonScanner *scanner, unsigned depth) {
     if (!zero_json_parse_string(scanner)) return 0;
     scanner->tokens++;
     zero_json_skip_ws(scanner);
-    if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != ':') return 0;
+    if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != ':') return zero_json_fail(scanner, scanner->pos);
     scanner->pos++;
     if (!zero_json_parse_value(scanner, depth + 1)) return 0;
     zero_json_skip_ws(scanner);
@@ -1366,16 +1671,16 @@ static int zero_json_parse_object(ZeroJsonScanner *scanner, unsigned depth) {
       scanner->pos++;
       return 1;
     }
-    if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != ',') return 0;
+    if (scanner->pos >= scanner->len || scanner->ptr[scanner->pos] != ',') return zero_json_fail(scanner, scanner->pos);
     scanner->pos++;
     zero_json_skip_ws(scanner);
   }
 }
 
 static int zero_json_parse_value(ZeroJsonScanner *scanner, unsigned depth) {
-  if (depth > 64) return 0;
+  if (depth > 64) return zero_json_fail(scanner, scanner->pos);
   zero_json_skip_ws(scanner);
-  if (scanner->pos >= scanner->len) return 0;
+  if (scanner->pos >= scanner->len) return zero_json_fail(scanner, scanner->pos);
   unsigned char ch = scanner->ptr[scanner->pos];
   if (ch == '{') return zero_json_parse_object(scanner, depth);
   if (ch == '[') return zero_json_parse_array(scanner, depth);
@@ -1399,16 +1704,533 @@ static int zero_json_parse_value(ZeroJsonScanner *scanner, unsigned depth) {
     scanner->tokens++;
     return zero_json_parse_number(scanner);
   }
-  return 0;
+  return zero_json_fail(scanner, scanner->pos);
 }
 
 int64_t zero_json_parse_bytes(ZeroByteView input) {
   if (!input.ptr || input.len == 0) return -1;
-  ZeroJsonScanner scanner = {input.ptr, input.len, 0, 0};
+  ZeroJsonScanner scanner = {input.ptr, input.len, 0, 0, 0};
   if (!zero_json_parse_value(&scanner, 0)) return -1;
   zero_json_skip_ws(&scanner);
-  if (scanner.pos != scanner.len || scanner.tokens > INT64_MAX) return -1;
+  if (scanner.pos != scanner.len || scanner.tokens > INT64_MAX) return scanner.pos != scanner.len ? -2 : -1;
   return (int64_t)scanner.tokens;
+}
+
+static uint64_t zero_json_error_offset(ZeroByteView input, uint32_t *status_out) {
+  if (!input.ptr || input.len == 0) {
+    if (status_out) *status_out = 1;
+    return 0;
+  }
+  ZeroJsonScanner scanner = {input.ptr, input.len, 0, 0, 0};
+  if (!zero_json_parse_value(&scanner, 0)) {
+    if (status_out) *status_out = 1;
+    return scanner.error_pos;
+  }
+  zero_json_skip_ws(&scanner);
+  if (scanner.pos != scanner.len || scanner.tokens > INT64_MAX) {
+    if (status_out) *status_out = scanner.pos != scanner.len ? 2u : 1u;
+    return scanner.pos;
+  }
+  if (status_out) *status_out = 0;
+  return input.len;
+}
+
+uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op) {
+  uint32_t status = 0;
+  uint64_t offset = zero_json_error_offset(input, &status);
+  if (op == 0) return status;
+  if (op == 1) return offset;
+  uint64_t line = 1;
+  uint64_t column = 1;
+  uint64_t start = 0;
+  if (input.ptr) {
+    for (uint64_t index = 0; index < offset && index < input.len; index++) {
+      if (input.ptr[index] == '\n') {
+        line++;
+        start = index + 1;
+      }
+    }
+    column = offset >= start ? offset - start + 1 : 1;
+  }
+  if (op == 2) return line;
+  if (op == 3) return column;
+  return status;
+}
+
+static uint64_t zero_json_pack_span(int has, size_t offset, size_t len) {
+  if (!has || offset > UINT32_MAX || len > 0x7fffffffu) return 0;
+  return (1ull << 63) | ((uint64_t)len << 32) | (uint64_t)(uint32_t)offset;
+}
+
+static int zero_json_key_matches(ZeroByteView input, size_t start, size_t end, ZeroByteView key) {
+  if (!input.ptr || start >= end || input.ptr[start] != '"') return 0;
+  size_t pos = start + 1;
+  size_t key_pos = 0;
+  while (pos + 1 < end) {
+    unsigned char decoded = input.ptr[pos];
+    unsigned char scratch[4] = {0};
+    size_t scratch_len = 0;
+    if (decoded == '\\') {
+      pos++;
+      if (pos + 1 >= end) return 0;
+      unsigned char escaped = input.ptr[pos];
+      if (escaped == '"' || escaped == '\\' || escaped == '/') {
+        decoded = escaped;
+      } else if (escaped == 'b') {
+        decoded = 8;
+      } else if (escaped == 'f') {
+        decoded = 12;
+      } else if (escaped == 'n') {
+        decoded = 10;
+      } else if (escaped == 'r') {
+        decoded = 13;
+      } else if (escaped == 't') {
+        decoded = 9;
+      } else if (escaped == 'u') {
+        uint16_t unit = 0;
+        if (!zero_json_hex4_value(input.ptr, input.len, pos + 1, &unit)) return 0;
+        uint32_t codepoint = unit;
+        if (zero_json_high_surrogate(unit)) {
+          if (pos + 10 >= end || input.ptr[pos + 5] != '\\' || input.ptr[pos + 6] != 'u') return 0;
+          uint16_t low = 0;
+          if (!zero_json_hex4_value(input.ptr, input.len, pos + 7, &low) || !zero_json_low_surrogate(low)) return 0;
+          codepoint = zero_json_surrogate_codepoint(unit, low);
+          pos += 10;
+        } else if (zero_json_low_surrogate(unit)) {
+          return 0;
+        } else {
+          pos += 4;
+        }
+        scratch_len = zero_json_write_utf8_bytes(codepoint, scratch);
+        if (scratch_len == 0) return 0;
+      } else {
+        return 0;
+      }
+    }
+    if (scratch_len > 0) {
+      for (size_t i = 0; i < scratch_len; i++) {
+        if (key_pos >= key.len || (key.len > 0 && key.ptr[key_pos] != scratch[i])) return 0;
+        key_pos++;
+      }
+    } else {
+      if (key_pos >= key.len || (key.len > 0 && key.ptr[key_pos] != decoded)) return 0;
+      key_pos++;
+    }
+    pos++;
+  }
+  return key_pos == key.len;
+}
+
+uint64_t zero_json_field(ZeroByteView input, ZeroByteView key) {
+  if (!input.ptr || (key.len > 0 && !key.ptr)) return 0;
+  size_t start = zero_json_skip_ws_at(input, 0);
+  if (start >= input.len || input.ptr[start] != '{') return 0;
+  size_t pos = zero_json_skip_ws_at(input, start + 1);
+  if (pos < input.len && input.ptr[pos] == '}') {
+    size_t trailing = zero_json_skip_ws_at(input, pos + 1);
+    return trailing == input.len ? 0 : 0;
+  }
+  int found = 0;
+  size_t found_start = 0;
+  size_t found_end = 0;
+  while (pos < input.len) {
+    ZeroJsonScanner key_scanner = {input.ptr, input.len, pos, 0, pos};
+    if (!zero_json_parse_string(&key_scanner)) return 0;
+    size_t key_end = key_scanner.pos;
+    int matched = zero_json_key_matches(input, pos, key_end, key);
+    pos = zero_json_skip_ws_at(input, key_end);
+    if (pos >= input.len || input.ptr[pos] != ':') return 0;
+    size_t value_start = zero_json_skip_ws_at(input, pos + 1);
+    ZeroJsonScanner value_scanner = {input.ptr, input.len, value_start, 0, value_start};
+    if (!zero_json_parse_value(&value_scanner, 0)) return 0;
+    size_t value_end = value_scanner.pos;
+    if (matched && !found) {
+      found = 1;
+      found_start = value_start;
+      found_end = value_end;
+    }
+    pos = zero_json_skip_ws_at(input, value_end);
+    if (pos < input.len && input.ptr[pos] == '}') {
+      size_t trailing = zero_json_skip_ws_at(input, pos + 1);
+      if (trailing != input.len) return 0;
+      return zero_json_pack_span(found, found_start, found_end - found_start);
+    }
+    if (pos >= input.len || input.ptr[pos] != ',') return 0;
+    pos = zero_json_skip_ws_at(input, pos + 1);
+    if (pos >= input.len || input.ptr[pos] == '}') return 0;
+  }
+  return 0;
+}
+
+uint64_t zero_json_lookup_scalar(ZeroByteView input, ZeroByteView key, uint32_t op) {
+  uint64_t packed = zero_json_field(input, key);
+  if ((packed >> 63) == 0) return 0;
+  size_t offset = (size_t)(uint32_t)packed;
+  size_t len = (size_t)((packed >> 32) & 0x7fffffffu);
+  if (offset > input.len || len > input.len - offset) return 0;
+  ZeroByteView raw = {input.ptr + offset, len};
+  if (op == 0) return zero_parse_u32(raw);
+  if (op == 1) {
+    static const unsigned char true_lit[] = {'t', 'r', 'u', 'e'};
+    static const unsigned char false_lit[] = {'f', 'a', 'l', 's', 'e'};
+    if (raw.len == sizeof(true_lit) && memcmp(raw.ptr, true_lit, sizeof(true_lit)) == 0) return (1ull << 32) | 1u;
+    if (raw.len == sizeof(false_lit) && memcmp(raw.ptr, false_lit, sizeof(false_lit)) == 0) return (1ull << 32);
+  }
+  return 0;
+}
+
+static int zero_json_continuation(unsigned char ch) {
+  return (ch & 0xc0u) == 0x80u;
+}
+
+static size_t zero_json_utf8_char_len(const unsigned char *ptr, size_t len, size_t pos) {
+  if (!ptr || pos >= len) return 0;
+  unsigned char ch = ptr[pos];
+  if (ch < 0x80u) return 1;
+  if (ch >= 0xc2u && ch <= 0xdfu) {
+    return pos + 1 < len && zero_json_continuation(ptr[pos + 1]) ? 2 : 0;
+  }
+  if (ch == 0xe0u) {
+    return pos + 2 < len && ptr[pos + 1] >= 0xa0u && ptr[pos + 1] <= 0xbfu && zero_json_continuation(ptr[pos + 2]) ? 3 : 0;
+  }
+  if ((ch >= 0xe1u && ch <= 0xecu) || (ch >= 0xeeu && ch <= 0xefu)) {
+    return pos + 2 < len && zero_json_continuation(ptr[pos + 1]) && zero_json_continuation(ptr[pos + 2]) ? 3 : 0;
+  }
+  if (ch == 0xedu) {
+    return pos + 2 < len && ptr[pos + 1] >= 0x80u && ptr[pos + 1] <= 0x9fu && zero_json_continuation(ptr[pos + 2]) ? 3 : 0;
+  }
+  if (ch == 0xf0u) {
+    return pos + 3 < len && ptr[pos + 1] >= 0x90u && ptr[pos + 1] <= 0xbfu && zero_json_continuation(ptr[pos + 2]) && zero_json_continuation(ptr[pos + 3]) ? 4 : 0;
+  }
+  if (ch >= 0xf1u && ch <= 0xf3u) {
+    return pos + 3 < len && zero_json_continuation(ptr[pos + 1]) && zero_json_continuation(ptr[pos + 2]) && zero_json_continuation(ptr[pos + 3]) ? 4 : 0;
+  }
+  if (ch == 0xf4u) {
+    return pos + 3 < len && ptr[pos + 1] >= 0x80u && ptr[pos + 1] <= 0x8fu && zero_json_continuation(ptr[pos + 2]) && zero_json_continuation(ptr[pos + 3]) ? 4 : 0;
+  }
+  return 0;
+}
+
+uint64_t zero_json_string_decode(ZeroMutByteView buffer, ZeroByteView raw) {
+  if ((!buffer.ptr && buffer.len > 0) || !raw.ptr || raw.len < 2 || raw.ptr[0] != '"') return 0;
+  size_t pos = 1;
+  size_t out = 0;
+  while (pos < raw.len) {
+    unsigned char ch = raw.ptr[pos++];
+    if (ch == '"') {
+      return pos == raw.len ? zero_json_pack_span(1, 0, out) : 0;
+    }
+    if (ch < 0x20u) return 0;
+    if (ch != '\\') {
+      size_t char_len = ch < 0x80u ? 1 : zero_json_utf8_char_len(raw.ptr, raw.len, pos - 1);
+      if (char_len == 0 || out + char_len > buffer.len) return 0;
+      for (size_t i = 0; i < char_len; i++) buffer.ptr[out++] = raw.ptr[pos - 1 + i];
+      pos += char_len - 1;
+      continue;
+    }
+    if (pos >= raw.len) return 0;
+    unsigned char escaped = raw.ptr[pos++];
+    unsigned char decoded = 0;
+    if (escaped == '"' || escaped == '\\' || escaped == '/') {
+      decoded = escaped;
+    } else if (escaped == 'b') {
+      decoded = 8;
+    } else if (escaped == 'f') {
+      decoded = 12;
+    } else if (escaped == 'n') {
+      decoded = 10;
+    } else if (escaped == 'r') {
+      decoded = 13;
+    } else if (escaped == 't') {
+      decoded = 9;
+    } else if (escaped == 'u') {
+      uint16_t unit = 0;
+      if (!zero_json_hex4_value(raw.ptr, raw.len, pos, &unit)) return 0;
+      uint32_t codepoint = unit;
+      pos += 4;
+      if (zero_json_high_surrogate(unit)) {
+        if (pos + 6 > raw.len || raw.ptr[pos] != '\\' || raw.ptr[pos + 1] != 'u') return 0;
+        pos += 2;
+        uint16_t low = 0;
+        if (!zero_json_hex4_value(raw.ptr, raw.len, pos, &low) || !zero_json_low_surrogate(low)) return 0;
+        codepoint = zero_json_surrogate_codepoint(unit, low);
+        pos += 4;
+      } else if (zero_json_low_surrogate(unit)) {
+        return 0;
+      }
+      unsigned char scratch[4] = {0};
+      size_t scratch_len = zero_json_write_utf8_bytes(codepoint, scratch);
+      if (scratch_len == 0 || out + scratch_len > buffer.len) return 0;
+      for (size_t i = 0; i < scratch_len; i++) buffer.ptr[out++] = scratch[i];
+      continue;
+    } else {
+      return 0;
+    }
+    if (out >= buffer.len) return 0;
+    buffer.ptr[out++] = decoded;
+  }
+  return 0;
+}
+
+uint64_t zero_json_string_field(ZeroMutByteView buffer, ZeroByteView input, ZeroByteView key) {
+  uint64_t packed = zero_json_field(input, key);
+  if ((packed >> 63) == 0) return 0;
+  size_t offset = (size_t)(uint32_t)packed;
+  size_t len = (size_t)((packed >> 32) & 0x7fffffffu);
+  if (offset > input.len || len > input.len - offset) return 0;
+  return zero_json_string_decode(buffer, (ZeroByteView){input.ptr + offset, len});
+}
+
+static int zero_json_write_byte(ZeroMutByteView buffer, size_t *out, unsigned char byte) {
+  if (!out || *out >= buffer.len) return 0;
+  buffer.ptr[*out] = byte;
+  *out += 1;
+  return 1;
+}
+
+static int zero_json_write_escape_pair(ZeroMutByteView buffer, size_t *out, unsigned char escaped) {
+  return zero_json_write_byte(buffer, out, '\\') && zero_json_write_byte(buffer, out, escaped);
+}
+
+static int zero_json_write_u00_escape(ZeroMutByteView buffer, size_t *out, unsigned char byte) {
+  static const unsigned char hex[] = "0123456789abcdef";
+  return zero_json_write_byte(buffer, out, '\\') &&
+         zero_json_write_byte(buffer, out, 'u') &&
+         zero_json_write_byte(buffer, out, '0') &&
+         zero_json_write_byte(buffer, out, '0') &&
+         zero_json_write_byte(buffer, out, hex[(byte >> 4) & 0xfu]) &&
+         zero_json_write_byte(buffer, out, hex[byte & 0xfu]);
+}
+
+uint64_t zero_json_write_string(ZeroMutByteView buffer, ZeroByteView text) {
+  if (!buffer.ptr || (text.len > 0 && !text.ptr)) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '"')) return 0;
+  size_t pos = 0;
+  while (pos < text.len) {
+    unsigned char byte = text.ptr[pos];
+    if (byte == '"') {
+      if (!zero_json_write_escape_pair(buffer, &out, '"')) return 0;
+      pos++;
+    } else if (byte == '\\') {
+      if (!zero_json_write_escape_pair(buffer, &out, '\\')) return 0;
+      pos++;
+    } else if (byte == '\b') {
+      if (!zero_json_write_escape_pair(buffer, &out, 'b')) return 0;
+      pos++;
+    } else if (byte == '\f') {
+      if (!zero_json_write_escape_pair(buffer, &out, 'f')) return 0;
+      pos++;
+    } else if (byte == '\n') {
+      if (!zero_json_write_escape_pair(buffer, &out, 'n')) return 0;
+      pos++;
+    } else if (byte == '\r') {
+      if (!zero_json_write_escape_pair(buffer, &out, 'r')) return 0;
+      pos++;
+    } else if (byte == '\t') {
+      if (!zero_json_write_escape_pair(buffer, &out, 't')) return 0;
+      pos++;
+    } else if (byte < 0x20u) {
+      if (!zero_json_write_u00_escape(buffer, &out, byte)) return 0;
+      pos++;
+    } else {
+      size_t width = zero_json_utf8_char_len(text.ptr, text.len, pos);
+      if (width == 0 || out + width > buffer.len) return 0;
+      for (size_t i = 0; i < width; i++) buffer.ptr[out++] = text.ptr[pos + i];
+      pos += width;
+    }
+  }
+  if (!zero_json_write_byte(buffer, &out, '"')) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+static int zero_json_write_span_bytes(ZeroMutByteView buffer, size_t *out, ZeroByteView bytes) {
+  if (!out || (bytes.len > 0 && !bytes.ptr) || *out > buffer.len || bytes.len > buffer.len - *out) return 0;
+  if (bytes.len > 0) memcpy(buffer.ptr + *out, bytes.ptr, bytes.len);
+  *out += bytes.len;
+  return 1;
+}
+
+static int zero_json_write_u32_value(ZeroMutByteView buffer, size_t *out, uint32_t value) {
+  unsigned char digits[10];
+  size_t len = 0;
+  do {
+    digits[len++] = (unsigned char)('0' + (value % 10u));
+    value /= 10u;
+  } while (value != 0);
+  while (len > 0) {
+    if (!zero_json_write_byte(buffer, out, digits[--len])) return 0;
+  }
+  return 1;
+}
+
+static int zero_json_write_bool_value(ZeroMutByteView buffer, size_t *out, uint32_t value) {
+  static const unsigned char true_lit[] = {'t', 'r', 'u', 'e'};
+  static const unsigned char false_lit[] = {'f', 'a', 'l', 's', 'e'};
+  ZeroByteView lit = value ? (ZeroByteView){true_lit, sizeof(true_lit)} : (ZeroByteView){false_lit, sizeof(false_lit)};
+  return zero_json_write_span_bytes(buffer, out, lit);
+}
+
+static int zero_json_write_string_value_at(ZeroMutByteView buffer, size_t *out, ZeroByteView text) {
+  if (!out || *out > buffer.len) return 0;
+  uint64_t packed = zero_json_write_string((ZeroMutByteView){buffer.ptr + *out, buffer.len - *out}, text);
+  if ((packed >> 63) == 0) return 0;
+  size_t len = (size_t)((packed >> 32) & 0x7fffffffu);
+  *out += len;
+  return 1;
+}
+
+typedef enum {
+  ZERO_JSON_WRITE_FIELD_RAW = 0,
+  ZERO_JSON_WRITE_FIELD_STRING = 1,
+  ZERO_JSON_WRITE_FIELD_U32 = 2,
+  ZERO_JSON_WRITE_FIELD_BOOL = 3
+} ZeroJsonWriteFieldKind;
+
+static int zero_json_write_field_at(ZeroMutByteView buffer, size_t *out, ZeroByteView key, ZeroByteView value, uint64_t scalar, ZeroJsonWriteFieldKind kind) {
+  if (!zero_json_write_string_value_at(buffer, out, key)) return 0;
+  if (!zero_json_write_byte(buffer, out, ':')) return 0;
+  switch (kind) {
+    case ZERO_JSON_WRITE_FIELD_RAW:
+      if (zero_json_parse_bytes(value) < 0) return 0;
+      return zero_json_write_span_bytes(buffer, out, value);
+    case ZERO_JSON_WRITE_FIELD_STRING:
+      return zero_json_write_string_value_at(buffer, out, value);
+    case ZERO_JSON_WRITE_FIELD_U32:
+      return zero_json_write_u32_value(buffer, out, (uint32_t)scalar);
+    case ZERO_JSON_WRITE_FIELD_BOOL:
+      return zero_json_write_bool_value(buffer, out, scalar ? 1u : 0u);
+  }
+  return 0;
+}
+
+static uint64_t zero_json_write_field_result(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value, uint64_t scalar, ZeroJsonWriteFieldKind kind) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_field_at(buffer, &out, key, value, scalar, kind)) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+static uint64_t zero_json_write_object1_result(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value, uint64_t scalar, ZeroJsonWriteFieldKind kind) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '{')) return 0;
+  if (!zero_json_write_field_at(buffer, &out, key, value, scalar, kind)) return 0;
+  if (!zero_json_write_byte(buffer, &out, '}')) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_field_raw(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value) {
+  return zero_json_write_field_result(buffer, key, value, 0, ZERO_JSON_WRITE_FIELD_RAW);
+}
+
+uint64_t zero_json_write_field_string(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value) {
+  return zero_json_write_field_result(buffer, key, value, 0, ZERO_JSON_WRITE_FIELD_STRING);
+}
+
+uint64_t zero_json_write_field_u32(ZeroMutByteView buffer, ZeroByteView key, uint32_t value) {
+  return zero_json_write_field_result(buffer, key, (ZeroByteView){0}, value, ZERO_JSON_WRITE_FIELD_U32);
+}
+
+uint64_t zero_json_write_field_bool(ZeroMutByteView buffer, ZeroByteView key, uint32_t value) {
+  return zero_json_write_field_result(buffer, key, (ZeroByteView){0}, value ? 1u : 0u, ZERO_JSON_WRITE_FIELD_BOOL);
+}
+
+uint64_t zero_json_write_object1_string(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value) {
+  return zero_json_write_object1_result(buffer, key, value, 0, ZERO_JSON_WRITE_FIELD_STRING);
+}
+
+uint64_t zero_json_write_object1_u32(ZeroMutByteView buffer, ZeroByteView key, uint32_t value) {
+  return zero_json_write_object1_result(buffer, key, (ZeroByteView){0}, value, ZERO_JSON_WRITE_FIELD_U32);
+}
+
+uint64_t zero_json_write_object1_bool(ZeroMutByteView buffer, ZeroByteView key, uint32_t value) {
+  return zero_json_write_object1_result(buffer, key, (ZeroByteView){0}, value ? 1u : 0u, ZERO_JSON_WRITE_FIELD_BOOL);
+}
+
+uint64_t zero_json_write_object2_fields(ZeroMutByteView buffer, ZeroByteView field0, ZeroByteView field1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '{')) return 0;
+  if (!zero_json_write_span_bytes(buffer, &out, field0)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_span_bytes(buffer, &out, field1)) return 0;
+  if (!zero_json_write_byte(buffer, &out, '}')) return 0;
+  ZeroByteView candidate = {buffer.ptr, out};
+  if (zero_json_parse_bytes(candidate) < 0) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_object2_string_field(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value, ZeroByteView field1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '{')) return 0;
+  if (!zero_json_write_field_at(buffer, &out, key, value, 0, ZERO_JSON_WRITE_FIELD_STRING)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_span_bytes(buffer, &out, field1)) return 0;
+  if (!zero_json_write_byte(buffer, &out, '}')) return 0;
+  ZeroByteView candidate = {buffer.ptr, out};
+  if (zero_json_parse_bytes(candidate) < 0) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_object2_u32_field(ZeroMutByteView buffer, ZeroByteView key, uint32_t value, ZeroByteView field1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '{')) return 0;
+  if (!zero_json_write_field_at(buffer, &out, key, (ZeroByteView){0}, value, ZERO_JSON_WRITE_FIELD_U32)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_span_bytes(buffer, &out, field1)) return 0;
+  if (!zero_json_write_byte(buffer, &out, '}')) return 0;
+  ZeroByteView candidate = {buffer.ptr, out};
+  if (zero_json_parse_bytes(candidate) < 0) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_object2_bool_field(ZeroMutByteView buffer, ZeroByteView key, uint32_t value, ZeroByteView field1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '{')) return 0;
+  if (!zero_json_write_field_at(buffer, &out, key, (ZeroByteView){0}, value ? 1u : 0u, ZERO_JSON_WRITE_FIELD_BOOL)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_span_bytes(buffer, &out, field1)) return 0;
+  if (!zero_json_write_byte(buffer, &out, '}')) return 0;
+  ZeroByteView candidate = {buffer.ptr, out};
+  if (zero_json_parse_bytes(candidate) < 0) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_array2_strings(ZeroMutByteView buffer, ZeroByteView value0, ZeroByteView value1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '[')) return 0;
+  if (!zero_json_write_string_value_at(buffer, &out, value0)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_string_value_at(buffer, &out, value1)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ']')) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_array2_u32(ZeroMutByteView buffer, uint32_t value0, uint32_t value1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '[')) return 0;
+  if (!zero_json_write_u32_value(buffer, &out, value0)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_u32_value(buffer, &out, value1)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ']')) return 0;
+  return zero_json_pack_span(1, 0, out);
+}
+
+uint64_t zero_json_write_array2_bools(ZeroMutByteView buffer, uint32_t value0, uint32_t value1) {
+  if (!buffer.ptr) return 0;
+  size_t out = 0;
+  if (!zero_json_write_byte(buffer, &out, '[')) return 0;
+  if (!zero_json_write_bool_value(buffer, &out, value0 ? 1u : 0u)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ',')) return 0;
+  if (!zero_json_write_bool_value(buffer, &out, value1 ? 1u : 0u)) return 0;
+  if (!zero_json_write_byte(buffer, &out, ']')) return 0;
+  return zero_json_pack_span(1, 0, out);
 }
 
 uint32_t zero_str_contains(ZeroByteView text, ZeroByteView needle) {

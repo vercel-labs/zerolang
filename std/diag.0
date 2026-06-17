@@ -1,0 +1,141 @@
+fn diag_clamp_offset(bytes: Span<u8>, offset: usize) -> usize {
+    if offset > std.mem.len(bytes) {
+        return std.mem.len(bytes)
+    }
+    return offset
+}
+
+fn diag_line_start(bytes: Span<u8>, offset: usize) -> usize {
+    let cursor: usize = diag_clamp_offset(bytes, offset)
+    var start: usize = cursor
+    while start > 0 && bytes[start - 1] != 10_u8 {
+        start = start - 1
+    }
+    return start
+}
+
+fn diag_line_end(bytes: Span<u8>, offset: usize) -> usize {
+    var end: usize = diag_clamp_offset(bytes, offset)
+    while end < std.mem.len(bytes) && bytes[end] != 10_u8 {
+        end = end + 1
+    }
+    if end > 0 && bytes[end - 1] == 13_u8 {
+        return end - 1
+    }
+    return end
+}
+
+fn diag_line(bytes: Span<u8>, offset: usize) -> usize {
+    let cursor: usize = diag_clamp_offset(bytes, offset)
+    var line: usize = 1
+    var index: usize = 0
+    while index < cursor {
+        if bytes[index] == 10_u8 {
+            line = line + 1
+        }
+        index = index + 1
+    }
+    return line
+}
+
+fn diag_column(bytes: Span<u8>, offset: usize) -> usize {
+    let cursor: usize = diag_clamp_offset(bytes, offset)
+    let start: usize = diag_line_start(bytes, cursor)
+    return (cursor - start) + 1
+}
+
+fn diag_line_text(bytes: Span<u8>, offset: usize) -> Span<u8> {
+    let start: usize = diag_line_start(bytes, offset)
+    let end: usize = diag_line_end(bytes, offset)
+    return bytes[start..end]
+}
+
+fn diag_range_len(bytes: Span<u8>, start: usize, end: usize) -> usize {
+    let first: usize = diag_clamp_offset(bytes, start)
+    let last: usize = diag_clamp_offset(bytes, end)
+    if last < first {
+        return 0
+    }
+    return last - first
+}
+
+fn diag_range_text(bytes: Span<u8>, start: usize, end: usize) -> Span<u8> {
+    let first: usize = diag_clamp_offset(bytes, start)
+    let last: usize = diag_clamp_offset(bytes, end)
+    if last < first {
+        return bytes[first..first]
+    }
+    return bytes[first..last]
+}
+
+fn diag_write_span(buffer: MutSpan<u8>, offset: usize, bytes: Span<u8>) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) {
+        return null
+    }
+    if std.mem.len(bytes) > std.mem.len(buffer) - offset {
+        return null
+    }
+    var index: usize = 0
+    while index < std.mem.len(bytes) {
+        buffer[offset + index] = bytes[index]
+        index = index + 1
+    }
+    return offset + std.mem.len(bytes)
+}
+
+fn diag_write_usize(buffer: MutSpan<u8>, offset: usize, value: usize) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) {
+        return null
+    }
+    var digits: usize = 1
+    var scan: usize = value
+    while scan >= 10 {
+        digits = digits + 1
+        scan = scan / 10
+    }
+    if offset + digits > std.mem.len(buffer) {
+        return null
+    }
+    var cursor: usize = offset + digits
+    var current: usize = value
+    while cursor > offset {
+        cursor = cursor - 1
+        let digit: u8 = (current % 10) as u8
+        buffer[cursor] = 48_u8 + digit
+        current = current / 10
+    }
+    return offset + digits
+}
+
+fn diag_format_location(buffer: MutSpan<u8>, path: Span<u8>, line: usize, column: usize) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let wrote_path: Maybe<usize> = diag_write_span(buffer, offset, path)
+    if !wrote_path.has {
+        return null
+    }
+    offset = wrote_path.value
+    let first_colon: Maybe<usize> = diag_write_span(buffer, offset, ":")
+    if !first_colon.has {
+        return null
+    }
+    offset = first_colon.value
+    let wrote_line: Maybe<usize> = diag_write_usize(buffer, offset, line)
+    if !wrote_line.has {
+        return null
+    }
+    offset = wrote_line.value
+    let second_colon: Maybe<usize> = diag_write_span(buffer, offset, ":")
+    if !second_colon.has {
+        return null
+    }
+    offset = second_colon.value
+    let wrote_column: Maybe<usize> = diag_write_usize(buffer, offset, column)
+    if wrote_column.has {
+        return buffer[..wrote_column.value]
+    }
+    return null
+}
+
+fn diag_format_offset_location(buffer: MutSpan<u8>, path: Span<u8>, bytes: Span<u8>, offset: usize) -> Maybe<Span<u8>> {
+    return diag_format_location(buffer, path, diag_line(bytes, offset), diag_column(bytes, offset))
+}

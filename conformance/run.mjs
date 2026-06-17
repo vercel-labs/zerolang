@@ -757,6 +757,7 @@ const passCheckFixtures = [
   "conformance/native/pass/std-http-auth-helpers.0",
   "conformance/native/pass/std-data-formats.0",
   "conformance/native/pass/std-csv.0",
+  "conformance/native/pass/std-diag.0",
   "conformance/native/pass/std-codec-json-url.0",
   "conformance/native/pass/std-json-cursors.0",
   "conformance/native/pass/std-json-bytes.0",
@@ -777,6 +778,7 @@ const passCheckFixtures = [
   "conformance/native/pass/integer-widths.0",
   "conformance/native/pass/std-codec-widths.0",
   "conformance/native/pass/std-crypto-hmac32.0",
+  "conformance/native/pass/std-crypto-sha256.0",
   "conformance/native/pass/parse-integers.0",
   "conformance/native/pass/explicit-casts.0",
   "conformance/native/pass/float-char-casts.0",
@@ -1019,6 +1021,13 @@ assert.equal(checkJsonSuccessBody.check.lowering, "graph-native-check");
 assert.equal(checkJsonSuccessBody.graphCompiler.input, "program-graph-artifact");
 assert.equal(checkJsonSuccessBody.graphCompiler.graphNativeCheckerUsed, true);
 assert.equal(checkJsonSuccessBody.graphCompiler.graphHirToMirUsed, true);
+
+const stdDiagGraphCheck = await execFileAsync(zero, ["check", "--json", "conformance/native/pass/std-diag.graph"]);
+const stdDiagGraphCheckBody = JSON.parse(stdDiagGraphCheck.stdout);
+assert.equal(stdDiagGraphCheckBody.ok, true);
+assert.equal(stdDiagGraphCheckBody.targetReadiness.ok, true);
+assert.equal(stdDiagGraphCheckBody.targetReadiness.buildable, true);
+assert.equal(stdDiagGraphCheckBody.targetReadiness.diagnostics.length, 0);
 
 const agentSurfaceClassification = JSON.parse(await readFile("conformance/agent-surface/classification.json", "utf8"));
 assert.equal(agentSurfaceClassification.schema, 1);
@@ -4939,9 +4948,11 @@ for (const runtimeFixture of [
   ["conformance/native/pass/integer-widths.0", "integer-widths", { stdout: "integer widths ok\n" }],
   ["conformance/native/pass/std-codec-widths.0", "std-codec-widths", { stdout: "codec widths ok\n" }],
   ["conformance/native/pass/std-csv.0", "std-csv", { stdout: "std csv ok\n" }],
+  ["conformance/native/pass/std-diag.0", "std-diag", { stdout: "std diag ok\n" }],
   ["conformance/native/pass/std-codec-json-url.0", "std-codec-json-url", { stdout: "std codec json url ok\n" }],
   ["conformance/native/pass/std-json-cursors.0", "std-json-cursors", { stdout: "std json cursors ok\n" }],
   ["conformance/native/pass/std-crypto-hmac32.0", "std-crypto-hmac32", { stdout: "crypto hmac32 ok\n" }],
+  ["conformance/native/pass/std-crypto-sha256.0", "std-crypto-sha256", { stdout: "crypto sha256 ok\n" }],
   ["conformance/native/pass/parse-integers.0", "parse-integers", { stdout: "parse integers ok\n" }],
   ["conformance/native/pass/std-parse-text.0", "std-parse-text", { stdout: "std parse text ok\n" }],
   ["conformance/native/pass/explicit-casts.0", "explicit-casts", { stdout: "explicit casts ok\n" }],

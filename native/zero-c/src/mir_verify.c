@@ -150,6 +150,11 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
           value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
           value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
           value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
+          value->kind == IR_VALUE_JSON_FIELD ||
+          value->kind == IR_VALUE_JSON_STRING_DECODE ||
+          value->kind == IR_VALUE_JSON_STRING_FIELD ||
+          value->kind == IR_VALUE_JSON_WRITE_STRING ||
+          value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
           value->kind == IR_VALUE_STR_RUNTIME ||
           value->kind == IR_VALUE_FMT_BOOL ||
           value->kind == IR_VALUE_FMT_HEX_U32 ||
@@ -717,6 +722,71 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->kind == IR_VALUE_JSON_VALIDATE_BYTES ? "std.json.validateBytes" : "std.json.streamTokensBytes");
       if (!mir_verify_helper_result_type(ir, value, value->kind == IR_VALUE_JSON_VALIDATE_BYTES ? IR_TYPE_BOOL : IR_TYPE_USIZE, value->kind == IR_VALUE_JSON_VALIDATE_BYTES ? "JSON validate result" : "JSON token count result")) return false;
       return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON runtime helper input", "JSON bytes");
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json diagnostic helper");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json diagnostic helper");
+      if (!mir_verify_helper_result_type(ir, value, value->type == IR_TYPE_U32 ? IR_TYPE_U32 : IR_TYPE_USIZE, "JSON diagnostic result")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON runtime helper input", "JSON bytes");
+    case IR_VALUE_JSON_FIELD:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json.field");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json.field");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "JSON field result")) return false;
+      return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON field input", "JSON bytes") &&
+             mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON field key", "JSON key");
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json scalar field");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json scalar field");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_SCALAR, "JSON scalar field result")) return false;
+      if (value->element_type != IR_TYPE_U32 && value->element_type != IR_TYPE_BOOL) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid JSON scalar field element type", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON scalar field input", "JSON bytes") &&
+             mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON scalar field key", "JSON key");
+    case IR_VALUE_JSON_STRING_DECODE:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json.stringDecode");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json.stringDecode");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "JSON string decode result")) return false;
+      return mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid JSON string decode buffer", "JSON string decode buffer") &&
+             mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON string decode input", "JSON string");
+    case IR_VALUE_JSON_WRITE_STRING:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json.writeStringBytes");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json.writeStringBytes");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "JSON string writer result")) return false;
+      return mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid JSON string writer buffer", "JSON string writer buffer") &&
+             mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON string writer input", "JSON string input");
+    case IR_VALUE_JSON_WRITE_RUNTIME: {
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json writer");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json writer");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "JSON writer result")) return false;
+      size_t expected = (value->int_value == IR_JSON_WRITE_OBJECT2_STRING_FIELD ||
+                         value->int_value == IR_JSON_WRITE_OBJECT2_U32_FIELD ||
+                         value->int_value == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) ? 4u : 3u;
+      if (value->arg_len != expected) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid JSON writer argument count", value->line, value->column, "invalid JSON writer");
+        return false;
+      }
+      if (!mir_verify_mutable_byte_storage(ir, fun, state, value->arg_len > 0 ? value->args[0] : NULL, "MIR verifier found invalid JSON writer buffer", "JSON writer buffer")) return false;
+      for (size_t i = 1; i < value->arg_len; i++) {
+        IrTypeKind type = IR_TYPE_BYTE_VIEW;
+        if ((value->int_value == IR_JSON_WRITE_FIELD_U32 || value->int_value == IR_JSON_WRITE_FIELD_BOOL ||
+             value->int_value == IR_JSON_WRITE_OBJECT1_U32 || value->int_value == IR_JSON_WRITE_OBJECT1_BOOL ||
+             value->int_value == IR_JSON_WRITE_OBJECT2_U32_FIELD || value->int_value == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) && i == 2) {
+          type = (value->int_value == IR_JSON_WRITE_FIELD_BOOL || value->int_value == IR_JSON_WRITE_OBJECT1_BOOL || value->int_value == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) ? IR_TYPE_BOOL : IR_TYPE_U32;
+        } else if ((value->int_value == IR_JSON_WRITE_ARRAY2_U32 || value->int_value == IR_JSON_WRITE_ARRAY2_BOOLS) && i > 0) {
+          type = value->int_value == IR_JSON_WRITE_ARRAY2_BOOLS ? IR_TYPE_BOOL : IR_TYPE_U32;
+        }
+        if (!mir_verify_value_type(ir, value->args[i], type, "MIR verifier found invalid JSON writer argument", "JSON writer argument")) return false;
+      }
+      return true;
+    }
+    case IR_VALUE_JSON_STRING_FIELD:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.json.string");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.json.string");
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "JSON string field result")) return false;
+      return mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid JSON string field buffer", "JSON string field buffer") &&
+             mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON string field input", "JSON bytes") &&
+             mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON string field key", "JSON key");
     case IR_VALUE_HTTP_FETCH:
       mir_require_count(&requirements->runtime_helpers, 2, value->line, value->column, "std.http.fetch");
       mir_require_count(&requirements->host_runtime_imports, 2, value->line, value->column, "std.http.fetch");
@@ -1085,6 +1155,22 @@ static bool mir_verify_byte_view_value_contract(IrProgram *ir, const IrValue *va
   return true;
 }
 
+static bool mir_verify_json_error_label_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_value_type(ir, value, IR_TYPE_BYTE_VIEW, "MIR verifier found JSON error label result type mismatch", "JSON error label result")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_U32, "MIR verifier found invalid JSON error label status", "JSON error status")) return false;
+  if (value->arg_len != 4) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found invalid JSON error label arity", value->line, value->column, "JSON error label requires four labels");
+    return false;
+  }
+  for (size_t i = 0; i < value->arg_len; i++) {
+    if (!value->args[i] || value->args[i]->kind != IR_VALUE_STRING_LITERAL ||
+        !mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid JSON error label literal", "JSON error label")) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool mir_verify_byte_mutation_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
   if (!ir || !ir->mir_valid || !value) return false;
   if (!mir_verify_helper_result_type(ir, value, IR_TYPE_USIZE, value->kind == IR_VALUE_BYTE_COPY ? "byte copy result" : "byte fill result")) return false;
@@ -1411,6 +1497,31 @@ static bool mir_verify_platform_value_contract(IrProgram *ir, const IrFunction *
         return false;
       }
       return true;
+    case IR_VALUE_RAND_NEXT_BELOW:
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_SCALAR, "random bounded result")) return false;
+      if (value->element_type != IR_TYPE_U32) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid random bounded result element", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_U32, value->line, value->column, "MIR verifier found invalid random source", "random source")) return false;
+      if (!fun->locals[value->local_index].is_mutable) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found immutable random source", value->line, value->column, fun->locals[value->local_index].name ? fun->locals[value->local_index].name : "<unnamed>");
+        return false;
+      }
+      return mir_verify_value_type(ir, value->left, IR_TYPE_U32, "MIR verifier found invalid random bound", "random bound");
+    case IR_VALUE_RAND_RANGE_U32:
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_SCALAR, "random range result")) return false;
+      if (value->element_type != IR_TYPE_U32) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found invalid random range result element", value->line, value->column, mir_type_kind_name(value->element_type));
+        return false;
+      }
+      if (!mir_verify_local_value_kind(ir, fun, value->local_index, IR_TYPE_U32, value->line, value->column, "MIR verifier found invalid random source", "random source")) return false;
+      if (!fun->locals[value->local_index].is_mutable) {
+        mir_verify_mark_unsupported(ir, "MIR verifier found immutable random source", value->line, value->column, fun->locals[value->local_index].name ? fun->locals[value->local_index].name : "<unnamed>");
+        return false;
+      }
+      return mir_verify_value_type(ir, value->left, IR_TYPE_U32, "MIR verifier found invalid random range low", "random range low") &&
+             mir_verify_value_type(ir, value->right, IR_TYPE_U32, "MIR verifier found invalid random range high", "random range high");
     case IR_VALUE_RAND_ENTROPY_U32:
       return mir_verify_helper_result_type(ir, value, IR_TYPE_U32, "entropy result");
     default:
@@ -1512,6 +1623,10 @@ static const char *mir_verify_str_op_name(IrStrOp op) {
     case IR_STR_OP_PATH_DIRNAME: return "std.path.dirname";
     case IR_STR_OP_PATH_EXTENSION: return "std.path.extension";
     case IR_STR_OP_PARSE_TOKEN_ASCII: return "std.parse.tokenAscii";
+    case IR_STR_OP_CRYPTO_SHA256: return "std.crypto.sha256";
+    case IR_STR_OP_CRYPTO_SHA256_HEX: return "std.crypto.sha256Hex";
+    case IR_STR_OP_CRYPTO_HMAC_SHA256: return "std.crypto.hmacSha256";
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX: return "std.crypto.hmacSha256Hex";
   }
   return "std.str";
 }
@@ -1538,6 +1653,17 @@ static bool mir_verify_str_runtime_contract(IrProgram *ir, const IrFunction *fun
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "std.str buffer result")) return false;
       if (!mir_verify_mutable_byte_storage(ir, fun, state, value->arg_len > 0 ? value->args[0] : NULL, "MIR verifier found invalid std.str output buffer", "std.str output buffer")) return false;
       return mir_verify_str_runtime_arg(ir, value, 1, IR_TYPE_BYTE_VIEW, "std.str text");
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "std.crypto digest result")) return false;
+      if (!mir_verify_mutable_byte_storage(ir, fun, state, value->arg_len > 0 ? value->args[0] : NULL, "MIR verifier found invalid std.crypto digest buffer", "std.crypto digest buffer")) return false;
+      return mir_verify_str_runtime_arg(ir, value, 1, IR_TYPE_BYTE_VIEW, "std.crypto digest input");
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "std.crypto hmac result")) return false;
+      if (!mir_verify_mutable_byte_storage(ir, fun, state, value->arg_len > 0 ? value->args[0] : NULL, "MIR verifier found invalid std.crypto hmac buffer", "std.crypto hmac buffer")) return false;
+      if (!mir_verify_str_runtime_arg(ir, value, 1, IR_TYPE_BYTE_VIEW, "std.crypto hmac key")) return false;
+      return mir_verify_str_runtime_arg(ir, value, 2, IR_TYPE_BYTE_VIEW, "std.crypto hmac input");
     case IR_STR_OP_CONCAT:
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "std.str concat result")) return false;
       if (!mir_verify_mutable_byte_storage(ir, fun, state, value->arg_len > 0 ? value->args[0] : NULL, "MIR verifier found invalid std.str concat buffer", "std.str concat buffer")) return false;
@@ -2035,6 +2161,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
       return mir_verify_array_load_contract(ir, fun, value);
     case IR_VALUE_STRING_LITERAL:
       return mir_verify_value_type(ir, value, IR_TYPE_BYTE_VIEW, "MIR verifier found string literal type mismatch", "string literal");
+    case IR_VALUE_JSON_ERROR_LABEL:
+      return mir_verify_json_error_label_contract(ir, value);
     case IR_VALUE_ARRAY_BYTE_VIEW:
       return mir_verify_array_byte_view_contract(ir, fun, value);
     case IR_VALUE_BYTE_SLICE:
@@ -2097,6 +2225,13 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+    case IR_VALUE_JSON_FIELD:
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+    case IR_VALUE_JSON_STRING_DECODE:
+    case IR_VALUE_JSON_STRING_FIELD:
+    case IR_VALUE_JSON_WRITE_STRING:
+    case IR_VALUE_JSON_WRITE_RUNTIME:
     case IR_VALUE_HTTP_FETCH:
     case IR_VALUE_HTTP_RESULT_OK:
     case IR_VALUE_HTTP_RESULT_STATUS:
@@ -2138,6 +2273,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_TIME_MONOTONIC:
     case IR_VALUE_TIME_AS_MS:
     case IR_VALUE_RAND_NEXT_U32:
+    case IR_VALUE_RAND_NEXT_BELOW:
+    case IR_VALUE_RAND_RANGE_U32:
     case IR_VALUE_RAND_ENTROPY_U32:
       return mir_verify_platform_value_contract(ir, fun, value);
     case IR_VALUE_FS_HOST:

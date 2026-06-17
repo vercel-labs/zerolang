@@ -59,6 +59,11 @@ typedef enum {
 } ZeroStrOp;
 
 typedef enum {
+  ZERO_CRYPTO_DIGEST_SHA256 = 0,
+  ZERO_CRYPTO_DIGEST_SHA256_HEX = 1
+} ZeroCryptoDigestOp;
+
+typedef enum {
   ZERO_ASCII_OP_IS_DIGIT = 0,
   ZERO_ASCII_OP_IS_LOWER = 1,
   ZERO_ASCII_OP_IS_UPPER = 2,
@@ -180,6 +185,26 @@ ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
 
 int64_t zero_json_parse_bytes(ZeroByteView input);
+uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op);
+uint64_t zero_json_field(ZeroByteView input, ZeroByteView key);
+uint64_t zero_json_lookup_scalar(ZeroByteView input, ZeroByteView key, uint32_t op);
+uint64_t zero_json_string_decode(ZeroMutByteView buffer, ZeroByteView raw);
+uint64_t zero_json_string_field(ZeroMutByteView buffer, ZeroByteView input, ZeroByteView key);
+uint64_t zero_json_write_string(ZeroMutByteView buffer, ZeroByteView text);
+uint64_t zero_json_write_field_raw(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value);
+uint64_t zero_json_write_field_string(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value);
+uint64_t zero_json_write_field_u32(ZeroMutByteView buffer, ZeroByteView key, uint32_t value);
+uint64_t zero_json_write_field_bool(ZeroMutByteView buffer, ZeroByteView key, uint32_t value);
+uint64_t zero_json_write_object1_string(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value);
+uint64_t zero_json_write_object1_u32(ZeroMutByteView buffer, ZeroByteView key, uint32_t value);
+uint64_t zero_json_write_object1_bool(ZeroMutByteView buffer, ZeroByteView key, uint32_t value);
+uint64_t zero_json_write_object2_fields(ZeroMutByteView buffer, ZeroByteView field0, ZeroByteView field1);
+uint64_t zero_json_write_object2_string_field(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView value, ZeroByteView field1);
+uint64_t zero_json_write_object2_u32_field(ZeroMutByteView buffer, ZeroByteView key, uint32_t value, ZeroByteView field1);
+uint64_t zero_json_write_object2_bool_field(ZeroMutByteView buffer, ZeroByteView key, uint32_t value, ZeroByteView field1);
+uint64_t zero_json_write_array2_strings(ZeroMutByteView buffer, ZeroByteView value0, ZeroByteView value1);
+uint64_t zero_json_write_array2_u32(ZeroMutByteView buffer, uint32_t value0, uint32_t value1);
+uint64_t zero_json_write_array2_bools(ZeroMutByteView buffer, uint32_t value0, uint32_t value1);
 uint32_t zero_ascii_op(uint32_t byte, uint32_t op);
 uint64_t zero_text_op(ZeroByteView text, uint32_t op);
 uint64_t zero_parse_op(ZeroByteView text, uint32_t arg, uint32_t op);
@@ -198,6 +223,9 @@ uint64_t zero_str_trim_op(ZeroByteView text, uint32_t op);
 uint64_t zero_str_pair_op(ZeroByteView text, ZeroByteView needle, uint32_t op);
 uint64_t zero_str_count_byte(ZeroByteView text, uint32_t byte);
 uint64_t zero_str_word_count_ascii(ZeroByteView text);
+uint32_t zero_crypto_digest(ZeroMutByteView buffer, ZeroByteView bytes, uint32_t op);
+uint32_t zero_crypto_hmac_sha256(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView bytes);
+uint32_t zero_crypto_hmac_sha256_hex(ZeroMutByteView buffer, ZeroByteView key, ZeroByteView bytes);
 uint64_t zero_args_find(uint64_t argc, const char *const *argv, ZeroByteView name);
 uint64_t zero_parse_i32(ZeroByteView text);
 uint64_t zero_parse_u32(ZeroByteView text);

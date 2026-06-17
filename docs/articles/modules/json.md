@@ -19,7 +19,11 @@ Runnable today:
 | `std.json.errorInvalid()` | `u32` | Validation status for malformed JSON. |
 | `std.json.errorTrailing()` | `u32` | Validation status for trailing non-whitespace bytes. |
 | `std.json.errorName(code)` | `String` | Returns a stable label for a validation status. |
+| `std.json.errorExpected(code)` | `String` | Returns stable expected-token text for a validation status. |
 | `std.json.validateError(bytes)` | `u32` | Validates a byte span and returns a structured status code. |
+| `std.json.errorOffset(bytes)` | `usize` | Returns the byte offset where validation fails, or the input length for valid JSON. |
+| `std.json.errorLine(bytes)` | `usize` | Returns the one-based line for the validation error offset. |
+| `std.json.errorColumn(bytes)` | `usize` | Returns the one-based column for the validation error offset. |
 | `std.json.field(bytes, key)` | `Maybe<Span<u8>>` | Returns the raw top-level object field value. |
 | `std.json.objectFieldCount(bytes)` | `Maybe<usize>` | Counts fields in a JSON object slice. |
 | `std.json.objectKey(buffer, bytes, ordinal)` | `Maybe<Span<u8>>` | Decodes an ordinal object key into caller storage. |
@@ -56,6 +60,7 @@ Metadata labels:
 - allocation behavior: validation and streaming are allocation-free; parse uses explicit allocator only; direct writers write caller buffers
 - target support: target-neutral
 - error behavior: `Maybe` helpers return null on failure
+- diagnostics: `errorOffset`, `errorLine`, and `errorColumn` locate validation failures; valid JSON reports the end of input
 - ownership notes: parsed documents are owned by explicit allocator storage in this compiler slice
 - examples: `examples/std-data-formats.graph`, `examples/std-json-bytes.graph`, `conformance/native/pass/std-codec-json-url.graph`
 
@@ -129,6 +134,21 @@ pub fn main(world: World) -> Void raises {
 }
 ```
 
+JSON validation diagnostics are allocation-free. Use `std.diag` when a
+human-readable file location is needed:
+
+```zero
+pub fn main(world: World) -> Void raises {
+    let input: Span<u8> = "{\n  \"ok\": tru\n}"
+    var location_buf: [24]u8 = [0_u8; 24]
+    let location: Maybe<Span<u8>> = std.diag.formatOffsetLocation(location_buf, "config.json", input, std.json.errorOffset(input))
+    if std.json.validateError(input) == std.json.errorInvalid() && std.json.errorLine(input) == 2 && location.has {
+        check world.out.write(location.value)
+        check world.out.write("\n")
+    }
+}
+```
+
 Small array responses use the same caller-buffer pattern:
 
 ```zero
@@ -154,4 +174,6 @@ top-level object fields and returns raw slices or typed scalar decodes. Object
 path lookup follows dot-separated object keys; array indexing remains explicit
 through `arrayValue`. When an object contains duplicate keys, name-based lookup
 returns the first matching value, while ordinal object cursors preserve the
-source order and expose every field.
+source order and expose every field. Validation diagnostics report byte offsets
+in the source payload; line and column helpers treat lines and columns as
+one-based byte positions.

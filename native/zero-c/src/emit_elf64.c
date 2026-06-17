@@ -507,10 +507,232 @@ static IrTypeKind elf_view_element_type(const IrValue *view) {
   return view && view->element_type != IR_TYPE_UNSUPPORTED ? view->element_type : IR_TYPE_U8;
 }
 
+static void elf_emit_http_packed_span_result(ZBuf *code);
+static void elf_emit_normalize_parse_u32_result(ZBuf *code);
+
 static bool elf_emit_json_parse_bytes_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   if (!elf_emit_byte_view_pair(code, fun, value->left, 7, 6, ctx, diag)) return false;
   size_t patch = z_x64_emit_call32_placeholder(code);
   return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_JSON_PARSE_BYTES, patch, diag, value);
+}
+
+static bool elf_emit_json_diagnostic_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_mov_reg_u32(code, 2, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_JSON_DIAGNOSTIC, patch, diag, value);
+}
+
+static bool elf_emit_json_field_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 6);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_JSON_FIELD, patch, diag, value)) return false;
+  z_x64_emit_pop_reg64(code, 2);
+  elf_emit_http_packed_span_result(code);
+  return true;
+}
+
+static bool elf_emit_json_lookup_scalar_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 6);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_mov_reg_u32(code, 8, (uint32_t)value->int_value);
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_JSON_LOOKUP_SCALAR, patch, diag, value)) return false;
+  elf_emit_normalize_parse_u32_result(code);
+  return true;
+}
+
+static bool elf_emit_json_string_decode_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value->left || !value->right) return elf_diag(diag, "direct ELF64 JSON string decode helper requires a buffer and string", value->line, value->column, "missing JSON string decode input");
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 6);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  ElfRuntimeHelper helper = value->kind == IR_VALUE_JSON_WRITE_STRING ? ELF_RUNTIME_JSON_WRITE_STRING : ELF_RUNTIME_JSON_STRING_DECODE;
+  if (!z_elf_record_value_runtime_patch(ctx, helper, patch, diag, value)) return false;
+  z_x64_emit_pop_reg64(code, 2);
+  elf_emit_http_packed_span_result(code);
+  return true;
+}
+
+static bool elf_emit_json_string_field_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value->left || !value->right || !value->index) return elf_diag(diag, "direct ELF64 JSON string field helper requires a buffer, bytes, and key", value->line, value->column, "missing JSON string field input");
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 7, 6, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 7);
+  z_x64_emit_push_reg64(code, 6);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 2);
+  z_x64_emit_push_reg64(code, 1);
+  if (!elf_emit_byte_view_pair(code, fun, value->index, 8, 9, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(code, 1);
+  z_x64_emit_pop_reg64(code, 2);
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_JSON_STRING_FIELD, patch, diag, value)) return false;
+  z_x64_emit_pop_reg64(code, 2);
+  elf_emit_http_packed_span_result(code);
+  return true;
+}
+
+static ElfRuntimeHelper elf_json_write_runtime_helper(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW: return ELF_RUNTIME_JSON_WRITE_FIELD_RAW;
+    case IR_JSON_WRITE_FIELD_STRING: return ELF_RUNTIME_JSON_WRITE_FIELD_STRING;
+    case IR_JSON_WRITE_FIELD_U32: return ELF_RUNTIME_JSON_WRITE_FIELD_U32;
+    case IR_JSON_WRITE_FIELD_BOOL: return ELF_RUNTIME_JSON_WRITE_FIELD_BOOL;
+    case IR_JSON_WRITE_OBJECT1_STRING: return ELF_RUNTIME_JSON_WRITE_OBJECT1_STRING;
+    case IR_JSON_WRITE_OBJECT1_U32: return ELF_RUNTIME_JSON_WRITE_OBJECT1_U32;
+    case IR_JSON_WRITE_OBJECT1_BOOL: return ELF_RUNTIME_JSON_WRITE_OBJECT1_BOOL;
+    case IR_JSON_WRITE_OBJECT2_FIELDS: return ELF_RUNTIME_JSON_WRITE_OBJECT2_FIELDS;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD: return ELF_RUNTIME_JSON_WRITE_OBJECT2_STRING_FIELD;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD: return ELF_RUNTIME_JSON_WRITE_OBJECT2_U32_FIELD;
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD: return ELF_RUNTIME_JSON_WRITE_OBJECT2_BOOL_FIELD;
+    case IR_JSON_WRITE_ARRAY2_STRINGS: return ELF_RUNTIME_JSON_WRITE_ARRAY2_STRINGS;
+    case IR_JSON_WRITE_ARRAY2_U32: return ELF_RUNTIME_JSON_WRITE_ARRAY2_U32;
+    case IR_JSON_WRITE_ARRAY2_BOOLS: return ELF_RUNTIME_JSON_WRITE_ARRAY2_BOOLS;
+  }
+  return ELF_RUNTIME_HELPER_COUNT;
+}
+
+static unsigned elf_json_write_runtime_abi_slots(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      return 6u;
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      return 5u;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      return 8u;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      return 7u;
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      return 4u;
+  }
+  return 0u;
+}
+
+static void elf_emit_runtime_call_begin(ZBuf *code, unsigned abi_slots, unsigned register_slots, unsigned *temp_base, unsigned *total_stack) {
+  unsigned stack_slots = abi_slots > register_slots ? abi_slots - register_slots : 0u;
+  unsigned call_frame = stack_slots * 8u;
+  *temp_base = call_frame;
+  *total_stack = (unsigned)z_elf_align(call_frame + abi_slots * 8u, 16);
+  z_x64_emit_sub_rsp(code, *total_stack);
+}
+
+static void elf_emit_runtime_temp_slot_store(ZBuf *code, unsigned temp_base, unsigned slot, unsigned reg) {
+  z_x64_emit_store_rsp_offset_reg(code, reg, temp_base + slot * 8u, true);
+}
+
+static void elf_emit_runtime_temp_slot_load(ZBuf *code, unsigned temp_base, unsigned slot, unsigned reg) {
+  z_x64_emit_load_rsp_offset_reg(code, reg, temp_base + slot * 8u, true);
+}
+
+static bool elf_emit_runtime_arg_byte_view(ZBuf *code, const IrFunction *fun, const IrValue *arg, unsigned temp_base, unsigned *slot, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_byte_view_pair(code, fun, arg, 0, 2, ctx, diag)) return false;
+  elf_emit_runtime_temp_slot_store(code, temp_base, *slot, 0);
+  elf_emit_runtime_temp_slot_store(code, temp_base, *slot + 1u, 2);
+  *slot += 2u;
+  return true;
+}
+
+static bool elf_emit_runtime_arg_value(ZBuf *code, const IrFunction *fun, const IrValue *arg, unsigned temp_base, unsigned *slot, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!elf_emit_value(code, fun, arg, ctx, diag)) return false;
+  elf_emit_runtime_temp_slot_store(code, temp_base, *slot, 0);
+  *slot += 1u;
+  return true;
+}
+
+static bool elf_emit_json_write_runtime_args(ZBuf *code, const IrFunction *fun, const IrValue *value, unsigned temp_base, unsigned *slot, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len < 3) return elf_diag(diag, "direct ELF64 JSON writer requires arguments", value ? value->line : 1, value ? value->column : 1, "invalid JSON writer");
+  IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[0], temp_base, slot, ctx, diag)) return false;
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return elf_emit_runtime_arg_byte_view(code, fun, value->args[2], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return elf_emit_runtime_arg_value(code, fun, value->args[2], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      if (value->arg_len < 4) return elf_diag(diag, "direct ELF64 JSON writer object2 string field requires four arguments", value->line, value->column, "invalid JSON writer arity");
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[2], temp_base, slot, ctx, diag)) return false;
+      return elf_emit_runtime_arg_byte_view(code, fun, value->args[3], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      if (value->arg_len < 4) return elf_diag(diag, "direct ELF64 JSON writer object2 scalar field requires four arguments", value->line, value->column, "invalid JSON writer arity");
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      if (!elf_emit_runtime_arg_value(code, fun, value->args[2], temp_base, slot, ctx, diag)) return false;
+      return elf_emit_runtime_arg_byte_view(code, fun, value->args[3], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      if (!elf_emit_runtime_arg_value(code, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return elf_emit_runtime_arg_value(code, fun, value->args[2], temp_base, slot, ctx, diag);
+  }
+  return elf_diag(diag, "direct ELF64 JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+}
+
+static bool elf_emit_runtime_call(ZBuf *code, ElfEmitContext *ctx, ElfRuntimeHelper helper, unsigned abi_slots, unsigned register_slots, unsigned temp_base, const IrValue *value, ZDiag *diag) {
+  static const unsigned param_regs[] = {7, 6, 2, 1, 8, 9};
+  for (unsigned slot = register_slots; slot < abi_slots; slot++) {
+    elf_emit_runtime_temp_slot_load(code, temp_base, slot, 0);
+    z_x64_emit_store_rsp_offset_reg(code, 0, (slot - register_slots) * 8u, true);
+  }
+  for (unsigned slot = 0; slot < register_slots; slot++) {
+    elf_emit_runtime_temp_slot_load(code, temp_base, slot, param_regs[slot]);
+  }
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  return z_elf_record_value_runtime_patch(ctx, helper, patch, diag, value);
+}
+
+static bool elf_emit_json_write_runtime_call(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value) return elf_diag(diag, "direct ELF64 JSON writer requires a value", 1, 1, "invalid JSON writer");
+  IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+  ElfRuntimeHelper helper = elf_json_write_runtime_helper(op);
+  unsigned abi_slots = elf_json_write_runtime_abi_slots(op);
+  if (helper == ELF_RUNTIME_HELPER_COUNT || abi_slots == 0) return elf_diag(diag, "direct ELF64 JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  unsigned register_slots = ((op == IR_JSON_WRITE_OBJECT2_U32_FIELD || op == IR_JSON_WRITE_OBJECT2_BOOL_FIELD) && abi_slots > 5u) ? 5u : (abi_slots < 6u ? abi_slots : 6u);
+  elf_emit_runtime_call_begin(code, abi_slots, register_slots, &temp_base, &total_stack);
+  if (!elf_emit_json_write_runtime_args(code, fun, value, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, helper, abi_slots, register_slots, temp_base, value, diag)) return false;
+  elf_emit_runtime_temp_slot_load(code, temp_base, 0, 2);
+  elf_emit_http_packed_span_result(code);
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
 }
 
 static bool elf_emit_u64_upper_bound_check(ZBuf *code, unsigned value_reg, unsigned limit_reg, ElfEmitContext *ctx, ZDiag *diag) {
@@ -606,6 +828,9 @@ static bool elf_emit_byte_view_len(ZBuf *code, const IrFunction *fun, const IrVa
     z_x64_emit_mov_reg_from_reg(code, 0, 2, true);
     return true;
   }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return elf_emit_byte_view_pair(code, fun, view, 8, 0, ctx, diag);
+  }
   if (view && (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR)) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return elf_emit_args_value_after_pair(code, fun, view, 8, 0, ctx, diag);
     return elf_emit_args_get_or_pair(code, fun, view, 8, 0, ctx, diag);
@@ -691,11 +916,53 @@ static bool elf_emit_byte_view_ptr(ZBuf *code, const IrFunction *fun, const IrVa
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) {
     return elf_emit_value(code, fun, view, ctx, diag);
   }
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return elf_emit_byte_view_pair(code, fun, view, 0, 2, ctx, diag);
+  }
   if (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return elf_emit_args_value_after_pair(code, fun, view, 0, 2, ctx, diag);
     return elf_emit_args_get_or_pair(code, fun, view, 0, 2, ctx, diag);
   }
   return elf_diag(diag, "direct ELF64 value is not a supported byte view", view->line, view->column, "unsupported byte view");
+}
+
+static bool elf_emit_json_error_label_arm(ZBuf *code, const IrValue *view, unsigned index, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!view || index >= view->arg_len || !view->args[index] || view->args[index]->kind != IR_VALUE_STRING_LITERAL) {
+    return elf_diag(diag, "direct ELF64 JSON error label requires string literal arms", view ? view->line : 1, view ? view->column : 1, "invalid JSON error label");
+  }
+  const IrValue *label = view->args[index];
+  if (!elf_emit_rodata_ptr_rax(code, label->data_offset, ctx, diag, label)) return false;
+  z_x64_emit_mov_reg_u32(code, 2, label->data_len);
+  return true;
+}
+
+static bool elf_emit_json_error_label_pair(ZBuf *code, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!view || !view->left) return elf_diag(diag, "direct ELF64 JSON error label requires a status code", view ? view->line : 1, view ? view->column : 1, "missing JSON status");
+  if (view->arg_len != 4) return elf_diag(diag, "direct ELF64 JSON error label requires four labels", view->line, view->column, "invalid JSON error label");
+  if (!elf_emit_value(code, fun, view->left, ctx, diag)) return false;
+  z_x64_emit_cmp_reg_i8(code, 0, 0, false);
+  size_t code0 = z_x64_emit_jcc32_placeholder(code, 0x84);
+  z_x64_emit_cmp_reg_i8(code, 0, 1, false);
+  size_t code1 = z_x64_emit_jcc32_placeholder(code, 0x84);
+  z_x64_emit_cmp_reg_i8(code, 0, 2, false);
+  size_t code2 = z_x64_emit_jcc32_placeholder(code, 0x84);
+  if (!elf_emit_json_error_label_arm(code, view, 3, ctx, diag)) return false;
+  size_t done3 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, code0, code->len);
+  if (!elf_emit_json_error_label_arm(code, view, 0, ctx, diag)) return false;
+  size_t done0 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, code1, code->len);
+  if (!elf_emit_json_error_label_arm(code, view, 1, ctx, diag)) return false;
+  size_t done1 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, code2, code->len);
+  if (!elf_emit_json_error_label_arm(code, view, 2, ctx, diag)) return false;
+  size_t done2 = z_x64_emit_jmp32_placeholder(code, 0xe9);
+  z_x64_patch_rel32(code, done3, code->len);
+  z_x64_patch_rel32(code, done0, code->len);
+  z_x64_patch_rel32(code, done1, code->len);
+  z_x64_patch_rel32(code, done2, code->len);
+  elf_emit_move_byte_view_pair(code, ptr_reg, len_reg, 0, 2);
+  return true;
 }
 
 static bool elf_emit_byte_view_pair(ZBuf *code, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, ElfEmitContext *ctx, ZDiag *diag) {
@@ -709,6 +976,9 @@ static bool elf_emit_byte_view_pair(ZBuf *code, const IrFunction *fun, const IrV
     if (!elf_emit_value(code, fun, view, ctx, diag)) return false;
     elf_emit_move_byte_view_pair(code, ptr_reg, len_reg, 0, 2);
     return true;
+  }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return elf_emit_json_error_label_pair(code, fun, view, ptr_reg, len_reg, ctx, diag);
   }
   if (view && (view->kind == IR_VALUE_ARGS_GET_OR || view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR)) {
     if (view->kind == IR_VALUE_ARGS_VALUE_AFTER_OR) return elf_emit_args_value_after_pair(code, fun, view, ptr_reg, len_reg, ctx, diag);
@@ -1113,6 +1383,20 @@ static bool elf_emit_json_value(ZBuf *code, const IrFunction *fun, const IrValue
       z_x64_patch_rel32(code, ok, code->len);
       return true;
     }
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+      return elf_emit_json_diagnostic_call(code, fun, value, ctx, diag);
+    case IR_VALUE_JSON_FIELD:
+      return elf_emit_json_field_call(code, fun, value, ctx, diag);
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+      return elf_emit_json_lookup_scalar_call(code, fun, value, ctx, diag);
+    case IR_VALUE_JSON_STRING_DECODE:
+      return elf_emit_json_string_decode_call(code, fun, value, ctx, diag);
+    case IR_VALUE_JSON_WRITE_STRING:
+      return elf_emit_json_string_decode_call(code, fun, value, ctx, diag);
+    case IR_VALUE_JSON_STRING_FIELD:
+      return elf_emit_json_string_field_call(code, fun, value, ctx, diag);
+    case IR_VALUE_JSON_WRITE_RUNTIME:
+      return elf_emit_json_write_runtime_call(code, fun, value, ctx, diag);
     default: return elf_diag(diag, "direct ELF64 runtime value kind is invalid for this helper", value->line, value->column, "invalid runtime value");
   }
 }
@@ -1551,6 +1835,13 @@ static ElfRuntimeHelper elf_str_runtime_helper(IrStrOp op) {
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
       return ELF_RUNTIME_STR_BUFFER_OP;
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
+      return ELF_RUNTIME_CRYPTO_DIGEST;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+      return ELF_RUNTIME_CRYPTO_HMAC_SHA256;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      return ELF_RUNTIME_CRYPTO_HMAC_SHA256_HEX;
     case IR_STR_OP_CONCAT:
       return ELF_RUNTIME_STR_CONCAT;
     case IR_STR_OP_REPEAT:
@@ -1579,6 +1870,10 @@ static ElfRuntimeHelper elf_str_runtime_helper(IrStrOp op) {
   return ELF_RUNTIME_HELPER_COUNT;
 }
 
+static uint32_t elf_crypto_digest_op(IrStrOp op) {
+  return op == IR_STR_OP_CRYPTO_SHA256_HEX ? 1u : 0u;
+}
+
 static void elf_emit_encoded_len_to_maybe_byte_view_regs(ZBuf *code) {
   z_x64_emit_mov_rcx_from_rax(code, false);
   z_x64_emit_test_rax_rax(code, true);
@@ -1599,6 +1894,8 @@ static bool elf_emit_str_runtime_value(ZBuf *code, const IrFunction *fun, const 
     case IR_STR_OP_COPY:
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
       if (value->arg_len != 2) return elf_diag(diag, "direct ELF64 std.str buffer helper requires two arguments", value->line, value->column, "invalid std.str arity");
       if (!elf_emit_byte_view_pair(code, fun, value->args[0], 0, 2, ctx, diag)) return false;
       elf_emit_push_rax(code);
@@ -1611,7 +1908,7 @@ static bool elf_emit_str_runtime_value(ZBuf *code, const IrFunction *fun, const 
       z_x64_emit_pop_reg64(code, 2);
       z_x64_emit_pop_reg64(code, 6);
       z_x64_emit_pop_reg64(code, 7);
-      z_x64_emit_mov_reg_u32(code, 8, (uint32_t)op);
+      z_x64_emit_mov_reg_u32(code, 8, helper == ELF_RUNTIME_CRYPTO_DIGEST ? elf_crypto_digest_op(op) : (uint32_t)op);
       {
         size_t patch = z_x64_emit_call32_placeholder(code);
         if (!z_elf_record_value_runtime_patch(ctx, helper, patch, diag, value)) return false;
@@ -1620,7 +1917,9 @@ static bool elf_emit_str_runtime_value(ZBuf *code, const IrFunction *fun, const 
       elf_emit_encoded_len_to_maybe_byte_view_regs(code);
       return true;
     case IR_STR_OP_CONCAT:
-      if (value->arg_len != 3) return elf_diag(diag, "direct ELF64 std.str.concat requires three arguments", value->line, value->column, "invalid std.str arity");
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      if (value->arg_len != 3) return elf_diag(diag, "direct ELF64 std.str three-view helper requires three arguments", value->line, value->column, "invalid std.str arity");
       if (!elf_emit_byte_view_pair(code, fun, value->args[0], 0, 2, ctx, diag)) return false;
       elf_emit_push_rax(code);
       elf_emit_push_rax(code);
@@ -1975,6 +2274,67 @@ static bool elf_emit_core_value(ZBuf *code, const IrFunction *fun, const IrValue
   }
 }
 
+static bool elf_emit_rand_bounded_from_r8(ZBuf *code, const IrFunction *fun, const IrValue *value, bool add_low) {
+  z_x64_emit_test_reg_reg(code, 8, false);
+  size_t none = z_x64_emit_jcc32_placeholder(code, 0x84);
+
+  z_x64_emit_xor_reg_reg(code, 0, false);
+  z_x64_emit_sub_reg_reg(code, 0, 8, false);
+  z_x64_emit_mov_reg_from_reg(code, 1, 8, false);
+  z_x64_emit_div_rax_rcx(code, false, true, true);
+  z_x64_emit_mov_reg_from_rax(code, 9, false);
+
+  size_t loop = code->len;
+  elf_emit_load_local_rax(code, fun, value->local_index);
+  z_x64_emit_imul_reg_i32(code, 0, 1664525, false);
+  z_x64_emit_add_rax_u32(code, 1013904223u, false);
+  elf_emit_store_local_from_reg(code, fun, value->local_index, 0);
+  z_x64_emit_cmp_reg_reg(code, 0, 9, false);
+  size_t retry = z_x64_emit_jcc32_placeholder(code, 0x82);
+
+  z_x64_emit_mov_reg_from_reg(code, 1, 8, false);
+  z_x64_emit_div_rax_rcx(code, false, true, true);
+  if (add_low) z_x64_emit_add_reg_reg(code, 0, 10, false);
+  z_x64_emit_mov_reg_from_rax(code, 2, false);
+  z_x64_emit_mov_eax_u32(code, 1);
+  size_t done = z_x64_emit_jmp32_placeholder(code, 0xe9);
+
+  z_x64_patch_rel32(code, retry, loop);
+  z_x64_patch_rel32(code, none, code->len);
+  z_x64_emit_xor_reg_reg(code, 2, false);
+  z_x64_emit_xor_reg_reg(code, 0, false);
+  z_x64_patch_rel32(code, done, code->len);
+  return true;
+}
+
+static bool elf_emit_rand_maybe_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->local_index >= fun->local_len) return elf_diag(diag, "direct ELF64 std.rand bounded local is out of range", value ? value->line : 1, value ? value->column : 1, "invalid RandSource");
+  if (value->kind == IR_VALUE_RAND_NEXT_BELOW) {
+    if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_rax(code, 8, false);
+    return elf_emit_rand_bounded_from_r8(code, fun, value, false);
+  }
+  if (value->kind == IR_VALUE_RAND_RANGE_U32) {
+    if (!elf_emit_value(code, fun, value->left, ctx, diag)) return false;
+    elf_emit_push_rax(code);
+    if (!elf_emit_value(code, fun, value->right, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_rax(code, 8, false);
+    z_x64_emit_pop_reg64(code, 1);
+    z_x64_emit_mov_reg_from_reg(code, 10, 1, false);
+    z_x64_emit_cmp_reg_reg(code, 8, 1, false);
+    size_t empty = z_x64_emit_jcc32_placeholder(code, 0x86);
+    z_x64_emit_sub_reg_reg(code, 8, 1, false);
+    bool ok = elf_emit_rand_bounded_from_r8(code, fun, value, true);
+    size_t done = z_x64_emit_jmp32_placeholder(code, 0xe9);
+    z_x64_patch_rel32(code, empty, code->len);
+    z_x64_emit_xor_reg_reg(code, 2, false);
+    z_x64_emit_xor_reg_reg(code, 0, false);
+    z_x64_patch_rel32(code, done, code->len);
+    return ok;
+  }
+  return elf_diag(diag, "direct ELF64 std.rand bounded helper is invalid", value->line, value->column, "invalid rand helper");
+}
+
 static bool elf_emit_host_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_ARGS_LEN:
@@ -2013,6 +2373,9 @@ static bool elf_emit_host_value(ZBuf *code, const IrFunction *fun, const IrValue
       z_x64_emit_add_rax_u32(code, 1013904223u, false);
       elf_emit_store_local_from_reg(code, fun, value->local_index, 0);
       return true;
+    case IR_VALUE_RAND_NEXT_BELOW:
+    case IR_VALUE_RAND_RANGE_U32:
+      return elf_emit_rand_maybe_value(code, fun, value, ctx, diag);
     case IR_VALUE_RAND_ENTROPY_U32:
       z_x64_emit_xor_rdi_rdi(code);
       z_x64_emit_mov_eax_u32(code, 201);
@@ -2530,7 +2893,11 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       !((value->kind == IR_VALUE_CALL || value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) &&
         (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
       !((value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME || value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
-         value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN || value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE) &&
+         value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN || value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
+         value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_STRING_DECODE ||
+         value->kind == IR_VALUE_JSON_WRITE_STRING ||
+         value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
+         value->kind == IR_VALUE_JSON_STRING_FIELD) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       !((value->kind == IR_VALUE_STR_RUNTIME) && (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
       !((value->kind == IR_VALUE_SORT_RUNTIME) && value->type == IR_TYPE_VOID) &&
@@ -2546,7 +2913,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
   switch (value->kind) {
     case IR_VALUE_BOOL: case IR_VALUE_INT: case IR_VALUE_LOCAL: case IR_VALUE_CAST: case IR_VALUE_BINARY: case IR_VALUE_COMPARE: case IR_VALUE_CALL:
       return elf_emit_core_value(code, fun, value, ctx, diag);
-    case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES: case IR_VALUE_JSON_DIAGNOSTIC_BYTES: case IR_VALUE_JSON_FIELD: case IR_VALUE_JSON_LOOKUP_SCALAR: case IR_VALUE_JSON_STRING_DECODE: case IR_VALUE_JSON_STRING_FIELD: case IR_VALUE_JSON_WRITE_STRING: case IR_VALUE_JSON_WRITE_RUNTIME:
       return elf_emit_json_value(code, fun, value, ctx, diag);
     case IR_VALUE_HTTP_FETCH: case IR_VALUE_HTTP_RESULT_OK: case IR_VALUE_HTTP_RESULT_STATUS: case IR_VALUE_HTTP_RESULT_BODY_LEN: case IR_VALUE_HTTP_RESULT_ERROR:
     case IR_VALUE_HTTP_HEADER_FOUND: case IR_VALUE_HTTP_HEADER_OFFSET: case IR_VALUE_HTTP_HEADER_LEN: case IR_VALUE_HTTP_RESPONSE_LEN:
@@ -2581,7 +2948,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
     case IR_VALUE_SORT_RUNTIME:
       return elf_emit_sort_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_ARGS_LEN: case IR_VALUE_TIME_WALL_SECONDS: case IR_VALUE_TIME_MONOTONIC: case IR_VALUE_TIME_AS_MS:
-    case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_RAND_ENTROPY_U32:
+    case IR_VALUE_RAND_NEXT_U32: case IR_VALUE_RAND_NEXT_BELOW: case IR_VALUE_RAND_RANGE_U32: case IR_VALUE_RAND_ENTROPY_U32:
       return elf_emit_host_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_HOST: case IR_VALUE_FS_OPEN: case IR_VALUE_FS_CREATE: case IR_VALUE_FS_CLOSE_FILE: case IR_VALUE_FS_EXISTS:
     case IR_VALUE_FS_IS_DIR: case IR_VALUE_FS_REMOVE: case IR_VALUE_FS_REMOVE_DIR: case IR_VALUE_FS_MAKE_DIR: case IR_VALUE_FS_RENAME:
@@ -2996,6 +3363,11 @@ static bool elf_emit_maybe_byte_view_local_set(ZBuf *text, const IrFunction *fun
   }
   if (instr->value && (instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
                        instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
+                       instr->value->kind == IR_VALUE_JSON_FIELD ||
+                       instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+                       instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+                       instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+                       instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
                        instr->value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
                        instr->value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
                        instr->value->kind == IR_VALUE_STR_RUNTIME ||
@@ -3058,9 +3430,10 @@ static bool elf_emit_maybe_scalar_local_set(ZBuf *text, const IrFunction *fun, c
   }
   if (instr->value->kind == IR_VALUE_VEC_GET ||
       instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
-      instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
+      instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
-      instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME) {
+      instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+      instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
     elf_emit_store_local_slot_reg(text, local, 8, 2, true);
@@ -3204,6 +3577,11 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
                    instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
+                   instr->value->kind == IR_VALUE_JSON_FIELD ||
+                   instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+                   instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+                   instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+                   instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
                    instr->value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
                    instr->value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
                    instr->value->kind == IR_VALUE_STR_RUNTIME ||
@@ -3234,9 +3612,10 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_VEC_GET ||
                    instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
-                   instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
+                   instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
                    instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
-                   instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME) {
+                   instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+                   instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
           z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);

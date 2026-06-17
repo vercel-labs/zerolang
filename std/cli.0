@@ -117,3 +117,157 @@ fn __zero_std_cli_arg_u32_or(index: usize, fallback: u32) -> u32 {
     }
     return fallback
 }
+
+fn __zero_std_cli_is_help(command: Span<u8>) -> Bool {
+    return std.mem.eql(command, "help") || std.mem.eql(command, "--help") || std.mem.eql(command, "-h")
+}
+
+fn __zero_std_cli_needs_help() -> Bool {
+    if !std.args.has(1) {
+        return true
+    }
+    return std.cli.argEquals(1, "help") || std.cli.argEquals(1, "--help") || std.cli.argEquals(1, "-h")
+}
+
+fn __zero_std_cli_command_in2(command: Span<u8>, first: Span<u8>, second: Span<u8>) -> Bool {
+    return std.mem.eql(command, first) || std.mem.eql(command, second)
+}
+
+fn __zero_std_cli_command_in3(command: Span<u8>, first: Span<u8>, second: Span<u8>, third: Span<u8>) -> Bool {
+    return std.mem.eql(command, first) || std.mem.eql(command, second) || std.mem.eql(command, third)
+}
+
+fn __zero_std_cli_write_span(buffer: MutSpan<u8>, offset: usize, bytes: Span<u8>) -> Maybe<usize> {
+    if offset > std.mem.len(buffer) {
+        return null
+    }
+    if std.mem.len(bytes) > std.mem.len(buffer) - offset {
+        return null
+    }
+    var index: usize = 0
+    while index < std.mem.len(bytes) {
+        buffer[offset + index] = bytes[index]
+        index = index + 1
+    }
+    return offset + std.mem.len(bytes)
+}
+
+fn __zero_std_cli_format_usage(buffer: MutSpan<u8>, program: Span<u8>, syntax: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let prefix: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "usage: ")
+    if !prefix.has {
+        return null
+    }
+    offset = prefix.value
+    let wrote_program: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, program)
+    if !wrote_program.has {
+        return null
+    }
+    offset = wrote_program.value
+    let space: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, " ")
+    if !space.has {
+        return null
+    }
+    offset = space.value
+    let wrote_syntax: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, syntax)
+    if wrote_syntax.has {
+        return buffer[..wrote_syntax.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_command(buffer: MutSpan<u8>, name: Span<u8>, syntax: Span<u8>, summary: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let indent: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "  ")
+    if !indent.has {
+        return null
+    }
+    offset = indent.value
+    let wrote_name: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, name)
+    if !wrote_name.has {
+        return null
+    }
+    offset = wrote_name.value
+    if std.mem.len(syntax) > 0 {
+        let name_space: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, " ")
+        if !name_space.has {
+            return null
+        }
+        offset = name_space.value
+        let wrote_syntax: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, syntax)
+        if !wrote_syntax.has {
+            return null
+        }
+        offset = wrote_syntax.value
+    }
+    let gap: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "  ")
+    if !gap.has {
+        return null
+    }
+    offset = gap.value
+    let wrote_summary: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, summary)
+    if wrote_summary.has {
+        return buffer[..wrote_summary.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_option(buffer: MutSpan<u8>, name: Span<u8>, value_name: Span<u8>, summary: Span<u8>) -> Maybe<Span<u8>> {
+    return __zero_std_cli_format_command(buffer, name, value_name, summary)
+}
+
+fn __zero_std_cli_format_error(buffer: MutSpan<u8>, message: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let prefix: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "error: ")
+    if !prefix.has {
+        return null
+    }
+    offset = prefix.value
+    let wrote_message: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, message)
+    if wrote_message.has {
+        return buffer[..wrote_message.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_unknown_command(buffer: MutSpan<u8>, command: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let prefix: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "error: unknown command: ")
+    if !prefix.has {
+        return null
+    }
+    offset = prefix.value
+    let wrote_command: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, command)
+    if wrote_command.has {
+        return buffer[..wrote_command.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_missing_operand(buffer: MutSpan<u8>, operand: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let prefix: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "error: missing operand: ")
+    if !prefix.has {
+        return null
+    }
+    offset = prefix.value
+    let wrote_operand: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, operand)
+    if wrote_operand.has {
+        return buffer[..wrote_operand.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_invalid_option(buffer: MutSpan<u8>, option: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let prefix: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "error: invalid option: ")
+    if !prefix.has {
+        return null
+    }
+    offset = prefix.value
+    let wrote_option: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, option)
+    if wrote_option.has {
+        return buffer[..wrote_option.value]
+    }
+    return null
+}

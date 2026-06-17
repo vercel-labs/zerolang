@@ -330,6 +330,9 @@ static bool coff_emit_byte_view_len(ZBuf *text, const IrFunction *fun, const IrV
     z_x64_emit_mov_reg_from_reg(text, 0, 2, true);
     return true;
   }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return coff_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
+  }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     return coff_emit_byte_view_pair(text, fun, view, 8, 0, ctx, diag);
   }
@@ -365,6 +368,7 @@ static bool coff_emit_byte_view_ptr(ZBuf *text, const IrFunction *fun, const IrV
   }
   if (view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
   if (view->kind == IR_VALUE_STR_RUNTIME && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_value(text, fun, view, ctx, diag);
+  if (view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) return coff_emit_byte_view_pair(text, fun, view, 0, 2, ctx, diag);
   if (view->kind == IR_VALUE_ARRAY_BYTE_VIEW && view->array_index < fun->local_len) {
     const IrLocal *local = &fun->locals[view->array_index];
     if (local->is_record_ref) {
@@ -411,6 +415,45 @@ static void coff_emit_move_byte_view_pair(ZBuf *text, unsigned ptr_reg, unsigned
   if (len_reg != src_len_reg) z_x64_emit_mov_reg_from_reg(text, len_reg, src_len_reg, true);
 }
 
+static bool coff_emit_json_error_label_arm(ZBuf *text, const IrValue *view, unsigned index, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!view || index >= view->arg_len || !view->args[index] || view->args[index]->kind != IR_VALUE_STRING_LITERAL) {
+    return coff_diag_at(diag, "direct COFF JSON error label requires string literal arms", view ? view->line : 1, view ? view->column : 1, "invalid JSON error label");
+  }
+  const IrValue *label = view->args[index];
+  if (!coff_emit_rodata_ptr_rax(text, label->data_offset, ctx, label, diag)) return false;
+  z_x64_emit_mov_reg_u32(text, 2, label->data_len);
+  return true;
+}
+
+static bool coff_emit_json_error_label_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!view || !view->left) return coff_diag_at(diag, "direct COFF JSON error label requires a status code", view ? view->line : 1, view ? view->column : 1, "missing JSON status");
+  if (view->arg_len != 4) return coff_diag_at(diag, "direct COFF JSON error label requires four labels", view->line, view->column, "invalid JSON error label");
+  if (!coff_emit_value(text, fun, view->left, ctx, diag)) return false;
+  z_x64_emit_cmp_reg_i8(text, 0, 0, false);
+  size_t code0 = z_x64_emit_jcc32_placeholder(text, 0x84);
+  z_x64_emit_cmp_reg_i8(text, 0, 1, false);
+  size_t code1 = z_x64_emit_jcc32_placeholder(text, 0x84);
+  z_x64_emit_cmp_reg_i8(text, 0, 2, false);
+  size_t code2 = z_x64_emit_jcc32_placeholder(text, 0x84);
+  if (!coff_emit_json_error_label_arm(text, view, 3, ctx, diag)) return false;
+  size_t done3 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, code0, text->len);
+  if (!coff_emit_json_error_label_arm(text, view, 0, ctx, diag)) return false;
+  size_t done0 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, code1, text->len);
+  if (!coff_emit_json_error_label_arm(text, view, 1, ctx, diag)) return false;
+  size_t done1 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, code2, text->len);
+  if (!coff_emit_json_error_label_arm(text, view, 2, ctx, diag)) return false;
+  size_t done2 = z_x64_emit_jmp32_placeholder(text, 0xe9);
+  z_x64_patch_rel32(text, done3, text->len);
+  z_x64_patch_rel32(text, done0, text->len);
+  z_x64_patch_rel32(text, done1, text->len);
+  z_x64_patch_rel32(text, done2, text->len);
+  coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
+  return true;
+}
+
 static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const IrValue *view, unsigned ptr_reg, unsigned len_reg, CoffEmitContext *ctx, ZDiag *diag) {
   if (ptr_reg == len_reg) return coff_diag_at(diag, "direct COFF byte-view pair requires distinct destination registers", view ? view->line : 1, view ? view->column : 1, "invalid byte-view registers");
   if (view && view->kind == IR_VALUE_CALL && view->type == IR_TYPE_BYTE_VIEW) {
@@ -422,6 +465,9 @@ static bool coff_emit_byte_view_pair(ZBuf *text, const IrFunction *fun, const Ir
     if (!coff_emit_value(text, fun, view, ctx, diag)) return false;
     coff_emit_move_byte_view_pair(text, ptr_reg, len_reg, 0, 2);
     return true;
+  }
+  if (view && view->kind == IR_VALUE_JSON_ERROR_LABEL && view->type == IR_TYPE_BYTE_VIEW) {
+    return coff_emit_json_error_label_pair(text, fun, view, ptr_reg, len_reg, ctx, diag);
   }
   if (view && view->kind == IR_VALUE_BYTE_SLICE) {
     if (!view->index && !view->right) return coff_emit_byte_view_pair(text, fun, view->left, ptr_reg, len_reg, ctx, diag);
@@ -973,6 +1019,13 @@ static CoffRuntimeHelper coff_str_runtime_helper(IrStrOp op) {
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
       return COFF_RUNTIME_STR_BUFFER_OP;
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
+      return COFF_RUNTIME_CRYPTO_DIGEST;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+      return COFF_RUNTIME_CRYPTO_HMAC_SHA256;
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      return COFF_RUNTIME_CRYPTO_HMAC_SHA256_HEX;
     case IR_STR_OP_CONCAT:
       return COFF_RUNTIME_STR_CONCAT;
     case IR_STR_OP_REPEAT:
@@ -999,6 +1052,10 @@ static CoffRuntimeHelper coff_str_runtime_helper(IrStrOp op) {
       return COFF_RUNTIME_STR_WORD_COUNT_ASCII;
   }
   return COFF_RUNTIME_HELPER_COUNT;
+}
+
+static uint32_t coff_crypto_digest_op(IrStrOp op) {
+  return op == IR_STR_OP_CRYPTO_SHA256_HEX ? 1u : 0u;
 }
 
 static void coff_emit_runtime_call_begin_with_temps(ZBuf *text, unsigned abi_slots, unsigned temp_slots, unsigned *temp_base, unsigned *total_stack) {
@@ -1085,18 +1142,22 @@ static bool coff_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, const
     case IR_STR_OP_COPY:
     case IR_STR_OP_TO_LOWER_ASCII:
     case IR_STR_OP_TO_UPPER_ASCII:
+    case IR_STR_OP_CRYPTO_SHA256:
+    case IR_STR_OP_CRYPTO_SHA256_HEX:
       if (value->arg_len != 2) return coff_diag_at(diag, "direct COFF std.str buffer helper requires two arguments", value->line, value->column, "invalid std.str arity");
       coff_emit_runtime_call_begin(text, 5, &temp_base, &total_stack);
       if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
       if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
-      coff_emit_runtime_arg_u32(text, (uint32_t)op, temp_base, &slot);
+      coff_emit_runtime_arg_u32(text, helper == COFF_RUNTIME_CRYPTO_DIGEST ? coff_crypto_digest_op(op) : (uint32_t)op, temp_base, &slot);
       if (!coff_emit_runtime_call(text, ctx, helper, 5, temp_base, value, diag)) return false;
       coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
       z_x64_emit_add_rsp(text, total_stack);
       coff_emit_encoded_len_to_maybe_byte_view_regs(text);
       return true;
     case IR_STR_OP_CONCAT:
-      if (value->arg_len != 3) return coff_diag_at(diag, "direct COFF std.str.concat requires three arguments", value->line, value->column, "invalid std.str arity");
+    case IR_STR_OP_CRYPTO_HMAC_SHA256:
+    case IR_STR_OP_CRYPTO_HMAC_SHA256_HEX:
+      if (value->arg_len != 3) return coff_diag_at(diag, "direct COFF std.str three-view helper requires three arguments", value->line, value->column, "invalid std.str arity");
       coff_emit_runtime_call_begin(text, 6, &temp_base, &total_stack);
       if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
       if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
@@ -1378,15 +1439,142 @@ static bool coff_emit_sort_runtime_value(ZBuf *text, const IrFunction *fun, cons
   return true;
 }
 
+static void coff_emit_http_packed_span_result(ZBuf *text);
+
+static CoffRuntimeHelper coff_json_write_runtime_helper(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW: return COFF_RUNTIME_JSON_WRITE_FIELD_RAW;
+    case IR_JSON_WRITE_FIELD_STRING: return COFF_RUNTIME_JSON_WRITE_FIELD_STRING;
+    case IR_JSON_WRITE_FIELD_U32: return COFF_RUNTIME_JSON_WRITE_FIELD_U32;
+    case IR_JSON_WRITE_FIELD_BOOL: return COFF_RUNTIME_JSON_WRITE_FIELD_BOOL;
+    case IR_JSON_WRITE_OBJECT1_STRING: return COFF_RUNTIME_JSON_WRITE_OBJECT1_STRING;
+    case IR_JSON_WRITE_OBJECT1_U32: return COFF_RUNTIME_JSON_WRITE_OBJECT1_U32;
+    case IR_JSON_WRITE_OBJECT1_BOOL: return COFF_RUNTIME_JSON_WRITE_OBJECT1_BOOL;
+    case IR_JSON_WRITE_OBJECT2_FIELDS: return COFF_RUNTIME_JSON_WRITE_OBJECT2_FIELDS;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD: return COFF_RUNTIME_JSON_WRITE_OBJECT2_STRING_FIELD;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD: return COFF_RUNTIME_JSON_WRITE_OBJECT2_U32_FIELD;
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD: return COFF_RUNTIME_JSON_WRITE_OBJECT2_BOOL_FIELD;
+    case IR_JSON_WRITE_ARRAY2_STRINGS: return COFF_RUNTIME_JSON_WRITE_ARRAY2_STRINGS;
+    case IR_JSON_WRITE_ARRAY2_U32: return COFF_RUNTIME_JSON_WRITE_ARRAY2_U32;
+    case IR_JSON_WRITE_ARRAY2_BOOLS: return COFF_RUNTIME_JSON_WRITE_ARRAY2_BOOLS;
+  }
+  return COFF_RUNTIME_HELPER_COUNT;
+}
+
+static unsigned coff_json_write_runtime_abi_slots(IrJsonWriteOp op) {
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      return 6u;
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      return 5u;
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      return 8u;
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      return 7u;
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      return 4u;
+  }
+  return 0u;
+}
+
+static bool coff_emit_json_write_runtime_args(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned temp_base, unsigned *slot, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!value || value->arg_len < 3) return coff_diag_at(diag, "direct COFF JSON writer requires arguments", value ? value->line : 1, value ? value->column : 1, "invalid JSON writer");
+  IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+  if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, slot, ctx, diag)) return false;
+  switch (op) {
+    case IR_JSON_WRITE_FIELD_RAW:
+    case IR_JSON_WRITE_FIELD_STRING:
+    case IR_JSON_WRITE_OBJECT1_STRING:
+    case IR_JSON_WRITE_OBJECT2_FIELDS:
+    case IR_JSON_WRITE_ARRAY2_STRINGS:
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return coff_emit_runtime_arg_byte_view(text, fun, value->args[2], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_FIELD_U32:
+    case IR_JSON_WRITE_FIELD_BOOL:
+    case IR_JSON_WRITE_OBJECT1_U32:
+    case IR_JSON_WRITE_OBJECT1_BOOL:
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return coff_emit_runtime_arg_value(text, fun, value->args[2], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_OBJECT2_STRING_FIELD:
+      if (value->arg_len < 4) return coff_diag_at(diag, "direct COFF JSON writer object2 string field requires four arguments", value->line, value->column, "invalid JSON writer arity");
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[2], temp_base, slot, ctx, diag)) return false;
+      return coff_emit_runtime_arg_byte_view(text, fun, value->args[3], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_OBJECT2_U32_FIELD:
+    case IR_JSON_WRITE_OBJECT2_BOOL_FIELD:
+      if (value->arg_len < 4) return coff_diag_at(diag, "direct COFF JSON writer object2 scalar field requires four arguments", value->line, value->column, "invalid JSON writer arity");
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      if (!coff_emit_runtime_arg_value(text, fun, value->args[2], temp_base, slot, ctx, diag)) return false;
+      return coff_emit_runtime_arg_byte_view(text, fun, value->args[3], temp_base, slot, ctx, diag);
+    case IR_JSON_WRITE_ARRAY2_U32:
+    case IR_JSON_WRITE_ARRAY2_BOOLS:
+      if (!coff_emit_runtime_arg_value(text, fun, value->args[1], temp_base, slot, ctx, diag)) return false;
+      return coff_emit_runtime_arg_value(text, fun, value->args[2], temp_base, slot, ctx, diag);
+  }
+  return coff_diag_at(diag, "direct COFF JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+}
+
 static bool coff_emit_json_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
-  if (!value || !value->left) return coff_diag_at(diag, "direct COFF JSON helper requires a byte view", value ? value->line : 1, value ? value->column : 1, "invalid JSON input");
+  if (!value) return coff_diag_at(diag, "direct COFF JSON helper requires a value", 1, 1, "invalid JSON input");
+  if (value->kind == IR_VALUE_JSON_WRITE_RUNTIME) {
+    IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
+    CoffRuntimeHelper helper = coff_json_write_runtime_helper(op);
+    unsigned arg_count = coff_json_write_runtime_abi_slots(op);
+    if (helper == COFF_RUNTIME_HELPER_COUNT || arg_count == 0) return coff_diag_at(diag, "direct COFF JSON writer op is invalid", value->line, value->column, "invalid JSON writer");
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    coff_emit_runtime_call_begin(text, arg_count, &temp_base, &total_stack);
+    if (!coff_emit_json_write_runtime_args(text, fun, value, temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_call(text, ctx, helper, arg_count, temp_base, value, diag)) return false;
+    coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+    coff_emit_http_packed_span_result(text);
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
+  if (!value->left) return coff_diag_at(diag, "direct COFF JSON helper requires a byte view", value->line, value->column, "invalid JSON input");
   unsigned temp_base = 0;
   unsigned total_stack = 0;
   unsigned slot = 0;
-  coff_emit_runtime_call_begin(text, 2, &temp_base, &total_stack);
+  unsigned arg_count = value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ? 3u :
+                       (value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ? 5u :
+                        (value->kind == IR_VALUE_JSON_STRING_FIELD ? 6u :
+                         ((value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_WRITE_STRING) ? 4u : 2u)));
+  coff_emit_runtime_call_begin(text, arg_count, &temp_base, &total_stack);
   if (!coff_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
-  if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_JSON_PARSE_BYTES, 2, temp_base, value, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES) {
+    coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  } else if (value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_STRING_FIELD || value->kind == IR_VALUE_JSON_WRITE_STRING) {
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (value->kind == IR_VALUE_JSON_LOOKUP_SCALAR) coff_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+    if (value->kind == IR_VALUE_JSON_STRING_FIELD && !coff_emit_runtime_arg_byte_view(text, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  }
+  CoffRuntimeHelper helper = value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ? COFF_RUNTIME_JSON_DIAGNOSTIC :
+                             (value->kind == IR_VALUE_JSON_FIELD ? COFF_RUNTIME_JSON_FIELD :
+                              (value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ? COFF_RUNTIME_JSON_LOOKUP_SCALAR :
+                               (value->kind == IR_VALUE_JSON_STRING_DECODE ? COFF_RUNTIME_JSON_STRING_DECODE :
+                                (value->kind == IR_VALUE_JSON_STRING_FIELD ? COFF_RUNTIME_JSON_STRING_FIELD :
+                                 (value->kind == IR_VALUE_JSON_WRITE_STRING ? COFF_RUNTIME_JSON_WRITE_STRING : COFF_RUNTIME_JSON_PARSE_BYTES)))));
+  if (!coff_emit_runtime_call(text, ctx, helper, arg_count, temp_base, value, diag)) return false;
+  if (value->kind == IR_VALUE_JSON_FIELD || value->kind == IR_VALUE_JSON_STRING_DECODE || value->kind == IR_VALUE_JSON_STRING_FIELD || value->kind == IR_VALUE_JSON_WRITE_STRING) {
+    coff_emit_runtime_temp_slot_load(text, temp_base, 0, 2);
+    coff_emit_http_packed_span_result(text);
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   z_x64_emit_add_rsp(text, total_stack);
+  if (value->kind == IR_VALUE_JSON_LOOKUP_SCALAR) {
+    coff_emit_normalize_u32_maybe_result(text);
+  }
   if (value->kind == IR_VALUE_JSON_VALIDATE_BYTES) {
     z_x64_emit_cmp_reg_i8(text, 0, 0, true);
     z_x64_emit_setcc_al_to_bool(text, 0x9d);
@@ -1468,6 +1656,69 @@ static bool coff_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, cons
   return true;
 }
 
+static bool coff_emit_rand_bounded_from_r8(ZBuf *text, const IrFunction *fun, const IrValue *value, bool add_low) {
+  z_x64_emit_test_reg_reg(text, 8, false);
+  size_t none = z_x64_emit_jcc32_placeholder(text, 0x84);
+
+  z_x64_emit_xor_reg_reg(text, 0, false);
+  z_x64_emit_sub_reg_reg(text, 0, 8, false);
+  z_x64_emit_mov_reg_from_reg(text, 1, 8, false);
+  z_x64_emit_div_rax_rcx(text, false, true, true);
+  z_x64_emit_mov_reg_from_rax(text, 9, false);
+
+  size_t loop = text->len;
+  coff_emit_load_local_slot_eax(text, fun, value->local_index, 0);
+  z_x64_emit_imul_reg_i32(text, 0, 1664525, false);
+  z_x64_emit_add_rax_u32(text, 1013904223u, false);
+  coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 0, 0, false);
+  z_x64_emit_cmp_reg_reg(text, 0, 9, false);
+  size_t retry = z_x64_emit_jcc32_placeholder(text, 0x82);
+
+  z_x64_emit_mov_reg_from_reg(text, 1, 8, false);
+  z_x64_emit_div_rax_rcx(text, false, true, true);
+  if (add_low) z_x64_emit_add_reg_reg(text, 0, 10, false);
+  z_x64_emit_mov_reg_from_rax(text, 2, false);
+  z_x64_emit_mov_eax_u32(text, 1);
+  size_t done = z_x64_emit_jmp32_placeholder(text, 0xe9);
+
+  z_x64_patch_rel32(text, retry, loop);
+  z_x64_patch_rel32(text, none, text->len);
+  z_x64_emit_xor_reg_reg(text, 2, false);
+  z_x64_emit_xor_reg_reg(text, 0, false);
+  z_x64_patch_rel32(text, done, text->len);
+  return true;
+}
+
+static bool coff_emit_rand_maybe_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (!fun || !value || value->local_index >= fun->local_len) {
+    return coff_diag_at(diag, "direct COFF std.rand bounded local is out of range", value ? value->line : 1, value ? value->column : 1, "invalid RandSource");
+  }
+  if (value->kind == IR_VALUE_RAND_NEXT_BELOW) {
+    if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_rax(text, 8, false);
+    return coff_emit_rand_bounded_from_r8(text, fun, value, false);
+  }
+  if (value->kind == IR_VALUE_RAND_RANGE_U32) {
+    if (!coff_emit_value(text, fun, value->left, ctx, diag)) return false;
+    z_x64_emit_push_rax(text);
+    if (!coff_emit_value(text, fun, value->right, ctx, diag)) return false;
+    z_x64_emit_mov_reg_from_rax(text, 8, false);
+    z_x64_emit_pop_reg64(text, 1);
+    z_x64_emit_mov_reg_from_reg(text, 10, 1, false);
+    z_x64_emit_cmp_reg_reg(text, 8, 1, false);
+    size_t empty = z_x64_emit_jcc32_placeholder(text, 0x86);
+    z_x64_emit_sub_reg_reg(text, 8, 1, false);
+    bool ok = coff_emit_rand_bounded_from_r8(text, fun, value, true);
+    size_t done = z_x64_emit_jmp32_placeholder(text, 0xe9);
+    z_x64_patch_rel32(text, empty, text->len);
+    z_x64_emit_xor_reg_reg(text, 2, false);
+    z_x64_emit_xor_reg_reg(text, 0, false);
+    z_x64_patch_rel32(text, done, text->len);
+    return ok;
+  }
+  return coff_diag_at(diag, "direct COFF std.rand bounded helper is invalid", value->line, value->column, "invalid rand helper");
+}
+
 static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
   if (!value) return coff_diag_at(diag, "direct COFF expression is missing", 1, 1, "missing expression");
   switch (value->kind) {
@@ -1493,6 +1744,9 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
       z_x64_emit_add_rax_u32(text, 1013904223u, false);
       coff_emit_store_local_slot_from_reg(text, fun, value->local_index, 0, 0, false);
       return true;
+    case IR_VALUE_RAND_NEXT_BELOW:
+    case IR_VALUE_RAND_RANGE_U32:
+      return coff_emit_rand_maybe_value(text, fun, value, ctx, diag);
     case IR_VALUE_VEC_LEN:
     case IR_VALUE_VEC_CAPACITY:
       if (value->local_index >= fun->local_len || fun->locals[value->local_index].type != IR_TYPE_VEC) return coff_diag_at(diag, "direct COFF Vec helper requires a Vec local", value->line, value->column, "invalid Vec local");
@@ -1550,6 +1804,13 @@ static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *va
     case IR_VALUE_SORT_RUNTIME: return coff_emit_sort_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_JSON_VALIDATE_BYTES:
     case IR_VALUE_JSON_STREAM_TOKENS_BYTES:
+    case IR_VALUE_JSON_DIAGNOSTIC_BYTES:
+    case IR_VALUE_JSON_FIELD:
+    case IR_VALUE_JSON_LOOKUP_SCALAR:
+    case IR_VALUE_JSON_STRING_DECODE:
+    case IR_VALUE_JSON_STRING_FIELD:
+    case IR_VALUE_JSON_WRITE_STRING:
+    case IR_VALUE_JSON_WRITE_RUNTIME:
       return coff_emit_json_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
     case IR_VALUE_HTTP_REQUEST_PATH:
@@ -1630,6 +1891,11 @@ static bool coff_emit_local_set_maybe_byte_view(ZBuf *text, const IrFunction *fu
                        instr->value->kind == IR_VALUE_FMT_I32 ||
                        instr->value->kind == IR_VALUE_FMT_U32 ||
                        instr->value->kind == IR_VALUE_FMT_USIZE ||
+                       instr->value->kind == IR_VALUE_JSON_FIELD ||
+                       instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+                       instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+                       instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+                       instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
                        instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
                        instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
                        instr->value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
@@ -1684,6 +1950,9 @@ static bool coff_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun, 
        instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
        instr->value->kind == IR_VALUE_PARSE_I32 ||
        instr->value->kind == IR_VALUE_PARSE_U32 ||
+       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
+       instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
+       instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
     coff_emit_store_local_slot_from_reg(text, fun, instr->local_index, 0, 0, false);
@@ -1875,6 +2144,11 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
              instr->value->kind == IR_VALUE_FMT_I32 ||
              instr->value->kind == IR_VALUE_FMT_U32 ||
              instr->value->kind == IR_VALUE_FMT_USIZE ||
+             instr->value->kind == IR_VALUE_JSON_FIELD ||
+             instr->value->kind == IR_VALUE_JSON_STRING_DECODE ||
+             instr->value->kind == IR_VALUE_JSON_STRING_FIELD ||
+             instr->value->kind == IR_VALUE_JSON_WRITE_STRING ||
+             instr->value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
              instr->value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
              instr->value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
              instr->value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN) && instr->value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
@@ -1902,6 +2176,9 @@ static bool coff_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *in
              instr->value->kind == IR_VALUE_PARSE_RUNTIME ||
              instr->value->kind == IR_VALUE_PARSE_I32 ||
              instr->value->kind == IR_VALUE_PARSE_U32 ||
+             instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
+             instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
+             instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!coff_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
