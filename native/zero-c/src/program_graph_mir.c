@@ -3663,6 +3663,7 @@ static bool ir_graph_lower_std_time_call(const ZProgramGraph *graph, IrProgram *
   if (arg_count == 2 && ir_text_eq(callee_name, "std.time.min")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_MIN, IR_TYPE_I64, 2, out);
   if (arg_count == 2 && ir_text_eq(callee_name, "std.time.max")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_MAX, IR_TYPE_I64, 2, out);
   if (arg_count == 3 && ir_text_eq(callee_name, "std.time.clamp")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_CLAMP, IR_TYPE_I64, 3, out);
+  if (arg_count == 1 && ir_text_eq(callee_name, "std.time.sleep")) return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_SLEEP, IR_TYPE_BOOL, 1, out);
   if (arg_count == 2 && ir_text_eq(callee_name, "std.time.lessThan")) {
     IrValue *left = NULL;
     IrValue *right = NULL;
@@ -3682,12 +3683,10 @@ static bool ir_graph_lower_std_time_call(const ZProgramGraph *graph, IrProgram *
     return true;
   }
   if (arg_count == 0 && ir_text_eq(callee_name, "std.time.wallSeconds")) {
-    *out = ir_new_value(ir, IR_VALUE_TIME_WALL_SECONDS, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
-    return true;
+    return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_WALL_SECONDS, IR_TYPE_I64, 0, out);
   }
   if (arg_count == 0 && ir_text_eq(callee_name, "std.time.monotonic")) {
-    *out = ir_new_value(ir, IR_VALUE_TIME_MONOTONIC, IR_TYPE_I64, ir_graph_line(expr), ir_graph_column(expr));
-    return true;
+    return ir_graph_make_std_time_runtime_value(graph, ir, fun, expr, IR_TIME_OP_MONOTONIC, IR_TYPE_I64, 0, out);
   }
   *handled = false;
   return true;
@@ -5149,7 +5148,7 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     *out = value;
     return true;
   }
-  if ((ir_text_eq(callee_name, "std.mem.eql") || ir_text_eq(callee_name, "std.mem.eqlBytes") || ir_text_eq(callee_name, "std.str.contains")) && arg_count == 2) {
+  if ((ir_text_eq(callee_name, "std.mem.eql") || ir_text_eq(callee_name, "std.mem.eqlBytes") || ir_text_eq(callee_name, "std.crypto.constantTimeEql") || ir_text_eq(callee_name, "std.str.contains")) && arg_count == 2) {
     IrValue *left = NULL;
     IrValue *right = NULL;
     if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &left) ||

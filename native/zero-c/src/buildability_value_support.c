@@ -136,8 +136,9 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_ENV_GET:
       return build_backend_is_native_graph_runtime(ctx->backend) && local_set_value;
     case IR_VALUE_TIME_WALL_SECONDS: case IR_VALUE_TIME_MONOTONIC: case IR_VALUE_TIME_AS_MS:
-    case IR_VALUE_RAND_ENTROPY_U32:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64;
+    case IR_VALUE_RAND_ENTROPY_U32:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
     case IR_VALUE_RAND_NEXT_U32:
       return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_RAND_NEXT_BELOW:

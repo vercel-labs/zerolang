@@ -2564,6 +2564,12 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_RAND_RANGE_U32:
       (void)reg;
       return macho_emit_rand_maybe_to_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_RAND_ENTROPY_U32: {
+      size_t patch = z_aarch64_emit_bl_placeholder(text);
+      if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_RAND_ENTROPY_U32, patch, value, diag)) return false;
+      if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+      return true;
+    }
     case IR_VALUE_CHECK:
       return macho_emit_check_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_RESCUE:

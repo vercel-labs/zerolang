@@ -1965,6 +1965,9 @@ static const IrStdTimeExtraSpec *ir_std_time_extra_spec(const char *callee_name)
     {"std.time.min", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_MIN, IR_TYPE_I64, 2},
     {"std.time.max", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_MAX, IR_TYPE_I64, 2},
     {"std.time.clamp", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_CLAMP, IR_TYPE_I64, 3},
+    {"std.time.sleep", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_SLEEP, IR_TYPE_BOOL, 1},
+    {"std.time.wallSeconds", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_WALL_SECONDS, IR_TYPE_I64, 0},
+    {"std.time.monotonic", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_MONOTONIC, IR_TYPE_I64, 0},
     {"std.time.isZero", IR_STD_TIME_EXTRA_IS_ZERO, IR_TIME_OP_AS_US_FLOOR, IR_TYPE_BOOL, 1},
   };
   for (size_t i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
@@ -3508,18 +3511,6 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         left = ir_new_cast_value(ir, left, IR_TYPE_I64, expr->line, expr->column);
         right = ir_new_cast_value(ir, right, IR_TYPE_I64, expr->line, expr->column);
         IrValue *value = ir_new_compare_value(ir, IR_CMP_LT, left, right, expr->line, expr->column);
-        free(callee_name);
-        *out = value;
-        return true;
-      }
-      if (strcmp(callee_name, "std.time.wallSeconds") == 0 && expr->args.len == 0) {
-        IrValue *value = ir_new_value(ir, IR_VALUE_TIME_WALL_SECONDS, IR_TYPE_I64, expr->line, expr->column);
-        free(callee_name);
-        *out = value;
-        return true;
-      }
-      if (strcmp(callee_name, "std.time.monotonic") == 0 && expr->args.len == 0) {
-        IrValue *value = ir_new_value(ir, IR_VALUE_TIME_MONOTONIC, IR_TYPE_I64, expr->line, expr->column);
         free(callee_name);
         *out = value;
         return true;

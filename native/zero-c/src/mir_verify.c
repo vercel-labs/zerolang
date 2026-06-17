@@ -1834,6 +1834,9 @@ static const char *mir_verify_time_op_name(IrTimeOp op) {
     case IR_TIME_OP_MIN: return "std.time.min";
     case IR_TIME_OP_MAX: return "std.time.max";
     case IR_TIME_OP_CLAMP: return "std.time.clamp";
+    case IR_TIME_OP_SLEEP: return "std.time.sleep";
+    case IR_TIME_OP_WALL_SECONDS: return "std.time.wallSeconds";
+    case IR_TIME_OP_MONOTONIC: return "std.time.monotonic";
   }
   return "std.time";
 }
@@ -1848,6 +1851,15 @@ static bool mir_verify_time_runtime_contract(IrProgram *ir, const IrValue *value
     case IR_TIME_OP_AS_SECONDS_FLOOR:
       expected_args = 1;
       expected_result = IR_TYPE_I64;
+      break;
+    case IR_TIME_OP_WALL_SECONDS:
+    case IR_TIME_OP_MONOTONIC:
+      expected_args = 0;
+      expected_result = IR_TYPE_I64;
+      break;
+    case IR_TIME_OP_SLEEP:
+      expected_args = 1;
+      expected_result = IR_TYPE_BOOL;
       break;
     case IR_TIME_OP_AS_MS_FLOOR:
       expected_args = 1;

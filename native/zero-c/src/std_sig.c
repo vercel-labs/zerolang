@@ -795,6 +795,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.time.deadlineAfter", "Duration", 2, {"Duration", "Duration"}, {NULL}, "time", "target-neutral", "no allocation; adds timeout to start", true, Z_STD_HELPER_KIND_TABLE},
   {"std.time.remainingUntil", "Duration", 2, {"Duration", "Duration"}, {NULL}, "time", "target-neutral", "no allocation; returns zero once deadline has passed", true, Z_STD_HELPER_KIND_TABLE},
   {"std.time.deadlineExpired", "Bool", 2, {"Duration", "Duration"}, {NULL}, "time", "target-neutral", "no allocation; true when now is at or past deadline", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.time.sleep", "Bool", 1, {"Duration"}, {NULL}, "time", "host", "sleeps for a non-negative hosted duration; returns false on host failure", true, Z_STD_HELPER_KIND_TABLE},
   {"std.time.isRfc3339Date", "Bool", 1, {"Span<u8>"}, {NULL}, "time", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.time.isRfc3339Time", "Bool", 1, {"Span<u8>"}, {NULL}, "time", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.time.isRfc3339DateTime", "Bool", 1, {"Span<u8>"}, {NULL}, "time", "target-neutral", "no allocation", true, Z_STD_HELPER_KIND_TABLE},

@@ -1,3 +1,7 @@
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "zero_runtime.h"
 
 #include <errno.h>
@@ -31,6 +35,7 @@ typedef struct _stat ZeroRuntimeStat;
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 typedef ssize_t ZeroWriteResult;
 typedef ssize_t ZeroReadResult;
@@ -52,6 +57,25 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_READ_CHUNK 1048576u
 #define ZERO_RUNTIME_PROC_COMMAND_BYTES 4096u
 #define ZERO_RUNTIME_PROC_MAX_ARGS 64u
+
+uint32_t zero_rand_entropy_u32(void) {
+#if defined(_WIN32)
+  LARGE_INTEGER counter;
+  QueryPerformanceCounter(&counter);
+  uint64_t value = (uint64_t)counter.QuadPart ^ (uint64_t)GetTickCount64() ^ ((uint64_t)GetCurrentProcessId() << 32);
+  value ^= value >> 33;
+  value *= 0xff51afd7ed558ccdull;
+  value ^= value >> 33;
+  return (uint32_t)value;
+#else
+  uint32_t value = 0;
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd < 0) return 0;
+  ssize_t got = read(fd, &value, sizeof(value));
+  close(fd);
+  return got == (ssize_t)sizeof(value) ? value : 0;
+#endif
+}
 
 static ZeroMaybeUsize zero_runtime_none_usize(void) {
   return (ZeroMaybeUsize){0, 0};
@@ -1062,6 +1086,53 @@ static int64_t zero_time_floor_div(int64_t value, int64_t divisor) {
   return quotient;
 }
 
+static int64_t zero_time_sleep_ns(int64_t ns) {
+  if (ns <= 0) return 1;
+#if defined(_WIN32)
+  uint64_t remaining_ms = ((uint64_t)ns + 999999u) / 1000000u;
+  while (remaining_ms > 0) {
+    DWORD chunk = remaining_ms > 0xffffffffu ? 0xffffffffu : (DWORD)remaining_ms;
+    Sleep(chunk);
+    remaining_ms -= chunk;
+  }
+  return 1;
+#else
+  struct timespec req;
+  req.tv_sec = (time_t)(ns / 1000000000);
+  req.tv_nsec = (long)(ns % 1000000000);
+  while (nanosleep(&req, &req) != 0) {
+    if (errno == EINTR) continue;
+    return 0;
+  }
+  return 1;
+#endif
+}
+
+static int64_t zero_time_wall_seconds(void) {
+#if defined(_WIN32)
+  FILETIME ft;
+  GetSystemTimeAsFileTime(&ft);
+  uint64_t ticks = ((uint64_t)ft.dwHighDateTime << 32) | (uint64_t)ft.dwLowDateTime;
+  if (ticks < 116444736000000000ull) return 0;
+  return (int64_t)((ticks - 116444736000000000ull) / 10000000ull);
+#else
+  return (int64_t)time(NULL);
+#endif
+}
+
+static int64_t zero_time_monotonic_ns(void) {
+#if defined(_WIN32)
+  LARGE_INTEGER frequency;
+  LARGE_INTEGER counter;
+  if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&counter) || frequency.QuadPart <= 0) return 0;
+  return (int64_t)(((uint64_t)counter.QuadPart * 1000000000ull) / (uint64_t)frequency.QuadPart);
+#else
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+  return (int64_t)ts.tv_sec * 1000000000ll + (int64_t)ts.tv_nsec;
+#endif
+}
+
 int64_t zero_time_op(int64_t a, int64_t b, int64_t c, uint32_t op) {
   switch (op) {
     case ZERO_TIME_OP_AS_US_FLOOR:
@@ -1081,6 +1152,18 @@ int64_t zero_time_op(int64_t a, int64_t b, int64_t c, uint32_t op) {
       if (upper < a) return upper;
       return a;
     }
+    case ZERO_TIME_OP_SLEEP:
+      return zero_time_sleep_ns(a);
+    case ZERO_TIME_OP_WALL_SECONDS:
+      (void)a;
+      (void)b;
+      (void)c;
+      return zero_time_wall_seconds();
+    case ZERO_TIME_OP_MONOTONIC:
+      (void)a;
+      (void)b;
+      (void)c;
+      return zero_time_monotonic_ns();
     default:
       return 0;
   }

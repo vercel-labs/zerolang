@@ -34,7 +34,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.parse`: byte scanners plus decimal, radix, prefix integer width, bool, duration, and byte-size parsers returning `Maybe<T>`.
 - `std.regex`: compile-once and one-shot regular expression matching/search/split/replace for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes and offsets.
 - `std.inet`: target-neutral IPv4/IPv6/hostname literal validation and parsing; no network capability needed.
-- `std.time`: duration construction, conversion, comparison, elapsed-window helpers, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
+- `std.time`: duration construction, conversion, comparison, elapsed-window helpers, hosted sleep, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
 - `std.rand`: explicit deterministic random sources, random bits, unbiased bounded/range helpers, target entropy helpers, and caller-buffer entropy IDs.
 - `std.crypto`: small hashes, SHA-256 digest writers, fixed-width hash text, byte-oriented crypto helpers, and caller-buffer IDs.
 - `std.json`: explicit-buffer JSON validation, structured status/location diagnostics, object/array cursor lookup, typed scalar decode, parsing, and string/object writing helpers.
@@ -1547,6 +1547,7 @@ hasElapsed(arg0: Duration, arg1: Duration, arg2: Duration) -> Bool
 deadlineAfter(arg0: Duration, arg1: Duration) -> Duration
 remainingUntil(arg0: Duration, arg1: Duration) -> Duration
 deadlineExpired(arg0: Duration, arg1: Duration) -> Bool
+sleep(arg0: Duration) -> Bool
 isRfc3339Date(text: Span<u8>) -> Bool
 isRfc3339Time(text: Span<u8>) -> Bool
 isRfc3339DateTime(text: Span<u8>) -> Bool
@@ -1571,8 +1572,8 @@ typed `Duration` needs a compact textual value in caller-owned storage.
 Use `deadlineAfter`, `remainingUntil`, and `deadlineExpired` to model request
 budgets against monotonic `Duration` instants without observing the clock inside
 the helper.
-`std.time` does not expose public sleep, timer, or fake-clock handles in the
-current surface.
+`std.time.sleep` is hosted and returns `false` on host failure. Timer and
+fake-clock handles are not exposed in the current surface.
 
 ### std.unicode
 

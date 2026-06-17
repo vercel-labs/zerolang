@@ -80,11 +80,11 @@ export const docs: Doc[] = [
   },
   {
     slug: "cli-reference",
-    title: "CLI Workflow Reference",
-    description: "Commands grouped by the agent workflow: create, inspect, patch, validate, run, build, and review.",
+    title: "CLI Reference",
+    description: "Commands for creating, inspecting, patching, validating, running, and building Zero programs.",
     path: "/cli",
     sourcePath: "/articles/cli-reference.md",
-    section: "Agent Workflow",
+    section: "Reference",
   },
   {
     slug: "diagnostics",
@@ -410,7 +410,7 @@ export const docs: Doc[] = [
   {
     slug: "module-time",
     title: "std.time",
-    description: "Duration math plus target-gated monotonic and wall-clock helpers.",
+    description: "Duration math, hosted sleep, and target-gated monotonic and wall-clock helpers.",
     path: "/modules/time",
     sourcePath: "/articles/modules/time.md",
     section: "Runtime And Web",

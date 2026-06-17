@@ -106,7 +106,10 @@ typedef enum {
   ZERO_TIME_OP_AS_SECONDS_FLOOR = 2,
   ZERO_TIME_OP_MIN = 3,
   ZERO_TIME_OP_MAX = 4,
-  ZERO_TIME_OP_CLAMP = 5
+  ZERO_TIME_OP_CLAMP = 5,
+  ZERO_TIME_OP_SLEEP = 6,
+  ZERO_TIME_OP_WALL_SECONDS = 7,
+  ZERO_TIME_OP_MONOTONIC = 8
 } ZeroTimeOp;
 
 typedef enum {
@@ -224,6 +227,7 @@ uint64_t zero_text_op(ZeroByteView text, uint32_t op);
 uint64_t zero_parse_op(ZeroByteView text, uint32_t arg, uint32_t op);
 ZeroMaybeUsize zero_parse_usize(ZeroByteView text);
 int64_t zero_time_op(int64_t a, int64_t b, int64_t c, uint32_t op);
+uint32_t zero_rand_entropy_u32(void);
 uint64_t zero_math_op(int64_t a, int64_t b, int64_t c, uint32_t op);
 ZeroMaybeUsize zero_math_usize_op(uint64_t a, uint64_t b, uint64_t c, uint32_t op);
 uint64_t zero_search_op(ZeroByteView items, int64_t needle, uint32_t op);

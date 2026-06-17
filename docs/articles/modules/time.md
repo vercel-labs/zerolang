@@ -25,6 +25,7 @@ Runnable today:
 | `std.time.deadlineAfter(start, timeout)` | `Duration` | Builds a deadline by adding a timeout to a start instant. |
 | `std.time.remainingUntil(deadline, now)` | `Duration` | Returns remaining time or zero once the deadline has passed. |
 | `std.time.deadlineExpired(deadline, now)` | `Bool` | Reports whether `now` is at or past `deadline`. |
+| `std.time.sleep(duration)` | `Bool` | Sleeps for a hosted non-negative duration; returns `false` on host failure. |
 | `std.time.asNs(value)` | `i64` | Converts to nanoseconds. |
 | `std.time.asUsFloor(value)` | `i64` | Converts to whole microseconds. |
 | `std.time.asMsFloor(value)` | `i32` | Converts to whole milliseconds. |
@@ -46,13 +47,13 @@ Runnable today:
 Current limits:
 
 - Target-specific clock availability diagnostics.
-- There are no public sleep, timer, or fake-clock handles in `std.time`.
+- Timer handles and fake-clock handles are not public APIs.
 
 Metadata labels:
 
 - effects: time
 - allocation behavior: no allocation
-- target support: duration math is target-neutral; clock reads require a time-capable target
+- target support: duration math is target-neutral; clock reads and sleep require a time-capable target
 - error behavior: infallible helpers; RFC 3339 validators return `Bool` and the epoch parser returns its fallback for invalid text
 - ownership notes: no ownership transfer
 - example: `examples/std-platform.graph`
@@ -67,9 +68,10 @@ pub fn main(world: World) -> Void raises {
     let span: Duration = std.time.between(std.time.seconds(2), std.time.ms(250))
     let deadline: Duration = std.time.deadlineAfter(std.time.seconds(10), std.time.ms(500))
     let remaining: Duration = std.time.remainingUntil(deadline, std.time.seconds(10))
+    let slept: Bool = std.time.sleep(std.time.zero())
     var text_storage: [32]u8 = [0_u8; 32]
     let text: Maybe<Span<u8>> = std.time.writeDurationMs(text_storage, total)
-    if std.time.asMsFloor(total) == 1250 && std.time.asMsFloor(span) == 1750 && (std.time.asMsFloor(remaining) == 500 && text.has) {
+    if slept && std.time.asMsFloor(total) == 1250 && std.time.asMsFloor(span) == 1750 && (std.time.asMsFloor(remaining) == 500 && text.has) {
         check world.out.write("duration ok\n")
     }
 }
@@ -94,7 +96,7 @@ pub fn main(world: World) -> Void raises {
 
 ## Design Notes
 
-Time is an effect when it observes the outside world.
+Time is an effect when it observes or waits on the outside world.
 
 Pure duration math can stay allocation-free and target-independent.
-Sleep, timer, and fake-clock APIs are not exposed in the current public surface.
+Timer and fake-clock APIs are not exposed in the current public surface.
