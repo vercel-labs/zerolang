@@ -142,6 +142,7 @@ static const char *a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper helper)
     case A64_DIRECT_RUNTIME_HTTP_REQUEST_METHOD_NAME: return "zero_http_request_method_name";
     case A64_DIRECT_RUNTIME_HTTP_REQUEST_PATH: return "zero_http_request_path";
     case A64_DIRECT_RUNTIME_PROC_CAPTURE: return "zero_proc_capture";
+    case A64_DIRECT_RUNTIME_PROC_CAPTURE_FILES: return "zero_proc_capture_files";
     case A64_DIRECT_RUNTIME_HELPER_COUNT: break;
   }
   return "";

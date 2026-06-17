@@ -58,6 +58,7 @@ static const char *const runtime_helper_symbols[COFF_RUNTIME_HELPER_COUNT] = {
   "zero_http_request_path",
   "zero_http_request_body_within",
   "zero_proc_capture",
+  "zero_proc_capture_files",
 };
 
 static bool coff_emit_state_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {

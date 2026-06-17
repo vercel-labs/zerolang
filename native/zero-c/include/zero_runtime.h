@@ -184,6 +184,7 @@ int zero_world_write(int fd, const char *buf, unsigned len);
 ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
+int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
 
 int64_t zero_json_parse_bytes(ZeroByteView input);
 uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op);

@@ -87,6 +87,7 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
       caps->env = true;
       break;
     case IR_VALUE_PROC_CAPTURE: caps->proc = true; caps->memory = true; break;
+    case IR_VALUE_PROC_CAPTURE_FILES: caps->proc = true; caps->fs = true; caps->path = true; break;
     case IR_VALUE_TIME_RUNTIME:
     case IR_VALUE_TIME_WALL_SECONDS:
     case IR_VALUE_TIME_MONOTONIC:

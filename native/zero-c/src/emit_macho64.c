@@ -369,6 +369,7 @@ static MachORuntimeHelper macho_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_MATH_RUNTIME: return MACHO_RUNTIME_MATH_OP;
     case IR_VALUE_SEARCH_RUNTIME: return MACHO_RUNTIME_SEARCH_OP;
     case IR_VALUE_PROC_CAPTURE: return MACHO_RUNTIME_PROC_CAPTURE;
+    case IR_VALUE_PROC_CAPTURE_FILES: return MACHO_RUNTIME_PROC_CAPTURE_FILES;
     case IR_VALUE_ARGS_FIND:
     case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER:
@@ -2020,6 +2021,31 @@ static bool macho_emit_proc_capture_to_maybe_regs_at(ZBuf *text, const IrFunctio
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE, patch, value, diag);
 }
 
+static bool macho_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
+  }
+  if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!macho_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!macho_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  if (!macho_emit_byte_view_pair_at(text, fun, value->index, 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 4, IR_TYPE_U64, scratch_slot + 4, value->index, diag)) return false;
+  if (!macho_emit_store_scratch(text, 5, IR_TYPE_U32, scratch_slot + 5, value->index, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!macho_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  if (!macho_emit_load_scratch(text, 4, IR_TYPE_U64, scratch_slot + 4, value->index, diag)) return false;
+  if (!macho_emit_load_scratch(text, 5, IR_TYPE_U32, scratch_slot + 5, value->index, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE_FILES, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
 static bool macho_emit_http_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_HTTP_STATUS_CLASS:
@@ -2411,6 +2437,7 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_FS_READ_BYTES_PATH: return macho_emit_fs_read_bytes_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return macho_emit_fs_read_bytes_at_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CAPTURE: return macho_emit_proc_capture_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE_FILES: return macho_emit_proc_capture_files_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
       if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);

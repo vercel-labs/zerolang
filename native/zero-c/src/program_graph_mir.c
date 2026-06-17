@@ -4258,6 +4258,27 @@ static bool ir_graph_lower_std_proc_capture_call(const ZProgramGraph *graph, IrP
   return true;
 }
 
+static bool ir_graph_lower_std_proc_capture_files_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  IrValue *command = NULL;
+  IrValue *stdout_path = NULL;
+  IrValue *stderr_path = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &command) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &stdout_path) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &stderr_path)) {
+    ir_free_value(command);
+    ir_free_value(stdout_path);
+    ir_free_value(stderr_path);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE_FILES, IR_TYPE_I32, ir_graph_line(expr), ir_graph_column(expr));
+  value->left = command;
+  value->right = stdout_path;
+  value->index = stderr_path;
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
 static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {
   *handled = true;
   if (ir_text_eq(callee_name, "std.args.len") && arg_count == 0) {
@@ -4423,6 +4444,7 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     return true;
   }
   if (ir_text_eq(callee_name, "std.proc.capture") && arg_count == 2) return ir_graph_lower_std_proc_capture_call(graph, ir, fun, expr, out);
+  if (ir_text_eq(callee_name, "std.proc.captureFiles") && arg_count == 3) return ir_graph_lower_std_proc_capture_files_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.exitCode") && arg_count == 1) {
     return ir_graph_lower_ordered_arg(graph, ir, fun, expr, 0, IR_TYPE_I32, out);
   }

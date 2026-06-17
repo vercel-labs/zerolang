@@ -59,6 +59,22 @@ static int zero_runtime_open_readonly(const char *path) {
   return fd;
 }
 
+static int zero_runtime_open_write_truncate(const char *path) {
+#if defined(_WIN32)
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _S_IREAD | _S_IWRITE);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#else
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#endif
+}
+
 static int zero_runtime_fd_regular_size(int fd, uint64_t *size_out) {
   ZeroRuntimeStat st;
   if (ZERO_RUNTIME_FSTAT(fd, &st) != 0) return 0;
@@ -261,6 +277,59 @@ ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
   if (!read_ok || !wait_ok || too_large) return zero_runtime_none_usize();
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return zero_runtime_none_usize();
   return (ZeroMaybeUsize){1, total};
+#endif
+}
+
+int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char stdout_buf[ZERO_RUNTIME_PATH_BYTES];
+  char stderr_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_proc_parse_command(command, storage, argv) ||
+      !zero_runtime_path_copy(stdout_path, stdout_buf) ||
+      !zero_runtime_path_copy(stderr_path, stderr_buf)) {
+    return 127;
+  }
+
+#if defined(_WIN32)
+  (void)argv;
+  return 127;
+#else
+  int stdout_fd = zero_runtime_open_write_truncate(stdout_buf);
+  if (stdout_fd < 0) return 127;
+  int stderr_fd = zero_runtime_open_write_truncate(stderr_buf);
+  if (stderr_fd < 0) {
+    ZERO_RUNTIME_CLOSE(stdout_fd);
+    return 127;
+  }
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    ZERO_RUNTIME_CLOSE(stdout_fd);
+    ZERO_RUNTIME_CLOSE(stderr_fd);
+    return 127;
+  }
+
+  if (pid == 0) {
+    if (dup2(stdout_fd, STDOUT_FILENO) < 0) _exit(127);
+    if (dup2(stderr_fd, STDERR_FILENO) < 0) _exit(127);
+    ZERO_RUNTIME_CLOSE(stdout_fd);
+    ZERO_RUNTIME_CLOSE(stderr_fd);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  ZERO_RUNTIME_CLOSE(stdout_fd);
+  ZERO_RUNTIME_CLOSE(stderr_fd);
+
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    return 127;
+  }
+  if (WIFEXITED(status)) return (int32_t)WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return (int32_t)(128 + WTERMSIG(status));
+  return 127;
 #endif
 }
 

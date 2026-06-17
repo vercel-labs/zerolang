@@ -1605,6 +1605,22 @@ static bool machx64_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, c
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE, patch, value, diag);
 }
 
+static bool machx64_emit_proc_capture_files_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  machx64_emit_runtime_call_begin(text, 6, 6, &temp_base, &total_stack);
+  if (!machx64_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_arg_byte_view(text, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_CAPTURE_FILES, 6, 6, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
 static bool machx64_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.time helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.time arity");
@@ -1764,6 +1780,7 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
     case IR_VALUE_TIME_RUNTIME: return machx64_emit_time_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return machx64_emit_math_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE: return machx64_emit_proc_capture_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE_FILES: return machx64_emit_proc_capture_files_value(text, fun, value, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return machx64_emit_search_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return machx64_emit_sort_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:

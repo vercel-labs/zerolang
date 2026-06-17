@@ -76,6 +76,7 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_fmt_u32",
   "_zero_fmt_usize",
   "_zero_proc_capture",
+  "_zero_proc_capture_files",
 };
 
 static bool macho_emit_state_diag_at(ZDiag *diag, const char *message, int line, int column, const char *actual) {

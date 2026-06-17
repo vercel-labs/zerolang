@@ -14,13 +14,14 @@ Runnable today:
 | `std.proc.runOk(command)` | `Bool` | Spawns a hosted command and reports whether the resulting status succeeded. |
 | `std.proc.runCode(command)` | `i32` | Spawns a hosted command and returns its exit code. |
 | `std.proc.capture(command, buffer)` | `Maybe<usize>` | Runs an argv-style command and captures stdout into caller storage. Returns `null` on parse failure, spawn failure, nonzero exit, unsupported target, or output truncation. |
+| `std.proc.captureFiles(command, stdoutPath, stderrPath)` | `ProcStatus` | Runs an argv-style command and writes stdout and stderr to hosted paths. Returns `127` when the command cannot be parsed, spawned, waited on, or the output files cannot be opened. |
 
 Metadata labels:
 
 - effects: proc
 - allocation behavior: no allocation
 - target support: host
-- error behavior: `spawn` returns `ProcStatus`; `exitCode` is infallible; `capture` returns `null` when it cannot produce complete stdout
+- error behavior: `spawn` and `captureFiles` return `ProcStatus`; `exitCode` is infallible; `capture` returns `null` when it cannot produce complete stdout
 - ownership notes: no ownership transfer in the current status model
 - example: `examples/std-platform.graph`
 
@@ -31,7 +32,8 @@ pub fn main(world: World) -> Void raises {
     let status: ProcStatus = std.proc.spawn("zero-noop")
     var storage: [64]u8 = [0_u8; 64]
     let captured: Maybe<usize> = std.proc.capture("zero-noop", storage)
-    if std.proc.succeeded(status) && std.proc.runOk("zero-noop") && std.proc.runCode("zero-noop") == 0 && captured.has {
+    let files: ProcStatus = std.proc.captureFiles("zero-noop", ".zero/proc.out", ".zero/proc.err")
+    if std.proc.succeeded(status) && std.proc.succeeded(files) && std.proc.runOk("zero-noop") && std.proc.runCode("zero-noop") == 0 && captured.has {
         check world.out.write("proc ok\n")
     }
 }
@@ -44,7 +46,7 @@ process helpers before code generation.
 
 They should not compile a placeholder process implementation.
 
-`capture` does not invoke a shell. It splits simple argv-style command text,
-supports quoted arguments, and captures stdout only. Process command builders
-with cwd, environment override, stdin, stderr plumbing, and streaming handles
-are not exposed yet.
+`capture` and `captureFiles` do not invoke a shell. They split simple
+argv-style command text and support quoted arguments. `capture` captures stdout
+only into caller storage. `captureFiles` redirects stdout and stderr to
+separate hosted paths.

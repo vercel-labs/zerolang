@@ -1237,6 +1237,7 @@ failed(arg0: ProcStatus) -> Bool
 runOk(arg0: String) -> Bool
 runCode(arg0: String) -> i32
 capture(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
+captureFiles(arg0: String, arg1: String, arg2: String) -> ProcStatus
 ```
 
 ### std.rand

@@ -1489,6 +1489,22 @@ static bool elf_emit_proc_capture_value(ZBuf *code, const IrFunction *fun, const
   return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_PROC_CAPTURE, patch, diag, value);
 }
 
+static bool elf_emit_proc_capture_files_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return elf_diag(diag, "direct ELF64 std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 6, 6, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_FILES, 6, 6, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
 static bool elf_emit_http_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_HTTP_STATUS_CLASS:
@@ -2948,6 +2964,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_fmt_u32_value(code, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE:
       return elf_emit_proc_capture_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE_FILES:
+      return elf_emit_proc_capture_files_value(code, fun, value, ctx, diag);
     case IR_VALUE_ASCII_RUNTIME:
       return elf_emit_ascii_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_TEXT_RUNTIME:
