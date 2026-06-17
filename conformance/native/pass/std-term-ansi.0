@@ -8,7 +8,21 @@ pub fn main(world: World) -> Void raises {
     let lambda: u32 = std.term.keyCode("λ")
     let lambda_len: usize = std.term.keyByteLen("λ")
     let bad: u32 = std.term.keyCode("\x1b[")
-    if enter != std.term.keyEnter() || enter_len != 1_usize || up != std.term.keyArrowUp() || up_len != 3_usize || left != std.term.keyArrowLeft() || delete != std.term.keyDelete() || lambda != 955_u32 || lambda_len != 2_usize || bad != std.term.keyNone() {
+    var cursor_to_buffer: [24]u8 = [0_u8; 24]
+    var cursor_up_buffer: [12]u8 = [0_u8; 12]
+    var cursor_down_buffer: [12]u8 = [0_u8; 12]
+    var cursor_right_buffer: [12]u8 = [0_u8; 12]
+    var cursor_left_buffer: [12]u8 = [0_u8; 12]
+    var cursor_zero_buffer: [12]u8 = [0_u8; 12]
+    var cursor_small_buffer: [3]u8 = [0_u8; 3]
+    let cursor_to: Maybe<Span<u8>> = std.term.cursorTo(cursor_to_buffer, 12_usize, 34_usize)
+    let cursor_up: Maybe<Span<u8>> = std.term.cursorUp(cursor_up_buffer, 3_usize)
+    let cursor_down: Maybe<Span<u8>> = std.term.cursorDown(cursor_down_buffer, 4_usize)
+    let cursor_right: Maybe<Span<u8>> = std.term.cursorRight(cursor_right_buffer, 5_usize)
+    let cursor_left: Maybe<Span<u8>> = std.term.cursorLeft(cursor_left_buffer, 6_usize)
+    let cursor_zero: Maybe<Span<u8>> = std.term.cursorUp(cursor_zero_buffer, 0_usize)
+    let cursor_small: Maybe<Span<u8>> = std.term.cursorTo(cursor_small_buffer, 12_usize, 34_usize)
+    if enter != std.term.keyEnter() || enter_len != 1_usize || up != std.term.keyArrowUp() || up_len != 3_usize || left != std.term.keyArrowLeft() || delete != std.term.keyDelete() || lambda != 955_u32 || lambda_len != 2_usize || bad != std.term.keyNone() || !cursor_to.has || !std.mem.eql(cursor_to.value, "\x1b[12;34H") || !cursor_up.has || !std.mem.eql(cursor_up.value, "\x1b[3A") || !cursor_down.has || !std.mem.eql(cursor_down.value, "\x1b[4B") || !cursor_right.has || !std.mem.eql(cursor_right.value, "\x1b[5C") || !cursor_left.has || !std.mem.eql(cursor_left.value, "\x1b[6D") || !cursor_zero.has || std.mem.len(cursor_zero.value) != 0_usize || cursor_small.has {
         check world.err.write("term key decode failed\n")
         return
     }

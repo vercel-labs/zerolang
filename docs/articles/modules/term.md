@@ -23,6 +23,11 @@ Runnable today:
 | `std.term.clearScreen()` | `String` | Clear the full terminal screen. |
 | `std.term.clearLine()` | `String` | Clear the current terminal line. |
 | `std.term.cursorHome()` | `String` | Move the cursor to row 1, column 1. |
+| `std.term.cursorTo(buffer, row, column)` | `Maybe<Span<u8>>` | Writes a 1-based ANSI cursor-position sequence into caller storage. |
+| `std.term.cursorUp(buffer, count)` | `Maybe<Span<u8>>` | Writes an ANSI cursor-up sequence into caller storage; count `0` writes an empty span. |
+| `std.term.cursorDown(buffer, count)` | `Maybe<Span<u8>>` | Writes an ANSI cursor-down sequence into caller storage; count `0` writes an empty span. |
+| `std.term.cursorRight(buffer, count)` | `Maybe<Span<u8>>` | Writes an ANSI cursor-right sequence into caller storage; count `0` writes an empty span. |
+| `std.term.cursorLeft(buffer, count)` | `Maybe<Span<u8>>` | Writes an ANSI cursor-left sequence into caller storage; count `0` writes an empty span. |
 | `std.term.hideCursor()` | `String` | Hide the terminal cursor. |
 | `std.term.showCursor()` | `String` | Show the terminal cursor. |
 | `std.term.enterAltScreen()` | `String` | Enter the alternate screen buffer. |
@@ -64,6 +69,11 @@ pub fn main(world: World) -> Void raises {
     check world.out.write(std.term.enterAltScreen())
     check world.out.write(std.term.clearScreen())
     check world.out.write(std.term.cursorHome())
+    var cursor: [24]u8 = [0_u8; 24]
+    let top: Maybe<Span<u8>> = std.term.cursorTo(cursor, 1_usize, 1_usize)
+    if top.has {
+        check world.out.write(top.value)
+    }
     check world.out.write(std.term.bold())
     check world.out.write(std.term.fgCyan())
     let width: usize = std.term.widthOr(80_usize)

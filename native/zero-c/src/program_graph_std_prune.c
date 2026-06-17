@@ -12,11 +12,6 @@ static bool std_prune_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
 }
 
-static bool std_prune_starts_with(const char *text, const char *prefix) {
-  size_t len = prefix ? strlen(prefix) : 0;
-  return text && prefix && strncmp(text, prefix, len) == 0;
-}
-
 static void std_prune_free_node_fields(ZProgramGraphNode *node) {
   if (!node) return;
   free(node->id);
@@ -39,15 +34,21 @@ static void std_prune_free_edge_fields(ZProgramGraphEdge *edge) {
   *edge = (ZProgramGraphEdge){0};
 }
 
+static const ZStdSourceModule *std_prune_embedded_std_module_for_path(const char *path) {
+  if (!path || !path[0]) return NULL;
+  if (z_std_source_path_is_module_artifact(path)) return z_std_source_module_for_path(path);
+  if (!strchr(path, '/')) return z_std_source_module_for_path(path);
+  return NULL;
+}
+
 static bool std_prune_node_is_embedded_std(const ZProgramGraphNode *node) {
-  return node && z_std_source_module_for_path(node->path) != NULL;
+  return node && std_prune_embedded_std_module_for_path(node->path) != NULL;
 }
 
 static bool std_prune_node_is_embedded_std_function(const ZProgramGraphNode *node) {
   return node &&
          node->kind == Z_PROGRAM_GRAPH_NODE_FUNCTION &&
-         std_prune_node_is_embedded_std(node) &&
-         std_prune_starts_with(node->name, "__zero_std_");
+         std_prune_node_is_embedded_std(node);
 }
 
 static const ZProgramGraphNode *std_prune_ordered_node(const ZProgramGraphAdjacency *adjacency, const char *from, const char *kind, size_t order) {
@@ -93,7 +94,7 @@ static char *std_prune_expr_name(const ZProgramGraphAdjacency *adjacency, const 
 
 static bool std_prune_node_belongs_to_module(const ZProgramGraphNode *node, const ZStdSourceModule *module) {
   if (!node || !module) return false;
-  const ZStdSourceModule *node_module = z_std_source_module_for_path(node->path);
+  const ZStdSourceModule *node_module = std_prune_embedded_std_module_for_path(node->path);
   return node_module && std_prune_text_eq(node_module->module, module->module);
 }
 
@@ -210,7 +211,7 @@ void z_program_graph_prune_unreachable_std_source_functions(ZProgramGraph *graph
   }
   for (size_t cursor = 0; cursor < queue_len; cursor++) {
     const ZProgramGraphNode *function = &graph->nodes[queue[cursor]];
-    const ZStdSourceModule *current_module = z_std_source_module_for_path(function->path);
+    const ZStdSourceModule *current_module = std_prune_embedded_std_module_for_path(function->path);
     std_prune_scan_reachable_std_calls(graph, &adjacency, current_module, function->id, keep, queued, queue, &queue_len, 0);
   }
   z_program_graph_adjacency_free(&adjacency);

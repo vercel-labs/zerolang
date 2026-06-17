@@ -1,0 +1,74 @@
+fn term_empty(buffer: MutSpan<u8>) -> Span<u8> {
+    return buffer[..0]
+}
+
+fn term_cursor_count(buffer: MutSpan<u8>, count: usize, suffix: Span<u8>) -> Maybe<Span<u8>> {
+    if count == 0_usize {
+        return term_empty(buffer)
+    }
+    var digits_storage: [20]u8 = [0_u8; 20]
+    let digits: Maybe<Span<u8>> = std.fmt.usize(digits_storage, count)
+    if !digits.has {
+        return null
+    }
+    let start: Maybe<usize> = std.io.writeSpan(buffer, 0_usize, "\x1b[")
+    if !start.has {
+        return null
+    }
+    let wrote_count: Maybe<usize> = std.io.writeSpan(buffer, start.value, digits.value)
+    if !wrote_count.has {
+        return null
+    }
+    let wrote_suffix: Maybe<usize> = std.io.writeSpan(buffer, wrote_count.value, suffix)
+    if !wrote_suffix.has {
+        return null
+    }
+    return std.io.written(buffer, wrote_suffix.value)
+}
+
+fn term_cursor_to(buffer: MutSpan<u8>, row: usize, column: usize) -> Maybe<Span<u8>> {
+    var row_storage: [20]u8 = [0_u8; 20]
+    var column_storage: [20]u8 = [0_u8; 20]
+    let row_text: Maybe<Span<u8>> = std.fmt.usize(row_storage, row)
+    let column_text: Maybe<Span<u8>> = std.fmt.usize(column_storage, column)
+    if !row_text.has || !column_text.has {
+        return null
+    }
+    let start: Maybe<usize> = std.io.writeSpan(buffer, 0_usize, "\x1b[")
+    if !start.has {
+        return null
+    }
+    let wrote_row: Maybe<usize> = std.io.writeSpan(buffer, start.value, row_text.value)
+    if !wrote_row.has {
+        return null
+    }
+    let wrote_separator: Maybe<usize> = std.io.writeSpan(buffer, wrote_row.value, ";")
+    if !wrote_separator.has {
+        return null
+    }
+    let wrote_column: Maybe<usize> = std.io.writeSpan(buffer, wrote_separator.value, column_text.value)
+    if !wrote_column.has {
+        return null
+    }
+    let finish: Maybe<usize> = std.io.writeSpan(buffer, wrote_column.value, "H")
+    if !finish.has {
+        return null
+    }
+    return std.io.written(buffer, finish.value)
+}
+
+fn term_cursor_up(buffer: MutSpan<u8>, count: usize) -> Maybe<Span<u8>> {
+    return term_cursor_count(buffer, count, "A")
+}
+
+fn term_cursor_down(buffer: MutSpan<u8>, count: usize) -> Maybe<Span<u8>> {
+    return term_cursor_count(buffer, count, "B")
+}
+
+fn term_cursor_right(buffer: MutSpan<u8>, count: usize) -> Maybe<Span<u8>> {
+    return term_cursor_count(buffer, count, "C")
+}
+
+fn term_cursor_left(buffer: MutSpan<u8>, count: usize) -> Maybe<Span<u8>> {
+    return term_cursor_count(buffer, count, "D")
+}

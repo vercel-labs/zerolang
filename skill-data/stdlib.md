@@ -1062,6 +1062,11 @@ fgWhite() -> String
 clearScreen() -> String
 clearLine() -> String
 cursorHome() -> String
+cursorTo(arg0: MutSpan<u8>, arg1: usize, arg2: usize) -> Maybe<Span<u8>>
+cursorUp(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+cursorDown(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+cursorRight(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+cursorLeft(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
 hideCursor() -> String
 showCursor() -> String
 enterAltScreen() -> String
