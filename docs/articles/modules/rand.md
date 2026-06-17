@@ -20,7 +20,7 @@ Metadata labels:
 - effects: rand
 - allocation behavior: no allocation; `entropyHex32` writes caller-provided storage
 - target support: deterministic source is target-neutral; entropy requires a rand-capable target
-- error behavior: infallible helpers
+- error behavior: bounded helpers return null for invalid bounds; `entropyHex32` returns null when storage is too small
 - ownership notes: deterministic helpers mutate the caller-owned source
 - example: `examples/std-platform.graph`
 
