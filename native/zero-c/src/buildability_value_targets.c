@@ -351,12 +351,38 @@ static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunctio
       value->kind != IR_VALUE_PROC_CHILD_IO) return true;
   unsigned required = 2;
   const char *message = "direct AArch64 std.proc helper exceeds scratch register spill capacity";
-  if (value->kind == IR_VALUE_PROC_CAPTURE || value->kind == IR_VALUE_PROC_CHILD_IO) required = 3;
-  if (value->kind == IR_VALUE_PROC_CAPTURE_FILES) required = 5;
+  if (value->kind == IR_VALUE_PROC_CAPTURE) required = value->arg_len == 2 ? 6 : 3;
+  if (value->kind == IR_VALUE_PROC_CHILD_IO) required = 3;
+  if (value->kind == IR_VALUE_PROC_CAPTURE_FILES) required = value->arg_len == 2 ? 8 : 5;
+  if (value->kind == IR_VALUE_PROC_SPAWN_INHERIT && value->arg_len == 4) required = 8;
+  if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->arg_len == 4) required = 8;
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->right) required = 4;
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->index) required = 6;
   if (scratch_slot + required >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
     return z_build_diag(ctx, diag, message, value->line, value->column, "expression too deep");
+  }
+  if (value->kind == IR_VALUE_PROC_SPAWN_INHERIT && value->arg_len == 4) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!z_build_check_aarch64_byte_view(ctx, fun, value->args[i], diag)) return false;
+    }
+    return true;
+  }
+  if (value->kind == IR_VALUE_PROC_CAPTURE && value->arg_len == 2) {
+    if (!z_build_check_aarch64_byte_view(ctx, fun, value->args[0], diag)) return false;
+    if (!z_build_check_aarch64_byte_view(ctx, fun, value->args[1], diag)) return false;
+    return z_build_check_aarch64_byte_view(ctx, fun, value->right, diag);
+  }
+  if (value->kind == IR_VALUE_PROC_CAPTURE_FILES && value->arg_len == 2) {
+    if (!z_build_check_aarch64_byte_view(ctx, fun, value->args[0], diag)) return false;
+    if (!z_build_check_aarch64_byte_view(ctx, fun, value->args[1], diag)) return false;
+    if (!z_build_check_aarch64_byte_view(ctx, fun, value->right, diag)) return false;
+    return z_build_check_aarch64_byte_view(ctx, fun, value->index, diag);
+  }
+  if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->arg_len == 4) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!z_build_check_aarch64_byte_view(ctx, fun, value->args[i], diag)) return false;
+    }
+    return true;
   }
   if ((value->kind == IR_VALUE_PROC_SPAWN_INHERIT ||
        value->kind == IR_VALUE_PROC_CAPTURE ||
@@ -597,14 +623,41 @@ static bool build_check_macho64_json_http(const ZBuildability *ctx, const IrFunc
     return build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag);
   }
   if (value->kind == IR_VALUE_PROC_CAPTURE) {
+    if (value->arg_len == 2) {
+      if (!build_check_macho64_capacity(ctx, value, scratch_slot, 6, "direct AArch64 Mach-O std.proc.captureArgs exceeds scratch register spill capacity", diag)) return false;
+      if (!z_build_check_macho_byte_view(ctx, fun, value->args[0], diag)) return false;
+      if (!z_build_check_macho_byte_view(ctx, fun, value->args[1], diag)) return false;
+      return z_build_check_macho_byte_view(ctx, fun, value->right, diag);
+    }
     if (!build_check_macho64_capacity(ctx, value, scratch_slot, 4, "direct AArch64 Mach-O std.proc.capture exceeds scratch register spill capacity", diag)) return false;
     return build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag);
   }
   if (value->kind == IR_VALUE_PROC_CAPTURE_FILES) {
+    if (value->arg_len == 2) {
+      if (!build_check_macho64_capacity(ctx, value, scratch_slot, 8, "direct AArch64 Mach-O std.proc.captureFilesArgs exceeds scratch register spill capacity", diag)) return false;
+      if (!z_build_check_macho_byte_view(ctx, fun, value->args[0], diag)) return false;
+      if (!z_build_check_macho_byte_view(ctx, fun, value->args[1], diag)) return false;
+      if (!z_build_check_macho_byte_view(ctx, fun, value->right, diag)) return false;
+      return z_build_check_macho_byte_view(ctx, fun, value->index, diag);
+    }
     if (!build_check_macho64_capacity(ctx, value, scratch_slot, 6, "direct AArch64 Mach-O std.proc.captureFiles exceeds scratch register spill capacity", diag)) return false;
     if (!z_build_check_macho_byte_view(ctx, fun, value->left, diag)) return false;
     if (!z_build_check_macho_byte_view(ctx, fun, value->right, diag)) return false;
     return z_build_check_macho_byte_view(ctx, fun, value->index, diag);
+  }
+  if (value->kind == IR_VALUE_PROC_SPAWN_INHERIT && value->arg_len == 4) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 8, "direct AArch64 Mach-O std.proc.spawnInheritArgs exceeds scratch register spill capacity", diag)) return false;
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!z_build_check_macho_byte_view(ctx, fun, value->args[i], diag)) return false;
+    }
+    return true;
+  }
+  if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->arg_len == 4) {
+    if (!build_check_macho64_capacity(ctx, value, scratch_slot, 8, "direct AArch64 Mach-O std.proc.spawnChildArgs exceeds scratch register spill capacity", diag)) return false;
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!z_build_check_macho_byte_view(ctx, fun, value->args[i], diag)) return false;
+    }
+    return true;
   }
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->right) {
     if (!build_check_macho64_capacity(ctx, value, scratch_slot, value->index ? 6 : 4, value->index ? "direct AArch64 Mach-O std.proc.spawnChildInEnv exceeds scratch register spill capacity" : "direct AArch64 Mach-O std.proc.spawnChildIn exceeds scratch register spill capacity", diag)) return false;

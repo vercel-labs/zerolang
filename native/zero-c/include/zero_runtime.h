@@ -226,11 +226,15 @@ ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes);
 uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op);
 uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path);
 int32_t zero_proc_spawn_inherit(ZeroByteView command);
+int32_t zero_proc_spawn_inherit_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
 ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
+ZeroMaybeUsize zero_proc_capture_args(ZeroByteView program, ZeroByteView args, ZeroMutByteView buffer);
 int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
+int32_t zero_proc_capture_files_args(ZeroByteView program, ZeroByteView args, ZeroByteView stdout_path, ZeroByteView stderr_path);
 int32_t zero_proc_spawn_child(ZeroByteView command);
 int32_t zero_proc_spawn_child_in(ZeroByteView command, ZeroByteView cwd);
 int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_proc_spawn_child_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
 int32_t zero_proc_child_op(int32_t child, uint32_t op);
 ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_t op);
 

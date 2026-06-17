@@ -68,6 +68,7 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_PATH_BYTES 4096u
 #define ZERO_RUNTIME_READ_CHUNK 1048576u
 #define ZERO_RUNTIME_PROC_COMMAND_BYTES 4096u
+#define ZERO_RUNTIME_PROC_ARGS_BYTES 4096u
 #define ZERO_RUNTIME_PROC_ENV_BYTES 4096u
 #define ZERO_RUNTIME_PROC_MAX_ARGS 64u
 #define ZERO_RUNTIME_PROC_CHILD_MAX 64u
@@ -379,6 +380,43 @@ static int zero_runtime_proc_parse_command(ZeroByteView command, char storage[ZE
   return 1;
 }
 
+static int zero_runtime_proc_build_argv(ZeroByteView program, ZeroByteView args, char storage[ZERO_RUNTIME_PROC_ARGS_BYTES], char *argv[ZERO_RUNTIME_PROC_MAX_ARGS]) {
+  if (!program.ptr || program.len == 0 || (!args.ptr && args.len > 0)) return 0;
+  for (size_t i = 0; i < program.len; i++) {
+    if (program.ptr[i] == 0) return 0;
+  }
+  for (size_t i = 0; i < args.len; i++) {
+    if (args.ptr[i] == 0) return 0;
+  }
+
+  size_t write = 0;
+  size_t argc = 0;
+  if (program.len >= ZERO_RUNTIME_PROC_ARGS_BYTES) return 0;
+  argv[argc++] = &storage[write];
+  memcpy(&storage[write], program.ptr, program.len);
+  write += program.len;
+  storage[write++] = 0;
+
+  size_t line_start = 0;
+  while (line_start < args.len) {
+    size_t line_end = line_start;
+    while (line_end < args.len && args.ptr[line_end] != '\n') line_end++;
+    if (line_end > line_start) {
+      if (argc + 1 >= ZERO_RUNTIME_PROC_MAX_ARGS) return 0;
+      size_t line_len = line_end - line_start;
+      if (write + line_len >= ZERO_RUNTIME_PROC_ARGS_BYTES) return 0;
+      argv[argc++] = &storage[write];
+      memcpy(&storage[write], &args.ptr[line_start], line_len);
+      write += line_len;
+      storage[write++] = 0;
+    }
+    line_start = line_end + 1;
+  }
+
+  argv[argc] = NULL;
+  return 1;
+}
+
 static int zero_runtime_proc_copy_env_block(ZeroByteView env, char storage[ZERO_RUNTIME_PROC_ENV_BYTES]) {
   if (!env.ptr && env.len > 0) return 0;
   if (env.len >= ZERO_RUNTIME_PROC_ENV_BYTES) return 0;
@@ -420,19 +458,19 @@ static int zero_runtime_proc_apply_env_block(char *env) {
   return 1;
 }
 
-int32_t zero_proc_spawn_inherit(ZeroByteView command) {
-  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
-  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
-  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 127;
-
+static int32_t zero_proc_spawn_inherit_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
 #if defined(_WIN32)
   (void)argv;
+  (void)cwd;
+  (void)env;
   return 127;
 #else
   pid_t pid = fork();
   if (pid < 0) return 127;
 
   if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
     execvp(argv[0], argv);
     _exit(127);
   }
@@ -448,14 +486,31 @@ int32_t zero_proc_spawn_inherit(ZeroByteView command) {
 #endif
 }
 
-ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
-  if (!buffer.ptr) return zero_runtime_none_usize();
+int32_t zero_proc_spawn_inherit(ZeroByteView command) {
   char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
   char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
-  if (!zero_runtime_proc_parse_command(command, storage, argv)) return zero_runtime_none_usize();
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 127;
+  return zero_proc_spawn_inherit_argv_impl(argv, NULL, NULL);
+}
+
+int32_t zero_proc_spawn_inherit_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(cwd, cwd_buf) ||
+      !zero_runtime_proc_copy_env_block(env, env_buf)) return 127;
+  return zero_proc_spawn_inherit_argv_impl(argv, cwd_buf, env_buf);
+}
+
+static ZeroMaybeUsize zero_proc_capture_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env, ZeroMutByteView buffer) {
+  if (!buffer.ptr) return zero_runtime_none_usize();
 
 #if defined(_WIN32)
   (void)argv;
+  (void)cwd;
+  (void)env;
   return zero_runtime_none_usize();
 #else
   int pipe_fd[2];
@@ -469,6 +524,8 @@ ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
   }
 
   if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
     ZERO_RUNTIME_CLOSE(pipe_fd[0]);
     if (dup2(pipe_fd[1], STDOUT_FILENO) < 0) _exit(127);
     ZERO_RUNTIME_CLOSE(pipe_fd[1]);
@@ -513,19 +570,27 @@ ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
 #endif
 }
 
-int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path) {
+ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
   char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
   char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
-  char stdout_buf[ZERO_RUNTIME_PATH_BYTES];
-  char stderr_buf[ZERO_RUNTIME_PATH_BYTES];
-  if (!zero_runtime_proc_parse_command(command, storage, argv) ||
-      !zero_runtime_path_copy(stdout_path, stdout_buf) ||
-      !zero_runtime_path_copy(stderr_path, stderr_buf)) {
-    return 127;
-  }
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return zero_runtime_none_usize();
+  return zero_proc_capture_argv_impl(argv, NULL, NULL, buffer);
+}
 
+ZeroMaybeUsize zero_proc_capture_args(ZeroByteView program, ZeroByteView args, ZeroMutByteView buffer) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv)) return zero_runtime_none_usize();
+  return zero_proc_capture_argv_impl(argv, NULL, NULL, buffer);
+}
+
+static int32_t zero_proc_capture_files_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env, const char *stdout_buf, const char *stderr_buf) {
 #if defined(_WIN32)
   (void)argv;
+  (void)cwd;
+  (void)env;
+  (void)stdout_buf;
+  (void)stderr_buf;
   return 127;
 #else
   int stdout_fd = zero_runtime_open_write_truncate(stdout_buf);
@@ -544,6 +609,8 @@ int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, 
   }
 
   if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
     if (dup2(stdout_fd, STDOUT_FILENO) < 0) _exit(127);
     if (dup2(stderr_fd, STDERR_FILENO) < 0) _exit(127);
     ZERO_RUNTIME_CLOSE(stdout_fd);
@@ -564,6 +631,31 @@ int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, 
   if (WIFSIGNALED(status)) return (int32_t)(128 + WTERMSIG(status));
   return 127;
 #endif
+}
+
+int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char stdout_buf[ZERO_RUNTIME_PATH_BYTES];
+  char stderr_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_proc_parse_command(command, storage, argv) ||
+      !zero_runtime_path_copy(stdout_path, stdout_buf) ||
+      !zero_runtime_path_copy(stderr_path, stderr_buf)) {
+    return 127;
+  }
+
+  return zero_proc_capture_files_argv_impl(argv, NULL, NULL, stdout_buf, stderr_buf);
+}
+
+int32_t zero_proc_capture_files_args(ZeroByteView program, ZeroByteView args, ZeroByteView stdout_path, ZeroByteView stderr_path) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char stdout_buf[ZERO_RUNTIME_PATH_BYTES];
+  char stderr_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(stdout_path, stdout_buf) ||
+      !zero_runtime_path_copy(stderr_path, stderr_buf)) return 127;
+  return zero_proc_capture_files_argv_impl(argv, NULL, NULL, stdout_buf, stderr_buf);
 }
 
 #if !defined(_WIN32)
@@ -639,16 +731,13 @@ static int zero_proc_child_reap(ZeroRuntimeProcChild *child, int nohang) {
 }
 #endif
 
-static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd, char *env) {
+static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
 #if defined(_WIN32)
-  (void)command;
+  (void)argv;
   (void)cwd;
   (void)env;
   return 0;
 #else
-  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
-  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
-  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 0;
   if (cwd && !zero_runtime_path_is_dir(cwd)) return 0;
   int index = zero_proc_child_alloc();
   if (index < 0) return 0;
@@ -717,6 +806,13 @@ static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd,
 #endif
 }
 
+static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd, char *env) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 0;
+  return zero_proc_spawn_child_argv_impl(argv, cwd, env);
+}
+
 int32_t zero_proc_spawn_child(ZeroByteView command) {
   return zero_proc_spawn_child_impl(command, NULL, NULL);
 }
@@ -732,6 +828,17 @@ int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, Zer
   char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
   if (!zero_runtime_path_copy(cwd, cwd_buf) || !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
   return zero_proc_spawn_child_impl(command, cwd_buf, env_buf);
+}
+
+int32_t zero_proc_spawn_child_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(cwd, cwd_buf) ||
+      !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_proc_spawn_child_argv_impl(argv, cwd_buf, env_buf);
 }
 
 int32_t zero_proc_child_op(int32_t child, uint32_t op) {

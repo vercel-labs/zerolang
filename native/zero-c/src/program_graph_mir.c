@@ -4375,11 +4375,59 @@ static bool ir_graph_lower_std_proc_capture_call(const ZProgramGraph *graph, IrP
   return true;
 }
 
+static bool ir_graph_lower_std_proc_push_argv4(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue *value) {
+  IrValue *items[4] = {0};
+  for (size_t i = 0; i < 4; i++) {
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", i), &items[i])) {
+      for (size_t j = 0; j < 4; j++) ir_free_value(items[j]);
+      return false;
+    }
+  }
+  for (size_t i = 0; i < 4; i++) ir_value_push_arg(ir, value, items[i]);
+  return true;
+}
+
+static bool ir_graph_lower_std_proc_push_argv2(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue *value) {
+  IrValue *items[2] = {0};
+  for (size_t i = 0; i < 2; i++) {
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", i), &items[i])) {
+      for (size_t j = 0; j < 2; j++) ir_free_value(items[j]);
+      return false;
+    }
+  }
+  for (size_t i = 0; i < 2; i++) ir_value_push_arg(ir, value, items[i]);
+  return true;
+}
+
+static bool ir_graph_lower_std_proc_capture_args_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE, IR_TYPE_MAYBE_SCALAR, ir_graph_line(expr), ir_graph_column(expr));
+  value->element_type = IR_TYPE_USIZE;
+  if (!ir_graph_lower_std_proc_push_argv2(graph, ir, fun, expr, value) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &value->right)) {
+    ir_free_value(value);
+    return false;
+  }
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
 static bool ir_graph_lower_std_proc_spawn_inherit_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
   IrValue *command = NULL;
   if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &command)) return false;
   IrValue *value = ir_new_value(ir, IR_VALUE_PROC_SPAWN_INHERIT, IR_TYPE_I32, ir_graph_line(expr), ir_graph_column(expr));
   value->left = command;
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_proc_spawn_inherit_args_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_SPAWN_INHERIT, IR_TYPE_I32, ir_graph_line(expr), ir_graph_column(expr));
+  if (!ir_graph_lower_std_proc_push_argv4(graph, ir, fun, expr, value)) {
+    ir_free_value(value);
+    return false;
+  }
   ir_graph_require_runtime_helper(ir);
   *out = value;
   return true;
@@ -4401,6 +4449,19 @@ static bool ir_graph_lower_std_proc_capture_files_call(const ZProgramGraph *grap
   value->left = command;
   value->right = stdout_path;
   value->index = stderr_path;
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_proc_capture_files_args_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE_FILES, IR_TYPE_I32, ir_graph_line(expr), ir_graph_column(expr));
+  if (!ir_graph_lower_std_proc_push_argv2(graph, ir, fun, expr, value) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &value->right) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 3), &value->index)) {
+    ir_free_value(value);
+    return false;
+  }
   ir_graph_require_runtime_helper(ir);
   *out = value;
   return true;
@@ -4449,6 +4510,31 @@ static bool ir_graph_lower_std_proc_child_spawn_in_env_call(const ZProgramGraph 
   value->left = command;
   value->right = cwd;
   value->index = env;
+  ir_graph_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_graph_lower_std_proc_child_spawn_args_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrValue **out) {
+  IrValue *program_arg = NULL;
+  IrValue *args = NULL;
+  IrValue *cwd = NULL;
+  IrValue *env = NULL;
+  if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &program_arg) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &args) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &cwd) ||
+      !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 3), &env)) {
+    ir_free_value(program_arg);
+    ir_free_value(args);
+    ir_free_value(cwd);
+    ir_free_value(env);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_SPAWN, IR_TYPE_I32, ir_graph_line(expr), ir_graph_column(expr));
+  ir_value_push_arg(ir, value, program_arg);
+  ir_value_push_arg(ir, value, args);
+  ir_value_push_arg(ir, value, cwd);
+  ir_value_push_arg(ir, value, env);
   ir_graph_require_runtime_helper(ir);
   *out = value;
   return true;
@@ -4660,11 +4746,15 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     return true;
   }
   if (ir_text_eq(callee_name, "std.proc.spawnInherit") && arg_count == 1) return ir_graph_lower_std_proc_spawn_inherit_call(graph, ir, fun, expr, out);
+  if (ir_text_eq(callee_name, "std.proc.spawnInheritArgs") && arg_count == 4) return ir_graph_lower_std_proc_spawn_inherit_args_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.capture") && arg_count == 2) return ir_graph_lower_std_proc_capture_call(graph, ir, fun, expr, out);
+  if (ir_text_eq(callee_name, "std.proc.captureArgs") && arg_count == 3) return ir_graph_lower_std_proc_capture_args_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.captureFiles") && arg_count == 3) return ir_graph_lower_std_proc_capture_files_call(graph, ir, fun, expr, out);
+  if (ir_text_eq(callee_name, "std.proc.captureFilesArgs") && arg_count == 4) return ir_graph_lower_std_proc_capture_files_args_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.spawnChild") && arg_count == 1) return ir_graph_lower_std_proc_child_spawn_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.spawnChildIn") && arg_count == 2) return ir_graph_lower_std_proc_child_spawn_in_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.spawnChildInEnv") && arg_count == 3) return ir_graph_lower_std_proc_child_spawn_in_env_call(graph, ir, fun, expr, out);
+  if (ir_text_eq(callee_name, "std.proc.spawnChildArgs") && arg_count == 4) return ir_graph_lower_std_proc_child_spawn_args_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.childValid") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_VALID, IR_TYPE_BOOL, out);
   if (ir_text_eq(callee_name, "std.proc.running") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_RUNNING, IR_TYPE_BOOL, out);
   if (ir_text_eq(callee_name, "std.proc.wait") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_WAIT, IR_TYPE_I32, out);

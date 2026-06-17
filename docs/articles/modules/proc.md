@@ -10,16 +10,20 @@ Runnable today:
 | --- | --- | --- |
 | `std.proc.spawn(command)` | `ProcStatus` | Creates a process status through the explicit proc capability surface. |
 | `std.proc.spawnInherit(command)` | `ProcStatus` | Runs an argv-style command while inheriting stdin, stdout, and stderr from the parent process. |
+| `std.proc.spawnInheritArgs(program, args, cwd, env)` | `ProcStatus` | Runs a program path plus newline-separated argv entries while inheriting stdio, using a working directory and newline-separated `KEY=value` environment bindings. |
 | `std.proc.exitCode(status)` | `i32` | Reads the process status code. |
 | `std.proc.succeeded(status)` | `Bool` | Reports whether the status exit code is `0`. |
 | `std.proc.failed(status)` | `Bool` | Reports whether the status exit code is nonzero. |
 | `std.proc.runOk(command)` | `Bool` | Spawns a hosted command and reports whether the resulting status succeeded. |
 | `std.proc.runCode(command)` | `i32` | Spawns a hosted command and returns its exit code. |
 | `std.proc.capture(command, buffer)` | `Maybe<usize>` | Runs an argv-style command and captures stdout into caller storage. Returns `null` on parse failure, spawn failure, nonzero exit, unsupported target, or output truncation. |
+| `std.proc.captureArgs(program, args, buffer)` | `Maybe<usize>` | Runs a program path plus newline-separated argv entries and captures stdout into caller storage. |
 | `std.proc.captureFiles(command, stdoutPath, stderrPath)` | `ProcStatus` | Runs an argv-style command and writes stdout and stderr to hosted paths. Returns `127` when the command cannot be parsed, spawned, waited on, or the output files cannot be opened. |
+| `std.proc.captureFilesArgs(program, args, stdoutPath, stderrPath)` | `ProcStatus` | Runs a program path plus newline-separated argv entries and redirects stdout and stderr to hosted paths. |
 | `std.proc.spawnChild(command)` | `ProcChild` | Starts a hosted child process with piped stdin, stdout, and stderr. Returns an invalid handle when the process cannot be created. |
 | `std.proc.spawnChildIn(command, cwd)` | `ProcChild` | Starts a hosted child process in a working directory with piped stdin, stdout, and stderr. Returns an invalid handle when the cwd is invalid or the process cannot be created. |
 | `std.proc.spawnChildInEnv(command, cwd, env)` | `ProcChild` | Starts a hosted child process in a working directory with piped stdin/stdout/stderr and explicit newline-separated `KEY=value` environment bindings. |
+| `std.proc.spawnChildArgs(program, args, cwd, env)` | `ProcChild` | Starts a hosted child process from a program path plus newline-separated argv entries, working directory, and newline-separated `KEY=value` environment bindings. |
 | `std.proc.childValid(child)` | `Bool` | Reports whether the handle currently names an open child slot. |
 | `std.proc.running(child)` | `Bool` | Polls the child process without blocking. |
 | `std.proc.wait(child)` | `ProcStatus` | Waits for process exit and returns its status. |
@@ -83,13 +87,20 @@ only into caller storage. `captureFiles` redirects stdout and stderr to
 separate hosted paths.
 
 `spawnInherit` uses the same argv-style parser and leaves stdin, stdout, and
-stderr connected to the parent process. Use it for editor, pager, and terminal
-program launches where captured pipes would be the wrong interface.
+stderr connected to the parent process. `spawnInheritArgs` uses an explicit
+program plus newline-separated argv entries, working directory, and environment
+block. Use inherited stdio for editor, pager, and terminal program launches
+where captured pipes would be the wrong interface.
 
-Child handles use the same command parser. Stdout, stderr, and stdin are
-nonblocking pipes so event loops can poll process state and terminal input
-without owning threads.
+Child handles use the same command parser when created from command text. The
+`*Args` helpers avoid command-text parsing: `program` is argv[0], and each
+non-empty line in `args` becomes one following argv entry with spaces preserved.
+`captureArgs` captures stdout into caller storage, `captureFilesArgs` redirects
+stdout and stderr to hosted paths, and `spawnChildArgs` returns nonblocking
+pipes so event loops can poll process state and terminal input without owning
+threads.
 
-`spawnChildInEnv` accepts a newline-separated env block such as
-`"TOKEN=...\nMODE=batch"`. Empty lines are ignored. Invalid
-entries or oversized env blocks make the returned child handle invalid.
+`spawnChildInEnv`, `spawnInheritArgs`, and `spawnChildArgs` accept a
+newline-separated env block such as `"TOKEN=...\nMODE=batch"`. Empty lines are
+ignored. Invalid entries or oversized env blocks make the helper fail: status
+helpers return an error status and child helpers return an invalid handle.

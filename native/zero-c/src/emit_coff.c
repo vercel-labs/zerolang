@@ -1366,6 +1366,23 @@ static bool coff_emit_fmt_value(ZBuf *text, const IrFunction *fun, const IrValue
 }
 
 static bool coff_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    const unsigned abi_slots = 7;
+    const unsigned result_slot = 7;
+    coff_emit_runtime_call_begin_with_temps(text, abi_slots, result_slot + 2u, &temp_base, &total_stack);
+    coff_emit_runtime_arg_stack_ptr(text, temp_base, result_slot, &slot);
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PROC_CAPTURE_ARGS, abi_slots, temp_base, value, diag)) return false;
+    coff_emit_runtime_temp_slot_load(text, temp_base, result_slot, 0);
+    coff_emit_runtime_temp_slot_load(text, temp_base, result_slot + 1u, 2);
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left || !value->right) {
     return coff_diag_at(diag, "direct COFF std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
   }
@@ -1386,6 +1403,20 @@ static bool coff_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, cons
 }
 
 static bool coff_emit_proc_capture_files_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    const unsigned abi_slots = 8;
+    coff_emit_runtime_call_begin(text, abi_slots, &temp_base, &total_stack);
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_arg_byte_view(text, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+    if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PROC_CAPTURE_FILES_ARGS, abi_slots, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left || !value->right || !value->index) {
     return coff_diag_at(diag, "direct COFF std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
   }
@@ -1403,6 +1434,18 @@ static bool coff_emit_proc_capture_files_value(ZBuf *text, const IrFunction *fun
 }
 
 static bool coff_emit_proc_spawn_inherit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    coff_emit_runtime_call_begin(text, 8, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PROC_SPAWN_INHERIT_ARGS, 8, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left) {
     return coff_diag_at(diag, "direct COFF std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
@@ -1417,6 +1460,18 @@ static bool coff_emit_proc_spawn_inherit_value(ZBuf *text, const IrFunction *fun
 }
 
 static bool coff_emit_proc_child_spawn_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    coff_emit_runtime_call_begin(text, 8, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!coff_emit_runtime_arg_byte_view(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!coff_emit_runtime_call(text, ctx, COFF_RUNTIME_PROC_SPAWN_CHILD_ARGS, 8, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left) {
     return coff_diag_at(diag, "direct COFF std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }

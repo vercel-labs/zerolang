@@ -1484,6 +1484,18 @@ static bool elf_emit_http_request_body_within_value(ZBuf *code, const IrFunction
 }
 
 static bool elf_emit_proc_capture_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 6, 6, &temp_base, &total_stack);
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_ARGS, 6, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
   if (!value || !value->left || !value->right) {
     return elf_diag(diag, "direct ELF64 std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
   }
@@ -1498,6 +1510,19 @@ static bool elf_emit_proc_capture_value(ZBuf *code, const IrFunction *fun, const
 }
 
 static bool elf_emit_proc_capture_files_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 8, 6, &temp_base, &total_stack);
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_FILES_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
   if (!value || !value->left || !value->right || !value->index) {
     return elf_diag(diag, "direct ELF64 std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
   }
@@ -1514,6 +1539,18 @@ static bool elf_emit_proc_capture_files_value(ZBuf *code, const IrFunction *fun,
 }
 
 static bool elf_emit_proc_spawn_inherit_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 8, 6, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_SPAWN_INHERIT_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
   if (!value || !value->left) {
     return elf_diag(diag, "direct ELF64 std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
@@ -1528,6 +1565,18 @@ static bool elf_emit_proc_spawn_inherit_value(ZBuf *code, const IrFunction *fun,
 }
 
 static bool elf_emit_proc_child_spawn_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 8, 6, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_SPAWN_CHILD_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
   if (!value || !value->left) {
     return elf_diag(diag, "direct ELF64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }

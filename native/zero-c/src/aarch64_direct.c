@@ -960,6 +960,20 @@ static bool a64_emit_search_runtime_to_reg_at(ZBuf *text, const IrFunction *fun,
 }
 
 static bool a64_emit_proc_capture_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    const IrValue *views[3] = {value->args[0], value->args[1], value->right};
+    for (unsigned i = 0; i < 3; i++) {
+      if (!a64_emit_byte_view_pair_at(text, fun, views[i], i * 2u, i * 2u + 1u, frame_size, scratch_slot + i * 2u, ctx, diag)) return false;
+      if (!a64_emit_store_scratch(text, i * 2u, IR_TYPE_U64, scratch_slot + i * 2u, views[i], diag)) return false;
+      if (!a64_emit_store_scratch(text, i * 2u + 1u, IR_TYPE_U32, scratch_slot + i * 2u + 1u, views[i], diag)) return false;
+    }
+    for (unsigned i = 0; i < 3; i++) {
+      if (!a64_emit_load_scratch(text, i * 2u, IR_TYPE_U64, scratch_slot + i * 2u, views[i], diag)) return false;
+      if (!a64_emit_load_scratch(text, i * 2u + 1u, IR_TYPE_U32, scratch_slot + i * 2u + 1u, views[i], diag)) return false;
+    }
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    return a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE_ARGS, diag, value);
+  }
   if (!value || !value->left || !value->right) {
     return a64_diag(diag, "direct AArch64 std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
   }
@@ -978,6 +992,22 @@ static bool a64_emit_proc_capture_to_maybe_regs_at(ZBuf *text, const IrFunction 
 }
 
 static bool a64_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->right, value->index};
+    for (unsigned i = 0; i < 4; i++) {
+      if (!a64_emit_byte_view_pair_at(text, fun, views[i], i * 2u, i * 2u + 1u, frame_size, scratch_slot + i * 2u, ctx, diag)) return false;
+      if (!a64_emit_store_scratch(text, i * 2u, IR_TYPE_U64, scratch_slot + i * 2u, views[i], diag)) return false;
+      if (!a64_emit_store_scratch(text, i * 2u + 1u, IR_TYPE_U32, scratch_slot + i * 2u + 1u, views[i], diag)) return false;
+    }
+    for (unsigned i = 0; i < 4; i++) {
+      if (!a64_emit_load_scratch(text, i * 2u, IR_TYPE_U64, scratch_slot + i * 2u, views[i], diag)) return false;
+      if (!a64_emit_load_scratch(text, i * 2u + 1u, IR_TYPE_U32, scratch_slot + i * 2u + 1u, views[i], diag)) return false;
+    }
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE_FILES_ARGS, diag, value)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
   if (!value || !value->left || !value->right || !value->index) {
     return a64_diag(diag, "direct AArch64 std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
   }
@@ -1003,6 +1033,16 @@ static bool a64_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction *
 }
 
 static bool a64_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[0], 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[1], 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[2], 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[3], 6, 7, frame_size, scratch_slot + 6, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_INHERIT_ARGS, diag, value)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
   if (!value || !value->left) {
     return a64_diag(diag, "direct AArch64 std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
@@ -1014,6 +1054,16 @@ static bool a64_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction *
 }
 
 static bool a64_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[0], 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[1], 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[2], 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
+    if (!a64_emit_byte_view_pair_at(text, fun, value->args[3], 6, 7, frame_size, scratch_slot + 6, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_ARGS, diag, value)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
   if (!value || !value->left) {
     return a64_diag(diag, "direct AArch64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }

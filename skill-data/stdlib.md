@@ -1288,16 +1288,20 @@ relative(arg0: MutSpan<u8>, arg1: String, arg2: String) -> Maybe<String>
 ```text
 spawn(arg0: String) -> ProcStatus
 spawnInherit(arg0: String) -> ProcStatus
+spawnInheritArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: Span<u8>) -> ProcStatus
 exitCode(arg0: ProcStatus) -> i32
 succeeded(arg0: ProcStatus) -> Bool
 failed(arg0: ProcStatus) -> Bool
 runOk(arg0: String) -> Bool
 runCode(arg0: String) -> i32
 capture(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
+captureArgs(arg0: String, arg1: Span<u8>, arg2: MutSpan<u8>) -> Maybe<usize>
 captureFiles(arg0: String, arg1: String, arg2: String) -> ProcStatus
+captureFilesArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: String) -> ProcStatus
 spawnChild(arg0: String) -> ProcChild
 spawnChildIn(arg0: String, arg1: String) -> ProcChild
 spawnChildInEnv(arg0: String, arg1: String, arg2: Span<u8>) -> ProcChild
+spawnChildArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: Span<u8>) -> ProcChild
 childValid(arg0: ProcChild) -> Bool
 running(arg0: ProcChild) -> Bool
 wait(arg0: ProcChild) -> ProcStatus

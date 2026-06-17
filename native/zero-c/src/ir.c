@@ -2610,11 +2610,15 @@ typedef enum {
   IR_DIRECT_STD_CALL_UNKNOWN,
   IR_DIRECT_STD_PROC_SPAWN,
   IR_DIRECT_STD_PROC_SPAWN_INHERIT,
+  IR_DIRECT_STD_PROC_SPAWN_INHERIT_ARGS,
   IR_DIRECT_STD_PROC_CAPTURE,
+  IR_DIRECT_STD_PROC_CAPTURE_ARGS,
   IR_DIRECT_STD_PROC_CAPTURE_FILES,
+  IR_DIRECT_STD_PROC_CAPTURE_FILES_ARGS,
   IR_DIRECT_STD_PROC_SPAWN_CHILD,
   IR_DIRECT_STD_PROC_SPAWN_CHILD_IN,
   IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV,
+  IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS,
   IR_DIRECT_STD_PROC_CHILD_VALID,
   IR_DIRECT_STD_PROC_RUNNING,
   IR_DIRECT_STD_PROC_WAIT,
@@ -2662,11 +2666,15 @@ static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
   static const IrDirectStdCallSpec specs[] = {
     {"std.proc.spawn", IR_DIRECT_STD_PROC_SPAWN},
     {"std.proc.spawnInherit", IR_DIRECT_STD_PROC_SPAWN_INHERIT},
+    {"std.proc.spawnInheritArgs", IR_DIRECT_STD_PROC_SPAWN_INHERIT_ARGS},
     {"std.proc.capture", IR_DIRECT_STD_PROC_CAPTURE},
+    {"std.proc.captureArgs", IR_DIRECT_STD_PROC_CAPTURE_ARGS},
     {"std.proc.captureFiles", IR_DIRECT_STD_PROC_CAPTURE_FILES},
+    {"std.proc.captureFilesArgs", IR_DIRECT_STD_PROC_CAPTURE_FILES_ARGS},
     {"std.proc.spawnChild", IR_DIRECT_STD_PROC_SPAWN_CHILD},
     {"std.proc.spawnChildIn", IR_DIRECT_STD_PROC_SPAWN_CHILD_IN},
     {"std.proc.spawnChildInEnv", IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV},
+    {"std.proc.spawnChildArgs", IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS},
     {"std.proc.childValid", IR_DIRECT_STD_PROC_CHILD_VALID},
     {"std.proc.running", IR_DIRECT_STD_PROC_RUNNING},
     {"std.proc.wait", IR_DIRECT_STD_PROC_WAIT},
@@ -2748,6 +2756,42 @@ static bool ir_lower_std_proc_child_spawn_direct_call(const Program *program, Ir
   return true;
 }
 
+static bool ir_lower_std_proc_push_argv4(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrValue *value) {
+  IrValue *items[4] = {0};
+  for (size_t i = 0; i < 4; i++) {
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[i], &items[i])) {
+      for (size_t j = 0; j < 4; j++) ir_free_value(items[j]);
+      return false;
+    }
+  }
+  for (size_t i = 0; i < 4; i++) ir_value_push_arg(ir, value, items[i]);
+  return true;
+}
+
+static bool ir_lower_std_proc_push_argv2(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrValue *value) {
+  IrValue *items[2] = {0};
+  for (size_t i = 0; i < 2; i++) {
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[i], &items[i])) {
+      for (size_t j = 0; j < 2; j++) ir_free_value(items[j]);
+      return false;
+    }
+  }
+  for (size_t i = 0; i < 2; i++) ir_value_push_arg(ir, value, items[i]);
+  return true;
+}
+
+static bool ir_lower_std_proc_child_spawn_args_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool *handled, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_SPAWN, IR_TYPE_I32, call->line, call->column);
+  if (!ir_lower_std_proc_push_argv4(program, ir, fun, call, value)) {
+    ir_free_value(value);
+    return false;
+  }
+  ir_require_helper_counts(ir, 1, 0);
+  *handled = true;
+  *out = value;
+  return true;
+}
+
 static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {
   *handled = false;
   if (id == IR_DIRECT_STD_CALL_UNKNOWN) return true;
@@ -2768,6 +2812,17 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     *out = value;
     return true;
   }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_INHERIT_ARGS && call->args.len == 4) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_SPAWN_INHERIT, IR_TYPE_I32, call->line, call->column);
+    if (!ir_lower_std_proc_push_argv4(program, ir, fun, call, value)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
   if (id == IR_DIRECT_STD_PROC_CAPTURE && call->args.len == 2) {
     IrValue *command = NULL;
     IrValue *buffer = NULL;
@@ -2781,6 +2836,19 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     value->left = command;
     value->right = buffer;
     value->element_type = IR_TYPE_USIZE;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE_ARGS && call->args.len == 3) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
+    value->element_type = IR_TYPE_USIZE;
+    if (!ir_lower_std_proc_push_argv2(program, ir, fun, call, value) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[2], &value->right)) {
+      ir_free_value(value);
+      return false;
+    }
     ir_require_helper_counts(ir, 1, 0);
     *handled = true;
     *out = value;
@@ -2807,6 +2875,19 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     *out = value;
     return true;
   }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE_FILES_ARGS && call->args.len == 4) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE_FILES, IR_TYPE_I32, call->line, call->column);
+    if (!ir_lower_std_proc_push_argv2(program, ir, fun, call, value) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[2], &value->right) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[3], &value->index)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
   if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD && call->args.len == 1) {
     return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, false, false, handled, out);
   }
@@ -2815,6 +2896,9 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
   }
   if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV && call->args.len == 3) {
     return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS && call->args.len == 4) {
+    return ir_lower_std_proc_child_spawn_args_direct_call(program, ir, fun, call, handled, out);
   }
   if ((id == IR_DIRECT_STD_PROC_CHILD_VALID ||
        id == IR_DIRECT_STD_PROC_RUNNING ||

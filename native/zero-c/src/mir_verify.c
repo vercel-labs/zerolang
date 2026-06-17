@@ -436,12 +436,25 @@ static bool mir_verify_mutable_byte_storage(IrProgram *ir, const IrFunction *fun
 
 static bool mir_verify_proc_capture_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
   if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found process capture result type mismatch", "process capture")) return false;
+  if (value->arg_len == 2) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process capture buffer", "process capture buffer");
+  }
   if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
   return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process capture buffer", "process capture buffer");
 }
 
 static bool mir_verify_proc_capture_files_contract(IrProgram *ir, const IrValue *value) {
   if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process capture files status")) return false;
+  if (value->arg_len == 2) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    if (!mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stdout path", "stdout path")) return false;
+    return mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stderr path", "stderr path");
+  }
   if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
   if (!mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stdout path", "stdout path")) return false;
   return mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stderr path", "stderr path");
@@ -449,11 +462,23 @@ static bool mir_verify_proc_capture_files_contract(IrProgram *ir, const IrValue 
 
 static bool mir_verify_proc_spawn_inherit_contract(IrProgram *ir, const IrValue *value) {
   if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process inherited status")) return false;
+  if (value->arg_len == 4) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    return true;
+  }
   return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command");
 }
 
 static bool mir_verify_proc_child_spawn_contract(IrProgram *ir, const IrValue *value) {
   if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child handle")) return false;
+  if (value->arg_len == 4) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    return true;
+  }
   if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
   if (value->right && !mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process cwd", "process cwd")) return false;
   if (value->index && !mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process env block", "process env block")) return false;
@@ -1051,20 +1076,20 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       return mir_verify_value_type(ir, value->right, number_type, "MIR verifier found invalid fmt value", number);
     }
     case IR_VALUE_PROC_CAPTURE:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.capture");
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.capture");
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureArgs" : "std.proc.capture");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureArgs" : "std.proc.capture");
       return mir_verify_proc_capture_contract(ir, fun, state, value);
     case IR_VALUE_PROC_SPAWN_INHERIT:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.spawnInherit");
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.spawnInherit");
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnInheritArgs" : "std.proc.spawnInherit");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnInheritArgs" : "std.proc.spawnInherit");
       return mir_verify_proc_spawn_inherit_contract(ir, value);
     case IR_VALUE_PROC_CAPTURE_FILES:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.captureFiles");
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.captureFiles");
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureFilesArgs" : "std.proc.captureFiles");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureFilesArgs" : "std.proc.captureFiles");
       return mir_verify_proc_capture_files_contract(ir, value);
     case IR_VALUE_PROC_CHILD_SPAWN:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild"));
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild"));
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild")));
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild")));
       return mir_verify_proc_child_spawn_contract(ir, value);
     case IR_VALUE_PROC_CHILD_OP:
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child op");

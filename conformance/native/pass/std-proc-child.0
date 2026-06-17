@@ -1,4 +1,7 @@
 pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let prepared: Bool = std.fs.ensureDir(".zero/conformance")
+
     let child: ProcChild = std.proc.spawnChild("sh -c 'printf child-out; printf child-err >&2'")
     var stdout_buf: [32]u8 = [0_u8; 32]
     var stderr_buf: [32]u8 = [0_u8; 32]
@@ -47,7 +50,47 @@ pub fn main(world: World) -> Void raises {
     let invalid_env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf nope'", ".", "ZERO_PROC_BAD_ENV")
     let invalid_env_rejected: Bool = !std.proc.childValid(invalid_env_child)
 
-    if valid && was_running && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && env_ok && env_closed && invalid_env_rejected {
+    let args_child: ProcChild = std.proc.spawnChildArgs("sh", "-c\nprintf 'args:%s:%s:%s' \"$0\" \"$1\" \"$ZERO_PROC_ARG_ENV\"\narg0\nspace value", ".", "ZERO_PROC_ARG_ENV=gamma")
+    var args_buf: [128]u8 = [0_u8; 128]
+    var args_ok: Bool = false
+    let args_valid: Bool = std.proc.childValid(args_child)
+    if args_valid {
+        let args_status: ProcStatus = std.proc.wait(args_child)
+        let args_read: Maybe<usize> = std.proc.readStdout(args_child, args_buf)
+        if args_read.has {
+            let args_bytes: Span<u8> = std.io.written(args_buf, args_read.value)
+            args_ok = std.proc.succeeded(args_status) && std.mem.eql(args_bytes, "args:arg0:space value:gamma")
+        }
+    }
+    let args_closed: Bool = std.proc.close(args_child)
+    let invalid_args_child: ProcChild = std.proc.spawnChildArgs("", "", ".", "")
+    let invalid_args_rejected: Bool = !std.proc.childValid(invalid_args_child)
+
+    let inherit_status: ProcStatus = std.proc.spawnInheritArgs("sh", "-c\n[ \"$ZERO_PROC_INHERIT_ENV\" = delta ]", ".", "ZERO_PROC_INHERIT_ENV=delta")
+
+    var capture_args_buf: [128]u8 = [0_u8; 128]
+    var capture_args_ok: Bool = false
+    let capture_args_read: Maybe<usize> = std.proc.captureArgs("sh", "-c\nprintf capture:%s:%s \"$0\" \"$1\"\nleft\nspace value", capture_args_buf)
+    if capture_args_read.has {
+        let capture_args_bytes: Span<u8> = std.io.written(capture_args_buf, capture_args_read.value)
+        capture_args_ok = std.mem.eql(capture_args_bytes, "capture:left:space value")
+    }
+    let invalid_capture_args: Maybe<usize> = std.proc.captureArgs("", "", capture_args_buf)
+    let invalid_capture_args_rejected: Bool = !invalid_capture_args.has
+
+    let args_out_path: String = ".zero/conformance/std-proc-args.out"
+    let args_err_path: String = ".zero/conformance/std-proc-args.err"
+    let files_args_status: ProcStatus = std.proc.captureFilesArgs("sh", "-c\nprintf file:%s \"$0\"; printf err:%s \"$1\" >&2\nout arg\nerr arg", args_out_path, args_err_path)
+    var files_args_out_buf: [64]u8 = [0_u8; 64]
+    var files_args_err_buf: [64]u8 = [0_u8; 64]
+    let files_args_out: Maybe<Span<u8>> = std.fs.readFileBytes(fs, args_out_path, files_args_out_buf)
+    let files_args_err: Maybe<Span<u8>> = std.fs.readFileBytes(fs, args_err_path, files_args_err_buf)
+    var files_args_ok: Bool = false
+    if files_args_out.has && files_args_err.has {
+        files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
+    }
+
+    if prepared && valid && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
         check world.out.write("std proc child ok\n")
     }
 }

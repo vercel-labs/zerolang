@@ -1598,6 +1598,18 @@ static bool machx64_emit_http_request_span_value(ZBuf *text, const IrFunction *f
 }
 
 static bool machx64_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    machx64_emit_runtime_call_begin(text, 6, 6, &temp_base, &total_stack);
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_CAPTURE_ARGS, 6, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left || !value->right) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
   }
@@ -1612,6 +1624,19 @@ static bool machx64_emit_proc_capture_value(ZBuf *text, const IrFunction *fun, c
 }
 
 static bool machx64_emit_proc_capture_files_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    machx64_emit_runtime_call_begin(text, 8, 6, &temp_base, &total_stack);
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_arg_byte_view(text, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+    if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_CAPTURE_FILES_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left || !value->right || !value->index) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
   }
@@ -1628,6 +1653,18 @@ static bool machx64_emit_proc_capture_files_value(ZBuf *text, const IrFunction *
 }
 
 static bool machx64_emit_proc_spawn_inherit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    machx64_emit_runtime_call_begin(text, 8, 6, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_SPAWN_INHERIT_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
@@ -1642,6 +1679,18 @@ static bool machx64_emit_proc_spawn_inherit_value(ZBuf *text, const IrFunction *
 }
 
 static bool machx64_emit_proc_child_spawn_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    machx64_emit_runtime_call_begin(text, 8, 6, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!machx64_emit_runtime_arg_byte_view(text, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_SPAWN_CHILD_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(text, total_stack);
+    return true;
+  }
   if (!value || !value->left) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
