@@ -667,6 +667,12 @@ static bool elf_emit_runtime_arg_value(ZBuf *code, const IrFunction *fun, const 
   return true;
 }
 
+static void elf_emit_runtime_arg_u32(ZBuf *code, uint32_t value, unsigned temp_base, unsigned *slot) {
+  z_x64_emit_mov_reg_u32(code, 0, value);
+  elf_emit_runtime_temp_slot_store(code, temp_base, *slot, 0);
+  *slot += 1u;
+}
+
 static bool elf_emit_json_write_runtime_args(ZBuf *code, const IrFunction *fun, const IrValue *value, unsigned temp_base, unsigned *slot, ElfEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len < 3) return elf_diag(diag, "direct ELF64 JSON writer requires arguments", value ? value->line : 1, value ? value->column : 1, "invalid JSON writer");
   IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
@@ -1502,6 +1508,51 @@ static bool elf_emit_proc_capture_files_value(ZBuf *code, const IrFunction *fun,
   if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
   if (!elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
   if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_FILES, 6, 6, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_child_spawn_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return elf_diag(diag, "direct ELF64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 2, 2, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_SPAWN_CHILD, 2, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_child_op_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return elf_diag(diag, "direct ELF64 std.proc child op requires a handle", value ? value->line : 1, value ? value->column : 1, "missing process child handle");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 2, 2, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_value(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  elf_emit_runtime_arg_u32(code, (uint32_t)value->int_value, temp_base, &slot);
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CHILD_OP, 2, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_child_io_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return elf_diag(diag, "direct ELF64 std.proc child I/O requires a handle and buffer", value ? value->line : 1, value ? value->column : 1, "missing process child I/O input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 4, 4, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_value(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  elf_emit_runtime_arg_u32(code, (uint32_t)value->int_value, temp_base, &slot);
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CHILD_IO, 4, 4, temp_base, value, diag)) return false;
   z_x64_emit_add_rsp(code, total_stack);
   return true;
 }
@@ -2958,7 +3009,7 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       !((value->kind == IR_VALUE_STR_RUNTIME) && (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
       !((value->kind == IR_VALUE_SORT_RUNTIME) && value->type == IR_TYPE_VOID) &&
-      !((value->kind == IR_VALUE_PROC_CAPTURE) && value->type == IR_TYPE_MAYBE_SCALAR) &&
+      !((value->kind == IR_VALUE_PROC_CAPTURE || value->kind == IR_VALUE_PROC_CHILD_IO) && value->type == IR_TYPE_MAYBE_SCALAR) &&
       !((value->kind == IR_VALUE_FMT_BOOL || value->kind == IR_VALUE_FMT_HEX_U32 || value->kind == IR_VALUE_FMT_I32 ||
          value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
@@ -2993,6 +3044,12 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_proc_capture_value(code, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE_FILES:
       return elf_emit_proc_capture_files_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      return elf_emit_proc_child_spawn_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_OP:
+      return elf_emit_proc_child_op_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_IO:
+      return elf_emit_proc_child_io_value(code, fun, value, ctx, diag);
     case IR_VALUE_ASCII_RUNTIME:
       return elf_emit_ascii_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_TEXT_RUNTIME:
@@ -3499,6 +3556,7 @@ static bool elf_emit_maybe_scalar_local_set(ZBuf *text, const IrFunction *fun, c
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
       instr->value->kind == IR_VALUE_TERM_RUNTIME ||
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+      instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
@@ -3683,6 +3741,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
                    instr->value->kind == IR_VALUE_TERM_RUNTIME ||
                    instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+                   instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
                    instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {

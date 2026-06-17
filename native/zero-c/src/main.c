@@ -6586,6 +6586,9 @@ typedef struct {
   bool zero_http_request_path;
   bool zero_http_request_matches;
   bool zero_http_request_body_within;
+  bool zero_proc_spawn_child;
+  bool zero_proc_child_op;
+  bool zero_proc_child_io;
 } RuntimeImportAudit;
 
 static void runtime_import_audit_mark_fs_base(RuntimeImportAudit *audit) {
@@ -6673,7 +6676,9 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_FS_WRITE_PATH:
     case IR_VALUE_FS_READ_BYTES_PATH:
     case IR_VALUE_FS_READ_BYTES_AT_PATH:
-    case IR_VALUE_FS_WRITE_BYTES_PATH: case IR_VALUE_PROC_CAPTURE: case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_PROC_CAPTURE:
+    case IR_VALUE_PROC_CAPTURE_FILES:
     case IR_VALUE_FS_READ_ALL:
     case IR_VALUE_FS_READ_FILE:
     case IR_VALUE_FS_WRITE_ALL_FILE:
@@ -6689,6 +6694,15 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       runtime_import_audit_mark_fs_base(audit);
+      break;
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      audit->zero_proc_spawn_child = true;
+      break;
+    case IR_VALUE_PROC_CHILD_OP:
+      audit->zero_proc_child_op = true;
+      break;
+    case IR_VALUE_PROC_CHILD_IO:
+      audit->zero_proc_child_io = true;
       break;
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
@@ -6916,6 +6930,9 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
       value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH ||
       value->kind == IR_VALUE_PROC_CAPTURE ||
       value->kind == IR_VALUE_PROC_CAPTURE_FILES ||
+      value->kind == IR_VALUE_PROC_CHILD_SPAWN ||
+      value->kind == IR_VALUE_PROC_CHILD_OP ||
+      value->kind == IR_VALUE_PROC_CHILD_IO ||
       value->kind == IR_VALUE_HTTP_FETCH ||
       value->kind == IR_VALUE_HTTP_RESULT_OK ||
       value->kind == IR_VALUE_HTTP_RESULT_STATUS ||
@@ -7039,6 +7056,9 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_http_request_path) count++;
   if (audit->zero_http_request_matches) count++;
   if (audit->zero_http_request_body_within) count++;
+  if (audit->zero_proc_spawn_child) count++;
+  if (audit->zero_proc_child_op) count++;
+  if (audit->zero_proc_child_io) count++;
   return count;
 }
 
@@ -7131,6 +7151,9 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_http_request_path) append_json_string_array_item(buf, &first, "zero_http_request_path");
   if (audit && audit->zero_http_request_matches) append_json_string_array_item(buf, &first, "zero_http_request_matches");
   if (audit && audit->zero_http_request_body_within) append_json_string_array_item(buf, &first, "zero_http_request_body_within");
+  if (audit && audit->zero_proc_spawn_child) append_json_string_array_item(buf, &first, "zero_proc_spawn_child");
+  if (audit && audit->zero_proc_child_op) append_json_string_array_item(buf, &first, "zero_proc_child_op");
+  if (audit && audit->zero_proc_child_io) append_json_string_array_item(buf, &first, "zero_proc_child_io");
   zbuf_append(buf, "]");
   return !first;
 }

@@ -72,6 +72,9 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
     case IR_VALUE_HTTP_REQUEST_PATH:
     case IR_VALUE_PROC_CAPTURE:
     case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN:
+    case IR_VALUE_PROC_CHILD_OP:
+    case IR_VALUE_PROC_CHILD_IO:
       return build_backend_supports_aarch64_hosted_runtime(backend);
     default:
       return false;
@@ -98,6 +101,9 @@ static bool build_value_supported_macho_x64(IrValueKind kind) {
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
     case IR_VALUE_PROC_CAPTURE:
     case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN:
+    case IR_VALUE_PROC_CHILD_OP:
+    case IR_VALUE_PROC_CHILD_IO:
       return true;
     default:
       return false;
@@ -176,6 +182,9 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_FMT_USIZE:
     case IR_VALUE_PROC_CAPTURE:
     case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN:
+    case IR_VALUE_PROC_CHILD_OP:
+    case IR_VALUE_PROC_CHILD_IO:
       return build_backend_supports_hosted_runtime(ctx);
     case IR_VALUE_TIME_RUNTIME:
       return build_backend_supports_hosted_runtime(ctx);

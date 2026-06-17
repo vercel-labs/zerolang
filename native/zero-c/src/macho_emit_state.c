@@ -80,6 +80,9 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_rand_entropy_u32",
   "_zero_proc_capture",
   "_zero_proc_capture_files",
+  "_zero_proc_spawn_child",
+  "_zero_proc_child_op",
+  "_zero_proc_child_io",
 };
 
 static bool macho_emit_state_diag_at(ZDiag *diag, const char *message, int line, int column, const char *actual) {

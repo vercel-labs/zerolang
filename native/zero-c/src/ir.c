@@ -172,7 +172,7 @@ static const IrTypeName ir_scalar_type_names[] = {
 };
 
 static const IrTypeName ir_builtin_type_names[] = {
-  {"Void", IR_TYPE_VOID}, {"Duration", IR_TYPE_I64}, {"RandSource", IR_TYPE_U32}, {"ProcStatus", IR_TYPE_I32}, {"Net", IR_TYPE_I32}, {"Conn", IR_TYPE_I32}, {"Listener", IR_TYPE_I32}, {"HttpMethod", IR_TYPE_U32}, {"HttpClient", IR_TYPE_I32}, {"HttpServer", IR_TYPE_I32},
+  {"Void", IR_TYPE_VOID}, {"Duration", IR_TYPE_I64}, {"RandSource", IR_TYPE_U32}, {"ProcStatus", IR_TYPE_I32}, {"ProcChild", IR_TYPE_I32}, {"Net", IR_TYPE_I32}, {"Conn", IR_TYPE_I32}, {"Listener", IR_TYPE_I32}, {"HttpMethod", IR_TYPE_U32}, {"HttpClient", IR_TYPE_I32}, {"HttpServer", IR_TYPE_I32},
   {"HttpResult", IR_TYPE_U64}, {"HttpError", IR_TYPE_U32}, {"HttpHeaderValue", IR_TYPE_U64}, {"Fs", IR_TYPE_I32}, {"File", IR_TYPE_I32}, {"owned<File>", IR_TYPE_I32},
   {"FixedBufAlloc", IR_TYPE_ALLOC}, {"Vec", IR_TYPE_VEC}, {"BufferedReader", IR_TYPE_BYTE_VIEW}, {"BufferedWriter", IR_TYPE_BYTE_VIEW},
 };
@@ -2611,6 +2611,15 @@ typedef enum {
   IR_DIRECT_STD_PROC_SPAWN,
   IR_DIRECT_STD_PROC_CAPTURE,
   IR_DIRECT_STD_PROC_CAPTURE_FILES,
+  IR_DIRECT_STD_PROC_SPAWN_CHILD,
+  IR_DIRECT_STD_PROC_CHILD_VALID,
+  IR_DIRECT_STD_PROC_RUNNING,
+  IR_DIRECT_STD_PROC_WAIT,
+  IR_DIRECT_STD_PROC_KILL,
+  IR_DIRECT_STD_PROC_CLOSE,
+  IR_DIRECT_STD_PROC_READ_STDOUT,
+  IR_DIRECT_STD_PROC_READ_STDERR,
+  IR_DIRECT_STD_PROC_WRITE_STDIN,
   IR_DIRECT_STD_PROC_EXIT_CODE,
   IR_DIRECT_STD_PROC_SUCCEEDED,
   IR_DIRECT_STD_PROC_FAILED,
@@ -2651,6 +2660,15 @@ static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
     {"std.proc.spawn", IR_DIRECT_STD_PROC_SPAWN},
     {"std.proc.capture", IR_DIRECT_STD_PROC_CAPTURE},
     {"std.proc.captureFiles", IR_DIRECT_STD_PROC_CAPTURE_FILES},
+    {"std.proc.spawnChild", IR_DIRECT_STD_PROC_SPAWN_CHILD},
+    {"std.proc.childValid", IR_DIRECT_STD_PROC_CHILD_VALID},
+    {"std.proc.running", IR_DIRECT_STD_PROC_RUNNING},
+    {"std.proc.wait", IR_DIRECT_STD_PROC_WAIT},
+    {"std.proc.kill", IR_DIRECT_STD_PROC_KILL},
+    {"std.proc.close", IR_DIRECT_STD_PROC_CLOSE},
+    {"std.proc.readStdout", IR_DIRECT_STD_PROC_READ_STDOUT},
+    {"std.proc.readStderr", IR_DIRECT_STD_PROC_READ_STDERR},
+    {"std.proc.writeStdin", IR_DIRECT_STD_PROC_WRITE_STDIN},
     {"std.proc.exitCode", IR_DIRECT_STD_PROC_EXIT_CODE},
     {"std.proc.succeeded", IR_DIRECT_STD_PROC_SUCCEEDED},
     {"std.proc.failed", IR_DIRECT_STD_PROC_FAILED},
@@ -2746,6 +2764,72 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     value->left = command;
     value->right = stdout_path;
     value->index = stderr_path;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD && call->args.len == 1) {
+    IrValue *command = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_SPAWN, IR_TYPE_I32, call->line, call->column);
+    value->left = command;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if ((id == IR_DIRECT_STD_PROC_CHILD_VALID ||
+       id == IR_DIRECT_STD_PROC_RUNNING ||
+       id == IR_DIRECT_STD_PROC_WAIT ||
+       id == IR_DIRECT_STD_PROC_KILL ||
+       id == IR_DIRECT_STD_PROC_CLOSE) && call->args.len == 1) {
+    IrValue *child = NULL;
+    if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child)) return false;
+    if (!child || child->type != IR_TYPE_I32) {
+      ir_free_value(child);
+      ir_mark_unsupported(ir, "direct backend std.proc child helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      return false;
+    }
+    IrProcChildOp op = IR_PROC_CHILD_OP_VALID;
+    IrTypeKind result_type = IR_TYPE_BOOL;
+    if (id == IR_DIRECT_STD_PROC_RUNNING) op = IR_PROC_CHILD_OP_RUNNING;
+    else if (id == IR_DIRECT_STD_PROC_WAIT) { op = IR_PROC_CHILD_OP_WAIT; result_type = IR_TYPE_I32; }
+    else if (id == IR_DIRECT_STD_PROC_KILL) op = IR_PROC_CHILD_OP_KILL;
+    else if (id == IR_DIRECT_STD_PROC_CLOSE) op = IR_PROC_CHILD_OP_CLOSE;
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_OP, result_type, call->line, call->column);
+    value->left = child;
+    value->int_value = (unsigned long long)op;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if ((id == IR_DIRECT_STD_PROC_READ_STDOUT ||
+       id == IR_DIRECT_STD_PROC_READ_STDERR ||
+       id == IR_DIRECT_STD_PROC_WRITE_STDIN) && call->args.len == 2) {
+    IrValue *child = NULL;
+    IrValue *bytes = NULL;
+    if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[1], &bytes)) {
+      ir_free_value(child);
+      ir_free_value(bytes);
+      return false;
+    }
+    if (!child || child->type != IR_TYPE_I32) {
+      ir_free_value(child);
+      ir_free_value(bytes);
+      ir_mark_unsupported(ir, "direct backend std.proc stream helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      return false;
+    }
+    IrProcChildIoOp op = IR_PROC_CHILD_IO_READ_STDOUT;
+    if (id == IR_DIRECT_STD_PROC_READ_STDERR) op = IR_PROC_CHILD_IO_READ_STDERR;
+    else if (id == IR_DIRECT_STD_PROC_WRITE_STDIN) op = IR_PROC_CHILD_IO_WRITE_STDIN;
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_IO, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
+    value->left = child;
+    value->right = bytes;
+    value->int_value = (unsigned long long)op;
+    value->element_type = IR_TYPE_USIZE;
     ir_require_helper_counts(ir, 1, 0);
     *handled = true;
     *out = value;

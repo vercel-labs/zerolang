@@ -1287,6 +1287,15 @@ runOk(arg0: String) -> Bool
 runCode(arg0: String) -> i32
 capture(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
 captureFiles(arg0: String, arg1: String, arg2: String) -> ProcStatus
+spawnChild(arg0: String) -> ProcChild
+childValid(arg0: ProcChild) -> Bool
+running(arg0: ProcChild) -> Bool
+wait(arg0: ProcChild) -> ProcStatus
+kill(arg0: ProcChild) -> Bool
+close(arg0: ProcChild) -> Bool
+readStdout(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
+readStderr(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
+writeStdin(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>
 ```
 
 ### std.rand

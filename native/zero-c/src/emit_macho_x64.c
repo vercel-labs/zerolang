@@ -1043,6 +1043,12 @@ static bool machx64_emit_runtime_arg_value(ZBuf *text, const IrFunction *fun, co
   return true;
 }
 
+static void machx64_emit_runtime_arg_u32(ZBuf *text, uint32_t value, unsigned temp_base, unsigned *slot) {
+  z_x64_emit_mov_reg_u32(text, 0, value);
+  machx64_emit_runtime_temp_slot_store(text, temp_base, *slot, 0);
+  *slot += 1u;
+}
+
 static bool machx64_emit_json_write_runtime_args(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned temp_base, unsigned *slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len < 3) return machx64_diag_at(diag, "direct x86_64 Mach-O JSON writer requires arguments", value ? value->line : 1, value ? value->column : 1, "invalid JSON writer");
   IrJsonWriteOp op = (IrJsonWriteOp)value->int_value;
@@ -1621,6 +1627,51 @@ static bool machx64_emit_proc_capture_files_value(ZBuf *text, const IrFunction *
   return true;
 }
 
+static bool machx64_emit_proc_child_spawn_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  machx64_emit_runtime_call_begin(text, 2, 2, &temp_base, &total_stack);
+  if (!machx64_emit_runtime_arg_byte_view(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_SPAWN_CHILD, 2, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
+static bool machx64_emit_proc_child_op_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc child op requires a handle", value ? value->line : 1, value ? value->column : 1, "missing process child handle");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  machx64_emit_runtime_call_begin(text, 2, 2, &temp_base, &total_stack);
+  if (!machx64_emit_runtime_arg_value(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  machx64_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_CHILD_OP, 2, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
+static bool machx64_emit_proc_child_io_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return machx64_diag_at(diag, "direct x86_64 Mach-O std.proc child I/O requires a handle and buffer", value ? value->line : 1, value ? value->column : 1, "missing process child I/O input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  machx64_emit_runtime_call_begin(text, 4, 4, &temp_base, &total_stack);
+  if (!machx64_emit_runtime_arg_value(text, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!machx64_emit_runtime_arg_byte_view(text, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  machx64_emit_runtime_arg_u32(text, (uint32_t)value->int_value, temp_base, &slot);
+  if (!machx64_emit_runtime_call(text, ctx, MACHO_RUNTIME_PROC_CHILD_IO, 4, 4, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(text, total_stack);
+  return true;
+}
+
 static bool machx64_emit_time_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) {
     return machx64_diag_at(diag, "direct x86_64 Mach-O std.time helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.time arity");
@@ -1812,6 +1863,9 @@ static bool machx64_emit_value(ZBuf *text, const IrFunction *fun, const IrValue 
     case IR_VALUE_MATH_RUNTIME: return machx64_emit_math_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE: return machx64_emit_proc_capture_value(text, fun, value, ctx, diag);
     case IR_VALUE_PROC_CAPTURE_FILES: return machx64_emit_proc_capture_files_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_SPAWN: return machx64_emit_proc_child_spawn_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_OP: return machx64_emit_proc_child_op_value(text, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_IO: return machx64_emit_proc_child_io_value(text, fun, value, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return machx64_emit_search_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return machx64_emit_sort_runtime_value(text, fun, value, ctx, diag);
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
@@ -1908,6 +1962,7 @@ static bool machx64_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fu
        instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
        instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
        instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+       instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
        instr->value->kind == IR_VALUE_TERM_RUNTIME ||
        instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
     if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;
@@ -2163,6 +2218,7 @@ static bool machx64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr 
              instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
              instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
              instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+             instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
              instr->value->kind == IR_VALUE_TERM_RUNTIME ||
              instr->value->kind == IR_VALUE_MATH_RUNTIME) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
           if (!machx64_emit_value(text, fun, instr->value, ctx, diag)) return false;

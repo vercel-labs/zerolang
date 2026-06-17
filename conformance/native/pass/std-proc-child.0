@@ -1,0 +1,37 @@
+pub fn main(world: World) -> Void raises {
+    let child: ProcChild = std.proc.spawnChild("sh -c 'printf child-out; printf child-err >&2'")
+    var stdout_buf: [32]u8 = [0_u8; 32]
+    var stderr_buf: [32]u8 = [0_u8; 32]
+    let valid: Bool = std.proc.childValid(child)
+    let was_running: Bool = std.proc.running(child)
+    let status: ProcStatus = std.proc.wait(child)
+    let stdout_read: Maybe<usize> = std.proc.readStdout(child, stdout_buf)
+    let stderr_read: Maybe<usize> = std.proc.readStderr(child, stderr_buf)
+    let closed: Bool = std.proc.close(child)
+
+    var output_ok: Bool = false
+    if stdout_read.has && stderr_read.has {
+        let stdout_bytes: Span<u8> = std.io.written(stdout_buf, stdout_read.value)
+        let stderr_bytes: Span<u8> = std.io.written(stderr_buf, stderr_read.value)
+        output_ok = std.mem.eql(stdout_bytes, "child-out") && std.mem.eql(stderr_bytes, "child-err")
+    }
+
+    let stdin_child: ProcChild = std.proc.spawnChild("sh -c 'read line; printf stdin:$line'")
+    var stdin_buf: [32]u8 = [0_u8; 32]
+    var stdin_ok: Bool = false
+    let stdin_valid: Bool = std.proc.childValid(stdin_child)
+    let wrote: Maybe<usize> = std.proc.writeStdin(stdin_child, "agent\n")
+    if stdin_valid && wrote.has {
+        let stdin_status: ProcStatus = std.proc.wait(stdin_child)
+        let stdin_read: Maybe<usize> = std.proc.readStdout(stdin_child, stdin_buf)
+        if stdin_read.has {
+            let stdin_bytes: Span<u8> = std.io.written(stdin_buf, stdin_read.value)
+            stdin_ok = std.proc.succeeded(stdin_status) && std.mem.eql(stdin_bytes, "stdin:agent")
+        }
+    }
+    let stdin_closed: Bool = std.proc.close(stdin_child)
+
+    if valid && was_running && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed {
+        check world.out.write("std proc child ok\n")
+    }
+}

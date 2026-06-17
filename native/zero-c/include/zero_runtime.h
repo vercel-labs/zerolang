@@ -193,6 +193,20 @@ typedef enum {
   ZERO_TERM_OP_READ_INPUT = 6
 } ZeroTermOp;
 
+typedef enum {
+  ZERO_PROC_CHILD_OP_RUNNING = 0,
+  ZERO_PROC_CHILD_OP_WAIT = 1,
+  ZERO_PROC_CHILD_OP_KILL = 2,
+  ZERO_PROC_CHILD_OP_CLOSE = 3,
+  ZERO_PROC_CHILD_OP_VALID = 4
+} ZeroProcChildOp;
+
+typedef enum {
+  ZERO_PROC_CHILD_IO_READ_STDOUT = 0,
+  ZERO_PROC_CHILD_IO_READ_STDERR = 1,
+  ZERO_PROC_CHILD_IO_WRITE_STDIN = 2
+} ZeroProcChildIoOp;
+
 #define ZERO_HTTP_RESPONSE_META_BYTES 24u
 
 int zero_world_write(int fd, const char *buf, unsigned len);
@@ -201,6 +215,9 @@ ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
 int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
+int32_t zero_proc_spawn_child(ZeroByteView command);
+int32_t zero_proc_child_op(int32_t child, uint32_t op);
+ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_t op);
 
 int64_t zero_json_parse_bytes(ZeroByteView input);
 uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op);

@@ -447,6 +447,29 @@ static bool mir_verify_proc_capture_files_contract(IrProgram *ir, const IrValue 
   return mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stderr path", "stderr path");
 }
 
+static bool mir_verify_proc_child_spawn_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child handle")) return false;
+  return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command");
+}
+
+static bool mir_verify_proc_child_op_contract(IrProgram *ir, const IrValue *value) {
+  if ((IrProcChildOp)value->int_value == IR_PROC_CHILD_OP_WAIT) {
+    if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child status")) return false;
+  } else if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "process child boolean result")) {
+    return false;
+  }
+  return mir_verify_value_type(ir, value->left, IR_TYPE_I32, "MIR verifier found invalid process child handle", "process child handle");
+}
+
+static bool mir_verify_proc_child_io_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
+  if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found process child I/O result type mismatch", "process child I/O")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_I32, "MIR verifier found invalid process child handle", "process child handle")) return false;
+  if ((IrProcChildIoOp)value->int_value == IR_PROC_CHILD_IO_WRITE_STDIN) {
+    return mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process stdin bytes", "process stdin bytes");
+  }
+  return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process output buffer", "process output buffer");
+}
+
 static bool mir_verify_value_is_integer(IrProgram *ir, const IrValue *value, const char *message, const char *role) {
   if (!ir || !ir->mir_valid) return false;
   if (value && mir_type_is_integer_value(value->type)) return true;
@@ -1027,6 +1050,18 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.captureFiles");
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.captureFiles");
       return mir_verify_proc_capture_files_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc.spawnChild");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc.spawnChild");
+      return mir_verify_proc_child_spawn_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_OP:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child op");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc child op");
+      return mir_verify_proc_child_op_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_IO:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child I/O");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc child I/O");
+      return mir_verify_proc_child_io_contract(ir, fun, state, value);
     default:
       return true;
   }
@@ -1437,6 +1472,9 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
       return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid filesystem write input", "filesystem write path", "filesystem write bytes");
     case IR_VALUE_PROC_CAPTURE: return mir_verify_proc_capture_contract(ir, fun, state, value);
     case IR_VALUE_PROC_CAPTURE_FILES: return mir_verify_proc_capture_files_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_SPAWN: return mir_verify_proc_child_spawn_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_OP: return mir_verify_proc_child_op_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_IO: return mir_verify_proc_child_io_contract(ir, fun, state, value);
     case IR_VALUE_FS_READ_ALL:
       if (value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
         if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem readAll result")) return false;
@@ -2355,6 +2393,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_PARSE_RUNTIME: case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32: case IR_VALUE_ARGS_PARSE_U32: case IR_VALUE_ARGS_FIND: case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER: case IR_VALUE_ARGS_VALUE_AFTER_OR: case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE: case IR_VALUE_PROC_CAPTURE: case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN: case IR_VALUE_PROC_CHILD_OP: case IR_VALUE_PROC_CHILD_IO:
       return mir_verify_direct_helper_value_contract(ir, fun, state, value, requirements);
     case IR_VALUE_MAYBE_HAS:
     case IR_VALUE_MAYBE_VALUE:

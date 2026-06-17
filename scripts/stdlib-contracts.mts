@@ -118,6 +118,7 @@ const countedResourceTypes = new Set([
   "Net",
   "NullAlloc",
   "PageAlloc",
+  "ProcChild",
   "ProcStatus",
   "RandSource",
   "Vec",

@@ -45,7 +45,7 @@ static const char *fallback_manifest =
 "libcMode = \"bundled-libc\"\n"
 "exeSuffix = \"\"\n"
 "zigTarget = \"x86_64-linux-musl\"\n"
-"capabilities = [\"memory\", \"stdio\", \"args\", \"env\", \"fs\", \"time\", \"rand\"]\n"
+"capabilities = [\"memory\", \"stdio\", \"args\", \"env\", \"fs\", \"time\", \"rand\", \"proc\"]\n"
 "[[target]]\n"
 "name = \"linux-musl-arm64\"\n"
 "aliases = [\"aarch64-linux-musl\"]\n"

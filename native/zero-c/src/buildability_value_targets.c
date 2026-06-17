@@ -343,16 +343,26 @@ static bool build_aarch64_fmt_runtime(const ZBuildability *ctx, const IrFunction
 }
 
 static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunction *fun, const IrValue *value, unsigned scratch_slot, ZDiag *diag) {
-  if (value->kind != IR_VALUE_PROC_CAPTURE && value->kind != IR_VALUE_PROC_CAPTURE_FILES) return true;
-  unsigned required = value->kind == IR_VALUE_PROC_CAPTURE_FILES ? 5 : 3;
-  const char *message = value->kind == IR_VALUE_PROC_CAPTURE_FILES ?
-    "direct AArch64 std.proc.captureFiles exceeds scratch register spill capacity" :
-    "direct AArch64 std.proc.capture exceeds scratch register spill capacity";
+  if (value->kind != IR_VALUE_PROC_CAPTURE &&
+      value->kind != IR_VALUE_PROC_CAPTURE_FILES &&
+      value->kind != IR_VALUE_PROC_CHILD_SPAWN &&
+      value->kind != IR_VALUE_PROC_CHILD_OP &&
+      value->kind != IR_VALUE_PROC_CHILD_IO) return true;
+  unsigned required = 2;
+  const char *message = "direct AArch64 std.proc helper exceeds scratch register spill capacity";
+  if (value->kind == IR_VALUE_PROC_CAPTURE || value->kind == IR_VALUE_PROC_CHILD_IO) required = 3;
+  if (value->kind == IR_VALUE_PROC_CAPTURE_FILES) required = 5;
   if (scratch_slot + required >= BUILD_AARCH64_SCRATCH_SLOT_COUNT) {
     return z_build_diag(ctx, diag, message, value->line, value->column, "expression too deep");
   }
-  if (!z_build_check_aarch64_byte_view(ctx, fun, value->left, diag)) return false;
-  if (!z_build_check_aarch64_byte_view(ctx, fun, value->right, diag)) return false;
+  if ((value->kind == IR_VALUE_PROC_CAPTURE ||
+       value->kind == IR_VALUE_PROC_CAPTURE_FILES ||
+       value->kind == IR_VALUE_PROC_CHILD_SPAWN) &&
+      !z_build_check_aarch64_byte_view(ctx, fun, value->left, diag)) return false;
+  if ((value->kind == IR_VALUE_PROC_CAPTURE ||
+       value->kind == IR_VALUE_PROC_CAPTURE_FILES ||
+       value->kind == IR_VALUE_PROC_CHILD_IO) &&
+      !z_build_check_aarch64_byte_view(ctx, fun, value->right, diag)) return false;
   if (value->kind == IR_VALUE_PROC_CAPTURE_FILES && !z_build_check_aarch64_byte_view(ctx, fun, value->index, diag)) return false;
   return true;
 }

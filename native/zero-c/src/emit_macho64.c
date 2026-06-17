@@ -371,6 +371,9 @@ static MachORuntimeHelper macho_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_SEARCH_RUNTIME: return MACHO_RUNTIME_SEARCH_OP;
     case IR_VALUE_PROC_CAPTURE: return MACHO_RUNTIME_PROC_CAPTURE;
     case IR_VALUE_PROC_CAPTURE_FILES: return MACHO_RUNTIME_PROC_CAPTURE_FILES;
+    case IR_VALUE_PROC_CHILD_SPAWN: return MACHO_RUNTIME_PROC_SPAWN_CHILD;
+    case IR_VALUE_PROC_CHILD_OP: return MACHO_RUNTIME_PROC_CHILD_OP;
+    case IR_VALUE_PROC_CHILD_IO: return MACHO_RUNTIME_PROC_CHILD_IO;
     case IR_VALUE_ARGS_FIND:
     case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER:
@@ -2071,6 +2074,42 @@ static bool macho_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction
   return true;
 }
 
+static bool macho_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_SPAWN_CHILD, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_child_op_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc child op requires a handle", value ? value->line : 1, value ? value->column : 1, "missing process child handle");
+  }
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CHILD_OP, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_child_io_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc child I/O requires a handle and buffer", value ? value->line : 1, value ? value->column : 1, "missing process child I/O input");
+  }
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_byte_view_pair_at(text, fun, value->right, 1, 2, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  z_aarch64_emit_movz_w(text, 3, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CHILD_IO, patch, value, diag);
+}
+
 static bool macho_emit_http_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_HTTP_STATUS_CLASS:
@@ -2463,6 +2502,9 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return macho_emit_fs_read_bytes_at_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CAPTURE: return macho_emit_proc_capture_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CAPTURE_FILES: return macho_emit_proc_capture_files_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_SPAWN: return macho_emit_proc_child_spawn_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_OP: return macho_emit_proc_child_op_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_IO: return macho_emit_proc_child_io_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
       if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
@@ -2949,6 +2991,7 @@ static bool macho_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun,
       instr->value->kind == IR_VALUE_TERM_RUNTIME ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+      instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH) {
     if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
@@ -3036,6 +3079,7 @@ static bool macho_emit_return_maybe_scalar(ZBuf *text, const IrFunction *fun, co
       instr->value->kind == IR_VALUE_TERM_RUNTIME ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+      instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH) {
     return macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag);
