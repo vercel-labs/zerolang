@@ -46,7 +46,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/main.c": { maxLines: 16757, maxStrcmpCalls: 454, maxShellCalls: 0 },
-  "native/zero-c/src/ir.c": { maxLines: 6666, maxStrcmpCalls: 333 },
+  "native/zero-c/src/ir.c": { maxLines: 6715, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -153,7 +153,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 6792, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 6841, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 24, maxStrcmpCalls: 0 },
@@ -224,7 +224,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/safety_contract.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_sig.c": { maxLines: 1055, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.c": { maxLines: 1104, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_sig.h": { maxLines: 108, maxStrcmpCalls: 0 },
   "native/zero-c/src/std_source.c": { maxLines: 968, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_source.h": { maxLines: 30, maxStrcmpCalls: 0 },

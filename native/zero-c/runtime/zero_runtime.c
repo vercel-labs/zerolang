@@ -1362,6 +1362,26 @@ uint64_t zero_text_op(ZeroByteView text, uint32_t op) {
 #define ZERO_TERM_KEY_ARROW_RIGHT UINT32_C(1114115)
 #define ZERO_TERM_KEY_ARROW_LEFT UINT32_C(1114116)
 #define ZERO_TERM_KEY_DELETE UINT32_C(1114117)
+#define ZERO_TERM_KEY_HOME UINT32_C(1114118)
+#define ZERO_TERM_KEY_END UINT32_C(1114119)
+#define ZERO_TERM_KEY_PAGE_UP UINT32_C(1114120)
+#define ZERO_TERM_KEY_PAGE_DOWN UINT32_C(1114121)
+#define ZERO_TERM_KEY_INSERT UINT32_C(1114122)
+#define ZERO_TERM_KEY_SHIFT_TAB UINT32_C(1114123)
+#define ZERO_TERM_KEY_F1 UINT32_C(1114124)
+#define ZERO_TERM_KEY_F2 UINT32_C(1114125)
+#define ZERO_TERM_KEY_F3 UINT32_C(1114126)
+#define ZERO_TERM_KEY_F4 UINT32_C(1114127)
+#define ZERO_TERM_KEY_F5 UINT32_C(1114128)
+#define ZERO_TERM_KEY_F6 UINT32_C(1114129)
+#define ZERO_TERM_KEY_F7 UINT32_C(1114130)
+#define ZERO_TERM_KEY_F8 UINT32_C(1114131)
+#define ZERO_TERM_KEY_F9 UINT32_C(1114132)
+#define ZERO_TERM_KEY_F10 UINT32_C(1114133)
+#define ZERO_TERM_KEY_F11 UINT32_C(1114134)
+#define ZERO_TERM_KEY_F12 UINT32_C(1114135)
+#define ZERO_TERM_KEY_PASTE_START UINT32_C(1114136)
+#define ZERO_TERM_KEY_PASTE_END UINT32_C(1114137)
 
 static uint32_t zero_term_utf8_key(ZeroByteView text, size_t *width_out) {
   if (text.len == 0 || !text.ptr) return 0;
@@ -1404,9 +1424,51 @@ static uint32_t zero_term_key_decode(ZeroByteView text, int return_len) {
       if (code == 'B') return return_len ? 3u : ZERO_TERM_KEY_ARROW_DOWN;
       if (code == 'C') return return_len ? 3u : ZERO_TERM_KEY_ARROW_RIGHT;
       if (code == 'D') return return_len ? 3u : ZERO_TERM_KEY_ARROW_LEFT;
+      if (code == 'H') return return_len ? 3u : ZERO_TERM_KEY_HOME;
+      if (code == 'F') return return_len ? 3u : ZERO_TERM_KEY_END;
+      if (code == 'Z' && text.ptr[1] == '[') return return_len ? 3u : ZERO_TERM_KEY_SHIFT_TAB;
+      if (code == 'P' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F1;
+      if (code == 'Q' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F2;
+      if (code == 'R' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F3;
+      if (code == 'S' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F4;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '2' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_INSERT;
     }
     if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '3' && text.ptr[3] == '~') {
       return return_len ? 4u : ZERO_TERM_KEY_DELETE;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && (text.ptr[2] == '1' || text.ptr[2] == '7') && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_HOME;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && (text.ptr[2] == '4' || text.ptr[2] == '8') && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_END;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '5' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_PAGE_UP;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '6' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_PAGE_DOWN;
+    }
+    if (text.len >= 5 && text.ptr[1] == '[' && text.ptr[4] == '~') {
+      unsigned char a = text.ptr[2];
+      unsigned char b = text.ptr[3];
+      if (a == '1' && b == '1') return return_len ? 5u : ZERO_TERM_KEY_F1;
+      if (a == '1' && b == '2') return return_len ? 5u : ZERO_TERM_KEY_F2;
+      if (a == '1' && b == '3') return return_len ? 5u : ZERO_TERM_KEY_F3;
+      if (a == '1' && b == '4') return return_len ? 5u : ZERO_TERM_KEY_F4;
+      if (a == '1' && b == '5') return return_len ? 5u : ZERO_TERM_KEY_F5;
+      if (a == '1' && b == '7') return return_len ? 5u : ZERO_TERM_KEY_F6;
+      if (a == '1' && b == '8') return return_len ? 5u : ZERO_TERM_KEY_F7;
+      if (a == '1' && b == '9') return return_len ? 5u : ZERO_TERM_KEY_F8;
+      if (a == '2' && b == '0') return return_len ? 5u : ZERO_TERM_KEY_F9;
+      if (a == '2' && b == '1') return return_len ? 5u : ZERO_TERM_KEY_F10;
+      if (a == '2' && b == '3') return return_len ? 5u : ZERO_TERM_KEY_F11;
+      if (a == '2' && b == '4') return return_len ? 5u : ZERO_TERM_KEY_F12;
+    }
+    if (text.len >= 6 && text.ptr[1] == '[' && text.ptr[2] == '2' && text.ptr[3] == '0' && text.ptr[5] == '~') {
+      if (text.ptr[4] == '0') return return_len ? 6u : ZERO_TERM_KEY_PASTE_START;
+      if (text.ptr[4] == '1') return return_len ? 6u : ZERO_TERM_KEY_PASTE_END;
     }
     return 0;
   }

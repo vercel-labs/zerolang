@@ -1050,8 +1050,10 @@ redacted(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 reset() -> String
 bold() -> String
 dim() -> String
+underline() -> String
 inverse() -> String
 fgDefault() -> String
+fgBlack() -> String
 fgRed() -> String
 fgGreen() -> String
 fgYellow() -> String
@@ -1059,29 +1061,76 @@ fgBlue() -> String
 fgMagenta() -> String
 fgCyan() -> String
 fgWhite() -> String
+bgDefault() -> String
+bgBlack() -> String
+bgRed() -> String
+bgGreen() -> String
+bgYellow() -> String
+bgBlue() -> String
+bgMagenta() -> String
+bgCyan() -> String
+bgWhite() -> String
 clearScreen() -> String
+clearScreenDown() -> String
+clearScreenUp() -> String
 clearLine() -> String
+clearLineRight() -> String
+clearLineLeft() -> String
 cursorHome() -> String
 cursorTo(arg0: MutSpan<u8>, arg1: usize, arg2: usize) -> Maybe<Span<u8>>
 cursorUp(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
 cursorDown(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
 cursorRight(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
 cursorLeft(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+saveCursor() -> String
+restoreCursor() -> String
 hideCursor() -> String
 showCursor() -> String
 enterAltScreen() -> String
 leaveAltScreen() -> String
+enterBracketedPaste() -> String
+leaveBracketedPaste() -> String
 keyNone() -> u32
 keyEscape() -> u32
 keyEnter() -> u32
 keyTab() -> u32
 keyBackspace() -> u32
+keyCtrlA() -> u32
 keyCtrlC() -> u32
+keyCtrlD() -> u32
+keyCtrlE() -> u32
+keyCtrlK() -> u32
+keyCtrlL() -> u32
+keyCtrlN() -> u32
+keyCtrlP() -> u32
+keyCtrlR() -> u32
+keyCtrlU() -> u32
+keyCtrlW() -> u32
 keyArrowUp() -> u32
 keyArrowDown() -> u32
 keyArrowRight() -> u32
 keyArrowLeft() -> u32
 keyDelete() -> u32
+keyHome() -> u32
+keyEnd() -> u32
+keyPageUp() -> u32
+keyPageDown() -> u32
+keyInsert() -> u32
+keyShiftTab() -> u32
+keyF1() -> u32
+keyF2() -> u32
+keyF3() -> u32
+keyF4() -> u32
+keyF5() -> u32
+keyF6() -> u32
+keyF7() -> u32
+keyF8() -> u32
+keyF9() -> u32
+keyF10() -> u32
+keyF11() -> u32
+keyF12() -> u32
+keyPasteStart() -> u32
+keyPasteEnd() -> u32
 keyCode(arg0: Span<u8>) -> u32
 keyByteLen(arg0: Span<u8>) -> usize
 stdinIsTty() -> Bool
