@@ -3068,7 +3068,7 @@ static bool macho_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun,
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
       instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH) {
+      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH) {
     if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     macho_emit_store_local_w(text, fun, 0, instr->local_index, 0, frame_size);
     macho_emit_store_local_x(text, fun, 1, instr->local_index, 8, frame_size);
@@ -3156,7 +3156,7 @@ static bool macho_emit_return_maybe_scalar(ZBuf *text, const IrFunction *fun, co
       instr->value->kind == IR_VALUE_PROC_CAPTURE ||
       instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH) {
+      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH) {
     return macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag);
   }
   if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {

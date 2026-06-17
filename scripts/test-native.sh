@@ -210,6 +210,7 @@ expected_output() {
     conformance/native/pass/std-io-lines.graph) printf "std io lines ok" ;;
     conformance/native/pass/std-path-io-breadth.graph) printf "std path io breadth ok" ;;
     conformance/native/pass/std-fs-file-helpers.graph) printf "std fs file helpers ok" ;;
+    conformance/native/pass/std-fs-write-file-bool.graph) printf "fs write file bool ok" ;;
     conformance/native/pass/std-proc-child.graph) printf "std proc child ok" ;;
     conformance/native/pass/std-proc-capture.graph) printf "std proc capture ok" ;;
     conformance/native/pass/std-proc-capture-files.graph) printf "std proc capture files ok" ;;
@@ -265,6 +266,7 @@ examples=(
   conformance/native/pass/std-io-lines.graph
   conformance/native/pass/std-path-io-breadth.graph
   conformance/native/pass/std-fs-file-helpers.graph
+  conformance/native/pass/std-fs-write-file-bool.graph
   conformance/native/pass/std-proc-child.graph
   conformance/native/pass/std-proc-capture.graph
   conformance/native/pass/std-proc-capture-files.graph
@@ -292,6 +294,7 @@ native_case_in_scope() {
     conformance/native/pass/std-codec-json-url.graph | \
     conformance/native/pass/std-json-allocator-capacity.graph | \
     conformance/native/pass/std-fs-bytes.graph | \
+    conformance/native/pass/std-fs-write-file-bool.graph | \
     conformance/native/pass/std-cli-helpers.graph | \
     conformance/native/pass/generic-function-basic.graph | \
     conformance/native/pass/match-fallback.graph | \
@@ -408,6 +411,7 @@ run_native_or_gap conformance/native/pass/std-fs-fallible.graph .zero/native-tes
 run_native_or_gap conformance/native/pass/std-fs-fallible-resources.graph .zero/native-test/std-fs-fallible-resources "fs fallible resources ok"
 run_native_or_gap conformance/native/pass/std-cli-helpers.graph .zero/native-test/std-cli-helpers "cli helpers ok"
 run_native_or_gap conformance/native/pass/std-fs-bytes.graph .zero/native-test/std-fs-bytes "fs bytes ok"
+run_native_or_gap conformance/native/pass/std-fs-write-file-bool.graph .zero/native-test/std-fs-write-file-bool "fs write file bool ok"
 run_native_or_gap conformance/native/pass/std-fs-read-chunks.graph .zero/native-test/std-fs-read-chunks "fs read chunks ok"
 run_native_or_gap conformance/native/pass/std-fs-resource.graph .zero/native-test/std-fs-resource "fs resource ok"
 run_native_or_gap conformance/native/pass/std-fs-readall.graph .zero/native-test/std-fs-readall "fs readAll ok"
