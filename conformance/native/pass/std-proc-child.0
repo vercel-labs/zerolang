@@ -6,6 +6,7 @@ pub fn main(world: World) -> Void raises {
     var stdout_buf: [32]u8 = [0_u8; 32]
     var stderr_buf: [32]u8 = [0_u8; 32]
     let valid: Bool = std.proc.childValid(child)
+    let child_pid: i32 = std.proc.pid(child)
     let was_running: Bool = std.proc.running(child)
     let status: ProcStatus = std.proc.wait(child)
     let stdout_read: Maybe<usize> = std.proc.readStdout(child, stdout_buf)
@@ -33,6 +34,43 @@ pub fn main(world: World) -> Void raises {
         }
     }
     let stdin_closed: Bool = std.proc.close(stdin_child)
+
+    let eof_child: ProcChild = std.proc.spawnChild("sh -c 'cat >/dev/null; printf eof-done'")
+    var eof_buf: [32]u8 = [0_u8; 32]
+    var eof_ok: Bool = false
+    let eof_valid: Bool = std.proc.childValid(eof_child)
+    let eof_pid: i32 = std.proc.pid(eof_child)
+    let eof_running: Bool = std.proc.pidRunning(eof_pid)
+    let eof_closed_stdin: Bool = std.proc.closeStdin(eof_child)
+    if eof_valid && eof_pid > 0 && eof_running && eof_closed_stdin {
+        let eof_status: ProcStatus = std.proc.wait(eof_child)
+        let eof_read: Maybe<usize> = std.proc.readStdout(eof_child, eof_buf)
+        if eof_read.has {
+            let eof_bytes: Span<u8> = std.io.written(eof_buf, eof_read.value)
+            eof_ok = std.proc.succeeded(eof_status) && std.mem.eql(eof_bytes, "eof-done")
+        }
+    }
+    let eof_handle_closed: Bool = std.proc.close(eof_child)
+
+    let interrupt_child: ProcChild = std.proc.spawnChild("sh -c 'while true; do sleep 1; done'")
+    var interrupt_ok: Bool = false
+    let interrupt_pid: i32 = std.proc.pid(interrupt_child)
+    if std.proc.childValid(interrupt_child) && interrupt_pid > 0 && std.proc.pidRunning(interrupt_pid) {
+        let interrupted: Bool = std.proc.interrupt(interrupt_child)
+        let interrupt_status: ProcStatus = std.proc.wait(interrupt_child)
+        interrupt_ok = interrupted && std.proc.exitCode(interrupt_status) != 0
+    }
+    let interrupt_closed: Bool = std.proc.close(interrupt_child)
+
+    let pid_child: ProcChild = std.proc.spawnChild("sh -c 'while true; do sleep 1; done'")
+    var pid_ok: Bool = false
+    let external_pid: i32 = std.proc.pid(pid_child)
+    if std.proc.childValid(pid_child) && external_pid > 0 && std.proc.pidRunning(external_pid) {
+        let killed_pid: Bool = std.proc.killPid(external_pid)
+        let pid_status: ProcStatus = std.proc.wait(pid_child)
+        pid_ok = killed_pid && std.proc.exitCode(pid_status) != 0 && !std.proc.pidRunning(0)
+    }
+    let pid_closed: Bool = std.proc.close(pid_child)
 
     let env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf env:$ZERO_PROC_ENV_TEST:$ZERO_PROC_ENV_TWO'", ".", "ZERO_PROC_ENV_TEST=alpha\nZERO_PROC_ENV_TWO=beta")
     var env_buf: [64]u8 = [0_u8; 64]
@@ -90,7 +128,7 @@ pub fn main(world: World) -> Void raises {
         files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
     }
 
-    if prepared && valid && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && pid_ok && pid_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
         check world.out.write("std proc child ok\n")
     }
 }

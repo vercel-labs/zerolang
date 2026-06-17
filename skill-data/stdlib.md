@@ -1355,7 +1355,13 @@ childValid(arg0: ProcChild) -> Bool
 running(arg0: ProcChild) -> Bool
 wait(arg0: ProcChild) -> ProcStatus
 kill(arg0: ProcChild) -> Bool
+interrupt(arg0: ProcChild) -> Bool
 close(arg0: ProcChild) -> Bool
+closeStdin(arg0: ProcChild) -> Bool
+pid(arg0: ProcChild) -> i32
+pidRunning(arg0: i32) -> Bool
+killPid(arg0: i32) -> Bool
+interruptPid(arg0: i32) -> Bool
 readStdout(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
 readStderr(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
 writeStdin(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>

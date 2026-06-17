@@ -4808,7 +4808,13 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
   if (ir_text_eq(callee_name, "std.proc.running") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_RUNNING, IR_TYPE_BOOL, out);
   if (ir_text_eq(callee_name, "std.proc.wait") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_WAIT, IR_TYPE_I32, out);
   if (ir_text_eq(callee_name, "std.proc.kill") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_KILL, IR_TYPE_BOOL, out);
+  if (ir_text_eq(callee_name, "std.proc.interrupt") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_INTERRUPT, IR_TYPE_BOOL, out);
   if (ir_text_eq(callee_name, "std.proc.close") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_CLOSE, IR_TYPE_BOOL, out);
+  if (ir_text_eq(callee_name, "std.proc.closeStdin") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_CLOSE_STDIN, IR_TYPE_BOOL, out);
+  if (ir_text_eq(callee_name, "std.proc.pid") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_PID, IR_TYPE_I32, out);
+  if (ir_text_eq(callee_name, "std.proc.pidRunning") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_PID_RUNNING, IR_TYPE_BOOL, out);
+  if (ir_text_eq(callee_name, "std.proc.killPid") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_KILL_PID, IR_TYPE_BOOL, out);
+  if (ir_text_eq(callee_name, "std.proc.interruptPid") && arg_count == 1) return ir_graph_lower_std_proc_child_op_call(graph, ir, fun, expr, IR_PROC_CHILD_OP_INTERRUPT_PID, IR_TYPE_BOOL, out);
   if (ir_text_eq(callee_name, "std.proc.readStdout") && arg_count == 2) return ir_graph_lower_std_proc_child_io_call(graph, ir, fun, expr, IR_PROC_CHILD_IO_READ_STDOUT, out);
   if (ir_text_eq(callee_name, "std.proc.readStderr") && arg_count == 2) return ir_graph_lower_std_proc_child_io_call(graph, ir, fun, expr, IR_PROC_CHILD_IO_READ_STDERR, out);
   if (ir_text_eq(callee_name, "std.proc.writeStdin") && arg_count == 2) return ir_graph_lower_std_proc_child_io_call(graph, ir, fun, expr, IR_PROC_CHILD_IO_WRITE_STDIN, out);

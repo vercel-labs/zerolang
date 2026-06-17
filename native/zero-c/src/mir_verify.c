@@ -486,7 +486,7 @@ static bool mir_verify_proc_child_spawn_contract(IrProgram *ir, const IrValue *v
 }
 
 static bool mir_verify_proc_child_op_contract(IrProgram *ir, const IrValue *value) {
-  if ((IrProcChildOp)value->int_value == IR_PROC_CHILD_OP_WAIT) {
+  if ((IrProcChildOp)value->int_value == IR_PROC_CHILD_OP_WAIT || (IrProcChildOp)value->int_value == IR_PROC_CHILD_OP_PID) {
     if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child status")) return false;
   } else if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "process child boolean result")) {
     return false;

@@ -729,6 +729,17 @@ static int zero_proc_child_reap(ZeroRuntimeProcChild *child, int nohang) {
     return 1;
   }
 }
+
+static int zero_proc_pid_running(int32_t pid) {
+  if (pid <= 0) return 0;
+  if (kill((pid_t)pid, 0) == 0) return 1;
+  return errno == EPERM ? 1 : 0;
+}
+
+static int zero_proc_signal_pid(int32_t pid, int signal_number) {
+  if (pid <= 0) return 0;
+  return kill((pid_t)pid, signal_number) == 0 ? 1 : 0;
+}
 #endif
 
 static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
@@ -847,12 +858,24 @@ int32_t zero_proc_child_op(int32_t child, uint32_t op) {
   (void)op;
   return 0;
 #else
+  switch ((ZeroProcChildOp)op) {
+    case ZERO_PROC_CHILD_OP_PID_RUNNING:
+      return zero_proc_pid_running(child);
+    case ZERO_PROC_CHILD_OP_KILL_PID:
+      return zero_proc_signal_pid(child, SIGTERM);
+    case ZERO_PROC_CHILD_OP_INTERRUPT_PID:
+      return zero_proc_signal_pid(child, SIGINT);
+    default:
+      break;
+  }
   int index = zero_proc_child_index(child);
   if (index < 0) return op == ZERO_PROC_CHILD_OP_WAIT ? 127 : 0;
   ZeroRuntimeProcChild *slot = &zero_proc_children[index];
   switch ((ZeroProcChildOp)op) {
     case ZERO_PROC_CHILD_OP_VALID:
       return 1;
+    case ZERO_PROC_CHILD_OP_PID:
+      return (int32_t)slot->pid;
     case ZERO_PROC_CHILD_OP_RUNNING:
       return zero_proc_child_reap(slot, 1) ? 0 : 1;
     case ZERO_PROC_CHILD_OP_WAIT:
@@ -861,6 +884,12 @@ int32_t zero_proc_child_op(int32_t child, uint32_t op) {
     case ZERO_PROC_CHILD_OP_KILL:
       if (zero_proc_child_reap(slot, 1)) return 1;
       return kill(slot->pid, SIGTERM) == 0 ? 1 : 0;
+    case ZERO_PROC_CHILD_OP_INTERRUPT:
+      if (zero_proc_child_reap(slot, 1)) return 1;
+      return kill(slot->pid, SIGINT) == 0 ? 1 : 0;
+    case ZERO_PROC_CHILD_OP_CLOSE_STDIN:
+      zero_proc_child_close_fd(&slot->stdin_fd);
+      return 1;
     case ZERO_PROC_CHILD_OP_CLOSE:
       if (!slot->reaped) {
         kill(slot->pid, SIGTERM);

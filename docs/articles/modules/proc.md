@@ -28,7 +28,13 @@ Runnable today:
 | `std.proc.running(child)` | `Bool` | Polls the child process without blocking. |
 | `std.proc.wait(child)` | `ProcStatus` | Waits for process exit and returns its status. |
 | `std.proc.kill(child)` | `Bool` | Sends the child a termination signal on supported hosts. |
+| `std.proc.interrupt(child)` | `Bool` | Sends the child an interrupt signal on supported hosts. |
 | `std.proc.close(child)` | `Bool` | Closes the handle and any remaining pipes. |
+| `std.proc.closeStdin(child)` | `Bool` | Closes the child stdin pipe while keeping stdout, stderr, and status available. |
+| `std.proc.pid(child)` | `i32` | Returns the hosted process id for a child handle, or `0` when unavailable. |
+| `std.proc.pidRunning(pid)` | `Bool` | Reports whether a hosted process id appears to be running. |
+| `std.proc.killPid(pid)` | `Bool` | Sends a termination signal to a hosted process id on supported hosts. |
+| `std.proc.interruptPid(pid)` | `Bool` | Sends an interrupt signal to a hosted process id on supported hosts. |
 | `std.proc.readStdout(child, buffer)` | `Maybe<usize>` | Nonblocking read from the child's stdout pipe into caller storage. Returns `null` when no bytes are currently available or the stream is closed. |
 | `std.proc.readStderr(child, buffer)` | `Maybe<usize>` | Nonblocking read from the child's stderr pipe into caller storage. Returns `null` when no bytes are currently available or the stream is closed. |
 | `std.proc.writeStdin(child, bytes)` | `Maybe<usize>` | Nonblocking write to the child's stdin pipe. Returns `null` when the stream is not writable. |
@@ -66,9 +72,10 @@ pub fn main(world: World) -> Void raises {
     if out.has {
         check world.out.write("child stdout available\n")
     }
+    let pid: i32 = std.proc.pid(child)
     let status: ProcStatus = std.proc.wait(child)
     let closed: Bool = std.proc.close(child)
-    if std.proc.succeeded(status) && closed {
+    if pid > 0 && std.proc.succeeded(status) && closed {
         check world.out.write("child ok\n")
     }
 }
