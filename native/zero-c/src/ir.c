@@ -275,6 +275,35 @@ static const char *ir_std_json_error_label(unsigned long long code, bool expecte
   return "unknown";
 }
 
+static const char *ir_std_term_sequence(const char *name) {
+  static const struct { const char *name; const char *sequence; } sequences[] = {
+    {"std.term.reset", "\x1b[0m"},
+    {"std.term.bold", "\x1b[1m"},
+    {"std.term.dim", "\x1b[2m"},
+    {"std.term.inverse", "\x1b[7m"},
+    {"std.term.fgDefault", "\x1b[39m"},
+    {"std.term.fgRed", "\x1b[31m"},
+    {"std.term.fgGreen", "\x1b[32m"},
+    {"std.term.fgYellow", "\x1b[33m"},
+    {"std.term.fgBlue", "\x1b[34m"},
+    {"std.term.fgMagenta", "\x1b[35m"},
+    {"std.term.fgCyan", "\x1b[36m"},
+    {"std.term.fgWhite", "\x1b[37m"},
+    {"std.term.clearScreen", "\x1b[2J"},
+    {"std.term.clearLine", "\x1b[2K"},
+    {"std.term.cursorHome", "\x1b[H"},
+    {"std.term.hideCursor", "\x1b[?25l"},
+    {"std.term.showCursor", "\x1b[?25h"},
+    {"std.term.enterAltScreen", "\x1b[?1049h"},
+    {"std.term.leaveAltScreen", "\x1b[?1049l"},
+  };
+  if (!name) return NULL;
+  for (size_t i = 0; i < sizeof(sequences) / sizeof(sequences[0]); i++) {
+    if (strcmp(name, sequences[i].name) == 0) return sequences[i].sequence;
+  }
+  return NULL;
+}
+
 static bool ir_std_http_status_class_bounds(const char *name, unsigned *lower, unsigned *upper) {
   if (!name || !lower || !upper) return false;
   if (strcmp(name, "std.http.statusIsInformational") == 0) { *lower = 100; *upper = 200; return true; }
@@ -4088,6 +4117,12 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         free(callee_name);
         *out = value;
         return true;
+      }
+      const char *term_sequence = ir_std_term_sequence(callee_name);
+      if (term_sequence && expr->args.len == 0) {
+        bool ok = ir_make_string_literal_value(ir, term_sequence, expr->line, expr->column, out);
+        free(callee_name);
+        return ok;
       }
       if (!ir_lower_std_fmt_direct_call(program, ir, fun, expr, std_call, &handled, out)) {
         free(callee_name);

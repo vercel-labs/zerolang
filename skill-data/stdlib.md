@@ -43,6 +43,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
 - `std.io`: buffered reader/writer surfaces, cursor writes, line scanning, and byte copy over caller-owned storage.
 - `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
+- `std.term`: ANSI terminal style, cursor, clear, and alternate-screen sequence helpers.
 - `std.log`: explicit-buffer JSON Lines record formatting.
 
 Prefer `Maybe<T>` return checks over assuming an operation succeeded.
@@ -1039,6 +1040,30 @@ levelError() -> String
 stringField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 messageField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 redacted(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+```
+
+### std.term
+
+```text
+reset() -> String
+bold() -> String
+dim() -> String
+inverse() -> String
+fgDefault() -> String
+fgRed() -> String
+fgGreen() -> String
+fgYellow() -> String
+fgBlue() -> String
+fgMagenta() -> String
+fgCyan() -> String
+fgWhite() -> String
+clearScreen() -> String
+clearLine() -> String
+cursorHome() -> String
+hideCursor() -> String
+showCursor() -> String
+enterAltScreen() -> String
+leaveAltScreen() -> String
 ```
 
 ### std.math

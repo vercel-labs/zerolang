@@ -9502,6 +9502,7 @@ static const char *helper_module_name(const ZStdHelperInfo *helper) {
   if (strncmp(name, "std.sort.", strlen("std.sort.")) == 0) return "std.sort";
   if (strncmp(name, "std.str.", strlen("std.str.")) == 0) return "std.str";
   if (strncmp(name, "std.testing.", strlen("std.testing.")) == 0) return "std.testing";
+  if (strncmp(name, "std.term.", strlen("std.term.")) == 0) return "std.term";
   if (strncmp(name, "std.text.", strlen("std.text.")) == 0) return "std.text";
   if (strncmp(name, "std.unicode.", strlen("std.unicode.")) == 0) return "std.unicode";
   if (strncmp(name, "std.io.", strlen("std.io.")) == 0) return "std.io";

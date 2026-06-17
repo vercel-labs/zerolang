@@ -327,6 +327,14 @@ export const docs: Doc[] = [
     section: "Programs",
   },
   {
+    slug: "module-term",
+    title: "std.term",
+    description: "ANSI terminal style, cursor, clear, and alternate-screen sequences.",
+    path: "/modules/term",
+    sourcePath: "/articles/modules/term.md",
+    section: "Programs",
+  },
+  {
     slug: "module-text",
     title: "std.text",
     description: "ASCII and UTF-8 byte-backed text validation.",

@@ -2939,6 +2939,35 @@ static const char *ir_graph_json_error_label(unsigned long long code, bool expec
   return "unknown";
 }
 
+static const char *ir_graph_term_sequence(const char *name) {
+  static const struct { const char *name; const char *sequence; } sequences[] = {
+    {"std.term.reset", "\x1b[0m"},
+    {"std.term.bold", "\x1b[1m"},
+    {"std.term.dim", "\x1b[2m"},
+    {"std.term.inverse", "\x1b[7m"},
+    {"std.term.fgDefault", "\x1b[39m"},
+    {"std.term.fgRed", "\x1b[31m"},
+    {"std.term.fgGreen", "\x1b[32m"},
+    {"std.term.fgYellow", "\x1b[33m"},
+    {"std.term.fgBlue", "\x1b[34m"},
+    {"std.term.fgMagenta", "\x1b[35m"},
+    {"std.term.fgCyan", "\x1b[36m"},
+    {"std.term.fgWhite", "\x1b[37m"},
+    {"std.term.clearScreen", "\x1b[2J"},
+    {"std.term.clearLine", "\x1b[2K"},
+    {"std.term.cursorHome", "\x1b[H"},
+    {"std.term.hideCursor", "\x1b[?25l"},
+    {"std.term.showCursor", "\x1b[?25h"},
+    {"std.term.enterAltScreen", "\x1b[?1049h"},
+    {"std.term.leaveAltScreen", "\x1b[?1049l"},
+  };
+  if (!name) return NULL;
+  for (size_t i = 0; i < sizeof(sequences) / sizeof(sequences[0]); i++) {
+    if (ir_text_eq(name, sequences[i].name)) return sequences[i].sequence;
+  }
+  return NULL;
+}
+
 static int ir_graph_http_error_code(const char *name) {
   static const char *codes[] = {"std.http.errorNone", "std.http.errorInvalidUrl", "std.http.errorUnsupportedProtocol", "std.http.errorDns", "std.http.errorConnect", "std.http.errorTls", "std.http.errorTimeout", "std.http.errorTooLarge", "std.http.errorProviderUnavailable", "std.http.errorIo", "std.http.errorInvalidRequest"};
   for (int i = 0; name && i < (int)(sizeof(codes) / sizeof(codes[0])); i++) if (ir_text_eq(name, codes[i])) return i;
@@ -5073,6 +5102,12 @@ static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const
   char *qualified = ir_graph_expr_qualified_name(graph, expr);
   const char *callee_name = qualified && qualified[0] ? qualified : expr->name;
   size_t arg_count = ir_graph_edge_count(graph, expr->id, "arg");
+  const char *term_sequence = ir_graph_term_sequence(callee_name);
+  if (term_sequence && arg_count == 0) {
+    bool ok = ir_make_string_literal_value(ir, term_sequence, ir_graph_line(expr), ir_graph_column(expr), out);
+    free(qualified);
+    return ok;
+  }
   bool handled = false;
   if (!ir_graph_lower_http_std_call(graph, ir, fun, expr, callee_name, arg_count, &handled, out)) { free(qualified); return false; }
   if (handled) { free(qualified); return true; }

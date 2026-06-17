@@ -212,6 +212,7 @@ expected_output() {
     conformance/native/pass/std-fs-file-helpers.graph) printf "std fs file helpers ok" ;;
     conformance/native/pass/std-proc-capture.graph) printf "std proc capture ok" ;;
     conformance/native/pass/std-proc-capture-files.graph) printf "std proc capture files ok" ;;
+    conformance/native/pass/std-term-ansi.graph) printf "\033[?1049h\033[2J\033[H\033[?25l\033[1m\033[2m\033[7m\033[31m\033[32m\033[33m\033[34m\033[35m\033[36m\033[37m\033[39mterm ansi\033[0m\033[2K\033[?25h\033[?1049l" ;;
     conformance/native/pass/std-str-breadth.graph) printf "std str breadth ok" ;;
     conformance/native/pass/std-testing-log.graph) printf "std testing log ok" ;;
     examples/std-str.graph) printf "std str ok" ;;
@@ -265,6 +266,7 @@ examples=(
   conformance/native/pass/std-fs-file-helpers.graph
   conformance/native/pass/std-proc-capture.graph
   conformance/native/pass/std-proc-capture-files.graph
+  conformance/native/pass/std-term-ansi.graph
   conformance/native/pass/std-str-breadth.graph
   conformance/native/pass/std-testing-log.graph
 )

@@ -743,6 +743,7 @@ const passCheckFixtures = [
   "conformance/native/pass/std-path-io-breadth.0",
   "conformance/native/pass/std-str-breadth.0",
   "conformance/native/pass/std-testing-log.0",
+  "conformance/native/pass/std-term-ansi.0",
   "conformance/native/pass/std-testing-helpers-test.0",
   "conformance/native/pass/std-path-helper-name-collision.0",
   "conformance/native/pass/std-net-http-breadth.0",
