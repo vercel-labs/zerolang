@@ -1390,11 +1390,7 @@ static char *ir_graph_stable_id_for_function_name(const ZProgramGraph *graph, co
 static bool ir_graph_function_is_hosted_world_main(const ZProgramGraph *graph, const ZProgramGraphNode *function) {
   const ZProgramGraphNode *param = ir_graph_ordered_node(graph, function ? function->id : NULL, "param", 0);
   const char *return_type = ir_graph_node_type(graph, function);
-  return function && function->is_public &&
-         ir_text_eq(function->name, "main") &&
-         ir_graph_edge_count(graph, function->id, "param") == 1 &&
-         param && ir_text_eq(param->type, "World") &&
-         ir_text_eq(return_type, "Void");
+  return function && function->is_public && ir_text_eq(function->name, "main") && ir_graph_edge_count(graph, function->id, "param") == 1 && param && ir_text_eq(param->type, "World") && ir_text_eq(return_type, "Void");
 }
 
 bool z_program_graph_has_direct_entry_function(const ZProgramGraph *graph) {
@@ -1457,6 +1453,7 @@ static IrFunction *ir_graph_push_function(IrProgram *ir, const ZProgramGraph *gr
   ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
   bool hosted_world_main = ir_graph_function_is_hosted_world_main(graph, node);
+  const ZProgramGraphNode *world_param = ir_graph_ordered_node(graph, node ? node->id : NULL, "param", 0);
   char *source_return_type_owned = ir_graph_bound_type_text_alloc_from_arrays(ir_graph_node_type(graph, node), generic_param_names, generic_arg_types, generic_binding_len);
   const char *source_return_type = source_return_type_owned;
   IrTypeKind source_type = ir_graph_type_kind(graph, source_return_type);
@@ -1467,7 +1464,7 @@ static IrFunction *ir_graph_push_function(IrProgram *ir, const ZProgramGraph *gr
   *fun = (IrFunction){
     .name = z_strdup(name_override && name_override[0] ? name_override : node->name),
     .stable_id = ir_graph_stable_id_for_function_name(graph, node, name_override && name_override[0] ? name_override : node->name),
-    .world_param_name = hosted_world_main ? z_strdup("world") : NULL,
+    .world_param_name = world_param && ir_text_eq(world_param->type, "World") && world_param->name ? z_strdup(world_param->name) : NULL,
     .return_type = return_type,
     .value_return_type = source_type,
     .return_element_type = return_element_type,
@@ -1492,9 +1489,7 @@ static IrFunction *ir_graph_push_function(IrProgram *ir, const ZProgramGraph *gr
 static bool ir_graph_collect_block_locals(IrProgram *ir, IrFunction *fun, const ZProgramGraph *graph, const ZProgramGraphNode *block);
 
 static bool ir_graph_collect_function_locals(IrProgram *ir, IrFunction *fun, const ZProgramGraph *graph, const ZProgramGraphNode *function) {
-  bool hosted_world_main = ir_graph_function_is_hosted_world_main(graph, function);
-  bool have_last = false;
-  size_t last_order = 0;
+  bool have_last = false; size_t last_order = 0;
   for (;;) {
     const ZProgramGraphEdge *edge = ir_graph_next_edge_by_order(graph, function->id, "param", have_last, last_order);
     if (!edge) break;
@@ -1502,7 +1497,10 @@ static bool ir_graph_collect_function_locals(IrProgram *ir, IrFunction *fun, con
     last_order = edge->order;
     const ZProgramGraphNode *param = ir_graph_find_node(graph, edge->to);
     if (!param) continue;
-    if (hosted_world_main && edge->order == 0 && ir_text_eq(param->type, "World")) continue;
+    if (ir_text_eq(param->type, "World")) {
+      if (edge->order == 0) continue;
+      ir_graph_mark_unsupported(ir, param, "typed graph MIR World capability parameter must be first", param->name ? param->name : "World"); return false;
+    }
     char *param_type_text_owned = ir_graph_bound_type_text_alloc(fun, param->type);
     const char *param_type_text = param_type_text_owned;
     IrTypeKind type = ir_graph_type_kind(graph, param_type_text);
@@ -2789,8 +2787,9 @@ static bool ir_graph_lower_named_call(const ZProgramGraph *graph, IrProgram *ir,
   else if (callee->value_return_type == IR_TYPE_BYTE_VIEW) value->element_type = callee->return_element_type == IR_TYPE_UNSUPPORTED ? IR_TYPE_U8 : callee->return_element_type;
   else if (callee->value_return_type == IR_TYPE_MAYBE_SCALAR) value->element_type = callee->return_element_type;
   else value->element_type = callee->value_return_type;
-  size_t arg_index = 0;
-  for (size_t local_index = 0; local_index < callee->local_len && arg_index < callee->param_count; local_index++) {
+  size_t arg_index = callee->world_param_name ? 1 : 0;
+  size_t lowered_arg_count = 0;
+  for (size_t local_index = 0; local_index < callee->local_len && lowered_arg_count < callee->param_count; local_index++) {
     const IrLocal *param = &callee->locals[local_index];
     if (!param->is_param) continue;
     IrValue *arg = NULL;
@@ -2820,6 +2819,7 @@ static bool ir_graph_lower_named_call(const ZProgramGraph *graph, IrProgram *ir,
     }
     ir_value_push_arg(ir, value, arg);
     arg_index++;
+    lowered_arg_count++;
   }
   if (arg_index != ir_graph_edge_count(graph, expr->id, "arg")) {
     ir_free_value(value);

@@ -1286,13 +1286,11 @@ static bool ir_expr_is_mutable_byte_view_dest(const Program *program, const IrFu
   return local->type == IR_TYPE_BYTE_VIEW && local->is_mutable;
 }
 
+static bool ir_type_text_is_world(const char *type) { return type && type[0] == 'W' && type[1] == 'o' && type[2] == 'r' && type[3] == 'l' && type[4] == 'd' && type[5] == '\0'; }
+
 static bool ir_is_hosted_world_main(const Function *source) {
-  return source &&
-         source->is_public &&
-         source->name && strcmp(source->name, "main") == 0 &&
-         source->params.len == 1 &&
-         source->params.items[0].type && strcmp(source->params.items[0].type, "World") == 0 &&
-         source->return_type && strcmp(source->return_type, "Void") == 0;
+  const Param *param = source && source->params.len == 1 ? &source->params.items[0] : NULL;
+  return source && source->is_public && source->name && strcmp(source->name, "main") == 0 && param && ir_type_text_is_world(param->type) && source->return_type && strcmp(source->return_type, "Void") == 0;
 }
 
 static bool ir_is_world_stream_write(const IrFunction *fun, const Expr *expr, const char *stream) {
@@ -2579,6 +2577,7 @@ static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, co
   value->element_type = type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(return_type_text) : type;
   if (type == IR_TYPE_MAYBE_SCALAR) value->element_type = ir_maybe_scalar_element_type(return_type_text);
   for (size_t i = 0; i < expr->args.len; i++) {
+    if (i == 0 && ir_type_text_is_world(callee->params.items[i].type)) continue;
     char *specialized_param_type = generic_call ? ir_specialize_type_text(callee->params.items[i].type, callee, type_args) : NULL;
     const char *param_type_text = generic_call ? specialized_param_type : callee->params.items[i].type;
     IrTypeKind expected = ir_type_kind(param_type_text);
@@ -6079,9 +6078,7 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
 }
 
 static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction *mir_fun, const StmtVec *body, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {
-  for (size_t i = 0; i < body->len; i++) {
-    if (!ir_lower_stmt_to_vec(program, ir, mir_fun, body->items[i], out_items, out_len, out_cap, saw_return)) return false;
-  }
+  for (size_t i = 0; i < body->len; i++) if (!ir_lower_stmt_to_vec(program, ir, mir_fun, body->items[i], out_items, out_len, out_cap, saw_return)) return false;
   return true;
 }
 
@@ -6089,6 +6086,7 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
   ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
   bool hosted_world_main = ir_is_hosted_world_main(source);
+  const Param *world_param = source && source->params.len > 0 && ir_type_text_is_world(source->params.items[0].type) ? &source->params.items[0] : NULL;
   IrTypeKind source_return_type = ir_type_kind(source->return_type);
   IrTypeKind mir_return_type = hosted_world_main ? IR_TYPE_I32 : (source->raises ? IR_TYPE_I64 : source_return_type);
   IrTypeKind return_element_type = source_return_type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(source->return_type) : IR_TYPE_UNSUPPORTED;
@@ -6100,7 +6098,7 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
   *fun = (IrFunction){
     .name = z_strdup(source->name),
     .stable_id = stable_id.data,
-    .world_param_name = hosted_world_main && source->params.items[0].name ? z_strdup(source->params.items[0].name) : NULL,
+    .world_param_name = world_param && world_param->name ? z_strdup(world_param->name) : NULL,
     .return_type = mir_return_type,
     .value_return_type = source_return_type,
     .return_element_type = return_element_type,
@@ -6115,10 +6113,12 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
 static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const StmtVec *body);
 
 static bool ir_collect_function_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Function *source) {
-  bool hosted_world_main = ir_is_hosted_world_main(source);
   for (size_t i = 0; i < source->params.len; i++) {
     const Param *param = &source->params.items[i];
-    if (hosted_world_main && i == 0 && strcmp(param->type ? param->type : "", "World") == 0) continue;
+    if (ir_type_text_is_world(param->type)) {
+      if (i == 0) continue;
+      ir_mark_unsupported(ir, "direct backend World capability parameter must be first", param->line, param->column, param->name ? param->name : "World"); return false;
+    }
     IrTypeKind type = ir_type_kind(param->type);
     if (!ir_type_is_direct_param_abi(type)) {
       ir_mark_unsupported(ir, "direct backend parameter type is unsupported", param->line, param->column, param->type);

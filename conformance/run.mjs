@@ -5146,18 +5146,7 @@ assert.equal(refByteBufParamBody.diagnostics[0].code, "BLD004");
 assert.equal(refByteBufParamBody.diagnostics[0].actual, "ref<ByteBuf>");
 assert.equal(refByteBufParamBody.diagnostics[0].line, 1);
 
-const worldHelperParamBody = await writeImportFailureFixture(`${outDir}/world-helper-param-gate.0`, `fn write(world: World, text: String) -> Void raises {
-    check world.out.write(text)
-}
-
-pub fn main(world: World) -> Void raises {
-    check write(world, "unreachable\\n")
-}
-`);
-assert.equal(worldHelperParamBody.diagnostics[0].code, "BLD004");
-assert.match(worldHelperParamBody.diagnostics[0].message, /parameter type is unsupported/);
-assert.equal(worldHelperParamBody.diagnostics[0].actual, "World");
-assert.equal(worldHelperParamBody.diagnostics[0].line, 1);
+await assertDirectRuntimeRequired("conformance/run/pass/world-output-helper.0", "world-output-helper-required", { stdout: "world helper ok\n" });
 
 const codecReadU32Body = await writeImportFailureFixture(`${outDir}/codec-readu32-gate.0`, `use std.codec
 
