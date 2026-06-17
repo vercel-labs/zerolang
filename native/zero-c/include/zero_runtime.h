@@ -207,12 +207,23 @@ typedef enum {
   ZERO_PROC_CHILD_IO_WRITE_STDIN = 2
 } ZeroProcChildIoOp;
 
+typedef enum {
+  ZERO_FS_PATH_EXISTS = 0,
+  ZERO_FS_PATH_IS_DIR = 1,
+  ZERO_FS_PATH_MAKE_DIR = 2,
+  ZERO_FS_PATH_REMOVE_DIR = 3,
+  ZERO_FS_PATH_REMOVE = 4
+} ZeroFsPathOp;
+
 #define ZERO_HTTP_RESPONSE_META_BYTES 24u
 
 int zero_world_write(int fd, const char *buf, unsigned len);
 
 ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
+ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes);
+uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op);
+uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path);
 ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
 int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
 int32_t zero_proc_spawn_child(ZeroByteView command);

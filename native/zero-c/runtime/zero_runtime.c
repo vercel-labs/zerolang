@@ -7,12 +7,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #if defined(_WIN32)
 #include <conio.h>
+#include <direct.h>
 #include <io.h>
 #include <process.h>
 #include <windows.h>
@@ -204,6 +206,90 @@ ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMut
      offset += len(buffer) until offset reaches the returned total. */
   if (read_len > 0 && offset + read_len > total) total = offset + read_len;
   return (ZeroMaybeUsize){1, total};
+}
+
+ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes) {
+  if (!bytes.ptr && bytes.len > 0) return zero_runtime_none_usize();
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return zero_runtime_none_usize();
+  int fd = zero_runtime_open_write_truncate(path_buf);
+  if (fd < 0) return zero_runtime_none_usize();
+
+  size_t total = 0;
+  int ok = 1;
+  while (total < bytes.len) {
+    size_t remaining = bytes.len - total;
+    unsigned chunk = remaining > ZERO_RUNTIME_READ_CHUNK ? ZERO_RUNTIME_READ_CHUNK : (unsigned)remaining;
+    ZeroWriteResult written = ZERO_RUNTIME_WRITE(fd, bytes.ptr + total, chunk);
+    if (written < 0) {
+      if (errno == EINTR) continue;
+      ok = 0;
+      break;
+    }
+    if (written == 0) {
+      ok = 0;
+      break;
+    }
+    total += (size_t)written;
+  }
+  int closed = zero_runtime_close_fd(fd);
+  if (!ok || !closed) return zero_runtime_none_usize();
+  return (ZeroMaybeUsize){1, (uint64_t)total};
+}
+
+static int zero_runtime_stat_path(const char *path, ZeroRuntimeStat *st) {
+  if (!path || !path[0] || !st) return 0;
+#if defined(_WIN32)
+  return _stat(path, st) == 0;
+#else
+  return stat(path, st) == 0;
+#endif
+}
+
+uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op) {
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return 0;
+  switch ((ZeroFsPathOp)op) {
+    case ZERO_FS_PATH_EXISTS: {
+      ZeroRuntimeStat st;
+      return zero_runtime_stat_path(path_buf, &st) ? 1u : 0u;
+    }
+    case ZERO_FS_PATH_IS_DIR: {
+      ZeroRuntimeStat st;
+      if (!zero_runtime_stat_path(path_buf, &st)) return 0;
+#if defined(_WIN32)
+      return (st.st_mode & _S_IFDIR) != 0 ? 1u : 0u;
+#else
+      return S_ISDIR(st.st_mode) ? 1u : 0u;
+#endif
+    }
+    case ZERO_FS_PATH_MAKE_DIR:
+#if defined(_WIN32)
+      return _mkdir(path_buf) == 0 ? 1u : 0u;
+#else
+      return mkdir(path_buf, 0777) == 0 ? 1u : 0u;
+#endif
+    case ZERO_FS_PATH_REMOVE_DIR:
+#if defined(_WIN32)
+      return _rmdir(path_buf) == 0 ? 1u : 0u;
+#else
+      return rmdir(path_buf) == 0 ? 1u : 0u;
+#endif
+    case ZERO_FS_PATH_REMOVE:
+#if defined(_WIN32)
+      return _unlink(path_buf) == 0 ? 1u : 0u;
+#else
+      return unlink(path_buf) == 0 ? 1u : 0u;
+#endif
+  }
+  return 0;
+}
+
+uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path) {
+  char from_buf[ZERO_RUNTIME_PATH_BYTES];
+  char to_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(from_path, from_buf) || !zero_runtime_path_copy(to_path, to_buf)) return 0;
+  return rename(from_buf, to_buf) == 0 ? 1u : 0u;
 }
 
 static int zero_runtime_ascii_space(unsigned char byte) {
