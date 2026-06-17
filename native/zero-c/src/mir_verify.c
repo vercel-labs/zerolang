@@ -503,6 +503,13 @@ static bool mir_verify_proc_child_io_contract(IrProgram *ir, const IrFunction *f
   return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process output buffer", "process output buffer");
 }
 
+static bool mir_verify_proc_pty_resize_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "pty resize result")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_I32, "MIR verifier found invalid pty child handle", "pty child handle")) return false;
+  if (!mir_verify_value_type(ir, value->right, IR_TYPE_USIZE, "MIR verifier found invalid pty column count", "pty columns")) return false;
+  return mir_verify_value_type(ir, value->index, IR_TYPE_USIZE, "MIR verifier found invalid pty row count", "pty rows");
+}
+
 static bool mir_verify_value_is_integer(IrProgram *ir, const IrValue *value, const char *message, const char *role) {
   if (!ir || !ir->mir_valid) return false;
   if (value && mir_type_is_integer_value(value->type)) return true;
@@ -1088,8 +1095,8 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureFilesArgs" : "std.proc.captureFiles");
       return mir_verify_proc_capture_files_contract(ir, value);
     case IR_VALUE_PROC_CHILD_SPAWN:
-      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild")));
-      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild")));
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->int_value ? (value->arg_len == 4 ? "std.pty.spawnArgs" : (value->index ? "std.pty.spawnInEnv" : (value->right ? "std.pty.spawnIn" : "std.pty.spawn"))) : (value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild"))));
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->int_value ? (value->arg_len == 4 ? "std.pty.spawnArgs" : (value->index ? "std.pty.spawnInEnv" : (value->right ? "std.pty.spawnIn" : "std.pty.spawn"))) : (value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild"))));
       return mir_verify_proc_child_spawn_contract(ir, value);
     case IR_VALUE_PROC_CHILD_OP:
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child op");
@@ -1099,6 +1106,10 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child I/O");
       mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc child I/O");
       return mir_verify_proc_child_io_contract(ir, fun, state, value);
+    case IR_VALUE_PROC_PTY_RESIZE:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.pty.resize");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.pty.resize");
+      return mir_verify_proc_pty_resize_contract(ir, value);
     default:
       return true;
   }
@@ -1516,6 +1527,7 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
     case IR_VALUE_PROC_CHILD_SPAWN: return mir_verify_proc_child_spawn_contract(ir, value);
     case IR_VALUE_PROC_CHILD_OP: return mir_verify_proc_child_op_contract(ir, value);
     case IR_VALUE_PROC_CHILD_IO: return mir_verify_proc_child_io_contract(ir, fun, state, value);
+    case IR_VALUE_PROC_PTY_RESIZE: return mir_verify_proc_pty_resize_contract(ir, value);
     case IR_VALUE_FS_READ_ALL:
       if (value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
         if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem readAll result")) return false;
@@ -2434,7 +2446,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_PARSE_RUNTIME: case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32: case IR_VALUE_ARGS_PARSE_U32: case IR_VALUE_ARGS_FIND: case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER: case IR_VALUE_ARGS_VALUE_AFTER_OR: case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE: case IR_VALUE_PROC_SPAWN_INHERIT: case IR_VALUE_PROC_CAPTURE: case IR_VALUE_PROC_CAPTURE_FILES:
-    case IR_VALUE_PROC_CHILD_SPAWN: case IR_VALUE_PROC_CHILD_OP: case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_CHILD_SPAWN: case IR_VALUE_PROC_CHILD_OP: case IR_VALUE_PROC_CHILD_IO: case IR_VALUE_PROC_PTY_RESIZE:
       return mir_verify_direct_helper_value_contract(ir, fun, state, value, requirements);
     case IR_VALUE_MAYBE_HAS:
     case IR_VALUE_MAYBE_VALUE:

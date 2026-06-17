@@ -348,11 +348,13 @@ static bool build_aarch64_proc_runtime(const ZBuildability *ctx, const IrFunctio
       value->kind != IR_VALUE_PROC_CAPTURE_FILES &&
       value->kind != IR_VALUE_PROC_CHILD_SPAWN &&
       value->kind != IR_VALUE_PROC_CHILD_OP &&
-      value->kind != IR_VALUE_PROC_CHILD_IO) return true;
+      value->kind != IR_VALUE_PROC_CHILD_IO &&
+      value->kind != IR_VALUE_PROC_PTY_RESIZE) return true;
   unsigned required = 2;
   const char *message = "direct AArch64 std.proc helper exceeds scratch register spill capacity";
   if (value->kind == IR_VALUE_PROC_CAPTURE) required = value->arg_len == 2 ? 6 : 3;
   if (value->kind == IR_VALUE_PROC_CHILD_IO) required = 3;
+  if (value->kind == IR_VALUE_PROC_PTY_RESIZE) required = 3;
   if (value->kind == IR_VALUE_PROC_CAPTURE_FILES) required = value->arg_len == 2 ? 8 : 5;
   if (value->kind == IR_VALUE_PROC_SPAWN_INHERIT && value->arg_len == 4) required = 8;
   if (value->kind == IR_VALUE_PROC_CHILD_SPAWN && value->arg_len == 4) required = 8;
@@ -664,6 +666,9 @@ static bool build_check_macho64_json_http(const ZBuildability *ctx, const IrFunc
     if (!build_check_two_byte_views(ctx, fun, value, z_build_check_macho_byte_view, diag)) return false;
     if (value->index && !z_build_check_macho_byte_view(ctx, fun, value->index, diag)) return false;
     return true;
+  }
+  if (value->kind == IR_VALUE_PROC_PTY_RESIZE) {
+    return build_check_macho64_capacity(ctx, value, scratch_slot, 3, "direct AArch64 Mach-O std.pty.resize exceeds scratch register spill capacity", diag);
   }
   return true;
 }

@@ -432,6 +432,14 @@ export const docs: Doc[] = [
     section: "Runtime And Web",
   },
   {
+    slug: "module-pty",
+    title: "std.pty",
+    description: "Hosted pseudoterminal child processes for interactive CLIs and terminal programs.",
+    path: "/modules/pty",
+    sourcePath: "/articles/modules/pty.md",
+    section: "Runtime And Web",
+  },
+  {
     slug: "module-crypto",
     title: "std.crypto",
     description: "Hash, keyed hash, constant-time equality, and target entropy helpers.",

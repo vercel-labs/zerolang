@@ -71,6 +71,11 @@ static const char *const runtime_helper_symbols[COFF_RUNTIME_HELPER_COUNT] = {
   "zero_proc_spawn_child_args",
   "zero_proc_child_op",
   "zero_proc_child_io",
+  "zero_pty_spawn",
+  "zero_pty_spawn_in",
+  "zero_pty_spawn_in_env",
+  "zero_pty_spawn_args",
+  "zero_pty_resize",
 };
 
 static bool coff_emit_state_diag(ZDiag *diag, const char *message, int line, int column, const char *actual) {

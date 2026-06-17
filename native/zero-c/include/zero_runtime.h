@@ -243,6 +243,11 @@ int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, Zer
 int32_t zero_proc_spawn_child_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
 int32_t zero_proc_child_op(int32_t child, uint32_t op);
 ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_t op);
+int32_t zero_pty_spawn(ZeroByteView command);
+int32_t zero_pty_spawn_in(ZeroByteView command, ZeroByteView cwd);
+int32_t zero_pty_spawn_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_pty_spawn_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_pty_resize(int32_t child, uint64_t columns, uint64_t rows);
 
 int64_t zero_json_parse_bytes(ZeroByteView input);
 uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op);

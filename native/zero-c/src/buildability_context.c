@@ -118,6 +118,7 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_PROC_CHILD_SPAWN: return "IR_VALUE_PROC_CHILD_SPAWN";
     case IR_VALUE_PROC_CHILD_OP: return "IR_VALUE_PROC_CHILD_OP";
     case IR_VALUE_PROC_CHILD_IO: return "IR_VALUE_PROC_CHILD_IO";
+    case IR_VALUE_PROC_PTY_RESIZE: return "IR_VALUE_PROC_PTY_RESIZE";
     case IR_VALUE_FS_READ_ALL: return "IR_VALUE_FS_READ_ALL";
     case IR_VALUE_FS_READ_FILE: return "IR_VALUE_FS_READ_FILE";
     case IR_VALUE_FS_WRITE_ALL_FILE: return "IR_VALUE_FS_WRITE_ALL_FILE";

@@ -2685,6 +2685,20 @@ typedef enum {
   IR_DIRECT_STD_PROC_EXIT_CODE,
   IR_DIRECT_STD_PROC_SUCCEEDED,
   IR_DIRECT_STD_PROC_FAILED,
+  IR_DIRECT_STD_PTY_SPAWN,
+  IR_DIRECT_STD_PTY_SPAWN_IN,
+  IR_DIRECT_STD_PTY_SPAWN_IN_ENV,
+  IR_DIRECT_STD_PTY_SPAWN_ARGS,
+  IR_DIRECT_STD_PTY_VALID,
+  IR_DIRECT_STD_PTY_RUNNING,
+  IR_DIRECT_STD_PTY_WAIT,
+  IR_DIRECT_STD_PTY_KILL,
+  IR_DIRECT_STD_PTY_INTERRUPT,
+  IR_DIRECT_STD_PTY_CLOSE,
+  IR_DIRECT_STD_PTY_PID,
+  IR_DIRECT_STD_PTY_READ,
+  IR_DIRECT_STD_PTY_WRITE,
+  IR_DIRECT_STD_PTY_RESIZE,
   IR_DIRECT_STD_ARGS_LEN,
   IR_DIRECT_STD_ARGS_GET,
   IR_DIRECT_STD_ARGS_HAS,
@@ -2747,6 +2761,21 @@ static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
     {"std.proc.exitCode", IR_DIRECT_STD_PROC_EXIT_CODE},
     {"std.proc.succeeded", IR_DIRECT_STD_PROC_SUCCEEDED},
     {"std.proc.failed", IR_DIRECT_STD_PROC_FAILED},
+    {"std.pty.spawn", IR_DIRECT_STD_PTY_SPAWN},
+    {"std.pty.spawnIn", IR_DIRECT_STD_PTY_SPAWN_IN},
+    {"std.pty.spawnInEnv", IR_DIRECT_STD_PTY_SPAWN_IN_ENV},
+    {"std.pty.spawnArgs", IR_DIRECT_STD_PTY_SPAWN_ARGS},
+    {"std.pty.valid", IR_DIRECT_STD_PTY_VALID},
+    {"std.pty.childValid", IR_DIRECT_STD_PTY_VALID},
+    {"std.pty.running", IR_DIRECT_STD_PTY_RUNNING},
+    {"std.pty.wait", IR_DIRECT_STD_PTY_WAIT},
+    {"std.pty.kill", IR_DIRECT_STD_PTY_KILL},
+    {"std.pty.interrupt", IR_DIRECT_STD_PTY_INTERRUPT},
+    {"std.pty.close", IR_DIRECT_STD_PTY_CLOSE},
+    {"std.pty.pid", IR_DIRECT_STD_PTY_PID},
+    {"std.pty.read", IR_DIRECT_STD_PTY_READ},
+    {"std.pty.write", IR_DIRECT_STD_PTY_WRITE},
+    {"std.pty.resize", IR_DIRECT_STD_PTY_RESIZE},
     {"std.args.len", IR_DIRECT_STD_ARGS_LEN},
     {"std.args.get", IR_DIRECT_STD_ARGS_GET},
     {"std.args.has", IR_DIRECT_STD_ARGS_HAS},
@@ -2795,7 +2824,7 @@ static bool ir_lower_integer_value_arg(const Program *program, IrProgram *ir, co
   return true;
 }
 
-static bool ir_lower_std_proc_child_spawn_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool with_cwd, bool with_env, bool *handled, IrValue **out) {
+static bool ir_lower_std_proc_child_spawn_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool with_cwd, bool with_env, bool pty, bool *handled, IrValue **out) {
   IrValue *command = NULL;
   IrValue *cwd = NULL;
   IrValue *env = NULL;
@@ -2811,6 +2840,7 @@ static bool ir_lower_std_proc_child_spawn_direct_call(const Program *program, Ir
   value->left = command;
   value->right = cwd;
   value->index = env;
+  value->int_value = pty ? 1 : 0;
   ir_require_helper_counts(ir, 1, 0);
   *handled = true;
   *out = value;
@@ -2841,12 +2871,13 @@ static bool ir_lower_std_proc_push_argv2(const Program *program, IrProgram *ir, 
   return true;
 }
 
-static bool ir_lower_std_proc_child_spawn_args_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool *handled, IrValue **out) {
+static bool ir_lower_std_proc_child_spawn_args_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool pty, bool *handled, IrValue **out) {
   IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_SPAWN, IR_TYPE_I32, call->line, call->column);
   if (!ir_lower_std_proc_push_argv4(program, ir, fun, call, value)) {
     ir_free_value(value);
     return false;
   }
+  value->int_value = pty ? 1 : 0;
   ir_require_helper_counts(ir, 1, 0);
   *handled = true;
   *out = value;
@@ -2950,16 +2981,28 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     return true;
   }
   if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD && call->args.len == 1) {
-    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, false, false, handled, out);
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, false, false, false, handled, out);
   }
   if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_IN && call->args.len == 2) {
-    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, false, handled, out);
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, false, false, handled, out);
   }
   if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV && call->args.len == 3) {
-    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, true, handled, out);
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, true, false, handled, out);
   }
   if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS && call->args.len == 4) {
-    return ir_lower_std_proc_child_spawn_args_direct_call(program, ir, fun, call, handled, out);
+    return ir_lower_std_proc_child_spawn_args_direct_call(program, ir, fun, call, false, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN && call->args.len == 1) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, false, false, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN_IN && call->args.len == 2) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, false, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN_IN_ENV && call->args.len == 3) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, true, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN_ARGS && call->args.len == 4) {
+    return ir_lower_std_proc_child_spawn_args_direct_call(program, ir, fun, call, true, handled, out);
   }
   if ((id == IR_DIRECT_STD_PROC_CHILD_VALID ||
        id == IR_DIRECT_STD_PROC_RUNNING ||
@@ -2971,23 +3014,30 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
        id == IR_DIRECT_STD_PROC_PID ||
        id == IR_DIRECT_STD_PROC_PID_RUNNING ||
        id == IR_DIRECT_STD_PROC_KILL_PID ||
-       id == IR_DIRECT_STD_PROC_INTERRUPT_PID) && call->args.len == 1) {
+       id == IR_DIRECT_STD_PROC_INTERRUPT_PID ||
+       id == IR_DIRECT_STD_PTY_VALID ||
+       id == IR_DIRECT_STD_PTY_RUNNING ||
+       id == IR_DIRECT_STD_PTY_WAIT ||
+       id == IR_DIRECT_STD_PTY_KILL ||
+       id == IR_DIRECT_STD_PTY_INTERRUPT ||
+       id == IR_DIRECT_STD_PTY_CLOSE ||
+       id == IR_DIRECT_STD_PTY_PID) && call->args.len == 1) {
     IrValue *child = NULL;
     if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child)) return false;
     if (!child || child->type != IR_TYPE_I32) {
       ir_free_value(child);
-      ir_mark_unsupported(ir, "direct backend std.proc child helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      ir_mark_unsupported(ir, "direct backend process child helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
       return false;
     }
     IrProcChildOp op = IR_PROC_CHILD_OP_VALID;
     IrTypeKind result_type = IR_TYPE_BOOL;
-    if (id == IR_DIRECT_STD_PROC_RUNNING) op = IR_PROC_CHILD_OP_RUNNING;
-    else if (id == IR_DIRECT_STD_PROC_WAIT) { op = IR_PROC_CHILD_OP_WAIT; result_type = IR_TYPE_I32; }
-    else if (id == IR_DIRECT_STD_PROC_KILL) op = IR_PROC_CHILD_OP_KILL;
-    else if (id == IR_DIRECT_STD_PROC_INTERRUPT) op = IR_PROC_CHILD_OP_INTERRUPT;
-    else if (id == IR_DIRECT_STD_PROC_CLOSE) op = IR_PROC_CHILD_OP_CLOSE;
+    if (id == IR_DIRECT_STD_PROC_RUNNING || id == IR_DIRECT_STD_PTY_RUNNING) op = IR_PROC_CHILD_OP_RUNNING;
+    else if (id == IR_DIRECT_STD_PROC_WAIT || id == IR_DIRECT_STD_PTY_WAIT) { op = IR_PROC_CHILD_OP_WAIT; result_type = IR_TYPE_I32; }
+    else if (id == IR_DIRECT_STD_PROC_KILL || id == IR_DIRECT_STD_PTY_KILL) op = IR_PROC_CHILD_OP_KILL;
+    else if (id == IR_DIRECT_STD_PROC_INTERRUPT || id == IR_DIRECT_STD_PTY_INTERRUPT) op = IR_PROC_CHILD_OP_INTERRUPT;
+    else if (id == IR_DIRECT_STD_PROC_CLOSE || id == IR_DIRECT_STD_PTY_CLOSE) op = IR_PROC_CHILD_OP_CLOSE;
     else if (id == IR_DIRECT_STD_PROC_CLOSE_STDIN) op = IR_PROC_CHILD_OP_CLOSE_STDIN;
-    else if (id == IR_DIRECT_STD_PROC_PID) { op = IR_PROC_CHILD_OP_PID; result_type = IR_TYPE_I32; }
+    else if (id == IR_DIRECT_STD_PROC_PID || id == IR_DIRECT_STD_PTY_PID) { op = IR_PROC_CHILD_OP_PID; result_type = IR_TYPE_I32; }
     else if (id == IR_DIRECT_STD_PROC_PID_RUNNING) op = IR_PROC_CHILD_OP_PID_RUNNING;
     else if (id == IR_DIRECT_STD_PROC_KILL_PID) op = IR_PROC_CHILD_OP_KILL_PID;
     else if (id == IR_DIRECT_STD_PROC_INTERRUPT_PID) op = IR_PROC_CHILD_OP_INTERRUPT_PID;
@@ -3001,7 +3051,9 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
   }
   if ((id == IR_DIRECT_STD_PROC_READ_STDOUT ||
        id == IR_DIRECT_STD_PROC_READ_STDERR ||
-       id == IR_DIRECT_STD_PROC_WRITE_STDIN) && call->args.len == 2) {
+       id == IR_DIRECT_STD_PROC_WRITE_STDIN ||
+       id == IR_DIRECT_STD_PTY_READ ||
+       id == IR_DIRECT_STD_PTY_WRITE) && call->args.len == 2) {
     IrValue *child = NULL;
     IrValue *bytes = NULL;
     if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child) ||
@@ -3013,17 +3065,45 @@ static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir,
     if (!child || child->type != IR_TYPE_I32) {
       ir_free_value(child);
       ir_free_value(bytes);
-      ir_mark_unsupported(ir, "direct backend std.proc stream helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      ir_mark_unsupported(ir, "direct backend process stream helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
       return false;
     }
     IrProcChildIoOp op = IR_PROC_CHILD_IO_READ_STDOUT;
     if (id == IR_DIRECT_STD_PROC_READ_STDERR) op = IR_PROC_CHILD_IO_READ_STDERR;
-    else if (id == IR_DIRECT_STD_PROC_WRITE_STDIN) op = IR_PROC_CHILD_IO_WRITE_STDIN;
+    else if (id == IR_DIRECT_STD_PROC_WRITE_STDIN || id == IR_DIRECT_STD_PTY_WRITE) op = IR_PROC_CHILD_IO_WRITE_STDIN;
     IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_IO, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
     value->left = child;
     value->right = bytes;
     value->int_value = (unsigned long long)op;
     value->element_type = IR_TYPE_USIZE;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PTY_RESIZE && call->args.len == 3) {
+    IrValue *child = NULL;
+    IrValue *columns = NULL;
+    IrValue *rows = NULL;
+    if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child) ||
+        !ir_lower_call_arg(program, ir, fun, call->args.items[1], IR_TYPE_USIZE, &columns) ||
+        !ir_lower_call_arg(program, ir, fun, call->args.items[2], IR_TYPE_USIZE, &rows)) {
+      ir_free_value(child);
+      ir_free_value(columns);
+      ir_free_value(rows);
+      return false;
+    }
+    if (!child || child->type != IR_TYPE_I32) {
+      ir_free_value(child);
+      ir_free_value(columns);
+      ir_free_value(rows);
+      ir_mark_unsupported(ir, "direct backend std.pty.resize expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_PTY_RESIZE, IR_TYPE_BOOL, call->line, call->column);
+    value->left = child;
+    value->right = columns;
+    value->index = rows;
     ir_require_helper_counts(ir, 1, 0);
     *handled = true;
     *out = value;

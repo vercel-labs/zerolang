@@ -1,3 +1,6 @@
+#if !defined(_WIN32) && !defined(_XOPEN_SOURCE)
+#define _XOPEN_SOURCE 700
+#endif
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -46,6 +49,11 @@ typedef struct _stat ZeroRuntimeStat;
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#include <util.h>
+#else
+#include <pty.h>
+#endif
 typedef ssize_t ZeroWriteResult;
 typedef ssize_t ZeroReadResult;
 typedef struct stat ZeroRuntimeStat;
@@ -667,6 +675,8 @@ typedef struct {
   int stdin_fd;
   int stdout_fd;
   int stderr_fd;
+  int pty_fd;
+  int pty;
 } ZeroRuntimeProcChild;
 
 static ZeroRuntimeProcChild zero_proc_children[ZERO_RUNTIME_PROC_CHILD_MAX];
@@ -697,6 +707,7 @@ static void zero_proc_child_close_pipes(ZeroRuntimeProcChild *child) {
   zero_proc_child_close_fd(&child->stdin_fd);
   zero_proc_child_close_fd(&child->stdout_fd);
   zero_proc_child_close_fd(&child->stderr_fd);
+  zero_proc_child_close_fd(&child->pty_fd);
 }
 
 static int zero_proc_child_set_nonblock(int fd) {
@@ -812,6 +823,8 @@ static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_
     .stdin_fd = stdin_pipe[1],
     .stdout_fd = stdout_pipe[0],
     .stderr_fd = stderr_pipe[0],
+    .pty_fd = -1,
+    .pty = 0,
   };
   return (int32_t)(index + 1);
 #endif
@@ -852,6 +865,113 @@ int32_t zero_proc_spawn_child_args(ZeroByteView program, ZeroByteView args, Zero
   return zero_proc_spawn_child_argv_impl(argv, cwd_buf, env_buf);
 }
 
+static int32_t zero_pty_spawn_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
+#if defined(_WIN32)
+  (void)argv;
+  (void)cwd;
+  (void)env;
+  return 0;
+#else
+  if (cwd && !zero_runtime_path_is_dir(cwd)) return 0;
+  int index = zero_proc_child_alloc();
+  if (index < 0) return 0;
+
+  int master_fd = -1;
+  pid_t pid = forkpty(&master_fd, NULL, NULL, NULL);
+  if (pid < 0) {
+    return 0;
+  }
+
+  if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  if (!zero_proc_child_set_nonblock(master_fd)) {
+    ZERO_RUNTIME_CLOSE(master_fd);
+    kill(pid, SIGTERM);
+    return 0;
+  }
+  if (!zero_proc_sigpipe_ignored) {
+    signal(SIGPIPE, SIG_IGN);
+    zero_proc_sigpipe_ignored = 1;
+  }
+
+  zero_proc_children[index] = (ZeroRuntimeProcChild){
+    .active = 1,
+    .reaped = 0,
+    .status = 127,
+    .pid = pid,
+    .stdin_fd = -1,
+    .stdout_fd = -1,
+    .stderr_fd = -1,
+    .pty_fd = master_fd,
+    .pty = 1,
+  };
+  return (int32_t)(index + 1);
+#endif
+}
+
+static int32_t zero_pty_spawn_impl(ZeroByteView command, const char *cwd, char *env) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 0;
+  return zero_pty_spawn_argv_impl(argv, cwd, env);
+}
+
+int32_t zero_pty_spawn(ZeroByteView command) {
+  return zero_pty_spawn_impl(command, NULL, NULL);
+}
+
+int32_t zero_pty_spawn_in(ZeroByteView command, ZeroByteView cwd) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf)) return 0;
+  return zero_pty_spawn_impl(command, cwd_buf, NULL);
+}
+
+int32_t zero_pty_spawn_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf) || !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_pty_spawn_impl(command, cwd_buf, env_buf);
+}
+
+int32_t zero_pty_spawn_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(cwd, cwd_buf) ||
+      !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_pty_spawn_argv_impl(argv, cwd_buf, env_buf);
+}
+
+int32_t zero_pty_resize(int32_t child, uint64_t columns, uint64_t rows) {
+#if defined(_WIN32)
+  (void)child;
+  (void)columns;
+  (void)rows;
+  return 0;
+#else
+  int index = zero_proc_child_index(child);
+  if (index < 0 || columns == 0 || rows == 0 || columns > UINT16_MAX || rows > UINT16_MAX) return 0;
+  ZeroRuntimeProcChild *slot = &zero_proc_children[index];
+  if (!slot->pty || slot->pty_fd < 0) return 0;
+#if defined(TIOCSWINSZ)
+  struct winsize size;
+  memset(&size, 0, sizeof(size));
+  size.ws_col = (unsigned short)columns;
+  size.ws_row = (unsigned short)rows;
+  return ioctl(slot->pty_fd, TIOCSWINSZ, &size) == 0 ? 1 : 0;
+#else
+  return 0;
+#endif
+#endif
+}
+
 int32_t zero_proc_child_op(int32_t child, uint32_t op) {
 #if defined(_WIN32)
   (void)child;
@@ -888,6 +1008,7 @@ int32_t zero_proc_child_op(int32_t child, uint32_t op) {
       if (zero_proc_child_reap(slot, 1)) return 1;
       return kill(slot->pid, SIGINT) == 0 ? 1 : 0;
     case ZERO_PROC_CHILD_OP_CLOSE_STDIN:
+      if (slot->pty) return 1;
       zero_proc_child_close_fd(&slot->stdin_fd);
       return 1;
     case ZERO_PROC_CHILD_OP_CLOSE:
@@ -915,10 +1036,15 @@ ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_
   if (index < 0) return zero_runtime_none_usize();
   ZeroRuntimeProcChild *slot = &zero_proc_children[index];
   int fd = -1;
-  if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) fd = slot->stdout_fd;
-  else if (op == ZERO_PROC_CHILD_IO_READ_STDERR) fd = slot->stderr_fd;
-  else if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) fd = slot->stdin_fd;
-  else return zero_runtime_none_usize();
+  if (slot->pty) {
+    if (op == ZERO_PROC_CHILD_IO_READ_STDOUT || op == ZERO_PROC_CHILD_IO_WRITE_STDIN) fd = slot->pty_fd;
+    else return zero_runtime_none_usize();
+  } else {
+    if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) fd = slot->stdout_fd;
+    else if (op == ZERO_PROC_CHILD_IO_READ_STDERR) fd = slot->stderr_fd;
+    else if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) fd = slot->stdin_fd;
+    else return zero_runtime_none_usize();
+  }
   if (fd < 0) return zero_runtime_none_usize();
 
   if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) {
@@ -926,7 +1052,8 @@ ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_
     ZeroWriteResult written = ZERO_RUNTIME_WRITE(fd, buffer.ptr, buffer.len > (size_t)UINT_MAX ? UINT_MAX : (unsigned)buffer.len);
     if (written < 0) {
       if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();
-      zero_proc_child_close_fd(&slot->stdin_fd);
+      if (slot->pty) zero_proc_child_close_fd(&slot->pty_fd);
+      else zero_proc_child_close_fd(&slot->stdin_fd);
       return zero_runtime_none_usize();
     }
     return (ZeroMaybeUsize){1, (uint64_t)written};
@@ -936,12 +1063,14 @@ ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_
   ZeroReadResult got = ZERO_RUNTIME_READ(fd, buffer.ptr, buffer.len > (size_t)UINT_MAX ? UINT_MAX : (unsigned)buffer.len);
   if (got < 0) {
     if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();
-    if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) zero_proc_child_close_fd(&slot->stdout_fd);
+    if (slot->pty) zero_proc_child_close_fd(&slot->pty_fd);
+    else if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) zero_proc_child_close_fd(&slot->stdout_fd);
     else zero_proc_child_close_fd(&slot->stderr_fd);
     return zero_runtime_none_usize();
   }
   if (got == 0) {
-    if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) zero_proc_child_close_fd(&slot->stdout_fd);
+    if (slot->pty) zero_proc_child_close_fd(&slot->pty_fd);
+    else if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) zero_proc_child_close_fd(&slot->stdout_fd);
     else zero_proc_child_close_fd(&slot->stderr_fd);
     return zero_runtime_none_usize();
   }

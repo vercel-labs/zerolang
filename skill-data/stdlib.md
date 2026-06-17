@@ -59,6 +59,7 @@ These modules depend on host or runtime capabilities:
 - `std.net`: bootstrap network handles
 - `std.http`: HTTP request/response helpers and loopback listeners
 - `std.proc`: process execution and exit-status helpers
+- `std.pty`: hosted pseudoterminal child processes
 - `World.out` and `World.err`: program output capabilities
 
 Non-host targets may reject these APIs with target diagnostics. Inspect target facts before cross-building:
@@ -1366,6 +1367,36 @@ readStdout(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
 readStderr(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
 writeStdin(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>
 ```
+
+### std.pty
+
+```text
+spawn(arg0: String) -> ProcChild
+spawnIn(arg0: String, arg1: String) -> ProcChild
+spawnInEnv(arg0: String, arg1: String, arg2: Span<u8>) -> ProcChild
+spawnArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: Span<u8>) -> ProcChild
+valid(arg0: ProcChild) -> Bool
+childValid(arg0: ProcChild) -> Bool
+running(arg0: ProcChild) -> Bool
+wait(arg0: ProcChild) -> ProcStatus
+kill(arg0: ProcChild) -> Bool
+interrupt(arg0: ProcChild) -> Bool
+close(arg0: ProcChild) -> Bool
+pid(arg0: ProcChild) -> i32
+read(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
+write(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>
+resize(arg0: ProcChild, arg1: usize, arg2: usize) -> Bool
+```
+
+`std.pty` starts hosted children attached to a pseudoterminal instead of
+separate stdin/stdout/stderr pipes. It returns the same `ProcChild` handle shape
+as `std.proc`, so `running`, `wait`, `interrupt`, `kill`, `close`, and `pid`
+have the same lifecycle meaning. `read` and `write` are nonblocking; `read`
+returns `null` when no bytes are currently available or the terminal has closed.
+For short-lived PTY children, drain output with `read` before `wait`; once the
+child exits, host PTYs may report the terminal as closed.
+Use PTY children for interactive programs that need terminal behavior such as
+line editing, prompts, color, cursor control, or terminal-size awareness.
 
 ### std.rand
 

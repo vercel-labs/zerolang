@@ -376,6 +376,7 @@ static MachORuntimeHelper macho_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_PROC_CHILD_SPAWN: return MACHO_RUNTIME_PROC_SPAWN_CHILD;
     case IR_VALUE_PROC_CHILD_OP: return MACHO_RUNTIME_PROC_CHILD_OP;
     case IR_VALUE_PROC_CHILD_IO: return MACHO_RUNTIME_PROC_CHILD_IO;
+    case IR_VALUE_PROC_PTY_RESIZE: return MACHO_RUNTIME_PTY_RESIZE;
     case IR_VALUE_ARGS_FIND:
     case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER:
@@ -2199,7 +2200,8 @@ static bool macho_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *
     if (!macho_emit_byte_view_pair_at(text, fun, value->args[2], 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
     if (!macho_emit_byte_view_pair_at(text, fun, value->args[3], 6, 7, frame_size, scratch_slot + 6, ctx, diag)) return false;
     size_t patch = z_aarch64_emit_bl_placeholder(text);
-    if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_SPAWN_CHILD_ARGS, patch, value, diag)) return false;
+    MachORuntimeHelper helper = value->int_value ? MACHO_RUNTIME_PTY_SPAWN_ARGS : MACHO_RUNTIME_PROC_SPAWN_CHILD_ARGS;
+    if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
     if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
     return true;
   }
@@ -2210,7 +2212,27 @@ static bool macho_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *
   if (value->right && !macho_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
   if (value->index && !macho_emit_byte_view_pair_at(text, fun, value->index, 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  if (!z_macho_record_value_runtime_patch(ctx, value->index ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN : MACHO_RUNTIME_PROC_SPAWN_CHILD), patch, value, diag)) return false;
+  MachORuntimeHelper helper = MACHO_RUNTIME_PROC_SPAWN_CHILD;
+  if (value->int_value) helper = value->index ? MACHO_RUNTIME_PTY_SPAWN_IN_ENV : (value->right ? MACHO_RUNTIME_PTY_SPAWN_IN : MACHO_RUNTIME_PTY_SPAWN);
+  else helper = value->index ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN : MACHO_RUNTIME_PROC_SPAWN_CHILD);
+  if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_pty_resize_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.pty.resize requires a handle, columns, and rows", value ? value->line : 1, value ? value->column : 1, "missing pty resize input");
+  }
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_value_to_reg_at(text, fun, value->right, 8, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 8, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  if (!macho_emit_value_to_reg_at(text, fun, value->index, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 1, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PTY_RESIZE, patch, value, diag)) return false;
   if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
   return true;
 }
@@ -2646,6 +2668,7 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_PROC_CHILD_SPAWN: return macho_emit_proc_child_spawn_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CHILD_OP: return macho_emit_proc_child_op_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_PROC_CHILD_IO: return macho_emit_proc_child_io_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_PTY_RESIZE: return macho_emit_proc_pty_resize_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
       if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);

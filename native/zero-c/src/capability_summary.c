@@ -92,6 +92,7 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_PROC_CHILD_SPAWN: caps->proc = true; break;
     case IR_VALUE_PROC_CHILD_OP: caps->proc = true; break;
     case IR_VALUE_PROC_CHILD_IO: caps->proc = true; caps->memory = true; break;
+    case IR_VALUE_PROC_PTY_RESIZE: caps->proc = true; break;
     case IR_VALUE_TIME_RUNTIME:
     case IR_VALUE_TIME_WALL_SECONDS:
     case IR_VALUE_TIME_MONOTONIC:

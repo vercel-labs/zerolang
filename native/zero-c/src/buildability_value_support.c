@@ -76,6 +76,7 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
     case IR_VALUE_PROC_CHILD_SPAWN:
     case IR_VALUE_PROC_CHILD_OP:
     case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_PTY_RESIZE:
       return build_backend_supports_aarch64_hosted_runtime(backend);
     default:
       return false;
@@ -106,6 +107,7 @@ static bool build_value_supported_macho_x64(IrValueKind kind) {
     case IR_VALUE_PROC_CHILD_SPAWN:
     case IR_VALUE_PROC_CHILD_OP:
     case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_PTY_RESIZE:
       return true;
     default:
       return false;
@@ -191,6 +193,7 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_PROC_CHILD_SPAWN:
     case IR_VALUE_PROC_CHILD_OP:
     case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_PTY_RESIZE:
       return build_backend_supports_hosted_runtime(ctx);
     case IR_VALUE_TIME_RUNTIME:
       return build_backend_supports_hosted_runtime(ctx);

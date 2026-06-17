@@ -94,6 +94,11 @@ static const char *const runtime_helper_symbols[MACHO_RUNTIME_HELPER_COUNT] = {
   "_zero_proc_spawn_child_args",
   "_zero_proc_child_op",
   "_zero_proc_child_io",
+  "_zero_pty_spawn",
+  "_zero_pty_spawn_in",
+  "_zero_pty_spawn_in_env",
+  "_zero_pty_spawn_args",
+  "_zero_pty_resize",
 };
 
 static bool macho_emit_state_diag_at(ZDiag *diag, const char *message, int line, int column, const char *actual) {

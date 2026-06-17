@@ -1060,7 +1060,8 @@ static bool a64_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fu
     if (!a64_emit_byte_view_pair_at(text, fun, value->args[2], 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
     if (!a64_emit_byte_view_pair_at(text, fun, value->args[3], 6, 7, frame_size, scratch_slot + 6, ctx, diag)) return false;
     size_t patch = z_aarch64_emit_bl_placeholder(text);
-    if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_ARGS, diag, value)) return false;
+    ZAArch64DirectRuntimeHelper helper = value->int_value ? A64_DIRECT_RUNTIME_PTY_SPAWN_ARGS : A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_ARGS;
+    if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
     if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
     return true;
   }
@@ -1071,7 +1072,27 @@ static bool a64_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fu
   if (value->right && !a64_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
   if (value->index && !a64_emit_byte_view_pair_at(text, fun, value->index, 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
-  if (!a64_record_runtime_patch(ctx, patch, value->index ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN : A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD), diag, value)) return false;
+  ZAArch64DirectRuntimeHelper helper = A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD;
+  if (value->int_value) helper = value->index ? A64_DIRECT_RUNTIME_PTY_SPAWN_IN_ENV : (value->right ? A64_DIRECT_RUNTIME_PTY_SPAWN_IN : A64_DIRECT_RUNTIME_PTY_SPAWN);
+  else helper = value->index ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN : A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD);
+  if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool a64_emit_proc_pty_resize_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return a64_diag(diag, "direct AArch64 std.pty.resize requires a handle, columns, and rows", value ? value->line : 1, value ? value->column : 1, "missing pty resize input");
+  }
+  if (!a64_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_value_to_reg_at(text, fun, value->right, 8, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 8, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  if (!a64_emit_value_to_reg_at(text, fun, value->index, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PTY_RESIZE, diag, value)) return false;
   if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
   return true;
 }
@@ -1856,6 +1877,8 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
     case IR_VALUE_PROC_CHILD_IO:
       (void)reg;
       return a64_emit_proc_child_io_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_PTY_RESIZE:
+      return a64_emit_proc_pty_resize_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return a64_emit_sort_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:

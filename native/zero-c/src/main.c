@@ -6596,6 +6596,11 @@ typedef struct {
   bool zero_proc_spawn_child_args;
   bool zero_proc_child_op;
   bool zero_proc_child_io;
+  bool zero_pty_spawn;
+  bool zero_pty_spawn_in;
+  bool zero_pty_spawn_in_env;
+  bool zero_pty_spawn_args;
+  bool zero_pty_resize;
 } RuntimeImportAudit;
 
 static void runtime_import_audit_mark_fs_base(RuntimeImportAudit *audit) {
@@ -6714,16 +6719,26 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
       else runtime_import_audit_mark_fs_base(audit);
       break;
     case IR_VALUE_PROC_CHILD_SPAWN:
-      if (value->arg_len == 4) audit->zero_proc_spawn_child_args = true;
-      else if (value->index) audit->zero_proc_spawn_child_in_env = true;
-      else if (value->right) audit->zero_proc_spawn_child_in = true;
-      else audit->zero_proc_spawn_child = true;
+      if (value->int_value) {
+        if (value->arg_len == 4) audit->zero_pty_spawn_args = true;
+        else if (value->index) audit->zero_pty_spawn_in_env = true;
+        else if (value->right) audit->zero_pty_spawn_in = true;
+        else audit->zero_pty_spawn = true;
+      } else {
+        if (value->arg_len == 4) audit->zero_proc_spawn_child_args = true;
+        else if (value->index) audit->zero_proc_spawn_child_in_env = true;
+        else if (value->right) audit->zero_proc_spawn_child_in = true;
+        else audit->zero_proc_spawn_child = true;
+      }
       break;
     case IR_VALUE_PROC_CHILD_OP:
       audit->zero_proc_child_op = true;
       break;
     case IR_VALUE_PROC_CHILD_IO:
       audit->zero_proc_child_io = true;
+      break;
+    case IR_VALUE_PROC_PTY_RESIZE:
+      audit->zero_pty_resize = true;
       break;
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
@@ -6957,6 +6972,7 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
       value->kind == IR_VALUE_PROC_CHILD_SPAWN ||
       value->kind == IR_VALUE_PROC_CHILD_OP ||
       value->kind == IR_VALUE_PROC_CHILD_IO ||
+      value->kind == IR_VALUE_PROC_PTY_RESIZE ||
       value->kind == IR_VALUE_HTTP_FETCH ||
       value->kind == IR_VALUE_HTTP_RESULT_OK ||
       value->kind == IR_VALUE_HTTP_RESULT_STATUS ||
@@ -7090,6 +7106,11 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_proc_spawn_child_args) count++;
   if (audit->zero_proc_child_op) count++;
   if (audit->zero_proc_child_io) count++;
+  if (audit->zero_pty_spawn) count++;
+  if (audit->zero_pty_spawn_in) count++;
+  if (audit->zero_pty_spawn_in_env) count++;
+  if (audit->zero_pty_spawn_args) count++;
+  if (audit->zero_pty_resize) count++;
   return count;
 }
 
@@ -7192,6 +7213,11 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_proc_spawn_child_args) append_json_string_array_item(buf, &first, "zero_proc_spawn_child_args");
   if (audit && audit->zero_proc_child_op) append_json_string_array_item(buf, &first, "zero_proc_child_op");
   if (audit && audit->zero_proc_child_io) append_json_string_array_item(buf, &first, "zero_proc_child_io");
+  if (audit && audit->zero_pty_spawn) append_json_string_array_item(buf, &first, "zero_pty_spawn");
+  if (audit && audit->zero_pty_spawn_in) append_json_string_array_item(buf, &first, "zero_pty_spawn_in");
+  if (audit && audit->zero_pty_spawn_in_env) append_json_string_array_item(buf, &first, "zero_pty_spawn_in_env");
+  if (audit && audit->zero_pty_spawn_args) append_json_string_array_item(buf, &first, "zero_pty_spawn_args");
+  if (audit && audit->zero_pty_resize) append_json_string_array_item(buf, &first, "zero_pty_resize");
   zbuf_append(buf, "]");
   return !first;
 }

@@ -155,6 +155,11 @@ static const char *a64_runtime_helper_symbol(ZAArch64DirectRuntimeHelper helper)
     case A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_ARGS: return "zero_proc_spawn_child_args";
     case A64_DIRECT_RUNTIME_PROC_CHILD_OP: return "zero_proc_child_op";
     case A64_DIRECT_RUNTIME_PROC_CHILD_IO: return "zero_proc_child_io";
+    case A64_DIRECT_RUNTIME_PTY_SPAWN: return "zero_pty_spawn";
+    case A64_DIRECT_RUNTIME_PTY_SPAWN_IN: return "zero_pty_spawn_in";
+    case A64_DIRECT_RUNTIME_PTY_SPAWN_IN_ENV: return "zero_pty_spawn_in_env";
+    case A64_DIRECT_RUNTIME_PTY_SPAWN_ARGS: return "zero_pty_spawn_args";
+    case A64_DIRECT_RUNTIME_PTY_RESIZE: return "zero_pty_resize";
     case A64_DIRECT_RUNTIME_HELPER_COUNT: break;
   }
   return "";
