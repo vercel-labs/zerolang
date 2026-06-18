@@ -325,6 +325,8 @@ static IrStdTermHelper ir_std_term_helper(const char *name) {
     {"std.term.leaveAltScreen", "\x1b[?1049l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
     {"std.term.enterBracketedPaste", "\x1b[?2004h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
     {"std.term.leaveBracketedPaste", "\x1b[?2004l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.enterMouseCapture", "\x1b[?1000h\x1b[?1002h\x1b[?1006h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.leaveMouseCapture", "\x1b[?1006l\x1b[?1002l\x1b[?1000l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
     {"std.term.keyNone", NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
     {"std.term.keyEscape", NULL, 27ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
     {"std.term.keyEnter", NULL, 13ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},

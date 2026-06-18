@@ -2980,6 +2980,8 @@ static const char *ir_graph_term_sequence(const char *name) {
     {"std.term.leaveAltScreen", "\x1b[?1049l"},
     {"std.term.enterBracketedPaste", "\x1b[?2004h"},
     {"std.term.leaveBracketedPaste", "\x1b[?2004l"},
+    {"std.term.enterMouseCapture", "\x1b[?1000h\x1b[?1002h\x1b[?1006h"},
+    {"std.term.leaveMouseCapture", "\x1b[?1006l\x1b[?1002l\x1b[?1000l"},
   };
   if (!name) return NULL;
   for (size_t i = 0; i < sizeof(sequences) / sizeof(sequences[0]); i++) {

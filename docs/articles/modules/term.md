@@ -51,6 +51,8 @@ Runnable today:
 | `std.term.leaveAltScreen()` | `String` | Leave the alternate screen buffer. |
 | `std.term.enterBracketedPaste()` | `String` | Enable bracketed paste markers in supporting terminals. |
 | `std.term.leaveBracketedPaste()` | `String` | Disable bracketed paste markers in supporting terminals. |
+| `std.term.enterMouseCapture()` | `String` | Enable SGR mouse tracking and drag/wheel capture in supporting terminals. |
+| `std.term.leaveMouseCapture()` | `String` | Disable the SGR mouse tracking modes enabled by `enterMouseCapture`. |
 | `std.term.keyNone()` | `u32` | Sentinel returned for incomplete or unsupported key bytes. |
 | `std.term.keyEscape()` | `u32` | Escape key code. |
 | `std.term.keyEnter()` | `u32` | Enter key code for `\r` or `\n`. |
@@ -116,6 +118,7 @@ Example:
 ```zero
 pub fn main(world: World) -> Void raises {
     check world.out.write(std.term.enterAltScreen())
+    check world.out.write(std.term.enterMouseCapture())
     check world.out.write(std.term.clearScreen())
     check world.out.write(std.term.cursorHome())
     var cursor: [24]u8 = [0_u8; 24]
@@ -145,6 +148,7 @@ pub fn main(world: World) -> Void raises {
         }
     }
     check world.out.write(std.term.reset())
+    check world.out.write(std.term.leaveMouseCapture())
     check world.out.write(std.term.leaveAltScreen())
 }
 ```

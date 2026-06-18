@@ -754,6 +754,8 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.term.leaveAltScreen", "String", 0, {NULL}, {NULL}, "none", "target-neutral", "borrows static ANSI alternate-screen leave sequence", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.enterBracketedPaste", "String", 0, {NULL}, {NULL}, "none", "target-neutral", "borrows static ANSI bracketed-paste enter sequence", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.leaveBracketedPaste", "String", 0, {NULL}, {NULL}, "none", "target-neutral", "borrows static ANSI bracketed-paste leave sequence", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.term.enterMouseCapture", "String", 0, {NULL}, {NULL}, "none", "target-neutral", "borrows static ANSI SGR mouse-capture enter sequence", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.term.leaveMouseCapture", "String", 0, {NULL}, {NULL}, "none", "target-neutral", "borrows static ANSI SGR mouse-capture leave sequence", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.keyNone", "u32", 0, {NULL}, {NULL}, "none", "target-neutral", "stable key code", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.keyEscape", "u32", 0, {NULL}, {NULL}, "none", "target-neutral", "stable key code", true, Z_STD_HELPER_KIND_TABLE},
   {"std.term.keyEnter", "u32", 0, {NULL}, {NULL}, "none", "target-neutral", "stable key code", true, Z_STD_HELPER_KIND_TABLE},
