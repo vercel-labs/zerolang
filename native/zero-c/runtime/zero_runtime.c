@@ -337,6 +337,25 @@ uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path) {
   return rename(from_buf, to_buf) == 0 ? 1u : 0u;
 }
 
+uint32_t zero_fs_atomic_write(ZeroByteView path, ZeroByteView temp_path, ZeroByteView bytes) {
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  char temp_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf) || !zero_runtime_path_copy(temp_path, temp_buf)) return 0;
+  ZeroMaybeUsize wrote = zero_runtime_write_bytes_to_path(temp_path, bytes, 0);
+  if (!wrote.has || wrote.value != bytes.len) {
+    remove(temp_buf);
+    return 0;
+  }
+#if defined(_WIN32)
+  remove(path_buf);
+#endif
+  if (rename(temp_buf, path_buf) != 0) {
+    remove(temp_buf);
+    return 0;
+  }
+  return 1u;
+}
+
 static int zero_runtime_ascii_space(unsigned char byte) {
   return byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == '\f' || byte == '\v';
 }

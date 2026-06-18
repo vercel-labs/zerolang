@@ -32,7 +32,7 @@ type FileBudget = {
 const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/include/zero.h": { maxLines: 1334, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
-  "native/zero-c/include/zero_runtime.h": { maxLines: 330, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero_runtime.h": { maxLines: 331, maxStrcmpCalls: 0 },
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   // The static const type and canonical value memos compare binder names with strcmp.
@@ -94,8 +94,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/aarch64_emit.h": { maxLines: 90, maxStrcmpCalls: 0 },
   "native/zero-c/src/emit_macho64.c": { maxLines: 3924, maxStrcmpCalls: 2 },
   "native/zero-c/src/emit_macho_x64.c": { maxLines: 2864, maxStrcmpCalls: 1 },
-  "native/zero-c/src/macho_emit_state.c": { maxLines: 279, maxStrcmpCalls: 0 },
-  "native/zero-c/src/macho_emit_state.h": { maxLines: 164, maxStrcmpCalls: 0 },
+  "native/zero-c/src/macho_emit_state.c": { maxLines: 280, maxStrcmpCalls: 0 },
+  "native/zero-c/src/macho_emit_state.h": { maxLines: 165, maxStrcmpCalls: 0 },
   "native/zero-c/src/emit_elf64.c": { maxLines: 4302, maxStrcmpCalls: 3 },
   "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 511, maxStrcmpCalls: 1 },
   "native/zero-c/src/emit_llvm_ir.c": { maxLines: 1016, maxStrcmpCalls: 9 },
