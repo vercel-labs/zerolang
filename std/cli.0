@@ -271,3 +271,128 @@ fn __zero_std_cli_format_invalid_option(buffer: MutSpan<u8>, option: Span<u8>) -
     }
     return null
 }
+
+fn __zero_std_cli_format_section(buffer: MutSpan<u8>, title: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let wrote_title: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, title)
+    if !wrote_title.has {
+        return null
+    }
+    offset = wrote_title.value
+    let colon: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, ":\n")
+    if colon.has {
+        return buffer[..colon.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_help_row_with_width(buffer: MutSpan<u8>, label: Span<u8>, summary: Span<u8>, width: usize) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let indent: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "  ")
+    if !indent.has {
+        return null
+    }
+    offset = indent.value
+    let wrote_label: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, label)
+    if !wrote_label.has {
+        return null
+    }
+    offset = wrote_label.value
+    var spaces: usize = 2_usize
+    if std.mem.len(label) < width {
+        spaces = spaces + (width - std.mem.len(label))
+    }
+    var index: usize = 0
+    while index < spaces {
+        let space: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, " ")
+        if !space.has {
+            return null
+        }
+        offset = space.value
+        index = index + 1_usize
+    }
+    let wrote_summary: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, summary)
+    if !wrote_summary.has {
+        return null
+    }
+    offset = wrote_summary.value
+    let newline: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "\n")
+    if newline.has {
+        return buffer[..newline.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_help_row(buffer: MutSpan<u8>, label: Span<u8>, summary: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let indent: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "  ")
+    if !indent.has {
+        return null
+    }
+    offset = indent.value
+    let wrote_label: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, label)
+    if !wrote_label.has {
+        return null
+    }
+    offset = wrote_label.value
+    var spaces: usize = 2_usize
+    if std.mem.len(label) < 17_usize {
+        spaces = spaces + (17_usize - std.mem.len(label))
+    }
+    var index: usize = 0
+    while index < spaces {
+        let space: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, " ")
+        if !space.has {
+            return null
+        }
+        offset = space.value
+        index = index + 1_usize
+    }
+    let wrote_summary: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, summary)
+    if !wrote_summary.has {
+        return null
+    }
+    offset = wrote_summary.value
+    let newline: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "\n")
+    if newline.has {
+        return buffer[..newline.value]
+    }
+    return null
+}
+
+fn __zero_std_cli_format_help(buffer: MutSpan<u8>, usage: Span<u8>, description: Span<u8>) -> Maybe<Span<u8>> {
+    var offset: usize = 0
+    let usage_label: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "Usage: ")
+    if !usage_label.has {
+        return null
+    }
+    offset = usage_label.value
+    let wrote_usage: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, usage)
+    if !wrote_usage.has {
+        return null
+    }
+    offset = wrote_usage.value
+    let usage_newline: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "\n")
+    if !usage_newline.has {
+        return null
+    }
+    offset = usage_newline.value
+    if std.mem.len(description) > 0_usize {
+        let description_gap: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "\n")
+        if !description_gap.has {
+            return null
+        }
+        offset = description_gap.value
+        let wrote_description: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, description)
+        if !wrote_description.has {
+            return null
+        }
+        offset = wrote_description.value
+        let description_newline: Maybe<usize> = __zero_std_cli_write_span(buffer, offset, "\n")
+        if !description_newline.has {
+            return null
+        }
+        offset = description_newline.value
+    }
+    return buffer[..offset]
+}
