@@ -403,6 +403,7 @@ formatCommand(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>)
 formatOption(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 formatSection(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 formatHelpRow(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+formatHelpRowWithWidth(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: usize) -> Maybe<Span<u8>>
 formatHelp(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 formatError(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 formatUnknownCommand(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
@@ -1094,6 +1095,8 @@ enterAltScreen() -> String
 leaveAltScreen() -> String
 enterBracketedPaste() -> String
 leaveBracketedPaste() -> String
+enterMouseCapture() -> String
+leaveMouseCapture() -> String
 keyNone() -> u32
 keyEscape() -> u32
 keyEnter() -> u32
