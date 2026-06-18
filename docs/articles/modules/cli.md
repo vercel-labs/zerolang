@@ -28,6 +28,7 @@ Runnable today:
 | `std.cli.formatOption(buffer, name, valueName, summary)` | `Maybe<Span<u8>>` | Writes one indented option help row. |
 | `std.cli.formatSection(buffer, title)` | `Maybe<Span<u8>>` | Writes a section heading such as `Options:\n`. |
 | `std.cli.formatHelpRow(buffer, label, summary)` | `Maybe<Span<u8>>` | Writes one padded, newline-terminated help row using the default label width. |
+| `std.cli.formatHelpRowCustom(buffer, label, summary, indent, width)` | `Maybe<Span<u8>>` | Writes one padded help row using caller-supplied indentation and label width. |
 | `std.cli.formatHelpRowWithWidth(buffer, label, summary, width)` | `Maybe<Span<u8>>` | Writes one padded help row using a caller-supplied label width. |
 | `std.cli.formatHelp(buffer, usage, description)` | `Maybe<Span<u8>>` | Writes a help header with `Usage:` and an optional description. |
 | `std.cli.formatError(buffer, message)` | `Maybe<Span<u8>>` | Writes an `error: ...` line. |
@@ -82,4 +83,5 @@ pub fn main(world: World) -> Void raises {
 typed argument, help row, and usage error patterns regular without hiding
 process arguments behind a global parser or allocating command tables. For
 custom help layouts, compose `formatHelp`, `formatSection`, `formatHelpRow`,
-and `formatHelpRowWithWidth` rather than relying on a global formatter state.
+`formatHelpRowWithWidth`, and `formatHelpRowCustom` rather than relying on a
+global formatter state.
