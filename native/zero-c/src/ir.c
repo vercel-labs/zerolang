@@ -4830,6 +4830,27 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      if (strcmp(callee_name, "std.fs.dirEntryName") == 0 && expr->args.len == 3) {
+        IrValue *buf = NULL;
+        IrValue *path = NULL;
+        IrValue *index = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buf) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &path) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[2], &index)) {
+          ir_free_value(buf);
+          ir_free_value(path);
+          ir_free_value(index);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_FS_DIR_ENTRY_NAME, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buf;
+        value->right = path;
+        value->index = index;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
       if (strcmp(callee_name, "std.fs.tempName") == 0 && expr->args.len == 2) {
         IrValue *buf = NULL;
         IrValue *prefix = NULL;

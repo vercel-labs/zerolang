@@ -35,6 +35,7 @@ Runnable today:
 | `std.fs.remove(path)` | `Bool` | Removes a hosted file path. |
 | `std.fs.rename(old, new)` | `Bool` | Renames a hosted file path. |
 | `std.fs.dirEntryCount(path)` | `Maybe<usize>` | Counts entries in a hosted directory. |
+| `std.fs.dirEntryName(buffer, path, index)` | `Maybe<Span<u8>>` | Writes one hosted directory entry name into caller storage. |
 | `std.fs.tempName(buffer, prefix)` | `Maybe<String>` | Writes a temporary path into caller storage. |
 | `std.fs.atomicWrite(path, temp, bytes)` | `Bool` | Writes through a caller-provided temporary path and renames. |
 | `std.fs.close(&mut file)` | `Void` | Closes an owned file handle explicitly; remaining owned files are cleaned up deterministically. |
@@ -48,7 +49,7 @@ Runnable today:
 Current limits:
 
 - Richer permissions and platform-specific file modes.
-- Directory walking.
+- Recursive directory walking helpers.
 - Async or nonblocking I/O.
 
 ## Example

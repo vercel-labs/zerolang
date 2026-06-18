@@ -1152,6 +1152,24 @@ static bool elf_emit_fs_dir_entry_count_value(ZBuf *code, const IrFunction *fun,
   }
 }
 
+static bool elf_emit_fs_dir_entry_name_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return elf_diag(diag, "direct ELF64 std.fs.dirEntryName requires a buffer, path, and index", value ? value->line : 1, value ? value->column : 1, "missing dirEntryName input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 5, 5, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_value(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_FS_DIR_ENTRY_NAME, 5, 5, temp_base, value, diag)) return false;
+  elf_emit_runtime_temp_slot_load(code, temp_base, 0, 2);
+  elf_emit_http_packed_span_result(code);
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
 static bool elf_emit_fs_atomic_write_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
   switch (value->kind) {
     case IR_VALUE_FS_ATOMIC_WRITE: {
@@ -3098,7 +3116,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       !((value->kind == IR_VALUE_SORT_RUNTIME) && value->type == IR_TYPE_VOID) &&
       !((value->kind == IR_VALUE_PROC_CAPTURE || value->kind == IR_VALUE_PROC_CHILD_IO) && value->type == IR_TYPE_MAYBE_SCALAR) &&
       !((value->kind == IR_VALUE_FMT_BOOL || value->kind == IR_VALUE_FMT_HEX_U32 || value->kind == IR_VALUE_FMT_I32 ||
-         value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER) &&
+         value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
+         value->kind == IR_VALUE_FS_DIR_ENTRY_NAME) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       value->kind != IR_VALUE_MAYBE_HAS && value->kind != IR_VALUE_VEC_LEN && value->kind != IR_VALUE_VEC_CAPACITY &&
       value->kind != IR_VALUE_VEC_PUSH && value->kind != IR_VALUE_VEC_GET && value->kind != IR_VALUE_VEC_SET && value->kind != IR_VALUE_VEC_CLEAR && value->kind != IR_VALUE_VEC_POP && value->kind != IR_VALUE_VEC_TRUNCATE && value->kind != IR_VALUE_VEC_REMOVE_SWAP &&
@@ -3167,6 +3186,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_fs_basic_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
       return elf_emit_fs_dir_entry_count_value(code, fun, value, ctx, diag);
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      return elf_emit_fs_dir_entry_name_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_ATOMIC_WRITE:
       return elf_emit_fs_atomic_write_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_FILE_LEN: case IR_VALUE_FS_READ_FILE: case IR_VALUE_FS_WRITE_ALL_FILE:
@@ -3587,7 +3608,8 @@ static bool elf_emit_maybe_byte_view_local_set(ZBuf *text, const IrFunction *fun
                        instr->value->kind == IR_VALUE_FMT_HEX_U32 ||
                        instr->value->kind == IR_VALUE_FMT_I32 ||
                        instr->value->kind == IR_VALUE_FMT_U32 ||
-                       instr->value->kind == IR_VALUE_FMT_USIZE)) {
+                       instr->value->kind == IR_VALUE_FMT_USIZE ||
+                       instr->value->kind == IR_VALUE_FS_DIR_ENTRY_NAME)) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
     elf_emit_store_local_slot_reg(text, local, 8, 2, true);
@@ -3805,6 +3827,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_FMT_I32 ||
                    instr->value->kind == IR_VALUE_FMT_U32 ||
                    instr->value->kind == IR_VALUE_FMT_USIZE ||
+                   instr->value->kind == IR_VALUE_FS_DIR_ENTRY_NAME ||
                    instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) {

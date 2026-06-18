@@ -145,6 +145,7 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
           value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
           value->kind == IR_VALUE_ENV_GET ||
           value->kind == IR_VALUE_FS_READ_ALL ||
+          value->kind == IR_VALUE_FS_DIR_ENTRY_NAME ||
           value->kind == IR_VALUE_FS_TEMP_NAME ||
           value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
           value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
@@ -1577,6 +1578,11 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
       if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem directory count result type mismatch", "filesystem directory count")) return false;
       return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid filesystem directory path", "filesystem directory path");
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem directory entry name result")) return false;
+      if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid filesystem directory entry name buffer", "filesystem directory entry name buffer")) return false;
+      if (!mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid filesystem directory path", "filesystem directory path")) return false;
+      return mir_verify_value_is_integer(ir, value->index, "MIR verifier found invalid filesystem directory entry index", "filesystem directory entry index");
     case IR_VALUE_FS_TEMP_NAME:
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem temp name result")) return false;
       if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid filesystem temp buffer", "filesystem temp buffer")) return false;
@@ -2496,6 +2502,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_FS_REMOVE_DIR:
     case IR_VALUE_FS_IS_DIR:
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       return mir_verify_fs_value_contract(ir, fun, state, value);

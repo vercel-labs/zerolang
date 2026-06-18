@@ -126,6 +126,7 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_FS_REMOVE_DIR:
     case IR_VALUE_FS_IS_DIR:
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       caps->fs = true;

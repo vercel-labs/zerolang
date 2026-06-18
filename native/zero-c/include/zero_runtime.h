@@ -229,6 +229,8 @@ ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes);
 ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes);
+ZeroMaybeUsize zero_fs_dir_entry_count(ZeroByteView path);
+uint64_t zero_fs_dir_entry_name(ZeroMutByteView buffer, ZeroByteView path, uint64_t index);
 uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op);
 uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path);
 uint32_t zero_fs_atomic_write(ZeroByteView path, ZeroByteView temp_path, ZeroByteView bytes);

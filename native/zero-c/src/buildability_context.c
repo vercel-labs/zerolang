@@ -131,6 +131,7 @@ const char *z_build_value_kind_name(IrValueKind kind) {
     case IR_VALUE_FS_REMOVE_DIR: return "IR_VALUE_FS_REMOVE_DIR";
     case IR_VALUE_FS_IS_DIR: return "IR_VALUE_FS_IS_DIR";
     case IR_VALUE_FS_DIR_ENTRY_COUNT: return "IR_VALUE_FS_DIR_ENTRY_COUNT";
+    case IR_VALUE_FS_DIR_ENTRY_NAME: return "IR_VALUE_FS_DIR_ENTRY_NAME";
     case IR_VALUE_FS_TEMP_NAME: return "IR_VALUE_FS_TEMP_NAME";
     case IR_VALUE_FS_ATOMIC_WRITE: return "IR_VALUE_FS_ATOMIC_WRITE";
     case IR_VALUE_JSON_PARSE_BYTES: return "IR_VALUE_JSON_PARSE_BYTES";

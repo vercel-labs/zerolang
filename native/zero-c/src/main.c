@@ -6702,6 +6702,7 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_FS_REMOVE_DIR:
     case IR_VALUE_FS_IS_DIR:
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       runtime_import_audit_mark_fs_base(audit);
@@ -6894,7 +6895,7 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
       (value->kind == IR_VALUE_FS_READ_ALL && value->type == IR_TYPE_I64)) {
     audit->fd_filestat_get = true;
   }
-  if (value->kind == IR_VALUE_FS_DIR_ENTRY_COUNT) audit->fd_readdir = true;
+  if (value->kind == IR_VALUE_FS_DIR_ENTRY_COUNT || value->kind == IR_VALUE_FS_DIR_ENTRY_NAME) audit->fd_readdir = true;
   if (value->kind == IR_VALUE_FS_MAKE_DIR) audit->path_create_directory = true;
   if (value->kind == IR_VALUE_FS_REMOVE_DIR) audit->path_remove_directory = true;
   if (value->kind == IR_VALUE_FS_REMOVE) audit->path_unlink_file = true;

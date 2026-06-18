@@ -4048,6 +4048,25 @@ static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir
     *out = value;
     return true;
   }
+  if (arg_count == 3 && ir_text_eq(callee_name, "std.fs.dirEntryName")) {
+    IrValue *buf = NULL;
+    IrValue *path = NULL;
+    IrValue *index = NULL;
+    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &buf) ||
+        !ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 1), &path) ||
+        !ir_graph_lower_expr(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 2), &index)) {
+      ir_free_value(buf);
+      ir_free_value(path);
+      ir_free_value(index);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_FS_DIR_ENTRY_NAME, IR_TYPE_MAYBE_BYTE_VIEW, ir_graph_line(expr), ir_graph_column(expr));
+    value->left = buf;
+    value->right = path;
+    value->index = index;
+    *out = value;
+    return true;
+  }
   if (arg_count == 2 && ir_text_eq(callee_name, "std.fs.tempName")) {
     IrValue *buf = NULL;
     IrValue *prefix = NULL;

@@ -67,6 +67,7 @@ static const char *const runtime_helper_symbols[ELF_RUNTIME_HELPER_COUNT] = {
   "zero_crypto_digest",
   "zero_crypto_hmac_sha256",
   "zero_crypto_hmac_sha256_hex",
+  "zero_fs_dir_entry_name",
   "zero_args_find",
   "zero_parse_i32",
   "zero_parse_u32",

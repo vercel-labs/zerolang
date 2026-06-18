@@ -42,6 +42,7 @@ typedef struct _stat ZeroRuntimeStat;
 #define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
 #endif
 #else
+#include <dirent.h>
 #include <signal.h>
 #include <sys/select.h>
 #include <sys/ioctl.h>
@@ -80,6 +81,8 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_PROC_ENV_BYTES 4096u
 #define ZERO_RUNTIME_PROC_MAX_ARGS 64u
 #define ZERO_RUNTIME_PROC_CHILD_MAX 64u
+
+static uint64_t zero_runtime_pack_span(int has, size_t offset, size_t len);
 
 uint32_t zero_rand_entropy_u32(void) {
 #if defined(_WIN32)
@@ -280,6 +283,107 @@ ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes) {
 
 ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes) {
   return zero_runtime_write_bytes_to_path(path, bytes, 1);
+}
+
+ZeroMaybeUsize zero_fs_dir_entry_count(ZeroByteView path) {
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return zero_runtime_none_usize();
+#if defined(_WIN32)
+  char search_buf[ZERO_RUNTIME_PATH_BYTES + 3u];
+  size_t path_len = strlen(path_buf);
+  if (path_len + 3u >= sizeof(search_buf)) return zero_runtime_none_usize();
+  memcpy(search_buf, path_buf, path_len);
+  if (path_len > 0 && search_buf[path_len - 1u] != '\\' && search_buf[path_len - 1u] != '/') {
+    search_buf[path_len++] = '\\';
+  }
+  search_buf[path_len++] = '*';
+  search_buf[path_len] = '\0';
+
+  WIN32_FIND_DATAA data;
+  HANDLE handle = FindFirstFileA(search_buf, &data);
+  if (handle == INVALID_HANDLE_VALUE) return zero_runtime_none_usize();
+  uint64_t count = 0;
+  do {
+    const char *name = data.cFileName;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    count++;
+  } while (FindNextFileA(handle, &data));
+  FindClose(handle);
+  return (ZeroMaybeUsize){1, count};
+#else
+  DIR *dir = opendir(path_buf);
+  if (!dir) return zero_runtime_none_usize();
+  uint64_t count = 0;
+  struct dirent *entry = NULL;
+  while ((entry = readdir(dir)) != NULL) {
+    const char *name = entry->d_name;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    count++;
+  }
+  closedir(dir);
+  return (ZeroMaybeUsize){1, count};
+#endif
+}
+
+uint64_t zero_fs_dir_entry_name(ZeroMutByteView buffer, ZeroByteView path, uint64_t index) {
+  if ((!buffer.ptr && buffer.len > 0) || index > UINT32_MAX) return 0;
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return 0;
+#if defined(_WIN32)
+  char search_buf[ZERO_RUNTIME_PATH_BYTES + 3u];
+  size_t path_len = strlen(path_buf);
+  if (path_len + 3u >= sizeof(search_buf)) return 0;
+  memcpy(search_buf, path_buf, path_len);
+  if (path_len > 0 && search_buf[path_len - 1u] != '\\' && search_buf[path_len - 1u] != '/') {
+    search_buf[path_len++] = '\\';
+  }
+  search_buf[path_len++] = '*';
+  search_buf[path_len] = '\0';
+
+  WIN32_FIND_DATAA data;
+  HANDLE handle = FindFirstFileA(search_buf, &data);
+  if (handle == INVALID_HANDLE_VALUE) return 0;
+  uint64_t visible = 0;
+  do {
+    const char *name = data.cFileName;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    if (visible == index) {
+      size_t len = strlen(name);
+      if (len > buffer.len || len > 0x7fffffffu) {
+        FindClose(handle);
+        return 0;
+      }
+      if (len > 0) memcpy(buffer.ptr, name, len);
+      FindClose(handle);
+      return zero_runtime_pack_span(1, 0, len);
+    }
+    visible++;
+  } while (FindNextFileA(handle, &data));
+  FindClose(handle);
+  return 0;
+#else
+  DIR *dir = opendir(path_buf);
+  if (!dir) return 0;
+  uint64_t visible = 0;
+  struct dirent *entry = NULL;
+  while ((entry = readdir(dir)) != NULL) {
+    const char *name = entry->d_name;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    if (visible == index) {
+      size_t len = strlen(name);
+      if (len > buffer.len || len > 0x7fffffffu) {
+        closedir(dir);
+        return 0;
+      }
+      if (len > 0) memcpy(buffer.ptr, name, len);
+      closedir(dir);
+      return zero_runtime_pack_span(1, 0, len);
+    }
+    visible++;
+  }
+  closedir(dir);
+  return 0;
+#endif
 }
 
 static int zero_runtime_stat_path(const char *path, ZeroRuntimeStat *st) {
@@ -3106,9 +3210,13 @@ uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op) {
   return status;
 }
 
-static uint64_t zero_json_pack_span(int has, size_t offset, size_t len) {
+static uint64_t zero_runtime_pack_span(int has, size_t offset, size_t len) {
   if (!has || offset > UINT32_MAX || len > 0x7fffffffu) return 0;
   return (1ull << 63) | ((uint64_t)len << 32) | (uint64_t)(uint32_t)offset;
+}
+
+static uint64_t zero_json_pack_span(int has, size_t offset, size_t len) {
+  return zero_runtime_pack_span(has, offset, len);
 }
 
 static int zero_json_key_matches(ZeroByteView input, size_t start, size_t end, ZeroByteView key) {

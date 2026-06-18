@@ -1051,6 +1051,7 @@ const ZStdHelperInfo z_std_helpers[] = {
   {"std.fs.remove", "Bool", 1, {"String"}, {NULL}, "fs", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.rename", "Bool", 2, {"String", "String"}, {NULL}, "fs", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.dirEntryCount", "Maybe<usize>", 1, {"String"}, {NULL}, "fs", "host", "walks directory metadata; no allocation", true, Z_STD_HELPER_KIND_TABLE},
+  {"std.fs.dirEntryName", "Maybe<Span<u8>>", 3, {"MutSpan<u8>", "String", "usize"}, {NULL}, "fs", "host", "writes one directory entry name into caller storage", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.tempName", "Maybe<String>", 2, {"MutSpan<u8>", "String"}, {NULL}, "fs", "host", "writes caller buffer", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.atomicWrite", "Bool", 3, {"String", "String", "Span<u8>"}, {NULL}, "fs", "host", "uses caller-provided temp path", true, Z_STD_HELPER_KIND_TABLE},
   {"std.fs.fileLen", "Maybe<usize>", 1, {"mutref<File>"}, {NULL}, "fs", "host", "no allocation", true, Z_STD_HELPER_KIND_TABLE},

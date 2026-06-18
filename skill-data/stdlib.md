@@ -692,6 +692,7 @@ removeDir(arg0: String) -> Bool
 remove(arg0: String) -> Bool
 rename(arg0: String, arg1: String) -> Bool
 dirEntryCount(arg0: String) -> Maybe<usize>
+dirEntryName(arg0: MutSpan<u8>, arg1: String, arg2: usize) -> Maybe<Span<u8>>
 tempName(arg0: MutSpan<u8>, arg1: String) -> Maybe<String>
 atomicWrite(arg0: String, arg1: String, arg2: Span<u8>) -> Bool
 fileLen(arg0: mutref<File>) -> Maybe<usize>

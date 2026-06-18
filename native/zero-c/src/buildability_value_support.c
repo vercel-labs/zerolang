@@ -166,8 +166,12 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_FS_READ_ALL: case IR_VALUE_FS_READ_FILE: case IR_VALUE_FS_WRITE_ALL_FILE:
     case IR_VALUE_FS_CLOSE_FILE:
     case IR_VALUE_FS_FILE_LEN:
-    case IR_VALUE_FS_DIR_ENTRY_COUNT: case IR_VALUE_FS_TEMP_NAME:
+    case IR_VALUE_FS_TEMP_NAME:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64;
+    case IR_VALUE_FS_DIR_ENTRY_COUNT:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
     case IR_VALUE_CRC32_BYTES:
       return build_backend_has_byte_runtime(ctx->backend) || z_build_backend_is_aarch64_direct(ctx->backend);
     case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL:
