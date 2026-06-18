@@ -271,6 +271,32 @@ describe("native zero CLI", () => {
     }
   });
 
+  it("reports fix-plan repair safety metadata without applying edits", async () => {
+    const plan = JSON.parse((await runZero(["fix", "--plan", "--json", "examples/agent-repair-demo/broken.0"])).stdout);
+
+    assert.equal(plan.schemaVersion, 1);
+    assert.equal(plan.mode, "plan");
+    assert.equal(plan.appliesEdits, false);
+    assert.deepEqual(plan.safetyLevels, [
+      "format-only",
+      "behavior-preserving",
+      "api-changing",
+      "target-changing",
+      "requires-human-review",
+    ]);
+
+    const diagnostic = plan.diagnostics[0];
+    assert.equal(diagnostic.code, "TYP009");
+    assert.equal(diagnostic.fixSafety, "behavior-preserving");
+    assert.equal(diagnostic.repair.id, "make-binding-mutable");
+
+    const fix = plan.fixes[0];
+    assert.equal(fix.diagnosticCode, "TYP009");
+    assert.equal(fix.safety, "behavior-preserving");
+    assert.equal(fix.id, "make-binding-mutable");
+    assert.equal(fix.appliesEdits, false);
+  });
+
   it("emits native diagnostic codes", async () => {
     const out = join(tmpdir(), `zero-backend-blocked-${Date.now()}`);
     const result = await runZero(["build", "--json", "--target", "linux-musl-x64", "conformance/common/fail/unsupported-target-feature.graph", "--out", out]).catch((error) => error);
