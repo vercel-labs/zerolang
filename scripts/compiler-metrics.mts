@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 16883, maxStrcmpCalls: 454, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 16893, maxStrcmpCalls: 454, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 6854, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
@@ -1181,7 +1181,8 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       !programGraph.artifactGraphCheckReportsGraphMirState ||
       !programGraph.repositoryGraphCheckDefaultReadiness ||
       !programGraph.repositoryGraphCheckPerformanceBudget ||
-      !programGraph.repositoryGraphCacheKeyFacts) {
+      !programGraph.repositoryGraphCacheKeyFacts ||
+      !programGraph.repositoryGraphSharedLinkedExecutableCache) {
     violations.push({
       kind: "program-graph-repository-native-check-path",
       programGraph,
@@ -1699,6 +1700,7 @@ const repositoryGraphTargetReadinessBody = cCodeText(cBlock(main, "static bool r
 const repositoryGraphCheckJsonRawBody = cBlock(main, "static void append_repository_graph_compiler_path_json");
 const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_repository_graph_compiler_path_json"));
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
+const linkedExecutableCachePathBody = cCodeText(cBlock(main, "static char *linked_executable_cache_path"));
 const directManifestGraphInputBody = cCodeText(cBlock(main, "static int resolve_direct_command_manifest_graph_input"));
 const readOptionalFileBody = cCodeText(cBlock(main, "static char *read_optional_file"));
 const programGraphStorageHeaderBody = cCodeText(cBlock(main, "static bool path_has_program_graph_storage_header"));
@@ -2456,6 +2458,10 @@ const programGraph = {
     /modulePaths/.test(main) &&
     /importPaths/.test(main) &&
     !/GRAPH_CACHE_INPUTS_(?:PARSE|CHECK|SPECIALIZATION|OBJECT|AGGREGATE)\s*=\s*"\[[^\]]*sourceFiles/.test(main),
+  repositoryGraphSharedLinkedExecutableCache: /graph_keyed/.test(linkedExecutableCachePathBody) &&
+    /z_program_graph_artifact_source_present\s*\(&command->graph_source\)/.test(linkedExecutableCachePathBody) &&
+    /shared_native_cache_file\s*\(/.test(linkedExecutableCachePathBody) &&
+    /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody),
   repositoryGraphMirPrepMappedFinalMir: /z_mir_binary_load_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_mir_binary_write_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&

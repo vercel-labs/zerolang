@@ -2550,6 +2550,13 @@ static char *native_cache_file_for_input(const SourceInput *input, const char *n
   return runtime_join_path(".zero/cache/native", name);
 }
 
+static char *shared_native_cache_file(const char *name) {
+  char *cache_dir = runtime_object_cache_dir();
+  char *path = runtime_join_path(cache_dir, name);
+  free(cache_dir);
+  return path;
+}
+
 static char *linked_executable_cache_path(
   const Command *command,
   const SourceInput *input,
@@ -2561,7 +2568,7 @@ static char *linked_executable_cache_path(
 ) {
   if (!command || !input || !target || input->direct_c_import_call_count > 0) return NULL;
   uint64_t key = command_compile_cache_key(command, input, target, command->profile, artifact_kind);
-  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v2");
+  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v3");
   key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
   key = runtime_object_cache_fold_text(key, needs_http_runtime ? "http-runtime" : "no-http-runtime");
   key = runtime_object_cache_fold_text(key, target->exe_suffix ? target->exe_suffix : "");
@@ -2576,7 +2583,10 @@ static char *linked_executable_cache_path(
   zbuf_init(&name);
   zbuf_appendf(&name, "linked-exe-%016llx", (unsigned long long)key);
   if (target->exe_suffix && target->exe_suffix[0]) zbuf_append(&name, target->exe_suffix);
-  char *path = native_cache_file_for_input(input, name.data ? name.data : "linked-exe-cache");
+  bool graph_keyed = z_program_graph_artifact_source_present(&command->graph_source);
+  char *path = graph_keyed
+    ? shared_native_cache_file(name.data ? name.data : "linked-exe-cache")
+    : native_cache_file_for_input(input, name.data ? name.data : "linked-exe-cache");
   zbuf_free(&name);
   return path;
 }
