@@ -2,6 +2,7 @@
 
 #include "program_graph_adjacency.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 

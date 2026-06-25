@@ -73,6 +73,18 @@ pub fn main(world: World) -> Void raises {
     }
     let interrupt_closed: Bool = std.proc.close(interrupt_child)
 
+    let interrupt_pid_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"exit 130\" INT; while true; do sleep 1; done'")
+    var interrupt_pid_ok: Bool = false
+    let interrupt_pid_value: i32 = std.proc.pid(interrupt_pid_child)
+    if std.proc.childValid(interrupt_pid_child) && interrupt_pid_value > 0 && std.proc.pidRunning(interrupt_pid_value) {
+        let interrupted_pid: Bool = std.proc.interruptPid(interrupt_pid_value)
+        if interrupted_pid {
+            let interrupt_pid_status: ProcStatus = std.proc.wait(interrupt_pid_child)
+            interrupt_pid_ok = std.proc.exitCode(interrupt_pid_status) != 0
+        }
+    }
+    let interrupt_pid_closed: Bool = std.proc.close(interrupt_pid_child)
+
     let close_live_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"\" TERM; while true; do sleep 1; done'")
     var close_live_ok: Bool = false
     let close_live_pid: i32 = std.proc.pid(close_live_child)
@@ -167,7 +179,7 @@ pub fn main(world: World) -> Void raises {
         files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
     }
 
-    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && interrupt_pid_ok && interrupt_pid_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
         check world.out.write("std proc child ok\n")
     }
 }

@@ -2,6 +2,7 @@ pub fn main(world: World) -> Void raises {
     let child: ProcChild = std.pty.spawnArgs("printf", "pty-out\n", ".", "")
     var output_buf: [64]u8 = [0_u8; 64]
     let valid: Bool = std.pty.valid(child)
+    let child_valid: Bool = std.pty.childValid(child)
     let child_pid: i32 = std.pty.pid(child)
     let resized: Bool = std.pty.resize(child, 80_usize, 24_usize)
     let write_probe: Maybe<usize> = std.pty.write(child, "ignored\n")
@@ -41,7 +42,29 @@ pub fn main(world: World) -> Void raises {
     let env_status: ProcStatus = std.pty.wait(env_child)
     let env_closed: Bool = std.pty.close(env_child)
 
-    if valid && child_pid > 0 && resized && write_probe.has && std.proc.succeeded(status) && output_ok && closed && env_ok && std.proc.succeeded(env_status) && env_closed {
+    let interrupt_child: ProcChild = std.pty.spawn("sh -c 'trap \"exit 130\" INT; while true; do sleep 1; done'")
+    var interrupt_ok: Bool = false
+    if std.pty.childValid(interrupt_child) && std.pty.running(interrupt_child) {
+        let interrupted: Bool = std.pty.interrupt(interrupt_child)
+        if interrupted {
+            let interrupt_status: ProcStatus = std.pty.wait(interrupt_child)
+            interrupt_ok = std.proc.exitCode(interrupt_status) != 0
+        }
+    }
+    let interrupt_closed: Bool = std.pty.close(interrupt_child)
+
+    let kill_child: ProcChild = std.pty.spawn("sh -c 'trap \"exit 143\" TERM; while true; do sleep 1; done'")
+    var kill_ok: Bool = false
+    if std.pty.childValid(kill_child) && std.pty.running(kill_child) {
+        let killed: Bool = std.pty.kill(kill_child)
+        if killed {
+            let kill_status: ProcStatus = std.pty.wait(kill_child)
+            kill_ok = std.proc.exitCode(kill_status) != 0
+        }
+    }
+    let kill_closed: Bool = std.pty.close(kill_child)
+
+    if valid && child_valid && child_pid > 0 && resized && write_probe.has && std.proc.succeeded(status) && output_ok && closed && env_ok && std.proc.succeeded(env_status) && env_closed && interrupt_ok && interrupt_closed && kill_ok && kill_closed {
         check world.out.write("std pty child ok\n")
     }
 }
