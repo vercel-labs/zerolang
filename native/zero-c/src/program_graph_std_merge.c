@@ -96,9 +96,7 @@ typedef enum {
 
 typedef struct {
   uint64_t hash;
-  const char *from;
-  const char *to;
-  const char *kind;
+  char *from, *to, *kind;
   ZProgramGraphEdgeTarget target;
   size_t order;
   size_t value;
@@ -171,6 +169,12 @@ static void std_merge_edge_map_init(StdMergeEdgeMap *map, size_t expected, StdMe
 }
 
 static void std_merge_edge_map_free(StdMergeEdgeMap *map) {
+  for (size_t i = 0; map->entries && i < map->cap; i++) {
+    if (!map->entries[i].used) continue;
+    free(map->entries[i].from);
+    free(map->entries[i].to);
+    free(map->entries[i].kind);
+  }
   free(map->entries);
   *map = (StdMergeEdgeMap){0};
 }
@@ -205,20 +209,24 @@ static void std_merge_edge_map_grow(StdMergeEdgeMap *map) {
   *map = grown;
 }
 
+static void std_merge_edge_map_entry_set(StdMergeEdgeMapEntry *entry, const ZProgramGraphEdge *edge, uint64_t hash) {
+  *entry = (StdMergeEdgeMapEntry){
+    .hash = hash,
+    .from = std_merge_strdup(edge ? edge->from : NULL),
+    .to = std_merge_strdup(edge ? edge->to : NULL),
+    .kind = std_merge_strdup(edge ? edge->kind : NULL),
+    .target = edge ? edge->target : Z_PROGRAM_GRAPH_EDGE_TARGET_NODE,
+    .order = edge ? edge->order : 0,
+    .used = true,
+  };
+}
+
 static StdMergeEdgeMapEntry *std_merge_edge_map_put(StdMergeEdgeMap *map, const ZProgramGraphEdge *edge, size_t value) {
   if (map->len * 2 >= map->cap) std_merge_edge_map_grow(map);
   uint64_t hash = std_merge_edge_hash(edge, map->mode);
   StdMergeEdgeMapEntry *entry = std_merge_edge_map_slot(map, edge, hash);
   if (!entry->used) {
-    *entry = (StdMergeEdgeMapEntry){
-      .hash = hash,
-      .from = edge ? edge->from : NULL,
-      .to = edge ? edge->to : NULL,
-      .kind = edge ? edge->kind : NULL,
-      .target = edge ? edge->target : Z_PROGRAM_GRAPH_EDGE_TARGET_NODE,
-      .order = edge ? edge->order : 0,
-      .used = true,
-    };
+    std_merge_edge_map_entry_set(entry, edge, hash);
     map->len++;
   }
   entry->value = value;
@@ -230,15 +238,7 @@ static void std_merge_edge_map_put_max(StdMergeEdgeMap *map, const ZProgramGraph
   uint64_t hash = std_merge_edge_hash(edge, map->mode);
   StdMergeEdgeMapEntry *entry = std_merge_edge_map_slot(map, edge, hash);
   if (!entry->used) {
-    *entry = (StdMergeEdgeMapEntry){
-      .hash = hash,
-      .from = edge ? edge->from : NULL,
-      .to = edge ? edge->to : NULL,
-      .kind = edge ? edge->kind : NULL,
-      .target = edge ? edge->target : Z_PROGRAM_GRAPH_EDGE_TARGET_NODE,
-      .order = edge ? edge->order : 0,
-      .used = true,
-    };
+    std_merge_edge_map_entry_set(entry, edge, hash);
     map->len++;
   }
   if (entry->value < value) entry->value = value;
