@@ -16006,8 +16006,8 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
     fast_input.source_file = z_strdup(command->input);
     fast_input.package_root = runtime_dirname(command->input);
     const char *manifest_input = command->repository_graph_source_input ? command->repository_graph_source_input : command->input;
-    if (!z_program_graph_manifest_attach_metadata_to_input(&fast_input, manifest_input, diag) ||
-        !validate_c_libraries_for_target(&fast_input, target, command, diag)) {
+    bool needs_c_library_validation = true; if (!z_program_graph_manifest_attach_cache_metadata_to_input(&fast_input, manifest_input, &needs_c_library_validation, diag) ||
+        (needs_c_library_validation && !validate_c_libraries_for_target(&fast_input, target, command, diag))) {
       free(fast_graph_hash);
       z_free_source(&fast_input);
       return EARLY_CACHED_RUN_FAILED;
@@ -16053,8 +16053,8 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
   input.package_root = z_strdup(store.root && store.root[0] ? store.root : ".");
   z_program_graph_seed_source_metadata(&input, &store.graph);
   const char *manifest_input = command->repository_graph_source_input ? command->repository_graph_source_input : command->input;
-  if (!z_program_graph_manifest_attach_metadata_to_input(&input, manifest_input, diag) ||
-      !validate_c_libraries_for_target(&input, target, command, diag)) {
+  bool needs_c_library_validation = true; if (!z_program_graph_manifest_attach_cache_metadata_to_input(&input, manifest_input, &needs_c_library_validation, diag) ||
+      (needs_c_library_validation && !validate_c_libraries_for_target(&input, target, command, diag))) {
     z_free_source(&input);
     z_program_graph_store_free(&store);
     return EARLY_CACHED_RUN_FAILED;

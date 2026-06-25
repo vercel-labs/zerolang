@@ -840,40 +840,8 @@ static void std_source_ensure_call_index(void) {
   std_source_call_index_ready = true;
 }
 
-static uint64_t std_source_hash_text(uint64_t hash, const char *text) {
-  const unsigned char *bytes = (const unsigned char *)(text ? text : "");
-  while (*bytes) {
-    hash ^= (uint64_t)*bytes++;
-    hash *= 1099511628211ull;
-  }
-  hash ^= 0xffu;
-  hash *= 1099511628211ull;
-  return hash;
-}
-
-static uint64_t std_source_hash_bytes(uint64_t hash, const unsigned char *bytes, size_t len) {
-  hash ^= (uint64_t)len;
-  hash *= 1099511628211ull;
-  for (size_t i = 0; bytes && i < len; i++) {
-    hash ^= (uint64_t)bytes[i];
-    hash *= 1099511628211ull;
-  }
-  return hash;
-}
-
 uint64_t z_std_source_graph_fingerprint(void) {
-  static uint64_t cached = 0;
-  if (cached != 0) return cached;
-  uint64_t hash = 1469598103934665603ull;
-  hash = std_source_hash_text(hash, "zero-embedded-stdlib-graph-v1");
-  for (size_t i = 0; i < z_std_source_module_count(); i++) {
-    const ZStdSourceModule *module = z_std_source_module_at(i);
-    hash = std_source_hash_text(hash, module ? module->module : "");
-    hash = std_source_hash_text(hash, module ? module->path : "");
-    hash = std_source_hash_bytes(hash, module ? module->graph_bytes : NULL, module ? module->graph_len : 0);
-  }
-  cached = hash ? hash : 1;
-  return cached;
+  return ZERO_EMBEDDED_STDLIB_GRAPH_FINGERPRINT;
 }
 
 size_t z_std_source_module_count(void) {

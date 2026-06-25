@@ -14,6 +14,7 @@ const auditFiles = [
   "native/zero-c/tests/http_listen_runner_smoke.c",
   "native/zero-c/tests/process_exec_smoke.c",
   "scripts/artifact-finalization-smoke.mts",
+  "scripts/embed-stdlib-graphs.mts",
   "scripts/fs-runtime-smoke.mts",
   "scripts/test-native.sh",
 ];
@@ -1660,6 +1661,9 @@ const runtimeCloseFdBody = cCodeText(cBlock(runtimeRaw, "static int zero_runtime
 const httpListenRunnerRaw = texts.get("native/zero-c/src/http_listen_runner.c") ?? "";
 const httpListenTempRaw = texts.get("native/zero-c/src/http_listen_temp.c") ?? "";
 const httpListenRunnerSmokeRaw = auditTexts.get("native/zero-c/tests/http_listen_runner_smoke.c") ?? "";
+const embedStdlibGraphsRaw = auditTexts.get("scripts/embed-stdlib-graphs.mts") ?? "";
+const stdSourceRaw = texts.get("native/zero-c/src/std_source.c") ?? "";
+const stdSourceGraphFingerprintBody = cCodeText(cBlock(stdSourceRaw, "uint64_t z_std_source_graph_fingerprint"));
 const listenSendAllBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool send_all"));
 const listenJsonErrorBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool send_json_error"));
 const listenHandlerCaptureBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool run_handler_capture"));
@@ -1672,6 +1676,8 @@ const programGraphBuildRaw = texts.get("native/zero-c/src/program_graph_build.c"
 const programGraphBuildHeaderRaw = texts.get("native/zero-c/src/program_graph_build.h") ?? "";
 const programGraphCommandRaw = texts.get("native/zero-c/src/program_graph_command.c") ?? "";
 const programGraphCommandHeaderRaw = texts.get("native/zero-c/src/program_graph_command.h") ?? "";
+const programGraphManifestRaw = texts.get("native/zero-c/src/program_graph_manifest.c") ?? "";
+const programGraphManifestCacheMetadataBody = cCodeText(cBlock(programGraphManifestRaw, "bool z_program_graph_manifest_attach_cache_metadata_to_input"));
 const programGraphStoreRaw = texts.get("native/zero-c/src/program_graph_store.c") ?? "";
 const programGraphStoreHeaderRaw = texts.get("native/zero-c/src/program_graph_store.h") ?? "";
 const programGraphStoreBinaryRaw = texts.get("native/zero-c/src/program_graph_store_binary.c") ?? "";
@@ -2476,6 +2482,11 @@ const programGraph = {
   repositoryGraphExecutableCacheFastHit: /read_repository_graph_hash_fast\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
     /linked_executable_cache_path\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
     /exec_cached_executable_artifact\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /z_program_graph_manifest_attach_cache_metadata_to_input\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    !/z_program_graph_manifest_attach_metadata_to_input\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /needs_c_library_validation/.test(repositoryGraphEarlyCachedRunBody) &&
+    /parsed_manifest\.dependency_count\s*==\s*0\s*&&\s*parsed_manifest\.c_lib_count\s*==\s*0/.test(programGraphManifestCacheMetadataBody) &&
+    /z_resolve_package_metadata\s*\(/.test(programGraphManifestCacheMetadataBody) &&
     repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") >= 0 &&
     repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") >= 0 &&
     repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") < repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") &&
@@ -2496,6 +2507,10 @@ const programGraph = {
     /z_program_graph_store_path_for_root\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
     /cache_command\.repository_graph_input\s*=\s*true/.test(manifestGraphEarlyCachedRunBody) &&
     /try_run_repository_graph_cached_executable_before_mir\s*\([^;]*false\s*\)/.test(manifestGraphEarlyCachedRunBody),
+  repositoryGraphStdlibFingerprintGenerated: /ZERO_EMBEDDED_STDLIB_GRAPH_FINGERPRINT/.test(embedStdlibGraphsRaw) &&
+    /hashBytes\s*\(\s*fingerprint\s*,\s*bytes\s*\)/.test(embedStdlibGraphsRaw) &&
+    /return\s+ZERO_EMBEDDED_STDLIB_GRAPH_FINGERPRINT\s*;/.test(stdSourceGraphFingerprintBody) &&
+    !/std_source_hash_bytes|std_source_hash_text|graph_bytes/.test(stdSourceGraphFingerprintBody),
   repositoryGraphMirPrepMappedFinalMir: /z_mir_binary_load_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_mir_binary_write_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
