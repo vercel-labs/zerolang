@@ -4990,13 +4990,7 @@ static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *
     *out = value;
     return true;
   }
-  if (ir_text_eq(callee_name, "std.proc.spawn") && arg_count == 1) {
-    IrValue *command = NULL;
-    if (!ir_graph_lower_byte_view(graph, ir, fun, ir_graph_ordered_node(graph, expr->id, "arg", 0), &command)) return false;
-    ir_free_value(command);
-    *out = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, ir_graph_line(expr), ir_graph_column(expr));
-    return true;
-  }
+  if (ir_text_eq(callee_name, "std.proc.spawn") && arg_count == 1) return ir_graph_lower_std_proc_spawn_inherit_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.spawnInherit") && arg_count == 1) return ir_graph_lower_std_proc_spawn_inherit_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.spawnInheritArgs") && arg_count == 4) return ir_graph_lower_std_proc_spawn_inherit_args_call(graph, ir, fun, expr, out);
   if (ir_text_eq(callee_name, "std.proc.capture") && arg_count == 2) return ir_graph_lower_std_proc_capture_call(graph, ir, fun, expr, out);

@@ -8,7 +8,7 @@ Runnable today:
 
 | API | Return | Notes |
 | --- | --- | --- |
-| `std.proc.spawn(command)` | `ProcStatus` | Creates a process status through the explicit proc capability surface. |
+| `std.proc.spawn(command)` | `ProcStatus` | Runs an argv-style command with inherited stdio through the explicit proc capability surface and returns its status. |
 | `std.proc.spawnInherit(command)` | `ProcStatus` | Runs an argv-style command while inheriting stdin, stdout, and stderr from the parent process. |
 | `std.proc.spawnInheritArgs(program, args, cwd, env)` | `ProcStatus` | Runs a program path plus newline-separated argv entries while inheriting stdio, using a working directory and newline-separated `KEY=value` environment bindings. |
 | `std.proc.exitCode(status)` | `i32` | Reads the process status code. |

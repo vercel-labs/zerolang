@@ -2888,14 +2888,7 @@ static bool ir_lower_std_proc_child_spawn_args_direct_call(const Program *progra
 static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {
   *handled = false;
   if (id == IR_DIRECT_STD_CALL_UNKNOWN) return true;
-  if (id == IR_DIRECT_STD_PROC_SPAWN && call->args.len == 1) {
-    IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, call->line, call->column);
-    value->int_value = 0;
-    *handled = true;
-    *out = value;
-    return true;
-  }
-  if (id == IR_DIRECT_STD_PROC_SPAWN_INHERIT && call->args.len == 1) {
+  if ((id == IR_DIRECT_STD_PROC_SPAWN || id == IR_DIRECT_STD_PROC_SPAWN_INHERIT) && call->args.len == 1) {
     IrValue *command = NULL;
     if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command)) return false;
     IrValue *value = ir_new_value(ir, IR_VALUE_PROC_SPAWN_INHERIT, IR_TYPE_I32, call->line, call->column);
