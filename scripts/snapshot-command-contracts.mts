@@ -1866,6 +1866,48 @@ assert.equal(zero(["check", staleRunSource]).stdout, "ok\n");
 writeFileSync(staleRunSource, 'pub fn main(world: World) -> Void raises {\n    check world.out.write("stale run five\\n")\n}\n');
 assert.equal(zero(["run", staleRunSource]).stdout, "stale run five\n");
 assert.equal(json(["status", "--json", staleRunRoot]).body.repositoryGraph.projectionState, "clean");
+
+const cachedArgvRoot = join("/tmp", `zero-repo-graph-cached-argv-${process.pid}`);
+const cachedArgvSource = join(cachedArgvRoot, "src", "main.0");
+rmSync(cachedArgvRoot, { force: true, recursive: true });
+assert.equal(json(["init", "--json", cachedArgvRoot]).body.ok, true);
+mkdirSync(join(cachedArgvRoot, "src"), { recursive: true });
+writeFileSync(cachedArgvSource, 'pub fn main(world: World) -> Void raises {\n    let self: Maybe<String> = std.args.get(0)\n    if self.has {\n        check world.out.write(self.value)\n        check world.out.write("\\n")\n    }\n}\n');
+assert.equal(json(["import", "--json", cachedArgvRoot]).body.ok, true);
+assert.match(zero(["run", cachedArgvRoot]).stdout, /\.run-/);
+const cachedArgvSecondRun = zero(["run", cachedArgvRoot]).stdout.trim();
+assert.match(cachedArgvSecondRun, /\.run-/);
+assert.doesNotMatch(cachedArgvSecondRun, /linked-exe-/);
+
+const procFdRoot = join("/tmp", `zero-proc-child-fd-inherit-${process.pid}`);
+const procFdSource = join(procFdRoot, "src", "main.0");
+rmSync(procFdRoot, { force: true, recursive: true });
+assert.equal(json(["init", "--json", procFdRoot]).body.ok, true);
+mkdirSync(join(procFdRoot, "src"), { recursive: true });
+writeFileSync(procFdSource, `pub fn main(world: World) -> Void raises {
+    let first: ProcChild = std.proc.spawnChild("sh -c 'cat >/dev/null; printf first-done'")
+    let second: ProcChild = std.proc.spawnChild("sleep 5")
+    let closed: Bool = std.proc.closeStdin(first)
+    let status: ProcStatus = std.proc.wait(first)
+    var output: [64]u8 = [0_u8; 64]
+    let read: Maybe<usize> = std.proc.readStdout(first, output)
+    if closed && std.proc.succeeded(status) && read.has {
+        let bytes: Span<u8> = std.io.written(output, read.value)
+        check world.out.write(bytes)
+        check world.out.write("\\n")
+    }
+    let killed: Bool = std.proc.kill(second)
+    let second_status: ProcStatus = std.proc.wait(second)
+    let closed_first: Bool = std.proc.close(first)
+    let closed_second: Bool = std.proc.close(second)
+}
+`);
+assert.equal(json(["import", "--json", procFdRoot]).body.ok, true);
+const procFdRun = spawnSync(zeroBin, ["run", procFdRoot], { encoding: "utf8", maxBuffer: execMaxBuffer, stdio: ["ignore", "pipe", "pipe"], timeout: 1800 });
+assert.equal(procFdRun.error, undefined);
+assert.equal(procFdRun.status, 0);
+assert.equal(procFdRun.stdout, "first-done\n");
+
 const staleMultiRoot = join("/tmp", `zero-repo-graph-stale-multi-${process.pid}`);
 const staleMultiStore = join(staleMultiRoot, "zero.graph");
 const staleMultiHelper = join(staleMultiRoot, "src", "math.0");

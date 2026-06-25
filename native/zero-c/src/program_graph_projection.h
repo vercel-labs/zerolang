@@ -23,7 +23,7 @@ void z_program_graph_projection_free(ZProgramGraphProjection *projection);
 bool z_program_graph_projection_sources_match(const ZProgramGraphStore *store, const ZTargetInfo *target, bool *matches, ZDiag *diag);
 bool z_program_graph_projection_source_files_match(const ZProgramGraphStore *store, bool *matches, ZDiag *diag);
 bool z_program_graph_projection_source_sync_state(const ZProgramGraphStore *store, ZProgramGraphProjectionSourceSync *sync, ZDiag *diag);
-bool z_program_graph_projection_source_sync_state_binary_fast(const char *store_path, const char *root, ZProgramGraphProjectionSourceSync *sync);
+bool z_program_graph_projection_source_sync_state_binary_fast(const char *store_path, const char *root, ZProgramGraphProjectionSourceSync *sync); bool z_program_graph_projection_cached_run_allows_cache(const char *input);
 bool z_program_graph_projection_sources_missing(const ZProgramGraphStore *store);
 const char *z_program_graph_projection_state_label(const ZProgramGraphStore *store, const ZTargetInfo *target, bool *checked, bool *current, ZDiag *diag);
 bool z_program_graph_projection_write_sources(const ZProgramGraphStore *store, const ZTargetInfo *target, ZProgramGraphProjection *projection, ZDiag *diag);

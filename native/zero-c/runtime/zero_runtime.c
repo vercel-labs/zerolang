@@ -849,6 +849,12 @@ static void zero_proc_child_close_fd(int *fd) {
   }
 }
 
+static void zero_proc_child_close_pair(int fds[2]) {
+  if (!fds) return;
+  zero_proc_child_close_fd(&fds[0]);
+  zero_proc_child_close_fd(&fds[1]);
+}
+
 static void zero_proc_child_close_pipes(ZeroRuntimeProcChild *child) {
   if (!child) return;
   zero_proc_child_close_fd(&child->stdin_fd);
@@ -962,6 +968,12 @@ static int zero_proc_child_set_nonblock(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0) return 0;
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
+static int zero_proc_child_set_cloexec(int fd) {
+  int flags = fcntl(fd, F_GETFD, 0);
+  if (flags < 0) return 0;
+  return fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
 }
 
 static int32_t zero_proc_status_from_wait(int status) {
@@ -1095,17 +1107,28 @@ static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_
   int stdout_pipe[2] = {-1, -1};
   int stderr_pipe[2] = {-1, -1};
   if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
-    if (stdin_pipe[0] >= 0) { ZERO_RUNTIME_CLOSE(stdin_pipe[0]); ZERO_RUNTIME_CLOSE(stdin_pipe[1]); }
-    if (stdout_pipe[0] >= 0) { ZERO_RUNTIME_CLOSE(stdout_pipe[0]); ZERO_RUNTIME_CLOSE(stdout_pipe[1]); }
-    if (stderr_pipe[0] >= 0) { ZERO_RUNTIME_CLOSE(stderr_pipe[0]); ZERO_RUNTIME_CLOSE(stderr_pipe[1]); }
+    zero_proc_child_close_pair(stdin_pipe);
+    zero_proc_child_close_pair(stdout_pipe);
+    zero_proc_child_close_pair(stderr_pipe);
+    return 0;
+  }
+  if (!zero_proc_child_set_cloexec(stdin_pipe[0]) ||
+      !zero_proc_child_set_cloexec(stdin_pipe[1]) ||
+      !zero_proc_child_set_cloexec(stdout_pipe[0]) ||
+      !zero_proc_child_set_cloexec(stdout_pipe[1]) ||
+      !zero_proc_child_set_cloexec(stderr_pipe[0]) ||
+      !zero_proc_child_set_cloexec(stderr_pipe[1])) {
+    zero_proc_child_close_pair(stdin_pipe);
+    zero_proc_child_close_pair(stdout_pipe);
+    zero_proc_child_close_pair(stderr_pipe);
     return 0;
   }
 
   pid_t pid = fork();
   if (pid < 0) {
-    ZERO_RUNTIME_CLOSE(stdin_pipe[0]); ZERO_RUNTIME_CLOSE(stdin_pipe[1]);
-    ZERO_RUNTIME_CLOSE(stdout_pipe[0]); ZERO_RUNTIME_CLOSE(stdout_pipe[1]);
-    ZERO_RUNTIME_CLOSE(stderr_pipe[0]); ZERO_RUNTIME_CLOSE(stderr_pipe[1]);
+    zero_proc_child_close_pair(stdin_pipe);
+    zero_proc_child_close_pair(stdout_pipe);
+    zero_proc_child_close_pair(stderr_pipe);
     return 0;
   }
 
@@ -1221,7 +1244,7 @@ static int32_t zero_pty_spawn_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], 
   }
 
   (void)setpgid(pid, pid);
-  if (!zero_proc_child_set_nonblock(master_fd)) {
+  if (!zero_proc_child_set_cloexec(master_fd) || !zero_proc_child_set_nonblock(master_fd)) {
     ZERO_RUNTIME_CLOSE(master_fd);
     (void)zero_proc_signal_group_pid((int32_t)pid, SIGTERM);
     (void)zero_proc_signal_pid((int32_t)pid, SIGTERM);

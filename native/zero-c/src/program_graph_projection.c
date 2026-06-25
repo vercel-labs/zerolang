@@ -575,11 +575,24 @@ bool z_program_graph_projection_source_sync_state(const ZProgramGraphStore *stor
   if (projection_text_eq(disk_hash, recorded)) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER;
   else if (projection_text_eq(table_hash, recorded)) *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_SOURCE_NEWER;
   else *sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_DIVERGED;
-  free(disk_hash);
-  free(table_hash);
-  return true;
+  free(disk_hash); free(table_hash); return true;
 }
 
+bool z_program_graph_projection_cached_run_allows_cache(const char *input) {
+  char *root = z_program_graph_store_root_for_input(input), *store_path = root ? z_program_graph_store_path_for_root(root) : NULL;
+  ZProgramGraphProjectionSourceSync sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN; bool allow = false;
+  if (store_path && z_program_graph_store_path_exists(store_path) && z_program_graph_projection_source_sync_state_binary_fast(store_path, root, &sync)) allow = sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN || sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER;
+  else if (store_path && z_program_graph_store_path_exists(store_path)) {
+    ZProgramGraphStore store; ZDiag store_diag = {0};
+    if (z_program_graph_store_load_path(store_path, &store, &store_diag)) {
+      bool sources_missing = z_program_graph_projection_sources_missing(&store); ZProgramGraphProjectionSourceSync store_sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN; ZDiag sync_diag = {0};
+      if (sources_missing) allow = !store.source_projection_hash || !store.source_projection_hash[0];
+      else if (z_program_graph_projection_source_sync_state(&store, &store_sync, &sync_diag)) allow = store_sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN || store_sync == Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER;
+      z_program_graph_store_free(&store);
+    }
+  }
+  free(store_path); free(root); return allow;
+}
 bool z_program_graph_projection_source_files_match(const ZProgramGraphStore *store, bool *matches, ZDiag *diag) {
   if (matches) *matches = false;
   if (!store || store->projection_len == 0) return false;

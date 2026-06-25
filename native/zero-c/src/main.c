@@ -6332,18 +6332,16 @@ static void init_executable_finalize_diag(ZDiag *diag, const char *path) {
   snprintf(diag->help, sizeof(diag->help), "check output path permissions, ensure the artifact path is not a directory or symlink, and pass --out <path> when running builds concurrently");
 }
 
-static int run_executable_artifact(const char *exe_file, const Command *command) {
+static int run_executable_artifact_as(const char *exe_file, const char *argv0, const Command *command) {
   if (!z_process_executable_file_ready(exe_file)) {
     fprintf(stderr, "zero run: executable artifact is not a regular executable file: %s\n", exe_file ? exe_file : "<missing>");
     return 1;
   }
-  int run_argc = command ? command->run_argc : 0;
-  if (run_argc < 0) run_argc = 0;
+  int run_argc = command ? command->run_argc : 0; if (run_argc < 0) run_argc = 0;
   char **child_argv = (char **)z_checked_calloc((size_t)run_argc + 2, sizeof(char *));
-  child_argv[0] = (char *)exe_file;
+  child_argv[0] = (char *)(argv0 && argv0[0] ? argv0 : exe_file);
   for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
   child_argv[run_argc + 1] = NULL;
-
   fflush(NULL);
 #if defined(_WIN32)
   intptr_t status = _spawnv(_P_WAIT, exe_file, (const char *const *)child_argv);
@@ -6365,31 +6363,28 @@ static int run_executable_artifact(const char *exe_file, const Command *command)
     perror("zero run");
     return 1;
   }
-
   int status = 0;
   while (waitpid(pid, &status, 0) < 0) {
     if (errno == EINTR) continue;
     perror("zero run");
     return 1;
   }
-  if (WIFEXITED(status)) return WEXITSTATUS(status);
-  if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+  if (WIFEXITED(status)) return WEXITSTATUS(status); if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
   return 1;
 #endif
 }
 
-static int exec_cached_executable_artifact(const char *exe_file, const Command *command) {
+static int exec_cached_executable_artifact(const char *exe_file, const char *argv0, const Command *command) {
 #if defined(_WIN32)
-  return run_executable_artifact(exe_file, command);
+  return run_executable_artifact_as(exe_file, argv0, command);
 #else
   if (!z_process_executable_file_ready(exe_file)) {
     fprintf(stderr, "zero run: executable artifact is not a regular executable file: %s\n", exe_file ? exe_file : "<missing>");
     return 1;
   }
-  int run_argc = command ? command->run_argc : 0;
-  if (run_argc < 0) run_argc = 0;
+  int run_argc = command ? command->run_argc : 0; if (run_argc < 0) run_argc = 0;
   char **child_argv = (char **)z_checked_calloc((size_t)run_argc + 2, sizeof(char *));
-  child_argv[0] = (char *)exe_file;
+  child_argv[0] = (char *)(argv0 && argv0[0] ? argv0 : exe_file);
   for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
   child_argv[run_argc + 1] = NULL;
   fflush(NULL);
@@ -15176,7 +15171,8 @@ static ZProgramGraphProjectionSourceSync manifest_graph_store_source_sync(const 
     ZProgramGraphStore store;
     ZDiag store_diag = {0};
     if (z_program_graph_store_load_path(store_path, &store, &store_diag)) {
-      if (!z_program_graph_projection_sources_missing(&store)) {
+      bool sources_missing = z_program_graph_projection_sources_missing(&store);
+      if (!sources_missing) {
         ZProgramGraphProjectionSourceSync store_sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
         ZDiag sync_diag = {0};
         if (z_program_graph_projection_source_sync_state(&store, &store_sync, &sync_diag)) sync = store_sync;
@@ -15767,7 +15763,7 @@ static int run_llvm_native_artifact_command(const Command *command, SourceInput 
   }
 
   if (run_command) {
-    int rc = run_executable_artifact(exe_file, command);
+    int rc = run_executable_artifact_as(exe_file, exe_file, command);
     command_remove_ephemeral_run_artifact(command, exe_file);
     free(runtime_object_file); free(llvm_file); free(exe_file); zbuf_free(&llvm_ir); z_free_ir_program(ir); z_free_program(program); z_free_source(input);
     return rc;
@@ -16005,6 +16001,7 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
   if (rc_out) *rc_out = 1;
   if (!command || !target || !command->repository_graph_input || !command_uses_ephemeral_run_artifact(command) || command->emit != EMIT_EXE || command->json) return EARLY_CACHED_RUN_NOT_APPLICABLE;
   if (z_backend_request_is_llvm(command->backend, emit_kind_name(command->emit))) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  if (command->repository_graph_source_input && !z_program_graph_projection_cached_run_allows_cache(command->repository_graph_source_input)) return EARLY_CACHED_RUN_NOT_APPLICABLE;
   char *fast_graph_hash = read_repository_graph_hash_fast(command->input);
   if (fast_graph_hash) {
     SourceInput fast_input = {0};
@@ -16038,7 +16035,9 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
       if (!runtime_object.supported) continue;
       char *cache_path = linked_executable_cache_path(&cache_command, &fast_input, target, &runtime_toolchain, true, http != 0, runtime_object.cache_key);
       if (cache_path && z_process_executable_file_ready(cache_path)) {
-        int rc = exec_cached_executable_artifact(cache_path, command);
+        char *base_argv0 = command->out ? z_strdup(command->out) : command_default_exe_base_path(&cache_command, &fast_input), *argv0_path = apply_target_suffix(base_argv0, target); free(base_argv0);
+        int rc = exec_cached_executable_artifact(cache_path, argv0_path, command);
+        free(argv0_path);
         if (rc_out) *rc_out = rc;
         free(cache_path);
         free(fast_graph_hash);
@@ -16090,7 +16089,9 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
     if (!runtime_object.supported) continue;
     char *cache_path = linked_executable_cache_path(&cache_command, &input, target, &runtime_toolchain, true, http != 0, runtime_object.cache_key);
     if (cache_path && z_process_executable_file_ready(cache_path)) {
-      int rc = exec_cached_executable_artifact(cache_path, command);
+      char *base_argv0 = command->out ? z_strdup(command->out) : command_default_exe_base_path(&cache_command, &input), *argv0_path = apply_target_suffix(base_argv0, target); free(base_argv0);
+      int rc = exec_cached_executable_artifact(cache_path, argv0_path, command);
+      free(argv0_path);
       if (rc_out) *rc_out = rc;
       free(cache_path);
       z_free_source(&input);
@@ -16113,8 +16114,7 @@ static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_reso
   char *root = z_program_graph_store_root_for_input(command->input);
   char *store_path = z_program_graph_store_path_for_root(root);
   free(root);
-  ZProgramGraphProjectionSourceSync sync = store_path && z_program_graph_store_path_exists(store_path) ? manifest_graph_store_source_sync(command->input, NULL, NULL) : Z_PROGRAM_GRAPH_PROJECTION_SYNC_DIVERGED;
-  if (sync != Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN && sync != Z_PROGRAM_GRAPH_PROJECTION_SYNC_STORE_NEWER) {
+  if (!store_path || !z_program_graph_projection_cached_run_allows_cache(command->input)) {
     free(store_path);
     return EARLY_CACHED_RUN_NOT_APPLICABLE;
   }
@@ -16988,14 +16988,14 @@ int main(int argc, char **argv) {
     if (exe_cache_path && z_process_executable_file_ready(exe_cache_path)) {
       input.emitted_object_cache_hit = true;
       if (run_command && command_uses_ephemeral_run_artifact(&command)) {
-        int rc = run_executable_artifact(exe_cache_path, &command);
+        int rc = run_executable_artifact_as(exe_cache_path, exe_file, &command);
         free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
         free_loaded_command_state(&input, &program, &ir);
         return rc;
       }
       if (executable_cache_restore_to_path(exe_cache_path, exe_file)) {
         if (run_command) {
-          int rc = run_executable_artifact(exe_file, &command);
+          int rc = run_executable_artifact_as(exe_file, exe_file, &command);
           command_remove_ephemeral_run_artifact(&command, exe_file);
           free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
           free_loaded_command_state(&input, &program, &ir);
@@ -17062,7 +17062,7 @@ int main(int argc, char **argv) {
     executable_cache_store_path(exe_cache_path, exe_file);
 
     if (run_command) {
-      int rc = run_executable_artifact(exe_file, &command);
+      int rc = run_executable_artifact_as(exe_file, exe_file, &command);
       command_remove_ephemeral_run_artifact(&command, exe_file);
       free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
       zbuf_free(&object);
@@ -17137,7 +17137,7 @@ int main(int argc, char **argv) {
     }
 
     if (run_command) {
-      int rc = run_executable_artifact(exe_file, &command);
+      int rc = run_executable_artifact_as(exe_file, exe_file, &command);
       command_remove_ephemeral_run_artifact(&command, exe_file);
       free(exe_file);
       zbuf_free(&exe);

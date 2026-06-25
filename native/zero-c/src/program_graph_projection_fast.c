@@ -178,15 +178,7 @@ bool z_program_graph_projection_source_sync_state_binary_fast(const char *store_
          z_program_graph_store_source_path_is_local(projection_path);
     if (ok) {
       current = fast_store_projection_file_text(root, projection_path);
-      if (!current) {
-        free(projection_path);
-        free(projection_text);
-        free(recorded_hash);
-        free(data);
-        if (sync_out) *sync_out = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
-        return true;
-      }
-      if (strcmp(current, projection_text ? projection_text : "") != 0) any_changed = true;
+      if (!current || strcmp(current, projection_text ? projection_text : "") != 0) any_changed = true;
       disk_state = z_program_graph_store_source_hash_fold(disk_state, projection_path, current);
       table_state = z_program_graph_store_source_hash_fold(table_state, projection_path, projection_text ? projection_text : "");
     }
