@@ -6752,10 +6752,9 @@ typedef struct {
   bool zero_http_request_path;
   bool zero_http_request_matches;
   bool zero_http_request_body_within;
-  bool zero_proc_spawn_inherit;
-  bool zero_proc_spawn_inherit_args;
-  bool zero_proc_capture_args;
-  bool zero_proc_capture_files_args;
+  bool zero_proc_spawn_inherit, zero_proc_spawn_inherit_args;
+  bool zero_proc_capture, zero_proc_capture_args;
+  bool zero_proc_capture_files, zero_proc_capture_files_args;
   bool zero_proc_spawn_child;
   bool zero_proc_spawn_child_in;
   bool zero_proc_spawn_child_in_env;
@@ -6879,11 +6878,11 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
       break;
     case IR_VALUE_PROC_CAPTURE:
       if (value->arg_len == 2) audit->zero_proc_capture_args = true;
-      else runtime_import_audit_mark_fs_base(audit);
+      else audit->zero_proc_capture = true;
       break;
     case IR_VALUE_PROC_CAPTURE_FILES:
       if (value->arg_len == 2) audit->zero_proc_capture_files_args = true;
-      else runtime_import_audit_mark_fs_base(audit);
+      else audit->zero_proc_capture_files = true;
       break;
     case IR_VALUE_PROC_CHILD_SPAWN:
       if (value->int_value) {
@@ -7173,8 +7172,7 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_http_request_body_within) count++;
   if (audit->zero_proc_spawn_inherit) count++;
   if (audit->zero_proc_spawn_inherit_args) count++;
-  if (audit->zero_proc_capture_args) count++;
-  if (audit->zero_proc_capture_files_args) count++;
+  count += (size_t)audit->zero_proc_capture + (size_t)audit->zero_proc_capture_args + (size_t)audit->zero_proc_capture_files + (size_t)audit->zero_proc_capture_files_args;
   if (audit->zero_proc_spawn_child) count++;
   if (audit->zero_proc_spawn_child_in) count++;
   if (audit->zero_proc_spawn_child_in_env) count++;
@@ -7276,7 +7274,9 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_http_request_body_within) append_json_string_array_item(buf, &first, "zero_http_request_body_within");
   if (audit && audit->zero_proc_spawn_inherit) append_json_string_array_item(buf, &first, "zero_proc_spawn_inherit");
   if (audit && audit->zero_proc_spawn_inherit_args) append_json_string_array_item(buf, &first, "zero_proc_spawn_inherit_args");
+  if (audit && audit->zero_proc_capture) append_json_string_array_item(buf, &first, "zero_proc_capture");
   if (audit && audit->zero_proc_capture_args) append_json_string_array_item(buf, &first, "zero_proc_capture_args");
+  if (audit && audit->zero_proc_capture_files) append_json_string_array_item(buf, &first, "zero_proc_capture_files");
   if (audit && audit->zero_proc_capture_files_args) append_json_string_array_item(buf, &first, "zero_proc_capture_files_args");
   if (audit && audit->zero_proc_spawn_child) append_json_string_array_item(buf, &first, "zero_proc_spawn_child");
   if (audit && audit->zero_proc_spawn_child_in) append_json_string_array_item(buf, &first, "zero_proc_spawn_child_in");

@@ -2185,10 +2185,8 @@ static bool macho_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction
 
 static bool macho_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (value && value->arg_len == 4) {
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[0], 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[1], 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[2], 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[3], 6, 7, frame_size, scratch_slot + 6, ctx, diag)) return false;
+    const IrValue *views[4] = {value->args[0], value->args[1], value->args[2], value->args[3]};
+    if (!macho_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
     size_t patch = z_aarch64_emit_bl_placeholder(text);
     if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_SPAWN_INHERIT_ARGS, patch, value, diag)) return false;
     if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
@@ -2206,10 +2204,8 @@ static bool macho_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction
 
 static bool macho_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (value && value->arg_len == 4) {
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[0], 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[1], 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[2], 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
-    if (!macho_emit_byte_view_pair_at(text, fun, value->args[3], 6, 7, frame_size, scratch_slot + 6, ctx, diag)) return false;
+    const IrValue *views[4] = {value->args[0], value->args[1], value->args[2], value->args[3]};
+    if (!macho_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
     size_t patch = z_aarch64_emit_bl_placeholder(text);
     MachORuntimeHelper helper = value->int_value ? MACHO_RUNTIME_PTY_SPAWN_ARGS : MACHO_RUNTIME_PROC_SPAWN_CHILD_ARGS;
     if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
@@ -2219,9 +2215,9 @@ static bool macho_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *
   if (!value || !value->left) {
     return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
   }
-  if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
-  if (value->right && !macho_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
-  if (value->index && !macho_emit_byte_view_pair_at(text, fun, value->index, 4, 5, frame_size, scratch_slot + 4, ctx, diag)) return false;
+  const IrValue *views[3] = {value->left, value->right, value->index};
+  unsigned view_count = value->index ? 3u : (value->right ? 2u : 1u);
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, view_count, frame_size, scratch_slot, ctx, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
   MachORuntimeHelper helper = MACHO_RUNTIME_PROC_SPAWN_CHILD;
   if (value->int_value) helper = value->index ? MACHO_RUNTIME_PTY_SPAWN_IN_ENV : (value->right ? MACHO_RUNTIME_PTY_SPAWN_IN : MACHO_RUNTIME_PTY_SPAWN);
