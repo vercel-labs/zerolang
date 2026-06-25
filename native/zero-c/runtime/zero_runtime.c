@@ -1156,9 +1156,9 @@ int32_t zero_proc_child_op(int32_t child, uint32_t op) {
       zero_proc_child_close_fd(&slot->stdin_fd);
       return 1;
     case ZERO_PROC_CHILD_OP_CLOSE:
-      if (!slot->reaped) {
+      if (!slot->reaped && !zero_proc_child_reap(slot, 1)) {
         (void)zero_proc_signal_child(slot, SIGTERM);
-        zero_proc_child_reap(slot, 1);
+        if (!zero_proc_child_reap(slot, 1)) return 0;
       }
       zero_proc_child_close_pipes(slot);
       slot->active = 0;

@@ -1212,14 +1212,16 @@ static void append_manifest_c_link_flags(ZBuf *flags, const SourceInput *input) 
   free(manifest);
 }
 
+static void init_executable_finalize_diag(ZDiag *diag, const char *path);
+static bool prepare_executable_output_file_or_diag(const char *exe_file, ZDiag *diag) { if (z_process_prepare_output_file(exe_file)) return true; init_executable_finalize_diag(diag, exe_file); return false; }
+
 static bool link_direct_object_executable(const char *object_file, const char *runtime_object_file, const char *http_object_file, const char *exe_file, const ZToolchainPlan *plan, const ZTargetInfo *target, const SourceInput *input, bool links_zero_runtime, ZDiag *diag) {
 #if defined(__linux__)
   const char *linux_no_pie = " -no-pie";
 #else
   const char *linux_no_pie = "";
 #endif
-  const char *object_files[3] = {0};
-  size_t object_count = 0;
+  const char *object_files[3] = {0}; size_t object_count = 0;
   if (object_file && object_file[0]) object_files[object_count++] = object_file;
   if (runtime_object_file && runtime_object_file[0]) object_files[object_count++] = runtime_object_file;
   if (http_object_file && http_object_file[0]) object_files[object_count++] = http_object_file;
@@ -1228,13 +1230,10 @@ static bool link_direct_object_executable(const char *object_file, const char *r
   if (input && input->direct_c_import_call_count > 0) append_manifest_c_link_flags(&post_flags, input);
   if (http_object_file && http_object_file[0]) zbuf_append(&post_flags, " -lcurl");
   zbuf_append(&post_flags, " 2>/dev/null");
-  bool ok = z_toolchain_link_objects(plan, target, object_files, object_count, exe_file, linux_no_pie, post_flags.data ? post_flags.data : "2>/dev/null");
+  bool output_ready = prepare_executable_output_file_or_diag(exe_file, diag); bool ok = output_ready && z_toolchain_link_objects(plan, target, object_files, object_count, exe_file, linux_no_pie, post_flags.data ? post_flags.data : "2>/dev/null");
   zbuf_free(&post_flags);
-  if (!ok && diag) {
-    diag->code = 2003;
-    diag->line = 1;
-    diag->column = 1;
-    diag->length = 1;
+  if (!ok && output_ready && diag) {
+    diag->code = 2003; diag->line = 1; diag->column = 1; diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "%s", links_zero_runtime ? "host runtime link failed" : "extern C link failed");
     snprintf(diag->expected, sizeof(diag->expected), "%s", links_zero_runtime ? "direct object plus zero runtime object link successfully" : "direct object plus extern C link inputs link successfully");
     snprintf(diag->actual, sizeof(diag->actual), "%s", links_zero_runtime ? "runtime link command failed" : "extern C link command failed");
@@ -2612,9 +2611,10 @@ static char *linked_executable_cache_path(
 ) {
   if (!command || !input || !target || input->direct_c_import_call_count > 0) return NULL;
   uint64_t key = linked_executable_compile_cache_key(command, input, target, command->profile, artifact_kind);
-  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v5");
-  key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
+  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v6"); key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
   key = runtime_object_cache_fold_text(key, needs_http_runtime ? "http-runtime" : "no-http-runtime");
+  if (needs_zero_runtime) { key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_runtime_h); key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_runtime_c); }
+  if (needs_http_runtime) key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_http_curl_c);
   key = runtime_object_cache_fold_text(key, target->exe_suffix ? target->exe_suffix : "");
   if (plan) {
     key = runtime_object_cache_fold_text(key, plan->driver_kind ? plan->driver_kind : "");
