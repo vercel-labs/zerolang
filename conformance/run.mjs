@@ -5026,6 +5026,7 @@ for (const runtimeFixture of [
   ["conformance/native/pass/std-fs.0", "std-fs", { stdout: "fs ok\n", file: { name: "std-fs-write.txt", text: "zero write\n" } }],
   ["conformance/native/pass/std-fs-bytes.0", "std-fs-bytes", { stdout: "fs bytes ok\n", stderr: "fs bytes err ok\n" }],
   ["conformance/native/pass/std-fs-write-file-bool.0", "std-fs-write-file-bool", { stdout: "fs write file bool ok\n" }],
+  ["conformance/native/pass/std-fs-append-bytes.0", "std-fs-append-bytes", { stdout: "fs append ok\n" }],
   ["conformance/native/pass/std-fs-read-chunks.0", "std-fs-read-chunks", { stdout: "fs read chunks ok\n" }],
   ["conformance/native/pass/frame-large-locals.0", "frame-large-locals", { stdout: "frame large locals ok alpha\n", args: ["alpha"] }],
   ["conformance/native/pass/frame-limit-boundary.0", "frame-limit-boundary", { stdout: "frame limit boundary ok\n" }],

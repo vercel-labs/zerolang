@@ -28,7 +28,7 @@ Runnable today:
 Metadata labels:
 
 - effects: proc
-- allocation behavior: no allocation
+- allocation behavior: child handles may keep runtime-owned PTY output buffers while `wait` drains terminal output
 - target support: host
 - error behavior: spawn helpers return an invalid `ProcChild` handle on failure; `read` and `write` return `null` when no bytes can be transferred
 - ownership notes: `ProcChild` values name runtime-owned process slots; call `wait` when process status matters and `close` when the handle is no longer needed
