@@ -570,6 +570,14 @@ static int zero_runtime_proc_copy_env_block(ZeroByteView env, char storage[ZERO_
   return 1;
 }
 
+static int zero_runtime_proc_set_env(const char *name, const char *value) {
+#if defined(_WIN32)
+  return SetEnvironmentVariableA(name, value ? value : "") != 0;
+#else
+  return setenv(name, value ? value : "", 1) == 0;
+#endif
+}
+
 static int zero_runtime_proc_apply_env_block(char *env) {
   if (!env || !env[0]) return 1;
   char *cursor = env;
@@ -584,7 +592,7 @@ static int zero_runtime_proc_apply_env_block(char *env) {
     char *equals = strchr(line, '=');
     if (!equals || equals == line) return 0;
     *equals = '\0';
-    if (setenv(line, equals + 1, 1) != 0) return 0;
+    if (!zero_runtime_proc_set_env(line, equals + 1)) return 0;
   }
   return 1;
 }
