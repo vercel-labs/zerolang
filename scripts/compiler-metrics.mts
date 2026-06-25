@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 17166, maxStrcmpCalls: 454, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 17168, maxStrcmpCalls: 454, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 6854, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
@@ -1704,6 +1704,7 @@ const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
 const linkedExecutableCachePathBody = cCodeText(cBlock(main, "static char *linked_executable_cache_path"));
 const linkedExecutableCompileCacheKeyBody = cCodeText(cBlock(main, "static uint64_t linked_executable_compile_cache_key"));
+const graphPackageDependencyHashBody = cCodeText(cBlock(main, "static uint64_t graph_package_dependency_hash"));
 const repositoryGraphFastHashBody = cCodeText(cBlock(main, "static char *read_repository_graph_hash_fast"));
 const repositoryGraphEarlyCachedRunBody = cCodeText(cBlock(main, "static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mir"));
 const manifestGraphEarlyCachedRunBody = cCodeText(cBlock(main, "static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_resolution"));
@@ -2477,6 +2478,9 @@ const programGraph = {
     /linked_executable_compile_cache_key\s*\(/.test(linkedExecutableCachePathBody) &&
     /command->graph_source.graph_hash/.test(linkedExecutableCompileCacheKeyBody) &&
     /graph_package_dependency_hash\s*\(/.test(linkedExecutableCompileCacheKeyBody) &&
+    /dep->path/.test(graphPackageDependencyHashBody) &&
+    /dep->targets_json/.test(graphPackageDependencyHashBody) &&
+    !/dependency_graph_hash|lockfile_hash|resolved_manifest|fingerprint/.test(graphPackageDependencyHashBody) &&
     /fopen\s*\(/.test(repositoryGraphFastHashBody) &&
     /fread\s*\(/.test(repositoryGraphFastHashBody) &&
     /read_repository_graph_hash_binary_fast\s*\(/.test(repositoryGraphFastHashBody) &&

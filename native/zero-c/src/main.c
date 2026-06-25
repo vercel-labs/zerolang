@@ -2393,15 +2393,17 @@ static uint64_t graph_package_dependency_hash(const SourceInput *input) {
   hash = mix_hash_text(hash, input->package_name);
   hash = mix_hash_text(hash, input->package_version);
   hash ^= input->manifest_hash; hash *= 1099511628211ull;
-  hash ^= input->dependency_graph_hash; hash *= 1099511628211ull;
-  hash ^= input->lockfile_hash; hash *= 1099511628211ull;
+  hash ^= input->dependency_count; hash *= 1099511628211ull;
   for (size_t i = 0; i < input->dependency_count; i++) {
     const SourceDependency *dep = &input->dependencies[i];
+    hash = mix_hash_text(hash, dep->name);
+    hash = mix_hash_text(hash, dep->version);
+    hash = mix_hash_text(hash, dep->path);
     hash = mix_hash_text(hash, dep->resolved_name);
     hash = mix_hash_text(hash, dep->resolved_version);
-    hash = mix_hash_text(hash, dep->resolved_manifest);
+    hash = mix_hash_text(hash, dep->targets_json);
     hash = mix_hash_text(hash, dep->status);
-    hash ^= dep->fingerprint;
+    hash ^= dep->direct ? 1u : 0u;
     hash *= 1099511628211ull;
   }
   return hash;
@@ -2610,7 +2612,7 @@ static char *linked_executable_cache_path(
 ) {
   if (!command || !input || !target || input->direct_c_import_call_count > 0) return NULL;
   uint64_t key = linked_executable_compile_cache_key(command, input, target, command->profile, artifact_kind);
-  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v4");
+  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v5");
   key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
   key = runtime_object_cache_fold_text(key, needs_http_runtime ? "http-runtime" : "no-http-runtime");
   key = runtime_object_cache_fold_text(key, target->exe_suffix ? target->exe_suffix : "");
