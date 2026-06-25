@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { access, chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createAggregateAssert, describeFailure, finishAggregateAssert } from "../scripts/aggregate-assert.mjs";
 
@@ -3402,7 +3402,8 @@ await writeFile(`${programGraphSourceFreePackage}/zero.graph`, programGraphSourc
 const programGraphSourceFreeCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeSizeJson = JSON.parse((await execFileAsync(zero, ["size", "--json", "--target", "linux-musl-x64", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeBuildJson = JSON.parse((await execFileAsync(zero, ["build", "--json", "--target", "linux-musl-x64", "--out", programGraphSourceFreeBuildPath, programGraphSourceFreePackage])).stdout);
-const programGraphSourceFreeMappedMirCacheFiles = (await readdir(`${programGraphSourceFreePackage}/.zero/cache/native`)).filter((name) => name.startsWith("mir-") && name.endsWith(".zmir"));
+const programGraphSourceFreeMappedMirCache = programGraphSourceFreeBuildJson.graphBuild?.mappedFinalMir;
+const programGraphSourceFreeMappedMirCachePath = programGraphSourceFreeMappedMirCache?.path ?? "";
 const programGraphSourceFreeRun = await execFileAsync(zero, ["run", "--out", programGraphSourceFreeRunPath, programGraphSourceFreePackage]);
 const programGraphSourceFreeTestJson = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeMemJson = JSON.parse((await execFileAsync(zero, ["mem", "--json", programGraphSourceFreePackage])).stdout);
@@ -3939,7 +3940,8 @@ assertProgramGraphCompilerInput(programGraphSourceFreeSizeJson, `${programGraphS
 assert.equal(programGraphSourceFreeBuildJson.sourceFile, `${programGraphSourceFreePackage}/zero.graph`);
 assertSourceGraph(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`);
-assert(programGraphSourceFreeMappedMirCacheFiles.some((path) => path.endsWith(".zmir")), "repository graph build should write a mapped MIR cache");
+assert(programGraphSourceFreeMappedMirCachePath.endsWith(".zmir"), "repository graph build should report a mapped MIR cache path");
+assert.equal(existsSync(programGraphSourceFreeMappedMirCachePath), true, "repository graph build should write a mapped MIR cache");
 assert.equal(programGraphSourceFreeRun.stdout, "hello from zero\n");
 assert.equal(programGraphSourceFreeTestJson.ok, true);
 assertSourceGraph(programGraphSourceFreeTestJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "direct-program-graph", false, "missing");

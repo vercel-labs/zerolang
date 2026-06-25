@@ -1665,6 +1665,7 @@ const listenJsonErrorBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool s
 const listenHandlerCaptureBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool run_handler_capture"));
 const mirBinaryRaw = texts.get("native/zero-c/src/mir_binary.c") ?? "";
 const mirBinarySource = cCodeText(mirBinaryRaw);
+const graphStoreMirCachePathBody = cCodeText(cBlock(mirBinaryRaw, "char *z_mir_binary_cache_path_for_graph_store"));
 const programGraphCompileSource = cCodeText(texts.get("native/zero-c/src/program_graph_compile.c") ?? "");
 const programGraphMirRaw = texts.get("native/zero-c/src/program_graph_mir.c") ?? "";
 const programGraphBuildRaw = texts.get("native/zero-c/src/program_graph_build.c") ?? "";
@@ -2469,6 +2470,9 @@ const programGraph = {
     /z_program_graph_artifact_source_present\s*\(&command->graph_source\)/.test(linkedExecutableCachePathBody) &&
     /shared_native_cache_file\s*\(/.test(linkedExecutableCachePathBody) &&
     /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody),
+  repositoryGraphSharedMappedMirCache: /mir_graph_store_cache_root\s*\(/.test(graphStoreMirCachePathBody) &&
+    !/mir_dirname\s*\(/.test(graphStoreMirCachePathBody) &&
+    !/\.zero\/cache\/native\//.test(graphStoreMirCachePathBody),
   repositoryGraphExecutableCacheFastHit: /read_repository_graph_hash_fast\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
     /linked_executable_cache_path\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
     /exec_cached_executable_artifact\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
