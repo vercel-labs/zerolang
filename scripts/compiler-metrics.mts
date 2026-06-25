@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 16893, maxStrcmpCalls: 454, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 17135, maxStrcmpCalls: 454, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 6854, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
@@ -247,7 +247,7 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 151],
 
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
-  ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1028],
+  ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1045],
   ["native/zero-c/src/main.c|static void memory_model_collect_expr(const Expr *expr, MemoryScope *scope, MemoryModelSummary *summary) {", 125],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 386],
   ["native/zero-c/src/checker.c|static bool check_stmt(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {", 279],
@@ -1182,7 +1182,8 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       !programGraph.repositoryGraphCheckDefaultReadiness ||
       !programGraph.repositoryGraphCheckPerformanceBudget ||
       !programGraph.repositoryGraphCacheKeyFacts ||
-      !programGraph.repositoryGraphSharedLinkedExecutableCache) {
+      !programGraph.repositoryGraphSharedLinkedExecutableCache ||
+      !programGraph.repositoryGraphExecutableCacheFastHit) {
     violations.push({
       kind: "program-graph-repository-native-check-path",
       programGraph,
@@ -1516,6 +1517,7 @@ const files = Object.fromEntries([...texts.entries()].map(([path, text]) => [pat
 
 const checker = texts.get("native/zero-c/src/checker.c") ?? "";
 const main = texts.get("native/zero-c/src/main.c") ?? "";
+const mainFunctionBody = cCodeText(cBlock(main, "int main(int argc, char **argv) {"));
 const ir = texts.get("native/zero-c/src/ir.c") ?? "";
 const stdSig = texts.get("native/zero-c/src/std_sig.c") ?? "";
 const capabilityNames = texts.get("native/zero-c/src/capability_names.c") ?? "";
@@ -1701,6 +1703,10 @@ const repositoryGraphCheckJsonRawBody = cBlock(main, "static void append_reposit
 const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_repository_graph_compiler_path_json"));
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
 const linkedExecutableCachePathBody = cCodeText(cBlock(main, "static char *linked_executable_cache_path"));
+const linkedExecutableCompileCacheKeyBody = cCodeText(cBlock(main, "static uint64_t linked_executable_compile_cache_key"));
+const repositoryGraphFastHashBody = cCodeText(cBlock(main, "static char *read_repository_graph_hash_fast"));
+const repositoryGraphEarlyCachedRunBody = cCodeText(cBlock(main, "static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mir"));
+const manifestGraphEarlyCachedRunBody = cCodeText(cBlock(main, "static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_resolution"));
 const directManifestGraphInputBody = cCodeText(cBlock(main, "static int resolve_direct_command_manifest_graph_input"));
 const readOptionalFileBody = cCodeText(cBlock(main, "static char *read_optional_file"));
 const programGraphStorageHeaderBody = cCodeText(cBlock(main, "static bool path_has_program_graph_storage_header"));
@@ -2462,6 +2468,25 @@ const programGraph = {
     /z_program_graph_artifact_source_present\s*\(&command->graph_source\)/.test(linkedExecutableCachePathBody) &&
     /shared_native_cache_file\s*\(/.test(linkedExecutableCachePathBody) &&
     /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody),
+  repositoryGraphExecutableCacheFastHit: /read_repository_graph_hash_fast\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /linked_executable_cache_path\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /run_executable_artifact\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") >= 0 &&
+    repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") >= 0 &&
+    repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") < repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") &&
+    /linked_executable_compile_cache_key\s*\(/.test(linkedExecutableCachePathBody) &&
+    /command->graph_source.graph_hash/.test(linkedExecutableCompileCacheKeyBody) &&
+    /graph_package_dependency_hash\s*\(/.test(linkedExecutableCompileCacheKeyBody) &&
+    /z_read_binary_file\s*\(/.test(repositoryGraphFastHashBody) &&
+    /repository_graph_hash_from_binary_header\s*\(/.test(repositoryGraphFastHashBody) &&
+    /try_run_manifest_graph_cached_executable_before_resolution\s*\(/.test(mainFunctionBody) &&
+    mainFunctionBody.indexOf("try_run_manifest_graph_cached_executable_before_resolution(") >= 0 &&
+    mainFunctionBody.indexOf("resolve_direct_command_manifest_graph_input(") >= 0 &&
+    mainFunctionBody.indexOf("try_run_manifest_graph_cached_executable_before_resolution(") < mainFunctionBody.indexOf("resolve_direct_command_manifest_graph_input(") &&
+    /z_program_graph_manifest_compiler_input_enabled\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
+    /z_program_graph_store_path_for_root\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
+    /cache_command\.repository_graph_input\s*=\s*true/.test(manifestGraphEarlyCachedRunBody) &&
+    /try_run_repository_graph_cached_executable_before_mir\s*\([^;]*false\s*\)/.test(manifestGraphEarlyCachedRunBody),
   repositoryGraphMirPrepMappedFinalMir: /z_mir_binary_load_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_mir_binary_write_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&
