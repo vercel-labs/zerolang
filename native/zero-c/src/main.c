@@ -6376,6 +6376,28 @@ static int run_executable_artifact(const char *exe_file, const Command *command)
 #endif
 }
 
+static int exec_cached_executable_artifact(const char *exe_file, const Command *command) {
+#if defined(_WIN32)
+  return run_executable_artifact(exe_file, command);
+#else
+  if (!z_process_executable_file_ready(exe_file)) {
+    fprintf(stderr, "zero run: executable artifact is not a regular executable file: %s\n", exe_file ? exe_file : "<missing>");
+    return 1;
+  }
+  int run_argc = command ? command->run_argc : 0;
+  if (run_argc < 0) run_argc = 0;
+  char **child_argv = (char **)z_checked_calloc((size_t)run_argc + 2, sizeof(char *));
+  child_argv[0] = (char *)exe_file;
+  for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
+  child_argv[run_argc + 1] = NULL;
+  fflush(NULL);
+  execv(exe_file, child_argv);
+  perror("zero run");
+  free(child_argv);
+  return 127;
+#endif
+}
+
 static const char *build_compiler_label(const Command *command, const ZTargetInfo *target) {
   ZToolchainPlan plan = z_plan_toolchain(command ? command->cc : NULL, command ? command->profile : NULL, target);
   return plan.compiler;
@@ -15870,19 +15892,25 @@ static bool store_header_get_u64(const unsigned char *data, size_t len, size_t *
   return true;
 }
 
-static char *repository_graph_hash_from_binary_header(const unsigned char *data, size_t len) {
+typedef struct {
+  uint64_t string_bytes;
+  uint64_t graph_off;
+  uint64_t graph_len;
+} RepositoryGraphHashRef;
+
+static bool repository_graph_hash_ref_from_binary_header(const unsigned char *data, size_t len, size_t file_len, RepositoryGraphHashRef *out) {
   static const unsigned char magic[8] = {'Z', 'R', 'G', 'B', 'I', 'N', '1', 0};
-  if (!data || len < sizeof(magic) || memcmp(data, magic, sizeof(magic)) != 0) return NULL;
+  if (!data || !out || len < sizeof(magic) || memcmp(data, magic, sizeof(magic)) != 0) return false;
   size_t offset = sizeof(magic);
   uint32_t schema = 0, flags = 0, validation_state = 0, reserved = 0;
   uint64_t ignored = 0, string_bytes = 0;
   if (!store_header_get_u32(data, len, &offset, &schema) ||
       !store_header_get_u32(data, len, &offset, &flags) ||
       !store_header_get_u32(data, len, &offset, &validation_state) ||
-      !store_header_get_u32(data, len, &offset, &reserved)) return NULL;
-  if (schema != 1 || reserved != 0 || validation_state > (uint32_t)Z_PROGRAM_GRAPH_VALIDATION_BUILDABLE || (flags & ~3u) != 0) return NULL;
+      !store_header_get_u32(data, len, &offset, &reserved)) return false;
+  if (schema != 1 || reserved != 0 || validation_state > (uint32_t)Z_PROGRAM_GRAPH_VALIDATION_BUILDABLE || (flags & ~3u) != 0) return false;
   for (unsigned i = 0; i < 6; i++) {
-    if (!store_header_get_u64(data, len, &offset, i == 5 ? &string_bytes : &ignored)) return NULL;
+    if (!store_header_get_u64(data, len, &offset, i == 5 ? &string_bytes : &ignored)) return false;
   }
   uint64_t module_off = 0, module_len = 0, graph_off = 0, graph_len = 0, module_hash_off = 0, module_hash_len = 0;
   if (!store_header_get_u64(data, len, &offset, &module_off) ||
@@ -15890,7 +15918,7 @@ static char *repository_graph_hash_from_binary_header(const unsigned char *data,
       !store_header_get_u64(data, len, &offset, &graph_off) ||
       !store_header_get_u64(data, len, &offset, &graph_len) ||
       !store_header_get_u64(data, len, &offset, &module_hash_off) ||
-      !store_header_get_u64(data, len, &offset, &module_hash_len)) return NULL;
+      !store_header_get_u64(data, len, &offset, &module_hash_len)) return false;
   (void)module_off;
   (void)module_len;
   (void)module_hash_off;
@@ -15898,13 +15926,30 @@ static char *repository_graph_hash_from_binary_header(const unsigned char *data,
   if (flags & (1u << 1)) {
     uint64_t source_hash_off = 0, source_hash_len = 0;
     if (!store_header_get_u64(data, len, &offset, &source_hash_off) ||
-        !store_header_get_u64(data, len, &offset, &source_hash_len)) return NULL;
+        !store_header_get_u64(data, len, &offset, &source_hash_len)) return false;
     (void)source_hash_off;
     (void)source_hash_len;
   }
-  if (string_bytes == 0 || string_bytes > (uint64_t)len || graph_len == 0 || graph_len == UINT64_MAX || graph_off > string_bytes || graph_len > string_bytes - graph_off) return NULL;
-  size_t strings_offset = len - (size_t)string_bytes;
-  return z_strndup((const char *)(data + strings_offset + (size_t)graph_off), (size_t)graph_len);
+  if (string_bytes == 0 || string_bytes > (uint64_t)file_len || graph_len == 0 || graph_len == UINT64_MAX || graph_len > (uint64_t)SIZE_MAX || graph_off > string_bytes || graph_len > string_bytes - graph_off) return false;
+  *out = (RepositoryGraphHashRef){.string_bytes = string_bytes, .graph_off = graph_off, .graph_len = graph_len};
+  return true;
+}
+
+static char *read_repository_graph_hash_binary_fast(FILE *file, const unsigned char *header, size_t header_len, size_t file_len) {
+  RepositoryGraphHashRef ref = {0};
+  if (!file || !repository_graph_hash_ref_from_binary_header(header, header_len, file_len, &ref)) return NULL;
+  uint64_t string_table_offset = (uint64_t)file_len - ref.string_bytes;
+  uint64_t graph_offset = string_table_offset + ref.graph_off;
+  if (graph_offset > (uint64_t)LONG_MAX) return NULL;
+  if (fseek(file, (long)graph_offset, SEEK_SET) != 0) return NULL;
+  char *hash = z_checked_malloc((size_t)ref.graph_len + 1);
+  size_t read_len = fread(hash, 1, (size_t)ref.graph_len, file);
+  if (read_len != (size_t)ref.graph_len) {
+    free(hash);
+    return NULL;
+  }
+  hash[(size_t)ref.graph_len] = '\0';
+  return hash;
 }
 
 static char *repository_graph_hash_from_text_header(const unsigned char *data, size_t len) {
@@ -15928,18 +15973,24 @@ static char *repository_graph_hash_from_text_header(const unsigned char *data, s
 }
 
 static char *read_repository_graph_hash_fast(const char *path) {
-  unsigned char *data = NULL;
-  size_t len = 0;
-  ZDiag ignored = {0};
-  if (!z_read_binary_file(path, &data, &len, &ignored)) {
-    free((char *)ignored.path);
+  if (!path || !path[0]) return NULL;
+  FILE *file = fopen(path, "rb");
+  if (!file) return NULL;
+  struct stat st;
+  if (stat(path, &st) != 0 || st.st_size <= 0) {
+    fclose(file);
     return NULL;
   }
-  char *hash = z_program_graph_store_bytes_are_binary(data, len)
-    ? repository_graph_hash_from_binary_header(data, len)
-    : repository_graph_hash_from_text_header(data, len);
-  free((char *)ignored.path);
-  free(data);
+  unsigned char header[4096];
+  size_t len = fread(header, 1, sizeof(header), file);
+  if (len == 0) {
+    fclose(file);
+    return NULL;
+  }
+  char *hash = z_program_graph_store_bytes_are_binary(header, len)
+    ? read_repository_graph_hash_binary_fast(file, header, len, (size_t)st.st_size)
+    : repository_graph_hash_from_text_header(header, len);
+  fclose(file);
   return hash;
 }
 
@@ -15980,7 +16031,7 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
       if (!runtime_object.supported) continue;
       char *cache_path = linked_executable_cache_path(&cache_command, &fast_input, target, &runtime_toolchain, true, http != 0, runtime_object.cache_key);
       if (cache_path && z_process_executable_file_ready(cache_path)) {
-        int rc = run_executable_artifact(cache_path, command);
+        int rc = exec_cached_executable_artifact(cache_path, command);
         if (rc_out) *rc_out = rc;
         free(cache_path);
         free(fast_graph_hash);
@@ -16032,7 +16083,7 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
     if (!runtime_object.supported) continue;
     char *cache_path = linked_executable_cache_path(&cache_command, &input, target, &runtime_toolchain, true, http != 0, runtime_object.cache_key);
     if (cache_path && z_process_executable_file_ready(cache_path)) {
-      int rc = run_executable_artifact(cache_path, command);
+      int rc = exec_cached_executable_artifact(cache_path, command);
       if (rc_out) *rc_out = rc;
       free(cache_path);
       z_free_source(&input);
@@ -16049,14 +16100,9 @@ static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mi
 static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_resolution(const Command *command, const ZTargetInfo *target, int *rc_out, ZDiag *diag) {
   if (!command || !command->input || !command->command || strcmp(command->command, "run") != 0) return EARLY_CACHED_RUN_NOT_APPLICABLE;
   if (command->repository_graph_input || path_has_program_graph_storage_header(command->input)) return EARLY_CACHED_RUN_NOT_APPLICABLE;
-  bool enabled = false;
-  ZDiag manifest_diag = {0};
-  if (!z_program_graph_manifest_compiler_input_enabled(command->input, &enabled, &manifest_diag)) {
-    if (diag) *diag = manifest_diag;
-    else free((char *)manifest_diag.path);
-    return EARLY_CACHED_RUN_FAILED;
-  }
-  if (!enabled) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  char *manifest_path = z_manifest_path_for_input(command->input);
+  if (!manifest_path) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  free(manifest_path);
   char *root = z_program_graph_store_root_for_input(command->input);
   char *store_path = z_program_graph_store_path_for_root(root);
   free(root);

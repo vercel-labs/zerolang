@@ -45,7 +45,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 17135, maxStrcmpCalls: 454, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 17166, maxStrcmpCalls: 454, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 6854, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
@@ -2470,20 +2470,21 @@ const programGraph = {
     /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody),
   repositoryGraphExecutableCacheFastHit: /read_repository_graph_hash_fast\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
     /linked_executable_cache_path\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
-    /run_executable_artifact\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /exec_cached_executable_artifact\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
     repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") >= 0 &&
     repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") >= 0 &&
     repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") < repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") &&
     /linked_executable_compile_cache_key\s*\(/.test(linkedExecutableCachePathBody) &&
     /command->graph_source.graph_hash/.test(linkedExecutableCompileCacheKeyBody) &&
     /graph_package_dependency_hash\s*\(/.test(linkedExecutableCompileCacheKeyBody) &&
-    /z_read_binary_file\s*\(/.test(repositoryGraphFastHashBody) &&
-    /repository_graph_hash_from_binary_header\s*\(/.test(repositoryGraphFastHashBody) &&
+    /fopen\s*\(/.test(repositoryGraphFastHashBody) &&
+    /fread\s*\(/.test(repositoryGraphFastHashBody) &&
+    /read_repository_graph_hash_binary_fast\s*\(/.test(repositoryGraphFastHashBody) &&
     /try_run_manifest_graph_cached_executable_before_resolution\s*\(/.test(mainFunctionBody) &&
     mainFunctionBody.indexOf("try_run_manifest_graph_cached_executable_before_resolution(") >= 0 &&
     mainFunctionBody.indexOf("resolve_direct_command_manifest_graph_input(") >= 0 &&
     mainFunctionBody.indexOf("try_run_manifest_graph_cached_executable_before_resolution(") < mainFunctionBody.indexOf("resolve_direct_command_manifest_graph_input(") &&
-    /z_program_graph_manifest_compiler_input_enabled\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
+    /z_manifest_path_for_input\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
     /z_program_graph_store_path_for_root\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
     /cache_command\.repository_graph_input\s*=\s*true/.test(manifestGraphEarlyCachedRunBody) &&
     /try_run_repository_graph_cached_executable_before_mir\s*\([^;]*false\s*\)/.test(manifestGraphEarlyCachedRunBody),
