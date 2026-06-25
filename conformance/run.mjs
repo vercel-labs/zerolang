@@ -4929,6 +4929,20 @@ assert.equal(zeroTestJsonBody.testDiscovery.filter, "addition");
 assert.equal(zeroTestJsonBody.fixtures.snapshotKey, "zero-test-graph-native-v1");
 assert.equal(zeroTestJsonBody.results[0].status, "passed");
 
+const zeroPtyTargetCapTest = await execFileAsync(zero, ["test", "--json", "--filter", "pty target", "--target", "linux-arm64", "conformance/check/pass/test-target-proc-caps.graph"]).catch((error) => error);
+assert.notEqual(zeroPtyTargetCapTest.code, 0);
+const zeroPtyTargetCapBody = JSON.parse(zeroPtyTargetCapTest.stdout);
+assert.equal(zeroPtyTargetCapBody.ok, false);
+assert.equal(zeroPtyTargetCapBody.diagnostics[0].code, "PAR100");
+assert.match(zeroPtyTargetCapBody.diagnostics[0].actual, /lacks proc/);
+
+const zeroTermTargetCapTest = await execFileAsync(zero, ["test", "--json", "--filter", "term target", "--target", "linux-arm64", "conformance/check/pass/test-target-proc-caps.graph"]).catch((error) => error);
+assert.notEqual(zeroTermTargetCapTest.code, 0);
+const zeroTermTargetCapBody = JSON.parse(zeroTermTargetCapTest.stdout);
+assert.equal(zeroTermTargetCapBody.ok, false);
+assert.equal(zeroTermTargetCapBody.diagnostics[0].code, "PAR100");
+assert.match(zeroTermTargetCapBody.diagnostics[0].actual, /lacks proc/);
+
 const zeroPackageTestJsonRun = await execFileAsync(zero, ["test", "--json", "conformance/packages/test-app"]);
 const zeroPackageTestBody = JSON.parse(zeroPackageTestJsonRun.stdout);
 assert.equal(zeroPackageTestBody.ok, true);

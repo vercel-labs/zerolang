@@ -57,9 +57,9 @@ Metadata labels:
 pub fn main(world: World) -> Void raises {
     let status: ProcStatus = std.proc.spawn("zero-noop")
     var storage: [64]u8 = [0_u8; 64]
-    let captured: Maybe<usize> = std.proc.capture("zero-noop", storage)
-    let files: ProcStatus = std.proc.captureFiles("zero-noop", ".zero/proc.out", ".zero/proc.err")
-    if std.proc.succeeded(status) && std.proc.succeeded(files) && std.proc.runOk("zero-noop") && std.proc.runCode("zero-noop") == 0 && captured.has {
+    let captured: Maybe<usize> = std.proc.capture("printf proc-capture", storage)
+    let files: ProcStatus = std.proc.captureFiles("sh -c 'printf proc-out; printf proc-err >&2'", ".zero/proc.out", ".zero/proc.err")
+    if std.proc.succeeded(status) && std.proc.succeeded(files) && std.proc.runOk("sh -c true") && std.proc.runCode("sh -c true") == 0 && captured.has {
         check world.out.write("proc ok\n")
     }
 }

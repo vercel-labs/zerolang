@@ -7,11 +7,11 @@ fn __zero_std_proc_failed(status: ProcStatus) -> Bool {
 }
 
 fn __zero_std_proc_run_ok(command: String) -> Bool {
-    let status: ProcStatus = std.proc.spawn(command)
+    let status: ProcStatus = std.proc.spawnInherit(command)
     return std.proc.succeeded(status)
 }
 
 fn __zero_std_proc_run_code(command: String) -> i32 {
-    let status: ProcStatus = std.proc.spawn(command)
+    let status: ProcStatus = std.proc.spawnInherit(command)
     return std.proc.exitCode(status)
 }
