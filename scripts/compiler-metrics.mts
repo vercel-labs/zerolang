@@ -46,7 +46,7 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 17168, maxStrcmpCalls: 454, maxShellCalls: 0 },
+  "native/zero-c/src/main.c": { maxLines: 17174, maxStrcmpCalls: 454, maxShellCalls: 0 },
   "native/zero-c/src/ir.c": { maxLines: 6854, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
@@ -182,7 +182,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_patch.h": { maxLines: 80, maxStrcmpCalls: 0 },
   // Projection safety memoizes realpath resolutions so warm status/check stay fast.
   "native/zero-c/src/program_graph_projection.c": { maxLines: 680, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_projection.h": { maxLines: 35, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_projection.h": { maxLines: 36, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_projection_fast.c": { maxLines: 225, maxStrcmpCalls: 3 },
   "native/zero-c/src/program_graph_projection_validate.c": { maxLines: 465, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.c": { maxLines: 612, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.h": { maxLines: 34, maxStrcmpCalls: 0 },
