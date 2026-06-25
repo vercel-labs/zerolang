@@ -16108,7 +16108,7 @@ static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_reso
   char *root = z_program_graph_store_root_for_input(command->input);
   char *store_path = z_program_graph_store_path_for_root(root);
   free(root);
-  if (!store_path || !z_program_graph_store_path_exists(store_path)) {
+  if (!store_path || !z_program_graph_store_path_exists(store_path) || manifest_graph_store_source_sync(command->input, NULL, NULL) != Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN) {
     free(store_path);
     return EARLY_CACHED_RUN_NOT_APPLICABLE;
   }

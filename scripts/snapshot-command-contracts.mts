@@ -4558,7 +4558,7 @@ const sourceFreeGraphPackageSizeJson = json(["size", "--json", "--target", "linu
 assertSourceGraph(sourceFreeGraphPackageSizeJson, sourceFreeGraphPackageStorePath, "package:source-free-graph-package@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(sourceFreeGraphPackageSizeJson, sourceFreeGraphPackageStorePath);
 const sourceFreeGraphPackageSizeMir = sourceFreeGraphPackageSizeJson.compilerCaches.find((cache) => cache.name === "mappedFinalMir");
-assert.equal(sourceFreeGraphPackageSizeMir.codegenImmediate, false);
+assert.equal(sourceFreeGraphPackageSizeMir.codegenImmediate, sourceFreeGraphPackageSizeMir.hit === true);
 assert.equal(sourceFreeGraphPackageSizeMir.programReconstructed, false);
 const sourceFreeGraphPackageBuildPath = join(outDir, "source-free-graph-package-build");
 const sourceFreeGraphPackageBuildJson = json(["build", "--json", "--target", "linux-musl-x64", "--out", sourceFreeGraphPackageBuildPath, sourceFreeGraphPackageRoot]).body;

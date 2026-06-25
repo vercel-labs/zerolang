@@ -94,8 +94,7 @@ static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
 static bool ir_instrs_need_zero_runtime_object(const IrInstr *instrs, size_t len) {
   for (size_t i = 0; instrs && i < len; i++) {
     const IrInstr *instr = &instrs[i];
-    if (instr->kind == IR_INSTR_WORLD_WRITE ||
-        ir_value_needs_zero_runtime_object(instr->value) ||
+    if (ir_value_needs_zero_runtime_object(instr->value) ||
         ir_value_needs_zero_runtime_object(instr->index) ||
         ir_instrs_need_zero_runtime_object(instr->then_instrs, instr->then_len) ||
         ir_instrs_need_zero_runtime_object(instr->else_instrs, instr->else_len)) {
