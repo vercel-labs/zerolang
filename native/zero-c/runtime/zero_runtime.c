@@ -43,6 +43,7 @@ typedef struct _stat ZeroRuntimeStat;
 #endif
 #else
 #include <dirent.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/select.h>
 #include <sys/ioctl.h>
@@ -81,6 +82,8 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_PROC_ENV_BYTES 4096u
 #define ZERO_RUNTIME_PROC_MAX_ARGS 64u
 #define ZERO_RUNTIME_PROC_CHILD_MAX 64u
+#define ZERO_RUNTIME_PROC_DRAIN_CHUNK 4096u
+#define ZERO_RUNTIME_PROC_BUFFER_MAX (16u * 1024u * 1024u)
 
 static uint64_t zero_runtime_pack_span(int has, size_t offset, size_t len);
 
@@ -799,6 +802,14 @@ int32_t zero_proc_capture_files_args(ZeroByteView program, ZeroByteView args, Ze
 
 #if !defined(_WIN32)
 typedef struct {
+  unsigned char *data;
+  size_t offset;
+  size_t len;
+  size_t cap;
+  int discard;
+} ZeroRuntimeProcPipeBuffer;
+
+typedef struct {
   int active;
   int reaped;
   int status;
@@ -808,10 +819,15 @@ typedef struct {
   int stderr_fd;
   int pty_fd;
   int pty;
+  ZeroRuntimeProcPipeBuffer stdout_buffer;
+  ZeroRuntimeProcPipeBuffer stderr_buffer;
+  ZeroRuntimeProcPipeBuffer pty_buffer;
 } ZeroRuntimeProcChild;
 
 static ZeroRuntimeProcChild zero_proc_children[ZERO_RUNTIME_PROC_CHILD_MAX];
 static int zero_proc_sigpipe_ignored;
+
+static int zero_proc_signal_child(ZeroRuntimeProcChild *child, int signal_number);
 
 static int zero_proc_child_index(int32_t child) {
   if (child <= 0 || child > (int32_t)ZERO_RUNTIME_PROC_CHILD_MAX) return -1;
@@ -839,6 +855,107 @@ static void zero_proc_child_close_pipes(ZeroRuntimeProcChild *child) {
   zero_proc_child_close_fd(&child->stdout_fd);
   zero_proc_child_close_fd(&child->stderr_fd);
   zero_proc_child_close_fd(&child->pty_fd);
+}
+
+static void zero_proc_pipe_buffer_free(ZeroRuntimeProcPipeBuffer *buffer) {
+  if (!buffer) return;
+  free(buffer->data);
+  *buffer = (ZeroRuntimeProcPipeBuffer){0};
+}
+
+static void zero_proc_child_free_buffers(ZeroRuntimeProcChild *child) {
+  if (!child) return;
+  zero_proc_pipe_buffer_free(&child->stdout_buffer);
+  zero_proc_pipe_buffer_free(&child->stderr_buffer);
+  zero_proc_pipe_buffer_free(&child->pty_buffer);
+}
+
+static void zero_proc_pipe_buffer_compact(ZeroRuntimeProcPipeBuffer *buffer) {
+  if (!buffer || buffer->offset == 0) return;
+  if (buffer->offset >= buffer->len) {
+    buffer->offset = 0;
+    buffer->len = 0;
+    return;
+  }
+  memmove(buffer->data, buffer->data + buffer->offset, buffer->len - buffer->offset);
+  buffer->len -= buffer->offset;
+  buffer->offset = 0;
+}
+
+static int zero_proc_pipe_buffer_append(ZeroRuntimeProcPipeBuffer *buffer, const unsigned char *data, size_t len) {
+  if (!buffer || (!data && len > 0)) return 0;
+  if (len == 0 || buffer->discard) return 1;
+  zero_proc_pipe_buffer_compact(buffer);
+  if (len > ZERO_RUNTIME_PROC_BUFFER_MAX - buffer->len) {
+    size_t available = ZERO_RUNTIME_PROC_BUFFER_MAX - buffer->len;
+    if (available > 0 && !zero_proc_pipe_buffer_append(buffer, data, available)) return 0;
+    buffer->discard = 1;
+    return 1;
+  }
+  size_t need = buffer->len + len;
+  if (need > buffer->cap) {
+    size_t cap = buffer->cap ? buffer->cap : 4096u;
+    while (cap < need) {
+      if (cap > ZERO_RUNTIME_PROC_BUFFER_MAX / 2u) {
+        cap = ZERO_RUNTIME_PROC_BUFFER_MAX;
+        break;
+      }
+      cap *= 2u;
+    }
+    unsigned char *next = (unsigned char *)realloc(buffer->data, cap);
+    if (!next) {
+      buffer->discard = 1;
+      return 1;
+    }
+    buffer->data = next;
+    buffer->cap = cap;
+  }
+  memcpy(buffer->data + buffer->len, data, len);
+  buffer->len += len;
+  return 1;
+}
+
+static ZeroMaybeUsize zero_proc_pipe_buffer_read(ZeroRuntimeProcPipeBuffer *buffer, ZeroMutByteView out) {
+  if (!buffer || buffer->offset >= buffer->len || out.len == 0) return zero_runtime_none_usize();
+  size_t available = buffer->len - buffer->offset;
+  size_t take = available < out.len ? available : out.len;
+  memcpy(out.ptr, buffer->data + buffer->offset, take);
+  buffer->offset += take;
+  if (buffer->offset == buffer->len) {
+    buffer->offset = 0;
+    buffer->len = 0;
+  }
+  return (ZeroMaybeUsize){1, (uint64_t)take};
+}
+
+static void zero_proc_child_drain_fd(int *fd, ZeroRuntimeProcPipeBuffer *buffer) {
+  if (!fd || *fd < 0 || !buffer) return;
+  unsigned char chunk[ZERO_RUNTIME_PROC_DRAIN_CHUNK];
+  for (;;) {
+    ZeroReadResult got = ZERO_RUNTIME_READ(*fd, chunk, sizeof(chunk));
+    if (got > 0) {
+      (void)zero_proc_pipe_buffer_append(buffer, chunk, (size_t)got);
+      continue;
+    }
+    if (got == 0) {
+      zero_proc_child_close_fd(fd);
+      return;
+    }
+    if (errno == EINTR) continue;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+    zero_proc_child_close_fd(fd);
+    return;
+  }
+}
+
+static void zero_proc_child_drain_output(ZeroRuntimeProcChild *child) {
+  if (!child) return;
+  if (child->pty) {
+    zero_proc_child_drain_fd(&child->pty_fd, &child->pty_buffer);
+  } else {
+    zero_proc_child_drain_fd(&child->stdout_fd, &child->stdout_buffer);
+    zero_proc_child_drain_fd(&child->stderr_fd, &child->stderr_buffer);
+  }
 }
 
 static int zero_proc_child_set_nonblock(int fd) {
@@ -870,6 +987,74 @@ static int zero_proc_child_reap(ZeroRuntimeProcChild *child, int nohang) {
     child->reaped = 1;
     return 1;
   }
+}
+
+static void zero_proc_child_poll_output(ZeroRuntimeProcChild *child, int timeout_ms) {
+  if (!child) return;
+  struct pollfd fds[2];
+  nfds_t count = 0;
+  if (child->pty) {
+    if (child->pty_fd >= 0) {
+      fds[count++] = (struct pollfd){.fd = child->pty_fd, .events = POLLIN | POLLHUP | POLLERR};
+    }
+  } else {
+    if (child->stdout_fd >= 0) {
+      fds[count++] = (struct pollfd){.fd = child->stdout_fd, .events = POLLIN | POLLHUP | POLLERR};
+    }
+    if (child->stderr_fd >= 0) {
+      fds[count++] = (struct pollfd){.fd = child->stderr_fd, .events = POLLIN | POLLHUP | POLLERR};
+    }
+  }
+  if (count == 0) {
+    if (timeout_ms < 0) {
+      (void)zero_proc_child_reap(child, 0);
+    } else if (timeout_ms > 0) {
+      (void)poll(NULL, 0, timeout_ms);
+    }
+    return;
+  }
+  int rc = 0;
+  do {
+    rc = poll(fds, count, timeout_ms);
+  } while (rc < 0 && errno == EINTR);
+  if (rc > 0) zero_proc_child_drain_output(child);
+}
+
+static int zero_proc_child_wait_with_drain(ZeroRuntimeProcChild *child, int timeout_ms) {
+  if (!child || !child->active) return 0;
+  int elapsed_ms = 0;
+  for (;;) {
+    zero_proc_child_drain_output(child);
+    if (zero_proc_child_reap(child, 1)) {
+      zero_proc_child_drain_output(child);
+      return 1;
+    }
+    if (timeout_ms == 0) return 0;
+    int slice_ms = -1;
+    if (timeout_ms > 0) {
+      if (elapsed_ms >= timeout_ms) return 0;
+      slice_ms = timeout_ms - elapsed_ms;
+      if (slice_ms > 50) slice_ms = 50;
+    }
+    zero_proc_child_poll_output(child, slice_ms);
+    if (slice_ms > 0) elapsed_ms += slice_ms;
+  }
+}
+
+static int zero_proc_child_close_handle(ZeroRuntimeProcChild *child) {
+  if (!child || !child->active) return 0;
+  if (!child->reaped && !zero_proc_child_wait_with_drain(child, 0)) {
+    (void)zero_proc_signal_child(child, SIGTERM);
+    if (!zero_proc_child_wait_with_drain(child, 250)) {
+      (void)zero_proc_signal_child(child, SIGKILL);
+      (void)zero_proc_child_wait_with_drain(child, -1);
+    }
+  }
+  zero_proc_child_drain_output(child);
+  zero_proc_child_close_pipes(child);
+  zero_proc_child_free_buffers(child);
+  child->active = 0;
+  return 1;
 }
 
 static int zero_proc_pid_running(int32_t pid) {
@@ -1151,7 +1336,7 @@ int32_t zero_proc_child_op(int32_t child, uint32_t op) {
     case ZERO_PROC_CHILD_OP_RUNNING:
       return zero_proc_child_reap(slot, 1) ? 0 : 1;
     case ZERO_PROC_CHILD_OP_WAIT:
-      zero_proc_child_reap(slot, 0);
+      zero_proc_child_wait_with_drain(slot, -1);
       return slot->status;
     case ZERO_PROC_CHILD_OP_KILL:
       if (zero_proc_child_reap(slot, 1)) return 1;
@@ -1164,13 +1349,7 @@ int32_t zero_proc_child_op(int32_t child, uint32_t op) {
       zero_proc_child_close_fd(&slot->stdin_fd);
       return 1;
     case ZERO_PROC_CHILD_OP_CLOSE:
-      if (!slot->reaped && !zero_proc_child_reap(slot, 1)) {
-        (void)zero_proc_signal_child(slot, SIGTERM);
-        if (!zero_proc_child_reap(slot, 1)) return 0;
-      }
-      zero_proc_child_close_pipes(slot);
-      slot->active = 0;
-      return 1;
+      return zero_proc_child_close_handle(slot);
     default:
       return 0;
   }
@@ -1197,9 +1376,8 @@ ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_
     else if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) fd = slot->stdin_fd;
     else return zero_runtime_none_usize();
   }
-  if (fd < 0) return zero_runtime_none_usize();
-
   if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) {
+    if (fd < 0) return zero_runtime_none_usize();
     if (buffer.len == 0) return (ZeroMaybeUsize){1, 0};
     ZeroWriteResult written = ZERO_RUNTIME_WRITE(fd, buffer.ptr, buffer.len > (size_t)UINT_MAX ? UINT_MAX : (unsigned)buffer.len);
     if (written < 0) {
@@ -1212,6 +1390,14 @@ ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_
   }
 
   if (buffer.len == 0) return zero_runtime_none_usize();
+  ZeroRuntimeProcPipeBuffer *pending = NULL;
+  if (slot->pty) pending = &slot->pty_buffer;
+  else if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) pending = &slot->stdout_buffer;
+  else if (op == ZERO_PROC_CHILD_IO_READ_STDERR) pending = &slot->stderr_buffer;
+  ZeroMaybeUsize buffered = zero_proc_pipe_buffer_read(pending, buffer);
+  if (buffered.has) return buffered;
+  if (fd < 0) return zero_runtime_none_usize();
+
   ZeroReadResult got = ZERO_RUNTIME_READ(fd, buffer.ptr, buffer.len > (size_t)UINT_MAX ? UINT_MAX : (unsigned)buffer.len);
   if (got < 0) {
     if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();

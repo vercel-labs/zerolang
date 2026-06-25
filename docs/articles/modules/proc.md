@@ -44,7 +44,8 @@ Runnable today:
 Metadata labels:
 
 - effects: proc
-- allocation behavior: no allocation
+- allocation behavior: child handles may keep runtime-owned pipe buffers while
+  `wait` drains stdout, stderr, or PTY output
 - target support: host
 - error behavior: `spawn`, `spawnInherit`, `captureFiles`, and `wait` return `ProcStatus`; `exitCode` is infallible; `capture` and child I/O helpers return `null` when they cannot produce a complete result
 - ownership notes: `ProcChild` values name runtime-owned process slots; call `wait` when process status matters and `close` when the handle is no longer needed
@@ -107,7 +108,8 @@ non-empty line in `args` becomes one following argv entry with spaces preserved.
 `captureArgs` captures stdout into caller storage, `captureFilesArgs` redirects
 stdout and stderr to hosted paths, and `spawnChildArgs` returns nonblocking
 pipes so event loops can poll process state and terminal input without owning
-threads.
+threads. `wait` drains child output into the handle before reaping so post-wait
+`readStdout` and `readStderr` calls can still consume buffered data.
 
 Hosted child helpers start children in their own process group where the target
 platform supports it. Use `killGroupPid` or `interruptGroupPid` when a stored

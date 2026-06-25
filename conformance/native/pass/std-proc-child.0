@@ -20,6 +20,17 @@ pub fn main(world: World) -> Void raises {
         output_ok = std.mem.eql(stdout_bytes, "child-out") && std.mem.eql(stderr_bytes, "child-err")
     }
 
+    let large_child: ProcChild = std.proc.spawnChild("sh -c 'yes x | head -c 1048576'")
+    var large_buf: [32]u8 = [0_u8; 32]
+    var large_ok: Bool = false
+    let large_valid: Bool = std.proc.childValid(large_child)
+    if large_valid {
+        let large_status: ProcStatus = std.proc.wait(large_child)
+        let large_read: Maybe<usize> = std.proc.readStdout(large_child, large_buf)
+        large_ok = std.proc.succeeded(large_status) && large_read.has && large_read.value == 32
+    }
+    let large_closed: Bool = std.proc.close(large_child)
+
     let stdin_child: ProcChild = std.proc.spawnChild("sh -c 'read line; printf stdin:$line'")
     var stdin_buf: [32]u8 = [0_u8; 32]
     var stdin_ok: Bool = false
@@ -66,12 +77,8 @@ pub fn main(world: World) -> Void raises {
     var close_live_ok: Bool = false
     let close_live_pid: i32 = std.proc.pid(close_live_child)
     if std.proc.childValid(close_live_child) && close_live_pid > 0 && std.proc.pidRunning(close_live_pid) {
-        let first_live_close: Bool = std.proc.close(close_live_child)
-        let close_live_retained: Bool = !first_live_close && std.proc.childValid(close_live_child) && std.proc.pidRunning(close_live_pid)
-        let close_live_interrupted: Bool = std.proc.interrupt(close_live_child)
-        let close_live_status: ProcStatus = std.proc.wait(close_live_child)
         let close_live_closed: Bool = std.proc.close(close_live_child)
-        close_live_ok = close_live_retained && close_live_interrupted && std.proc.exitCode(close_live_status) != 0 && close_live_closed
+        close_live_ok = close_live_closed && !std.proc.childValid(close_live_child) && !std.proc.pidRunning(close_live_pid)
     }
 
     let pid_child: ProcChild = std.proc.spawnChild("sh -c 'while true; do sleep 1; done'")
@@ -160,7 +167,7 @@ pub fn main(world: World) -> Void raises {
         files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
     }
 
-    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
         check world.out.write("std proc child ok\n")
     }
 }
