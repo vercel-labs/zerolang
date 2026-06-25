@@ -5673,6 +5673,18 @@ static bool ir_lower_array_initializer(const Program *program, IrProgram *ir, Ir
       return false;
     }
     const Expr *value_expr = expr->args.items[0];
+    bool compact_repeat = value_expr && (value_expr->kind == EXPR_NUMBER || value_expr->kind == EXPR_BOOL || value_expr->kind == EXPR_CHAR);
+    if (compact_repeat) {
+      IrValue *value = NULL;
+      if (!ir_lower_expr(program, ir, mir_fun, value_expr, &value)) return false;
+      if (value->type != local->element_type) {
+        ir_free_value(value);
+        ir_mark_unsupported(ir, "direct backend array repeat literal element type does not match local type", value_expr->line, value_expr->column, local->name);
+        return false;
+      }
+      ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_ARRAY_FILL, .array_index = local->index, .value = value, .line = value_expr->line, .column = value_expr->column});
+      return true;
+    }
     for (size_t i = 0; i < local->array_len; i++) {
       IrValue *index = ir_new_index_literal(ir, (unsigned)i, value_expr->line, value_expr->column);
       IrValue *value = NULL;

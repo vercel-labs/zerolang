@@ -43,6 +43,7 @@ try {
     "native/zero-c/src/program_graph_std_deps.c",
     "native/zero-c/src/program_graph_std_merge.c",
     "native/zero-c/src/program_graph_std_prune.c",
+    "native/zero-c/src/program_graph_string_map.c",
     "native/zero-c/src/program_graph_validate.c",
     "native/zero-c/src/program_graph_view.c",
     "native/zero-c/src/c_import.c",

@@ -84,6 +84,18 @@ static size_t graph_c_meta_count_calls(const ZProgramGraph *graph) {
 
 void z_program_graph_seed_c_import_metadata(SourceInput *input, const ZProgramGraph *graph) {
   if (!input || !graph) return;
+  bool has_c_import = false;
+  for (size_t i = 0; i < graph->node_len; i++) {
+    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT) {
+      has_c_import = true;
+      break;
+    }
+  }
+  if (!has_c_import) {
+    input->direct_c_import_call_count = 0;
+    input->direct_c_import_symbol_count = 0;
+    return;
+  }
   for (size_t i = 0; i < graph->edge_len; i++) {
     const ZProgramGraphEdge *edge = &graph->edges[i];
     if (!graph_c_meta_text_eq(edge->kind, "cImport")) continue;

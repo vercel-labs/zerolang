@@ -3960,6 +3960,10 @@ static void elf_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFi
 static bool elf_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, ElfEmitContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
     ZDirectFillRun run;
+    if (z_direct_fill_run_from_instr(fun, &instrs[i], &run)) {
+      elf_emit_fill_run(text, fun, &run);
+      continue;
+    }
     if (z_direct_detect_fill_run(fun, instrs, len, i, ELF_FILL_RUN_MIN, &run)) {
       elf_emit_fill_run(text, fun, &run);
       i += run.count - 1;

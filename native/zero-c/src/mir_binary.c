@@ -218,7 +218,7 @@ typedef struct {
 } MirDecoded;
 
 static const unsigned char MIR_BINARY_MAGIC[8] = {'Z', 'M', 'I', 'R', 'B', 'I', 'N', '1'};
-enum { MIR_BINARY_SCHEMA_VERSION = 5 };
+enum { MIR_BINARY_SCHEMA_VERSION = 7 };
 static const uint64_t MIR_NULL_LEN = UINT64_MAX;
 static const uint64_t MIR_BINARY_MAX_FUNCTION_COUNT = 100000;
 static const uint64_t MIR_BINARY_MAX_LOCAL_COUNT = 1000000;
@@ -884,7 +884,7 @@ static bool mir_read_instr(MirReader *reader, const MirHeader *header, MirInstrF
       !mir_get_count(reader, &record->then_ref_start) || !mir_get_count(reader, &record->then_ref_len) ||
       !mir_get_count(reader, &record->else_ref_start) || !mir_get_count(reader, &record->else_ref_len) ||
       !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) || reserved != 0 ||
-      kind > (uint32_t)IR_INSTR_CONTINUE || record->value_ref > header->value_count ||
+      kind > (uint32_t)IR_INSTR_KIND_LAST || record->value_ref > header->value_count ||
       record->index_ref > header->value_count ||
       !mir_refs_fit(record->then_ref_start, record->then_ref_len, header->instr_ref_count) ||
       !mir_refs_fit(record->else_ref_start, record->else_ref_len, header->instr_ref_count)) return false;
@@ -908,7 +908,7 @@ static bool mir_read_value(MirReader *reader, const MirHeader *header, MirValueF
       !mir_get_count(reader, &record->arg_ref_start) || !mir_get_count(reader, &record->arg_ref_len) ||
       !mir_get_count(reader, &record->index_ref) || !mir_get_count(reader, &record->left_ref) ||
       !mir_get_count(reader, &record->right_ref) || !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) ||
-      kind > (uint32_t)IR_VALUE_JSON_ERROR_LABEL || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
+      kind > (uint32_t)IR_VALUE_KIND_LAST || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
       compare_op > (uint32_t)IR_CMP_GE || record->index_ref > header->value_count ||
       record->left_ref > header->value_count || record->right_ref > header->value_count ||
       !mir_refs_fit(record->arg_ref_start, record->arg_ref_len, header->value_ref_count)) return false;

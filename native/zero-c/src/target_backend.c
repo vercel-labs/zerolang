@@ -299,9 +299,9 @@ ZDirectObjectBackendFacts z_direct_object_backend_facts(const ZTargetInfo *targe
   bool emit_exe = kind == Z_DIRECT_EMIT_KIND_EXECUTABLE;
   bool metadata_only = kind == Z_DIRECT_EMIT_KIND_METADATA;
   bool runtime_linked_exe = emit_exe && has_runtime_imports;
-  bool requested_exe = emit_exe && requested_backend;
   ZDirectBackend backend = z_direct_backend_for_emit_kind(target, emit_kind, requested_backend);
   const char *emitter = z_direct_backend_emitter_for_emit_kind(target, emit_kind, requested_backend);
+  if (emit_exe && !runtime_linked_exe && backend == Z_DIRECT_BACKEND_NONE && !requested_backend) { backend = z_direct_exe_backend(target); emitter = z_direct_backend_exe_emitter(backend); }
   if (metadata_only || runtime_linked_exe) {
     backend = z_direct_object_backend(target);
     if (metadata_only && requested_backend && requested_backend[0] && !z_direct_requested_backend_matches(requested_backend, backend)) {
@@ -312,8 +312,8 @@ ZDirectObjectBackendFacts z_direct_object_backend_facts(const ZTargetInfo *targe
       if (metadata_only && (!emitter || direct_text_equals(emitter, "none"))) emitter = "metadata-only";
     }
   }
-  bool active = (metadata_only && backend != Z_DIRECT_BACKEND_NONE) || runtime_linked_exe || (backend != Z_DIRECT_BACKEND_NONE && (emit_obj || requested_exe));
-  bool executable_artifact = requested_exe && !runtime_linked_exe;
+  bool active = (metadata_only && backend != Z_DIRECT_BACKEND_NONE) || runtime_linked_exe || (backend != Z_DIRECT_BACKEND_NONE && (emit_obj || emit_exe));
+  bool executable_artifact = emit_exe && !runtime_linked_exe;
   ZDirectObjectBackendFacts facts = {
     .backend = backend,
     .selected_emitter = emitter,

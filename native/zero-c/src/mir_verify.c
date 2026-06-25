@@ -2582,6 +2582,24 @@ static bool mir_verify_direct_return_instr(IrProgram *ir, const IrFunction *fun,
   return false;
 }
 
+static bool mir_verify_array_fill_instr(IrProgram *ir, const IrFunction *fun, const IrInstr *instr) {
+  if (!mir_verify_local_index(ir, fun, instr->array_index, instr->line, instr->column, "MIR verifier found array fill outside the local table")) return false;
+  const IrLocal *local = &fun->locals[instr->array_index];
+  if (!local->is_array || local->array_len == 0 || local->type == IR_TYPE_BYTE_VIEW) {
+    char actual[160];
+    snprintf(actual, sizeof(actual), "local %s is %s", local->name ? local->name : "<unnamed>", mir_type_kind_name(local->type));
+    mir_verify_mark_unsupported(ir, "MIR verifier found array fill to an unsupported local", instr->line, instr->column, actual);
+    return false;
+  }
+  if (!instr->value || (instr->value->kind != IR_VALUE_INT && instr->value->kind != IR_VALUE_BOOL) || instr->value->type != local->element_type) {
+    char actual[160];
+    snprintf(actual, sizeof(actual), "array fill has %s but element is %s", instr->value ? mir_type_kind_name(instr->value->type) : "missing", mir_type_kind_name(local->element_type));
+    mir_verify_mark_unsupported(ir, "MIR verifier found array fill type mismatch", instr->line, instr->column, actual);
+    return false;
+  }
+  return true;
+}
+
 static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fun, const IrInstr *instr, MirHelperRequirements *requirements) {
   if (!ir || !ir->mir_valid || !fun || !instr) return false;
   switch (instr->kind) {
@@ -2623,6 +2641,10 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
         mir_verify_mark_unsupported(ir, "MIR verifier found indexed write type mismatch", instr->line, instr->column, actual);
         return false;
       }
+      break;
+    }
+    case IR_INSTR_ARRAY_FILL: {
+      if (!mir_verify_array_fill_instr(ir, fun, instr)) return false;
       break;
     }
     case IR_INSTR_FIELD_STORE: {

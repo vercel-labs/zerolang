@@ -2318,6 +2318,10 @@ static void a64_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFi
 static bool a64_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
     ZDirectFillRun run;
+    if (z_direct_fill_run_from_instr(fun, &instrs[i], &run)) {
+      a64_emit_fill_run(text, fun, &run, frame_size);
+      continue;
+    }
     if (z_direct_detect_fill_run(fun, instrs, len, i, A64_FILL_RUN_MIN, &run)) {
       a64_emit_fill_run(text, fun, &run, frame_size);
       i += run.count - 1;

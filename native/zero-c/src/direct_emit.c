@@ -80,6 +80,21 @@ bool z_direct_detect_fill_run(const IrFunction *fun, const IrInstr *instrs, size
   return true;
 }
 
+bool z_direct_fill_run_from_instr(const IrFunction *fun, const IrInstr *instr, ZDirectFillRun *out) {
+  if (!fun || !instr || instr->kind != IR_INSTR_ARRAY_FILL || instr->array_index >= fun->local_len) return false;
+  const IrLocal *local = &fun->locals[instr->array_index];
+  if (!local->is_array || local->array_len == 0 || local->type == IR_TYPE_BYTE_VIEW || local->element_type == IR_TYPE_UNSUPPORTED) return false;
+  if (!instr->value || instr->value->type != local->element_type) return false;
+  if (instr->value->kind != IR_VALUE_INT && instr->value->kind != IR_VALUE_BOOL) return false;
+  if (out) {
+    out->array_index = instr->array_index;
+    out->count = local->array_len;
+    out->fill_value = instr->value->int_value;
+    out->element_type = local->element_type;
+  }
+  return true;
+}
+
 bool z_emit_direct_object_from_ir(ZDirectBackend backend, const IrProgram *program, ZBuf *out, ZDiag *diag) {
   switch (backend) {
     case Z_DIRECT_BACKEND_ELF64: return z_emit_elf64_object_from_ir(program, out, diag);

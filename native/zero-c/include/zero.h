@@ -532,7 +532,7 @@ typedef enum {
   IR_VALUE_PROC_PTY_RESIZE,
   IR_VALUE_TERM_RUNTIME,
   IR_VALUE_PROC_SPAWN_INHERIT,
-  IR_VALUE_FS_APPEND_BYTES_PATH
+  IR_VALUE_FS_APPEND_BYTES_PATH, IR_VALUE_KIND_LAST = IR_VALUE_FS_APPEND_BYTES_PATH
 } IrValueKind;
 
 typedef enum {
@@ -782,6 +782,7 @@ struct IrValue {
 typedef enum {
   IR_INSTR_LOCAL_SET,
   IR_INSTR_INDEX_STORE,
+  IR_INSTR_ARRAY_FILL,
   IR_INSTR_FIELD_STORE,
   IR_INSTR_WORLD_WRITE,
   IR_INSTR_RAISE,
@@ -790,7 +791,7 @@ typedef enum {
   IR_INSTR_IF,
   IR_INSTR_WHILE,
   IR_INSTR_BREAK,
-  IR_INSTR_CONTINUE
+  IR_INSTR_CONTINUE, IR_INSTR_KIND_LAST = IR_INSTR_CONTINUE
 } IrInstrKind;
 
 typedef struct {
@@ -889,6 +890,7 @@ typedef struct {
 // local with a single literal value. The caller emits a fill loop and
 // advances past the run.
 bool z_direct_detect_fill_run(Z_IN const IrFunction *fun, Z_IN const IrInstr *instrs, size_t len, size_t start, size_t min_run, Z_OUT ZDirectFillRun *out);
+bool z_direct_fill_run_from_instr(Z_IN const IrFunction *fun, Z_IN const IrInstr *instr, Z_OUT ZDirectFillRun *out);
 
 typedef struct {
   char *symbol;
@@ -1003,7 +1005,7 @@ typedef struct {
   long long lower_ms, codegen_ms, object_ms, link_ms;
   long long graph_load_ms, graph_stdlib_merge_ms, graph_readiness_check_ms;
   long long graph_stdlib_reference_scan_ms, graph_stdlib_cleanup_ms, graph_stdlib_module_load_ms;
-  long long graph_stdlib_node_merge_ms, graph_stdlib_edge_merge_ms, graph_stdlib_finalize_ms;
+  long long graph_stdlib_node_merge_ms, graph_stdlib_edge_merge_ms, graph_stdlib_finalize_ms, graph_stdlib_prune_ms, graph_stdlib_identity_ms;
   long long graph_mir_cache_load_ms, graph_mir_lower_ms, graph_mir_cache_write_ms, graph_mir_cache_reload_ms;
   size_t graph_stdlib_modules_merged, graph_stdlib_nodes_merged, graph_stdlib_edges_merged;
   bool graph_stdlib_merge_cache_hit, graph_stdlib_merge_cache_stored;
