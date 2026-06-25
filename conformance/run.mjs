@@ -547,6 +547,36 @@ function hasAarch64Instruction(bytes, expected) {
   return false;
 }
 
+function countAarch64InstructionSequence(bytes, expected) {
+  let count = 0;
+  for (let offset = 0; offset + expected.length * 4 <= bytes.length; offset++) {
+    let matched = true;
+    for (let index = 0; index < expected.length; index++) {
+      if (bytes.readUInt32LE(offset + index * 4) !== expected[index]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) count++;
+  }
+  return count;
+}
+
+function aarch64SpLoad(reg, offset, wide) {
+  const scale = wide ? 8 : 4;
+  assert.equal(offset % scale, 0);
+  return ((wide ? 0xf9400000 : 0xb9400000) + ((offset / scale) << 10) + (31 << 5) + reg) >>> 0;
+}
+
+function aarch64ByteViewReloadSequence(count) {
+  const sequence = [];
+  for (let index = 0; index < count; index++) {
+    sequence.push(aarch64SpLoad(index * 2, index * 16, true));
+    sequence.push(aarch64SpLoad(index * 2 + 1, index * 16 + 8, false));
+  }
+  return sequence;
+}
+
 function hasAarch64CondBranch(bytes, cond) {
   for (let offset = 0; offset + 4 <= bytes.length; offset++) {
     const instruction = bytes.readUInt32LE(offset);
@@ -2006,6 +2036,53 @@ assert.equal(directCallArm64ObjBuildBody.compiler, "zero-elf-aarch64");
 assert.equal(directCallArm64ObjBuildBody.generatedCBytes, 0);
 assert.equal(directCallArm64ObjBuildBody.objectBackend.objectEmission.path, "direct-elf-aarch64-object");
 await assertElfAarch64Object(`${outDir}/direct-call-add-arm64.o`, "main");
+
+const arm64ProcDynamicViewsSource = `${outDir}/aarch64-proc-dynamic-byte-view-spawn.0`;
+const arm64ProcDynamicViewsObj = `${outDir}/aarch64-proc-dynamic-byte-view-spawn.o`;
+await writeGraphFixture(arm64ProcDynamicViewsSource, `fn programName() -> String {
+    return "sh"
+}
+
+fn childArgs() -> Span<u8> {
+    return std.mem.span("-c\\ntrue")
+}
+
+fn cwdName() -> String {
+    return "."
+}
+
+fn envBlock() -> Span<u8> {
+    return std.mem.span("ZERO_AARCH64_PROC=1")
+}
+
+fn childCommand() -> String {
+    return "sh -c true"
+}
+
+export c fn main() -> i32 {
+    let status: ProcStatus = std.proc.spawnInheritArgs(programName(), childArgs(), cwdName(), envBlock())
+    let child: ProcChild = std.proc.spawnChildArgs(programName(), childArgs(), cwdName(), envBlock())
+    let child_env: ProcChild = std.proc.spawnChildInEnv(childCommand(), cwdName(), envBlock())
+    let pty_child: ProcChild = std.pty.spawnArgs(programName(), childArgs(), cwdName(), envBlock())
+    return std.proc.exitCode(status) + std.proc.pid(child) + std.proc.pid(child_env) + std.proc.pid(pty_child)
+}
+`);
+const arm64ProcDynamicViewsBuild = await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "linux-arm64",
+  arm64ProcDynamicViewsSource,
+  "--out",
+  arm64ProcDynamicViewsObj,
+]);
+const arm64ProcDynamicViewsBuildBody = JSON.parse(arm64ProcDynamicViewsBuild.stdout);
+assert.equal(arm64ProcDynamicViewsBuildBody.compiler, "zero-elf-aarch64");
+assert.equal(arm64ProcDynamicViewsBuildBody.objectBackend.objectEmission.path, "direct-elf-aarch64-object");
+const arm64ProcDynamicViewsBytes = await assertElfAarch64Object(arm64ProcDynamicViewsObj, "main");
+assert(countAarch64InstructionSequence(arm64ProcDynamicViewsBytes, aarch64ByteViewReloadSequence(4)) >= 3);
 
 let arm64NestedIndexExpr = "values[idx]";
 for (let i = 0; i < 32; i++) arm64NestedIndexExpr = `(0_u32 + ${arm64NestedIndexExpr})`;
