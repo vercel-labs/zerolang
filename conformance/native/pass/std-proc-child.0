@@ -179,7 +179,23 @@ pub fn main(world: World) -> Void raises {
         files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
     }
 
-    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && interrupt_pid_ok && interrupt_pid_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok {
+    let stale_first: ProcChild = std.proc.spawnChild("sh -c true")
+    let stale_first_status: ProcStatus = std.proc.wait(stale_first)
+    let stale_first_closed: Bool = std.proc.close(stale_first)
+    let stale_second: ProcChild = std.proc.spawnChild("sh -c 'sleep 1; printf stale-second'")
+    let stale_first_valid_after_reuse: Bool = std.proc.childValid(stale_first)
+    let stale_first_kill_after_reuse: Bool = std.proc.kill(stale_first)
+    let stale_second_status: ProcStatus = std.proc.wait(stale_second)
+    var stale_second_buf: [32]u8 = [0_u8; 32]
+    let stale_second_read: Maybe<usize> = std.proc.readStdout(stale_second, stale_second_buf)
+    var stale_handle_ok: Bool = false
+    if stale_second_read.has {
+        let stale_second_bytes: Span<u8> = std.io.written(stale_second_buf, stale_second_read.value)
+        stale_handle_ok = std.proc.succeeded(stale_first_status) && stale_first_closed && !stale_first_valid_after_reuse && !stale_first_kill_after_reuse && std.proc.succeeded(stale_second_status) && std.mem.eql(stale_second_bytes, "stale-second")
+    }
+    let stale_second_closed: Bool = std.proc.close(stale_second)
+
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && interrupt_pid_ok && interrupt_pid_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok && stale_handle_ok && stale_second_closed {
         check world.out.write("std proc child ok\n")
     }
 }

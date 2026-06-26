@@ -82,6 +82,9 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_PROC_ENV_BYTES 4096u
 #define ZERO_RUNTIME_PROC_MAX_ARGS 64u
 #define ZERO_RUNTIME_PROC_CHILD_MAX 64u
+#define ZERO_RUNTIME_PROC_CHILD_SLOT_BITS 7u
+#define ZERO_RUNTIME_PROC_CHILD_SLOT_MASK ((1u << ZERO_RUNTIME_PROC_CHILD_SLOT_BITS) - 1u)
+#define ZERO_RUNTIME_PROC_CHILD_GENERATION_MAX ((uint32_t)INT32_MAX >> ZERO_RUNTIME_PROC_CHILD_SLOT_BITS)
 #define ZERO_RUNTIME_PROC_DRAIN_CHUNK 4096u
 #define ZERO_RUNTIME_PROC_BUFFER_MAX (16u * 1024u * 1024u)
 
@@ -811,6 +814,7 @@ typedef struct {
 
 typedef struct {
   int active;
+  uint32_t generation;
   int reaped;
   int status;
   pid_t pid;
@@ -829,10 +833,26 @@ static int zero_proc_sigpipe_ignored;
 
 static int zero_proc_signal_child(ZeroRuntimeProcChild *child, int signal_number);
 
+static uint32_t zero_proc_child_next_generation(uint32_t generation) {
+  generation++;
+  if (generation == 0 || generation > ZERO_RUNTIME_PROC_CHILD_GENERATION_MAX) return 1;
+  return generation;
+}
+
+static int32_t zero_proc_child_handle(int index, uint32_t generation) {
+  if (index < 0 || index >= (int)ZERO_RUNTIME_PROC_CHILD_MAX || generation == 0) return 0;
+  return (int32_t)((generation << ZERO_RUNTIME_PROC_CHILD_SLOT_BITS) | ((uint32_t)index + 1u));
+}
+
 static int zero_proc_child_index(int32_t child) {
-  if (child <= 0 || child > (int32_t)ZERO_RUNTIME_PROC_CHILD_MAX) return -1;
-  int index = child - 1;
-  return zero_proc_children[index].active ? index : -1;
+  if (child <= 0) return -1;
+  uint32_t handle = (uint32_t)child;
+  uint32_t slot = handle & ZERO_RUNTIME_PROC_CHILD_SLOT_MASK;
+  uint32_t generation = handle >> ZERO_RUNTIME_PROC_CHILD_SLOT_BITS;
+  if (slot == 0 || slot > ZERO_RUNTIME_PROC_CHILD_MAX || generation == 0) return -1;
+  int index = (int)(slot - 1u);
+  ZeroRuntimeProcChild *candidate = &zero_proc_children[index];
+  return candidate->active && candidate->generation == generation ? index : -1;
 }
 
 static int zero_proc_child_alloc(void) {
@@ -1168,8 +1188,10 @@ static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_
     zero_proc_sigpipe_ignored = 1;
   }
 
+  uint32_t generation = zero_proc_child_next_generation(zero_proc_children[index].generation);
   zero_proc_children[index] = (ZeroRuntimeProcChild){
     .active = 1,
+    .generation = generation,
     .reaped = 0,
     .status = 127,
     .pid = pid,
@@ -1179,7 +1201,7 @@ static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_
     .pty_fd = -1,
     .pty = 0,
   };
-  return (int32_t)(index + 1);
+  return zero_proc_child_handle(index, generation);
 #endif
 }
 
@@ -1255,8 +1277,10 @@ static int32_t zero_pty_spawn_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], 
     zero_proc_sigpipe_ignored = 1;
   }
 
+  uint32_t generation = zero_proc_child_next_generation(zero_proc_children[index].generation);
   zero_proc_children[index] = (ZeroRuntimeProcChild){
     .active = 1,
+    .generation = generation,
     .reaped = 0,
     .status = 127,
     .pid = pid,
@@ -1266,7 +1290,7 @@ static int32_t zero_pty_spawn_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], 
     .pty_fd = master_fd,
     .pty = 1,
   };
-  return (int32_t)(index + 1);
+  return zero_proc_child_handle(index, generation);
 #endif
 }
 
