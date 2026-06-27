@@ -11,8 +11,8 @@ typedef struct {
 } FastStoreStringRef;
 
 typedef struct {
-  size_t source_count;
-  size_t projection_count;
+  size_t source_count, projection_count;
+  size_t node_count, edge_count;
   size_t strings_offset;
   size_t strings_len;
   size_t records_offset;
@@ -55,12 +55,15 @@ static bool fast_store_get_ref(const unsigned char *data, size_t len, size_t *of
 
 static bool fast_store_records_fit(const FastStoreBinaryHeader *header, size_t file_len) {
   if (!header || header->records_offset > file_len || header->strings_offset > file_len || header->records_offset > header->strings_offset) return false;
-  size_t available = header->strings_offset - header->records_offset;
-  if (header->source_count > available / 16u) return false;
-  size_t source_bytes = header->source_count * 16u;
-  available -= source_bytes;
-  if (header->projection_count > available / 32u) return false;
-  return true;
+  uint64_t available = (uint64_t)(header->strings_offset - header->records_offset);
+  uint64_t record_bytes = 0;
+  const uint64_t sizes[] = {16, 32, 160, 64};
+  const uint64_t counts[] = {header->source_count, header->projection_count, header->node_count, header->edge_count};
+  for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+    if (counts[i] > (UINT64_MAX - record_bytes) / sizes[i]) return false;
+    record_bytes += counts[i] * sizes[i];
+  }
+  return record_bytes <= available;
 }
 
 static bool fast_store_binary_header_from_bytes(const unsigned char *data, size_t len, FastStoreBinaryHeader *out) {
@@ -68,7 +71,6 @@ static bool fast_store_binary_header_from_bytes(const unsigned char *data, size_
   if (!data || !out || len < sizeof(magic) || memcmp(data, magic, sizeof(magic)) != 0) return false;
   size_t offset = sizeof(magic);
   uint32_t schema = 0, flags = 0, validation_state = 0, reserved = 0;
-  size_t node_count = 0, edge_count = 0;
   uint64_t next_id = 0, string_bytes = 0;
   FastStoreStringRef ignored_ref = {0};
   bool ok = fast_store_get_u32(data, len, &offset, &schema) &&
@@ -77,8 +79,8 @@ static bool fast_store_binary_header_from_bytes(const unsigned char *data, size_
             fast_store_get_u32(data, len, &offset, &reserved) &&
             fast_store_get_count(data, len, &offset, &out->source_count) &&
             fast_store_get_count(data, len, &offset, &out->projection_count) &&
-            fast_store_get_count(data, len, &offset, &node_count) &&
-            fast_store_get_count(data, len, &offset, &edge_count) &&
+            fast_store_get_count(data, len, &offset, &out->node_count) &&
+            fast_store_get_count(data, len, &offset, &out->edge_count) &&
             fast_store_get_u64(data, len, &offset, &next_id) &&
             fast_store_get_u64(data, len, &offset, &string_bytes) &&
             fast_store_get_ref(data, len, &offset, &ignored_ref) &&
@@ -92,8 +94,6 @@ static bool fast_store_binary_header_from_bytes(const unsigned char *data, size_
     uint64_t ignored_count = 0;
     ok = fast_store_get_u64(data, len, &offset, &ignored_count);
   }
-  (void)node_count;
-  (void)edge_count;
   (void)next_id;
   if (!ok || schema != 1 || reserved != 0 || (flags & ~3u) != 0 ||
       validation_state > (uint32_t)Z_PROGRAM_GRAPH_VALIDATION_BUILDABLE ||
