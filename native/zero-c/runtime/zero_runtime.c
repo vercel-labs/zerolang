@@ -1184,6 +1184,32 @@ static int zero_proc_signal_group_pid(int32_t pid, int signal_number) {
   return kill(-(pid_t)pid, signal_number) == 0 ? 1 : 0;
 }
 
+static void zero_proc_kill_and_reap_pid(pid_t pid) {
+  if (pid <= 0) return;
+  (void)zero_proc_signal_group_pid((int32_t)pid, SIGTERM);
+  (void)zero_proc_signal_pid((int32_t)pid, SIGTERM);
+
+  int status = 0;
+  for (;;) {
+    pid_t got = waitpid(pid, &status, WNOHANG);
+    if (got == pid) return;
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      return;
+    }
+    break;
+  }
+
+  (void)zero_proc_signal_group_pid((int32_t)pid, SIGKILL);
+  (void)zero_proc_signal_pid((int32_t)pid, SIGKILL);
+  for (;;) {
+    pid_t got = waitpid(pid, &status, 0);
+    if (got == pid) return;
+    if (got < 0 && errno == EINTR) continue;
+    return;
+  }
+}
+
 static int zero_proc_signal_child(ZeroRuntimeProcChild *child, int signal_number) {
   if (!child || child->pid <= 0) return 0;
   if (zero_proc_signal_group_pid((int32_t)child->pid, signal_number)) return 1;
@@ -1258,8 +1284,7 @@ static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_
     ZERO_RUNTIME_CLOSE(stdin_pipe[1]);
     ZERO_RUNTIME_CLOSE(stdout_pipe[0]);
     ZERO_RUNTIME_CLOSE(stderr_pipe[0]);
-    (void)zero_proc_signal_group_pid((int32_t)pid, SIGTERM);
-    (void)zero_proc_signal_pid((int32_t)pid, SIGTERM);
+    zero_proc_kill_and_reap_pid(pid);
     return 0;
   }
   if (!zero_proc_sigpipe_ignored) {
@@ -1347,8 +1372,7 @@ static int32_t zero_pty_spawn_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], 
   (void)setpgid(pid, pid);
   if (!zero_proc_child_set_cloexec(master_fd) || !zero_proc_child_set_nonblock(master_fd)) {
     ZERO_RUNTIME_CLOSE(master_fd);
-    (void)zero_proc_signal_group_pid((int32_t)pid, SIGTERM);
-    (void)zero_proc_signal_pid((int32_t)pid, SIGTERM);
+    zero_proc_kill_and_reap_pid(pid);
     return 0;
   }
   if (!zero_proc_sigpipe_ignored) {

@@ -47,7 +47,7 @@ pub fn main(world: World) -> Void raises {
         let read: Maybe<usize> = std.pty.read(child, storage)
         if read.has {
             let bytes: Span<u8> = std.io.written(storage, read.value)
-            saw_output = std.mem.contains(bytes, "hello pty")
+            saw_output = std.str.contains(bytes, "hello pty")
         }
         if !saw_output {
             let slept: Bool = std.time.sleep(std.time.ms(10))
