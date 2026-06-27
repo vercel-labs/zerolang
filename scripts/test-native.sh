@@ -213,6 +213,7 @@ expected_output() {
     conformance/native/pass/std-fs-dir-entry-name.graph) printf "dir entry name ok" ;;
     conformance/native/pass/std-fs-write-file-bool.graph) printf "fs write file bool ok" ;;
     conformance/native/pass/std-fs-append-bytes.graph) printf "fs append ok" ;;
+    conformance/native/pass/std-fs-direct-return.graph) printf "fs direct return ok" ;;
     conformance/native/pass/std-proc-child.graph) printf "std proc child ok" ;;
     conformance/native/pass/std-pty-child.graph) printf "std pty child ok" ;;
     conformance/native/pass/std-proc-capture.graph) printf "std proc capture ok" ;;
@@ -272,6 +273,7 @@ examples=(
   conformance/native/pass/std-fs-dir-entry-name.graph
   conformance/native/pass/std-fs-write-file-bool.graph
   conformance/native/pass/std-fs-append-bytes.graph
+  conformance/native/pass/std-fs-direct-return.graph
   conformance/native/pass/std-proc-child.graph
   conformance/native/pass/std-pty-child.graph
   conformance/native/pass/std-proc-capture.graph
@@ -420,6 +422,7 @@ run_native_or_gap conformance/native/pass/std-fs-bytes.graph .zero/native-test/s
 run_native_or_gap conformance/native/pass/std-fs-dir-entry-name.graph .zero/native-test/std-fs-dir-entry-name "dir entry name ok"
 run_native_or_gap conformance/native/pass/std-fs-write-file-bool.graph .zero/native-test/std-fs-write-file-bool "fs write file bool ok"
 run_native_or_gap conformance/native/pass/std-fs-append-bytes.graph .zero/native-test/std-fs-append-bytes "fs append ok"
+run_native_or_gap conformance/native/pass/std-fs-direct-return.graph .zero/native-test/std-fs-direct-return "fs direct return ok"
 run_native_or_gap conformance/native/pass/std-fs-read-chunks.graph .zero/native-test/std-fs-read-chunks "fs read chunks ok"
 run_native_or_gap conformance/native/pass/std-fs-resource.graph .zero/native-test/std-fs-resource "fs resource ok"
 run_native_or_gap conformance/native/pass/std-fs-readall.graph .zero/native-test/std-fs-readall "fs readAll ok"
@@ -1127,6 +1130,12 @@ node -e 'const fs=require("fs"); const b=fs.readFileSync(".zero/native-test/dire
 test ! -f .zero/native-test/direct-std-fs-breadth.c
 grep -q '"generatedCBytes": 0' .zero/native-test/direct-std-fs-breadth.json
 grep -q '"path":"direct-elf64-exe"' .zero/native-test/direct-std-fs-breadth.json
+rm -f .zero/native-test/direct-std-fs-direct-return .zero/native-test/direct-std-fs-direct-return.c
+bin/zero build --json --emit exe --backend zero-elf64 --target linux-musl-x64 conformance/native/pass/std-fs-direct-return.graph --out .zero/native-test/direct-std-fs-direct-return > .zero/native-test/direct-std-fs-direct-return.json
+node -e 'const fs=require("fs"); const b=fs.readFileSync(".zero/native-test/direct-std-fs-direct-return"); if (b[0]!==0x7f || b[1]!==0x45 || b.readUInt16LE(16)!==2 || b.readUInt16LE(18)!==62) process.exit(1);'
+test ! -f .zero/native-test/direct-std-fs-direct-return.c
+grep -q '"generatedCBytes": 0' .zero/native-test/direct-std-fs-direct-return.json
+grep -q '"path":"direct-elf64-exe"' .zero/native-test/direct-std-fs-direct-return.json
 rm -f .zero/native-test/direct-std-fs-fallible-resources .zero/native-test/direct-std-fs-fallible-resources.c
 bin/zero build --json --emit exe --backend zero-elf64 --target linux-musl-x64 conformance/native/pass/std-fs-fallible-resources.graph --out .zero/native-test/direct-std-fs-fallible-resources > .zero/native-test/direct-std-fs-fallible-resources.json
 node -e 'const fs=require("fs"); const b=fs.readFileSync(".zero/native-test/direct-std-fs-fallible-resources"); const packed=(code)=>{const x=Buffer.alloc(10); x[0]=0x48; x[1]=0xb8; x.writeBigUInt64LE(BigInt(code)<<32n,2); return x}; if (!b.includes(packed(2)) || !b.includes(packed(4))) process.exit(1);'

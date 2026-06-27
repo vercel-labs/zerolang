@@ -3874,9 +3874,10 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
                    instr->value->kind == IR_VALUE_TERM_RUNTIME ||
                    instr->value->kind == IR_VALUE_PROC_CAPTURE ||
-                   instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
+                   instr->value->kind == IR_VALUE_PROC_CHILD_IO || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH || instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH ||
                    instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
+          if (instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH || instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) { z_x64_emit_mov_reg_from_rax(text, 2, true); z_x64_emit_bool_from_nonnegative_rax(text); }
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
           z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
           z_x64_emit_mov_reg_from_rax(text, 2, true);
@@ -3903,7 +3904,6 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
       return elf_diag(diag, "direct ELF64 terminal instruction kind is invalid for this helper", instr->line, instr->column, "invalid terminal instruction");
   }
 }
-
 static bool elf_emit_control_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, ElfEmitContext *ctx, ZDiag *diag) {
   if (instr->kind == IR_INSTR_IF) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
