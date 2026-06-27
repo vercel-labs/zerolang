@@ -2611,7 +2611,7 @@ static char *linked_executable_cache_path(
 ) {
   if (!command || !input || !target || input->direct_c_import_call_count > 0) return NULL;
   uint64_t key = linked_executable_compile_cache_key(command, input, target, command->profile, artifact_kind);
-  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v6"); key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
+  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v7"); key = runtime_object_cache_fold_text(key, ZERO_BUILD_HASH); key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
   key = runtime_object_cache_fold_text(key, needs_http_runtime ? "http-runtime" : "no-http-runtime");
   if (needs_zero_runtime) { key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_runtime_h); key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_runtime_c); }
   if (needs_http_runtime) key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_http_curl_c);

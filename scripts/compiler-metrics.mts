@@ -2476,7 +2476,8 @@ const programGraph = {
   repositoryGraphSharedLinkedExecutableCache: /graph_keyed/.test(linkedExecutableCachePathBody) &&
     /z_program_graph_artifact_source_present\s*\(&command->graph_source\)/.test(linkedExecutableCachePathBody) &&
     /shared_native_cache_file\s*\(/.test(linkedExecutableCachePathBody) &&
-    /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody),
+    /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody) &&
+    /ZERO_BUILD_HASH/.test(linkedExecutableCachePathBody),
   repositoryGraphSharedMappedMirCache: /mir_graph_store_cache_root\s*\(/.test(graphStoreMirCachePathBody) &&
     !/mir_dirname\s*\(/.test(graphStoreMirCachePathBody) &&
     !/\.zero\/cache\/native\//.test(graphStoreMirCachePathBody),
