@@ -567,7 +567,7 @@ static int zero_runtime_proc_copy_env_block(ZeroByteView env, char storage[ZERO_
     if (line_end > line_start) {
       size_t equals = line_start;
       while (equals < line_end && env.ptr[equals] != '=') equals++;
-      if (equals == line_start) return 0;
+      if (equals == line_start || equals == line_end) return 0;
     }
     line_start = line_end + 1;
   }
@@ -700,42 +700,42 @@ static ZeroMaybeUsize zero_proc_capture_argv_impl(char *argv[ZERO_RUNTIME_PROC_M
   int status = 0;
   int reaped = 0;
   unsigned char chunk[4096];
-  for (;;) {
-    for (;;) {
-      ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
-      if (n < 0) {
-        if (errno == EINTR) continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-        read_ok = 0;
-        break;
-      }
-      if (n == 0) {
-        ZERO_RUNTIME_CLOSE(pipe_fd[0]);
-        pipe_fd[0] = -1;
-        break;
-      }
-      for (ZeroReadResult i = 0; i < n; i++) {
-        if (total < buffer.len) {
-          buffer.ptr[total] = chunk[i];
-        } else {
-          too_large = 1;
+  while (!reaped) {
+    if (pipe_fd[0] >= 0) {
+      for (;;) {
+        ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
+        if (n < 0) {
+          if (errno == EINTR) continue;
+          if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+          read_ok = 0;
+          break;
         }
-        total++;
+        if (n == 0) {
+          ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+          pipe_fd[0] = -1;
+          break;
+        }
+        for (ZeroReadResult i = 0; i < n; i++) {
+          if (total < buffer.len) {
+            buffer.ptr[total] = chunk[i];
+          } else {
+            too_large = 1;
+          }
+          total++;
+        }
       }
     }
     if (!read_ok) break;
-    if (!reaped) {
-      for (;;) {
-        pid_t got = waitpid(pid, &status, WNOHANG);
-        if (got == 0) break;
-        if (got < 0) {
-          if (errno == EINTR) continue;
-          wait_ok = 0;
-        } else {
-          reaped = 1;
-        }
-        break;
+    for (;;) {
+      pid_t got = waitpid(pid, &status, WNOHANG);
+      if (got == 0) break;
+      if (got < 0) {
+        if (errno == EINTR) continue;
+        wait_ok = 0;
+      } else {
+        reaped = 1;
       }
+      break;
     }
     if (!wait_ok || reaped) break;
     if (pipe_fd[0] >= 0) {
@@ -752,8 +752,17 @@ static ZeroMaybeUsize zero_proc_capture_argv_impl(char *argv[ZERO_RUNTIME_PROC_M
       (void)poll(NULL, 0, 50);
     }
   }
+
   if (pipe_fd[0] >= 0) {
-    for (;;) {
+    if (reaped) {
+      struct pollfd fd = {.fd = pipe_fd[0], .events = POLLIN | POLLHUP | POLLERR};
+      int rc = 0;
+      do {
+        rc = poll(&fd, 1, 50);
+      } while (rc < 0 && errno == EINTR);
+      if (rc < 0) read_ok = 0;
+    }
+    while (read_ok) {
       ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
       if (n < 0) {
         if (errno == EINTR) continue;
@@ -2417,12 +2426,57 @@ static int64_t zero_time_wall_seconds(void) {
 #endif
 }
 
+#if defined(_WIN32)
+static uint64_t zero_time_scale_qpc_remainder_ns(uint64_t remainder, uint64_t frequency) {
+  if (frequency == 0) return 0;
+  uint64_t quotient = 0;
+  uint64_t rem = 0;
+  uint64_t term_quotient = remainder / frequency;
+  uint64_t term_rem = remainder % frequency;
+  uint64_t multiplier = 1000000000ull;
+  while (multiplier > 0) {
+    if ((multiplier & 1ull) != 0) {
+      if (quotient > UINT64_MAX - term_quotient) return UINT64_MAX;
+      quotient += term_quotient;
+      uint64_t gap = frequency - term_rem;
+      if (term_rem != 0 && rem >= gap) {
+        if (quotient == UINT64_MAX) return UINT64_MAX;
+        quotient++;
+        rem -= gap;
+      } else {
+        rem += term_rem;
+      }
+    }
+    multiplier >>= 1;
+    if (multiplier == 0) break;
+    if (term_quotient > UINT64_MAX / 2u) return UINT64_MAX;
+    term_quotient *= 2u;
+    uint64_t gap = frequency - term_rem;
+    if (term_rem != 0 && term_rem >= gap) {
+      if (term_quotient == UINT64_MAX) return UINT64_MAX;
+      term_quotient++;
+      term_rem -= gap;
+    } else {
+      term_rem += term_rem;
+    }
+  }
+  return quotient;
+}
+#endif
+
 static int64_t zero_time_monotonic_ns(void) {
 #if defined(_WIN32)
   LARGE_INTEGER frequency;
   LARGE_INTEGER counter;
-  if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&counter) || frequency.QuadPart <= 0) return 0;
-  return (int64_t)(((uint64_t)counter.QuadPart * 1000000000ull) / (uint64_t)frequency.QuadPart);
+  if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&counter) || frequency.QuadPart <= 0 || counter.QuadPart < 0) return 0;
+  uint64_t qpc_frequency = (uint64_t)frequency.QuadPart;
+  uint64_t qpc_ticks = (uint64_t)counter.QuadPart;
+  uint64_t seconds = qpc_ticks / qpc_frequency;
+  uint64_t remainder_ns = zero_time_scale_qpc_remainder_ns(qpc_ticks % qpc_frequency, qpc_frequency);
+  if (seconds > (uint64_t)(INT64_MAX / 1000000000ll)) return INT64_MAX;
+  uint64_t whole_ns = seconds * 1000000000ull;
+  if (remainder_ns > (uint64_t)INT64_MAX - whole_ns) return INT64_MAX;
+  return (int64_t)(whole_ns + remainder_ns);
 #else
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
