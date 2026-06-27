@@ -139,6 +139,20 @@ pub fn main(world: World) -> Void raises {
     let invalid_env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf nope'", ".", "ZERO_PROC_BAD_ENV")
     let invalid_env_rejected: Bool = !std.proc.childValid(invalid_env_child)
 
+    let empty_env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'if [ -z \"${ZERO_PROC_EMPTY_ENV+x}\" ]; then printf missing; else printf empty:$ZERO_PROC_EMPTY_ENV; fi'", ".", "ZERO_PROC_EMPTY_ENV=")
+    var empty_env_buf: [64]u8 = [0_u8; 64]
+    var empty_env_ok: Bool = false
+    let empty_env_valid: Bool = std.proc.childValid(empty_env_child)
+    if empty_env_valid {
+        let empty_env_status: ProcStatus = std.proc.wait(empty_env_child)
+        let empty_env_read: Maybe<usize> = std.proc.readStdout(empty_env_child, empty_env_buf)
+        if empty_env_read.has {
+            let empty_env_bytes: Span<u8> = std.io.written(empty_env_buf, empty_env_read.value)
+            empty_env_ok = std.proc.succeeded(empty_env_status) && std.mem.eql(empty_env_bytes, "empty:")
+        }
+    }
+    let empty_env_closed: Bool = std.proc.close(empty_env_child)
+
     let args_child: ProcChild = std.proc.spawnChildArgs("sh", "-c\nprintf 'args:%s:%s:%s' \"$0\" \"$1\" \"$ZERO_PROC_ARG_ENV\"\narg0\nspace value", ".", "ZERO_PROC_ARG_ENV=gamma")
     var args_buf: [128]u8 = [0_u8; 128]
     var args_ok: Bool = false
@@ -179,6 +193,23 @@ pub fn main(world: World) -> Void raises {
         files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
     }
 
+    let background_wait_child: ProcChild = std.proc.spawnChild("sh -c 'sleep 2 & exit 0'")
+    let background_wait_start: Duration = std.time.monotonic()
+    let background_wait_status: ProcStatus = std.proc.wait(background_wait_child)
+    let background_wait_end: Duration = std.time.monotonic()
+    let background_wait_closed: Bool = std.proc.close(background_wait_child)
+    let background_wait_ok: Bool = std.proc.succeeded(background_wait_status) && background_wait_closed && std.time.lessThan(std.time.between(background_wait_start, background_wait_end), std.time.ms(1500))
+
+    var background_capture_buf: [64]u8 = [0_u8; 64]
+    let background_capture_start: Duration = std.time.monotonic()
+    let background_capture_read: Maybe<usize> = std.proc.capture("sh -c 'sleep 2 & printf direct'", background_capture_buf)
+    let background_capture_end: Duration = std.time.monotonic()
+    var background_capture_ok: Bool = false
+    if background_capture_read.has {
+        let background_capture_bytes: Span<u8> = std.io.written(background_capture_buf, background_capture_read.value)
+        background_capture_ok = std.mem.eql(background_capture_bytes, "direct") && std.time.lessThan(std.time.between(background_capture_start, background_capture_end), std.time.ms(1500))
+    }
+
     let stale_first: ProcChild = std.proc.spawnChild("sh -c true")
     let stale_first_status: ProcStatus = std.proc.wait(stale_first)
     let stale_first_closed: Bool = std.proc.close(stale_first)
@@ -195,7 +226,7 @@ pub fn main(world: World) -> Void raises {
     }
     let stale_second_closed: Bool = std.proc.close(stale_second)
 
-    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && interrupt_pid_ok && interrupt_pid_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok && stale_handle_ok && stale_second_closed {
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && interrupt_pid_ok && interrupt_pid_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && empty_env_ok && empty_env_closed && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok && background_wait_ok && background_capture_ok && stale_handle_ok && stale_second_closed {
         check world.out.write("std proc child ok\n")
     }
 }

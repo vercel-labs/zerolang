@@ -567,7 +567,7 @@ static int zero_runtime_proc_copy_env_block(ZeroByteView env, char storage[ZERO_
     if (line_end > line_start) {
       size_t equals = line_start;
       while (equals < line_end && env.ptr[equals] != '=') equals++;
-      if (equals == line_start || equals == line_end) return 0;
+      if (equals == line_start) return 0;
     }
     line_start = line_end + 1;
   }
@@ -602,6 +602,14 @@ static int zero_runtime_proc_apply_env_block(char *env) {
   }
   return 1;
 }
+
+#if !defined(_WIN32)
+static int zero_runtime_set_fd_nonblock(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0) return 0;
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+#endif
 
 static int32_t zero_proc_spawn_inherit_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
 #if defined(_WIN32)
@@ -679,35 +687,99 @@ static ZeroMaybeUsize zero_proc_capture_argv_impl(char *argv[ZERO_RUNTIME_PROC_M
   }
 
   ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+  if (!zero_runtime_set_fd_nonblock(pipe_fd[0])) {
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+    int ignored_status = 0;
+    while (waitpid(pid, &ignored_status, 0) < 0 && errno == EINTR) {}
+    return zero_runtime_none_usize();
+  }
   uint64_t total = 0;
   int too_large = 0;
   int read_ok = 1;
+  int wait_ok = 1;
+  int status = 0;
+  int reaped = 0;
   unsigned char chunk[4096];
   for (;;) {
-    ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      read_ok = 0;
-      break;
-    }
-    if (n == 0) break;
-    for (ZeroReadResult i = 0; i < n; i++) {
-      if (total < buffer.len) {
-        buffer.ptr[total] = chunk[i];
-      } else {
-        too_large = 1;
+    for (;;) {
+      ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
+      if (n < 0) {
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        read_ok = 0;
+        break;
       }
-      total++;
+      if (n == 0) {
+        ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+        pipe_fd[0] = -1;
+        break;
+      }
+      for (ZeroReadResult i = 0; i < n; i++) {
+        if (total < buffer.len) {
+          buffer.ptr[total] = chunk[i];
+        } else {
+          too_large = 1;
+        }
+        total++;
+      }
+    }
+    if (!read_ok) break;
+    if (!reaped) {
+      for (;;) {
+        pid_t got = waitpid(pid, &status, WNOHANG);
+        if (got == 0) break;
+        if (got < 0) {
+          if (errno == EINTR) continue;
+          wait_ok = 0;
+        } else {
+          reaped = 1;
+        }
+        break;
+      }
+    }
+    if (!wait_ok || reaped) break;
+    if (pipe_fd[0] >= 0) {
+      struct pollfd fd = {.fd = pipe_fd[0], .events = POLLIN | POLLHUP | POLLERR};
+      int rc = 0;
+      do {
+        rc = poll(&fd, 1, 50);
+      } while (rc < 0 && errno == EINTR);
+      if (rc < 0) {
+        read_ok = 0;
+        break;
+      }
+    } else {
+      (void)poll(NULL, 0, 50);
     }
   }
-  ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+  if (pipe_fd[0] >= 0) {
+    for (;;) {
+      ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
+      if (n < 0) {
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        read_ok = 0;
+        break;
+      }
+      if (n == 0) break;
+      for (ZeroReadResult i = 0; i < n; i++) {
+        if (total < buffer.len) {
+          buffer.ptr[total] = chunk[i];
+        } else {
+          too_large = 1;
+        }
+        total++;
+      }
+    }
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+  }
 
-  int status = 0;
-  int wait_ok = 1;
-  while (waitpid(pid, &status, 0) < 0) {
-    if (errno == EINTR) continue;
-    wait_ok = 0;
-    break;
+  if (!reaped) {
+    while (waitpid(pid, &status, 0) < 0) {
+      if (errno == EINTR) continue;
+      wait_ok = 0;
+      break;
+    }
   }
   if (!read_ok || !wait_ok || too_large) return zero_runtime_none_usize();
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return zero_runtime_none_usize();
@@ -985,9 +1057,7 @@ static void zero_proc_child_drain_output(ZeroRuntimeProcChild *child) {
 }
 
 static int zero_proc_child_set_nonblock(int fd) {
-  int flags = fcntl(fd, F_GETFL, 0);
-  if (flags < 0) return 0;
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+  return zero_runtime_set_fd_nonblock(fd);
 }
 
 static int zero_proc_child_set_cloexec(int fd) {
@@ -1062,7 +1132,7 @@ static int zero_proc_child_wait_with_drain(ZeroRuntimeProcChild *child, int time
       return 1;
     }
     if (timeout_ms == 0) return 0;
-    int slice_ms = -1;
+    int slice_ms = 50;
     if (timeout_ms > 0) {
       if (elapsed_ms >= timeout_ms) return 0;
       slice_ms = timeout_ms - elapsed_ms;
@@ -1101,7 +1171,7 @@ static int zero_proc_signal_pid(int32_t pid, int signal_number) {
 }
 
 static int zero_proc_signal_group_pid(int32_t pid, int signal_number) {
-  if (pid <= 0) return 0;
+  if (pid <= 1) return 0;
   return kill(-(pid_t)pid, signal_number) == 0 ? 1 : 0;
 }
 
