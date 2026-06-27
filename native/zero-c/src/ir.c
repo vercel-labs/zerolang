@@ -6300,7 +6300,8 @@ static bool ir_lower_function_body(const Program *program, IrProgram *ir, IrFunc
   bool lowered = ir_lower_stmt_vec(program, ir, mir_fun, &source->body, &mir_fun->instrs, &mir_fun->instr_len, &mir_fun->instr_cap, &saw_return);
   ir_active_local_restore(ir, scope_mark);
   if (!lowered) return false;
-  if (hosted_world_main && !saw_return) {
+  /* Branch-local returns do not prove the hosted main cannot fall through. */
+  if (hosted_world_main) {
     IrValue *exit_code = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, source->line, source->column);
     exit_code->int_value = 0;
     ir_instr_vec_push(ir, &mir_fun->instrs, &mir_fun->instr_len, &mir_fun->instr_cap, (IrInstr){

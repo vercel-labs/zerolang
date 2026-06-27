@@ -6295,7 +6295,8 @@ static bool ir_graph_lower_function_body(IrProgram *ir, IrFunction *fun, const Z
   bool lowered = ir_graph_lower_block(graph, ir, fun, ir_graph_ordered_node(graph, function->id, "body", 0), &fun->instrs, &fun->instr_len, &fun->instr_cap, &saw_return);
   ir_active_local_restore(ir, scope_mark);
   if (!lowered) return false;
-  if (hosted_world_main && !saw_return) {
+  /* Branch-local returns do not prove the hosted main cannot fall through. */
+  if (hosted_world_main) {
     IrValue *exit_code = ir_new_integer_literal_value(ir, IR_TYPE_I32, 0, ir_graph_line(function), ir_graph_column(function));
     ir_instr_vec_push(ir, &fun->instrs, &fun->instr_len, &fun->instr_cap, (IrInstr){
       .kind = IR_INSTR_RETURN,
