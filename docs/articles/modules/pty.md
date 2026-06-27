@@ -29,7 +29,7 @@ Metadata labels:
 
 - effects: proc
 - allocation behavior: child handles may keep runtime-owned PTY output buffers while `wait` drains terminal output
-- target support: host
+- target support: hosted targets with the `proc` capability
 - error behavior: spawn helpers return an invalid `ProcChild` handle on failure; `read` and `write` return `null` when no bytes can be transferred
 - ownership notes: `ProcChild` values name runtime-owned process slots; call `wait` when process status matters and `close` when the handle is no longer needed
 
@@ -69,6 +69,8 @@ pub fn main(world: World) -> Void raises {
 underlying child is connected to a pseudoterminal master. PTY output is a single
 terminal byte stream: stderr is merged by the terminal, and `std.pty.read`
 reads from that stream.
+Targets without process support, including Windows hosts until their process
+runtime is implemented, reject PTY helpers before code generation.
 For short-lived programs, drain the PTY with `std.pty.read` before `wait`; some
 hosts report the terminal as closed once the child exits.
 

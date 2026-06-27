@@ -46,7 +46,7 @@ Metadata labels:
 - effects: proc
 - allocation behavior: child handles may keep runtime-owned pipe buffers while
   `wait` drains stdout, stderr, or PTY output
-- target support: host
+- target support: hosted targets with the `proc` capability
 - error behavior: `spawn`, `spawnInherit`, `captureFiles`, and `wait` return `ProcStatus`; `exitCode` is infallible; `capture` and child I/O helpers return `null` when they cannot produce a complete result
 - ownership notes: `ProcChild` values name runtime-owned process slots; call `wait` when process status matters and `close` when the handle is no longer needed
 - example: `examples/std-platform.graph`
@@ -86,8 +86,9 @@ pub fn main(world: World) -> Void raises {
 
 ## Design Notes
 
-`std.proc` is host-only. Cross targets without process support must reject
-process helpers before code generation.
+`std.proc` requires a hosted target that advertises the `proc` capability.
+Targets without process support, including Windows hosts until their process
+runtime is implemented, must reject process helpers before code generation.
 
 They should not compile a placeholder process implementation.
 

@@ -300,7 +300,7 @@ bool z_target_is_host(const ZTargetInfo *target) {
 static bool host_capability_available(const char *capability) {
   const char *host_capabilities[] = {"args", "env", "fs", "net", "proc", NULL};
   for (int i = 0; host_capabilities[i]; i++) {
-    if (target_text_equals(capability, host_capabilities[i])) return true;
+    if (target_text_equals(capability, host_capabilities[i])) return !target_text_equals(capability, "proc") || (!target_text_equals(z_host_target(), "win32-x64.exe") && !target_text_equals(z_host_target(), "win32-arm64.exe"));
   }
   return false;
 }
