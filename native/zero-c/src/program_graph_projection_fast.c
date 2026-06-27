@@ -153,7 +153,7 @@ bool z_program_graph_projection_source_sync_state_binary_fast(const char *store_
   }
   if (header.projection_count == 0) {
     free(data);
-    return true;
+    return false;
   }
   const unsigned char *strings = data + header.strings_offset;
   char *recorded_hash = NULL;

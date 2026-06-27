@@ -1065,6 +1065,12 @@ static void zero_proc_child_drain_output(ZeroRuntimeProcChild *child) {
   }
 }
 
+static int zero_proc_child_output_open(const ZeroRuntimeProcChild *child) {
+  if (!child) return 0;
+  if (child->pty) return child->pty_fd >= 0;
+  return child->stdout_fd >= 0 || child->stderr_fd >= 0;
+}
+
 static int zero_proc_child_set_nonblock(int fd) {
   return zero_runtime_set_fd_nonblock(fd);
 }
@@ -1152,16 +1158,43 @@ static int zero_proc_child_wait_with_drain(ZeroRuntimeProcChild *child, int time
   }
 }
 
+static int zero_proc_child_wait_output_closed(ZeroRuntimeProcChild *child, int timeout_ms) {
+  if (!child || !child->active) return 0;
+  int elapsed_ms = 0;
+  for (;;) {
+    zero_proc_child_drain_output(child);
+    if (!zero_proc_child_output_open(child)) return 1;
+    if (timeout_ms == 0) return 0;
+    int slice_ms = 50;
+    if (timeout_ms > 0) {
+      if (elapsed_ms >= timeout_ms) return 0;
+      slice_ms = timeout_ms - elapsed_ms;
+      if (slice_ms > 50) slice_ms = 50;
+    }
+    zero_proc_child_poll_output(child, slice_ms);
+    if (slice_ms > 0) elapsed_ms += slice_ms;
+  }
+}
+
 static int zero_proc_child_close_handle(ZeroRuntimeProcChild *child) {
   if (!child || !child->active) return 0;
   if (!child->reaped && !zero_proc_child_wait_with_drain(child, 0)) {
     (void)zero_proc_signal_child(child, SIGTERM);
-    if (!zero_proc_child_wait_with_drain(child, 250)) {
+    (void)zero_proc_child_wait_with_drain(child, 250);
+    if (!child->reaped) {
       (void)zero_proc_signal_child(child, SIGKILL);
       (void)zero_proc_child_wait_with_drain(child, -1);
     }
   }
   zero_proc_child_drain_output(child);
+  if (zero_proc_child_output_open(child)) {
+    (void)zero_proc_signal_child(child, SIGTERM);
+    (void)zero_proc_child_wait_output_closed(child, 250);
+    if (zero_proc_child_output_open(child)) {
+      (void)zero_proc_signal_child(child, SIGKILL);
+      (void)zero_proc_child_wait_output_closed(child, 250);
+    }
+  }
   zero_proc_child_close_pipes(child);
   zero_proc_child_free_buffers(child);
   child->active = 0;

@@ -67,7 +67,10 @@ static const size_t STORE_BINARY_MAX_STRING_BYTES = 256u * 1024u * 1024u;
 static bool binary_text_eq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
 }
-
+static const char *binary_basename(const char *path) {
+  const char *slash = path ? strrchr(path, '/') : NULL;
+  return slash ? slash + 1 : (path ? path : "");
+}
 static char *binary_dirname(const char *path) {
   const char *slash = path ? strrchr(path, '/') : NULL;
   if (!slash) return z_strdup(".");
@@ -164,7 +167,16 @@ static void binary_sort_projections(ZProgramGraphStore *store) {
 }
 
 static const ZStdSourceModule *binary_std_source_module_for_path(const char *path) {
-  return z_std_source_module_for_path(path);
+  if (!path) return NULL;
+  const char *base = binary_basename(path);
+  bool basename_candidate = base == path || (strncmp(path, "std/", 4) == 0 && strchr(path + 4, '/') == NULL);
+  for (size_t i = 0; i < z_std_source_module_count(); i++) {
+    const ZStdSourceModule *module = z_std_source_module_at(i);
+    if (!module) continue;
+    if (binary_text_eq(module->path, path)) return module;
+    if (basename_candidate && binary_text_eq(binary_basename(module->path), base)) return module;
+  }
+  return NULL;
 }
 
 static bool binary_graph_source_path_is_embedded_std(const ZProgramGraph *graph, const char *path) {
