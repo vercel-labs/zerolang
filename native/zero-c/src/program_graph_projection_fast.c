@@ -132,11 +132,16 @@ static char *fast_store_join_path(const char *left, const char *right) {
   return path;
 }
 
-static char *fast_store_projection_file_text(const char *root, const char *source_path) {
+static char *fast_store_projection_file_text(const char *root, const char *source_path, bool *ok) {
+  if (ok) *ok = false;
   if (!z_program_graph_store_source_path_is_local(source_path)) return NULL;
+  bool before_exists = false;
+  if (!z_program_graph_projection_source_path_safe_for_cached_read(root, source_path, &before_exists)) return NULL;
+  if (!before_exists) { if (ok) *ok = true; return NULL; }
   char *path = fast_store_join_path(root && root[0] ? root : ".", source_path);
   char *text = z_read_file(path, NULL);
   free(path);
+  if (ok) *ok = text != NULL;
   return text;
 }
 
@@ -177,10 +182,12 @@ bool z_program_graph_projection_source_sync_state_binary_fast(const char *store_
          fast_store_ref_string(strings, header.strings_len, text_ref, &projection_text) &&
          z_program_graph_store_source_path_is_local(projection_path);
     if (ok) {
-      current = fast_store_projection_file_text(root, projection_path);
-      if (!current || strcmp(current, projection_text ? projection_text : "") != 0) any_changed = true;
-      disk_state = z_program_graph_store_source_hash_fold(disk_state, projection_path, current);
-      table_state = z_program_graph_store_source_hash_fold(table_state, projection_path, projection_text ? projection_text : "");
+      current = fast_store_projection_file_text(root, projection_path, &ok);
+      if (ok) {
+        if (!current || strcmp(current, projection_text ? projection_text : "") != 0) any_changed = true;
+        disk_state = z_program_graph_store_source_hash_fold(disk_state, projection_path, current);
+        table_state = z_program_graph_store_source_hash_fold(table_state, projection_path, projection_text ? projection_text : "");
+      }
     }
     free(current);
     free(projection_path);

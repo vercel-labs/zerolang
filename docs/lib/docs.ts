@@ -3,6 +3,7 @@ import type { Doc, DocsGroup } from "./types";
 const SECTION_ORDER = [
   "Start Here",
   "Concepts",
+  "Reference",
   "Agent Workflow",
   "Language Pieces",
   "Standard Library",
