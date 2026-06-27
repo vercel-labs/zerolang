@@ -1,0 +1,13 @@
+pub fn main(world: World) -> Void raises {
+    var output: [32]u8 = [0_u8; 32]
+    var small: [4]u8 = [0_u8; 4]
+    let captured: Maybe<usize> = std.proc.capture("printf capture-ok", output)
+    let truncated: Maybe<usize> = std.proc.capture("printf too-long", small)
+    let failed: Maybe<usize> = std.proc.capture("false", output)
+    if captured.has {
+        let bytes: Span<u8> = std.io.written(output, captured.value)
+        if captured.value == 10_usize && std.mem.eql(bytes, "capture-ok") && !truncated.has && !failed.has {
+            check world.out.write("std proc capture ok\n")
+        }
+    }
+}

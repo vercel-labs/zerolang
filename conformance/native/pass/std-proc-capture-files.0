@@ -1,0 +1,13 @@
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let out_path: String = ".zero/proc-capture-files-out.txt"
+    let err_path: String = ".zero/proc-capture-files-err.txt"
+    let status: ProcStatus = std.proc.captureFiles("sh -c 'printf stdout-log; printf stderr-log >&2'", out_path, err_path)
+    var out_buf: [32]u8 = [0_u8; 32]
+    var err_buf: [32]u8 = [0_u8; 32]
+    let out: Maybe<Span<u8>> = std.fs.readFileBytes(fs, out_path, out_buf)
+    let err: Maybe<Span<u8>> = std.fs.readFileBytes(fs, err_path, err_buf)
+    if std.proc.succeeded(status) && out.has && err.has && std.mem.eql(out.value, "stdout-log") && std.mem.eql(err.value, "stderr-log") {
+        check world.out.write("std proc capture files ok\n")
+    }
+}

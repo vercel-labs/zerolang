@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const execMaxBuffer = 128 * 1024 * 1024;
 const zero = process.env.ZERO_BIN || (existsSync(".zero/bin/zero") ? ".zero/bin/zero" : "bin/zero");
 const outDir = `/tmp/zero-program-graph-parity-${process.pid}`;
+const zeroEnv = { ...process.env, ZERO_CACHE_DIR: process.env.ZERO_CACHE_DIR || `${outDir}/cache` };
 const requireStableNodeIds = process.argv.includes("--require-stable-node-ids");
 const graphHashPrime = 1099511628211n;
 const graphHashMask = (1n << 64n) - 1n;
@@ -28,13 +29,13 @@ function targetReadinessSummary(readiness) {
 }
 
 async function zeroJson(args) {
-  const result = await execFileAsync(zero, args, { maxBuffer: execMaxBuffer });
+  const result = await execFileAsync(zero, args, { env: zeroEnv, maxBuffer: execMaxBuffer });
   return JSON.parse(result.stdout);
 }
 
 async function zeroJsonFailure(args) {
   try {
-    await execFileAsync(zero, args, { maxBuffer: execMaxBuffer });
+    await execFileAsync(zero, args, { env: zeroEnv, maxBuffer: execMaxBuffer });
   } catch (error) {
     return JSON.parse(error.stdout);
   }
@@ -42,7 +43,7 @@ async function zeroJsonFailure(args) {
 }
 
 async function zeroText(args) {
-  const result = await execFileAsync(zero, args, { maxBuffer: execMaxBuffer });
+  const result = await execFileAsync(zero, args, { env: zeroEnv, maxBuffer: execMaxBuffer });
   return result.stdout;
 }
 

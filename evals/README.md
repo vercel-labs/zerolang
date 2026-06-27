@@ -33,8 +33,7 @@ Live evals create a Vercel Sandbox, upload the current checkout, build the
 native compiler, install Claude Code, and run the agent inside the sandbox. Each
 model/case run gets a fresh copy of the prepared checkout so mutations from one
 run do not affect the next run. The sandbox network policy injects the AI
-Gateway bearer credential for `https://ai-gateway.vercel.sh`, matching the
-Ovation sandbox setup.
+Gateway bearer credential for `https://ai-gateway.vercel.sh`.
 
 Credential options:
 

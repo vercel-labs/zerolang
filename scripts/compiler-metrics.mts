@@ -14,6 +14,7 @@ const auditFiles = [
   "native/zero-c/tests/http_listen_runner_smoke.c",
   "native/zero-c/tests/process_exec_smoke.c",
   "scripts/artifact-finalization-smoke.mts",
+  "scripts/embed-stdlib-graphs.mts",
   "scripts/fs-runtime-smoke.mts",
   "scripts/test-native.sh",
 ];
@@ -30,9 +31,9 @@ type FileBudget = {
 };
 
 const fileBudgets: Record<string, FileBudget> = {
-  "native/zero-c/include/zero.h": { maxLines: 1290, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero.h": { maxLines: 1337, maxStrcmpCalls: 0 },
   "native/zero-c/include/zero_contracts.h": { maxLines: 20, maxStrcmpCalls: 0 },
-  "native/zero-c/include/zero_runtime.h": { maxLines: 262, maxStrcmpCalls: 0 },
+  "native/zero-c/include/zero_runtime.h": { maxLines: 333, maxStrcmpCalls: 0 },
   "native/zero-c/src/abi_report.c": { maxLines: 360, maxStrcmpCalls: 2 },
   "native/zero-c/src/abi_report.h": { maxLines: 18, maxStrcmpCalls: 0 },
   // The static const type and canonical value memos compare binder names with strcmp.
@@ -45,8 +46,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/http_listen_temp.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/init_template.c": { maxLines: 310, maxStrcmpCalls: 13 },
   "native/zero-c/src/init_template.h": { maxLines: 15, maxStrcmpCalls: 0 },
-  "native/zero-c/src/main.c": { maxLines: 16685, maxStrcmpCalls: 454, maxShellCalls: 0 },
-  "native/zero-c/src/ir.c": { maxLines: 6300, maxStrcmpCalls: 333 },
+  "native/zero-c/src/main.c": { maxLines: 17174, maxStrcmpCalls: 454, maxShellCalls: 0 },
+  "native/zero-c/src/ir.c": { maxLines: 6854, maxStrcmpCalls: 333 },
 
   "native/zero-c/src/llvm_backend_metadata.c": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/llvm_toolchain.c": { maxLines: 335, maxStrcmpCalls: 19 },
@@ -57,18 +58,18 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/ast.c": { maxLines: 250, maxStrcmpCalls: 0 },
   "native/zero-c/src/backend_family.c": { maxLines: 75, maxStrcmpCalls: 5 },
   "native/zero-c/src/buildability.c": { maxLines: 352, maxStrcmpCalls: 2 },
-  "native/zero-c/src/buildability_value_support.c": { maxLines: 210, maxStrcmpCalls: 0 },
+  "native/zero-c/src/buildability_value_support.c": { maxLines: 241, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability.h": { maxLines: 20, maxStrcmpCalls: 0 },
   "native/zero-c/src/buildability_internal.h": { maxLines: 40, maxStrcmpCalls: 0 },
-  "native/zero-c/src/buildability_context.c": { maxLines: 240, maxStrcmpCalls: 1 },
+  "native/zero-c/src/buildability_context.c": { maxLines: 250, maxStrcmpCalls: 1 },
   "native/zero-c/src/buildability_targets.c": { maxLines: 189, maxStrcmpCalls: 0 },
-  "native/zero-c/src/buildability_value_targets.c": { maxLines: 623, maxStrcmpCalls: 0 },
+  "native/zero-c/src/buildability_value_targets.c": { maxLines: 745, maxStrcmpCalls: 0 },
   "native/zero-c/src/c_import.c": { maxLines: 750, maxStrcmpCalls: 51 },
   "native/zero-c/src/c_import.h": { maxLines: 40, maxStrcmpCalls: 0 },
   "native/zero-c/src/call_resolve.c": { maxLines: 200, maxStrcmpCalls: 2 },
   "native/zero-c/src/call_resolve.h": { maxLines: 100, maxStrcmpCalls: 0 },
   "native/zero-c/src/capability_names.c": { maxLines: 150, maxStrcmpCalls: 1 },
-  "native/zero-c/src/capability_summary.c": { maxLines: 197, maxStrcmpCalls: 0 },
+  "native/zero-c/src/capability_summary.c": { maxLines: 206, maxStrcmpCalls: 0 },
   "native/zero-c/src/capability_summary.h": { maxLines: 26, maxStrcmpCalls: 0 },
   "native/zero-c/src/canonical_text.c": { maxLines: 1508, maxStrcmpCalls: 0 },
   "native/zero-c/src/canonical_text_format.c": { maxLines: 354, maxStrcmpCalls: 0 },
@@ -77,37 +78,38 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/canonical_text.h": { maxLines: 80, maxStrcmpCalls: 0 },
   "native/zero-c/src/coff_format.c": { maxLines: 370, maxStrcmpCalls: 0 },
   "native/zero-c/src/coff_format.h": { maxLines: 100, maxStrcmpCalls: 0 },
-  "native/zero-c/src/coff_emit_state.c": { maxLines: 193, maxStrcmpCalls: 0 },
-  "native/zero-c/src/coff_emit_state.h": { maxLines: 111, maxStrcmpCalls: 0 },
-  "native/zero-c/src/direct_emit.c": { maxLines: 112, maxStrcmpCalls: 0 },
+  "native/zero-c/src/coff_emit_state.c": { maxLines: 212, maxStrcmpCalls: 0 },
+  "native/zero-c/src/coff_emit_state.h": { maxLines: 130, maxStrcmpCalls: 0 },
+  "native/zero-c/src/direct_emit.c": { maxLines: 122, maxStrcmpCalls: 0 },
   "native/zero-c/src/direct_emit.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/direct_metrics.c": { maxLines: 35, maxStrcmpCalls: 0 },
+  "native/zero-c/src/direct_runtime_scan.c": { maxLines: 140, maxStrcmpCalls: 0 },
   "native/zero-c/src/elf_format.c": { maxLines: 220, maxStrcmpCalls: 0 },
   "native/zero-c/src/elf_format.h": { maxLines: 60, maxStrcmpCalls: 0 },
-  "native/zero-c/src/elf_emit_state.c": { maxLines: 202, maxStrcmpCalls: 0 },
-  "native/zero-c/src/elf_emit_state.h": { maxLines: 134, maxStrcmpCalls: 0 },
+  "native/zero-c/src/elf_emit_state.c": { maxLines: 222, maxStrcmpCalls: 0 },
+  "native/zero-c/src/elf_emit_state.h": { maxLines: 154, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_format.c": { maxLines: 470, maxStrcmpCalls: 0 },
   "native/zero-c/src/macho_format.h": { maxLines: 90, maxStrcmpCalls: 0 },
-  "native/zero-c/src/aarch64_direct.c": { maxLines: 2244, maxStrcmpCalls: 1 },
-  "native/zero-c/src/aarch64_direct.h": { maxLines: 92, maxStrcmpCalls: 0 },
+  "native/zero-c/src/aarch64_direct.c": { maxLines: 2458, maxStrcmpCalls: 1 },
+  "native/zero-c/src/aarch64_direct.h": { maxLines: 111, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_emit.c": { maxLines: 548, maxStrcmpCalls: 0 },
   "native/zero-c/src/aarch64_emit.h": { maxLines: 90, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_macho64.c": { maxLines: 3630, maxStrcmpCalls: 2 },
-  "native/zero-c/src/emit_macho_x64.c": { maxLines: 2653, maxStrcmpCalls: 1 },
-  "native/zero-c/src/macho_emit_state.c": { maxLines: 255, maxStrcmpCalls: 0 },
-  "native/zero-c/src/macho_emit_state.h": { maxLines: 140, maxStrcmpCalls: 0 },
-  "native/zero-c/src/emit_elf64.c": { maxLines: 4084, maxStrcmpCalls: 3 },
-  "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 492, maxStrcmpCalls: 1 },
-  "native/zero-c/src/emit_llvm_ir.c": { maxLines: 1016, maxStrcmpCalls: 9 },
-  "native/zero-c/src/emit_coff.c": { maxLines: 2623, maxStrcmpCalls: 1 },
-  "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 523, maxStrcmpCalls: 0 },
+  "native/zero-c/src/emit_macho64.c": { maxLines: 3947, maxStrcmpCalls: 2 },
+  "native/zero-c/src/emit_macho_x64.c": { maxLines: 2868, maxStrcmpCalls: 1 },
+  "native/zero-c/src/macho_emit_state.c": { maxLines: 282, maxStrcmpCalls: 0 },
+  "native/zero-c/src/macho_emit_state.h": { maxLines: 167, maxStrcmpCalls: 0 },
+  "native/zero-c/src/emit_elf64.c": { maxLines: 4348, maxStrcmpCalls: 3 },
+  "native/zero-c/src/emit_elf_aarch64.c": { maxLines: 511, maxStrcmpCalls: 1 },
+  "native/zero-c/src/emit_llvm_ir.c": { maxLines: 1055, maxStrcmpCalls: 9 },
+  "native/zero-c/src/emit_coff.c": { maxLines: 2865, maxStrcmpCalls: 1 },
+  "native/zero-c/src/emit_coff_aarch64.c": { maxLines: 542, maxStrcmpCalls: 0 },
   "native/zero-c/src/fs.c": { maxLines: 1545, maxStrcmpCalls: 36, maxShellCalls: 0 },
   "native/zero-c/src/fs_read.c": { maxLines: 130, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_exec.c": { maxLines: 325, maxStrcmpCalls: 1, maxShellCalls: 0 },
   "native/zero-c/src/process_exec.h": { maxLines: 26, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.c": { maxLines: 110, maxStrcmpCalls: 0, maxShellCalls: 0 },
   "native/zero-c/src/process_path.h": { maxLines: 10, maxStrcmpCalls: 0, maxShellCalls: 0 },
-  "native/zero-c/src/mir_verify.c": { maxLines: 2599, maxStrcmpCalls: 0 },
+  "native/zero-c/src/mir_verify.c": { maxLines: 2827, maxStrcmpCalls: 0 },
   "native/zero-c/src/mir_verify.h": { maxLines: 50, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.c": { maxLines: 40, maxStrcmpCalls: 0 },
   // Shared sorted node/edge index used by validation, lowering, views, and resolution.
@@ -140,9 +142,11 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_std_deps.c": { maxLines: 110, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_std_deps.h": { maxLines: 10, maxStrcmpCalls: 0 },
   // Stdlib merge keeps node/edge membership in hash indexes so merging stays near-linear.
-  "native/zero-c/src/program_graph_std_merge.c": { maxLines: 610, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_std_prune.c": { maxLines: 280, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_std_merge.c": { maxLines: 703, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_std_prune.c": { maxLines: 339, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_std_prune.h": { maxLines: 10, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_string_map.c": { maxLines: 75, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_string_map.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph.h": { maxLines: 150, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_identity.c": { maxLines: 500, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_import.c": { maxLines: 496, maxStrcmpCalls: 4 },
@@ -153,13 +157,13 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_manifest.h": { maxLines: 15, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_manifest_identity.c": { maxLines: 92, maxStrcmpCalls: 0 },
   // Graph lowering binary-searches a parent-edge index; its comparators use strcmp.
-  "native/zero-c/src/program_graph_mir.c": { maxLines: 6419, maxStrcmpCalls: 7 },
+  "native/zero-c/src/program_graph_mir.c": { maxLines: 7075, maxStrcmpCalls: 7 },
   "native/zero-c/src/program_graph_query.c": { maxLines: 420, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_query.h": { maxLines: 25, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_internal.h": { maxLines: 24, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_refs.c": { maxLines: 230, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_query_text.c": { maxLines: 400, maxStrcmpCalls: 0 },
-  "native/zero-c/src/program_graph_order.c": { maxLines: 80, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_order.c": { maxLines: 100, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_order.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_node_id.c": { maxLines: 388, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_report.c": { maxLines: 80, maxStrcmpCalls: 1 },
@@ -178,7 +182,9 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_patch.h": { maxLines: 80, maxStrcmpCalls: 0 },
   // Projection safety memoizes realpath resolutions so warm status/check stay fast.
   "native/zero-c/src/program_graph_projection.c": { maxLines: 680, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_projection.h": { maxLines: 35, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_projection.h": { maxLines: 36, maxStrcmpCalls: 0 },
+  "native/zero-c/src/program_graph_projection_fast.c": { maxLines: 225, maxStrcmpCalls: 3 },
+  "native/zero-c/src/program_graph_projection_path.c": { maxLines: 180, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_projection_validate.c": { maxLines: 465, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.c": { maxLines: 612, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_reconcile.h": { maxLines: 34, maxStrcmpCalls: 0 },
@@ -224,9 +230,9 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/safety_contract.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/specialize.c": { maxLines: 150, maxStrcmpCalls: 2 },
   "native/zero-c/src/specialize.h": { maxLines: 50, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_sig.c": { maxLines: 990, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_sig.c": { maxLines: 1127, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_sig.h": { maxLines: 108, maxStrcmpCalls: 0 },
-  "native/zero-c/src/std_source.c": { maxLines: 961, maxStrcmpCalls: 2 },
+  "native/zero-c/src/std_source.c": { maxLines: 1045, maxStrcmpCalls: 2 },
   "native/zero-c/src/std_source.h": { maxLines: 30, maxStrcmpCalls: 0 },
   "native/zero-c/src/target_backend.c": { maxLines: 392, maxStrcmpCalls: 1 },
   "native/zero-c/src/target.c": { maxLines: 517, maxStrcmpCalls: 1 },
@@ -239,12 +245,12 @@ const fileBudgets: Record<string, FileBudget> = {
 };
 
 const knownLargeFunctionLimits = new Map([
-  ["native/zero-c/src/program_graph_mir.c|bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {", 144],
-  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 2144],
-  ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 142],
+  ["native/zero-c/src/program_graph_mir.c|bool z_program_graph_prepare_repository_store_mir_input(const char *store_path, const ZTargetInfo *target, const char *emit_kind, const char *requested_backend, bool require_checked_program, bool write_mapped_mir_cache, Program *program, SourceInput *input, IrProgram *ir, ZProgramGraphArtifactSource *source, ZDiag *diag) {", 144],
+  ["native/zero-c/src/ir.c|static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *expr, IrValue **out) {", 2174],
+  ["native/zero-c/src/capability_summary.c|static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps) {", 151],
 
   ["native/zero-c/src/checker.c|static bool check_expr_expected(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ZDiag *diag, const char *expected) {", 572],
-  ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1016],
+  ["native/zero-c/src/main.c|int main(int argc, char **argv) {", 1045],
   ["native/zero-c/src/main.c|static void memory_model_collect_expr(const Expr *expr, MemoryScope *scope, MemoryModelSummary *summary) {", 125],
   ["native/zero-c/src/main.c|static void append_graph_json(ZBuf *buf, SourceInput *input, Program *program, const ZTargetInfo *target, const Command *command) {", 386],
   ["native/zero-c/src/checker.c|static bool check_stmt(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth) {", 279],
@@ -255,23 +261,26 @@ const knownLargeFunctionLimits = new Map([
   ["native/zero-c/src/checker.c|static bool expr_reference_provenance(CheckContext *ctx, const Program *program, const Expr *expr, Scope *scope, ValueProvenance *origins) {", 175],
   ["native/zero-c/src/main.c|static int run_tests_direct(const Command *command, const SourceInput *input, const Program *program, const ZTargetInfo *target) {", 151],
   ["native/zero-c/src/checker.c|static bool check_scalar_match(CheckContext *ctx, const Program *program, const Function *fun, const Stmt *stmt, Scope *scope, ZDiag *diag, int loop_depth, const char *match_type) {", 127],
-  ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 205],
-  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 785],
-  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 245],
-  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 396],
-  ["native/zero-c/src/main.c|static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit *audit) {", 206],
-  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTypeKind preferred_return_type, IrValue **out) {", 238],
+  ["native/zero-c/src/emit_macho64.c|static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 236],
+  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_byte_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 821],
+  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_std_fs_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, const char *callee_name, size_t arg_count, bool *handled, IrValue **out) {", 266],
+  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 432],
+  ["native/zero-c/src/main.c|static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit *audit) {", 243],
+  ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_call(const ZProgramGraph *graph, IrProgram *ir, const IrFunction *fun, const ZProgramGraphNode *expr, IrTypeKind preferred_return_type, IrValue **out) {", 252],
   ["native/zero-c/src/program_graph_mir.c|static bool ir_graph_lower_stmt(const ZProgramGraph *graph, IrProgram *ir, IrFunction *fun, const ZProgramGraphNode *stmt, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {", 236],
   ["native/zero-c/src/emit_elf64.c|static bool elf_emit_str_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 163],
   ["native/zero-c/src/emit_macho_x64.c|static bool machx64_emit_str_runtime_value(ZBuf *text, const IrFunction *fun, const IrValue *value, MachOEmitContext *ctx, ZDiag *diag) {", 163],
   ["native/zero-c/src/mir_verify.c|static bool mir_verify_math_runtime_contract(IrProgram *ir, const IrValue *value, MirHelperRequirements *requirements) {", 142],
-  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 171],
+  ["native/zero-c/src/mir_verify.c|static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {", 176],
   ["native/zero-c/src/emit_elf64.c|static bool elf_emit_stateful_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {", 215],
-  ["native/zero-c/src/buildability_context.c|const char *z_build_value_kind_name(IrValueKind kind) {", 136],
+  ["native/zero-c/src/buildability_context.c|const char *z_build_value_kind_name(IrValueKind kind) {", 146],
   ["native/zero-c/src/emit_llvm_ir.c|static bool llvm_emit_value(LlvmEmit *emit, const IrValue *value, LlvmValue *out, ZDiag *diag) {", 130],
   ["native/zero-c/src/aarch64_direct.c|static bool a64_emit_str_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {", 128],
-  ["native/zero-c/src/aarch64_direct.c|static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {", 122],
+  ["native/zero-c/src/aarch64_direct.c|static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {", 123],
+  ["native/zero-c/src/aarch64_direct.c|static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {", 126],
+  ["native/zero-c/src/ir.c|static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {", 244],
   ["native/zero-c/src/emit_macho64.c|static bool macho_emit_str_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {", 128],
+  ["native/zero-c/src/emit_coff.c|static bool coff_emit_value(ZBuf *text, const IrFunction *fun, const IrValue *value, CoffEmitContext *ctx, ZDiag *diag) {", 124],
   ["native/zero-c/src/emit_coff.c|bool z_emit_coff_x64_object_from_ir(const IrProgram *program, ZBuf *out, ZDiag *diag) {", 123],
 ]);
 
@@ -1175,7 +1184,9 @@ function budgetViolations(files, allLargeFunctions, stdlib, backendFormats, prog
       !programGraph.artifactGraphCheckReportsGraphMirState ||
       !programGraph.repositoryGraphCheckDefaultReadiness ||
       !programGraph.repositoryGraphCheckPerformanceBudget ||
-      !programGraph.repositoryGraphCacheKeyFacts) {
+      !programGraph.repositoryGraphCacheKeyFacts ||
+      !programGraph.repositoryGraphSharedLinkedExecutableCache ||
+      !programGraph.repositoryGraphExecutableCacheFastHit) {
     violations.push({
       kind: "program-graph-repository-native-check-path",
       programGraph,
@@ -1509,6 +1520,7 @@ const files = Object.fromEntries([...texts.entries()].map(([path, text]) => [pat
 
 const checker = texts.get("native/zero-c/src/checker.c") ?? "";
 const main = texts.get("native/zero-c/src/main.c") ?? "";
+const mainFunctionBody = cCodeText(cBlock(main, "int main(int argc, char **argv) {"));
 const ir = texts.get("native/zero-c/src/ir.c") ?? "";
 const stdSig = texts.get("native/zero-c/src/std_sig.c") ?? "";
 const capabilityNames = texts.get("native/zero-c/src/capability_names.c") ?? "";
@@ -1651,17 +1663,23 @@ const runtimeCloseFdBody = cCodeText(cBlock(runtimeRaw, "static int zero_runtime
 const httpListenRunnerRaw = texts.get("native/zero-c/src/http_listen_runner.c") ?? "";
 const httpListenTempRaw = texts.get("native/zero-c/src/http_listen_temp.c") ?? "";
 const httpListenRunnerSmokeRaw = auditTexts.get("native/zero-c/tests/http_listen_runner_smoke.c") ?? "";
+const embedStdlibGraphsRaw = auditTexts.get("scripts/embed-stdlib-graphs.mts") ?? "";
+const stdSourceRaw = texts.get("native/zero-c/src/std_source.c") ?? "";
+const stdSourceGraphFingerprintBody = cCodeText(cBlock(stdSourceRaw, "uint64_t z_std_source_graph_fingerprint"));
 const listenSendAllBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool send_all"));
 const listenJsonErrorBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool send_json_error"));
 const listenHandlerCaptureBody = cCodeText(cBlock(httpListenRunnerRaw, "static bool run_handler_capture"));
 const mirBinaryRaw = texts.get("native/zero-c/src/mir_binary.c") ?? "";
 const mirBinarySource = cCodeText(mirBinaryRaw);
+const graphStoreMirCachePathBody = cCodeText(cBlock(mirBinaryRaw, "char *z_mir_binary_cache_path_for_graph_store"));
 const programGraphCompileSource = cCodeText(texts.get("native/zero-c/src/program_graph_compile.c") ?? "");
 const programGraphMirRaw = texts.get("native/zero-c/src/program_graph_mir.c") ?? "";
 const programGraphBuildRaw = texts.get("native/zero-c/src/program_graph_build.c") ?? "";
 const programGraphBuildHeaderRaw = texts.get("native/zero-c/src/program_graph_build.h") ?? "";
 const programGraphCommandRaw = texts.get("native/zero-c/src/program_graph_command.c") ?? "";
 const programGraphCommandHeaderRaw = texts.get("native/zero-c/src/program_graph_command.h") ?? "";
+const programGraphManifestRaw = texts.get("native/zero-c/src/program_graph_manifest.c") ?? "";
+const programGraphManifestCacheMetadataBody = cCodeText(cBlock(programGraphManifestRaw, "bool z_program_graph_manifest_attach_cache_metadata_to_input"));
 const programGraphStoreRaw = texts.get("native/zero-c/src/program_graph_store.c") ?? "";
 const programGraphStoreHeaderRaw = texts.get("native/zero-c/src/program_graph_store.h") ?? "";
 const programGraphStoreBinaryRaw = texts.get("native/zero-c/src/program_graph_store_binary.c") ?? "";
@@ -1693,6 +1711,12 @@ const repositoryGraphTargetReadinessBody = cCodeText(cBlock(main, "static bool r
 const repositoryGraphCheckJsonRawBody = cBlock(main, "static void append_repository_graph_compiler_path_json");
 const repositoryGraphCheckJsonBody = cCodeText(cBlock(main, "static void append_repository_graph_compiler_path_json"));
 const repositoryGraphDefaultReadinessRawBody = cBlock(main, "static void append_repository_graph_default_readiness_json");
+const linkedExecutableCachePathBody = cCodeText(cBlock(main, "static char *linked_executable_cache_path"));
+const linkedExecutableCompileCacheKeyBody = cCodeText(cBlock(main, "static uint64_t linked_executable_compile_cache_key"));
+const graphPackageDependencyHashBody = cCodeText(cBlock(main, "static uint64_t graph_package_dependency_hash"));
+const repositoryGraphFastHashBody = cCodeText(cBlock(main, "static char *read_repository_graph_hash_fast"));
+const repositoryGraphEarlyCachedRunBody = cCodeText(cBlock(main, "static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mir"));
+const manifestGraphEarlyCachedRunBody = cCodeText(cBlock(main, "static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_resolution"));
 const directManifestGraphInputBody = cCodeText(cBlock(main, "static int resolve_direct_command_manifest_graph_input"));
 const readOptionalFileBody = cCodeText(cBlock(main, "static char *read_optional_file"));
 const programGraphStorageHeaderBody = cCodeText(cBlock(main, "static bool path_has_program_graph_storage_header"));
@@ -2450,6 +2474,46 @@ const programGraph = {
     /modulePaths/.test(main) &&
     /importPaths/.test(main) &&
     !/GRAPH_CACHE_INPUTS_(?:PARSE|CHECK|SPECIALIZATION|OBJECT|AGGREGATE)\s*=\s*"\[[^\]]*sourceFiles/.test(main),
+  repositoryGraphSharedLinkedExecutableCache: /graph_keyed/.test(linkedExecutableCachePathBody) &&
+    /z_program_graph_artifact_source_present\s*\(&command->graph_source\)/.test(linkedExecutableCachePathBody) &&
+    /shared_native_cache_file\s*\(/.test(linkedExecutableCachePathBody) &&
+    /native_cache_file_for_input\s*\(/.test(linkedExecutableCachePathBody) &&
+    /ZERO_BUILD_HASH/.test(linkedExecutableCachePathBody),
+  repositoryGraphSharedMappedMirCache: /mir_graph_store_cache_root\s*\(/.test(graphStoreMirCachePathBody) &&
+    !/mir_dirname\s*\(/.test(graphStoreMirCachePathBody) &&
+    !/\.zero\/cache\/native\//.test(graphStoreMirCachePathBody),
+  repositoryGraphExecutableCacheFastHit: /read_repository_graph_hash_fast\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /linked_executable_cache_path\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /exec_cached_executable_artifact\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /z_program_graph_manifest_attach_cache_metadata_to_input\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    !/z_program_graph_manifest_attach_metadata_to_input\s*\(/.test(repositoryGraphEarlyCachedRunBody) &&
+    /needs_c_library_validation/.test(repositoryGraphEarlyCachedRunBody) &&
+    /parsed_manifest\.dependency_count\s*==\s*0\s*&&\s*parsed_manifest\.c_lib_count\s*==\s*0/.test(programGraphManifestCacheMetadataBody) &&
+    /z_resolve_package_metadata\s*\(/.test(programGraphManifestCacheMetadataBody) &&
+    repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") >= 0 &&
+    repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") >= 0 &&
+    repositoryGraphEarlyCachedRunBody.indexOf("read_repository_graph_hash_fast(") < repositoryGraphEarlyCachedRunBody.indexOf("z_program_graph_store_load_path(") &&
+    /linked_executable_compile_cache_key\s*\(/.test(linkedExecutableCachePathBody) &&
+    /command->graph_source.graph_hash/.test(linkedExecutableCompileCacheKeyBody) &&
+    /graph_package_dependency_hash\s*\(/.test(linkedExecutableCompileCacheKeyBody) &&
+    /dep->path/.test(graphPackageDependencyHashBody) &&
+    /dep->targets_json/.test(graphPackageDependencyHashBody) &&
+    !/dependency_graph_hash|lockfile_hash|resolved_manifest|fingerprint/.test(graphPackageDependencyHashBody) &&
+    /fopen\s*\(/.test(repositoryGraphFastHashBody) &&
+    /fread\s*\(/.test(repositoryGraphFastHashBody) &&
+    /read_repository_graph_hash_binary_fast\s*\(/.test(repositoryGraphFastHashBody) &&
+    /try_run_manifest_graph_cached_executable_before_resolution\s*\(/.test(mainFunctionBody) &&
+    mainFunctionBody.indexOf("try_run_manifest_graph_cached_executable_before_resolution(") >= 0 &&
+    mainFunctionBody.indexOf("resolve_direct_command_manifest_graph_input(") >= 0 &&
+    mainFunctionBody.indexOf("try_run_manifest_graph_cached_executable_before_resolution(") < mainFunctionBody.indexOf("resolve_direct_command_manifest_graph_input(") &&
+    /z_manifest_path_for_input\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
+    /z_program_graph_store_path_for_root\s*\(/.test(manifestGraphEarlyCachedRunBody) &&
+    /cache_command\.repository_graph_input\s*=\s*true/.test(manifestGraphEarlyCachedRunBody) &&
+    /try_run_repository_graph_cached_executable_before_mir\s*\([^;]*false\s*\)/.test(manifestGraphEarlyCachedRunBody),
+  repositoryGraphStdlibFingerprintGenerated: /ZERO_EMBEDDED_STDLIB_GRAPH_FINGERPRINT/.test(embedStdlibGraphsRaw) &&
+    /hashBytes\s*\(\s*fingerprint\s*,\s*bytes\s*\)/.test(embedStdlibGraphsRaw) &&
+    /return\s+ZERO_EMBEDDED_STDLIB_GRAPH_FINGERPRINT\s*;/.test(stdSourceGraphFingerprintBody) &&
+    !/std_source_hash_bytes|std_source_hash_text|graph_bytes/.test(stdSourceGraphFingerprintBody),
   repositoryGraphMirPrepMappedFinalMir: /z_mir_binary_load_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_mir_binary_write_path\s*\(/.test(repositoryGraphMirPrepBody) &&
     /z_lower_program_graph_with_source\s*\(/.test(repositoryGraphMirPrepBody) &&

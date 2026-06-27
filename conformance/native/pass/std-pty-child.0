@@ -1,0 +1,70 @@
+pub fn main(world: World) -> Void raises {
+    let child: ProcChild = std.pty.spawnArgs("printf", "pty-out\n", ".", "")
+    var output_buf: [64]u8 = [0_u8; 64]
+    let valid: Bool = std.pty.valid(child)
+    let child_valid: Bool = std.pty.childValid(child)
+    let child_pid: i32 = std.pty.pid(child)
+    let resized: Bool = std.pty.resize(child, 80_usize, 24_usize)
+    let write_probe: Maybe<usize> = std.pty.write(child, "ignored\n")
+    var output_ok: Bool = false
+    var output_attempts: usize = 0
+    while output_attempts < 20_usize && !output_ok {
+        let output_read: Maybe<usize> = std.pty.read(child, output_buf)
+        if output_read.has {
+            let output_bytes: Span<u8> = std.io.written(output_buf, output_read.value)
+            output_ok = std.str.contains(output_bytes, "pty-out")
+        }
+        if !output_ok {
+            let slept: Bool = std.time.sleep(std.time.ms(10))
+        }
+        output_attempts = output_attempts + 1_usize
+    }
+    let status: ProcStatus = std.pty.wait(child)
+    let closed: Bool = std.pty.close(child)
+
+    let env_child: ProcChild = std.pty.spawnInEnv("sh -c 'printf env:$ZERO_PTY_ENV'", ".", "ZERO_PTY_ENV=ok")
+    var env_buf: [64]u8 = [0_u8; 64]
+    var env_ok: Bool = false
+    var env_attempts: usize = 0
+    if std.pty.valid(env_child) {
+        while env_attempts < 20_usize && !env_ok {
+            let env_read: Maybe<usize> = std.pty.read(env_child, env_buf)
+            if env_read.has {
+                let env_bytes: Span<u8> = std.io.written(env_buf, env_read.value)
+                env_ok = std.str.contains(env_bytes, "env:ok")
+            }
+            if !env_ok {
+                let slept: Bool = std.time.sleep(std.time.ms(10))
+            }
+            env_attempts = env_attempts + 1_usize
+        }
+    }
+    let env_status: ProcStatus = std.pty.wait(env_child)
+    let env_closed: Bool = std.pty.close(env_child)
+
+    let interrupt_child: ProcChild = std.pty.spawn("sh -c 'trap \"exit 130\" INT; while true; do sleep 1; done'")
+    var interrupt_ok: Bool = false
+    if std.pty.childValid(interrupt_child) && std.pty.running(interrupt_child) {
+        let interrupted: Bool = std.pty.interrupt(interrupt_child)
+        if interrupted {
+            let interrupt_status: ProcStatus = std.pty.wait(interrupt_child)
+            interrupt_ok = std.proc.exitCode(interrupt_status) != 0
+        }
+    }
+    let interrupt_closed: Bool = std.pty.close(interrupt_child)
+
+    let kill_child: ProcChild = std.pty.spawn("sh -c 'trap \"exit 143\" TERM; while true; do sleep 1; done'")
+    var kill_ok: Bool = false
+    if std.pty.childValid(kill_child) && std.pty.running(kill_child) {
+        let killed: Bool = std.pty.kill(kill_child)
+        if killed {
+            let kill_status: ProcStatus = std.pty.wait(kill_child)
+            kill_ok = std.proc.exitCode(kill_status) != 0
+        }
+    }
+    let kill_closed: Bool = std.pty.close(kill_child)
+
+    if valid && child_valid && child_pid > 0 && resized && write_probe.has && std.proc.succeeded(status) && output_ok && closed && env_ok && std.proc.succeeded(env_status) && env_closed && interrupt_ok && interrupt_closed && kill_ok && kill_closed {
+        check world.out.write("std pty child ok\n")
+    }
+}

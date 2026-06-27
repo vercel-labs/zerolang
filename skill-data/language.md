@@ -71,7 +71,7 @@ Core capability, resource, and helper types recognized by the compiler:
 World WorldStream
 Fs File ByteBuf
 NullAlloc FixedBufAlloc PageAlloc GeneralAlloc
-Vec Duration RandSource ProcStatus
+Vec Duration RandSource ProcStatus ProcChild
 Address Net Conn Listener
 HttpMethod HttpClient HttpServer HttpResult HttpError HttpHeaderValue
 JsonDoc BufferedReader BufferedWriter FixedReader FixedWriter

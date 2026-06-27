@@ -1,0 +1,24 @@
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let parent_ready: Bool = std.fs.ensureDir(".zero/conformance")
+    let dir_ready: Bool = std.fs.ensureDir(".zero/conformance/dir-entry-name")
+    let wrote: Bool = std.fs.writeFile(fs, ".zero/conformance/dir-entry-name/alpha.txt", "ok")
+    let entries: Maybe<usize> = std.fs.dirEntryCount(".zero/conformance/dir-entry-name")
+    var name_buf: [128]u8 = [0_u8; 128]
+    var found: Bool = false
+    if parent_ready && dir_ready && wrote && entries.has {
+        var index: usize = 0_usize
+        while index < entries.value {
+            let name: Maybe<Span<u8>> = std.fs.dirEntryName(name_buf, ".zero/conformance/dir-entry-name", index)
+            if name.has && std.mem.eql(name.value, "alpha.txt") {
+                found = true
+            }
+            index = index + 1_usize
+        }
+    }
+    if found {
+        check world.out.write("dir entry name ok\n")
+    } else {
+        check world.out.write("dir entry name failed\n")
+    }
+}

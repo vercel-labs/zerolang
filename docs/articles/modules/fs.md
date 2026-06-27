@@ -25,6 +25,7 @@ Runnable today:
 | `std.fs.readBytes(path, buf)` | `Maybe<usize>` | Fills caller storage and returns the total file size; a value above `len(buf)` means the buffer holds only the first `len(buf)` bytes. |
 | `std.fs.readBytesAt(path, offset, buf)` | `Maybe<usize>` | Fills caller storage starting at a byte offset and returns the total file size, so bounded buffers can process larger files in chunks. |
 | `std.fs.writeBytes(path, bytes)` | `Maybe<usize>` | Writes byte spans to a hosted path. |
+| `std.fs.appendBytes(path, bytes)` | `Maybe<usize>` | Appends byte spans to a hosted path, creating the file when missing. |
 | `std.fs.exists(path)` | `Bool` | Checks whether a hosted path exists. |
 | `std.fs.isFile(path)` | `Bool` | Checks whether a hosted path opens and reports a file length. |
 | `std.fs.isDir(path)` | `Bool` | Checks whether a hosted path is a directory. |
@@ -34,11 +35,13 @@ Runnable today:
 | `std.fs.remove(path)` | `Bool` | Removes a hosted file path. |
 | `std.fs.rename(old, new)` | `Bool` | Renames a hosted file path. |
 | `std.fs.dirEntryCount(path)` | `Maybe<usize>` | Counts entries in a hosted directory. |
+| `std.fs.dirEntryName(buffer, path, index)` | `Maybe<Span<u8>>` | Writes one hosted directory entry name into caller storage. |
 | `std.fs.tempName(buffer, prefix)` | `Maybe<String>` | Writes a temporary path into caller storage. |
 | `std.fs.atomicWrite(path, temp, bytes)` | `Bool` | Writes through a caller-provided temporary path and renames. |
 | `std.fs.close(&mut file)` | `Void` | Closes an owned file handle explicitly; remaining owned files are cleaned up deterministically. |
 | `std.fs.readFile(fs, path, buffer)` | `Maybe<usize>` | Opens, fills caller storage, and closes through explicit `Fs`; returns the total file size, so a value above `len(buffer)` signals truncation. |
 | `std.fs.writeFile(fs, path, bytes)` | `Bool` | Creates, writes all bytes, and closes through explicit `Fs`. |
+| `std.fs.appendFile(fs, path, bytes)` | `Bool` | Opens, appends all bytes, and closes through explicit `Fs`. |
 | `std.fs.readFileBytes(fs, path, buffer)` | `Maybe<Span<u8>>` | Opens, reads a full file, closes it, and returns the live prefix of caller storage; `null` when the file exceeds the buffer. |
 | `std.fs.readFileEquals(fs, path, buffer, expected)` | `Bool` | Reads a full file through caller storage and compares the bytes with an expected span. |
 | `std.fs.copyFile(from, to, buffer)` | `Bool` | Copies a hosted file through caller-provided scratch storage. |
@@ -46,7 +49,7 @@ Runnable today:
 Current limits:
 
 - Richer permissions and platform-specific file modes.
-- Directory walking.
+- Recursive directory walking helpers.
 - Async or nonblocking I/O.
 
 ## Example

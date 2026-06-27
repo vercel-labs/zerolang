@@ -31,6 +31,8 @@ try {
     "native/zero-c/src/program_graph_format.c",
     "native/zero-c/src/program_graph_handle.c",
     "native/zero-c/src/program_graph_compare.c",
+    "native/zero-c/src/program_graph_projection_path.c",
+    "native/zero-c/src/program_graph_projection_fast.c",
     "native/zero-c/src/program_graph_reconcile.c",
     "native/zero-c/src/program_graph_reconcile_apply.c",
     "native/zero-c/src/program_graph_resolve.c",
@@ -43,6 +45,7 @@ try {
     "native/zero-c/src/program_graph_std_deps.c",
     "native/zero-c/src/program_graph_std_merge.c",
     "native/zero-c/src/program_graph_std_prune.c",
+    "native/zero-c/src/program_graph_string_map.c",
     "native/zero-c/src/program_graph_validate.c",
     "native/zero-c/src/program_graph_view.c",
     "native/zero-c/src/c_import.c",
@@ -296,6 +299,16 @@ assert.equal(binaryStatus.storage.binaryAvailable, true);
 
 assert.equal((await zeroRun(["check", binaryRoot])).stdout, "ok\n");
 assert.equal((await zeroRun(["run", binaryRoot])).stdout, "hello binary\n");
+const cleanRunStore = await readFile(`${binaryRoot}/zero.graph`);
+await writeFile(`${binaryRoot}/zero.graph`, corruptBinaryStoreNodeCount(cleanRunStore));
+const corruptCachedRun = await zeroRunMaybe(["run", binaryRoot]);
+assert.notEqual(corruptCachedRun.code, 0, "corrupt binary store run should fail before using the linked executable cache");
+assert.notEqual(corruptCachedRun.stdout, "hello binary\n", "corrupt binary store run must not execute the cached program");
+assert.match(
+  `${corruptCachedRun.stdout}\n${corruptCachedRun.stderr}`,
+  /repository graph store is invalid|invalid repository graph store|invalid binary repository graph store/,
+);
+await writeFile(`${binaryRoot}/zero.graph`, cleanRunStore);
 assert.match((await zeroRun(["export", binaryRoot])).stdout, /repository graph export ok/);
 await assertNoAtomicWriteTempFiles(binaryRoot);
 assert.equal((await zeroRun(["verify-projection", binaryRoot])).stdout, "repository graph verify-projection ok\n");

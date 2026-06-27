@@ -172,7 +172,7 @@ static const IrTypeName ir_scalar_type_names[] = {
 };
 
 static const IrTypeName ir_builtin_type_names[] = {
-  {"Void", IR_TYPE_VOID}, {"Duration", IR_TYPE_I64}, {"RandSource", IR_TYPE_U32}, {"ProcStatus", IR_TYPE_I32}, {"Net", IR_TYPE_I32}, {"Conn", IR_TYPE_I32}, {"Listener", IR_TYPE_I32}, {"HttpMethod", IR_TYPE_U32}, {"HttpClient", IR_TYPE_I32}, {"HttpServer", IR_TYPE_I32},
+  {"Void", IR_TYPE_VOID}, {"Duration", IR_TYPE_I64}, {"RandSource", IR_TYPE_U32}, {"ProcStatus", IR_TYPE_I32}, {"ProcChild", IR_TYPE_I32}, {"Net", IR_TYPE_I32}, {"Conn", IR_TYPE_I32}, {"Listener", IR_TYPE_I32}, {"HttpMethod", IR_TYPE_U32}, {"HttpClient", IR_TYPE_I32}, {"HttpServer", IR_TYPE_I32},
   {"HttpResult", IR_TYPE_U64}, {"HttpError", IR_TYPE_U32}, {"HttpHeaderValue", IR_TYPE_U64}, {"Fs", IR_TYPE_I32}, {"File", IR_TYPE_I32}, {"owned<File>", IR_TYPE_I32},
   {"FixedBufAlloc", IR_TYPE_ALLOC}, {"Vec", IR_TYPE_VEC}, {"BufferedReader", IR_TYPE_BYTE_VIEW}, {"BufferedWriter", IR_TYPE_BYTE_VIEW},
 };
@@ -273,6 +273,117 @@ static const char *ir_std_json_error_label(unsigned long long code, bool expecte
   if (code == 1) return "invalid";
   if (code == 2) return "trailing";
   return "unknown";
+}
+
+typedef struct {
+  const char *sequence;
+  unsigned long long key_code;
+  IrTermOp term_op;
+  IrTypeKind runtime_type;
+  size_t runtime_args;
+  bool has_key_code;
+  bool has_runtime;
+} IrStdTermHelper;
+
+static IrStdTermHelper ir_std_term_helper(const char *name) {
+  static const struct { const char *name; const char *sequence; unsigned long long key_code; IrTermOp term_op; IrTypeKind runtime_type; size_t runtime_args; bool has_key_code; bool has_runtime; } entries[] = {
+    {"std.term.reset", "\x1b[0m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bold", "\x1b[1m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.dim", "\x1b[2m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.underline", "\x1b[4m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.inverse", "\x1b[7m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgDefault", "\x1b[39m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgBlack", "\x1b[30m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgRed", "\x1b[31m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgGreen", "\x1b[32m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgYellow", "\x1b[33m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgBlue", "\x1b[34m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgMagenta", "\x1b[35m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgCyan", "\x1b[36m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.fgWhite", "\x1b[37m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgDefault", "\x1b[49m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgBlack", "\x1b[40m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgRed", "\x1b[41m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgGreen", "\x1b[42m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgYellow", "\x1b[43m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgBlue", "\x1b[44m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgMagenta", "\x1b[45m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgCyan", "\x1b[46m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.bgWhite", "\x1b[47m", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearScreen", "\x1b[2J", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearScreenDown", "\x1b[0J", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearScreenUp", "\x1b[1J", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearLine", "\x1b[2K", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearLineRight", "\x1b[0K", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.clearLineLeft", "\x1b[1K", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.cursorHome", "\x1b[H", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.saveCursor", "\x1b[s", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.restoreCursor", "\x1b[u", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.hideCursor", "\x1b[?25l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.showCursor", "\x1b[?25h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.enterAltScreen", "\x1b[?1049h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.leaveAltScreen", "\x1b[?1049l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.enterBracketedPaste", "\x1b[?2004h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.leaveBracketedPaste", "\x1b[?2004l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.enterMouseCapture", "\x1b[?1000h\x1b[?1002h\x1b[?1006h", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.leaveMouseCapture", "\x1b[?1006l\x1b[?1002l\x1b[?1000l", 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false},
+    {"std.term.keyNone", NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyEscape", NULL, 27ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyEnter", NULL, 13ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyTab", NULL, 9ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyBackspace", NULL, 127ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlA", NULL, 1ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlC", NULL, 3ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlD", NULL, 4ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlE", NULL, 5ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlK", NULL, 11ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlL", NULL, 12ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlN", NULL, 14ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlP", NULL, 16ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlR", NULL, 18ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlU", NULL, 21ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyCtrlW", NULL, 23ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowUp", NULL, 1114113ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowDown", NULL, 1114114ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowRight", NULL, 1114115ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyArrowLeft", NULL, 1114116ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyDelete", NULL, 1114117ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyHome", NULL, 1114118ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyEnd", NULL, 1114119ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyPageUp", NULL, 1114120ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyPageDown", NULL, 1114121ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyInsert", NULL, 1114122ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyShiftTab", NULL, 1114123ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF1", NULL, 1114124ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF2", NULL, 1114125ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF3", NULL, 1114126ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF4", NULL, 1114127ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF5", NULL, 1114128ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF6", NULL, 1114129ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF7", NULL, 1114130ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF8", NULL, 1114131ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF9", NULL, 1114132ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF10", NULL, 1114133ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF11", NULL, 1114134ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyF12", NULL, 1114135ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyPasteStart", NULL, 1114136ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.keyPasteEnd", NULL, 1114137ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, true, false},
+    {"std.term.stdinIsTty", NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.stdoutIsTty", NULL, 0ull, IR_TERM_OP_STDOUT_IS_TTY, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.widthOr", NULL, 0ull, IR_TERM_OP_WIDTH_OR, IR_TYPE_USIZE, 1, false, true},
+    {"std.term.heightOr", NULL, 0ull, IR_TERM_OP_HEIGHT_OR, IR_TYPE_USIZE, 1, false, true},
+    {"std.term.enterRawMode", NULL, 0ull, IR_TERM_OP_ENTER_RAW_MODE, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.leaveRawMode", NULL, 0ull, IR_TERM_OP_LEAVE_RAW_MODE, IR_TYPE_BOOL, 0, false, true},
+    {"std.term.readInput", NULL, 0ull, IR_TERM_OP_READ_INPUT, IR_TYPE_MAYBE_SCALAR, 1, false, true},
+  };
+  IrStdTermHelper missing = {NULL, 0ull, IR_TERM_OP_STDIN_IS_TTY, IR_TYPE_UNSUPPORTED, 0, false, false};
+  if (!name) return missing;
+  for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); i++) {
+    if (strcmp(name, entries[i].name) == 0) {
+      return (IrStdTermHelper){entries[i].sequence, entries[i].key_code, entries[i].term_op, entries[i].runtime_type, entries[i].runtime_args, entries[i].has_key_code, entries[i].has_runtime};
+    }
+  }
+  return missing;
 }
 
 static bool ir_std_http_status_class_bounds(const char *name, unsigned *lower, unsigned *upper) {
@@ -1177,13 +1288,11 @@ static bool ir_expr_is_mutable_byte_view_dest(const Program *program, const IrFu
   return local->type == IR_TYPE_BYTE_VIEW && local->is_mutable;
 }
 
+static bool ir_type_text_is_world(const char *type) { return type && type[0] == 'W' && type[1] == 'o' && type[2] == 'r' && type[3] == 'l' && type[4] == 'd' && type[5] == '\0'; }
+
 static bool ir_is_hosted_world_main(const Function *source) {
-  return source &&
-         source->is_public &&
-         source->name && strcmp(source->name, "main") == 0 &&
-         source->params.len == 1 &&
-         source->params.items[0].type && strcmp(source->params.items[0].type, "World") == 0 &&
-         source->return_type && strcmp(source->return_type, "Void") == 0;
+  const Param *param = source && source->params.len == 1 ? &source->params.items[0] : NULL;
+  return source && source->is_public && source->name && strcmp(source->name, "main") == 0 && param && ir_type_text_is_world(param->type) && source->return_type && strcmp(source->return_type, "Void") == 0;
 }
 
 static bool ir_is_world_stream_write(const IrFunction *fun, const Expr *expr, const char *stream) {
@@ -1741,6 +1850,8 @@ static const IrStdParseSpec *ir_std_parse_spec(const char *callee_name) {
     {"std.parse.parseU8", IR_PARSE_OP_PARSE_U8, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U8, 1},
     {"std.parse.parseU16", IR_PARSE_OP_PARSE_U16, IR_TYPE_MAYBE_SCALAR, IR_TYPE_U16, 1},
     {"std.parse.parseUsize", IR_PARSE_OP_PARSE_USIZE, IR_TYPE_MAYBE_SCALAR, IR_TYPE_USIZE, 1},
+    {"std.term.keyCode", IR_PARSE_OP_TERM_KEY_CODE, IR_TYPE_U32, IR_TYPE_UNSUPPORTED, 1},
+    {"std.term.keyByteLen", IR_PARSE_OP_TERM_KEY_BYTE_LEN, IR_TYPE_USIZE, IR_TYPE_UNSUPPORTED, 1},
   };
   for (size_t i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
     if (strcmp(callee_name, specs[i].name) == 0) return &specs[i];
@@ -1904,6 +2015,9 @@ static const IrStdTimeExtraSpec *ir_std_time_extra_spec(const char *callee_name)
     {"std.time.min", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_MIN, IR_TYPE_I64, 2},
     {"std.time.max", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_MAX, IR_TYPE_I64, 2},
     {"std.time.clamp", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_CLAMP, IR_TYPE_I64, 3},
+    {"std.time.sleep", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_SLEEP, IR_TYPE_BOOL, 1},
+    {"std.time.wallSeconds", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_WALL_SECONDS, IR_TYPE_I64, 0},
+    {"std.time.monotonic", IR_STD_TIME_EXTRA_RUNTIME, IR_TIME_OP_MONOTONIC, IR_TYPE_I64, 0},
     {"std.time.isZero", IR_STD_TIME_EXTRA_IS_ZERO, IR_TIME_OP_AS_US_FLOOR, IR_TYPE_BOOL, 1},
   };
   for (size_t i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
@@ -1935,6 +2049,50 @@ static bool ir_lower_std_time_extra_call(const Program *program, IrProgram *ir, 
   }
   ir_mark_unsupported(ir, "direct backend std.time helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.time arity");
   return false;
+}
+
+static bool ir_make_std_term_runtime_value(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrTermOp op, IrTypeKind return_type, size_t expected_args, IrValue **out) {
+  if (!call || call->args.len != expected_args || expected_args > 1) {
+    ir_mark_unsupported(ir, "direct backend std.term helper has unsupported arity", call ? call->line : 1, call ? call->column : 1, "wrong std.term arity");
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_TERM_RUNTIME, return_type, call->line, call->column);
+  value->int_value = (unsigned long long)op;
+  if (op == IR_TERM_OP_READ_INPUT) {
+    IrValue *buffer = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &buffer)) {
+      ir_free_value(value);
+      return false;
+    }
+    value->left = buffer;
+    value->element_type = IR_TYPE_USIZE;
+  } else if (expected_args == 1) {
+    IrValue *fallback = NULL;
+    if (!ir_lower_call_arg(program, ir, fun, call->args.items[0], IR_TYPE_USIZE, &fallback)) {
+      ir_free_value(value);
+      return false;
+    }
+    if (!fallback || fallback->type != IR_TYPE_USIZE) {
+      ir_free_value(fallback);
+      ir_free_value(value);
+      ir_mark_unsupported(ir, "direct backend std.term fallback argument must be usize", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, "non-usize argument");
+      return false;
+    }
+    ir_value_push_arg(ir, value, fallback);
+  }
+  ir_require_runtime_helper(ir);
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_term_runtime_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, const char *callee_name, bool *handled, IrValue **out) {
+  IrStdTermHelper helper = ir_std_term_helper(callee_name);
+  if (!helper.has_runtime) {
+    *handled = false;
+    return true;
+  }
+  *handled = true;
+  return ir_make_std_term_runtime_value(program, ir, fun, call, helper.term_op, helper.runtime_type, helper.runtime_args, out);
 }
 
 static bool ir_std_math_runtime_spec(const char *callee_name, size_t arg_count, IrMathOp *op, IrTypeKind *arg_type, IrTypeKind *return_type, IrTypeKind *return_element_type, size_t *expected_args) {
@@ -2421,6 +2579,7 @@ static bool ir_lower_named_direct_call(const Program *program, IrProgram *ir, co
   value->element_type = type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(return_type_text) : type;
   if (type == IR_TYPE_MAYBE_SCALAR) value->element_type = ir_maybe_scalar_element_type(return_type_text);
   for (size_t i = 0; i < expr->args.len; i++) {
+    if (i == 0 && ir_type_text_is_world(callee->params.items[i].type)) continue;
     char *specialized_param_type = generic_call ? ir_specialize_type_text(callee->params.items[i].type, callee, type_args) : NULL;
     const char *param_type_text = generic_call ? specialized_param_type : callee->params.items[i].type;
     IrTypeKind expected = ir_type_kind(param_type_text);
@@ -2500,9 +2659,47 @@ static char *ir_expr_callee_name(const Expr *expr) {
 typedef enum {
   IR_DIRECT_STD_CALL_UNKNOWN,
   IR_DIRECT_STD_PROC_SPAWN,
+  IR_DIRECT_STD_PROC_SPAWN_INHERIT,
+  IR_DIRECT_STD_PROC_SPAWN_INHERIT_ARGS,
+  IR_DIRECT_STD_PROC_CAPTURE,
+  IR_DIRECT_STD_PROC_CAPTURE_ARGS,
+  IR_DIRECT_STD_PROC_CAPTURE_FILES,
+  IR_DIRECT_STD_PROC_CAPTURE_FILES_ARGS,
+  IR_DIRECT_STD_PROC_SPAWN_CHILD,
+  IR_DIRECT_STD_PROC_SPAWN_CHILD_IN,
+  IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV,
+  IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS,
+  IR_DIRECT_STD_PROC_CHILD_VALID,
+  IR_DIRECT_STD_PROC_RUNNING,
+  IR_DIRECT_STD_PROC_WAIT,
+  IR_DIRECT_STD_PROC_KILL,
+  IR_DIRECT_STD_PROC_INTERRUPT,
+  IR_DIRECT_STD_PROC_CLOSE,
+  IR_DIRECT_STD_PROC_CLOSE_STDIN,
+  IR_DIRECT_STD_PROC_PID,
+  IR_DIRECT_STD_PROC_PID_RUNNING,
+  IR_DIRECT_STD_PROC_KILL_PID,
+  IR_DIRECT_STD_PROC_INTERRUPT_PID, IR_DIRECT_STD_PROC_KILL_GROUP_PID, IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID,
+  IR_DIRECT_STD_PROC_READ_STDOUT,
+  IR_DIRECT_STD_PROC_READ_STDERR,
+  IR_DIRECT_STD_PROC_WRITE_STDIN,
   IR_DIRECT_STD_PROC_EXIT_CODE,
   IR_DIRECT_STD_PROC_SUCCEEDED,
   IR_DIRECT_STD_PROC_FAILED,
+  IR_DIRECT_STD_PTY_SPAWN,
+  IR_DIRECT_STD_PTY_SPAWN_IN,
+  IR_DIRECT_STD_PTY_SPAWN_IN_ENV,
+  IR_DIRECT_STD_PTY_SPAWN_ARGS,
+  IR_DIRECT_STD_PTY_VALID,
+  IR_DIRECT_STD_PTY_RUNNING,
+  IR_DIRECT_STD_PTY_WAIT,
+  IR_DIRECT_STD_PTY_KILL,
+  IR_DIRECT_STD_PTY_INTERRUPT,
+  IR_DIRECT_STD_PTY_CLOSE,
+  IR_DIRECT_STD_PTY_PID,
+  IR_DIRECT_STD_PTY_READ,
+  IR_DIRECT_STD_PTY_WRITE,
+  IR_DIRECT_STD_PTY_RESIZE,
   IR_DIRECT_STD_ARGS_LEN,
   IR_DIRECT_STD_ARGS_GET,
   IR_DIRECT_STD_ARGS_HAS,
@@ -2538,9 +2735,48 @@ typedef struct {
 static IrDirectStdCallId ir_direct_std_call_id(const char *callee_name) {
   static const IrDirectStdCallSpec specs[] = {
     {"std.proc.spawn", IR_DIRECT_STD_PROC_SPAWN},
+    {"std.proc.spawnInherit", IR_DIRECT_STD_PROC_SPAWN_INHERIT},
+    {"std.proc.spawnInheritArgs", IR_DIRECT_STD_PROC_SPAWN_INHERIT_ARGS},
+    {"std.proc.capture", IR_DIRECT_STD_PROC_CAPTURE},
+    {"std.proc.captureArgs", IR_DIRECT_STD_PROC_CAPTURE_ARGS},
+    {"std.proc.captureFiles", IR_DIRECT_STD_PROC_CAPTURE_FILES},
+    {"std.proc.captureFilesArgs", IR_DIRECT_STD_PROC_CAPTURE_FILES_ARGS},
+    {"std.proc.spawnChild", IR_DIRECT_STD_PROC_SPAWN_CHILD},
+    {"std.proc.spawnChildIn", IR_DIRECT_STD_PROC_SPAWN_CHILD_IN},
+    {"std.proc.spawnChildInEnv", IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV},
+    {"std.proc.spawnChildArgs", IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS},
+    {"std.proc.childValid", IR_DIRECT_STD_PROC_CHILD_VALID},
+    {"std.proc.running", IR_DIRECT_STD_PROC_RUNNING},
+    {"std.proc.wait", IR_DIRECT_STD_PROC_WAIT},
+    {"std.proc.kill", IR_DIRECT_STD_PROC_KILL},
+    {"std.proc.interrupt", IR_DIRECT_STD_PROC_INTERRUPT},
+    {"std.proc.close", IR_DIRECT_STD_PROC_CLOSE},
+    {"std.proc.closeStdin", IR_DIRECT_STD_PROC_CLOSE_STDIN},
+    {"std.proc.pid", IR_DIRECT_STD_PROC_PID},
+    {"std.proc.pidRunning", IR_DIRECT_STD_PROC_PID_RUNNING},
+    {"std.proc.killPid", IR_DIRECT_STD_PROC_KILL_PID},
+    {"std.proc.interruptPid", IR_DIRECT_STD_PROC_INTERRUPT_PID}, {"std.proc.killGroupPid", IR_DIRECT_STD_PROC_KILL_GROUP_PID}, {"std.proc.interruptGroupPid", IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID},
+    {"std.proc.readStdout", IR_DIRECT_STD_PROC_READ_STDOUT},
+    {"std.proc.readStderr", IR_DIRECT_STD_PROC_READ_STDERR},
+    {"std.proc.writeStdin", IR_DIRECT_STD_PROC_WRITE_STDIN},
     {"std.proc.exitCode", IR_DIRECT_STD_PROC_EXIT_CODE},
     {"std.proc.succeeded", IR_DIRECT_STD_PROC_SUCCEEDED},
     {"std.proc.failed", IR_DIRECT_STD_PROC_FAILED},
+    {"std.pty.spawn", IR_DIRECT_STD_PTY_SPAWN},
+    {"std.pty.spawnIn", IR_DIRECT_STD_PTY_SPAWN_IN},
+    {"std.pty.spawnInEnv", IR_DIRECT_STD_PTY_SPAWN_IN_ENV},
+    {"std.pty.spawnArgs", IR_DIRECT_STD_PTY_SPAWN_ARGS},
+    {"std.pty.valid", IR_DIRECT_STD_PTY_VALID},
+    {"std.pty.childValid", IR_DIRECT_STD_PTY_VALID},
+    {"std.pty.running", IR_DIRECT_STD_PTY_RUNNING},
+    {"std.pty.wait", IR_DIRECT_STD_PTY_WAIT},
+    {"std.pty.kill", IR_DIRECT_STD_PTY_KILL},
+    {"std.pty.interrupt", IR_DIRECT_STD_PTY_INTERRUPT},
+    {"std.pty.close", IR_DIRECT_STD_PTY_CLOSE},
+    {"std.pty.pid", IR_DIRECT_STD_PTY_PID},
+    {"std.pty.read", IR_DIRECT_STD_PTY_READ},
+    {"std.pty.write", IR_DIRECT_STD_PTY_WRITE},
+    {"std.pty.resize", IR_DIRECT_STD_PTY_RESIZE},
     {"std.args.len", IR_DIRECT_STD_ARGS_LEN},
     {"std.args.get", IR_DIRECT_STD_ARGS_GET},
     {"std.args.has", IR_DIRECT_STD_ARGS_HAS},
@@ -2589,12 +2825,280 @@ static bool ir_lower_integer_value_arg(const Program *program, IrProgram *ir, co
   return true;
 }
 
+static bool ir_lower_std_proc_child_spawn_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool with_cwd, bool with_env, bool pty, bool *handled, IrValue **out) {
+  IrValue *command = NULL;
+  IrValue *cwd = NULL;
+  IrValue *env = NULL;
+  if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command) ||
+      (with_cwd && !ir_lower_byte_view(program, ir, fun, call->args.items[1], &cwd)) ||
+      (with_env && !ir_lower_byte_view(program, ir, fun, call->args.items[2], &env))) {
+    ir_free_value(command);
+    ir_free_value(cwd);
+    ir_free_value(env);
+    return false;
+  }
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_SPAWN, IR_TYPE_I32, call->line, call->column);
+  value->left = command;
+  value->right = cwd;
+  value->index = env;
+  value->int_value = pty ? 1 : 0;
+  ir_require_helper_counts(ir, 1, 0);
+  *handled = true;
+  *out = value;
+  return true;
+}
+
+static bool ir_lower_std_proc_push_argv4(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrValue *value) {
+  IrValue *items[4] = {0};
+  for (size_t i = 0; i < 4; i++) {
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[i], &items[i])) {
+      for (size_t j = 0; j < 4; j++) ir_free_value(items[j]);
+      return false;
+    }
+  }
+  for (size_t i = 0; i < 4; i++) ir_value_push_arg(ir, value, items[i]);
+  return true;
+}
+
+static bool ir_lower_std_proc_push_argv2(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrValue *value) {
+  IrValue *items[2] = {0};
+  for (size_t i = 0; i < 2; i++) {
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[i], &items[i])) {
+      for (size_t j = 0; j < 2; j++) ir_free_value(items[j]);
+      return false;
+    }
+  }
+  for (size_t i = 0; i < 2; i++) ir_value_push_arg(ir, value, items[i]);
+  return true;
+}
+
+static bool ir_lower_std_proc_child_spawn_args_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, bool pty, bool *handled, IrValue **out) {
+  IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_SPAWN, IR_TYPE_I32, call->line, call->column);
+  if (!ir_lower_std_proc_push_argv4(program, ir, fun, call, value)) {
+    ir_free_value(value);
+    return false;
+  }
+  value->int_value = pty ? 1 : 0;
+  ir_require_helper_counts(ir, 1, 0);
+  *handled = true;
+  *out = value;
+  return true;
+}
+
 static bool ir_lower_std_proc_direct_call(const Program *program, IrProgram *ir, const IrFunction *fun, const Expr *call, IrDirectStdCallId id, bool *handled, IrValue **out) {
   *handled = false;
   if (id == IR_DIRECT_STD_CALL_UNKNOWN) return true;
-  if (id == IR_DIRECT_STD_PROC_SPAWN && call->args.len == 1) {
-    IrValue *value = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, call->line, call->column);
-    value->int_value = 0;
+  if ((id == IR_DIRECT_STD_PROC_SPAWN || id == IR_DIRECT_STD_PROC_SPAWN_INHERIT) && call->args.len == 1) {
+    IrValue *command = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command)) return false;
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_SPAWN_INHERIT, IR_TYPE_I32, call->line, call->column);
+    value->left = command;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_INHERIT_ARGS && call->args.len == 4) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_SPAWN_INHERIT, IR_TYPE_I32, call->line, call->column);
+    if (!ir_lower_std_proc_push_argv4(program, ir, fun, call, value)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE && call->args.len == 2) {
+    IrValue *command = NULL;
+    IrValue *buffer = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[1], &buffer)) {
+      ir_free_value(command);
+      ir_free_value(buffer);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
+    value->left = command;
+    value->right = buffer;
+    value->element_type = IR_TYPE_USIZE;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE_ARGS && call->args.len == 3) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
+    value->element_type = IR_TYPE_USIZE;
+    if (!ir_lower_std_proc_push_argv2(program, ir, fun, call, value) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[2], &value->right)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE_FILES && call->args.len == 3) {
+    IrValue *command = NULL;
+    IrValue *stdout_path = NULL;
+    IrValue *stderr_path = NULL;
+    if (!ir_lower_byte_view(program, ir, fun, call->args.items[0], &command) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[1], &stdout_path) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[2], &stderr_path)) {
+      ir_free_value(command);
+      ir_free_value(stdout_path);
+      ir_free_value(stderr_path);
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE_FILES, IR_TYPE_I32, call->line, call->column);
+    value->left = command;
+    value->right = stdout_path;
+    value->index = stderr_path;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_CAPTURE_FILES_ARGS && call->args.len == 4) {
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CAPTURE_FILES, IR_TYPE_I32, call->line, call->column);
+    if (!ir_lower_std_proc_push_argv2(program, ir, fun, call, value) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[2], &value->right) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[3], &value->index)) {
+      ir_free_value(value);
+      return false;
+    }
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD && call->args.len == 1) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, false, false, false, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_IN && call->args.len == 2) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, false, false, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_IN_ENV && call->args.len == 3) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, true, false, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PROC_SPAWN_CHILD_ARGS && call->args.len == 4) {
+    return ir_lower_std_proc_child_spawn_args_direct_call(program, ir, fun, call, false, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN && call->args.len == 1) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, false, false, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN_IN && call->args.len == 2) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, false, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN_IN_ENV && call->args.len == 3) {
+    return ir_lower_std_proc_child_spawn_direct_call(program, ir, fun, call, true, true, true, handled, out);
+  }
+  if (id == IR_DIRECT_STD_PTY_SPAWN_ARGS && call->args.len == 4) {
+    return ir_lower_std_proc_child_spawn_args_direct_call(program, ir, fun, call, true, handled, out);
+  }
+  if ((id == IR_DIRECT_STD_PROC_CHILD_VALID ||
+       id == IR_DIRECT_STD_PROC_RUNNING ||
+       id == IR_DIRECT_STD_PROC_WAIT ||
+       id == IR_DIRECT_STD_PROC_KILL ||
+       id == IR_DIRECT_STD_PROC_INTERRUPT ||
+       id == IR_DIRECT_STD_PROC_CLOSE ||
+       id == IR_DIRECT_STD_PROC_CLOSE_STDIN ||
+       id == IR_DIRECT_STD_PROC_PID ||
+       id == IR_DIRECT_STD_PROC_PID_RUNNING ||
+       id == IR_DIRECT_STD_PROC_KILL_PID ||
+       id == IR_DIRECT_STD_PROC_INTERRUPT_PID || id == IR_DIRECT_STD_PROC_KILL_GROUP_PID || id == IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID ||
+       id == IR_DIRECT_STD_PTY_VALID ||
+       id == IR_DIRECT_STD_PTY_RUNNING ||
+       id == IR_DIRECT_STD_PTY_WAIT ||
+       id == IR_DIRECT_STD_PTY_KILL ||
+       id == IR_DIRECT_STD_PTY_INTERRUPT ||
+       id == IR_DIRECT_STD_PTY_CLOSE ||
+       id == IR_DIRECT_STD_PTY_PID) && call->args.len == 1) {
+    IrValue *child = NULL;
+    if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child)) return false;
+    if (!child || child->type != IR_TYPE_I32) {
+      ir_free_value(child);
+      ir_mark_unsupported(ir, "direct backend process child helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      return false;
+    }
+    IrProcChildOp op = IR_PROC_CHILD_OP_VALID;
+    IrTypeKind result_type = IR_TYPE_BOOL;
+    if (id == IR_DIRECT_STD_PROC_RUNNING || id == IR_DIRECT_STD_PTY_RUNNING) op = IR_PROC_CHILD_OP_RUNNING;
+    else if (id == IR_DIRECT_STD_PROC_WAIT || id == IR_DIRECT_STD_PTY_WAIT) { op = IR_PROC_CHILD_OP_WAIT; result_type = IR_TYPE_I32; }
+    else if (id == IR_DIRECT_STD_PROC_KILL || id == IR_DIRECT_STD_PTY_KILL) op = IR_PROC_CHILD_OP_KILL;
+    else if (id == IR_DIRECT_STD_PROC_INTERRUPT || id == IR_DIRECT_STD_PTY_INTERRUPT) op = IR_PROC_CHILD_OP_INTERRUPT;
+    else if (id == IR_DIRECT_STD_PROC_CLOSE || id == IR_DIRECT_STD_PTY_CLOSE) op = IR_PROC_CHILD_OP_CLOSE;
+    else if (id == IR_DIRECT_STD_PROC_CLOSE_STDIN) op = IR_PROC_CHILD_OP_CLOSE_STDIN;
+    else if (id == IR_DIRECT_STD_PROC_PID || id == IR_DIRECT_STD_PTY_PID) { op = IR_PROC_CHILD_OP_PID; result_type = IR_TYPE_I32; }
+    else if (id == IR_DIRECT_STD_PROC_PID_RUNNING) op = IR_PROC_CHILD_OP_PID_RUNNING;
+    else if (id == IR_DIRECT_STD_PROC_KILL_PID) op = IR_PROC_CHILD_OP_KILL_PID;
+    else if (id == IR_DIRECT_STD_PROC_INTERRUPT_PID) op = IR_PROC_CHILD_OP_INTERRUPT_PID; else if (id == IR_DIRECT_STD_PROC_KILL_GROUP_PID) op = IR_PROC_CHILD_OP_KILL_GROUP_PID; else if (id == IR_DIRECT_STD_PROC_INTERRUPT_GROUP_PID) op = IR_PROC_CHILD_OP_INTERRUPT_GROUP_PID;
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_OP, result_type, call->line, call->column);
+    value->left = child;
+    value->int_value = (unsigned long long)op;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if ((id == IR_DIRECT_STD_PROC_READ_STDOUT ||
+       id == IR_DIRECT_STD_PROC_READ_STDERR ||
+       id == IR_DIRECT_STD_PROC_WRITE_STDIN ||
+       id == IR_DIRECT_STD_PTY_READ ||
+       id == IR_DIRECT_STD_PTY_WRITE) && call->args.len == 2) {
+    IrValue *child = NULL;
+    IrValue *bytes = NULL;
+    if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child) ||
+        !ir_lower_byte_view(program, ir, fun, call->args.items[1], &bytes)) {
+      ir_free_value(child);
+      ir_free_value(bytes);
+      return false;
+    }
+    if (!child || child->type != IR_TYPE_I32) {
+      ir_free_value(child);
+      ir_free_value(bytes);
+      ir_mark_unsupported(ir, "direct backend process stream helper expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      return false;
+    }
+    IrProcChildIoOp op = IR_PROC_CHILD_IO_READ_STDOUT;
+    if (id == IR_DIRECT_STD_PROC_READ_STDERR) op = IR_PROC_CHILD_IO_READ_STDERR;
+    else if (id == IR_DIRECT_STD_PROC_WRITE_STDIN || id == IR_DIRECT_STD_PTY_WRITE) op = IR_PROC_CHILD_IO_WRITE_STDIN;
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_CHILD_IO, IR_TYPE_MAYBE_SCALAR, call->line, call->column);
+    value->left = child;
+    value->right = bytes;
+    value->int_value = (unsigned long long)op;
+    value->element_type = IR_TYPE_USIZE;
+    ir_require_helper_counts(ir, 1, 0);
+    *handled = true;
+    *out = value;
+    return true;
+  }
+  if (id == IR_DIRECT_STD_PTY_RESIZE && call->args.len == 3) {
+    IrValue *child = NULL;
+    IrValue *columns = NULL;
+    IrValue *rows = NULL;
+    if (!ir_lower_expr(program, ir, fun, call->args.items[0], &child) ||
+        !ir_lower_call_arg(program, ir, fun, call->args.items[1], IR_TYPE_USIZE, &columns) ||
+        !ir_lower_call_arg(program, ir, fun, call->args.items[2], IR_TYPE_USIZE, &rows)) {
+      ir_free_value(child);
+      ir_free_value(columns);
+      ir_free_value(rows);
+      return false;
+    }
+    if (!child || child->type != IR_TYPE_I32) {
+      ir_free_value(child);
+      ir_free_value(columns);
+      ir_free_value(rows);
+      ir_mark_unsupported(ir, "direct backend std.pty.resize expects ProcChild", call->args.items[0] ? call->args.items[0]->line : call->line, call->args.items[0] ? call->args.items[0]->column : call->column, call->args.items[0] && call->args.items[0]->resolved_type ? call->args.items[0]->resolved_type : "unknown child type");
+      return false;
+    }
+    IrValue *value = ir_new_value(ir, IR_VALUE_PROC_PTY_RESIZE, IR_TYPE_BOOL, call->line, call->column);
+    value->left = child;
+    value->right = columns;
+    value->index = rows;
+    ir_require_helper_counts(ir, 1, 0);
     *handled = true;
     *out = value;
     return true;
@@ -3372,18 +3876,6 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if (strcmp(callee_name, "std.time.wallSeconds") == 0 && expr->args.len == 0) {
-        IrValue *value = ir_new_value(ir, IR_VALUE_TIME_WALL_SECONDS, IR_TYPE_I64, expr->line, expr->column);
-        free(callee_name);
-        *out = value;
-        return true;
-      }
-      if (strcmp(callee_name, "std.time.monotonic") == 0 && expr->args.len == 0) {
-        IrValue *value = ir_new_value(ir, IR_VALUE_TIME_MONOTONIC, IR_TYPE_I64, expr->line, expr->column);
-        free(callee_name);
-        *out = value;
-        return true;
-      }
       if (strcmp(callee_name, "std.rand.seed") == 0 && expr->args.len == 1) {
         IrValue *seed = NULL;
         if (!ir_lower_expr(program, ir, fun, expr->args.items[0], &seed)) {
@@ -4046,6 +4538,25 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
+      IrStdTermHelper term_helper = ir_std_term_helper(callee_name);
+      if (term_helper.sequence && expr->args.len == 0) {
+        bool ok = ir_make_string_literal_value(ir, term_helper.sequence, expr->line, expr->column, out);
+        free(callee_name);
+        return ok;
+      }
+      if (expr->args.len == 0 && term_helper.has_key_code) {
+        *out = ir_new_integer_literal_value(ir, IR_TYPE_U32, term_helper.key_code, expr->line, expr->column);
+        free(callee_name);
+        return true;
+      }
+      if (!ir_lower_std_term_runtime_call(program, ir, fun, expr, callee_name, &handled, out)) {
+        free(callee_name);
+        return false;
+      }
+      if (handled) {
+        free(callee_name);
+        return true;
+      }
       if (!ir_lower_std_fmt_direct_call(program, ir, fun, expr, std_call, &handled, out)) {
         free(callee_name);
         return false;
@@ -4136,7 +4647,7 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         *out = value;
         return true;
       }
-      if ((strcmp(callee_name, "std.fs.write") == 0 || strcmp(callee_name, "std.fs.writeBytes") == 0) && expr->args.len == 2) {
+      if ((strcmp(callee_name, "std.fs.write") == 0 || strcmp(callee_name, "std.fs.writeBytes") == 0 || strcmp(callee_name, "std.fs.appendBytes") == 0) && expr->args.len == 2) {
         IrValue *path = NULL;
         IrValue *bytes = NULL;
         if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &path) ||
@@ -4147,7 +4658,9 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
           return false;
         }
         bool maybe = strcmp(callee_name, "std.fs.writeBytes") == 0;
-        IrValue *value = ir_new_value(ir, maybe ? IR_VALUE_FS_WRITE_BYTES_PATH : IR_VALUE_FS_WRITE_PATH, maybe ? IR_TYPE_MAYBE_SCALAR : IR_TYPE_USIZE, expr->line, expr->column);
+        bool append = strcmp(callee_name, "std.fs.appendBytes") == 0;
+        IrValueKind kind = append ? IR_VALUE_FS_APPEND_BYTES_PATH : (maybe ? IR_VALUE_FS_WRITE_BYTES_PATH : IR_VALUE_FS_WRITE_PATH);
+        IrValue *value = ir_new_value(ir, kind, maybe || append ? IR_TYPE_MAYBE_SCALAR : IR_TYPE_USIZE, expr->line, expr->column);
         value->left = path;
         value->right = bytes;
         value->element_type = IR_TYPE_USIZE;
@@ -4306,6 +4819,27 @@ static bool ir_lower_expr(const Program *program, IrProgram *ir, const IrFunctio
         IrValue *value = ir_new_value(ir, IR_VALUE_FS_DIR_ENTRY_COUNT, IR_TYPE_MAYBE_SCALAR, expr->line, expr->column);
         value->left = path;
         value->element_type = IR_TYPE_USIZE;
+        free(callee_name);
+        *out = value;
+        return true;
+      }
+      if (strcmp(callee_name, "std.fs.dirEntryName") == 0 && expr->args.len == 3) {
+        IrValue *buf = NULL;
+        IrValue *path = NULL;
+        IrValue *index = NULL;
+        if (!ir_lower_byte_view(program, ir, fun, expr->args.items[0], &buf) ||
+            !ir_lower_byte_view(program, ir, fun, expr->args.items[1], &path) ||
+            !ir_lower_expr(program, ir, fun, expr->args.items[2], &index)) {
+          ir_free_value(buf);
+          ir_free_value(path);
+          ir_free_value(index);
+          free(callee_name);
+          return false;
+        }
+        IrValue *value = ir_new_value(ir, IR_VALUE_FS_DIR_ENTRY_NAME, IR_TYPE_MAYBE_BYTE_VIEW, expr->line, expr->column);
+        value->left = buf;
+        value->right = path;
+        value->index = index;
         free(callee_name);
         *out = value;
         return true;
@@ -5132,6 +5666,18 @@ static bool ir_lower_array_initializer(const Program *program, IrProgram *ir, Ir
       return false;
     }
     const Expr *value_expr = expr->args.items[0];
+    bool compact_repeat = value_expr && (value_expr->kind == EXPR_NUMBER || value_expr->kind == EXPR_BOOL || value_expr->kind == EXPR_CHAR);
+    if (compact_repeat) {
+      IrValue *value = NULL;
+      if (!ir_lower_expr(program, ir, mir_fun, value_expr, &value)) return false;
+      if (value->type != local->element_type) {
+        ir_free_value(value);
+        ir_mark_unsupported(ir, "direct backend array repeat literal element type does not match local type", value_expr->line, value_expr->column, local->name);
+        return false;
+      }
+      ir_instr_vec_push(ir, out_items, out_len, out_cap, (IrInstr){.kind = IR_INSTR_ARRAY_FILL, .array_index = local->index, .value = value, .line = value_expr->line, .column = value_expr->column});
+      return true;
+    }
     for (size_t i = 0; i < local->array_len; i++) {
       IrValue *index = ir_new_index_literal(ir, (unsigned)i, value_expr->line, value_expr->column);
       IrValue *value = NULL;
@@ -5560,9 +6106,7 @@ static bool ir_lower_stmt_to_vec(const Program *program, IrProgram *ir, IrFuncti
 }
 
 static bool ir_lower_stmt_vec(const Program *program, IrProgram *ir, IrFunction *mir_fun, const StmtVec *body, IrInstr **out_items, size_t *out_len, size_t *out_cap, bool *saw_return) {
-  for (size_t i = 0; i < body->len; i++) {
-    if (!ir_lower_stmt_to_vec(program, ir, mir_fun, body->items[i], out_items, out_len, out_cap, saw_return)) return false;
-  }
+  for (size_t i = 0; i < body->len; i++) if (!ir_lower_stmt_to_vec(program, ir, mir_fun, body->items[i], out_items, out_len, out_cap, saw_return)) return false;
   return true;
 }
 
@@ -5570,6 +6114,7 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
   ir->functions = ir_grow_tracked_items(ir, ir->functions, ir->function_len, &ir->function_cap, 4, sizeof(IrFunction));
   IrFunction *fun = &ir->functions[ir->function_len++];
   bool hosted_world_main = ir_is_hosted_world_main(source);
+  const Param *world_param = source && source->params.len > 0 && ir_type_text_is_world(source->params.items[0].type) ? &source->params.items[0] : NULL;
   IrTypeKind source_return_type = ir_type_kind(source->return_type);
   IrTypeKind mir_return_type = hosted_world_main ? IR_TYPE_I32 : (source->raises ? IR_TYPE_I64 : source_return_type);
   IrTypeKind return_element_type = source_return_type == IR_TYPE_BYTE_VIEW ? ir_view_element_type_for_type(source->return_type) : IR_TYPE_UNSUPPORTED;
@@ -5581,7 +6126,7 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
   *fun = (IrFunction){
     .name = z_strdup(source->name),
     .stable_id = stable_id.data,
-    .world_param_name = hosted_world_main && source->params.items[0].name ? z_strdup(source->params.items[0].name) : NULL,
+    .world_param_name = world_param && world_param->name ? z_strdup(world_param->name) : NULL,
     .return_type = mir_return_type,
     .value_return_type = source_return_type,
     .return_element_type = return_element_type,
@@ -5596,10 +6141,12 @@ static IrFunction *ir_program_push_function(IrProgram *ir, const Function *sourc
 static bool ir_collect_stmt_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const StmtVec *body);
 
 static bool ir_collect_function_locals(const Program *program, IrProgram *ir, IrFunction *mir_fun, const Function *source) {
-  bool hosted_world_main = ir_is_hosted_world_main(source);
   for (size_t i = 0; i < source->params.len; i++) {
     const Param *param = &source->params.items[i];
-    if (hosted_world_main && i == 0 && strcmp(param->type ? param->type : "", "World") == 0) continue;
+    if (ir_type_text_is_world(param->type)) {
+      if (i == 0) continue;
+      ir_mark_unsupported(ir, "direct backend World capability parameter must be first", param->line, param->column, param->name ? param->name : "World"); return false;
+    }
     IrTypeKind type = ir_type_kind(param->type);
     if (!ir_type_is_direct_param_abi(type)) {
       ir_mark_unsupported(ir, "direct backend parameter type is unsupported", param->line, param->column, param->type);
@@ -5753,7 +6300,8 @@ static bool ir_lower_function_body(const Program *program, IrProgram *ir, IrFunc
   bool lowered = ir_lower_stmt_vec(program, ir, mir_fun, &source->body, &mir_fun->instrs, &mir_fun->instr_len, &mir_fun->instr_cap, &saw_return);
   ir_active_local_restore(ir, scope_mark);
   if (!lowered) return false;
-  if (hosted_world_main && !saw_return) {
+  /* Branch-local returns do not prove the hosted main cannot fall through. */
+  if (hosted_world_main) {
     IrValue *exit_code = ir_new_value(ir, IR_VALUE_INT, IR_TYPE_I32, source->line, source->column);
     exit_code->int_value = 0;
     ir_instr_vec_push(ir, &mir_fun->instrs, &mir_fun->instr_len, &mir_fun->instr_cap, (IrInstr){

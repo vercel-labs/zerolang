@@ -1,5 +1,6 @@
 #include "program_graph_format.h"
 #include "program_graph_lower.h"
+#include "program_graph_projection.h"
 #include "program_graph_store_binary.h"
 
 #include <stdint.h>
@@ -207,6 +208,49 @@ static void expect_binary_store_corruption_rejected(const ZProgramGraph *graph) 
 
   zbuf_free(&binary);
   z_program_graph_store_free(&projections);
+}
+
+static void expect_binary_store_rejects_user_std_basename_without_projection(void) {
+  ZProgramGraph graph;
+  z_program_graph_init(&graph);
+  graph.nodes = z_checked_calloc(1, sizeof(ZProgramGraphNode));
+  graph.node_len = 1;
+  graph.node_cap = 1;
+  set_node(&graph.nodes[0], "#000001", Z_PROGRAM_GRAPH_NODE_MODULE, "term", NULL);
+  free(graph.nodes[0].path);
+  graph.nodes[0].path = z_strdup("src/term.0");
+  z_program_graph_finalize_identities(&graph);
+
+  ZBuf binary;
+  zbuf_init(&binary);
+  z_program_graph_store_append_binary(&binary, &graph, NULL);
+  ZProgramGraphStore parsed;
+  ZDiag diag = {0};
+  expect(!z_program_graph_store_parse_binary("user-std-basename.graph", (const unsigned char *)binary.data, binary.len, &parsed, &diag),
+         "binary store accepted user source path matching std basename without projection");
+  expect(strstr(diag.message, "projection table") != NULL || strstr(diag.message, "source table") != NULL,
+         "binary store basename collision reported wrong diagnostic");
+
+  zbuf_free(&binary);
+  z_program_graph_free(&graph);
+}
+
+static void expect_binary_fast_sync_rejects_empty_projection_table(const ZProgramGraph *graph) {
+  ZBuf binary;
+  zbuf_init(&binary);
+  z_program_graph_store_append_binary(&binary, graph, NULL);
+
+  char storage_path[128];
+  snprintf(storage_path, sizeof(storage_path), "/tmp/zero-program-graph-empty-projection-%p.graph", (void *)graph);
+  ZDiag write_diag = {0};
+  expect(z_write_binary_file(storage_path, (const unsigned char *)binary.data, binary.len, &write_diag), write_diag.message);
+
+  ZProgramGraphProjectionSourceSync sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_DIVERGED;
+  expect(!z_program_graph_projection_source_sync_state_binary_fast(storage_path, ".", &sync),
+         "binary fast sync accepted store with empty projection table");
+
+  remove(storage_path);
+  zbuf_free(&binary);
 }
 
 static void expect_lowered_program(void) {
@@ -658,6 +702,8 @@ int main(void) {
   expect(z_program_graph_validate(&graph, &validation), "valid symbol target failed validation");
   expect(validation.state == Z_PROGRAM_GRAPH_VALIDATION_SHAPE_VALID, "valid graph reported wrong state");
   expect_binary_store_corruption_rejected(&graph);
+  expect_binary_store_rejects_user_std_basename_without_projection();
+  expect_binary_fast_sync_rejects_empty_projection_table(&graph);
 
   ZBuf dump;
   zbuf_init(&dump);

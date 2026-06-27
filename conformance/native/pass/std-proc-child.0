@@ -1,0 +1,240 @@
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let prepared: Bool = std.fs.ensureDir(".zero/conformance")
+
+    let child: ProcChild = std.proc.spawnChild("sh -c 'printf child-out; printf child-err >&2'")
+    var stdout_buf: [32]u8 = [0_u8; 32]
+    var stderr_buf: [32]u8 = [0_u8; 32]
+    let valid: Bool = std.proc.childValid(child)
+    let child_pid: i32 = std.proc.pid(child)
+    let was_running: Bool = std.proc.running(child)
+    let status: ProcStatus = std.proc.wait(child)
+    let stdout_read: Maybe<usize> = std.proc.readStdout(child, stdout_buf)
+    let stderr_read: Maybe<usize> = std.proc.readStderr(child, stderr_buf)
+    let closed: Bool = std.proc.close(child)
+
+    var output_ok: Bool = false
+    if stdout_read.has && stderr_read.has {
+        let stdout_bytes: Span<u8> = std.io.written(stdout_buf, stdout_read.value)
+        let stderr_bytes: Span<u8> = std.io.written(stderr_buf, stderr_read.value)
+        output_ok = std.mem.eql(stdout_bytes, "child-out") && std.mem.eql(stderr_bytes, "child-err")
+    }
+
+    let large_child: ProcChild = std.proc.spawnChild("sh -c 'yes x | head -c 1048576'")
+    var large_buf: [32]u8 = [0_u8; 32]
+    var large_ok: Bool = false
+    let large_valid: Bool = std.proc.childValid(large_child)
+    if large_valid {
+        let large_status: ProcStatus = std.proc.wait(large_child)
+        let large_read: Maybe<usize> = std.proc.readStdout(large_child, large_buf)
+        large_ok = std.proc.succeeded(large_status) && large_read.has && large_read.value == 32
+    }
+    let large_closed: Bool = std.proc.close(large_child)
+
+    let stdin_child: ProcChild = std.proc.spawnChild("sh -c 'read line; printf stdin:$line'")
+    var stdin_buf: [32]u8 = [0_u8; 32]
+    var stdin_ok: Bool = false
+    let stdin_valid: Bool = std.proc.childValid(stdin_child)
+    let wrote: Maybe<usize> = std.proc.writeStdin(stdin_child, "agent\n")
+    if stdin_valid && wrote.has {
+        let stdin_status: ProcStatus = std.proc.wait(stdin_child)
+        let stdin_read: Maybe<usize> = std.proc.readStdout(stdin_child, stdin_buf)
+        if stdin_read.has {
+            let stdin_bytes: Span<u8> = std.io.written(stdin_buf, stdin_read.value)
+            stdin_ok = std.proc.succeeded(stdin_status) && std.mem.eql(stdin_bytes, "stdin:agent")
+        }
+    }
+    let stdin_closed: Bool = std.proc.close(stdin_child)
+
+    let eof_child: ProcChild = std.proc.spawnChild("sh -c 'cat >/dev/null; printf eof-done'")
+    var eof_buf: [32]u8 = [0_u8; 32]
+    var eof_ok: Bool = false
+    let eof_valid: Bool = std.proc.childValid(eof_child)
+    let eof_pid: i32 = std.proc.pid(eof_child)
+    let eof_running: Bool = std.proc.pidRunning(eof_pid)
+    let eof_closed_stdin: Bool = std.proc.closeStdin(eof_child)
+    if eof_valid && eof_pid > 0 && eof_running && eof_closed_stdin {
+        let eof_status: ProcStatus = std.proc.wait(eof_child)
+        let eof_read: Maybe<usize> = std.proc.readStdout(eof_child, eof_buf)
+        if eof_read.has {
+            let eof_bytes: Span<u8> = std.io.written(eof_buf, eof_read.value)
+            eof_ok = std.proc.succeeded(eof_status) && std.mem.eql(eof_bytes, "eof-done")
+        }
+    }
+    let eof_handle_closed: Bool = std.proc.close(eof_child)
+
+    let interrupt_child: ProcChild = std.proc.spawnChild("sh -c 'while true; do sleep 1; done'")
+    var interrupt_ok: Bool = false
+    let interrupt_pid: i32 = std.proc.pid(interrupt_child)
+    if std.proc.childValid(interrupt_child) && interrupt_pid > 0 && std.proc.pidRunning(interrupt_pid) {
+        let interrupted: Bool = std.proc.interrupt(interrupt_child)
+        let interrupt_status: ProcStatus = std.proc.wait(interrupt_child)
+        interrupt_ok = interrupted && std.proc.exitCode(interrupt_status) != 0
+    }
+    let interrupt_closed: Bool = std.proc.close(interrupt_child)
+
+    let interrupt_pid_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"exit 130\" INT; while true; do sleep 1; done'")
+    var interrupt_pid_ok: Bool = false
+    let interrupt_pid_value: i32 = std.proc.pid(interrupt_pid_child)
+    if std.proc.childValid(interrupt_pid_child) && interrupt_pid_value > 0 && std.proc.pidRunning(interrupt_pid_value) {
+        let interrupted_pid: Bool = std.proc.interruptPid(interrupt_pid_value)
+        if interrupted_pid {
+            let interrupt_pid_status: ProcStatus = std.proc.wait(interrupt_pid_child)
+            interrupt_pid_ok = std.proc.exitCode(interrupt_pid_status) != 0
+        }
+    }
+    let interrupt_pid_closed: Bool = std.proc.close(interrupt_pid_child)
+
+    let close_live_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"\" TERM; while true; do sleep 1; done'")
+    var close_live_ok: Bool = false
+    let close_live_pid: i32 = std.proc.pid(close_live_child)
+    if std.proc.childValid(close_live_child) && close_live_pid > 0 && std.proc.pidRunning(close_live_pid) {
+        let close_live_closed: Bool = std.proc.close(close_live_child)
+        close_live_ok = close_live_closed && !std.proc.childValid(close_live_child) && !std.proc.pidRunning(close_live_pid)
+    }
+
+    let pid_child: ProcChild = std.proc.spawnChild("sh -c 'while true; do sleep 1; done'")
+    var pid_ok: Bool = false
+    let external_pid: i32 = std.proc.pid(pid_child)
+    if std.proc.childValid(pid_child) && external_pid > 0 && std.proc.pidRunning(external_pid) {
+        let killed_pid: Bool = std.proc.killPid(external_pid)
+        let pid_status: ProcStatus = std.proc.wait(pid_child)
+        pid_ok = killed_pid && std.proc.exitCode(pid_status) != 0 && !std.proc.pidRunning(0)
+    }
+    let pid_closed: Bool = std.proc.close(pid_child)
+
+    let group_kill_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"exit 143\" TERM; while true; do sleep 1; done'")
+    var group_kill_ok: Bool = false
+    let group_kill_pid: i32 = std.proc.pid(group_kill_child)
+    if std.proc.childValid(group_kill_child) && group_kill_pid > 0 && std.proc.pidRunning(group_kill_pid) {
+        let killed_group: Bool = std.proc.killGroupPid(group_kill_pid)
+        let group_kill_status: ProcStatus = std.proc.wait(group_kill_child)
+        group_kill_ok = killed_group && std.proc.exitCode(group_kill_status) != 0
+    }
+    let group_kill_closed: Bool = std.proc.close(group_kill_child)
+
+    let group_interrupt_child: ProcChild = std.proc.spawnChild("sh -c 'trap \"exit 130\" INT; while true; do sleep 1; done'")
+    var group_interrupt_ok: Bool = false
+    let group_interrupt_pid: i32 = std.proc.pid(group_interrupt_child)
+    if std.proc.childValid(group_interrupt_child) && group_interrupt_pid > 0 && std.proc.pidRunning(group_interrupt_pid) {
+        let interrupted_group: Bool = std.proc.interruptGroupPid(group_interrupt_pid)
+        let group_interrupt_status: ProcStatus = std.proc.wait(group_interrupt_child)
+        group_interrupt_ok = interrupted_group && std.proc.exitCode(group_interrupt_status) != 0
+    }
+    let group_interrupt_closed: Bool = std.proc.close(group_interrupt_child)
+
+    let env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf env:$ZERO_PROC_ENV_TEST:$ZERO_PROC_ENV_TWO'", ".", "ZERO_PROC_ENV_TEST=alpha\nZERO_PROC_ENV_TWO=beta")
+    var env_buf: [64]u8 = [0_u8; 64]
+    var env_ok: Bool = false
+    let env_valid: Bool = std.proc.childValid(env_child)
+    if env_valid {
+        let env_status: ProcStatus = std.proc.wait(env_child)
+        let env_read: Maybe<usize> = std.proc.readStdout(env_child, env_buf)
+        if env_read.has {
+            let env_bytes: Span<u8> = std.io.written(env_buf, env_read.value)
+            env_ok = std.proc.succeeded(env_status) && std.mem.eql(env_bytes, "env:alpha:beta")
+        }
+    }
+    let env_closed: Bool = std.proc.close(env_child)
+    let invalid_env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'printf nope'", ".", "ZERO_PROC_BAD_ENV")
+    let invalid_env_rejected: Bool = !std.proc.childValid(invalid_env_child)
+
+    let empty_env_child: ProcChild = std.proc.spawnChildInEnv("sh -c 'if [ -z \"${ZERO_PROC_EMPTY_ENV+x}\" ]; then printf missing; else printf empty:$ZERO_PROC_EMPTY_ENV; fi'", ".", "ZERO_PROC_EMPTY_ENV=")
+    var empty_env_buf: [64]u8 = [0_u8; 64]
+    var empty_env_ok: Bool = false
+    let empty_env_valid: Bool = std.proc.childValid(empty_env_child)
+    if empty_env_valid {
+        let empty_env_status: ProcStatus = std.proc.wait(empty_env_child)
+        let empty_env_read: Maybe<usize> = std.proc.readStdout(empty_env_child, empty_env_buf)
+        if empty_env_read.has {
+            let empty_env_bytes: Span<u8> = std.io.written(empty_env_buf, empty_env_read.value)
+            empty_env_ok = std.proc.succeeded(empty_env_status) && std.mem.eql(empty_env_bytes, "empty:")
+        }
+    }
+    let empty_env_closed: Bool = std.proc.close(empty_env_child)
+
+    let args_child: ProcChild = std.proc.spawnChildArgs("sh", "-c\nprintf 'args:%s:%s:%s' \"$0\" \"$1\" \"$ZERO_PROC_ARG_ENV\"\narg0\nspace value", ".", "ZERO_PROC_ARG_ENV=gamma")
+    var args_buf: [128]u8 = [0_u8; 128]
+    var args_ok: Bool = false
+    let args_valid: Bool = std.proc.childValid(args_child)
+    if args_valid {
+        let args_status: ProcStatus = std.proc.wait(args_child)
+        let args_read: Maybe<usize> = std.proc.readStdout(args_child, args_buf)
+        if args_read.has {
+            let args_bytes: Span<u8> = std.io.written(args_buf, args_read.value)
+            args_ok = std.proc.succeeded(args_status) && std.mem.eql(args_bytes, "args:arg0:space value:gamma")
+        }
+    }
+    let args_closed: Bool = std.proc.close(args_child)
+    let invalid_args_child: ProcChild = std.proc.spawnChildArgs("", "", ".", "")
+    let invalid_args_rejected: Bool = !std.proc.childValid(invalid_args_child)
+
+    let inherit_status: ProcStatus = std.proc.spawnInheritArgs("sh", "-c\n[ \"$ZERO_PROC_INHERIT_ENV\" = delta ]", ".", "ZERO_PROC_INHERIT_ENV=delta")
+
+    var capture_args_buf: [128]u8 = [0_u8; 128]
+    var capture_args_ok: Bool = false
+    let capture_args_read: Maybe<usize> = std.proc.captureArgs("sh", "-c\nprintf capture:%s:%s \"$0\" \"$1\"\nleft\nspace value", capture_args_buf)
+    if capture_args_read.has {
+        let capture_args_bytes: Span<u8> = std.io.written(capture_args_buf, capture_args_read.value)
+        capture_args_ok = std.mem.eql(capture_args_bytes, "capture:left:space value")
+    }
+    let invalid_capture_args: Maybe<usize> = std.proc.captureArgs("", "", capture_args_buf)
+    let invalid_capture_args_rejected: Bool = !invalid_capture_args.has
+
+    let args_out_path: String = ".zero/conformance/std-proc-args.out"
+    let args_err_path: String = ".zero/conformance/std-proc-args.err"
+    let files_args_status: ProcStatus = std.proc.captureFilesArgs("sh", "-c\nprintf file:%s \"$0\"; printf err:%s \"$1\" >&2\nout arg\nerr arg", args_out_path, args_err_path)
+    var files_args_out_buf: [64]u8 = [0_u8; 64]
+    var files_args_err_buf: [64]u8 = [0_u8; 64]
+    let files_args_out: Maybe<Span<u8>> = std.fs.readFileBytes(fs, args_out_path, files_args_out_buf)
+    let files_args_err: Maybe<Span<u8>> = std.fs.readFileBytes(fs, args_err_path, files_args_err_buf)
+    var files_args_ok: Bool = false
+    if files_args_out.has && files_args_err.has {
+        files_args_ok = std.proc.succeeded(files_args_status) && std.mem.eql(files_args_out.value, "file:out arg") && std.mem.eql(files_args_err.value, "err:err arg")
+    }
+
+    let background_wait_child: ProcChild = std.proc.spawnChild("sh -c 'sleep 2 & exit 0'")
+    let background_wait_start: Duration = std.time.monotonic()
+    let background_wait_status: ProcStatus = std.proc.wait(background_wait_child)
+    let background_wait_end: Duration = std.time.monotonic()
+    let background_wait_closed: Bool = std.proc.close(background_wait_child)
+    let background_wait_ok: Bool = std.proc.succeeded(background_wait_status) && background_wait_closed && std.time.lessThan(std.time.between(background_wait_start, background_wait_end), std.time.ms(1500))
+
+    let background_marker_path: String = ".zero/conformance/std-proc-background-marker"
+    let background_marker_removed: Bool = std.fs.remove(background_marker_path) || !std.fs.isFile(background_marker_path)
+    let background_cleanup_child: ProcChild = std.proc.spawnChild("sh -c '(sleep 1; printf survived > .zero/conformance/std-proc-background-marker) & exit 0'")
+    let background_cleanup_status: ProcStatus = std.proc.wait(background_cleanup_child)
+    let background_cleanup_closed: Bool = std.proc.close(background_cleanup_child)
+    let background_cleanup_slept: Bool = std.time.sleep(std.time.ms(1200))
+    let background_cleanup_ok: Bool = background_marker_removed && std.proc.succeeded(background_cleanup_status) && background_cleanup_closed && background_cleanup_slept && !std.fs.isFile(background_marker_path)
+
+    var background_capture_buf: [64]u8 = [0_u8; 64]
+    let background_capture_start: Duration = std.time.monotonic()
+    let background_capture_read: Maybe<usize> = std.proc.capture("sh -c 'sleep 2 & printf direct'", background_capture_buf)
+    let background_capture_end: Duration = std.time.monotonic()
+    var background_capture_ok: Bool = false
+    if background_capture_read.has {
+        let background_capture_bytes: Span<u8> = std.io.written(background_capture_buf, background_capture_read.value)
+        background_capture_ok = std.mem.eql(background_capture_bytes, "direct") && std.time.lessThan(std.time.between(background_capture_start, background_capture_end), std.time.ms(1500))
+    }
+
+    let stale_first: ProcChild = std.proc.spawnChild("sh -c true")
+    let stale_first_status: ProcStatus = std.proc.wait(stale_first)
+    let stale_first_closed: Bool = std.proc.close(stale_first)
+    let stale_second: ProcChild = std.proc.spawnChild("sh -c 'sleep 1; printf stale-second'")
+    let stale_first_valid_after_reuse: Bool = std.proc.childValid(stale_first)
+    let stale_first_kill_after_reuse: Bool = std.proc.kill(stale_first)
+    let stale_second_status: ProcStatus = std.proc.wait(stale_second)
+    var stale_second_buf: [32]u8 = [0_u8; 32]
+    let stale_second_read: Maybe<usize> = std.proc.readStdout(stale_second, stale_second_buf)
+    var stale_handle_ok: Bool = false
+    if stale_second_read.has {
+        let stale_second_bytes: Span<u8> = std.io.written(stale_second_buf, stale_second_read.value)
+        stale_handle_ok = std.proc.succeeded(stale_first_status) && stale_first_closed && !stale_first_valid_after_reuse && !stale_first_kill_after_reuse && std.proc.succeeded(stale_second_status) && std.mem.eql(stale_second_bytes, "stale-second")
+    }
+    let stale_second_closed: Bool = std.proc.close(stale_second)
+
+    if prepared && valid && child_pid > 0 && std.proc.succeeded(status) && output_ok && closed && large_ok && large_closed && stdin_ok && stdin_closed && eof_ok && eof_handle_closed && interrupt_ok && interrupt_closed && interrupt_pid_ok && interrupt_pid_closed && close_live_ok && pid_ok && pid_closed && group_kill_ok && group_kill_closed && group_interrupt_ok && group_interrupt_closed && env_ok && env_closed && invalid_env_rejected && empty_env_ok && empty_env_closed && args_ok && args_closed && invalid_args_rejected && std.proc.succeeded(inherit_status) && capture_args_ok && invalid_capture_args_rejected && files_args_ok && background_wait_ok && background_cleanup_ok && background_capture_ok && stale_handle_ok && stale_second_closed {
+        check world.out.write("std proc child ok\n")
+    }
+}

@@ -26,6 +26,11 @@ Runnable today:
 | `std.cli.formatUsage(buffer, program, syntax)` | `Maybe<Span<u8>>` | Writes `usage: <program> <syntax>` into caller storage. |
 | `std.cli.formatCommand(buffer, name, syntax, summary)` | `Maybe<Span<u8>>` | Writes one indented command help row. |
 | `std.cli.formatOption(buffer, name, valueName, summary)` | `Maybe<Span<u8>>` | Writes one indented option help row. |
+| `std.cli.formatSection(buffer, title)` | `Maybe<Span<u8>>` | Writes a section heading such as `Options:\n`. |
+| `std.cli.formatHelpRow(buffer, label, summary)` | `Maybe<Span<u8>>` | Writes one padded, newline-terminated help row using the default label width. |
+| `std.cli.formatHelpRowCustom(buffer, label, summary, indent, width)` | `Maybe<Span<u8>>` | Writes one padded help row using caller-supplied indentation and label width. |
+| `std.cli.formatHelpRowWithWidth(buffer, label, summary, width)` | `Maybe<Span<u8>>` | Writes one padded help row using a caller-supplied label width. |
+| `std.cli.formatHelp(buffer, usage, description)` | `Maybe<Span<u8>>` | Writes a help header with `Usage:` and an optional description. |
 | `std.cli.formatError(buffer, message)` | `Maybe<Span<u8>>` | Writes an `error: ...` line. |
 | `std.cli.formatUnknownCommand(buffer, command)` | `Maybe<Span<u8>>` | Writes a conventional unknown-command error. |
 | `std.cli.formatMissingOperand(buffer, operand)` | `Maybe<Span<u8>>` | Writes a conventional missing-operand error. |
@@ -42,11 +47,16 @@ Current limits:
 ```zero
 pub fn main(world: World) -> Void raises {
     if std.cli.needsHelp() {
-        var usage_storage: [64]u8 = [0_u8; 64]
-        let usage: Maybe<Span<u8>> = std.cli.formatUsage(usage_storage, "zero-test", "hello [name]")
-        if usage.has {
-            check world.out.write(usage.value)
-            check world.out.write("\n")
+        var command_storage: [96]u8 = [0_u8; 96]
+        let commands: Maybe<Span<u8>> = std.cli.formatHelpRow(command_storage, "hello [name]", "print a greeting")
+        if commands.has {
+            var help_storage: [256]u8 = [0_u8; 256]
+            let help: Maybe<Span<u8>> = std.cli.formatHelp(help_storage, "zero-test [command]", "Small hosted CLI.")
+            if help.has {
+                check world.out.write(help.value)
+                check world.out.write("\nCommands:\n")
+                check world.out.write(commands.value)
+            }
         }
         return
     }
@@ -71,4 +81,7 @@ pub fn main(world: World) -> Void raises {
 
 `std.cli` is a thin, hosted layer over `std.args`. It keeps subcommand, fallback,
 typed argument, help row, and usage error patterns regular without hiding
-process arguments behind a global parser or allocating command tables.
+process arguments behind a global parser or allocating command tables. For
+custom help layouts, compose `formatHelp`, `formatSection`, `formatHelpRow`,
+`formatHelpRowWithWidth`, and `formatHelpRowCustom` rather than relying on a
+global formatter state.

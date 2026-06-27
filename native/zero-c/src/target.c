@@ -45,7 +45,7 @@ static const char *fallback_manifest =
 "libcMode = \"bundled-libc\"\n"
 "exeSuffix = \"\"\n"
 "zigTarget = \"x86_64-linux-musl\"\n"
-"capabilities = [\"memory\", \"stdio\", \"args\", \"env\", \"fs\", \"time\", \"rand\"]\n"
+"capabilities = [\"memory\", \"stdio\", \"args\", \"env\", \"fs\", \"time\", \"rand\", \"proc\"]\n"
 "[[target]]\n"
 "name = \"linux-musl-arm64\"\n"
 "aliases = [\"aarch64-linux-musl\"]\n"
@@ -300,7 +300,7 @@ bool z_target_is_host(const ZTargetInfo *target) {
 static bool host_capability_available(const char *capability) {
   const char *host_capabilities[] = {"args", "env", "fs", "net", "proc", NULL};
   for (int i = 0; host_capabilities[i]; i++) {
-    if (target_text_equals(capability, host_capabilities[i])) return true;
+    if (target_text_equals(capability, host_capabilities[i])) return !target_text_equals(capability, "proc") || (!target_text_equals(z_host_target(), "win32-x64.exe") && !target_text_equals(z_host_target(), "win32-arm64.exe"));
   }
   return false;
 }

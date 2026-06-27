@@ -1,0 +1,6 @@
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    if std.fs.writeFile(fs, ".zero/conformance/std-fs-write-file-bool.txt", "hello") {
+        check world.out.write("fs write file bool ok\n")
+    }
+}

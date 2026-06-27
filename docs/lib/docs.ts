@@ -3,6 +3,7 @@ import type { Doc, DocsGroup } from "./types";
 const SECTION_ORDER = [
   "Start Here",
   "Concepts",
+  "Reference",
   "Agent Workflow",
   "Language Pieces",
   "Standard Library",
@@ -80,11 +81,11 @@ export const docs: Doc[] = [
   },
   {
     slug: "cli-reference",
-    title: "CLI Workflow Reference",
-    description: "Commands grouped by the agent workflow: create, inspect, patch, validate, run, build, and review.",
+    title: "CLI Reference",
+    description: "Commands for creating, inspecting, patching, validating, running, and building Zero programs.",
     path: "/cli",
     sourcePath: "/articles/cli-reference.md",
-    section: "Agent Workflow",
+    section: "Reference",
   },
   {
     slug: "diagnostics",
@@ -327,6 +328,14 @@ export const docs: Doc[] = [
     section: "Programs",
   },
   {
+    slug: "module-term",
+    title: "std.term",
+    description: "ANSI terminal sequences, key-byte decoding, hosted terminal metadata, and raw mode.",
+    path: "/modules/term",
+    sourcePath: "/articles/modules/term.md",
+    section: "Programs",
+  },
+  {
     slug: "module-text",
     title: "std.text",
     description: "ASCII and UTF-8 byte-backed text validation.",
@@ -402,7 +411,7 @@ export const docs: Doc[] = [
   {
     slug: "module-time",
     title: "std.time",
-    description: "Duration math plus target-gated monotonic and wall-clock helpers.",
+    description: "Duration math, hosted sleep, and target-gated monotonic and wall-clock helpers.",
     path: "/modules/time",
     sourcePath: "/articles/modules/time.md",
     section: "Runtime And Web",
@@ -421,6 +430,14 @@ export const docs: Doc[] = [
     description: "Host process status helpers behind explicit process capability boundaries.",
     path: "/modules/proc",
     sourcePath: "/articles/modules/proc.md",
+    section: "Runtime And Web",
+  },
+  {
+    slug: "module-pty",
+    title: "std.pty",
+    description: "Hosted pseudoterminal child processes for interactive CLIs and terminal programs.",
+    path: "/modules/pty",
+    sourcePath: "/articles/modules/pty.md",
     section: "Runtime And Web",
   },
   {

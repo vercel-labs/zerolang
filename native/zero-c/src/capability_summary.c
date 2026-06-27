@@ -86,6 +86,13 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_ENV_GET:
       caps->env = true;
       break;
+    case IR_VALUE_PROC_SPAWN_INHERIT: caps->proc = true; break;
+    case IR_VALUE_PROC_CAPTURE: caps->proc = true; caps->memory = true; break;
+    case IR_VALUE_PROC_CAPTURE_FILES: caps->proc = true; caps->fs = true; caps->path = true; break;
+    case IR_VALUE_PROC_CHILD_SPAWN: caps->proc = true; break;
+    case IR_VALUE_PROC_CHILD_OP: caps->proc = true; break;
+    case IR_VALUE_PROC_CHILD_IO: caps->proc = true; caps->memory = true; break;
+    case IR_VALUE_PROC_PTY_RESIZE: caps->proc = true; break;
     case IR_VALUE_TIME_RUNTIME:
     case IR_VALUE_TIME_WALL_SECONDS:
     case IR_VALUE_TIME_MONOTONIC:
@@ -106,6 +113,7 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_FS_READ_BYTES_PATH:
     case IR_VALUE_FS_READ_BYTES_AT_PATH:
     case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH:
     case IR_VALUE_FS_READ_ALL:
     case IR_VALUE_FS_READ_FILE:
     case IR_VALUE_FS_WRITE_ALL_FILE:
@@ -118,6 +126,7 @@ static void ir_value_kind_capabilities(IrValueKind kind, CapabilitySummary *caps
     case IR_VALUE_FS_REMOVE_DIR:
     case IR_VALUE_FS_IS_DIR:
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       caps->fs = true;

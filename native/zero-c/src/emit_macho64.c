@@ -364,10 +364,22 @@ static MachORuntimeHelper macho_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_STR_CONTAINS: return MACHO_RUNTIME_STR_CONTAINS;
     case IR_VALUE_FS_READ_BYTES_PATH: return MACHO_RUNTIME_FS_READ_BYTES;
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return MACHO_RUNTIME_FS_READ_BYTES_AT;
+    case IR_VALUE_FS_WRITE_BYTES_PATH: return MACHO_RUNTIME_FS_WRITE_BYTES;
+    case IR_VALUE_FS_APPEND_BYTES_PATH: return MACHO_RUNTIME_FS_APPEND_BYTES;
+    case IR_VALUE_FS_DIR_ENTRY_COUNT: return MACHO_RUNTIME_FS_DIR_ENTRY_COUNT;
+    case IR_VALUE_FS_ATOMIC_WRITE: return MACHO_RUNTIME_FS_ATOMIC_WRITE;
+    case IR_VALUE_FS_DIR_ENTRY_NAME: return MACHO_RUNTIME_FS_DIR_ENTRY_NAME;
     case IR_VALUE_PARSE_RUNTIME: return MACHO_RUNTIME_PARSE_OP;
     case IR_VALUE_TIME_RUNTIME: return MACHO_RUNTIME_TIME_OP;
+    case IR_VALUE_TERM_RUNTIME: return MACHO_RUNTIME_TERM_OP;
     case IR_VALUE_MATH_RUNTIME: return MACHO_RUNTIME_MATH_OP;
     case IR_VALUE_SEARCH_RUNTIME: return MACHO_RUNTIME_SEARCH_OP;
+    case IR_VALUE_PROC_CAPTURE: return MACHO_RUNTIME_PROC_CAPTURE;
+    case IR_VALUE_PROC_CAPTURE_FILES: return MACHO_RUNTIME_PROC_CAPTURE_FILES;
+    case IR_VALUE_PROC_CHILD_SPAWN: return MACHO_RUNTIME_PROC_SPAWN_CHILD;
+    case IR_VALUE_PROC_CHILD_OP: return MACHO_RUNTIME_PROC_CHILD_OP;
+    case IR_VALUE_PROC_CHILD_IO: return MACHO_RUNTIME_PROC_CHILD_IO;
+    case IR_VALUE_PROC_PTY_RESIZE: return MACHO_RUNTIME_PTY_RESIZE;
     case IR_VALUE_ARGS_FIND:
     case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER:
@@ -1708,6 +1720,30 @@ static bool macho_emit_time_runtime_to_reg_at(ZBuf *text, const IrFunction *fun,
   return true;
 }
 
+static bool macho_emit_term_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && (IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    if (!value->left) return macho_diag_at(diag, "direct AArch64 Mach-O std.term.readInput requires a caller buffer", value->line, value->column, "missing terminal input buffer");
+    if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_TERM_READ_INPUT, patch, value, diag);
+  }
+  if (!value || value->arg_len > 1) return macho_diag_at(diag, "direct AArch64 Mach-O std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  if (value->arg_len == 1) {
+    if (!macho_emit_value_to_reg_at(text, fun, value->args[0], 0, frame_size, scratch_slot, ctx, diag)) return false;
+  } else {
+    z_aarch64_emit_movz_x(text, 0, 0);
+  }
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_TERM_OP, patch, value, diag)) return false;
+  if (value->type == IR_TYPE_BOOL) {
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  } else {
+    if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
+  }
+  return true;
+}
+
 static bool macho_emit_math_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || value->arg_len > 3) return macho_diag_at(diag, "direct AArch64 Mach-O std.math helper supports at most three scalar arguments", value ? value->line : 1, value ? value->column : 1, "invalid std.math arity");
   for (size_t i = 0; i < value->arg_len; i++) {
@@ -1962,20 +1998,42 @@ static bool macho_emit_http_status_class_to_reg_at(ZBuf *text, const IrFunction 
   return true;
 }
 
+static unsigned macho_fs_path_op_for_value(IrValueKind kind) {
+  switch (kind) {
+    case IR_VALUE_FS_EXISTS: return 0u;
+    case IR_VALUE_FS_IS_DIR: return 1u;
+    case IR_VALUE_FS_MAKE_DIR: return 2u;
+    case IR_VALUE_FS_REMOVE_DIR: return 3u;
+    case IR_VALUE_FS_REMOVE: return 4u;
+    default: return 0u;
+  }
+}
+
+static bool macho_emit_runtime_byte_views_at(ZBuf *text, const IrFunction *fun, const IrValue **views, unsigned count, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  for (unsigned i = 0; i < count; i++) {
+    unsigned ptr_reg = i * 2u;
+    unsigned len_reg = ptr_reg + 1u;
+    unsigned slot = scratch_slot + ptr_reg;
+    if (!macho_emit_byte_view_pair_at(text, fun, views[i], ptr_reg, len_reg, frame_size, slot, ctx, diag)) return false;
+    if (!macho_emit_store_scratch(text, ptr_reg, IR_TYPE_U64, slot, views[i], diag)) return false;
+    if (!macho_emit_store_scratch(text, len_reg, IR_TYPE_U32, slot + 1u, views[i], diag)) return false;
+  }
+  for (unsigned i = 0; i < count; i++) {
+    unsigned ptr_reg = i * 2u;
+    unsigned len_reg = ptr_reg + 1u;
+    unsigned slot = scratch_slot + ptr_reg;
+    if (!macho_emit_load_scratch(text, ptr_reg, IR_TYPE_U64, slot, views[i], diag)) return false;
+    if (!macho_emit_load_scratch(text, len_reg, IR_TYPE_U32, slot + 1u, views[i], diag)) return false;
+  }
+  return true;
+}
+
 static bool macho_emit_fs_read_bytes_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
   if (!value || !value->left || !value->right) {
     return macho_diag_at(diag, "direct AArch64 Mach-O std.fs.readBytes requires a path and buffer", value ? value->line : 1, value ? value->column : 1, "missing readBytes input");
   }
-  if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
-  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
-  if (!macho_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
-  if (!macho_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
-  if (!macho_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
-  if (!macho_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
-  if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
-  if (!macho_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
-  if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
-  if (!macho_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  const IrValue *views[2] = {value->left, value->right};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 2, frame_size, scratch_slot, ctx, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_READ_BYTES, patch, value, diag);
 }
@@ -1999,6 +2057,216 @@ static bool macho_emit_fs_read_bytes_at_to_maybe_regs_at(ZBuf *text, const IrFun
   if (!macho_emit_load_scratch(text, 4, IR_TYPE_U32, scratch_slot + 4, value->right, diag)) return false;
   size_t patch = z_aarch64_emit_bl_placeholder(text);
   return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_READ_BYTES_AT, patch, value, diag);
+}
+
+static bool macho_emit_fs_dir_entry_count_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.fs.dirEntryCount requires a path", value ? value->line : 1, value ? value->column : 1, "missing dirEntryCount input");
+  }
+  const IrValue *views[1] = {value->left};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_DIR_ENTRY_COUNT, patch, value, diag);
+}
+
+static bool macho_emit_fs_dir_entry_name_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.fs.dirEntryName requires a buffer, path, and index", value ? value->line : 1, value ? value->column : 1, "missing dirEntryName input");
+  }
+  if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_store_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!macho_emit_byte_view_pair_at(text, fun, value->right, 2, 3, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!macho_emit_store_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  if (!macho_emit_value_to_reg_at(text, fun, value->index, 4, frame_size, scratch_slot + 4, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 4, IR_TYPE_U64, scratch_slot + 4, value->index, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 1, IR_TYPE_U32, scratch_slot + 1, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 2, IR_TYPE_U64, scratch_slot + 2, value->right, diag)) return false;
+  if (!macho_emit_load_scratch(text, 3, IR_TYPE_U32, scratch_slot + 3, value->right, diag)) return false;
+  if (!macho_emit_load_scratch(text, 4, IR_TYPE_U64, scratch_slot + 4, value->index, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_DIR_ENTRY_NAME, patch, value, diag)) return false;
+  if (!macho_emit_store_scratch(text, 0, IR_TYPE_U64, scratch_slot + 5, value, diag)) return false;
+  if (!macho_emit_load_scratch(text, 1, IR_TYPE_U64, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 8, IR_TYPE_U64, scratch_slot + 5, value, diag)) return false;
+  z_aarch64_emit_mov_w(text, 9, 8);
+  z_aarch64_emit_add_x_reg(text, 1, 1, 9);
+  z_aarch64_emit_lsr_x_imm(text, 2, 8, 32);
+  z_aarch64_emit_movz_w(text, 10, 0x7fffffffu);
+  z_aarch64_emit_and_w_reg(text, 2, 2, 10);
+  z_aarch64_emit_lsr_x_imm(text, 0, 8, 63);
+  return true;
+}
+
+static bool macho_emit_fs_write_bytes_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, MachORuntimeHelper helper, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O filesystem write requires a path and byte span", value ? value->line : 1, value ? value->column : 1, "missing write input");
+  }
+  const IrValue *views[2] = {value->left, value->right};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 2, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag);
+}
+
+static bool macho_emit_fs_path_op_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.fs path operation requires a path", value ? value->line : 1, value ? value->column : 1, "missing filesystem path");
+  }
+  const IrValue *views[1] = {value->left};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  z_aarch64_emit_movz_w(text, 2, macho_fs_path_op_for_value(value->kind));
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_PATH_OP, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_fs_rename_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.fs.rename requires source and destination paths", value ? value->line : 1, value ? value->column : 1, "missing rename input");
+  }
+  const IrValue *views[2] = {value->left, value->right};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 2, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_RENAME, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_fs_atomic_write_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.fs.atomicWrite requires path, temp path, and bytes", value ? value->line : 1, value ? value->column : 1, "missing atomicWrite input");
+  }
+  const IrValue *views[3] = {value->left, value->right, value->index};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 3, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_FS_ATOMIC_WRITE, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_capture_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    const IrValue *views[3] = {value->args[0], value->args[1], value->right};
+    if (!macho_emit_runtime_byte_views_at(text, fun, views, 3, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE_ARGS, patch, value, diag);
+  }
+  if (!value || !value->left || !value->right) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  const IrValue *views[2] = {value->left, value->right};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 2, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE, patch, value, diag);
+}
+
+static bool macho_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->right, value->index};
+    if (!macho_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE_FILES_ARGS, patch, value, diag)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
+  if (!value || !value->left || !value->right || !value->index) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
+  }
+  const IrValue *views[3] = {value->left, value->right, value->index};
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, 3, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CAPTURE_FILES, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->args[2], value->args[3]};
+    if (!macho_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_SPAWN_INHERIT_ARGS, patch, value, diag)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  if (!macho_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_SPAWN_INHERIT, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->args[2], value->args[3]};
+    if (!macho_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    MachORuntimeHelper helper = value->int_value ? MACHO_RUNTIME_PTY_SPAWN_ARGS : MACHO_RUNTIME_PROC_SPAWN_CHILD_ARGS;
+    if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  const IrValue *views[3] = {value->left, value->right, value->index};
+  unsigned view_count = value->index ? 3u : (value->right ? 2u : 1u);
+  if (!macho_emit_runtime_byte_views_at(text, fun, views, view_count, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  MachORuntimeHelper helper = MACHO_RUNTIME_PROC_SPAWN_CHILD;
+  if (value->int_value) helper = value->index ? MACHO_RUNTIME_PTY_SPAWN_IN_ENV : (value->right ? MACHO_RUNTIME_PTY_SPAWN_IN : MACHO_RUNTIME_PTY_SPAWN);
+  else helper = value->index ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? MACHO_RUNTIME_PROC_SPAWN_CHILD_IN : MACHO_RUNTIME_PROC_SPAWN_CHILD);
+  if (!z_macho_record_value_runtime_patch(ctx, helper, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_pty_resize_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.pty.resize requires a handle, columns, and rows", value ? value->line : 1, value ? value->column : 1, "missing pty resize input");
+  }
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_value_to_reg_at(text, fun, value->right, 8, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 8, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  if (!macho_emit_value_to_reg_at(text, fun, value->index, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_load_scratch(text, 1, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PTY_RESIZE, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_child_op_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc child op requires a handle", value ? value->line : 1, value ? value->column : 1, "missing process child handle");
+  }
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CHILD_OP, patch, value, diag)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool macho_emit_proc_child_io_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return macho_diag_at(diag, "direct AArch64 Mach-O std.proc child I/O requires a handle and buffer", value ? value->line : 1, value ? value->column : 1, "missing process child I/O input");
+  }
+  if (!macho_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!macho_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!macho_emit_byte_view_pair_at(text, fun, value->right, 1, 2, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!macho_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  z_aarch64_emit_movz_w(text, 3, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_PROC_CHILD_IO, patch, value, diag);
 }
 
 static bool macho_emit_http_value_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, MachOEmitContext *ctx, ZDiag *diag) {
@@ -2391,6 +2659,29 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return true;
     case IR_VALUE_FS_READ_BYTES_PATH: return macho_emit_fs_read_bytes_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_FS_READ_BYTES_AT_PATH: return macho_emit_fs_read_bytes_at_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_DIR_ENTRY_COUNT:
+      (void)reg;
+      return macho_emit_fs_dir_entry_count_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      (void)reg;
+      return macho_emit_fs_dir_entry_name_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_WRITE_BYTES_PATH: return macho_emit_fs_write_bytes_to_maybe_regs_at(text, fun, value, MACHO_RUNTIME_FS_WRITE_BYTES, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_APPEND_BYTES_PATH: return macho_emit_fs_write_bytes_to_maybe_regs_at(text, fun, value, MACHO_RUNTIME_FS_APPEND_BYTES, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_EXISTS:
+    case IR_VALUE_FS_REMOVE:
+    case IR_VALUE_FS_MAKE_DIR:
+    case IR_VALUE_FS_REMOVE_DIR:
+    case IR_VALUE_FS_IS_DIR:
+      return macho_emit_fs_path_op_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_RENAME: return macho_emit_fs_rename_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_FS_ATOMIC_WRITE: return macho_emit_fs_atomic_write_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE: return macho_emit_proc_capture_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE_FILES: return macho_emit_proc_capture_files_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_SPAWN_INHERIT: return macho_emit_proc_spawn_inherit_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_SPAWN: return macho_emit_proc_child_spawn_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_OP: return macho_emit_proc_child_op_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_IO: return macho_emit_proc_child_io_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_PTY_RESIZE: return macho_emit_proc_pty_resize_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
       if (!macho_emit_json_parse_bytes_call_at(text, fun, value, frame_size, scratch_slot, ctx, diag)) return false;
       if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
@@ -2498,6 +2789,12 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
     case IR_VALUE_RAND_RANGE_U32:
       (void)reg;
       return macho_emit_rand_maybe_to_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_RAND_ENTROPY_U32: {
+      size_t patch = z_aarch64_emit_bl_placeholder(text);
+      if (!z_macho_record_value_runtime_patch(ctx, MACHO_RUNTIME_RAND_ENTROPY_U32, patch, value, diag)) return false;
+      if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+      return true;
+    }
     case IR_VALUE_CHECK:
       return macho_emit_check_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_RESCUE:
@@ -2549,6 +2846,8 @@ static bool macho_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const 
       return macho_emit_parse_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_TIME_RUNTIME:
       return macho_emit_time_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME:
+      return macho_emit_term_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_MATH_RUNTIME:
       return macho_emit_math_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME:
@@ -2784,6 +3083,7 @@ static bool macho_emit_local_set_maybe_byte_view(ZBuf *text, const IrFunction *f
                        instr->value->kind == IR_VALUE_FMT_U32 ||
                        instr->value->kind == IR_VALUE_FMT_USIZE ||
                        instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
+                       instr->value->kind == IR_VALUE_FS_DIR_ENTRY_NAME ||
                        instr->value->kind == IR_VALUE_STR_RUNTIME)) {
     if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     macho_emit_store_local_w(text, fun, 0, instr->local_index, 0, frame_size);
@@ -2866,9 +3166,13 @@ static bool macho_emit_local_set_maybe_scalar(ZBuf *text, const IrFunction *fun,
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+      instr->value->kind == IR_VALUE_TERM_RUNTIME ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
+      instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+      instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH) {
+      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_DIR_ENTRY_COUNT || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH ||
+      instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) {
     if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     macho_emit_store_local_w(text, fun, 0, instr->local_index, 0, frame_size);
     macho_emit_store_local_x(text, fun, 1, instr->local_index, 8, frame_size);
@@ -2951,9 +3255,13 @@ static bool macho_emit_return_maybe_scalar(ZBuf *text, const IrFunction *fun, co
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+      instr->value->kind == IR_VALUE_TERM_RUNTIME ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32 ||
+      instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+      instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH) {
+      instr->value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH || instr->value->kind == IR_VALUE_FS_DIR_ENTRY_COUNT || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH ||
+      instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) {
     return macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag);
   }
   if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
@@ -3003,6 +3311,7 @@ static bool macho_emit_return_instr(ZBuf *text, const IrFunction *fun, const IrI
                instr->value->kind == IR_VALUE_FMT_U32 ||
                instr->value->kind == IR_VALUE_FMT_USIZE ||
                instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
+               instr->value->kind == IR_VALUE_FS_DIR_ENTRY_NAME ||
                instr->value->kind == IR_VALUE_STR_RUNTIME) {
       if (!macho_emit_value_to_reg(text, fun, instr->value, 0, frame_size, ctx, diag)) return false;
     } else if (instr->value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) {
@@ -3183,6 +3492,10 @@ static void macho_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirect
 static bool macho_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, unsigned frame_size, bool restore_process_args, MachOEmitContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
     ZDirectFillRun run;
+    if (z_direct_fill_run_from_instr(fun, &instrs[i], &run)) {
+      macho_emit_fill_run(text, fun, &run, frame_size);
+      continue;
+    }
     if (z_direct_detect_fill_run(fun, instrs, len, i, MACHO_FILL_RUN_MIN, &run)) {
       macho_emit_fill_run(text, fun, &run, frame_size);
       i += run.count - 1;

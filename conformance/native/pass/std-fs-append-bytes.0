@@ -1,0 +1,12 @@
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let path: String = ".zero/conformance/std-fs-append-bytes.txt"
+    var read_buf: [32]u8 = [0_u8; 32]
+    let first: Maybe<usize> = std.fs.writeBytes(path, "alpha\n")
+    let second: Maybe<usize> = std.fs.appendBytes(path, "beta\n")
+    let explicit: Bool = std.fs.appendFile(fs, path, "gamma\n")
+    let text: Maybe<Span<u8>> = std.fs.readFileBytes(fs, path, read_buf)
+    if first.has && first.value == 6_usize && second.has && second.value == 5_usize && explicit && text.has && std.mem.eql(text.value, "alpha\nbeta\ngamma\n") {
+        check world.out.write("fs append ok\n")
+    }
+}

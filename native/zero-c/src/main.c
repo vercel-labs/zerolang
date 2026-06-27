@@ -792,6 +792,13 @@ static char *runtime_join_path(const char *left, const char *right) {
   return buf.data;
 }
 
+static char *runtime_dirname(const char *path) {
+  const char *slash = path ? strrchr(path, '/') : NULL;
+  if (!slash) return z_strdup(".");
+  if (slash == path) return z_strdup("/");
+  return z_strndup(path, (size_t)(slash - path));
+}
+
 static bool runtime_make_dir(const char *path, ZDiag *diag) {
 #if defined(_WIN32)
   int rc = mkdir(path);
@@ -903,6 +910,14 @@ static uint64_t runtime_object_cache_fold_compiler(uint64_t hash, const ZToolcha
   return hash;
 }
 
+static char *runtime_object_cache_dir(void) {
+  const char *override = getenv("ZERO_CACHE_DIR");
+  if (override && override[0]) return z_strdup(override);
+  const char *home = getenv("HOME");
+  if (!home || !home[0]) home = getenv("USERPROFILE");
+  return (home && home[0]) ? runtime_join_path(home, ".zero/cache/native") : z_strdup(".zero/cache/native");
+}
+
 /*
  * The embedded runtime sources are fixed for a given compiler binary and the
  * runtime object compile command is a pure function of the toolchain plan,
@@ -922,17 +937,17 @@ static char *runtime_object_cache_file(const char *kind, const char *const *sour
     hash = runtime_object_cache_fold_text(hash, plan->target_triple ? plan->target_triple : "");
     hash = runtime_object_cache_fold_text(hash, plan->libc_mode ? plan->libc_mode : "");
     hash = runtime_object_cache_fold_text(hash, plan->sysroot_path ? plan->sysroot_path : "");
-    hash = runtime_object_cache_fold_compiler(hash, plan);
+  hash = runtime_object_cache_fold_compiler(hash, plan);
   }
   hash = runtime_object_cache_fold_chunks(hash, zero_embedded_zero_runtime_h);
   hash = runtime_object_cache_fold_chunks(hash, source_chunks);
-  const char *cache_dir = getenv("ZERO_CACHE_DIR");
-  if (!cache_dir || !cache_dir[0]) cache_dir = ".zero/cache/native";
+  char *cache_dir = runtime_object_cache_dir();
   ZBuf path;
   zbuf_init(&path);
   zbuf_append(&path, cache_dir);
   if (path.len > 0 && path.data[path.len - 1] != '/' && path.data[path.len - 1] != '\\') zbuf_append_char(&path, '/');
   zbuf_appendf(&path, "%s-%016llx.o", kind, (unsigned long long)hash);
+  free(cache_dir);
   return path.data;
 }
 
@@ -1197,14 +1212,16 @@ static void append_manifest_c_link_flags(ZBuf *flags, const SourceInput *input) 
   free(manifest);
 }
 
+static void init_executable_finalize_diag(ZDiag *diag, const char *path);
+static bool prepare_executable_output_file_or_diag(const char *exe_file, ZDiag *diag) { if (z_process_prepare_output_file(exe_file)) return true; init_executable_finalize_diag(diag, exe_file); return false; }
+
 static bool link_direct_object_executable(const char *object_file, const char *runtime_object_file, const char *http_object_file, const char *exe_file, const ZToolchainPlan *plan, const ZTargetInfo *target, const SourceInput *input, bool links_zero_runtime, ZDiag *diag) {
 #if defined(__linux__)
   const char *linux_no_pie = " -no-pie";
 #else
   const char *linux_no_pie = "";
 #endif
-  const char *object_files[3] = {0};
-  size_t object_count = 0;
+  const char *object_files[3] = {0}; size_t object_count = 0;
   if (object_file && object_file[0]) object_files[object_count++] = object_file;
   if (runtime_object_file && runtime_object_file[0]) object_files[object_count++] = runtime_object_file;
   if (http_object_file && http_object_file[0]) object_files[object_count++] = http_object_file;
@@ -1213,13 +1230,10 @@ static bool link_direct_object_executable(const char *object_file, const char *r
   if (input && input->direct_c_import_call_count > 0) append_manifest_c_link_flags(&post_flags, input);
   if (http_object_file && http_object_file[0]) zbuf_append(&post_flags, " -lcurl");
   zbuf_append(&post_flags, " 2>/dev/null");
-  bool ok = z_toolchain_link_objects(plan, target, object_files, object_count, exe_file, linux_no_pie, post_flags.data ? post_flags.data : "2>/dev/null");
+  bool output_ready = prepare_executable_output_file_or_diag(exe_file, diag); bool ok = output_ready && z_toolchain_link_objects(plan, target, object_files, object_count, exe_file, linux_no_pie, post_flags.data ? post_flags.data : "2>/dev/null");
   zbuf_free(&post_flags);
-  if (!ok && diag) {
-    diag->code = 2003;
-    diag->line = 1;
-    diag->column = 1;
-    diag->length = 1;
+  if (!ok && output_ready && diag) {
+    diag->code = 2003; diag->line = 1; diag->column = 1; diag->length = 1;
     snprintf(diag->message, sizeof(diag->message), "%s", links_zero_runtime ? "host runtime link failed" : "extern C link failed");
     snprintf(diag->expected, sizeof(diag->expected), "%s", links_zero_runtime ? "direct object plus zero runtime object link successfully" : "direct object plus extern C link inputs link successfully");
     snprintf(diag->actual, sizeof(diag->actual), "%s", links_zero_runtime ? "runtime link command failed" : "extern C link command failed");
@@ -2372,6 +2386,28 @@ static uint64_t source_dependency_hash_ex(const SourceInput *input, bool include
 static uint64_t source_dependency_hash(const SourceInput *input) { return source_dependency_hash_ex(input, true); }
 static uint64_t graph_dependency_hash(const SourceInput *input) { return source_dependency_hash_ex(input, false); }
 
+static uint64_t graph_package_dependency_hash(const SourceInput *input) {
+  uint64_t hash = fnv1a_text("dependencies");
+  if (!input) return hash;
+  hash = mix_hash_text(hash, input->package_name);
+  hash = mix_hash_text(hash, input->package_version);
+  hash ^= input->manifest_hash; hash *= 1099511628211ull;
+  hash ^= input->dependency_count; hash *= 1099511628211ull;
+  for (size_t i = 0; i < input->dependency_count; i++) {
+    const SourceDependency *dep = &input->dependencies[i];
+    hash = mix_hash_text(hash, dep->name);
+    hash = mix_hash_text(hash, dep->version);
+    hash = mix_hash_text(hash, dep->path);
+    hash = mix_hash_text(hash, dep->resolved_name);
+    hash = mix_hash_text(hash, dep->resolved_version);
+    hash = mix_hash_text(hash, dep->targets_json);
+    hash = mix_hash_text(hash, dep->status);
+    hash ^= dep->direct ? 1u : 0u;
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
 static uint64_t source_imported_package_metadata_hash(const SourceInput *input) {
   uint64_t hash = fnv1a_text("imported-package-metadata");
   if (!input) return hash;
@@ -2530,6 +2566,112 @@ static uint64_t command_compile_cache_key(const Command *command, const SourceIn
   return compile_cache_key(input, target, profile, kind);
 }
 
+static uint64_t linked_executable_compile_cache_key(const Command *command, const SourceInput *input, const ZTargetInfo *target, const char *profile, const char *kind) {
+  if (command && z_program_graph_artifact_source_present(&command->graph_source)) {
+    uint64_t hash = fnv1a_text(kind);
+    hash = mix_hash_text(hash, ZERO_VERSION);
+    hash = mix_hash_text(hash, command->graph_source.graph_hash ? command->graph_source.graph_hash : "");
+    hash ^= z_std_source_graph_fingerprint();
+    hash *= 1099511628211ull;
+    hash = mix_hash_text(hash, target ? target->name : z_host_target());
+    hash = mix_hash_text(hash, profile ? profile : "release");
+    hash ^= graph_package_dependency_hash(input);
+    return hash;
+  }
+  return compile_cache_key(input, target, profile, kind);
+}
+
+static char *native_cache_file_for_input(const SourceInput *input, const char *name) {
+  const char *cache_dir = getenv("ZERO_CACHE_DIR");
+  if (cache_dir && cache_dir[0]) return runtime_join_path(cache_dir, name);
+  if (input && input->package_root && input->package_root[0]) {
+    char *dir = runtime_join_path(input->package_root, ".zero/cache/native");
+    char *path = runtime_join_path(dir, name);
+    free(dir);
+    return path;
+  }
+  return runtime_join_path(".zero/cache/native", name);
+}
+
+static char *shared_native_cache_file(const char *name) {
+  char *cache_dir = runtime_object_cache_dir();
+  char *path = runtime_join_path(cache_dir, name);
+  free(cache_dir);
+  return path;
+}
+
+static char *linked_executable_cache_path(
+  const Command *command,
+  const SourceInput *input,
+  const ZTargetInfo *target,
+  const ZToolchainPlan *plan,
+  bool needs_zero_runtime,
+  bool needs_http_runtime,
+  const char *artifact_kind
+) {
+  if (!command || !input || !target || input->direct_c_import_call_count > 0) return NULL;
+  uint64_t key = linked_executable_compile_cache_key(command, input, target, command->profile, artifact_kind);
+  key = runtime_object_cache_fold_text(key, "zero-linked-executable-cache-v7"); key = runtime_object_cache_fold_text(key, ZERO_BUILD_HASH); key = runtime_object_cache_fold_text(key, needs_zero_runtime ? "zero-runtime" : "no-zero-runtime");
+  key = runtime_object_cache_fold_text(key, needs_http_runtime ? "http-runtime" : "no-http-runtime");
+  if (needs_zero_runtime) { key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_runtime_h); key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_runtime_c); }
+  if (needs_http_runtime) key = runtime_object_cache_fold_chunks(key, zero_embedded_zero_http_curl_c);
+  key = runtime_object_cache_fold_text(key, target->exe_suffix ? target->exe_suffix : "");
+  if (plan) {
+    key = runtime_object_cache_fold_text(key, plan->driver_kind ? plan->driver_kind : "");
+    key = runtime_object_cache_fold_text(key, plan->target_triple ? plan->target_triple : "");
+    key = runtime_object_cache_fold_text(key, plan->libc_mode ? plan->libc_mode : "");
+    key = runtime_object_cache_fold_text(key, plan->sysroot_path ? plan->sysroot_path : "");
+    key = runtime_object_cache_fold_compiler(key, plan);
+  }
+  ZBuf name;
+  zbuf_init(&name);
+  zbuf_appendf(&name, "linked-exe-%016llx", (unsigned long long)key);
+  if (target->exe_suffix && target->exe_suffix[0]) zbuf_append(&name, target->exe_suffix);
+  bool graph_keyed = z_program_graph_artifact_source_present(&command->graph_source);
+  char *path = graph_keyed
+    ? shared_native_cache_file(name.data ? name.data : "linked-exe-cache")
+    : native_cache_file_for_input(input, name.data ? name.data : "linked-exe-cache");
+  zbuf_free(&name);
+  return path;
+}
+
+static bool executable_cache_restore_to_path(const char *cache_path, const char *exe_file) {
+  if (!cache_path || !exe_file || !z_process_executable_file_ready(cache_path)) return false;
+  unsigned char *data = NULL;
+  size_t len = 0;
+  ZDiag ignored = {0};
+  if (!z_read_binary_file(cache_path, &data, &len, &ignored)) {
+    free((char *)ignored.path);
+    return false;
+  }
+  bool ok = len > 0 && z_write_binary_file(exe_file, data, len, &ignored) && z_process_mark_executable(exe_file);
+  free((char *)ignored.path);
+  free(data);
+  return ok && z_process_executable_file_ready(exe_file);
+}
+
+static void executable_cache_store_path(const char *cache_path, const char *exe_file) {
+  if (!cache_path || !exe_file || !z_process_executable_file_ready(exe_file)) return;
+  unsigned char *data = NULL;
+  size_t len = 0;
+  ZDiag ignored = {0};
+  if (!z_read_binary_file(exe_file, &data, &len, &ignored)) {
+    free((char *)ignored.path);
+    return;
+  }
+  if (len > 0 && z_write_binary_file(cache_path, data, len, &ignored)) (void)z_process_mark_executable(cache_path);
+  free((char *)ignored.path);
+  free(data);
+}
+
+static void free_linked_executable_paths(char *exe_cache_path, char *http_object_file, char *runtime_object_file, char *object_file, char *exe_file) {
+  free(exe_cache_path);
+  free(http_object_file);
+  free(runtime_object_file);
+  free(object_file);
+  free(exe_file);
+}
+
 static bool json_array_contains_string_literal(const char *json, const char *value) {
   if (!json || !value || !value[0]) return false;
   ZBuf needle;
@@ -2620,6 +2762,8 @@ static void append_graph_build_timing_facts_json(ZBuf *buf, const SourceInput *i
   zbuf_appendf(buf, ",\"stdlibNodeMergeMs\":%lld", input ? input->graph_stdlib_node_merge_ms : 0);
   zbuf_appendf(buf, ",\"stdlibEdgeMergeMs\":%lld", input ? input->graph_stdlib_edge_merge_ms : 0);
   zbuf_appendf(buf, ",\"stdlibFinalizeMs\":%lld", input ? input->graph_stdlib_finalize_ms : 0);
+  zbuf_appendf(buf, ",\"stdlibPruneMs\":%lld", input ? input->graph_stdlib_prune_ms : 0);
+  zbuf_appendf(buf, ",\"stdlibIdentityMs\":%lld", input ? input->graph_stdlib_identity_ms : 0);
   zbuf_appendf(buf, ",\"readinessCheckMs\":%lld", input ? input->graph_readiness_check_ms : 0);
   zbuf_appendf(buf, ",\"mirCacheLoadMs\":%lld", input ? input->graph_mir_cache_load_ms : 0);
   zbuf_appendf(buf, ",\"mirLowerMs\":%lld", input ? input->graph_mir_lower_ms : 0);
@@ -6188,18 +6332,16 @@ static void init_executable_finalize_diag(ZDiag *diag, const char *path) {
   snprintf(diag->help, sizeof(diag->help), "check output path permissions, ensure the artifact path is not a directory or symlink, and pass --out <path> when running builds concurrently");
 }
 
-static int run_executable_artifact(const char *exe_file, const Command *command) {
+static int run_executable_artifact_as(const char *exe_file, const char *argv0, const Command *command) {
   if (!z_process_executable_file_ready(exe_file)) {
     fprintf(stderr, "zero run: executable artifact is not a regular executable file: %s\n", exe_file ? exe_file : "<missing>");
     return 1;
   }
-  int run_argc = command ? command->run_argc : 0;
-  if (run_argc < 0) run_argc = 0;
+  int run_argc = command ? command->run_argc : 0; if (run_argc < 0) run_argc = 0;
   char **child_argv = (char **)z_checked_calloc((size_t)run_argc + 2, sizeof(char *));
-  child_argv[0] = (char *)exe_file;
+  child_argv[0] = (char *)(argv0 && argv0[0] ? argv0 : exe_file);
   for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
   child_argv[run_argc + 1] = NULL;
-
   fflush(NULL);
 #if defined(_WIN32)
   intptr_t status = _spawnv(_P_WAIT, exe_file, (const char *const *)child_argv);
@@ -6221,16 +6363,35 @@ static int run_executable_artifact(const char *exe_file, const Command *command)
     perror("zero run");
     return 1;
   }
-
   int status = 0;
   while (waitpid(pid, &status, 0) < 0) {
     if (errno == EINTR) continue;
     perror("zero run");
     return 1;
   }
-  if (WIFEXITED(status)) return WEXITSTATUS(status);
-  if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+  if (WIFEXITED(status)) return WEXITSTATUS(status); if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
   return 1;
+#endif
+}
+
+static int exec_cached_executable_artifact(const char *exe_file, const char *argv0, const Command *command) {
+#if defined(_WIN32)
+  return run_executable_artifact_as(exe_file, argv0, command);
+#else
+  if (!z_process_executable_file_ready(exe_file)) {
+    fprintf(stderr, "zero run: executable artifact is not a regular executable file: %s\n", exe_file ? exe_file : "<missing>");
+    return 1;
+  }
+  int run_argc = command ? command->run_argc : 0; if (run_argc < 0) run_argc = 0;
+  char **child_argv = (char **)z_checked_calloc((size_t)run_argc + 2, sizeof(char *));
+  child_argv[0] = (char *)(argv0 && argv0[0] ? argv0 : exe_file);
+  for (int i = 0; i < run_argc; i++) child_argv[i + 1] = command->run_argv[i];
+  child_argv[run_argc + 1] = NULL;
+  fflush(NULL);
+  execv(exe_file, child_argv);
+  perror("zero run");
+  free(child_argv);
+  return 127;
 #endif
 }
 
@@ -6541,6 +6702,8 @@ typedef struct {
   bool zero_ascii_op;
   bool zero_text_op;
   bool zero_time_op;
+  bool zero_term_op;
+  bool zero_term_read_input;
   bool zero_math_op;
   bool zero_math_usize_op;
   bool zero_search_op;
@@ -6584,6 +6747,20 @@ typedef struct {
   bool zero_http_request_path;
   bool zero_http_request_matches;
   bool zero_http_request_body_within;
+  bool zero_proc_spawn_inherit, zero_proc_spawn_inherit_args;
+  bool zero_proc_capture, zero_proc_capture_args;
+  bool zero_proc_capture_files, zero_proc_capture_files_args;
+  bool zero_proc_spawn_child;
+  bool zero_proc_spawn_child_in;
+  bool zero_proc_spawn_child_in_env;
+  bool zero_proc_spawn_child_args;
+  bool zero_proc_child_op;
+  bool zero_proc_child_io;
+  bool zero_pty_spawn;
+  bool zero_pty_spawn_in;
+  bool zero_pty_spawn_in_env;
+  bool zero_pty_spawn_args;
+  bool zero_pty_resize;
 } RuntimeImportAudit;
 
 static void runtime_import_audit_mark_fs_base(RuntimeImportAudit *audit) {
@@ -6672,6 +6849,7 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_FS_READ_BYTES_PATH:
     case IR_VALUE_FS_READ_BYTES_AT_PATH:
     case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH:
     case IR_VALUE_FS_READ_ALL:
     case IR_VALUE_FS_READ_FILE:
     case IR_VALUE_FS_WRITE_ALL_FILE:
@@ -6684,9 +6862,44 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_FS_REMOVE_DIR:
     case IR_VALUE_FS_IS_DIR:
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       runtime_import_audit_mark_fs_base(audit);
+      break;
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+      if (value->arg_len == 4) audit->zero_proc_spawn_inherit_args = true;
+      else audit->zero_proc_spawn_inherit = true;
+      break;
+    case IR_VALUE_PROC_CAPTURE:
+      if (value->arg_len == 2) audit->zero_proc_capture_args = true;
+      else audit->zero_proc_capture = true;
+      break;
+    case IR_VALUE_PROC_CAPTURE_FILES:
+      if (value->arg_len == 2) audit->zero_proc_capture_files_args = true;
+      else audit->zero_proc_capture_files = true;
+      break;
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      if (value->int_value) {
+        if (value->arg_len == 4) audit->zero_pty_spawn_args = true;
+        else if (value->index) audit->zero_pty_spawn_in_env = true;
+        else if (value->right) audit->zero_pty_spawn_in = true;
+        else audit->zero_pty_spawn = true;
+      } else {
+        if (value->arg_len == 4) audit->zero_proc_spawn_child_args = true;
+        else if (value->index) audit->zero_proc_spawn_child_in_env = true;
+        else if (value->right) audit->zero_proc_spawn_child_in = true;
+        else audit->zero_proc_spawn_child = true;
+      }
+      break;
+    case IR_VALUE_PROC_CHILD_OP:
+      audit->zero_proc_child_op = true;
+      break;
+    case IR_VALUE_PROC_CHILD_IO:
+      audit->zero_proc_child_io = true;
+      break;
+    case IR_VALUE_PROC_PTY_RESIZE:
+      audit->zero_pty_resize = true;
       break;
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
@@ -6738,6 +6951,7 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
     case IR_VALUE_TIME_RUNTIME:
       audit->zero_time_op = true;
       break;
+    case IR_VALUE_TERM_RUNTIME: if ((IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) audit->zero_term_read_input = true; else audit->zero_term_op = true; break;
     case IR_VALUE_MATH_RUNTIME:
       if (value->type == IR_TYPE_MAYBE_SCALAR && value->element_type == IR_TYPE_USIZE) audit->zero_math_usize_op = true;
       else audit->zero_math_op = true;
@@ -6841,7 +7055,7 @@ static void runtime_import_audit_value(const IrValue *value, RuntimeImportAudit 
       (value->kind == IR_VALUE_FS_READ_ALL && value->type == IR_TYPE_I64)) {
     audit->fd_filestat_get = true;
   }
-  if (value->kind == IR_VALUE_FS_DIR_ENTRY_COUNT) audit->fd_readdir = true;
+  if (value->kind == IR_VALUE_FS_DIR_ENTRY_COUNT || value->kind == IR_VALUE_FS_DIR_ENTRY_NAME) audit->fd_readdir = true;
   if (value->kind == IR_VALUE_FS_MAKE_DIR) audit->path_create_directory = true;
   if (value->kind == IR_VALUE_FS_REMOVE_DIR) audit->path_remove_directory = true;
   if (value->kind == IR_VALUE_FS_REMOVE) audit->path_unlink_file = true;
@@ -6874,92 +7088,10 @@ static RuntimeImportAudit runtime_import_audit_from_ir(const IrProgram *ir) {
   return audit;
 }
 
-static bool ir_value_needs_zero_runtime_object(const IrValue *value) {
-  if (!value) return false;
-  if (value->kind == IR_VALUE_JSON_PARSE_BYTES ||
-      value->kind == IR_VALUE_JSON_VALIDATE_BYTES ||
-      value->kind == IR_VALUE_JSON_STREAM_TOKENS_BYTES ||
-      value->kind == IR_VALUE_JSON_DIAGNOSTIC_BYTES ||
-      value->kind == IR_VALUE_JSON_FIELD ||
-      value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
-      value->kind == IR_VALUE_JSON_STRING_DECODE ||
-      value->kind == IR_VALUE_JSON_STRING_FIELD ||
-      value->kind == IR_VALUE_JSON_WRITE_STRING ||
-      value->kind == IR_VALUE_JSON_WRITE_RUNTIME ||
-      value->kind == IR_VALUE_ASCII_RUNTIME ||
-      value->kind == IR_VALUE_TEXT_RUNTIME ||
-      value->kind == IR_VALUE_TIME_RUNTIME ||
-      value->kind == IR_VALUE_MATH_RUNTIME ||
-      value->kind == IR_VALUE_SEARCH_RUNTIME ||
-      value->kind == IR_VALUE_SORT_RUNTIME ||
-      value->kind == IR_VALUE_STR_CONTAINS ||
-      value->kind == IR_VALUE_STR_RUNTIME ||
-      value->kind == IR_VALUE_ARGS_FIND ||
-      value->kind == IR_VALUE_ARGS_CONTAINS ||
-      value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
-      value->kind == IR_VALUE_ARGS_VALUE_AFTER_OR ||
-      value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
-      value->kind == IR_VALUE_PARSE_RUNTIME ||
-      value->kind == IR_VALUE_PARSE_I32 ||
-      value->kind == IR_VALUE_PARSE_U32 ||
-      value->kind == IR_VALUE_ARGS_PARSE_U32 ||
-      value->kind == IR_VALUE_FMT_BOOL ||
-      value->kind == IR_VALUE_FMT_HEX_U32 ||
-      value->kind == IR_VALUE_FMT_I32 ||
-      value->kind == IR_VALUE_FMT_U32 ||
-      value->kind == IR_VALUE_FMT_USIZE ||
-      value->kind == IR_VALUE_FS_READ_BYTES_PATH ||
-      value->kind == IR_VALUE_FS_READ_BYTES_AT_PATH ||
-      value->kind == IR_VALUE_HTTP_FETCH ||
-      value->kind == IR_VALUE_HTTP_RESULT_OK ||
-      value->kind == IR_VALUE_HTTP_RESULT_STATUS ||
-      value->kind == IR_VALUE_HTTP_RESULT_BODY_LEN ||
-      value->kind == IR_VALUE_HTTP_RESULT_ERROR ||
-      value->kind == IR_VALUE_HTTP_RESPONSE_LEN ||
-      value->kind == IR_VALUE_HTTP_RESPONSE_HEADERS_LEN ||
-      value->kind == IR_VALUE_HTTP_RESPONSE_BODY_OFFSET ||
-      value->kind == IR_VALUE_HTTP_HEADER_VALUE ||
-      value->kind == IR_VALUE_HTTP_HEADER_FOUND ||
-      value->kind == IR_VALUE_HTTP_HEADER_OFFSET ||
-      value->kind == IR_VALUE_HTTP_HEADER_LEN ||
-      value->kind == IR_VALUE_HTTP_WRITE_JSON_RESPONSE ||
-      value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
-      value->kind == IR_VALUE_HTTP_REQUEST_MATCHES ||
-      value->kind == IR_VALUE_HTTP_REQUEST_BODY_WITHIN ||
-      value->kind == IR_VALUE_HTTP_REQUEST_PATH) return true;
-  if (ir_value_needs_zero_runtime_object(value->index) ||
-      ir_value_needs_zero_runtime_object(value->left) ||
-      ir_value_needs_zero_runtime_object(value->right)) {
-    return true;
-  }
-  for (size_t i = 0; i < value->arg_len; i++) {
-    if (ir_value_needs_zero_runtime_object(value->args[i])) return true;
-  }
-  return false;
-}
+bool z_ir_needs_zero_runtime_object(const IrProgram *ir);
 
-static bool ir_instrs_need_zero_runtime_object(const IrInstr *instrs, size_t len) {
-  for (size_t i = 0; instrs && i < len; i++) {
-    const IrInstr *instr = &instrs[i];
-    if (ir_value_needs_zero_runtime_object(instr->value) ||
-        ir_value_needs_zero_runtime_object(instr->index) ||
-        ir_instrs_need_zero_runtime_object(instr->then_instrs, instr->then_len) ||
-        ir_instrs_need_zero_runtime_object(instr->else_instrs, instr->else_len)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static bool ir_needs_zero_runtime_object(const IrProgram *ir) {
-  for (size_t i = 0; ir && i < ir->function_len; i++) {
-    if (ir_instrs_need_zero_runtime_object(ir->functions[i].instrs, ir->functions[i].instr_len)) return true;
-  }
-  return false;
-}
-
-static bool ir_needs_linked_executable_object(const IrProgram *ir) { return ir_needs_zero_runtime_object(ir) || (ir && ir->direct_c_import_call_count > 0); }
-static bool ir_linked_executable_needs_zero_runtime_object(const IrProgram *ir) { return ir_needs_zero_runtime_object(ir) || (ir && ir->direct_c_import_call_count > 0 && ir->direct_runtime_helper_count > 0); }
+static bool ir_needs_linked_executable_object(const IrProgram *ir) { return z_ir_needs_zero_runtime_object(ir) || (ir && ir->direct_c_import_call_count > 0); }
+static bool ir_linked_executable_needs_zero_runtime_object(const IrProgram *ir) { return z_ir_needs_zero_runtime_object(ir) || (ir && ir->direct_c_import_call_count > 0 && ir->direct_runtime_helper_count > 0); }
 
 static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) {
   if (!audit) return 0;
@@ -6988,6 +7120,8 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_ascii_op) count++;
   if (audit->zero_text_op) count++;
   if (audit->zero_time_op) count++;
+  if (audit->zero_term_op) count++;
+  if (audit->zero_term_read_input) count++;
   if (audit->zero_math_op) count++;
   if (audit->zero_math_usize_op) count++;
   if (audit->zero_search_op) count++;
@@ -7031,15 +7165,25 @@ static size_t native_zero_runtime_import_count(const RuntimeImportAudit *audit) 
   if (audit->zero_http_request_path) count++;
   if (audit->zero_http_request_matches) count++;
   if (audit->zero_http_request_body_within) count++;
+  if (audit->zero_proc_spawn_inherit) count++;
+  if (audit->zero_proc_spawn_inherit_args) count++;
+  count += (size_t)audit->zero_proc_capture + (size_t)audit->zero_proc_capture_args + (size_t)audit->zero_proc_capture_files + (size_t)audit->zero_proc_capture_files_args;
+  if (audit->zero_proc_spawn_child) count++;
+  if (audit->zero_proc_spawn_child_in) count++;
+  if (audit->zero_proc_spawn_child_in_env) count++;
+  if (audit->zero_proc_spawn_child_args) count++;
+  if (audit->zero_proc_child_op) count++;
+  if (audit->zero_proc_child_io) count++;
+  if (audit->zero_pty_spawn) count++;
+  if (audit->zero_pty_spawn_in) count++;
+  if (audit->zero_pty_spawn_in_env) count++;
+  if (audit->zero_pty_spawn_args) count++;
+  if (audit->zero_pty_resize) count++;
   return count;
 }
 
 static bool runtime_import_audit_uses_zero_runtime(const RuntimeImportAudit *audit) {
   return native_zero_runtime_import_count(audit) > 0;
-}
-
-static bool runtime_import_audit_uses_http_provider(const RuntimeImportAudit *audit) {
-  return audit && audit->zero_http_fetch_result;
 }
 
 static void append_runtime_import_module_json(ZBuf *buf, const RuntimeImportAudit *audit, size_t import_count) {
@@ -7078,6 +7222,8 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_ascii_op) append_json_string_array_item(buf, &first, "zero_ascii_op");
   if (audit && audit->zero_text_op) append_json_string_array_item(buf, &first, "zero_text_op");
   if (audit && audit->zero_time_op) append_json_string_array_item(buf, &first, "zero_time_op");
+  if (audit && audit->zero_term_op) append_json_string_array_item(buf, &first, "zero_term_op");
+  if (audit && audit->zero_term_read_input) append_json_string_array_item(buf, &first, "zero_term_read_input");
   if (audit && audit->zero_math_op) append_json_string_array_item(buf, &first, "zero_math_op");
   if (audit && audit->zero_math_usize_op) append_json_string_array_item(buf, &first, "zero_math_usize_op");
   if (audit && audit->zero_search_op) append_json_string_array_item(buf, &first, "zero_search_op");
@@ -7121,6 +7267,23 @@ static bool append_runtime_import_functions_json(ZBuf *buf, const RuntimeImportA
   if (audit && audit->zero_http_request_path) append_json_string_array_item(buf, &first, "zero_http_request_path");
   if (audit && audit->zero_http_request_matches) append_json_string_array_item(buf, &first, "zero_http_request_matches");
   if (audit && audit->zero_http_request_body_within) append_json_string_array_item(buf, &first, "zero_http_request_body_within");
+  if (audit && audit->zero_proc_spawn_inherit) append_json_string_array_item(buf, &first, "zero_proc_spawn_inherit");
+  if (audit && audit->zero_proc_spawn_inherit_args) append_json_string_array_item(buf, &first, "zero_proc_spawn_inherit_args");
+  if (audit && audit->zero_proc_capture) append_json_string_array_item(buf, &first, "zero_proc_capture");
+  if (audit && audit->zero_proc_capture_args) append_json_string_array_item(buf, &first, "zero_proc_capture_args");
+  if (audit && audit->zero_proc_capture_files) append_json_string_array_item(buf, &first, "zero_proc_capture_files");
+  if (audit && audit->zero_proc_capture_files_args) append_json_string_array_item(buf, &first, "zero_proc_capture_files_args");
+  if (audit && audit->zero_proc_spawn_child) append_json_string_array_item(buf, &first, "zero_proc_spawn_child");
+  if (audit && audit->zero_proc_spawn_child_in) append_json_string_array_item(buf, &first, "zero_proc_spawn_child_in");
+  if (audit && audit->zero_proc_spawn_child_in_env) append_json_string_array_item(buf, &first, "zero_proc_spawn_child_in_env");
+  if (audit && audit->zero_proc_spawn_child_args) append_json_string_array_item(buf, &first, "zero_proc_spawn_child_args");
+  if (audit && audit->zero_proc_child_op) append_json_string_array_item(buf, &first, "zero_proc_child_op");
+  if (audit && audit->zero_proc_child_io) append_json_string_array_item(buf, &first, "zero_proc_child_io");
+  if (audit && audit->zero_pty_spawn) append_json_string_array_item(buf, &first, "zero_pty_spawn");
+  if (audit && audit->zero_pty_spawn_in) append_json_string_array_item(buf, &first, "zero_pty_spawn_in");
+  if (audit && audit->zero_pty_spawn_in_env) append_json_string_array_item(buf, &first, "zero_pty_spawn_in_env");
+  if (audit && audit->zero_pty_spawn_args) append_json_string_array_item(buf, &first, "zero_pty_spawn_args");
+  if (audit && audit->zero_pty_resize) append_json_string_array_item(buf, &first, "zero_pty_resize");
   zbuf_append(buf, "]");
   return !first;
 }
@@ -8804,8 +8967,20 @@ static bool find_http_listen_graph_node(const ZProgramGraph *graph, const ZProgr
   return false;
 }
 
+static bool graph_may_have_http_listen(const ZProgramGraph *graph) {
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (c_import_header_text_equal(node->name, "listen") ||
+        c_import_header_text_equal(node->value, "listen")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool find_http_listen_graph_program(const ZProgramGraph *graph, HttpListenSpec *spec, ZDiag *diag) {
   if (spec) *spec = (HttpListenSpec){0};
+  if (!graph_may_have_http_listen(graph)) return false;
   const ZProgramGraphNode *main_fun = graph_find_function_node(graph, "main");
   const ZProgramGraphNode *body = graph_child_node(graph, main_fun, "body", 0);
   return find_http_listen_graph_node(graph, body, spec, diag);
@@ -9500,6 +9675,7 @@ static const char *helper_module_name(const ZStdHelperInfo *helper) {
   if (strncmp(name, "std.sort.", strlen("std.sort.")) == 0) return "std.sort";
   if (strncmp(name, "std.str.", strlen("std.str.")) == 0) return "std.str";
   if (strncmp(name, "std.testing.", strlen("std.testing.")) == 0) return "std.testing";
+  if (strncmp(name, "std.term.", strlen("std.term.")) == 0) return "std.term";
   if (strncmp(name, "std.text.", strlen("std.text.")) == 0) return "std.text";
   if (strncmp(name, "std.unicode.", strlen("std.unicode.")) == 0) return "std.unicode";
   if (strncmp(name, "std.io.", strlen("std.io.")) == 0) return "std.io";
@@ -11549,7 +11725,7 @@ static bool target_readiness_select_emit_target(const Command *command, const So
 
 static bool target_readiness_buildability_check(const Command *command, const ZTargetInfo *target, const IrProgram *ir, ZDiag *diag) {
   EmitKind emit = command ? command->emit : EMIT_EXE;
-  const char *emit_kind = (emit == EMIT_EXE && ir && ir_needs_linked_executable_object(ir)) ? "obj" : emit_kind_name(emit);
+  const char *emit_kind = emit_kind_name(emit);
   if (z_direct_buildability_check(ir, target, emit_kind, diag)) return true;
   complete_backend_blocker_diag(diag, target, command, emit_kind, diag && diag->backend_blocker.present ? diag->backend_blocker.stage : "buildability");
   return false;
@@ -11577,19 +11753,20 @@ static bool target_readiness_select_diag(const Command *command, const SourceInp
     return false;
   }
 
+  const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
   bool needs_zero_runtime = ir && ir_linked_executable_needs_zero_runtime_object(ir);
   bool needs_linked_executable = ir && ir_needs_linked_executable_object(ir);
   if (needs_linked_executable) {
-    RuntimeImportAudit audit = runtime_import_audit_from_ir(ir);
-    bool needs_http_runtime = runtime_import_audit_uses_http_provider(&audit);
+    ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target); if (direct_request && !z_direct_requested_backend_matches(direct_request, direct_obj.backend)) { init_direct_backend_request_mismatch_diag(diag, command, input, target, emit_kind); return false; }
+    if (!target_readiness_buildability_check(command, target, ir, diag)) return false;
+    bool needs_http_runtime = ir && ir->direct_http_runtime_import_count > 0;
     ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, needs_http_runtime);
     if (needs_zero_runtime && !runtime_object.supported) {
       init_direct_backend_diag(diag, command, input, target, emit_kind, runtime_object.blocker);
       return false;
     }
-    return target_readiness_buildability_check(command, target, ir, diag);
+    return true;
   }
-  const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
   ZDirectExecutableTargetFacts direct_exe = z_direct_executable_target_facts(target, direct_request);
   CapabilitySummary caps = program_capabilities(program);
   if (direct_request && !direct_exe.request_supported) {
@@ -11754,20 +11931,21 @@ static bool repository_graph_target_readiness_select_diag(const Command *command
     init_direct_backend_diag(diag, command, input, target, emit_kind, "use --emit exe or --emit obj for target readiness");
     return false;
   }
+  const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
   bool needs_zero_runtime = ir && ir_linked_executable_needs_zero_runtime_object(ir);
   bool needs_linked_executable = ir && ir_needs_linked_executable_object(ir);
   if (needs_linked_executable) {
-    RuntimeImportAudit audit = runtime_import_audit_from_ir(ir);
-    bool needs_http_runtime = runtime_import_audit_uses_http_provider(&audit);
+    ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target); if (direct_request && !z_direct_requested_backend_matches(direct_request, direct_obj.backend)) { init_direct_backend_request_mismatch_diag(diag, command, input, target, emit_kind); return false; }
+    if (!target_readiness_buildability_check(command, target, ir, diag)) return false;
+    bool needs_http_runtime = ir && ir->direct_http_runtime_import_count > 0;
     ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, needs_http_runtime);
     if (needs_zero_runtime && !runtime_object.supported) {
       init_direct_backend_diag(diag, command, input, target, emit_kind, runtime_object.blocker);
       return false;
     }
-    return target_readiness_buildability_check(command, target, ir, diag);
+    return true;
   }
 
-  const char *direct_request = z_backend_direct_request_name(command ? command->backend : NULL);
   ZDirectExecutableTargetFacts direct_exe = z_direct_executable_target_facts(target, direct_request);
   if (direct_request && !direct_exe.request_supported) {
     init_direct_backend_request_mismatch_diag(diag, command, input, target, emit_kind);
@@ -11905,6 +12083,7 @@ static bool repository_graph_check_readiness_compute(const Command *command, Sou
                                                                        emit_kind,
                                                                        command ? command->backend : NULL,
                                                                        false,
+                                                                       true,
                                                                        &out->program,
                                                                        input,
                                                                        &out->ir,
@@ -14984,10 +15163,16 @@ static ZProgramGraphProjectionSourceSync manifest_graph_store_source_sync(const 
   ZProgramGraphProjectionSourceSync sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
   if (out_store_hash) *out_store_hash = NULL;
   if (store_path && z_program_graph_store_path_exists(store_path)) {
+    ZProgramGraphProjectionSourceSync fast_sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
+    if (!out_store_hash && !out_store_graph &&
+        z_program_graph_projection_source_sync_state_binary_fast(store_path, root, &fast_sync)) {
+      free(store_path); free(root); return fast_sync;
+    }
     ZProgramGraphStore store;
     ZDiag store_diag = {0};
     if (z_program_graph_store_load_path(store_path, &store, &store_diag)) {
-      if (!z_program_graph_projection_sources_missing(&store)) {
+      bool sources_missing = z_program_graph_projection_sources_missing(&store);
+      if (!sources_missing) {
         ZProgramGraphProjectionSourceSync store_sync = Z_PROGRAM_GRAPH_PROJECTION_SYNC_CLEAN;
         ZDiag sync_diag = {0};
         if (z_program_graph_projection_source_sync_state(&store, &store_sync, &sync_diag)) sync = store_sync;
@@ -15578,7 +15763,7 @@ static int run_llvm_native_artifact_command(const Command *command, SourceInput 
   }
 
   if (run_command) {
-    int rc = run_executable_artifact(exe_file, command);
+    int rc = run_executable_artifact_as(exe_file, exe_file, command);
     command_remove_ephemeral_run_artifact(command, exe_file);
     free(runtime_object_file); free(llvm_file); free(exe_file); zbuf_free(&llvm_ir); z_free_ir_program(ir); z_free_program(program); z_free_source(input);
     return rc;
@@ -15673,6 +15858,273 @@ static bool validate_repository_graph_c_libraries_before_mir(const Command *comm
   z_free_source(&input);
   z_program_graph_store_free(&store);
   return ok;
+}
+
+static bool graph_has_direct_c_import_node(const ZProgramGraph *graph) {
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    if (graph->nodes[i].kind == Z_PROGRAM_GRAPH_NODE_C_IMPORT) return true;
+  }
+  return false;
+}
+
+typedef enum {
+  EARLY_CACHED_RUN_NOT_APPLICABLE,
+  EARLY_CACHED_RUN_VALIDATED_NO_HIT,
+  EARLY_CACHED_RUN_HANDLED,
+  EARLY_CACHED_RUN_FAILED
+} EarlyCachedRunResult;
+
+static bool store_header_get_u32(const unsigned char *data, size_t len, size_t *offset, uint32_t *out) {
+  if (!data || !offset || !out || *offset > len || len - *offset < 4) return false;
+  const unsigned char *bytes = data + *offset;
+  *out = ((uint32_t)bytes[0]) |
+         ((uint32_t)bytes[1] << 8) |
+         ((uint32_t)bytes[2] << 16) |
+         ((uint32_t)bytes[3] << 24);
+  *offset += 4;
+  return true;
+}
+
+static bool store_header_get_u64(const unsigned char *data, size_t len, size_t *offset, uint64_t *out) {
+  if (!data || !offset || !out || *offset > len || len - *offset < 8) return false;
+  const unsigned char *bytes = data + *offset;
+  uint64_t value = 0;
+  for (unsigned i = 0; i < 8; i++) value |= (uint64_t)bytes[i] << (i * 8);
+  *out = value;
+  *offset += 8;
+  return true;
+}
+
+typedef struct {
+  uint64_t string_bytes;
+  uint64_t graph_off;
+  uint64_t graph_len;
+} RepositoryGraphHashRef;
+
+static bool repository_graph_hash_ref_from_binary_header(const unsigned char *data, size_t len, size_t file_len, RepositoryGraphHashRef *out) {
+  static const unsigned char magic[8] = {'Z', 'R', 'G', 'B', 'I', 'N', '1', 0};
+  if (!data || !out || len < sizeof(magic) || memcmp(data, magic, sizeof(magic)) != 0) return false;
+  size_t offset = sizeof(magic);
+  uint32_t schema = 0, flags = 0, validation_state = 0, reserved = 0;
+  uint64_t ignored = 0, string_bytes = 0;
+  if (!store_header_get_u32(data, len, &offset, &schema) ||
+      !store_header_get_u32(data, len, &offset, &flags) ||
+      !store_header_get_u32(data, len, &offset, &validation_state) ||
+      !store_header_get_u32(data, len, &offset, &reserved)) return false;
+  if (schema != 1 || reserved != 0 || validation_state > (uint32_t)Z_PROGRAM_GRAPH_VALIDATION_BUILDABLE || (flags & ~3u) != 0) return false;
+  for (unsigned i = 0; i < 6; i++) {
+    if (!store_header_get_u64(data, len, &offset, i == 5 ? &string_bytes : &ignored)) return false;
+  }
+  uint64_t module_off = 0, module_len = 0, graph_off = 0, graph_len = 0, module_hash_off = 0, module_hash_len = 0;
+  if (!store_header_get_u64(data, len, &offset, &module_off) ||
+      !store_header_get_u64(data, len, &offset, &module_len) ||
+      !store_header_get_u64(data, len, &offset, &graph_off) ||
+      !store_header_get_u64(data, len, &offset, &graph_len) ||
+      !store_header_get_u64(data, len, &offset, &module_hash_off) ||
+      !store_header_get_u64(data, len, &offset, &module_hash_len)) return false;
+  (void)module_off;
+  (void)module_len;
+  (void)module_hash_off;
+  (void)module_hash_len;
+  if (flags & (1u << 1)) {
+    uint64_t source_hash_off = 0, source_hash_len = 0;
+    if (!store_header_get_u64(data, len, &offset, &source_hash_off) ||
+        !store_header_get_u64(data, len, &offset, &source_hash_len)) return false;
+    (void)source_hash_off;
+    (void)source_hash_len;
+  }
+  if (string_bytes == 0 || string_bytes > (uint64_t)file_len || graph_len == 0 || graph_len == UINT64_MAX || graph_len > (uint64_t)SIZE_MAX || graph_off > string_bytes || graph_len > string_bytes - graph_off) return false;
+  *out = (RepositoryGraphHashRef){.string_bytes = string_bytes, .graph_off = graph_off, .graph_len = graph_len};
+  return true;
+}
+
+static char *read_repository_graph_hash_binary_fast(FILE *file, const unsigned char *header, size_t header_len, size_t file_len) {
+  RepositoryGraphHashRef ref = {0};
+  if (!file || !repository_graph_hash_ref_from_binary_header(header, header_len, file_len, &ref)) return NULL;
+  uint64_t string_table_offset = (uint64_t)file_len - ref.string_bytes;
+  uint64_t graph_offset = string_table_offset + ref.graph_off;
+  if (graph_offset > (uint64_t)LONG_MAX) return NULL;
+  if (fseek(file, (long)graph_offset, SEEK_SET) != 0) return NULL;
+  char *hash = z_checked_malloc((size_t)ref.graph_len + 1);
+  size_t read_len = fread(hash, 1, (size_t)ref.graph_len, file);
+  if (read_len != (size_t)ref.graph_len) {
+    free(hash);
+    return NULL;
+  }
+  hash[(size_t)ref.graph_len] = '\0';
+  return hash;
+}
+
+static char *repository_graph_hash_from_text_header(const unsigned char *data, size_t len) {
+  if (!data || len == 0) return NULL;
+  static const char prefix[] = "graphHash \"";
+  size_t offset = 0;
+  while (offset < len) {
+    size_t line_start = offset;
+    while (offset < len && data[offset] != '\n') offset++;
+    size_t line_len = offset - line_start;
+    if (offset < len && data[offset] == '\n') offset++;
+    if (line_len == 5 && memcmp(data + line_start, "graph", 5) == 0) break;
+    if (line_len > sizeof(prefix) - 1 && memcmp(data + line_start, prefix, sizeof(prefix) - 1) == 0) {
+      size_t value_start = line_start + sizeof(prefix) - 1;
+      size_t value_end = value_start;
+      while (value_end < line_start + line_len && data[value_end] != '"') value_end++;
+      if (value_end > value_start && value_end < line_start + line_len) return z_strndup((const char *)(data + value_start), value_end - value_start);
+    }
+  }
+  return NULL;
+}
+
+static char *read_repository_graph_hash_fast(const char *path) {
+  if (!path || !path[0]) return NULL;
+  FILE *file = fopen(path, "rb");
+  if (!file) return NULL;
+  struct stat st;
+  if (stat(path, &st) != 0 || st.st_size <= 0) {
+    fclose(file);
+    return NULL;
+  }
+  unsigned char header[4096];
+  size_t len = fread(header, 1, sizeof(header), file);
+  if (len == 0) {
+    fclose(file);
+    return NULL;
+  }
+  char *hash = z_program_graph_store_bytes_are_binary(header, len)
+    ? read_repository_graph_hash_binary_fast(file, header, len, (size_t)st.st_size)
+    : repository_graph_hash_from_text_header(header, len);
+  fclose(file);
+  return hash;
+}
+
+static EarlyCachedRunResult try_run_repository_graph_cached_executable_before_mir(const Command *command, const ZTargetInfo *target, int *rc_out, ZDiag *diag, bool allow_full_store_fallback) {
+  if (rc_out) *rc_out = 1;
+  if (!command || !target || !command->repository_graph_input || !command_uses_ephemeral_run_artifact(command) || command->emit != EMIT_EXE || command->json) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  if (z_backend_request_is_llvm(command->backend, emit_kind_name(command->emit))) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  if (command->repository_graph_source_input && !z_program_graph_projection_cached_run_allows_cache(command->repository_graph_source_input)) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  char *fast_graph_hash = read_repository_graph_hash_fast(command->input);
+  if (fast_graph_hash) {
+    SourceInput fast_input = {0};
+    fast_input.source_file = z_strdup(command->input);
+    fast_input.package_root = runtime_dirname(command->input);
+    const char *manifest_input = command->repository_graph_source_input ? command->repository_graph_source_input : command->input;
+    bool needs_c_library_validation = true; if (!z_program_graph_manifest_attach_cache_metadata_to_input(&fast_input, manifest_input, &needs_c_library_validation, diag) ||
+        (needs_c_library_validation && !validate_c_libraries_for_target(&fast_input, target, command, diag))) {
+      free(fast_graph_hash);
+      z_free_source(&fast_input);
+      return EARLY_CACHED_RUN_FAILED;
+    }
+    Command cache_command = *command;
+    cache_command.graph_source.graph_hash = fast_graph_hash;
+    cache_command.graph_source.artifact = command->input;
+    ZToolchainPlan runtime_toolchain = z_plan_toolchain(command->cc, command->profile, target);
+    const char *direct_obj_request = z_backend_direct_request_name(command->backend);
+    ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target);
+    if (direct_obj_request && !z_direct_requested_backend_matches(direct_obj_request, direct_obj.backend)) {
+      free(fast_graph_hash);
+      z_free_source(&fast_input);
+      return EARLY_CACHED_RUN_NOT_APPLICABLE;
+    }
+    if (!direct_obj.available) {
+      free(fast_graph_hash);
+      z_free_source(&fast_input);
+      return EARLY_CACHED_RUN_NOT_APPLICABLE;
+    }
+    for (int http = 0; http < 2; http++) {
+      ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, http != 0);
+      if (!runtime_object.supported) continue;
+      char *cache_path = linked_executable_cache_path(&cache_command, &fast_input, target, &runtime_toolchain, true, http != 0, runtime_object.cache_key);
+      if (cache_path && z_process_executable_file_ready(cache_path)) {
+        char *base_argv0 = command->out ? z_strdup(command->out) : command_default_exe_base_path(&cache_command, &fast_input), *argv0_path = apply_target_suffix(base_argv0, target); free(base_argv0);
+        int rc = exec_cached_executable_artifact(cache_path, argv0_path, command);
+        free(argv0_path);
+        if (rc_out) *rc_out = rc;
+        free(cache_path);
+        free(fast_graph_hash);
+        z_free_source(&fast_input);
+        return EARLY_CACHED_RUN_HANDLED;
+      }
+      free(cache_path);
+    }
+    free(fast_graph_hash);
+    z_free_source(&fast_input);
+  }
+  if (!allow_full_store_fallback) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  ZProgramGraphStore store = {0};
+  if (!z_program_graph_store_load_path(command->input, &store, diag)) return EARLY_CACHED_RUN_FAILED;
+  SourceInput input = {0};
+  input.source_file = z_strdup(store.path ? store.path : command->input);
+  input.package_root = z_strdup(store.root && store.root[0] ? store.root : ".");
+  z_program_graph_seed_source_metadata(&input, &store.graph);
+  const char *manifest_input = command->repository_graph_source_input ? command->repository_graph_source_input : command->input;
+  bool needs_c_library_validation = true; if (!z_program_graph_manifest_attach_cache_metadata_to_input(&input, manifest_input, &needs_c_library_validation, diag) ||
+      (needs_c_library_validation && !validate_c_libraries_for_target(&input, target, command, diag))) {
+    z_free_source(&input);
+    z_program_graph_store_free(&store);
+    return EARLY_CACHED_RUN_FAILED;
+  }
+  if (graph_has_direct_c_import_node(&store.graph)) {
+    z_free_source(&input);
+    z_program_graph_store_free(&store);
+    return EARLY_CACHED_RUN_VALIDATED_NO_HIT;
+  }
+  Command cache_command = *command;
+  cache_command.graph_source.graph_hash = store.graph.graph_hash ? store.graph.graph_hash : "";
+  cache_command.graph_source.artifact = command->input;
+  ZToolchainPlan runtime_toolchain = z_plan_toolchain(command->cc, command->profile, target);
+  const char *direct_obj_request = z_backend_direct_request_name(command->backend);
+  ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target);
+  if (direct_obj_request && !z_direct_requested_backend_matches(direct_obj_request, direct_obj.backend)) {
+    z_free_source(&input);
+    z_program_graph_store_free(&store);
+    return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  }
+  if (!direct_obj.available) {
+    z_free_source(&input);
+    z_program_graph_store_free(&store);
+    return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  }
+  for (int http = 0; http < 2; http++) {
+    ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, http != 0);
+    if (!runtime_object.supported) continue;
+    char *cache_path = linked_executable_cache_path(&cache_command, &input, target, &runtime_toolchain, true, http != 0, runtime_object.cache_key);
+    if (cache_path && z_process_executable_file_ready(cache_path)) {
+      char *base_argv0 = command->out ? z_strdup(command->out) : command_default_exe_base_path(&cache_command, &input), *argv0_path = apply_target_suffix(base_argv0, target); free(base_argv0);
+      int rc = exec_cached_executable_artifact(cache_path, argv0_path, command);
+      free(argv0_path);
+      if (rc_out) *rc_out = rc;
+      free(cache_path);
+      z_free_source(&input);
+      z_program_graph_store_free(&store);
+      return EARLY_CACHED_RUN_HANDLED;
+    }
+    free(cache_path);
+  }
+  z_free_source(&input);
+  z_program_graph_store_free(&store);
+  return EARLY_CACHED_RUN_VALIDATED_NO_HIT;
+}
+
+static EarlyCachedRunResult try_run_manifest_graph_cached_executable_before_resolution(const Command *command, const ZTargetInfo *target, int *rc_out, ZDiag *diag) {
+  if (!command || !command->input || !command->command || strcmp(command->command, "run") != 0) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  if (command->repository_graph_input || path_has_program_graph_storage_header(command->input)) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  char *manifest_path = z_manifest_path_for_input(command->input);
+  if (!manifest_path) return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  free(manifest_path);
+  char *root = z_program_graph_store_root_for_input(command->input);
+  char *store_path = z_program_graph_store_path_for_root(root);
+  free(root);
+  if (!store_path || !z_program_graph_projection_cached_run_allows_cache(command->input)) {
+    free(store_path);
+    return EARLY_CACHED_RUN_NOT_APPLICABLE;
+  }
+  Command cache_command = *command;
+  cache_command.input = store_path;
+  cache_command.repository_graph_source_input = command->input;
+  cache_command.repository_graph_input = true;
+  EarlyCachedRunResult result = try_run_repository_graph_cached_executable_before_mir(&cache_command, target, rc_out, diag, false);
+  free(store_path);
+  return result;
 }
 
 int main(int argc, char **argv) {
@@ -16014,22 +16466,32 @@ int main(int argc, char **argv) {
     }
     return run_graph_check_command(&command, target, &diag);
   }
+  int manifest_cached_run_rc = 1;
+  EarlyCachedRunResult manifest_cached_run = try_run_manifest_graph_cached_executable_before_resolution(&command, target, &manifest_cached_run_rc, &diag);
+  if (manifest_cached_run == EARLY_CACHED_RUN_HANDLED) return manifest_cached_run_rc;
+  if (manifest_cached_run == EARLY_CACHED_RUN_FAILED) {
+    if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+    else print_diag(diag.path ? diag.path : command.input, &diag);
+    return 1;
+  }
   int direct_graph_manifest_rc = resolve_direct_command_manifest_graph_input(&command, target, &direct_graph_manifest_command); if (direct_graph_manifest_rc != 0) return direct_graph_manifest_rc;
   if (strcmp(command.command, "test") == 0 && (direct_graph_manifest_command || path_has_program_graph_storage_header(command.input))) return run_direct_graph_test_command(&command, target, &diag);
 
   SourceInput input = {0};
   Program program = {0};
   IrProgram graph_prepared_ir = {0};
+  bool command_is_build = strcmp(command.command, "build") == 0, command_is_run = strcmp(command.command, "run") == 0, command_is_size = strcmp(command.command, "size") == 0, command_is_mem = strcmp(command.command, "mem") == 0;
+  bool command_is_doc = strcmp(command.command, "doc") == 0, command_is_dev = strcmp(command.command, "dev") == 0, command_is_fix = strcmp(command.command, "fix") == 0, command_is_time = strcmp(command.command, "time") == 0, command_is_abi = strcmp(command.command, "abi") == 0;
   bool root_graph_artifact_input = !command.repository_graph_input && path_has_program_graph_storage_header(command.input);
-  bool graph_build_command = strcmp(command.command, "build") == 0 && root_graph_artifact_input;
-  bool graph_run_artifact_command = strcmp(command.command, "run") == 0 && root_graph_artifact_input;
-  bool graph_size_artifact_command = strcmp(command.command, "size") == 0 && root_graph_artifact_input;
-  bool graph_mem_artifact_command = strcmp(command.command, "mem") == 0 && root_graph_artifact_input;
-  bool graph_doc_artifact_command = strcmp(command.command, "doc") == 0 && root_graph_artifact_input;
-  bool graph_dev_artifact_command = strcmp(command.command, "dev") == 0 && root_graph_artifact_input;
-  bool graph_time_artifact_command = strcmp(command.command, "time") == 0 && root_graph_artifact_input;
-  bool graph_fix_artifact_command = strcmp(command.command, "fix") == 0 && root_graph_artifact_input;
-  bool graph_abi_artifact_command = strcmp(command.command, "abi") == 0 && root_graph_artifact_input;
+  bool graph_build_command = command_is_build && root_graph_artifact_input;
+  bool graph_run_artifact_command = command_is_run && root_graph_artifact_input;
+  bool graph_size_artifact_command = command_is_size && root_graph_artifact_input;
+  bool graph_mem_artifact_command = command_is_mem && root_graph_artifact_input;
+  bool graph_doc_artifact_command = command_is_doc && root_graph_artifact_input;
+  bool graph_dev_artifact_command = command_is_dev && root_graph_artifact_input;
+  bool graph_time_artifact_command = command_is_time && root_graph_artifact_input;
+  bool graph_fix_artifact_command = command_is_fix && root_graph_artifact_input;
+  bool graph_abi_artifact_command = command_is_abi && root_graph_artifact_input;
   bool graph_artifact_mir_command = graph_build_command ||
                                     graph_run_artifact_command ||
                                     graph_size_artifact_command ||
@@ -16038,11 +16500,19 @@ int main(int argc, char **argv) {
                                     graph_dev_artifact_command ||
                                     graph_time_artifact_command ||
                                     graph_fix_artifact_command;
-  bool graph_metadata_command = (command.repository_graph_input &&
-                                 (strcmp(command.command, "doc") == 0 || strcmp(command.command, "dev") == 0 || strcmp(command.command, "abi") == 0)) ||
+  bool graph_metadata_command = (command.repository_graph_input && (command_is_doc || command_is_dev || command_is_abi)) ||
                                 graph_abi_artifact_command;
-  if ((command.repository_graph_input || root_graph_artifact_input) &&
-      (strcmp(command.command, "run") == 0 || strcmp(command.command, "build") == 0)) {
+  if (command.repository_graph_input && command_is_run) {
+    int cached_run_rc = 1;
+    EarlyCachedRunResult cached_run = try_run_repository_graph_cached_executable_before_mir(&command, target, &cached_run_rc, &diag, false);
+    if (cached_run == EARLY_CACHED_RUN_HANDLED) return cached_run_rc;
+    if (cached_run == EARLY_CACHED_RUN_FAILED) {
+      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      else print_diag(diag.path ? diag.path : command.input, &diag);
+      return 1;
+    }
+  }
+  if ((command.repository_graph_input || root_graph_artifact_input) && (command_is_run || command_is_build)) {
     ZProgramGraphStore listen_store;
     ZProgramGraph artifact_listen_graph = {0};
     z_program_graph_store_init(&listen_store);
@@ -16118,14 +16588,26 @@ int main(int argc, char **argv) {
         return 1;
       }
     }
-    if (!validate_repository_graph_c_libraries_before_mir(&command, target, &diag)) {
+    int cached_run_rc = 1;
+    EarlyCachedRunResult cached_run = try_run_repository_graph_cached_executable_before_mir(&command, target, &cached_run_rc, &diag, true);
+    if (cached_run == EARLY_CACHED_RUN_HANDLED) {
+      free_loaded_command_state(&input, &program, &graph_prepared_ir);
+      return cached_run_rc;
+    }
+    if (cached_run == EARLY_CACHED_RUN_FAILED) {
+      if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
+      else print_diag(diag.path ? diag.path : command.input, &diag);
+      free_loaded_command_state(&input, &program, &graph_prepared_ir);
+      return 1;
+    }
+    if (cached_run == EARLY_CACHED_RUN_NOT_APPLICABLE && !validate_repository_graph_c_libraries_before_mir(&command, target, &diag)) {
       if (command.json) print_command_diag_json(&command, diag.path ? diag.path : command.input, &diag);
       else print_diag(diag.path ? diag.path : command.input, &diag);
       free_loaded_command_state(&input, &program, &graph_prepared_ir);
       return 1;
     }
     bool prepared_graph = command.repository_graph_input
-      ? z_program_graph_prepare_repository_store_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, !(strcmp(command.command, "build") == 0 || strcmp(command.command, "run") == 0 || strcmp(command.command, "size") == 0 || strcmp(command.command, "mem") == 0), &program, &input, &graph_prepared_ir, &graph_source, &diag)
+      ? z_program_graph_prepare_repository_store_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, !(command_is_build || command_is_run || command_is_size || command_is_mem), !command_is_run, &program, &input, &graph_prepared_ir, &graph_source, &diag)
       : z_program_graph_prepare_artifact_mir_input(command.input, target, emit_kind_name(command.emit), command.backend, &program, &input, &graph_prepared_ir, &graph_source, &diag);
     if (prepared_graph) {
       input.lower_ms = now_ms() - graph_lower_started;
@@ -16466,7 +16948,6 @@ int main(int argc, char **argv) {
     z_free_source(&input);
     return 0;
   }
-  CapabilitySummary direct_exe_caps = program_or_ir_capabilities(&program, &ir);
   if (artifact_command && command.emit == EMIT_EXE &&
       !validate_c_libraries_for_target(&input, target, &command, &diag)) {
     if (command.json) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
@@ -16479,8 +16960,7 @@ int main(int argc, char **argv) {
   bool needs_linked_executable = artifact_command && command.emit == EMIT_EXE && ir_needs_linked_executable_object(&ir);
   bool needs_zero_runtime = needs_linked_executable && ir_linked_executable_needs_zero_runtime_object(&ir);
   if (needs_linked_executable) {
-    RuntimeImportAudit runtime_audit = runtime_import_audit_from_ir(&ir);
-    bool needs_http_runtime = runtime_import_audit_uses_http_provider(&runtime_audit);
+    bool needs_http_runtime = ir.direct_http_runtime_import_count > 0;
     ZDirectRuntimeObjectFacts runtime_object = z_direct_runtime_object_facts(target, needs_http_runtime);
     ZDirectObjectTargetFacts direct_obj = z_direct_object_target_facts(target);
     const char *direct_obj_request = z_backend_direct_request_name(command.backend);
@@ -16490,9 +16970,45 @@ int main(int argc, char **argv) {
       z_free_source(&input);
       return rc;
     }
-    if (needs_zero_runtime && !runtime_object.supported) { int rc = return_direct_backend_error(&command, &input, target, "exe", runtime_object.blocker, &ir, &program); z_free_source(&input); return rc; }
     if (!direct_obj.available) { int rc = return_direct_backend_error(&command, &input, target, "exe", direct_obj.unsupported_reason, &ir, &program); z_free_source(&input); return rc; }
-    if (!direct_buildability_preflight(&command, &input, target, "obj", &ir, &diag)) { int rc = return_buildability_error(&command, &input, &diag, &ir, &program); z_free_source(&input); return rc; }
+    if (!direct_buildability_preflight(&command, &input, target, "exe", &ir, &diag)) {
+      int rc = return_buildability_error(&command, &input, &diag, &ir, &program);
+      z_free_source(&input);
+      return rc;
+    }
+    if (needs_zero_runtime && !runtime_object.supported) { int rc = return_direct_backend_error(&command, &input, target, "exe", runtime_object.blocker, &ir, &program); z_free_source(&input); return rc; }
+    char *base_exe_file = command.out ? z_strdup(command.out) : command_default_exe_base_path(&command, &input);
+    char *exe_file = apply_target_suffix(base_exe_file, target);
+    free(base_exe_file);
+    char *object_file = path_with_suffix(exe_file, ".zero.o");
+    char *runtime_object_file = needs_zero_runtime ? path_with_suffix(exe_file, ".zero-runtime.o") : NULL;
+    char *http_object_file = needs_http_runtime ? path_with_suffix(exe_file, ".zero-http-curl.o") : NULL;
+    ZToolchainPlan runtime_toolchain = z_plan_toolchain(command.cc, command.profile, target);
+    char *exe_cache_path = linked_executable_cache_path(&command, &input, target, &runtime_toolchain, needs_zero_runtime, needs_http_runtime, needs_zero_runtime ? runtime_object.cache_key : direct_obj.artifact_path);
+    if (exe_cache_path && z_process_executable_file_ready(exe_cache_path)) {
+      input.emitted_object_cache_hit = true;
+      if (run_command && command_uses_ephemeral_run_artifact(&command)) {
+        int rc = run_executable_artifact_as(exe_cache_path, exe_file, &command);
+        free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
+        free_loaded_command_state(&input, &program, &ir);
+        return rc;
+      }
+      if (executable_cache_restore_to_path(exe_cache_path, exe_file)) {
+        if (run_command) {
+          int rc = run_executable_artifact_as(exe_file, exe_file, &command);
+          command_remove_ephemeral_run_artifact(&command, exe_file);
+          free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
+          free_loaded_command_state(&input, &program, &ir);
+          return rc;
+        }
+        long long elapsed_ms = now_ms() - command_started_ms;
+        if (command.json) print_build_json(&command, &input, &program, &ir, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
+        else print_artifact(exe_file, elapsed_ms);
+        free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
+        free_loaded_command_state(&input, &program, &ir);
+        return 0;
+      }
+    }
     ZBuf object;
     zbuf_init(&object);
     phase_started = now_ms();
@@ -16504,20 +17020,11 @@ int main(int argc, char **argv) {
       complete_backend_blocker_diag(&diag, target, &command, "exe", "emit");
       if (command.json) print_diag_json(input.source_file, &diag);
       else print_diag(input.source_file, &diag);
+      free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
       zbuf_free(&object);
-      z_free_ir_program(&ir);
-      z_free_program(&program);
-      z_free_source(&input);
+      free_loaded_command_state(&input, &program, &ir);
       return 1;
     }
-
-    char *base_exe_file = command.out ? z_strdup(command.out) : command_default_exe_base_path(&command, &input);
-    char *exe_file = apply_target_suffix(base_exe_file, target);
-    free(base_exe_file);
-    char *object_file = path_with_suffix(exe_file, ".zero.o");
-    char *runtime_object_file = needs_zero_runtime ? path_with_suffix(exe_file, ".zero-runtime.o") : NULL;
-    char *http_object_file = needs_http_runtime ? path_with_suffix(exe_file, ".zero-http-curl.o") : NULL;
-    ZToolchainPlan runtime_toolchain = z_plan_toolchain(command.cc, command.profile, target);
 
     phase_started = now_ms();
     input.emitted_object_cache_hit = compiler_cache_touch("emitted-object", command_compile_cache_key(&command, &input, target, command.profile, needs_zero_runtime ? runtime_object.cache_key : direct_obj.artifact_path));
@@ -16528,14 +17035,9 @@ int main(int argc, char **argv) {
     if (!wrote_object) {
       if (command.json) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
       else print_diag(diag.path ? diag.path : input.source_file, &diag);
-      free(http_object_file);
-      free(runtime_object_file);
-      free(object_file);
-      free(exe_file);
+      free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
       zbuf_free(&object);
-      z_free_ir_program(&ir);
-      z_free_program(&program);
-      z_free_source(&input);
+      free_loaded_command_state(&input, &program, &ir);
       return 1;
     }
 
@@ -16552,42 +17054,28 @@ int main(int argc, char **argv) {
     if (!linked) {
       if (command.json) print_diag_json(diag.path ? diag.path : input.source_file, &diag);
       else print_diag(diag.path ? diag.path : input.source_file, &diag);
-      free(http_object_file);
-      free(runtime_object_file);
-      free(object_file);
-      free(exe_file);
+      free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
       zbuf_free(&object);
-      z_free_ir_program(&ir);
-      z_free_program(&program);
-      z_free_source(&input);
+      free_loaded_command_state(&input, &program, &ir);
       return 1;
     }
+    executable_cache_store_path(exe_cache_path, exe_file);
 
     if (run_command) {
-      int rc = run_executable_artifact(exe_file, &command);
+      int rc = run_executable_artifact_as(exe_file, exe_file, &command);
       command_remove_ephemeral_run_artifact(&command, exe_file);
-      free(http_object_file);
-      free(runtime_object_file);
-      free(object_file);
-      free(exe_file);
+      free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
       zbuf_free(&object);
-      z_free_ir_program(&ir);
-      z_free_program(&program);
-      z_free_source(&input);
+      free_loaded_command_state(&input, &program, &ir);
       return rc;
     }
 
     long long elapsed_ms = now_ms() - command_started_ms;
     if (command.json) print_build_json(&command, &input, &program, &ir, target, "exe", exe_file, file_size_or_negative(exe_file), 0, elapsed_ms);
     else print_artifact(exe_file, elapsed_ms);
-    free(http_object_file);
-    free(runtime_object_file);
-    free(object_file);
-    free(exe_file);
+    free_linked_executable_paths(exe_cache_path, http_object_file, runtime_object_file, object_file, exe_file);
     zbuf_free(&object);
-    z_free_ir_program(&ir);
-    z_free_program(&program);
-    z_free_source(&input);
+    free_loaded_command_state(&input, &program, &ir);
     return 0;
   }
   const char *direct_request = command.emit == EMIT_EXE ? z_backend_direct_request_name(command.backend) : NULL;
@@ -16598,6 +17086,7 @@ int main(int argc, char **argv) {
     z_free_source(&input);
     return rc;
   }
+  CapabilitySummary direct_exe_caps = program_or_ir_capabilities(&program, &ir);
   bool default_direct_exe = artifact_command && command.emit == EMIT_EXE && direct_exe.request_supported && !direct_request && self_host_subset_compatible(&program, &direct_exe_caps);
   bool requested_direct_exe = artifact_command && command.emit == EMIT_EXE && direct_exe.requested_name;
   if (default_direct_exe || requested_direct_exe) {
@@ -16648,7 +17137,7 @@ int main(int argc, char **argv) {
     }
 
     if (run_command) {
-      int rc = run_executable_artifact(exe_file, &command);
+      int rc = run_executable_artifact_as(exe_file, exe_file, &command);
       command_remove_ephemeral_run_artifact(&command, exe_file);
       free(exe_file);
       zbuf_free(&exe);

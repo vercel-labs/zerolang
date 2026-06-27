@@ -185,7 +185,7 @@ Only use `export` or `import` when a human review or manual edit calls for it.
 
 ## What To Read Next
 
-- Read **CLI Workflow Reference** for command groups and graph patch forms.
+- Read **CLI Reference** for command groups and graph patch forms.
 - Read **Primitives And Types** for the language pieces behind graph facts.
 - Read **Standard Library** before asking an agent for CLI, HTTP, JSON, or
   filesystem programs.

@@ -1,0 +1,19 @@
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let cwd: String = ".zero/proc-child-cwd"
+    let ready: Bool = std.fs.makeDir(cwd) || std.fs.isDir(cwd)
+    let child: ProcChild = std.proc.spawnChildIn("sh -c 'printf stdout-cwd; printf marker > child.txt'", cwd)
+    var stdout_buf: [32]u8 = [0_u8; 32]
+    var marker_buf: [32]u8 = [0_u8; 32]
+    let valid: Bool = std.proc.childValid(child)
+    let status: ProcStatus = std.proc.wait(child)
+    let stdout_read: Maybe<usize> = std.proc.readStdout(child, stdout_buf)
+    let marker: Maybe<Span<u8>> = std.fs.readFileBytes(fs, ".zero/proc-child-cwd/child.txt", marker_buf)
+    let closed: Bool = std.proc.close(child)
+    if ready && valid && std.proc.succeeded(status) && stdout_read.has && marker.has && closed {
+        let stdout_bytes: Span<u8> = std.io.written(stdout_buf, stdout_read.value)
+        if std.mem.eql(stdout_bytes, "stdout-cwd") && std.mem.eql(marker.value, "marker") {
+            check world.out.write("std proc child cwd ok\n")
+        }
+    }
+}

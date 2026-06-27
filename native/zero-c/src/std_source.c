@@ -2,6 +2,7 @@
 
 #include "embedded_stdlib_graph.inc"
 #include "program_graph_format.h"
+#include "program_graph_string_map.h"
 #include "program_graph_store_binary.h"
 
 #include <stdio.h>
@@ -43,6 +44,7 @@ static const ZStdSourceModule std_source_modules[] = {
   {"std.sort", "std/sort.0", zero_embedded_stdlib_graph_std_sort_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_sort_graph_bytes)},
   {"std.str", "std/str.0", zero_embedded_stdlib_graph_std_str_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_str_graph_bytes)},
   {"std.testing", "std/testing.0", zero_embedded_stdlib_graph_std_testing_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_testing_graph_bytes)},
+  {"std.term", "std/term.0", zero_embedded_stdlib_graph_std_term_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_term_graph_bytes)},
   {"std.text", "std/text.0", zero_embedded_stdlib_graph_std_text_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_text_graph_bytes)},
   {"std.time", "std/time.0", zero_embedded_stdlib_graph_std_time_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_time_graph_bytes)},
   {"std.toml", "std/toml.0", zero_embedded_stdlib_graph_std_toml_graph_bytes, sizeof(zero_embedded_stdlib_graph_std_toml_graph_bytes)},
@@ -138,11 +140,11 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.cli.argU32Or", "__zero_std_cli_arg_u32_or", "std.cli"},
   {"std.cli.commandIn2", "__zero_std_cli_command_in2", "std.cli"},
   {"std.cli.commandIn3", "__zero_std_cli_command_in3", "std.cli"},
-  {"std.cli.formatCommand", "__zero_std_cli_format_command", "std.cli"},
-  {"std.cli.formatError", "__zero_std_cli_format_error", "std.cli"},
-  {"std.cli.formatInvalidOption", "__zero_std_cli_format_invalid_option", "std.cli"},
-  {"std.cli.formatMissingOperand", "__zero_std_cli_format_missing_operand", "std.cli"},
-  {"std.cli.formatOption", "__zero_std_cli_format_option", "std.cli"},
+  {"std.cli.formatCommand", "__zero_std_cli_format_command", "std.cli"}, {"std.cli.formatError", "__zero_std_cli_format_error", "std.cli"},
+  {"std.cli.formatHelp", "__zero_std_cli_format_help", "std.cli"}, {"std.cli.formatHelpRow", "__zero_std_cli_format_help_row", "std.cli"},
+  {"std.cli.formatHelpRowCustom", "__zero_std_cli_format_help_row_custom", "std.cli"}, {"std.cli.formatHelpRowWithWidth", "__zero_std_cli_format_help_row_with_width", "std.cli"},
+  {"std.cli.formatInvalidOption", "__zero_std_cli_format_invalid_option", "std.cli"}, {"std.cli.formatMissingOperand", "__zero_std_cli_format_missing_operand", "std.cli"},
+  {"std.cli.formatOption", "__zero_std_cli_format_option", "std.cli"}, {"std.cli.formatSection", "__zero_std_cli_format_section", "std.cli"},
   {"std.cli.formatUnknownCommand", "__zero_std_cli_format_unknown_command", "std.cli"},
   {"std.cli.formatUsage", "__zero_std_cli_format_usage", "std.cli"},
   {"std.cli.isHelp", "__zero_std_cli_is_help", "std.cli"},
@@ -270,6 +272,7 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.fs.readFileEquals", "__zero_std_fs_read_file_equals", "std.fs"},
   {"std.fs.readFile", "__zero_std_fs_read_file", "std.fs"},
   {"std.fs.writeFile", "__zero_std_fs_write_file", "std.fs"},
+  {"std.fs.appendFile", "__zero_std_fs_append_file", "std.fs"},
   {"std.fmt.i64", "__zero_std_fmt_i64", "std.fmt"},
   {"std.fmt.i64Base", "__zero_std_fmt_i64_base", "std.fmt"},
   {"std.fmt.i64Sign", "__zero_std_fmt_i64_sign", "std.fmt"},
@@ -721,6 +724,11 @@ static const ZStdSourceCall std_source_calls[] = {
   {"std.testing.jsonPathEquals", "__zero_std_testing_json_path_equals", "std.testing"},
   {"std.testing.notEqualBytes", "__zero_std_testing_not_equal_bytes", "std.testing"},
   {"std.testing.startsWith", "__zero_std_testing_starts_with", "std.testing"},
+  {"std.term.cursorTo", "term_cursor_to", "std.term"},
+  {"std.term.cursorUp", "term_cursor_up", "std.term"},
+  {"std.term.cursorDown", "term_cursor_down", "std.term"},
+  {"std.term.cursorRight", "term_cursor_right", "std.term"},
+  {"std.term.cursorLeft", "term_cursor_left", "std.term"},
   {"std.time.abs", "__zero_std_time_abs", "std.time"},
   {"std.time.between", "__zero_std_time_between", "std.time"},
   {"std.time.hasElapsed", "__zero_std_time_has_elapsed", "std.time"},
@@ -793,40 +801,47 @@ static bool std_source_text_eq(const char *left, const char *right) {
   return left_len == strlen(right) && memcmp(left, right, left_len) == 0;
 }
 
-static uint64_t std_source_hash_text(uint64_t hash, const char *text) {
-  const unsigned char *bytes = (const unsigned char *)(text ? text : "");
-  while (*bytes) {
-    hash ^= (uint64_t)*bytes++;
-    hash *= 1099511628211ull;
+static int std_source_text_cmp(const char *left, const char *right) {
+  const unsigned char *a = (const unsigned char *)(left ? left : "");
+  const unsigned char *b = (const unsigned char *)(right ? right : "");
+  while (*a && *a == *b) {
+    a++;
+    b++;
   }
-  hash ^= 0xffu;
-  hash *= 1099511628211ull;
-  return hash;
+  return (int)*a - (int)*b;
 }
 
-static uint64_t std_source_hash_bytes(uint64_t hash, const unsigned char *bytes, size_t len) {
-  hash ^= (uint64_t)len;
-  hash *= 1099511628211ull;
-  for (size_t i = 0; bytes && i < len; i++) {
-    hash ^= (uint64_t)bytes[i];
-    hash *= 1099511628211ull;
+typedef struct {
+  const char *public_name;
+  const ZStdSourceCall *call;
+} ZStdSourceCallIndexEntry;
+
+static ZStdSourceCallIndexEntry std_source_call_index[sizeof(std_source_calls) / sizeof(std_source_calls[0])];
+static bool std_source_call_index_ready = false;
+
+static int std_source_compare_call_index_entries(const void *left, const void *right) {
+  const ZStdSourceCallIndexEntry *a = (const ZStdSourceCallIndexEntry *)left;
+  const ZStdSourceCallIndexEntry *b = (const ZStdSourceCallIndexEntry *)right;
+  return std_source_text_cmp(a->public_name, b->public_name);
+}
+
+static void std_source_ensure_call_index(void) {
+  if (std_source_call_index_ready) return;
+  for (size_t i = 0; i < sizeof(std_source_calls) / sizeof(std_source_calls[0]); i++) {
+    std_source_call_index[i] = (ZStdSourceCallIndexEntry){
+      .public_name = std_source_calls[i].public_name,
+      .call = &std_source_calls[i],
+    };
   }
-  return hash;
+  qsort(std_source_call_index,
+        sizeof(std_source_call_index) / sizeof(std_source_call_index[0]),
+        sizeof(std_source_call_index[0]),
+        std_source_compare_call_index_entries);
+  std_source_call_index_ready = true;
 }
 
 uint64_t z_std_source_graph_fingerprint(void) {
-  static uint64_t cached = 0;
-  if (cached != 0) return cached;
-  uint64_t hash = 1469598103934665603ull;
-  hash = std_source_hash_text(hash, "zero-embedded-stdlib-graph-v1");
-  for (size_t i = 0; i < z_std_source_module_count(); i++) {
-    const ZStdSourceModule *module = z_std_source_module_at(i);
-    hash = std_source_hash_text(hash, module ? module->module : "");
-    hash = std_source_hash_text(hash, module ? module->path : "");
-    hash = std_source_hash_bytes(hash, module ? module->graph_bytes : NULL, module ? module->graph_len : 0);
-  }
-  cached = hash ? hash : 1;
-  return cached;
+  return ZERO_EMBEDDED_STDLIB_GRAPH_FINGERPRINT;
 }
 
 size_t z_std_source_module_count(void) {
@@ -849,26 +864,47 @@ static const char *std_source_basename(const char *path) {
   return slash ? slash + 1 : (path ? path : "");
 }
 
-static bool std_source_stem_eq(const char *left, const char *right) {
-  const char *left_base = std_source_basename(left);
-  const char *right_base = std_source_basename(right);
-  const char *left_dot = strrchr(left_base, '.');
-  const char *right_dot = strrchr(right_base, '.');
-  size_t left_len = left_dot ? (size_t)(left_dot - left_base) : strlen(left_base);
-  size_t right_len = right_dot ? (size_t)(right_dot - right_base) : strlen(right_base);
-  return left_len == right_len && strncmp(left_base, right_base, left_len) == 0;
+static char *std_source_stem_alloc(const char *path) {
+  const char *base = std_source_basename(path);
+  const char *dot = strrchr(base, '.');
+  size_t len = dot ? (size_t)(dot - base) : strlen(base);
+  return z_strndup(base, len);
+}
+
+static ZProgramGraphStringMap std_source_module_path_index;
+static bool std_source_module_path_index_ready;
+
+static void std_source_module_path_index_put(const char *key, size_t index) {
+  if (!key || !key[0]) return;
+  if (!z_program_graph_string_map_find(&std_source_module_path_index, key)) z_program_graph_string_map_put(&std_source_module_path_index, key, index);
+}
+
+static void std_source_ensure_module_path_index(void) {
+  if (std_source_module_path_index_ready) return;
+  z_program_graph_string_map_init(&std_source_module_path_index, z_std_source_module_count() * 3);
+  for (size_t i = 0; i < z_std_source_module_count(); i++) {
+    const ZStdSourceModule *module = z_std_source_module_at(i);
+    if (!module) continue;
+    std_source_module_path_index_put(module->path, i);
+    std_source_module_path_index_put(std_source_basename(module->path), i);
+    char *stem = std_source_stem_alloc(module->path);
+    std_source_module_path_index_put(stem, i);
+    free(stem);
+  }
+  std_source_module_path_index_ready = true;
 }
 
 const ZStdSourceModule *z_std_source_module_for_path(const char *path) {
-  for (size_t i = 0; path && i < sizeof(std_source_modules) / sizeof(std_source_modules[0]); i++) {
-    const ZStdSourceModule *module = &std_source_modules[i];
-    if (std_source_text_eq(module->path, path) ||
-        std_source_text_eq(std_source_basename(module->path), std_source_basename(path)) ||
-        std_source_stem_eq(module->path, path)) {
-      return module;
-    }
+  if (!path || !path[0]) return NULL;
+  std_source_ensure_module_path_index();
+  ZProgramGraphStringMapEntry *entry = z_program_graph_string_map_find(&std_source_module_path_index, path);
+  if (!entry) entry = z_program_graph_string_map_find(&std_source_module_path_index, std_source_basename(path));
+  if (!entry) {
+    char *stem = std_source_stem_alloc(path);
+    entry = z_program_graph_string_map_find(&std_source_module_path_index, stem);
+    free(stem);
   }
-  return NULL;
+  return entry ? z_std_source_module_at(entry->value) : NULL;
 }
 
 bool z_std_source_path_is_module_artifact(const char *path) {
@@ -878,8 +914,19 @@ bool z_std_source_path_is_module_artifact(const char *path) {
 }
 
 static const ZStdSourceCall *std_source_call_for_name(const char *qualified_name) {
-  for (size_t i = 0; i < sizeof(std_source_calls) / sizeof(std_source_calls[0]); i++) {
-    if (std_source_text_eq(std_source_calls[i].public_name, qualified_name)) return &std_source_calls[i];
+  if (!qualified_name || !qualified_name[0]) return NULL;
+  std_source_ensure_call_index();
+  size_t lo = 0;
+  size_t hi = sizeof(std_source_call_index) / sizeof(std_source_call_index[0]);
+  while (lo < hi) {
+    size_t mid = lo + (hi - lo) / 2;
+    int cmp = std_source_text_cmp(std_source_call_index[mid].public_name, qualified_name);
+    if (cmp == 0) return std_source_call_index[mid].call;
+    if (cmp < 0) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
   }
   return NULL;
 }

@@ -118,6 +118,7 @@ const countedResourceTypes = new Set([
   "Net",
   "NullAlloc",
   "PageAlloc",
+  "ProcChild",
   "ProcStatus",
   "RandSource",
   "Vec",
@@ -486,7 +487,7 @@ const sourceModulePaths = new Set(sourceModules.map((module) => module.path));
 const sourceModuleGraphPaths = new Set(sourceModules.map((module) => module.graphPath));
 const sourceCallsByPublicName = new Map(sourceCalls.map((call) => [call.publicName, call]));
 const graphImplementedHelperModules = new Set(sourceCalls.map((call) => call.module));
-const partiallyGraphBackedModules = new Set(["std.args", "std.cli", "std.codec", "std.crypto", "std.env", "std.fmt", "std.fs", "std.http", "std.io", "std.json", "std.math", "std.mem", "std.net", "std.parse", "std.path", "std.proc", "std.rand", "std.search", "std.str", "std.time", "std.toml"]);
+const partiallyGraphBackedModules = new Set(["std.args", "std.cli", "std.codec", "std.crypto", "std.env", "std.fmt", "std.fs", "std.http", "std.io", "std.json", "std.math", "std.mem", "std.net", "std.parse", "std.path", "std.proc", "std.rand", "std.search", "std.str", "std.term", "std.time", "std.toml"]);
 const docsEntries = await readdir(publicModuleDocsDir, { withFileTypes: true });
 const publicModuleDocs = new Set(
   docsEntries

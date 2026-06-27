@@ -1,0 +1,6 @@
+pub fn main(world: World) -> Void raises {
+    let status: ProcStatus = std.proc.spawnInherit("sh -c 'printf inherit-out'")
+    if std.proc.succeeded(status) {
+        check world.out.write(" status-ok\n")
+    }
+}
