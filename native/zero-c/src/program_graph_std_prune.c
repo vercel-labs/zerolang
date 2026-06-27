@@ -35,21 +35,86 @@ static void std_prune_free_edge_fields(ZProgramGraphEdge *edge) {
   *edge = (ZProgramGraphEdge){0};
 }
 
-static const ZStdSourceModule *std_prune_embedded_std_module_for_path(const char *path) {
-  if (!path || !path[0]) return NULL;
-  if (z_std_source_path_is_module_artifact(path)) return z_std_source_module_for_path(path);
-  if (!strchr(path, '/')) return z_std_source_module_for_path(path);
+typedef struct {
+  const char **paths;
+  const ZStdSourceModule **modules;
+  size_t len;
+} StdPruneEmbeddedPaths;
+
+static const ZStdSourceModule *std_prune_declared_std_module(const ZProgramGraphNode *node) {
+  if (!node || node->kind != Z_PROGRAM_GRAPH_NODE_MODULE) return NULL;
+  const ZStdSourceModule *module = z_std_source_module_for_path(node->path);
+  return module && std_prune_text_eq(node->name, module->module) ? module : NULL;
+}
+
+static bool std_prune_embedded_module_present(const StdPruneEmbeddedPaths *embedded, const ZStdSourceModule *module) {
+  for (size_t i = 0; embedded && module && i < embedded->len; i++) {
+    if (embedded->modules[i] == module) return true;
+  }
+  return false;
+}
+
+static bool std_prune_path_has_conflicting_module(const ZProgramGraph *graph, const char *path, const ZStdSourceModule *module) {
+  for (size_t i = 0; graph && path && module && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (node->kind != Z_PROGRAM_GRAPH_NODE_MODULE || !std_prune_text_eq(node->path, path)) continue;
+    if (std_prune_declared_std_module(node) != module) return true;
+  }
+  return false;
+}
+
+static void std_prune_embedded_paths_add(StdPruneEmbeddedPaths *embedded, const char *path, const ZStdSourceModule *module) {
+  if (!embedded || !path || !module) return;
+  for (size_t i = 0; i < embedded->len; i++) {
+    if (std_prune_text_eq(embedded->paths[i], path)) return;
+  }
+  embedded->paths[embedded->len] = path;
+  embedded->modules[embedded->len] = module;
+  embedded->len++;
+}
+
+static void std_prune_collect_embedded_paths(const ZProgramGraph *graph, StdPruneEmbeddedPaths *embedded) {
+  if (!embedded) return;
+  embedded->paths = z_checked_calloc(graph && graph->node_len ? graph->node_len : 1, sizeof(const char *));
+  embedded->modules = z_checked_calloc(graph && graph->node_len ? graph->node_len : 1, sizeof(const ZStdSourceModule *));
+  embedded->len = 0;
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    const ZStdSourceModule *module = std_prune_declared_std_module(node);
+    if (!module) continue;
+    std_prune_embedded_paths_add(embedded, node->path, module);
+  }
+  for (size_t i = 0; graph && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    const ZStdSourceModule *module = z_std_source_module_for_path(node->path);
+    if (!std_prune_embedded_module_present(embedded, module)) continue;
+    if (std_prune_path_has_conflicting_module(graph, node->path, module)) continue;
+    std_prune_embedded_paths_add(embedded, node->path, module);
+  }
+}
+
+static void std_prune_embedded_paths_free(StdPruneEmbeddedPaths *embedded) {
+  if (!embedded) return;
+  free(embedded->paths);
+  free(embedded->modules);
+  *embedded = (StdPruneEmbeddedPaths){0};
+}
+
+static const ZStdSourceModule *std_prune_embedded_std_module_for_path(const StdPruneEmbeddedPaths *embedded, const char *path) {
+  for (size_t i = 0; embedded && path && i < embedded->len; i++) {
+    if (std_prune_text_eq(embedded->paths[i], path)) return embedded->modules[i];
+  }
   return NULL;
 }
 
-static bool std_prune_node_is_embedded_std(const ZProgramGraphNode *node) {
-  return node && std_prune_embedded_std_module_for_path(node->path) != NULL;
+static bool std_prune_node_is_embedded_std(const StdPruneEmbeddedPaths *embedded, const ZProgramGraphNode *node) {
+  return node && std_prune_embedded_std_module_for_path(embedded, node->path) != NULL;
 }
 
-static bool std_prune_node_is_embedded_std_function(const ZProgramGraphNode *node) {
+static bool std_prune_node_is_embedded_std_function(const StdPruneEmbeddedPaths *embedded, const ZProgramGraphNode *node) {
   return node &&
          node->kind == Z_PROGRAM_GRAPH_NODE_FUNCTION &&
-         std_prune_node_is_embedded_std(node);
+         std_prune_node_is_embedded_std(embedded, node);
 }
 
 static const ZProgramGraphNode *std_prune_ordered_node(const ZProgramGraphAdjacency *adjacency, const char *from, const char *kind, size_t order) {
@@ -102,12 +167,12 @@ static char *std_prune_function_key(const char *module, const char *name) {
   return key.data ? key.data : z_strdup("");
 }
 
-static void std_prune_build_function_index(const ZProgramGraph *graph, ZProgramGraphStringMap *index) {
+static void std_prune_build_function_index(const ZProgramGraph *graph, const StdPruneEmbeddedPaths *embedded, ZProgramGraphStringMap *index) {
   z_program_graph_string_map_init(index, graph ? graph->node_len : 0);
   for (size_t i = 0; graph && i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
-    if (!std_prune_node_is_embedded_std_function(node)) continue;
-    const ZStdSourceModule *module = std_prune_embedded_std_module_for_path(node->path);
+    if (!std_prune_node_is_embedded_std_function(embedded, node)) continue;
+    const ZStdSourceModule *module = std_prune_embedded_std_module_for_path(embedded, node->path);
     if (!module) continue;
     char *key = std_prune_function_key(module->module, node->name);
     if (!z_program_graph_string_map_find(index, key)) z_program_graph_string_map_put(index, key, i);
@@ -227,7 +292,9 @@ static void std_prune_remove_marked_nodes(ZProgramGraph *graph, const bool *remo
 void z_program_graph_prune_unreachable_std_source_functions(ZProgramGraph *graph) {
   if (!graph || graph->node_len == 0) return;
   ZProgramGraphAdjacency adjacency; z_program_graph_adjacency_init(&adjacency, graph);
-  ZProgramGraphStringMap function_index; std_prune_build_function_index(graph, &function_index);
+  StdPruneEmbeddedPaths embedded = {0};
+  std_prune_collect_embedded_paths(graph, &embedded);
+  ZProgramGraphStringMap function_index; std_prune_build_function_index(graph, &embedded, &function_index);
   bool *keep = z_checked_calloc(graph->node_len, sizeof(bool)), *queued = z_checked_calloc(graph->node_len, sizeof(bool)), *visited = z_checked_calloc(graph->node_len, sizeof(bool));
   size_t *queue = z_checked_calloc(graph->node_len ? graph->node_len : 1, sizeof(size_t));
   size_t *edge_from = z_checked_calloc(graph->edge_len ? graph->edge_len : 1, sizeof(size_t));
@@ -238,14 +305,14 @@ void z_program_graph_prune_unreachable_std_source_functions(ZProgramGraph *graph
   size_t queue_len = 0;
   for (size_t i = 0; i < graph->node_len; i++) {
     const ZProgramGraphNode *node = &graph->nodes[i];
-    if (node->kind == Z_PROGRAM_GRAPH_NODE_FUNCTION && !std_prune_node_is_embedded_std(node)) {
+    if (node->kind == Z_PROGRAM_GRAPH_NODE_FUNCTION && !std_prune_node_is_embedded_std(&embedded, node)) {
       queued[i] = true;
       queue[queue_len++] = i;
     }
   }
   for (size_t cursor = 0; cursor < queue_len; cursor++) {
     const ZProgramGraphNode *function = &graph->nodes[queue[cursor]];
-    const ZStdSourceModule *current_module = std_prune_embedded_std_module_for_path(function->path);
+    const ZStdSourceModule *current_module = std_prune_embedded_std_module_for_path(&embedded, function->path);
     std_prune_scan_reachable_std_calls(graph, &adjacency, &function_index, current_module, queue[cursor], head, next, edge_to, visited, keep, queued, queue, &queue_len, 0);
   }
   z_program_graph_adjacency_free(&adjacency); z_program_graph_string_map_free(&function_index);
@@ -253,7 +320,7 @@ void z_program_graph_prune_unreachable_std_source_functions(ZProgramGraph *graph
   bool *remove = z_checked_calloc(graph->node_len, sizeof(bool));
   size_t removed_len = 0;
   for (size_t i = 0; i < graph->node_len; i++) {
-    if (std_prune_node_is_embedded_std_function(&graph->nodes[i]) && !keep[i]) {
+    if (std_prune_node_is_embedded_std_function(&embedded, &graph->nodes[i]) && !keep[i]) {
       remove[i] = true;
       removed_len++;
     }
@@ -261,11 +328,12 @@ void z_program_graph_prune_unreachable_std_source_functions(ZProgramGraph *graph
   free(queue); free(queued); free(keep);
   if (removed_len == 0) {
     free(next); free(head); free(edge_to); free(edge_from); free(visited);
+    std_prune_embedded_paths_free(&embedded);
     free(remove);
     return;
   }
 
   std_prune_expand_removed_subgraphs(graph, remove, edge_to, head, next);
   std_prune_remove_marked_nodes(graph, remove, edge_from, edge_to);
-  free(next); free(head); free(edge_to); free(edge_from); free(visited); free(remove);
+  free(next); free(head); free(edge_to); free(edge_from); free(visited); std_prune_embedded_paths_free(&embedded); free(remove);
 }

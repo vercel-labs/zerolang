@@ -2595,6 +2595,30 @@ assert.equal(metaJsonSuccessBody.canonicalSource, false);
 assert.equal(metaJsonSuccessBody.check.lowering, "graph-native-check");
 assert.equal(metaJsonSuccessBody.compileTime.deterministic, true);
 
+const stdModuleBasenameCollisionDir = `${outDir}/std-module-basename-collision`;
+await mkdir(stdModuleBasenameCollisionDir, { recursive: true });
+const stdModuleBasenameCollisionFixture = `${stdModuleBasenameCollisionDir}/term.0`;
+const stdModuleBasenameCollisionGraph = await writeGraphFixture(stdModuleBasenameCollisionFixture, `pub fn main(world: World) -> Void raises {
+    var buffer: [16]u8 = [0_u8; 16]
+    let cursor: Maybe<Span<u8>> = std.term.cursorUp(buffer, 1_usize)
+    if cursor.has {
+        check world.out.write(cursor.value)
+        check world.out.write("local term collision ok\\n")
+    }
+}
+`);
+const stdModuleBasenameCollisionCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", stdModuleBasenameCollisionGraph])).stdout);
+assert.equal(stdModuleBasenameCollisionCheck.ok, true);
+assert(stdModuleBasenameCollisionCheck.graphCompiler.semanticFacts.functions.some((fn) => fn.name === "main"));
+assert(stdModuleBasenameCollisionCheck.graphCompiler.semanticFacts.functions.some((fn) => fn.name === "term_cursor_up"));
+const stdModuleBasenameCollisionInspect = JSON.parse((await execFileAsync(zero, ["inspect", "--json", stdModuleBasenameCollisionGraph])).stdout);
+assert(stdModuleBasenameCollisionInspect.modules.some((module) => module.name === "term"));
+assert(stdModuleBasenameCollisionInspect.modules.some((module) => module.name === "std.term"));
+if (runnableDirectTarget) {
+  const stdModuleBasenameCollisionRun = await execFileAsync(zero, ["run", "--out", `${outDir}/std-module-basename-collision-run`, stdModuleBasenameCollisionGraph]);
+  assert.equal(stdModuleBasenameCollisionRun.stdout, "\x1b[1Alocal term collision ok\n");
+}
+
 const collectionsUsizeMemory = await execFileAsync(zero, ["mem", "--json", "conformance/native/pass/std-collections-usize-memory.0"]);
 const collectionsUsizeMemoryBody = JSON.parse(collectionsUsizeMemory.stdout);
 assert.equal(collectionsUsizeMemoryBody.graph.artifact, "conformance/native/pass/std-collections-usize-memory.graph");

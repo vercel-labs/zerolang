@@ -367,8 +367,37 @@ static bool std_merge_id_in_list(char **ids, size_t len, const char *id) {
   return false;
 }
 
-static bool std_merge_path_matches_module(const char *path, const ZStdSourceModule *module) {
+static bool std_merge_path_matches_module_loose(const char *path, const ZStdSourceModule *module) {
   return module && z_std_source_module_for_path(path) == module;
+}
+
+static const ZStdSourceModule *std_merge_declared_std_module(const ZProgramGraphNode *node) {
+  if (!node || node->kind != Z_PROGRAM_GRAPH_NODE_MODULE) return NULL;
+  const ZStdSourceModule *module = z_std_source_module_for_path(node->path);
+  return module && std_merge_text_eq(node->name, module->module) ? module : NULL;
+}
+
+static bool std_merge_declared_std_module_present(const ZProgramGraph *graph, const ZStdSourceModule *module) {
+  for (size_t i = 0; graph && module && i < graph->node_len; i++) {
+    if (std_merge_declared_std_module(&graph->nodes[i]) == module) return true;
+  }
+  return false;
+}
+
+static bool std_merge_path_has_conflicting_module(const ZProgramGraph *graph, const char *path, const ZStdSourceModule *module) {
+  for (size_t i = 0; graph && path && module && i < graph->node_len; i++) {
+    const ZProgramGraphNode *node = &graph->nodes[i];
+    if (node->kind != Z_PROGRAM_GRAPH_NODE_MODULE || !std_merge_text_eq(node->path, path)) continue;
+    if (std_merge_declared_std_module(node) != module) return true;
+  }
+  return false;
+}
+
+static bool std_merge_path_belongs_to_declared_std_module(const ZProgramGraph *graph, const char *path, const ZStdSourceModule *module) {
+  return module &&
+         z_std_source_module_for_path(path) == module &&
+         std_merge_declared_std_module_present(graph, module) &&
+         !std_merge_path_has_conflicting_module(graph, path, module);
 }
 
 static void std_merge_remove_module_path_nodes(ZProgramGraph *graph, const ZStdSourceModule *module) {
@@ -377,7 +406,7 @@ static void std_merge_remove_module_path_nodes(ZProgramGraph *graph, const ZStdS
   char **removed_ids = z_checked_calloc(graph->node_len, sizeof(char *));
   size_t removed_len = 0;
   for (size_t i = 0; i < graph->node_len; i++) {
-    if (!std_merge_path_matches_module(graph->nodes[i].path, module)) continue;
+    if (!std_merge_path_belongs_to_declared_std_module(graph, graph->nodes[i].path, module)) continue;
     remove[i] = true;
     removed_ids[removed_len++] = std_merge_strdup(graph->nodes[i].id);
   }
@@ -421,7 +450,7 @@ static void std_merge_remove_module_path_nodes(ZProgramGraph *graph, const ZStdS
 static void std_merge_canonicalize_module_root(ZProgramGraph *graph, const ZStdSourceModule *module) {
   for (size_t i = 0; graph && module && i < graph->node_len; i++) {
     ZProgramGraphNode *node = &graph->nodes[i];
-    if (!std_merge_path_matches_module(node->path, module)) continue;
+    if (!std_merge_path_matches_module_loose(node->path, module)) continue;
     std_merge_replace_text(&node->path, module->path);
     if (node->kind == Z_PROGRAM_GRAPH_NODE_MODULE) std_merge_replace_text(&node->name, module->module);
   }
@@ -564,7 +593,7 @@ static size_t std_merge_module_index_for_pointer(const ZStdSourceModule *module)
 
 static void std_merge_mark_initial_std_modules(const ZProgramGraph *graph, bool *present) {
   for (size_t i = 0; graph && present && i < graph->node_len; i++) {
-    size_t module_index = std_merge_module_index_for_pointer(z_std_source_module_for_path(graph->nodes[i].path));
+    size_t module_index = std_merge_module_index_for_pointer(std_merge_declared_std_module(&graph->nodes[i]));
     if (module_index != SIZE_MAX) present[module_index] = true;
   }
 }

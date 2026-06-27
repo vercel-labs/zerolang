@@ -142,8 +142,8 @@ const fileBudgets: Record<string, FileBudget> = {
   "native/zero-c/src/program_graph_std_deps.c": { maxLines: 110, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_std_deps.h": { maxLines: 10, maxStrcmpCalls: 0 },
   // Stdlib merge keeps node/edge membership in hash indexes so merging stays near-linear.
-  "native/zero-c/src/program_graph_std_merge.c": { maxLines: 674, maxStrcmpCalls: 1 },
-  "native/zero-c/src/program_graph_std_prune.c": { maxLines: 280, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_std_merge.c": { maxLines: 703, maxStrcmpCalls: 1 },
+  "native/zero-c/src/program_graph_std_prune.c": { maxLines: 339, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_std_prune.h": { maxLines: 10, maxStrcmpCalls: 0 },
   "native/zero-c/src/program_graph_string_map.c": { maxLines: 75, maxStrcmpCalls: 1 },
   "native/zero-c/src/program_graph_string_map.h": { maxLines: 25, maxStrcmpCalls: 0 },
