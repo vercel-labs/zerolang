@@ -1,4 +1,5 @@
 #include "program_graph_test_caps.h"
+#include "std_sig.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,6 +108,11 @@ static void pgtc_capability_set_for_type(ZProgramGraphCapabilitySummary *caps, c
 
 static void pgtc_capability_set_for_call(ZProgramGraphCapabilitySummary *caps, const char *callee, const ZProgramGraphNode *node) {
   if (!callee) return;
+  const ZStdHelperInfo *helper = z_std_helper_find(callee);
+  if (helper && helper->capability && !pgtc_eq(helper->capability, "none")) {
+    pgtc_capability_set(caps, helper->capability, node);
+    return;
+  }
   if (pgtc_starts(callee, "std.args.")) pgtc_capability_set(caps, "args", node);
   else if (pgtc_starts(callee, "std.env.")) pgtc_capability_set(caps, "env", node);
   else if (pgtc_starts(callee, "std.fs.")) pgtc_capability_set(caps, "fs", node);

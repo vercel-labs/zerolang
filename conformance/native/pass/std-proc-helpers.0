@@ -1,6 +1,9 @@
 pub fn main(world: World) -> Void raises {
-    let code: i32 = std.proc.runCode("zero-noop")
-    if std.proc.runOk("zero-noop") && code == 0 {
+    let spawn_ok: ProcStatus = std.proc.spawn("sh -c true")
+    let spawn_fail: ProcStatus = std.proc.spawn("sh -c false")
+    let ok_code: i32 = std.proc.runCode("sh -c true")
+    let fail_code: i32 = std.proc.runCode("sh -c false")
+    if std.proc.succeeded(spawn_ok) && std.proc.failed(spawn_fail) && std.proc.runOk("sh -c true") && !std.proc.runOk("sh -c false") && ok_code == 0 && fail_code != 0 {
         check world.out.write("std proc helpers ok\n")
     }
 }

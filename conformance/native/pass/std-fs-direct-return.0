@@ -1,0 +1,19 @@
+fn write_direct(path: String) -> Maybe<usize> {
+    return std.fs.writeBytes(path, "direct\n")
+}
+
+fn append_direct(path: String) -> Maybe<usize> {
+    return std.fs.appendBytes(path, "return\n")
+}
+
+pub fn main(world: World) -> Void raises {
+    let fs: Fs = std.fs.host()
+    let path: String = ".zero/conformance/std-fs-direct-return.txt"
+    var read_buf: [32]u8 = [0_u8; 32]
+    let first: Maybe<usize> = write_direct(path)
+    let second: Maybe<usize> = append_direct(path)
+    let text: Maybe<Span<u8>> = std.fs.readFileBytes(fs, path, read_buf)
+    if first.has && first.value == 7_usize && second.has && second.value == 7_usize && text.has && std.mem.eql(text.value, "direct\nreturn\n") {
+        check world.out.write("fs direct return ok\n")
+    }
+}

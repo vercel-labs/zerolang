@@ -34,7 +34,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.parse`: byte scanners plus decimal, radix, prefix integer width, bool, duration, and byte-size parsers returning `Maybe<T>`.
 - `std.regex`: compile-once and one-shot regular expression matching/search/split/replace for a documented ECMA-262-leaning subset (literals, classes, anchors, word boundaries, greedy quantifiers, alternation, groups); unsupported constructs fail with structured status codes and offsets.
 - `std.inet`: target-neutral IPv4/IPv6/hostname literal validation and parsing; no network capability needed.
-- `std.time`: duration construction, conversion, comparison, elapsed-window helpers, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
+- `std.time`: duration construction, conversion, comparison, elapsed-window helpers, hosted sleep, RFC 3339 date/time validation and epoch parsing, and target-gated clock helpers.
 - `std.rand`: explicit deterministic random sources, random bits, unbiased bounded/range helpers, target entropy helpers, and caller-buffer entropy IDs.
 - `std.crypto`: small hashes, SHA-256 digest writers, fixed-width hash text, byte-oriented crypto helpers, and caller-buffer IDs.
 - `std.json`: explicit-buffer JSON validation, structured status/location diagnostics, object/array cursor lookup, typed scalar decode, parsing, and string/object writing helpers.
@@ -43,6 +43,7 @@ Call functions with their module path, such as `std.mem.len(value)`.
 - `std.str`: byte-span string helpers, including non-overlapping reverse, copy/concat/repeat/replace, prefix/suffix, split, fields, lines, trim, and word counts.
 - `std.io`: buffered reader/writer surfaces, cursor writes, line scanning, and byte copy over caller-owned storage.
 - `std.testing`: Bool-returning helpers for test blocks and byte-output checks.
+- `std.term`: ANSI terminal style, cursor, clear, alternate-screen sequence helpers, target-neutral key-byte decoding, and hosted TTY/size/raw-mode/input helpers.
 - `std.log`: explicit-buffer JSON Lines record formatting.
 
 Prefer `Maybe<T>` return checks over assuming an operation succeeded.
@@ -58,6 +59,7 @@ These modules depend on host or runtime capabilities:
 - `std.net`: bootstrap network handles
 - `std.http`: HTTP request/response helpers and loopback listeners
 - `std.proc`: process execution and exit-status helpers
+- `std.pty`: hosted pseudoterminal child processes
 - `World.out` and `World.err`: program output capabilities
 
 Non-host targets may reject these APIs with target diagnostics. Inspect target facts before cross-building:
@@ -399,6 +401,11 @@ commandIn3(arg0: Span<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Bo
 formatUsage(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 formatCommand(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
 formatOption(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) -> Maybe<Span<u8>>
+formatSection(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
+formatHelpRow(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
+formatHelpRowCustom(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: usize, arg4: usize) -> Maybe<Span<u8>>
+formatHelpRowWithWidth(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: usize) -> Maybe<Span<u8>>
+formatHelp(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 formatError(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 formatUnknownCommand(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
 formatMissingOperand(arg0: MutSpan<u8>, arg1: Span<u8>) -> Maybe<Span<u8>>
@@ -678,18 +685,21 @@ exists(arg0: String) -> Bool
 readBytes(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
 readBytesAt(arg0: String, arg1: usize, arg2: MutSpan<u8>) -> Maybe<usize>
 writeBytes(arg0: String, arg1: Span<u8>) -> Maybe<usize>
+appendBytes(arg0: String, arg1: Span<u8>) -> Maybe<usize>
 isDir(arg0: String) -> Bool
 makeDir(arg0: String) -> Bool
 removeDir(arg0: String) -> Bool
 remove(arg0: String) -> Bool
 rename(arg0: String, arg1: String) -> Bool
 dirEntryCount(arg0: String) -> Maybe<usize>
+dirEntryName(arg0: MutSpan<u8>, arg1: String, arg2: usize) -> Maybe<Span<u8>>
 tempName(arg0: MutSpan<u8>, arg1: String) -> Maybe<String>
 atomicWrite(arg0: String, arg1: String, arg2: Span<u8>) -> Bool
 fileLen(arg0: mutref<File>) -> Maybe<usize>
 close(arg0: mutref<File>) -> Void
 readFile(arg0: Fs, arg1: String, arg2: MutSpan<u8>) -> Maybe<usize>
 writeFile(arg0: Fs, arg1: String, arg2: Span<u8>) -> Bool
+appendFile(arg0: Fs, arg1: String, arg2: Span<u8>) -> Bool
 readFileBytes(arg0: Fs, arg1: String, arg2: MutSpan<u8>) -> Maybe<Span<u8>>
 readFileEquals(arg0: Fs, arg1: String, arg2: MutSpan<u8>, arg3: Span<u8>) -> Bool
 copyFile(arg0: String, arg1: String, arg2: MutSpan<u8>) -> Bool
@@ -1041,6 +1051,110 @@ messageField(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>, arg3: Span<u8>) 
 redacted(arg0: MutSpan<u8>, arg1: Span<u8>, arg2: Span<u8>) -> Maybe<Span<u8>>
 ```
 
+### std.term
+
+```text
+reset() -> String
+bold() -> String
+dim() -> String
+underline() -> String
+inverse() -> String
+fgDefault() -> String
+fgBlack() -> String
+fgRed() -> String
+fgGreen() -> String
+fgYellow() -> String
+fgBlue() -> String
+fgMagenta() -> String
+fgCyan() -> String
+fgWhite() -> String
+bgDefault() -> String
+bgBlack() -> String
+bgRed() -> String
+bgGreen() -> String
+bgYellow() -> String
+bgBlue() -> String
+bgMagenta() -> String
+bgCyan() -> String
+bgWhite() -> String
+clearScreen() -> String
+clearScreenDown() -> String
+clearScreenUp() -> String
+clearLine() -> String
+clearLineRight() -> String
+clearLineLeft() -> String
+cursorHome() -> String
+cursorTo(arg0: MutSpan<u8>, arg1: usize, arg2: usize) -> Maybe<Span<u8>>
+cursorUp(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+cursorDown(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+cursorRight(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+cursorLeft(arg0: MutSpan<u8>, arg1: usize) -> Maybe<Span<u8>>
+saveCursor() -> String
+restoreCursor() -> String
+hideCursor() -> String
+showCursor() -> String
+enterAltScreen() -> String
+leaveAltScreen() -> String
+enterBracketedPaste() -> String
+leaveBracketedPaste() -> String
+enterMouseCapture() -> String
+leaveMouseCapture() -> String
+keyNone() -> u32
+keyEscape() -> u32
+keyEnter() -> u32
+keyTab() -> u32
+keyBackspace() -> u32
+keyCtrlA() -> u32
+keyCtrlC() -> u32
+keyCtrlD() -> u32
+keyCtrlE() -> u32
+keyCtrlK() -> u32
+keyCtrlL() -> u32
+keyCtrlN() -> u32
+keyCtrlP() -> u32
+keyCtrlR() -> u32
+keyCtrlU() -> u32
+keyCtrlW() -> u32
+keyArrowUp() -> u32
+keyArrowDown() -> u32
+keyArrowRight() -> u32
+keyArrowLeft() -> u32
+keyDelete() -> u32
+keyHome() -> u32
+keyEnd() -> u32
+keyPageUp() -> u32
+keyPageDown() -> u32
+keyInsert() -> u32
+keyShiftTab() -> u32
+keyF1() -> u32
+keyF2() -> u32
+keyF3() -> u32
+keyF4() -> u32
+keyF5() -> u32
+keyF6() -> u32
+keyF7() -> u32
+keyF8() -> u32
+keyF9() -> u32
+keyF10() -> u32
+keyF11() -> u32
+keyF12() -> u32
+keyPasteStart() -> u32
+keyPasteEnd() -> u32
+keyCode(arg0: Span<u8>) -> u32
+keyByteLen(arg0: Span<u8>) -> usize
+stdinIsTty() -> Bool
+stdoutIsTty() -> Bool
+widthOr(arg0: usize) -> usize
+heightOr(arg0: usize) -> usize
+enterRawMode() -> Bool
+leaveRawMode() -> Bool
+readInput(arg0: MutSpan<u8>) -> Maybe<usize>
+```
+
+`std.term.readInput(buffer)` fills the caller buffer with currently available
+stdin bytes without blocking. It returns `null` when no bytes are available, the
+buffer is empty, or the hosted input source cannot be read.
+
 ### std.math
 
 ```text
@@ -1231,12 +1345,68 @@ relative(arg0: MutSpan<u8>, arg1: String, arg2: String) -> Maybe<String>
 
 ```text
 spawn(arg0: String) -> ProcStatus
+spawnInherit(arg0: String) -> ProcStatus
+spawnInheritArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: Span<u8>) -> ProcStatus
 exitCode(arg0: ProcStatus) -> i32
 succeeded(arg0: ProcStatus) -> Bool
 failed(arg0: ProcStatus) -> Bool
 runOk(arg0: String) -> Bool
 runCode(arg0: String) -> i32
+capture(arg0: String, arg1: MutSpan<u8>) -> Maybe<usize>
+captureArgs(arg0: String, arg1: Span<u8>, arg2: MutSpan<u8>) -> Maybe<usize>
+captureFiles(arg0: String, arg1: String, arg2: String) -> ProcStatus
+captureFilesArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: String) -> ProcStatus
+spawnChild(arg0: String) -> ProcChild
+spawnChildIn(arg0: String, arg1: String) -> ProcChild
+spawnChildInEnv(arg0: String, arg1: String, arg2: Span<u8>) -> ProcChild
+spawnChildArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: Span<u8>) -> ProcChild
+childValid(arg0: ProcChild) -> Bool
+running(arg0: ProcChild) -> Bool
+wait(arg0: ProcChild) -> ProcStatus
+kill(arg0: ProcChild) -> Bool
+interrupt(arg0: ProcChild) -> Bool
+close(arg0: ProcChild) -> Bool
+closeStdin(arg0: ProcChild) -> Bool
+pid(arg0: ProcChild) -> i32
+pidRunning(arg0: i32) -> Bool
+killPid(arg0: i32) -> Bool
+interruptPid(arg0: i32) -> Bool
+killGroupPid(arg0: i32) -> Bool
+interruptGroupPid(arg0: i32) -> Bool
+readStdout(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
+readStderr(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
+writeStdin(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>
 ```
+
+### std.pty
+
+```text
+spawn(arg0: String) -> ProcChild
+spawnIn(arg0: String, arg1: String) -> ProcChild
+spawnInEnv(arg0: String, arg1: String, arg2: Span<u8>) -> ProcChild
+spawnArgs(arg0: String, arg1: Span<u8>, arg2: String, arg3: Span<u8>) -> ProcChild
+valid(arg0: ProcChild) -> Bool
+childValid(arg0: ProcChild) -> Bool
+running(arg0: ProcChild) -> Bool
+wait(arg0: ProcChild) -> ProcStatus
+kill(arg0: ProcChild) -> Bool
+interrupt(arg0: ProcChild) -> Bool
+close(arg0: ProcChild) -> Bool
+pid(arg0: ProcChild) -> i32
+read(arg0: ProcChild, arg1: MutSpan<u8>) -> Maybe<usize>
+write(arg0: ProcChild, arg1: Span<u8>) -> Maybe<usize>
+resize(arg0: ProcChild, arg1: usize, arg2: usize) -> Bool
+```
+
+`std.pty` starts hosted children attached to a pseudoterminal instead of
+separate stdin/stdout/stderr pipes. It returns the same `ProcChild` handle shape
+as `std.proc`, so `running`, `wait`, `interrupt`, `kill`, `close`, and `pid`
+have the same lifecycle meaning. `read` and `write` are nonblocking; `read`
+returns `null` when no bytes are currently available or the terminal has closed.
+For short-lived PTY children, drain output with `read` before `wait`; once the
+child exits, host PTYs may report the terminal as closed.
+Use PTY children for interactive programs that need terminal behavior such as
+line editing, prompts, color, cursor control, or terminal-size awareness.
 
 ### std.rand
 
@@ -1501,6 +1671,7 @@ hasElapsed(arg0: Duration, arg1: Duration, arg2: Duration) -> Bool
 deadlineAfter(arg0: Duration, arg1: Duration) -> Duration
 remainingUntil(arg0: Duration, arg1: Duration) -> Duration
 deadlineExpired(arg0: Duration, arg1: Duration) -> Bool
+sleep(arg0: Duration) -> Bool
 isRfc3339Date(text: Span<u8>) -> Bool
 isRfc3339Time(text: Span<u8>) -> Bool
 isRfc3339DateTime(text: Span<u8>) -> Bool
@@ -1525,8 +1696,8 @@ typed `Duration` needs a compact textual value in caller-owned storage.
 Use `deadlineAfter`, `remainingUntil`, and `deadlineExpired` to model request
 budgets against monotonic `Duration` instants without observing the clock inside
 the helper.
-`std.time` does not expose public sleep, timer, or fake-clock handles in the
-current surface.
+`std.time.sleep` is hosted and returns `false` on host failure. Timer and
+fake-clock handles are not exposed in the current surface.
 
 ### std.unicode
 
@@ -1759,7 +1930,7 @@ Hosted file APIs can use explicit handles:
 pub fn main(world: World) -> Void raises {
     let fs: Fs = std.fs.host()
     var read_buf: [32]u8 = [0_u8; 32]
-    if std.fs.writeFile(fs, ".zero/out/log.txt", "hello\n") && std.fs.readFileEquals(fs, ".zero/out/log.txt", read_buf, "hello\n") {
+    if std.fs.writeFile(fs, ".zero/out/log.txt", "hello\n") && std.fs.appendFile(fs, ".zero/out/log.txt", "again\n") && std.fs.readFileEquals(fs, ".zero/out/log.txt", read_buf, "hello\nagain\n") {
         check world.out.write("wrote\n")
     }
 }

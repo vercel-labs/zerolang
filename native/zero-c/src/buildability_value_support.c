@@ -55,6 +55,7 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
     case IR_VALUE_FMT_U32:
     case IR_VALUE_FMT_USIZE:
     case IR_VALUE_TIME_RUNTIME:
+    case IR_VALUE_TERM_RUNTIME:
     case IR_VALUE_MATH_RUNTIME:
     case IR_VALUE_SEARCH_RUNTIME:
     case IR_VALUE_SORT_RUNTIME:
@@ -69,6 +70,13 @@ static bool build_value_supported_aarch64(ZDirectBackend backend, IrValueKind ki
     case IR_VALUE_JSON_WRITE_RUNTIME:
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME:
     case IR_VALUE_HTTP_REQUEST_PATH:
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+    case IR_VALUE_PROC_CAPTURE:
+    case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN:
+    case IR_VALUE_PROC_CHILD_OP:
+    case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_PTY_RESIZE:
       return build_backend_supports_aarch64_hosted_runtime(backend);
     default:
       return false;
@@ -89,10 +97,17 @@ static bool build_value_supported_macho_x64(IrValueKind kind) {
     case IR_VALUE_ASCII_RUNTIME: case IR_VALUE_TEXT_RUNTIME: case IR_VALUE_PARSE_RUNTIME:
     case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32:
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
-    case IR_VALUE_STR_RUNTIME: case IR_VALUE_TIME_RUNTIME: case IR_VALUE_MATH_RUNTIME:
+    case IR_VALUE_STR_RUNTIME: case IR_VALUE_TIME_RUNTIME: case IR_VALUE_TERM_RUNTIME: case IR_VALUE_MATH_RUNTIME:
     case IR_VALUE_SEARCH_RUNTIME: case IR_VALUE_SORT_RUNTIME:
     case IR_VALUE_JSON_PARSE_BYTES: case IR_VALUE_JSON_VALIDATE_BYTES: case IR_VALUE_JSON_STREAM_TOKENS_BYTES: case IR_VALUE_JSON_DIAGNOSTIC_BYTES: case IR_VALUE_JSON_FIELD: case IR_VALUE_JSON_LOOKUP_SCALAR: case IR_VALUE_JSON_STRING_DECODE: case IR_VALUE_JSON_STRING_FIELD: case IR_VALUE_JSON_WRITE_STRING: case IR_VALUE_JSON_WRITE_RUNTIME:
     case IR_VALUE_HTTP_REQUEST_METHOD_NAME: case IR_VALUE_HTTP_REQUEST_PATH:
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+    case IR_VALUE_PROC_CAPTURE:
+    case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN:
+    case IR_VALUE_PROC_CHILD_OP:
+    case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_PTY_RESIZE:
       return true;
     default:
       return false;
@@ -131,8 +146,9 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_ENV_GET:
       return build_backend_is_native_graph_runtime(ctx->backend) && local_set_value;
     case IR_VALUE_TIME_WALL_SECONDS: case IR_VALUE_TIME_MONOTONIC: case IR_VALUE_TIME_AS_MS:
-    case IR_VALUE_RAND_ENTROPY_U32:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64;
+    case IR_VALUE_RAND_ENTROPY_U32:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
     case IR_VALUE_RAND_NEXT_U32:
       return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_RAND_NEXT_BELOW:
@@ -140,15 +156,22 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
       return build_backend_has_byte_runtime(ctx->backend);
     case IR_VALUE_FS_HOST:
       return build_backend_is_native_graph_runtime(ctx->backend);
-    case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH:
+    case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: case IR_VALUE_FS_APPEND_BYTES_PATH:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
+    case IR_VALUE_FS_EXISTS: case IR_VALUE_FS_REMOVE: case IR_VALUE_FS_RENAME: case IR_VALUE_FS_ATOMIC_WRITE:
+    case IR_VALUE_FS_MAKE_DIR: case IR_VALUE_FS_REMOVE_DIR: case IR_VALUE_FS_IS_DIR:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
     case IR_VALUE_FS_OPEN: case IR_VALUE_FS_CREATE: case IR_VALUE_FS_READ_PATH:
-    case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_WRITE_PATH:
     case IR_VALUE_FS_READ_ALL: case IR_VALUE_FS_READ_FILE: case IR_VALUE_FS_WRITE_ALL_FILE:
-    case IR_VALUE_FS_CLOSE_FILE: case IR_VALUE_FS_EXISTS: case IR_VALUE_FS_REMOVE: case IR_VALUE_FS_RENAME:
-    case IR_VALUE_FS_FILE_LEN: case IR_VALUE_FS_MAKE_DIR: case IR_VALUE_FS_REMOVE_DIR: case IR_VALUE_FS_IS_DIR:
-    case IR_VALUE_FS_DIR_ENTRY_COUNT: case IR_VALUE_FS_TEMP_NAME: case IR_VALUE_FS_ATOMIC_WRITE:
+    case IR_VALUE_FS_CLOSE_FILE:
+    case IR_VALUE_FS_FILE_LEN:
+    case IR_VALUE_FS_TEMP_NAME:
       return ctx->backend == Z_DIRECT_BACKEND_ELF64;
+    case IR_VALUE_FS_DIR_ENTRY_COUNT:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      return ctx->backend == Z_DIRECT_BACKEND_ELF64 || ctx->backend == Z_DIRECT_BACKEND_MACHO64;
     case IR_VALUE_CRC32_BYTES:
       return build_backend_has_byte_runtime(ctx->backend) || z_build_backend_is_aarch64_direct(ctx->backend);
     case IR_VALUE_BYTE_COPY: case IR_VALUE_BYTE_FILL:
@@ -168,8 +191,17 @@ static bool build_value_supported_generic(const ZBuildability *ctx, const IrValu
     case IR_VALUE_FMT_I32:
     case IR_VALUE_FMT_U32:
     case IR_VALUE_FMT_USIZE:
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+    case IR_VALUE_PROC_CAPTURE:
+    case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN:
+    case IR_VALUE_PROC_CHILD_OP:
+    case IR_VALUE_PROC_CHILD_IO:
+    case IR_VALUE_PROC_PTY_RESIZE:
       return build_backend_supports_hosted_runtime(ctx);
     case IR_VALUE_TIME_RUNTIME:
+      return build_backend_supports_hosted_runtime(ctx);
+    case IR_VALUE_TERM_RUNTIME:
       return build_backend_supports_hosted_runtime(ctx);
     case IR_VALUE_MATH_RUNTIME:
       return build_backend_supports_hosted_runtime(ctx);

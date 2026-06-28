@@ -1,0 +1,8 @@
+fn writeLine(world: World, text: Span<u8>) -> Void raises {
+    check world.out.write(text)
+    check world.out.write("\n")
+}
+
+pub fn main(world: World) -> Void raises {
+    check writeLine(world, "world helper ok")
+}

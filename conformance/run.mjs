@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { access, chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createAggregateAssert, describeFailure, finishAggregateAssert } from "../scripts/aggregate-assert.mjs";
 
@@ -547,6 +547,36 @@ function hasAarch64Instruction(bytes, expected) {
   return false;
 }
 
+function countAarch64InstructionSequence(bytes, expected) {
+  let count = 0;
+  for (let offset = 0; offset + expected.length * 4 <= bytes.length; offset++) {
+    let matched = true;
+    for (let index = 0; index < expected.length; index++) {
+      if (bytes.readUInt32LE(offset + index * 4) !== expected[index]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) count++;
+  }
+  return count;
+}
+
+function aarch64SpLoad(reg, offset, wide) {
+  const scale = wide ? 8 : 4;
+  assert.equal(offset % scale, 0);
+  return ((wide ? 0xf9400000 : 0xb9400000) + ((offset / scale) << 10) + (31 << 5) + reg) >>> 0;
+}
+
+function aarch64ByteViewReloadSequence(count) {
+  const sequence = [];
+  for (let index = 0; index < count; index++) {
+    sequence.push(aarch64SpLoad(index * 2, index * 16, true));
+    sequence.push(aarch64SpLoad(index * 2 + 1, index * 16 + 8, false));
+  }
+  return sequence;
+}
+
 function hasAarch64CondBranch(bytes, cond) {
   for (let offset = 0; offset + 4 <= bytes.length; offset++) {
     const instruction = bytes.readUInt32LE(offset);
@@ -733,6 +763,7 @@ const passCheckFixtures = [
   "conformance/native/pass/std-fs-polish.0",
   "conformance/native/pass/std-fs-breadth.0",
   "conformance/native/pass/std-fs-file-helpers.0",
+  "conformance/native/pass/std-pty-child.0",
   "conformance/native/pass/std-math-breadth.0",
   "conformance/native/pass/std-numeric-random-time.0",
   "conformance/native/pass/std-regex.0",
@@ -743,6 +774,7 @@ const passCheckFixtures = [
   "conformance/native/pass/std-path-io-breadth.0",
   "conformance/native/pass/std-str-breadth.0",
   "conformance/native/pass/std-testing-log.0",
+  "conformance/native/pass/std-term-ansi.0",
   "conformance/native/pass/std-testing-helpers-test.0",
   "conformance/native/pass/std-path-helper-name-collision.0",
   "conformance/native/pass/std-net-http-breadth.0",
@@ -2005,6 +2037,53 @@ assert.equal(directCallArm64ObjBuildBody.generatedCBytes, 0);
 assert.equal(directCallArm64ObjBuildBody.objectBackend.objectEmission.path, "direct-elf-aarch64-object");
 await assertElfAarch64Object(`${outDir}/direct-call-add-arm64.o`, "main");
 
+const arm64ProcDynamicViewsSource = `${outDir}/aarch64-proc-dynamic-byte-view-spawn.0`;
+const arm64ProcDynamicViewsObj = `${outDir}/aarch64-proc-dynamic-byte-view-spawn.o`;
+await writeGraphFixture(arm64ProcDynamicViewsSource, `fn programName() -> String {
+    return "sh"
+}
+
+fn childArgs() -> Span<u8> {
+    return std.mem.span("-c\\ntrue")
+}
+
+fn cwdName() -> String {
+    return "."
+}
+
+fn envBlock() -> Span<u8> {
+    return std.mem.span("ZERO_AARCH64_PROC=1")
+}
+
+fn childCommand() -> String {
+    return "sh -c true"
+}
+
+export c fn main() -> i32 {
+    let status: ProcStatus = std.proc.spawnInheritArgs(programName(), childArgs(), cwdName(), envBlock())
+    let child: ProcChild = std.proc.spawnChildArgs(programName(), childArgs(), cwdName(), envBlock())
+    let child_env: ProcChild = std.proc.spawnChildInEnv(childCommand(), cwdName(), envBlock())
+    let pty_child: ProcChild = std.pty.spawnArgs(programName(), childArgs(), cwdName(), envBlock())
+    return std.proc.exitCode(status) + std.proc.pid(child) + std.proc.pid(child_env) + std.proc.pid(pty_child)
+}
+`);
+const arm64ProcDynamicViewsBuild = await execFileAsync(zero, [
+  "build",
+  "--json",
+  "--emit",
+  "obj",
+  "--target",
+  "linux-arm64",
+  arm64ProcDynamicViewsSource,
+  "--out",
+  arm64ProcDynamicViewsObj,
+]);
+const arm64ProcDynamicViewsBuildBody = JSON.parse(arm64ProcDynamicViewsBuild.stdout);
+assert.equal(arm64ProcDynamicViewsBuildBody.compiler, "zero-elf-aarch64");
+assert.equal(arm64ProcDynamicViewsBuildBody.objectBackend.objectEmission.path, "direct-elf-aarch64-object");
+const arm64ProcDynamicViewsBytes = await assertElfAarch64Object(arm64ProcDynamicViewsObj, "main");
+assert(countAarch64InstructionSequence(arm64ProcDynamicViewsBytes, aarch64ByteViewReloadSequence(4)) >= 3);
+
 let arm64NestedIndexExpr = "values[idx]";
 for (let i = 0; i < 32; i++) arm64NestedIndexExpr = `(0_u32 + ${arm64NestedIndexExpr})`;
 const arm64NestedIndexFixture = `${outDir}/aarch64-nested-index-scratch-blocked.0`;
@@ -2515,6 +2594,30 @@ assert.equal(metaJsonSuccessBody.artifact, "conformance/native/pass/meta-typed-t
 assert.equal(metaJsonSuccessBody.canonicalSource, false);
 assert.equal(metaJsonSuccessBody.check.lowering, "graph-native-check");
 assert.equal(metaJsonSuccessBody.compileTime.deterministic, true);
+
+const stdModuleBasenameCollisionDir = `${outDir}/std-module-basename-collision`;
+await mkdir(stdModuleBasenameCollisionDir, { recursive: true });
+const stdModuleBasenameCollisionFixture = `${stdModuleBasenameCollisionDir}/term.0`;
+const stdModuleBasenameCollisionGraph = await writeGraphFixture(stdModuleBasenameCollisionFixture, `pub fn main(world: World) -> Void raises {
+    var buffer: [16]u8 = [0_u8; 16]
+    let cursor: Maybe<Span<u8>> = std.term.cursorUp(buffer, 1_usize)
+    if cursor.has {
+        check world.out.write(cursor.value)
+        check world.out.write("local term collision ok\\n")
+    }
+}
+`);
+const stdModuleBasenameCollisionCheck = JSON.parse((await execFileAsync(zero, ["check", "--json", stdModuleBasenameCollisionGraph])).stdout);
+assert.equal(stdModuleBasenameCollisionCheck.ok, true);
+assert(stdModuleBasenameCollisionCheck.graphCompiler.semanticFacts.functions.some((fn) => fn.name === "main"));
+assert(stdModuleBasenameCollisionCheck.graphCompiler.semanticFacts.functions.some((fn) => fn.name === "term_cursor_up"));
+const stdModuleBasenameCollisionInspect = JSON.parse((await execFileAsync(zero, ["inspect", "--json", stdModuleBasenameCollisionGraph])).stdout);
+assert(stdModuleBasenameCollisionInspect.modules.some((module) => module.name === "term"));
+assert(stdModuleBasenameCollisionInspect.modules.some((module) => module.name === "std.term"));
+if (runnableDirectTarget) {
+  const stdModuleBasenameCollisionRun = await execFileAsync(zero, ["run", "--out", `${outDir}/std-module-basename-collision-run`, stdModuleBasenameCollisionGraph]);
+  assert.equal(stdModuleBasenameCollisionRun.stdout, "\x1b[1Alocal term collision ok\n");
+}
 
 const collectionsUsizeMemory = await execFileAsync(zero, ["mem", "--json", "conformance/native/pass/std-collections-usize-memory.0"]);
 const collectionsUsizeMemoryBody = JSON.parse(collectionsUsizeMemory.stdout);
@@ -3400,7 +3503,8 @@ await writeFile(`${programGraphSourceFreePackage}/zero.graph`, programGraphSourc
 const programGraphSourceFreeCheckJson = JSON.parse((await execFileAsync(zero, ["check", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeSizeJson = JSON.parse((await execFileAsync(zero, ["size", "--json", "--target", "linux-musl-x64", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeBuildJson = JSON.parse((await execFileAsync(zero, ["build", "--json", "--target", "linux-musl-x64", "--out", programGraphSourceFreeBuildPath, programGraphSourceFreePackage])).stdout);
-const programGraphSourceFreeMappedMirCacheFiles = (await readdir(`${programGraphSourceFreePackage}/.zero/cache/native`)).filter((name) => name.startsWith("mir-") && name.endsWith(".zmir"));
+const programGraphSourceFreeMappedMirCache = programGraphSourceFreeBuildJson.graphBuild?.mappedFinalMir;
+const programGraphSourceFreeMappedMirCachePath = programGraphSourceFreeMappedMirCache?.path ?? "";
 const programGraphSourceFreeRun = await execFileAsync(zero, ["run", "--out", programGraphSourceFreeRunPath, programGraphSourceFreePackage]);
 const programGraphSourceFreeTestJson = JSON.parse((await execFileAsync(zero, ["test", "--json", programGraphSourceFreePackage])).stdout);
 const programGraphSourceFreeMemJson = JSON.parse((await execFileAsync(zero, ["mem", "--json", programGraphSourceFreePackage])).stdout);
@@ -3937,7 +4041,8 @@ assertProgramGraphCompilerInput(programGraphSourceFreeSizeJson, `${programGraphS
 assert.equal(programGraphSourceFreeBuildJson.sourceFile, `${programGraphSourceFreePackage}/zero.graph`);
 assertSourceGraph(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "mapped-final-mir", false, "missing");
 assertProgramGraphCompilerInput(programGraphSourceFreeBuildJson, `${programGraphSourceFreePackage}/zero.graph`);
-assert(programGraphSourceFreeMappedMirCacheFiles.some((path) => path.endsWith(".zmir")), "repository graph build should write a mapped MIR cache");
+assert(programGraphSourceFreeMappedMirCachePath.endsWith(".zmir"), "repository graph build should report a mapped MIR cache path");
+assert.equal(existsSync(programGraphSourceFreeMappedMirCachePath), true, "repository graph build should write a mapped MIR cache");
 assert.equal(programGraphSourceFreeRun.stdout, "hello from zero\n");
 assert.equal(programGraphSourceFreeTestJson.ok, true);
 assertSourceGraph(programGraphSourceFreeTestJson, `${programGraphSourceFreePackage}/zero.graph`, "package:program-graph-fixture@0.1.0", "direct-program-graph", false, "missing");
@@ -4848,6 +4953,20 @@ assert.equal(zeroTestJsonBody.testDiscovery.filter, "addition");
 assert.equal(zeroTestJsonBody.fixtures.snapshotKey, "zero-test-graph-native-v1");
 assert.equal(zeroTestJsonBody.results[0].status, "passed");
 
+const zeroPtyTargetCapTest = await execFileAsync(zero, ["test", "--json", "--filter", "pty target", "--target", "linux-arm64", "conformance/check/pass/test-target-proc-caps.graph"]).catch((error) => error);
+assert.notEqual(zeroPtyTargetCapTest.code, 0);
+const zeroPtyTargetCapBody = JSON.parse(zeroPtyTargetCapTest.stdout);
+assert.equal(zeroPtyTargetCapBody.ok, false);
+assert.equal(zeroPtyTargetCapBody.diagnostics[0].code, "PAR100");
+assert.match(zeroPtyTargetCapBody.diagnostics[0].actual, /lacks proc/);
+
+const zeroTermTargetCapTest = await execFileAsync(zero, ["test", "--json", "--filter", "term target", "--target", "linux-arm64", "conformance/check/pass/test-target-proc-caps.graph"]).catch((error) => error);
+assert.notEqual(zeroTermTargetCapTest.code, 0);
+const zeroTermTargetCapBody = JSON.parse(zeroTermTargetCapTest.stdout);
+assert.equal(zeroTermTargetCapBody.ok, false);
+assert.equal(zeroTermTargetCapBody.diagnostics[0].code, "PAR100");
+assert.match(zeroTermTargetCapBody.diagnostics[0].actual, /lacks proc/);
+
 const zeroPackageTestJsonRun = await execFileAsync(zero, ["test", "--json", "conformance/packages/test-app"]);
 const zeroPackageTestBody = JSON.parse(zeroPackageTestJsonRun.stdout);
 assert.equal(zeroPackageTestBody.ok, true);
@@ -4935,8 +5054,18 @@ for (const runtimeFixture of [
   ["conformance/native/pass/std-args.0", "std-args", { stdout: "alpha\n", args: ["alpha", "beta"] }],
   ["conformance/native/pass/std-env.0", "std-env", { stdout: "env ok\n", env: { ZERO_CONFORMANCE_ENV: "agent-env", ZERO_CONFORMANCE_ENV_DELTA: "-3", ZERO_CONFORMANCE_ENV_WORKERS: "5" } }],
   ["conformance/native/pass/std-hosted-cli.0", "std-hosted-cli", { stdout: "std hosted cli ok\n", args: ["run", "7", "--json", "--name", "agent", "--count", "3", "--enabled", "false", "--delta", "-5", "--size", "9"], env: { ZERO_CONFORMANCE_MODE: "test", ZERO_CONFORMANCE_VERBOSE: "true", ZERO_CONFORMANCE_LIMIT: "9" } }],
+  ["conformance/native/pass/std-proc-helpers.0", "std-proc-helpers", { stdout: "std proc helpers ok\n" }],
+  ["conformance/native/pass/std-proc-capture.0", "std-proc-capture", { stdout: "std proc capture ok\n" }],
+  ["conformance/native/pass/std-proc-capture-files.0", "std-proc-capture-files", { stdout: "std proc capture files ok\n" }],
+  ["conformance/native/pass/std-proc-child.0", "std-proc-child", { stdout: "std proc child ok\n" }],
+  ["conformance/native/pass/std-pty-child.0", "std-pty-child", { stdout: "std pty child ok\n" }],
+  ["conformance/native/pass/std-proc-child-cwd.0", "std-proc-child-cwd", { stdout: "std proc child cwd ok\n" }],
+  ["conformance/native/pass/std-proc-spawn-inherit.0", "std-proc-spawn-inherit", { stdout: "inherit-out status-ok\n" }],
   ["conformance/native/pass/std-fs.0", "std-fs", { stdout: "fs ok\n", file: { name: "std-fs-write.txt", text: "zero write\n" } }],
   ["conformance/native/pass/std-fs-bytes.0", "std-fs-bytes", { stdout: "fs bytes ok\n", stderr: "fs bytes err ok\n" }],
+  ["conformance/native/pass/std-fs-write-file-bool.0", "std-fs-write-file-bool", { stdout: "fs write file bool ok\n" }],
+  ["conformance/native/pass/std-fs-append-bytes.0", "std-fs-append-bytes", { stdout: "fs append ok\n" }],
+  ["conformance/native/pass/std-fs-direct-return.0", "std-fs-direct-return", { stdout: "fs direct return ok\n" }],
   ["conformance/native/pass/std-fs-read-chunks.0", "std-fs-read-chunks", { stdout: "fs read chunks ok\n" }],
   ["conformance/native/pass/frame-large-locals.0", "frame-large-locals", { stdout: "frame large locals ok alpha\n", args: ["alpha"] }],
   ["conformance/native/pass/frame-limit-boundary.0", "frame-limit-boundary", { stdout: "frame limit boundary ok\n" }],
@@ -5136,18 +5265,7 @@ assert.equal(refByteBufParamBody.diagnostics[0].code, "BLD004");
 assert.equal(refByteBufParamBody.diagnostics[0].actual, "ref<ByteBuf>");
 assert.equal(refByteBufParamBody.diagnostics[0].line, 1);
 
-const worldHelperParamBody = await writeImportFailureFixture(`${outDir}/world-helper-param-gate.0`, `fn write(world: World, text: String) -> Void raises {
-    check world.out.write(text)
-}
-
-pub fn main(world: World) -> Void raises {
-    check write(world, "unreachable\\n")
-}
-`);
-assert.equal(worldHelperParamBody.diagnostics[0].code, "BLD004");
-assert.match(worldHelperParamBody.diagnostics[0].message, /parameter type is unsupported/);
-assert.equal(worldHelperParamBody.diagnostics[0].actual, "World");
-assert.equal(worldHelperParamBody.diagnostics[0].line, 1);
+await assertDirectRuntimeRequired("conformance/run/pass/world-output-helper.0", "world-output-helper-required", { stdout: "world helper ok\n" });
 
 const codecReadU32Body = await writeImportFailureFixture(`${outDir}/codec-readu32-gate.0`, `use std.codec
 

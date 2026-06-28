@@ -7,6 +7,7 @@ pub fn main(world: World) -> Void raises {
     let zero: Duration = std.time.zero()
     let minimum: Duration = std.time.min(short, duration)
     let maximum: Duration = std.time.max(short, duration)
+    let sleep_ok: Bool = std.time.sleep(std.time.zero())
     let _now: Duration = std.time.monotonic()
     let wall: i64 = std.time.wallSeconds()
     var rng: RandSource = std.rand.seed(7_u32)
@@ -15,11 +16,11 @@ pub fn main(world: World) -> Void raises {
     let _entropy: u32 = std.rand.entropyU32()
     let _entropy_seed: RandSource = std.rand.entropySeed()
     let status: ProcStatus = std.proc.spawn("zero-noop")
-    let run_code: i32 = std.proc.runCode("zero-noop")
+    let run_code: i32 = std.proc.runCode("sh -c true")
     let hash: u32 = std.crypto.hash32(std.mem.span("message"))
     let hmac: u32 = std.crypto.hmac32(std.mem.span("key"), std.mem.span("message"))
     let _secure: u32 = std.crypto.secureRandomU32()
-    if std.time.asNs(std.time.ns(42_i64)) == 42_i64 && std.time.asUsFloor(tiny) == 250000_i64 && std.time.asMsFloor(duration) == 1500 && std.time.asMsFloor(minimum) == 250 && std.time.asMsFloor(maximum) == 1500 && std.time.asSecondsFloor(window) == 90_i64 && std.time.asSecondsFloor(bounded) == 600_i64 && std.time.lessThan(short, duration) && std.time.isZero(zero) && wall > 0 && first == 1025555898_u32 && second && std.proc.exitCode(status) == 0 && std.proc.succeeded(status) && !std.proc.failed(status) && std.proc.runOk("zero-noop") && run_code == 0 && hash != 0_u32 && hmac != 0_u32 && std.crypto.constantTimeEql(std.mem.span("same"), std.mem.span("same")) {
+    if std.time.asNs(std.time.ns(42_i64)) == 42_i64 && std.time.asUsFloor(tiny) == 250000_i64 && std.time.asMsFloor(duration) == 1500 && std.time.asMsFloor(minimum) == 250 && std.time.asMsFloor(maximum) == 1500 && std.time.asSecondsFloor(window) == 90_i64 && std.time.asSecondsFloor(bounded) == 600_i64 && std.time.lessThan(short, duration) && std.time.isZero(zero) && sleep_ok && wall > 0 && first == 1025555898_u32 && second && std.proc.exitCode(status) == 0 && std.proc.succeeded(status) && !std.proc.failed(status) && std.proc.runOk("sh -c true") && run_code == 0 && hash != 0_u32 && hmac != 0_u32 && std.crypto.constantTimeEql(std.mem.span("same"), std.mem.span("same")) {
         check world.out.write("std platform basics ok\n")
     }
 }

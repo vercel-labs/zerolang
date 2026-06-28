@@ -218,7 +218,7 @@ typedef struct {
 } MirDecoded;
 
 static const unsigned char MIR_BINARY_MAGIC[8] = {'Z', 'M', 'I', 'R', 'B', 'I', 'N', '1'};
-enum { MIR_BINARY_SCHEMA_VERSION = 5 };
+enum { MIR_BINARY_SCHEMA_VERSION = 7 };
 static const uint64_t MIR_NULL_LEN = UINT64_MAX;
 static const uint64_t MIR_BINARY_MAX_FUNCTION_COUNT = 100000;
 static const uint64_t MIR_BINARY_MAX_LOCAL_COUNT = 1000000;
@@ -884,7 +884,7 @@ static bool mir_read_instr(MirReader *reader, const MirHeader *header, MirInstrF
       !mir_get_count(reader, &record->then_ref_start) || !mir_get_count(reader, &record->then_ref_len) ||
       !mir_get_count(reader, &record->else_ref_start) || !mir_get_count(reader, &record->else_ref_len) ||
       !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) || reserved != 0 ||
-      kind > (uint32_t)IR_INSTR_CONTINUE || record->value_ref > header->value_count ||
+      kind > (uint32_t)IR_INSTR_KIND_LAST || record->value_ref > header->value_count ||
       record->index_ref > header->value_count ||
       !mir_refs_fit(record->then_ref_start, record->then_ref_len, header->instr_ref_count) ||
       !mir_refs_fit(record->else_ref_start, record->else_ref_len, header->instr_ref_count)) return false;
@@ -908,7 +908,7 @@ static bool mir_read_value(MirReader *reader, const MirHeader *header, MirValueF
       !mir_get_count(reader, &record->arg_ref_start) || !mir_get_count(reader, &record->arg_ref_len) ||
       !mir_get_count(reader, &record->index_ref) || !mir_get_count(reader, &record->left_ref) ||
       !mir_get_count(reader, &record->right_ref) || !mir_get_i32(reader, &line) || !mir_get_i32(reader, &column) ||
-      kind > (uint32_t)IR_VALUE_JSON_ERROR_LABEL || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
+      kind > (uint32_t)IR_VALUE_KIND_LAST || external_call > 1 || binary_op > (uint32_t)IR_BIN_OR ||
       compare_op > (uint32_t)IR_CMP_GE || record->index_ref > header->value_count ||
       record->left_ref > header->value_count || record->right_ref > header->value_count ||
       !mir_refs_fit(record->arg_ref_start, record->arg_ref_len, header->value_ref_count)) return false;
@@ -1342,6 +1342,27 @@ static char *mir_dirname(const char *path) {
   return z_strndup(path, (size_t)(slash - path));
 }
 
+static char *mir_join_path(const char *left, const char *right) {
+  ZBuf path;
+  zbuf_init(&path);
+  zbuf_append(&path, left && left[0] ? left : ".");
+  if (path.len > 0 && path.data[path.len - 1] != '/' && path.data[path.len - 1] != '\\') zbuf_append_char(&path, '/');
+  zbuf_append(&path, right ? right : "");
+  return path.data;
+}
+
+static char *mir_graph_store_cache_root(const char *store_path) {
+  const char *cache_override = getenv("ZERO_CACHE_DIR");
+  if (cache_override && cache_override[0]) return z_strdup(cache_override);
+  const char *home = getenv("HOME");
+  if (!home || !home[0]) home = getenv("USERPROFILE");
+  if (home && home[0]) return mir_join_path(home, ".zero/cache/native");
+  char *root = mir_dirname(store_path ? store_path : "zero.graph");
+  char *cache_root = mir_join_path(root, ".zero/cache/native");
+  free(root);
+  return cache_root;
+}
+
 static uint64_t mir_hash_text(uint64_t hash, const char *text) {
   const unsigned char *bytes = (const unsigned char *)(text ? text : "");
   while (*bytes) {
@@ -1352,8 +1373,7 @@ static uint64_t mir_hash_text(uint64_t hash, const char *text) {
 }
 
 char *z_mir_binary_cache_path_for_graph_store(const char *store_path, const char *graph_hash, const ZTargetInfo *target, const char *emit_kind, const char *backend) {
-  const char *cache_override = getenv("ZERO_CACHE_DIR");
-  bool override = cache_override && cache_override[0]; char *root = override ? NULL : mir_dirname(store_path ? store_path : "zero.graph");
+  char *root = mir_graph_store_cache_root(store_path);
   uint64_t hash = 1469598103934665603ull;
   hash = mir_hash_text(hash, ZERO_VERSION);
   hash = mir_hash_text(hash, graph_hash ? graph_hash : "");
@@ -1363,9 +1383,9 @@ char *z_mir_binary_cache_path_for_graph_store(const char *store_path, const char
   hash = mir_hash_text(hash, target && target->name ? target->name : "");
   hash = mir_hash_text(hash, emit_kind ? emit_kind : "");
   hash = mir_hash_text(hash, backend ? backend : "");
-  ZBuf path; zbuf_init(&path); zbuf_append(&path, override ? cache_override : root);
+  ZBuf path; zbuf_init(&path); zbuf_append(&path, root);
   if (path.len > 0 && path.data[path.len - 1] != '/') zbuf_append_char(&path, '/');
-  zbuf_appendf(&path, "%smir-%016llx.zmir", override ? "" : ".zero/cache/native/", (unsigned long long)hash);
+  zbuf_appendf(&path, "mir-%016llx.zmir", (unsigned long long)hash);
   free(root);
   return path.data;
 }

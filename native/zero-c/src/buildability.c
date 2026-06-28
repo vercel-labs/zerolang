@@ -54,6 +54,20 @@ static bool build_check_instr(const ZBuildability *ctx, const IrFunction *fun, c
       }
       if (instr->value && !z_build_check_value(ctx, fun, instr->value, true, 0, diag)) return false;
       return true;
+    case IR_INSTR_ARRAY_FILL: {
+      if (!fun || instr->array_index >= fun->local_len) {
+        return z_build_diag(ctx, diag, "direct backend buildability found an array fill outside the local table", instr->line, instr->column, "invalid array local");
+      }
+      const IrLocal *local = &fun->locals[instr->array_index];
+      if (!local->is_array || local->array_len == 0 || local->type == IR_TYPE_BYTE_VIEW) {
+        return z_build_diag(ctx, diag, "direct backend buildability found an unsupported array fill target", instr->line, instr->column, local->name ? local->name : "array local");
+      }
+      if (!instr->value || (instr->value->kind != IR_VALUE_INT && instr->value->kind != IR_VALUE_BOOL) || instr->value->type != local->element_type) {
+        return z_build_diag(ctx, diag, "direct backend buildability found an unsupported array fill value", instr->line, instr->column, "non-literal fill");
+      }
+      if (!z_build_check_value(ctx, fun, instr->value, false, 0, diag)) return false;
+      return true;
+    }
     case IR_INSTR_INDEX_STORE:
     case IR_INSTR_FIELD_STORE: {
       if (z_build_backend_is_aarch64_direct(ctx->backend) && instr->kind == IR_INSTR_FIELD_STORE && instr->value && instr->value->type == IR_TYPE_BYTE_VIEW) {

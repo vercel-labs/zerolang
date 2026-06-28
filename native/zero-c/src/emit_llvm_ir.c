@@ -809,6 +809,43 @@ static bool llvm_emit_while_instr(LlvmEmit *emit, const IrInstr *instr, ZDiag *d
   return true;
 }
 
+static bool llvm_emit_array_fill_instr(LlvmEmit *emit, const IrInstr *instr, ZDiag *diag) {
+  if (instr->array_index >= emit->fun->local_len) {
+    llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend array fill target is out of range", "invalid array local", "emit");
+    return false;
+  }
+  const IrLocal *local = &emit->fun->locals[instr->array_index];
+  if (!local->is_array || local->array_len == 0 || !llvm_array_element_supported(local->element_type)) {
+    llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend array fill requires a supported fixed-array local", "unsupported array fill", "lower");
+    return false;
+  }
+  LlvmValue fill;
+  if (!llvm_emit_value(emit, instr->value, &fill, diag)) return false;
+  if (fill.type != local->element_type) {
+    if (!llvm_cast_value(emit, instr->value, fill, local->element_type, &fill, diag)) return false;
+  }
+  unsigned pre_label = llvm_label(emit), loop_label = llvm_label(emit), body_label = llvm_label(emit), end_label = llvm_label(emit);
+  zbuf_appendf(emit->out, "  br label %%L%u\n", pre_label);
+  llvm_emit_label(emit, pre_label);
+  zbuf_appendf(emit->out, "  br label %%L%u\n", loop_label);
+  llvm_emit_label(emit, loop_label);
+  LlvmValue index, done, next, ptr;
+  llvm_temp(emit, &index, IR_TYPE_USIZE);
+  llvm_temp(emit, &next, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = phi i64 [0, %%L%u], [%s, %%L%u]\n", index.text, pre_label, next.text, body_label);
+  llvm_temp(emit, &done, IR_TYPE_BOOL);
+  zbuf_appendf(emit->out, "  %s = icmp eq i64 %s, %u\n", done.text, index.text, local->array_len);
+  zbuf_appendf(emit->out, "  br i1 %s, label %%L%u, label %%L%u\n", done.text, end_label, body_label);
+  llvm_emit_label(emit, body_label);
+  llvm_temp(emit, &ptr, IR_TYPE_USIZE);
+  zbuf_appendf(emit->out, "  %s = getelementptr inbounds [%u x %s], ptr %%slot%u, i64 0, i64 %s\n", ptr.text, local->array_len, llvm_type_name(local->element_type), local->index, index.text);
+  zbuf_appendf(emit->out, "  store %s %s, ptr %s, align %u\n", llvm_type_name(local->element_type), fill.text, ptr.text, llvm_type_bits(local->element_type) >= 8 ? llvm_type_bits(local->element_type) / 8 : 1);
+  zbuf_appendf(emit->out, "  %s = add i64 %s, 1\n", next.text, index.text);
+  zbuf_appendf(emit->out, "  br label %%L%u\n", loop_label);
+  llvm_emit_label(emit, end_label);
+  return true;
+}
+
 static bool llvm_emit_instr(LlvmEmit *emit, const IrInstr *instr, bool *terminated, ZDiag *diag) {
   if (*terminated) return true;
   switch (instr->kind) {
@@ -879,6 +916,8 @@ static bool llvm_emit_instr(LlvmEmit *emit, const IrInstr *instr, bool *terminat
     }
     case IR_INSTR_WORLD_WRITE:
       return llvm_emit_world_write(emit, instr, diag);
+    case IR_INSTR_ARRAY_FILL:
+      return llvm_emit_array_fill_instr(emit, instr, diag);
     case IR_INSTR_INDEX_STORE: {
       if (instr->array_index >= emit->fun->local_len) {
         llvm_set_diag(diag, emit->program, instr->line, instr->column, "LLVM IR backend indexed store array is out of range", "invalid array local", "emit");

@@ -1,12 +1,26 @@
+#if !defined(_WIN32) && !defined(_XOPEN_SOURCE)
+#define _XOPEN_SOURCE 700
+#endif
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "zero_runtime.h"
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #if defined(_WIN32)
+#include <conio.h>
+#include <direct.h>
 #include <io.h>
+#include <process.h>
+#include <windows.h>
 typedef int ZeroWriteResult;
 typedef int ZeroReadResult;
 typedef struct _stat ZeroRuntimeStat;
@@ -15,11 +29,33 @@ typedef struct _stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_READ _read
 #define ZERO_RUNTIME_CLOSE _close
 #define ZERO_RUNTIME_FSTAT _fstat
+#define ZERO_RUNTIME_STAT _stat
 #define ZERO_RUNTIME_LSEEK _lseeki64
+#define ZERO_RUNTIME_CHDIR _chdir
 #define ZERO_RUNTIME_OPEN_FLAGS (_O_RDONLY | _O_BINARY)
 #define ZERO_RUNTIME_IS_REGULAR(mode) (((mode) & _S_IFREG) != 0)
+#define ZERO_RUNTIME_IS_DIR(mode) (((mode) & _S_IFDIR) != 0)
+#define ZERO_RUNTIME_ISATTY _isatty
+#define ZERO_RUNTIME_STDIN_FD 0
+#define ZERO_RUNTIME_STDOUT_FD 1
+#ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
+#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+#endif
 #else
+#include <dirent.h>
+#include <poll.h>
+#include <signal.h>
+#include <sys/select.h>
+#include <sys/ioctl.h>
+#include <sys/wait.h>
+#include <termios.h>
+#include <time.h>
 #include <unistd.h>
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#include <util.h>
+#else
+#include <pty.h>
+#endif
 typedef ssize_t ZeroWriteResult;
 typedef ssize_t ZeroReadResult;
 typedef struct stat ZeroRuntimeStat;
@@ -28,13 +64,50 @@ typedef struct stat ZeroRuntimeStat;
 #define ZERO_RUNTIME_READ read
 #define ZERO_RUNTIME_CLOSE close
 #define ZERO_RUNTIME_FSTAT fstat
+#define ZERO_RUNTIME_STAT stat
 #define ZERO_RUNTIME_LSEEK lseek
+#define ZERO_RUNTIME_CHDIR chdir
 #define ZERO_RUNTIME_OPEN_FLAGS O_RDONLY
 #define ZERO_RUNTIME_IS_REGULAR(mode) S_ISREG(mode)
+#define ZERO_RUNTIME_IS_DIR(mode) S_ISDIR(mode)
+#define ZERO_RUNTIME_ISATTY isatty
+#define ZERO_RUNTIME_STDIN_FD STDIN_FILENO
+#define ZERO_RUNTIME_STDOUT_FD STDOUT_FILENO
 #endif
 
 #define ZERO_RUNTIME_PATH_BYTES 4096u
 #define ZERO_RUNTIME_READ_CHUNK 1048576u
+#define ZERO_RUNTIME_PROC_COMMAND_BYTES 4096u
+#define ZERO_RUNTIME_PROC_ARGS_BYTES 4096u
+#define ZERO_RUNTIME_PROC_ENV_BYTES 4096u
+#define ZERO_RUNTIME_PROC_MAX_ARGS 64u
+#define ZERO_RUNTIME_PROC_CHILD_MAX 64u
+#define ZERO_RUNTIME_PROC_CHILD_SLOT_BITS 7u
+#define ZERO_RUNTIME_PROC_CHILD_SLOT_MASK ((1u << ZERO_RUNTIME_PROC_CHILD_SLOT_BITS) - 1u)
+#define ZERO_RUNTIME_PROC_CHILD_GENERATION_MAX ((uint32_t)INT32_MAX >> ZERO_RUNTIME_PROC_CHILD_SLOT_BITS)
+#define ZERO_RUNTIME_PROC_DRAIN_CHUNK 4096u
+#define ZERO_RUNTIME_PROC_BUFFER_MAX (16u * 1024u * 1024u)
+
+static uint64_t zero_runtime_pack_span(int has, size_t offset, size_t len);
+
+uint32_t zero_rand_entropy_u32(void) {
+#if defined(_WIN32)
+  LARGE_INTEGER counter;
+  QueryPerformanceCounter(&counter);
+  uint64_t value = (uint64_t)counter.QuadPart ^ (uint64_t)GetTickCount64() ^ ((uint64_t)GetCurrentProcessId() << 32);
+  value ^= value >> 33;
+  value *= 0xff51afd7ed558ccdull;
+  value ^= value >> 33;
+  return (uint32_t)value;
+#else
+  uint32_t value = 0;
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd < 0) return 0;
+  ssize_t got = read(fd, &value, sizeof(value));
+  close(fd);
+  return got == (ssize_t)sizeof(value) ? value : 0;
+#endif
+}
 
 static ZeroMaybeUsize zero_runtime_none_usize(void) {
   return (ZeroMaybeUsize){0, 0};
@@ -55,12 +128,49 @@ static int zero_runtime_open_readonly(const char *path) {
   return fd;
 }
 
+static int zero_runtime_open_write_truncate(const char *path) {
+#if defined(_WIN32)
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _S_IREAD | _S_IWRITE);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#else
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#endif
+}
+
+static int zero_runtime_open_write_append(const char *path) {
+#if defined(_WIN32)
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, _O_WRONLY | _O_CREAT | _O_APPEND | _O_BINARY, _S_IREAD | _S_IWRITE);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#else
+  int fd;
+  do {
+    fd = ZERO_RUNTIME_OPEN(path, O_WRONLY | O_CREAT | O_APPEND, 0666);
+  } while (fd < 0 && errno == EINTR);
+  return fd;
+#endif
+}
+
 static int zero_runtime_fd_regular_size(int fd, uint64_t *size_out) {
   ZeroRuntimeStat st;
   if (ZERO_RUNTIME_FSTAT(fd, &st) != 0) return 0;
   if (!ZERO_RUNTIME_IS_REGULAR(st.st_mode)) return 0;
   if (size_out) *size_out = st.st_size < 0 ? 0 : (uint64_t)st.st_size;
   return 1;
+}
+
+static int zero_runtime_path_is_dir(const char *path) {
+  ZeroRuntimeStat st;
+  return path && ZERO_RUNTIME_STAT(path, &st) == 0 && ZERO_RUNTIME_IS_DIR(st.st_mode);
 }
 
 static int zero_runtime_close_fd(int fd) {
@@ -142,6 +252,1351 @@ ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMut
      offset += len(buffer) until offset reaches the returned total. */
   if (read_len > 0 && offset + read_len > total) total = offset + read_len;
   return (ZeroMaybeUsize){1, total};
+}
+
+static ZeroMaybeUsize zero_runtime_write_bytes_to_path(ZeroByteView path, ZeroByteView bytes, int append) {
+  if (!bytes.ptr && bytes.len > 0) return zero_runtime_none_usize();
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return zero_runtime_none_usize();
+  int fd = append ? zero_runtime_open_write_append(path_buf) : zero_runtime_open_write_truncate(path_buf);
+  if (fd < 0) return zero_runtime_none_usize();
+
+  size_t total = 0;
+  int ok = 1;
+  while (total < bytes.len) {
+    size_t remaining = bytes.len - total;
+    unsigned chunk = remaining > ZERO_RUNTIME_READ_CHUNK ? ZERO_RUNTIME_READ_CHUNK : (unsigned)remaining;
+    ZeroWriteResult written = ZERO_RUNTIME_WRITE(fd, bytes.ptr + total, chunk);
+    if (written < 0) {
+      if (errno == EINTR) continue;
+      ok = 0;
+      break;
+    }
+    if (written == 0) {
+      ok = 0;
+      break;
+    }
+    total += (size_t)written;
+  }
+  int closed = zero_runtime_close_fd(fd);
+  if (!ok || !closed) return zero_runtime_none_usize();
+  return (ZeroMaybeUsize){1, (uint64_t)total};
+}
+
+ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes) {
+  return zero_runtime_write_bytes_to_path(path, bytes, 0);
+}
+
+ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes) {
+  return zero_runtime_write_bytes_to_path(path, bytes, 1);
+}
+
+ZeroMaybeUsize zero_fs_dir_entry_count(ZeroByteView path) {
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return zero_runtime_none_usize();
+#if defined(_WIN32)
+  char search_buf[ZERO_RUNTIME_PATH_BYTES + 3u];
+  size_t path_len = strlen(path_buf);
+  if (path_len + 3u >= sizeof(search_buf)) return zero_runtime_none_usize();
+  memcpy(search_buf, path_buf, path_len);
+  if (path_len > 0 && search_buf[path_len - 1u] != '\\' && search_buf[path_len - 1u] != '/') {
+    search_buf[path_len++] = '\\';
+  }
+  search_buf[path_len++] = '*';
+  search_buf[path_len] = '\0';
+
+  WIN32_FIND_DATAA data;
+  HANDLE handle = FindFirstFileA(search_buf, &data);
+  if (handle == INVALID_HANDLE_VALUE) return zero_runtime_none_usize();
+  uint64_t count = 0;
+  do {
+    const char *name = data.cFileName;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    count++;
+  } while (FindNextFileA(handle, &data));
+  FindClose(handle);
+  return (ZeroMaybeUsize){1, count};
+#else
+  DIR *dir = opendir(path_buf);
+  if (!dir) return zero_runtime_none_usize();
+  uint64_t count = 0;
+  struct dirent *entry = NULL;
+  while ((entry = readdir(dir)) != NULL) {
+    const char *name = entry->d_name;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    count++;
+  }
+  closedir(dir);
+  return (ZeroMaybeUsize){1, count};
+#endif
+}
+
+uint64_t zero_fs_dir_entry_name(ZeroMutByteView buffer, ZeroByteView path, uint64_t index) {
+  if ((!buffer.ptr && buffer.len > 0) || index > UINT32_MAX) return 0;
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return 0;
+#if defined(_WIN32)
+  char search_buf[ZERO_RUNTIME_PATH_BYTES + 3u];
+  size_t path_len = strlen(path_buf);
+  if (path_len + 3u >= sizeof(search_buf)) return 0;
+  memcpy(search_buf, path_buf, path_len);
+  if (path_len > 0 && search_buf[path_len - 1u] != '\\' && search_buf[path_len - 1u] != '/') {
+    search_buf[path_len++] = '\\';
+  }
+  search_buf[path_len++] = '*';
+  search_buf[path_len] = '\0';
+
+  WIN32_FIND_DATAA data;
+  HANDLE handle = FindFirstFileA(search_buf, &data);
+  if (handle == INVALID_HANDLE_VALUE) return 0;
+  uint64_t visible = 0;
+  do {
+    const char *name = data.cFileName;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    if (visible == index) {
+      size_t len = strlen(name);
+      if (len > buffer.len || len > 0x7fffffffu) {
+        FindClose(handle);
+        return 0;
+      }
+      if (len > 0) memcpy(buffer.ptr, name, len);
+      FindClose(handle);
+      return zero_runtime_pack_span(1, 0, len);
+    }
+    visible++;
+  } while (FindNextFileA(handle, &data));
+  FindClose(handle);
+  return 0;
+#else
+  DIR *dir = opendir(path_buf);
+  if (!dir) return 0;
+  uint64_t visible = 0;
+  struct dirent *entry = NULL;
+  while ((entry = readdir(dir)) != NULL) {
+    const char *name = entry->d_name;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+    if (visible == index) {
+      size_t len = strlen(name);
+      if (len > buffer.len || len > 0x7fffffffu) {
+        closedir(dir);
+        return 0;
+      }
+      if (len > 0) memcpy(buffer.ptr, name, len);
+      closedir(dir);
+      return zero_runtime_pack_span(1, 0, len);
+    }
+    visible++;
+  }
+  closedir(dir);
+  return 0;
+#endif
+}
+
+static int zero_runtime_stat_path(const char *path, ZeroRuntimeStat *st) {
+  if (!path || !path[0] || !st) return 0;
+#if defined(_WIN32)
+  return _stat(path, st) == 0;
+#else
+  return stat(path, st) == 0;
+#endif
+}
+
+uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op) {
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf)) return 0;
+  switch ((ZeroFsPathOp)op) {
+    case ZERO_FS_PATH_EXISTS: {
+      ZeroRuntimeStat st;
+      return zero_runtime_stat_path(path_buf, &st) ? 1u : 0u;
+    }
+    case ZERO_FS_PATH_IS_DIR: {
+      ZeroRuntimeStat st;
+      if (!zero_runtime_stat_path(path_buf, &st)) return 0;
+#if defined(_WIN32)
+      return (st.st_mode & _S_IFDIR) != 0 ? 1u : 0u;
+#else
+      return S_ISDIR(st.st_mode) ? 1u : 0u;
+#endif
+    }
+    case ZERO_FS_PATH_MAKE_DIR:
+#if defined(_WIN32)
+      return _mkdir(path_buf) == 0 ? 1u : 0u;
+#else
+      return mkdir(path_buf, 0777) == 0 ? 1u : 0u;
+#endif
+    case ZERO_FS_PATH_REMOVE_DIR:
+#if defined(_WIN32)
+      return _rmdir(path_buf) == 0 ? 1u : 0u;
+#else
+      return rmdir(path_buf) == 0 ? 1u : 0u;
+#endif
+    case ZERO_FS_PATH_REMOVE:
+#if defined(_WIN32)
+      return _unlink(path_buf) == 0 ? 1u : 0u;
+#else
+      return unlink(path_buf) == 0 ? 1u : 0u;
+#endif
+  }
+  return 0;
+}
+
+uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path) {
+  char from_buf[ZERO_RUNTIME_PATH_BYTES];
+  char to_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(from_path, from_buf) || !zero_runtime_path_copy(to_path, to_buf)) return 0;
+  return rename(from_buf, to_buf) == 0 ? 1u : 0u;
+}
+
+uint32_t zero_fs_atomic_write(ZeroByteView path, ZeroByteView temp_path, ZeroByteView bytes) {
+  char path_buf[ZERO_RUNTIME_PATH_BYTES];
+  char temp_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(path, path_buf) || !zero_runtime_path_copy(temp_path, temp_buf)) return 0;
+  ZeroMaybeUsize wrote = zero_runtime_write_bytes_to_path(temp_path, bytes, 0);
+  if (!wrote.has || wrote.value != bytes.len) {
+    remove(temp_buf);
+    return 0;
+  }
+#if defined(_WIN32)
+  remove(path_buf);
+#endif
+  if (rename(temp_buf, path_buf) != 0) {
+    remove(temp_buf);
+    return 0;
+  }
+  return 1u;
+}
+
+static int zero_runtime_ascii_space(unsigned char byte) {
+  return byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == '\f' || byte == '\v';
+}
+
+static int zero_runtime_proc_parse_command(ZeroByteView command, char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES], char *argv[ZERO_RUNTIME_PROC_MAX_ARGS]) {
+  if (!command.ptr || command.len == 0 || command.len >= ZERO_RUNTIME_PROC_COMMAND_BYTES) return 0;
+  for (size_t i = 0; i < command.len; i++) {
+    if (command.ptr[i] == 0) return 0;
+  }
+
+  size_t read = 0;
+  size_t write = 0;
+  size_t argc = 0;
+  while (read < command.len) {
+    while (read < command.len && zero_runtime_ascii_space(command.ptr[read])) read++;
+    if (read >= command.len) break;
+    if (argc + 1 >= ZERO_RUNTIME_PROC_MAX_ARGS) return 0;
+
+    size_t token_start = write;
+    argv[argc++] = &storage[token_start];
+    while (read < command.len && !zero_runtime_ascii_space(command.ptr[read])) {
+      if (command.ptr[read] == '\'') {
+        read++;
+        int closed = 0;
+        while (read < command.len) {
+          if (command.ptr[read] == '\'') {
+            closed = 1;
+            read++;
+            break;
+          }
+          storage[write++] = (char)command.ptr[read++];
+        }
+        if (!closed) return 0;
+      } else if (command.ptr[read] == '\\' && read + 1 < command.len) {
+        read++;
+        storage[write++] = (char)command.ptr[read++];
+      } else {
+        storage[write++] = (char)command.ptr[read++];
+      }
+    }
+    if (write == token_start) {
+      argc--;
+    } else {
+      storage[write++] = 0;
+    }
+  }
+  if (argc == 0) return 0;
+  argv[argc] = NULL;
+  return 1;
+}
+
+static int zero_runtime_proc_build_argv(ZeroByteView program, ZeroByteView args, char storage[ZERO_RUNTIME_PROC_ARGS_BYTES], char *argv[ZERO_RUNTIME_PROC_MAX_ARGS]) {
+  if (!program.ptr || program.len == 0 || (!args.ptr && args.len > 0)) return 0;
+  for (size_t i = 0; i < program.len; i++) {
+    if (program.ptr[i] == 0) return 0;
+  }
+  for (size_t i = 0; i < args.len; i++) {
+    if (args.ptr[i] == 0) return 0;
+  }
+
+  size_t write = 0;
+  size_t argc = 0;
+  if (program.len >= ZERO_RUNTIME_PROC_ARGS_BYTES) return 0;
+  argv[argc++] = &storage[write];
+  memcpy(&storage[write], program.ptr, program.len);
+  write += program.len;
+  storage[write++] = 0;
+
+  size_t line_start = 0;
+  while (line_start < args.len) {
+    size_t line_end = line_start;
+    while (line_end < args.len && args.ptr[line_end] != '\n') line_end++;
+    if (line_end > line_start) {
+      if (argc + 1 >= ZERO_RUNTIME_PROC_MAX_ARGS) return 0;
+      size_t line_len = line_end - line_start;
+      if (write + line_len >= ZERO_RUNTIME_PROC_ARGS_BYTES) return 0;
+      argv[argc++] = &storage[write];
+      memcpy(&storage[write], &args.ptr[line_start], line_len);
+      write += line_len;
+      storage[write++] = 0;
+    }
+    line_start = line_end + 1;
+  }
+
+  argv[argc] = NULL;
+  return 1;
+}
+
+static int zero_runtime_proc_copy_env_block(ZeroByteView env, char storage[ZERO_RUNTIME_PROC_ENV_BYTES]) {
+  if (!env.ptr && env.len > 0) return 0;
+  if (env.len >= ZERO_RUNTIME_PROC_ENV_BYTES) return 0;
+  for (size_t i = 0; i < env.len; i++) {
+    if (env.ptr[i] == 0) return 0;
+  }
+  size_t line_start = 0;
+  while (line_start < env.len) {
+    size_t line_end = line_start;
+    while (line_end < env.len && env.ptr[line_end] != '\n') line_end++;
+    if (line_end > line_start) {
+      size_t equals = line_start;
+      while (equals < line_end && env.ptr[equals] != '=') equals++;
+      if (equals == line_start || equals == line_end) return 0;
+    }
+    line_start = line_end + 1;
+  }
+  if (env.len > 0) memcpy(storage, env.ptr, env.len);
+  storage[env.len] = '\0';
+  return 1;
+}
+
+static int zero_runtime_proc_set_env(const char *name, const char *value) {
+#if defined(_WIN32)
+  return SetEnvironmentVariableA(name, value ? value : "") != 0;
+#else
+  return setenv(name, value ? value : "", 1) == 0;
+#endif
+}
+
+static int zero_runtime_proc_apply_env_block(char *env) {
+  if (!env || !env[0]) return 1;
+  char *cursor = env;
+  while (*cursor) {
+    char *line = cursor;
+    while (*cursor && *cursor != '\n') cursor++;
+    if (*cursor == '\n') {
+      *cursor = '\0';
+      cursor++;
+    }
+    if (!line[0]) continue;
+    char *equals = strchr(line, '=');
+    if (!equals || equals == line) return 0;
+    *equals = '\0';
+    if (!zero_runtime_proc_set_env(line, equals + 1)) return 0;
+  }
+  return 1;
+}
+
+#if !defined(_WIN32)
+static int zero_runtime_set_fd_nonblock(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0) return 0;
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+#endif
+
+static int32_t zero_proc_spawn_inherit_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
+#if defined(_WIN32)
+  (void)argv;
+  (void)cwd;
+  (void)env;
+  return 127;
+#else
+  pid_t pid = fork();
+  if (pid < 0) return 127;
+
+  if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    return 127;
+  }
+  if (WIFEXITED(status)) return (int32_t)WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return (int32_t)(128 + WTERMSIG(status));
+  return 127;
+#endif
+}
+
+int32_t zero_proc_spawn_inherit(ZeroByteView command) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 127;
+  return zero_proc_spawn_inherit_argv_impl(argv, NULL, NULL);
+}
+
+int32_t zero_proc_spawn_inherit_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(cwd, cwd_buf) ||
+      !zero_runtime_proc_copy_env_block(env, env_buf)) return 127;
+  return zero_proc_spawn_inherit_argv_impl(argv, cwd_buf, env_buf);
+}
+
+static ZeroMaybeUsize zero_proc_capture_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env, ZeroMutByteView buffer) {
+  if (!buffer.ptr) return zero_runtime_none_usize();
+
+#if defined(_WIN32)
+  (void)argv;
+  (void)cwd;
+  (void)env;
+  return zero_runtime_none_usize();
+#else
+  int pipe_fd[2];
+  if (pipe(pipe_fd) != 0) return zero_runtime_none_usize();
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+    ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+    return zero_runtime_none_usize();
+  }
+
+  if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+    if (dup2(pipe_fd[1], STDOUT_FILENO) < 0) _exit(127);
+    ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  ZERO_RUNTIME_CLOSE(pipe_fd[1]);
+  if (!zero_runtime_set_fd_nonblock(pipe_fd[0])) {
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+    int ignored_status = 0;
+    while (waitpid(pid, &ignored_status, 0) < 0 && errno == EINTR) {}
+    return zero_runtime_none_usize();
+  }
+  uint64_t total = 0;
+  int too_large = 0;
+  int read_ok = 1;
+  int wait_ok = 1;
+  int status = 0;
+  int reaped = 0;
+  unsigned char chunk[4096];
+  while (!reaped) {
+    if (pipe_fd[0] >= 0) {
+      for (;;) {
+        ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
+        if (n < 0) {
+          if (errno == EINTR) continue;
+          if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+          read_ok = 0;
+          break;
+        }
+        if (n == 0) {
+          ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+          pipe_fd[0] = -1;
+          break;
+        }
+        for (ZeroReadResult i = 0; i < n; i++) {
+          if (total < buffer.len) {
+            buffer.ptr[total] = chunk[i];
+          } else {
+            too_large = 1;
+          }
+          total++;
+        }
+      }
+    }
+    if (!read_ok) break;
+    for (;;) {
+      pid_t got = waitpid(pid, &status, WNOHANG);
+      if (got == 0) break;
+      if (got < 0) {
+        if (errno == EINTR) continue;
+        wait_ok = 0;
+      } else {
+        reaped = 1;
+      }
+      break;
+    }
+    if (!wait_ok || reaped) break;
+    if (pipe_fd[0] >= 0) {
+      struct pollfd fd = {.fd = pipe_fd[0], .events = POLLIN | POLLHUP | POLLERR};
+      int rc = 0;
+      do {
+        rc = poll(&fd, 1, 50);
+      } while (rc < 0 && errno == EINTR);
+      if (rc < 0) {
+        read_ok = 0;
+        break;
+      }
+    } else {
+      (void)poll(NULL, 0, 50);
+    }
+  }
+
+  if (pipe_fd[0] >= 0) {
+    if (reaped) {
+      struct pollfd fd = {.fd = pipe_fd[0], .events = POLLIN | POLLHUP | POLLERR};
+      int rc = 0;
+      do {
+        rc = poll(&fd, 1, 50);
+      } while (rc < 0 && errno == EINTR);
+      if (rc < 0) read_ok = 0;
+    }
+    while (read_ok) {
+      ZeroReadResult n = ZERO_RUNTIME_READ(pipe_fd[0], chunk, sizeof(chunk));
+      if (n < 0) {
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        read_ok = 0;
+        break;
+      }
+      if (n == 0) break;
+      for (ZeroReadResult i = 0; i < n; i++) {
+        if (total < buffer.len) {
+          buffer.ptr[total] = chunk[i];
+        } else {
+          too_large = 1;
+        }
+        total++;
+      }
+    }
+    ZERO_RUNTIME_CLOSE(pipe_fd[0]);
+  }
+
+  if (!reaped) {
+    while (waitpid(pid, &status, 0) < 0) {
+      if (errno == EINTR) continue;
+      wait_ok = 0;
+      break;
+    }
+  }
+  if (!read_ok || !wait_ok || too_large) return zero_runtime_none_usize();
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return zero_runtime_none_usize();
+  return (ZeroMaybeUsize){1, total};
+#endif
+}
+
+ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return zero_runtime_none_usize();
+  return zero_proc_capture_argv_impl(argv, NULL, NULL, buffer);
+}
+
+ZeroMaybeUsize zero_proc_capture_args(ZeroByteView program, ZeroByteView args, ZeroMutByteView buffer) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv)) return zero_runtime_none_usize();
+  return zero_proc_capture_argv_impl(argv, NULL, NULL, buffer);
+}
+
+static int32_t zero_proc_capture_files_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env, const char *stdout_buf, const char *stderr_buf) {
+#if defined(_WIN32)
+  (void)argv;
+  (void)cwd;
+  (void)env;
+  (void)stdout_buf;
+  (void)stderr_buf;
+  return 127;
+#else
+  int stdout_fd = zero_runtime_open_write_truncate(stdout_buf);
+  if (stdout_fd < 0) return 127;
+  int stderr_fd = zero_runtime_open_write_truncate(stderr_buf);
+  if (stderr_fd < 0) {
+    ZERO_RUNTIME_CLOSE(stdout_fd);
+    return 127;
+  }
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    ZERO_RUNTIME_CLOSE(stdout_fd);
+    ZERO_RUNTIME_CLOSE(stderr_fd);
+    return 127;
+  }
+
+  if (pid == 0) {
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
+    if (dup2(stdout_fd, STDOUT_FILENO) < 0) _exit(127);
+    if (dup2(stderr_fd, STDERR_FILENO) < 0) _exit(127);
+    ZERO_RUNTIME_CLOSE(stdout_fd);
+    ZERO_RUNTIME_CLOSE(stderr_fd);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  ZERO_RUNTIME_CLOSE(stdout_fd);
+  ZERO_RUNTIME_CLOSE(stderr_fd);
+
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    return 127;
+  }
+  if (WIFEXITED(status)) return (int32_t)WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return (int32_t)(128 + WTERMSIG(status));
+  return 127;
+#endif
+}
+
+int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char stdout_buf[ZERO_RUNTIME_PATH_BYTES];
+  char stderr_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_proc_parse_command(command, storage, argv) ||
+      !zero_runtime_path_copy(stdout_path, stdout_buf) ||
+      !zero_runtime_path_copy(stderr_path, stderr_buf)) {
+    return 127;
+  }
+
+  return zero_proc_capture_files_argv_impl(argv, NULL, NULL, stdout_buf, stderr_buf);
+}
+
+int32_t zero_proc_capture_files_args(ZeroByteView program, ZeroByteView args, ZeroByteView stdout_path, ZeroByteView stderr_path) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char stdout_buf[ZERO_RUNTIME_PATH_BYTES];
+  char stderr_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(stdout_path, stdout_buf) ||
+      !zero_runtime_path_copy(stderr_path, stderr_buf)) return 127;
+  return zero_proc_capture_files_argv_impl(argv, NULL, NULL, stdout_buf, stderr_buf);
+}
+
+#if !defined(_WIN32)
+typedef struct {
+  unsigned char *data;
+  size_t offset;
+  size_t len;
+  size_t cap;
+  int discard;
+} ZeroRuntimeProcPipeBuffer;
+
+typedef struct {
+  int active;
+  uint32_t generation;
+  int reaped;
+  int status;
+  pid_t pid;
+  int stdin_fd;
+  int stdout_fd;
+  int stderr_fd;
+  int pty_fd;
+  int pty;
+  ZeroRuntimeProcPipeBuffer stdout_buffer;
+  ZeroRuntimeProcPipeBuffer stderr_buffer;
+  ZeroRuntimeProcPipeBuffer pty_buffer;
+} ZeroRuntimeProcChild;
+
+static ZeroRuntimeProcChild zero_proc_children[ZERO_RUNTIME_PROC_CHILD_MAX];
+static int zero_proc_sigpipe_ignored;
+
+static int zero_proc_signal_child(ZeroRuntimeProcChild *child, int signal_number);
+
+static uint32_t zero_proc_child_next_generation(uint32_t generation) {
+  generation++;
+  if (generation == 0 || generation > ZERO_RUNTIME_PROC_CHILD_GENERATION_MAX) return 1;
+  return generation;
+}
+
+static int32_t zero_proc_child_handle(int index, uint32_t generation) {
+  if (index < 0 || index >= (int)ZERO_RUNTIME_PROC_CHILD_MAX || generation == 0) return 0;
+  return (int32_t)((generation << ZERO_RUNTIME_PROC_CHILD_SLOT_BITS) | ((uint32_t)index + 1u));
+}
+
+static int zero_proc_child_index(int32_t child) {
+  if (child <= 0) return -1;
+  uint32_t handle = (uint32_t)child;
+  uint32_t slot = handle & ZERO_RUNTIME_PROC_CHILD_SLOT_MASK;
+  uint32_t generation = handle >> ZERO_RUNTIME_PROC_CHILD_SLOT_BITS;
+  if (slot == 0 || slot > ZERO_RUNTIME_PROC_CHILD_MAX || generation == 0) return -1;
+  int index = (int)(slot - 1u);
+  ZeroRuntimeProcChild *candidate = &zero_proc_children[index];
+  return candidate->active && candidate->generation == generation ? index : -1;
+}
+
+static int zero_proc_child_alloc(void) {
+  for (int i = 0; i < (int)ZERO_RUNTIME_PROC_CHILD_MAX; i++) {
+    if (!zero_proc_children[i].active) return i;
+  }
+  return -1;
+}
+
+static void zero_proc_child_close_fd(int *fd) {
+  if (*fd >= 0) {
+    ZERO_RUNTIME_CLOSE(*fd);
+    *fd = -1;
+  }
+}
+
+static void zero_proc_child_close_pair(int fds[2]) {
+  if (!fds) return;
+  zero_proc_child_close_fd(&fds[0]);
+  zero_proc_child_close_fd(&fds[1]);
+}
+
+static void zero_proc_child_close_pipes(ZeroRuntimeProcChild *child) {
+  if (!child) return;
+  zero_proc_child_close_fd(&child->stdin_fd);
+  zero_proc_child_close_fd(&child->stdout_fd);
+  zero_proc_child_close_fd(&child->stderr_fd);
+  zero_proc_child_close_fd(&child->pty_fd);
+}
+
+static void zero_proc_pipe_buffer_free(ZeroRuntimeProcPipeBuffer *buffer) {
+  if (!buffer) return;
+  free(buffer->data);
+  *buffer = (ZeroRuntimeProcPipeBuffer){0};
+}
+
+static void zero_proc_child_free_buffers(ZeroRuntimeProcChild *child) {
+  if (!child) return;
+  zero_proc_pipe_buffer_free(&child->stdout_buffer);
+  zero_proc_pipe_buffer_free(&child->stderr_buffer);
+  zero_proc_pipe_buffer_free(&child->pty_buffer);
+}
+
+static void zero_proc_pipe_buffer_compact(ZeroRuntimeProcPipeBuffer *buffer) {
+  if (!buffer || buffer->offset == 0) return;
+  if (buffer->offset >= buffer->len) {
+    buffer->offset = 0;
+    buffer->len = 0;
+    return;
+  }
+  memmove(buffer->data, buffer->data + buffer->offset, buffer->len - buffer->offset);
+  buffer->len -= buffer->offset;
+  buffer->offset = 0;
+}
+
+static int zero_proc_pipe_buffer_append(ZeroRuntimeProcPipeBuffer *buffer, const unsigned char *data, size_t len) {
+  if (!buffer || (!data && len > 0)) return 0;
+  if (len == 0 || buffer->discard) return 1;
+  zero_proc_pipe_buffer_compact(buffer);
+  if (len > ZERO_RUNTIME_PROC_BUFFER_MAX - buffer->len) {
+    size_t available = ZERO_RUNTIME_PROC_BUFFER_MAX - buffer->len;
+    if (available > 0 && !zero_proc_pipe_buffer_append(buffer, data, available)) return 0;
+    buffer->discard = 1;
+    return 1;
+  }
+  size_t need = buffer->len + len;
+  if (need > buffer->cap) {
+    size_t cap = buffer->cap ? buffer->cap : 4096u;
+    while (cap < need) {
+      if (cap > ZERO_RUNTIME_PROC_BUFFER_MAX / 2u) {
+        cap = ZERO_RUNTIME_PROC_BUFFER_MAX;
+        break;
+      }
+      cap *= 2u;
+    }
+    unsigned char *next = (unsigned char *)realloc(buffer->data, cap);
+    if (!next) {
+      buffer->discard = 1;
+      return 1;
+    }
+    buffer->data = next;
+    buffer->cap = cap;
+  }
+  memcpy(buffer->data + buffer->len, data, len);
+  buffer->len += len;
+  return 1;
+}
+
+static ZeroMaybeUsize zero_proc_pipe_buffer_read(ZeroRuntimeProcPipeBuffer *buffer, ZeroMutByteView out) {
+  if (!buffer || buffer->offset >= buffer->len || out.len == 0) return zero_runtime_none_usize();
+  size_t available = buffer->len - buffer->offset;
+  size_t take = available < out.len ? available : out.len;
+  memcpy(out.ptr, buffer->data + buffer->offset, take);
+  buffer->offset += take;
+  if (buffer->offset == buffer->len) {
+    buffer->offset = 0;
+    buffer->len = 0;
+  }
+  return (ZeroMaybeUsize){1, (uint64_t)take};
+}
+
+static void zero_proc_child_drain_fd(int *fd, ZeroRuntimeProcPipeBuffer *buffer) {
+  if (!fd || *fd < 0 || !buffer) return;
+  unsigned char chunk[ZERO_RUNTIME_PROC_DRAIN_CHUNK];
+  for (;;) {
+    ZeroReadResult got = ZERO_RUNTIME_READ(*fd, chunk, sizeof(chunk));
+    if (got > 0) {
+      (void)zero_proc_pipe_buffer_append(buffer, chunk, (size_t)got);
+      continue;
+    }
+    if (got == 0) {
+      zero_proc_child_close_fd(fd);
+      return;
+    }
+    if (errno == EINTR) continue;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+    zero_proc_child_close_fd(fd);
+    return;
+  }
+}
+
+static void zero_proc_child_drain_output(ZeroRuntimeProcChild *child) {
+  if (!child) return;
+  if (child->pty) {
+    zero_proc_child_drain_fd(&child->pty_fd, &child->pty_buffer);
+  } else {
+    zero_proc_child_drain_fd(&child->stdout_fd, &child->stdout_buffer);
+    zero_proc_child_drain_fd(&child->stderr_fd, &child->stderr_buffer);
+  }
+}
+
+static int zero_proc_child_output_open(const ZeroRuntimeProcChild *child) {
+  if (!child) return 0;
+  if (child->pty) return child->pty_fd >= 0;
+  return child->stdout_fd >= 0 || child->stderr_fd >= 0;
+}
+
+static int zero_proc_child_set_nonblock(int fd) {
+  return zero_runtime_set_fd_nonblock(fd);
+}
+
+static int zero_proc_child_set_cloexec(int fd) {
+  int flags = fcntl(fd, F_GETFD, 0);
+  if (flags < 0) return 0;
+  return fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
+}
+
+static int32_t zero_proc_status_from_wait(int status) {
+  if (WIFEXITED(status)) return (int32_t)WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return (int32_t)(128 + WTERMSIG(status));
+  return 127;
+}
+
+static int zero_proc_child_reap(ZeroRuntimeProcChild *child, int nohang) {
+  if (!child || !child->active) return 0;
+  if (child->reaped) return 1;
+  int raw = 0;
+  for (;;) {
+    pid_t got = waitpid(child->pid, &raw, nohang ? WNOHANG : 0);
+    if (got == 0) return 0;
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      child->status = 127;
+      child->reaped = 1;
+      return 1;
+    }
+    child->status = zero_proc_status_from_wait(raw);
+    child->reaped = 1;
+    return 1;
+  }
+}
+
+static void zero_proc_child_poll_output(ZeroRuntimeProcChild *child, int timeout_ms) {
+  if (!child) return;
+  struct pollfd fds[2];
+  nfds_t count = 0;
+  if (child->pty) {
+    if (child->pty_fd >= 0) {
+      fds[count++] = (struct pollfd){.fd = child->pty_fd, .events = POLLIN | POLLHUP | POLLERR};
+    }
+  } else {
+    if (child->stdout_fd >= 0) {
+      fds[count++] = (struct pollfd){.fd = child->stdout_fd, .events = POLLIN | POLLHUP | POLLERR};
+    }
+    if (child->stderr_fd >= 0) {
+      fds[count++] = (struct pollfd){.fd = child->stderr_fd, .events = POLLIN | POLLHUP | POLLERR};
+    }
+  }
+  if (count == 0) {
+    if (timeout_ms < 0) {
+      (void)zero_proc_child_reap(child, 0);
+    } else if (timeout_ms > 0) {
+      (void)poll(NULL, 0, timeout_ms);
+    }
+    return;
+  }
+  int rc = 0;
+  do {
+    rc = poll(fds, count, timeout_ms);
+  } while (rc < 0 && errno == EINTR);
+  if (rc > 0) zero_proc_child_drain_output(child);
+}
+
+static int zero_proc_child_wait_with_drain(ZeroRuntimeProcChild *child, int timeout_ms) {
+  if (!child || !child->active) return 0;
+  int elapsed_ms = 0;
+  for (;;) {
+    zero_proc_child_drain_output(child);
+    if (zero_proc_child_reap(child, 1)) {
+      zero_proc_child_drain_output(child);
+      return 1;
+    }
+    if (timeout_ms == 0) return 0;
+    int slice_ms = 50;
+    if (timeout_ms > 0) {
+      if (elapsed_ms >= timeout_ms) return 0;
+      slice_ms = timeout_ms - elapsed_ms;
+      if (slice_ms > 50) slice_ms = 50;
+    }
+    zero_proc_child_poll_output(child, slice_ms);
+    if (slice_ms > 0) elapsed_ms += slice_ms;
+  }
+}
+
+static int zero_proc_child_wait_output_closed(ZeroRuntimeProcChild *child, int timeout_ms) {
+  if (!child || !child->active) return 0;
+  int elapsed_ms = 0;
+  for (;;) {
+    zero_proc_child_drain_output(child);
+    if (!zero_proc_child_output_open(child)) return 1;
+    if (timeout_ms == 0) return 0;
+    int slice_ms = 50;
+    if (timeout_ms > 0) {
+      if (elapsed_ms >= timeout_ms) return 0;
+      slice_ms = timeout_ms - elapsed_ms;
+      if (slice_ms > 50) slice_ms = 50;
+    }
+    zero_proc_child_poll_output(child, slice_ms);
+    if (slice_ms > 0) elapsed_ms += slice_ms;
+  }
+}
+
+static int zero_proc_child_close_handle(ZeroRuntimeProcChild *child) {
+  if (!child || !child->active) return 0;
+  if (!child->reaped && !zero_proc_child_wait_with_drain(child, 0)) {
+    (void)zero_proc_signal_child(child, SIGTERM);
+    (void)zero_proc_child_wait_with_drain(child, 250);
+    if (!child->reaped) {
+      (void)zero_proc_signal_child(child, SIGKILL);
+      (void)zero_proc_child_wait_with_drain(child, -1);
+    }
+  }
+  zero_proc_child_drain_output(child);
+  if (zero_proc_child_output_open(child)) {
+    (void)zero_proc_signal_child(child, SIGTERM);
+    (void)zero_proc_child_wait_output_closed(child, 250);
+    if (zero_proc_child_output_open(child)) {
+      (void)zero_proc_signal_child(child, SIGKILL);
+      (void)zero_proc_child_wait_output_closed(child, 250);
+    }
+  }
+  zero_proc_child_close_pipes(child);
+  zero_proc_child_free_buffers(child);
+  child->active = 0;
+  return 1;
+}
+
+static int zero_proc_pid_running(int32_t pid) {
+  if (pid <= 0) return 0;
+  if (kill((pid_t)pid, 0) == 0) return 1;
+  return errno == EPERM ? 1 : 0;
+}
+
+static int zero_proc_signal_pid(int32_t pid, int signal_number) {
+  if (pid <= 0) return 0;
+  return kill((pid_t)pid, signal_number) == 0 ? 1 : 0;
+}
+
+static int zero_proc_signal_group_pid(int32_t pid, int signal_number) {
+  if (pid <= 1) return 0;
+  return kill(-(pid_t)pid, signal_number) == 0 ? 1 : 0;
+}
+
+static void zero_proc_kill_and_reap_pid(pid_t pid) {
+  if (pid <= 0) return;
+  (void)zero_proc_signal_group_pid((int32_t)pid, SIGTERM);
+  (void)zero_proc_signal_pid((int32_t)pid, SIGTERM);
+
+  int status = 0;
+  for (;;) {
+    pid_t got = waitpid(pid, &status, WNOHANG);
+    if (got == pid) return;
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      return;
+    }
+    break;
+  }
+
+  (void)zero_proc_signal_group_pid((int32_t)pid, SIGKILL);
+  (void)zero_proc_signal_pid((int32_t)pid, SIGKILL);
+  for (;;) {
+    pid_t got = waitpid(pid, &status, 0);
+    if (got == pid) return;
+    if (got < 0 && errno == EINTR) continue;
+    return;
+  }
+}
+
+static int zero_proc_signal_child(ZeroRuntimeProcChild *child, int signal_number) {
+  if (!child || child->pid <= 0) return 0;
+  if (zero_proc_signal_group_pid((int32_t)child->pid, signal_number)) return 1;
+  return zero_proc_signal_pid((int32_t)child->pid, signal_number);
+}
+#endif
+
+static int32_t zero_proc_spawn_child_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
+#if defined(_WIN32)
+  (void)argv;
+  (void)cwd;
+  (void)env;
+  return 0;
+#else
+  if (cwd && !zero_runtime_path_is_dir(cwd)) return 0;
+  int index = zero_proc_child_alloc();
+  if (index < 0) return 0;
+
+  int stdin_pipe[2] = {-1, -1};
+  int stdout_pipe[2] = {-1, -1};
+  int stderr_pipe[2] = {-1, -1};
+  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
+    zero_proc_child_close_pair(stdin_pipe);
+    zero_proc_child_close_pair(stdout_pipe);
+    zero_proc_child_close_pair(stderr_pipe);
+    return 0;
+  }
+  if (!zero_proc_child_set_cloexec(stdin_pipe[0]) ||
+      !zero_proc_child_set_cloexec(stdin_pipe[1]) ||
+      !zero_proc_child_set_cloexec(stdout_pipe[0]) ||
+      !zero_proc_child_set_cloexec(stdout_pipe[1]) ||
+      !zero_proc_child_set_cloexec(stderr_pipe[0]) ||
+      !zero_proc_child_set_cloexec(stderr_pipe[1])) {
+    zero_proc_child_close_pair(stdin_pipe);
+    zero_proc_child_close_pair(stdout_pipe);
+    zero_proc_child_close_pair(stderr_pipe);
+    return 0;
+  }
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    zero_proc_child_close_pair(stdin_pipe);
+    zero_proc_child_close_pair(stdout_pipe);
+    zero_proc_child_close_pair(stderr_pipe);
+    return 0;
+  }
+
+  if (pid == 0) {
+    (void)setpgid(0, 0);
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
+    ZERO_RUNTIME_CLOSE(stdin_pipe[1]);
+    ZERO_RUNTIME_CLOSE(stdout_pipe[0]);
+    ZERO_RUNTIME_CLOSE(stderr_pipe[0]);
+    if (dup2(stdin_pipe[0], STDIN_FILENO) < 0) _exit(127);
+    if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) _exit(127);
+    if (dup2(stderr_pipe[1], STDERR_FILENO) < 0) _exit(127);
+    ZERO_RUNTIME_CLOSE(stdin_pipe[0]);
+    ZERO_RUNTIME_CLOSE(stdout_pipe[1]);
+    ZERO_RUNTIME_CLOSE(stderr_pipe[1]);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  (void)setpgid(pid, pid);
+  ZERO_RUNTIME_CLOSE(stdin_pipe[0]);
+  ZERO_RUNTIME_CLOSE(stdout_pipe[1]);
+  ZERO_RUNTIME_CLOSE(stderr_pipe[1]);
+  if (!zero_proc_child_set_nonblock(stdin_pipe[1]) ||
+      !zero_proc_child_set_nonblock(stdout_pipe[0]) ||
+      !zero_proc_child_set_nonblock(stderr_pipe[0])) {
+    ZERO_RUNTIME_CLOSE(stdin_pipe[1]);
+    ZERO_RUNTIME_CLOSE(stdout_pipe[0]);
+    ZERO_RUNTIME_CLOSE(stderr_pipe[0]);
+    zero_proc_kill_and_reap_pid(pid);
+    return 0;
+  }
+  if (!zero_proc_sigpipe_ignored) {
+    signal(SIGPIPE, SIG_IGN);
+    zero_proc_sigpipe_ignored = 1;
+  }
+
+  uint32_t generation = zero_proc_child_next_generation(zero_proc_children[index].generation);
+  zero_proc_children[index] = (ZeroRuntimeProcChild){
+    .active = 1,
+    .generation = generation,
+    .reaped = 0,
+    .status = 127,
+    .pid = pid,
+    .stdin_fd = stdin_pipe[1],
+    .stdout_fd = stdout_pipe[0],
+    .stderr_fd = stderr_pipe[0],
+    .pty_fd = -1,
+    .pty = 0,
+  };
+  return zero_proc_child_handle(index, generation);
+#endif
+}
+
+static int32_t zero_proc_spawn_child_impl(ZeroByteView command, const char *cwd, char *env) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 0;
+  return zero_proc_spawn_child_argv_impl(argv, cwd, env);
+}
+
+int32_t zero_proc_spawn_child(ZeroByteView command) {
+  return zero_proc_spawn_child_impl(command, NULL, NULL);
+}
+
+int32_t zero_proc_spawn_child_in(ZeroByteView command, ZeroByteView cwd) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf)) return 0;
+  return zero_proc_spawn_child_impl(command, cwd_buf, NULL);
+}
+
+int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf) || !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_proc_spawn_child_impl(command, cwd_buf, env_buf);
+}
+
+int32_t zero_proc_spawn_child_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(cwd, cwd_buf) ||
+      !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_proc_spawn_child_argv_impl(argv, cwd_buf, env_buf);
+}
+
+static int32_t zero_pty_spawn_argv_impl(char *argv[ZERO_RUNTIME_PROC_MAX_ARGS], const char *cwd, char *env) {
+#if defined(_WIN32)
+  (void)argv;
+  (void)cwd;
+  (void)env;
+  return 0;
+#else
+  if (cwd && !zero_runtime_path_is_dir(cwd)) return 0;
+  int index = zero_proc_child_alloc();
+  if (index < 0) return 0;
+
+  int master_fd = -1;
+  pid_t pid = forkpty(&master_fd, NULL, NULL, NULL);
+  if (pid < 0) {
+    return 0;
+  }
+
+  if (pid == 0) {
+    (void)setpgid(0, 0);
+    if (cwd && ZERO_RUNTIME_CHDIR(cwd) != 0) _exit(127);
+    if (!zero_runtime_proc_apply_env_block(env)) _exit(127);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+
+  (void)setpgid(pid, pid);
+  if (!zero_proc_child_set_cloexec(master_fd) || !zero_proc_child_set_nonblock(master_fd)) {
+    ZERO_RUNTIME_CLOSE(master_fd);
+    zero_proc_kill_and_reap_pid(pid);
+    return 0;
+  }
+  if (!zero_proc_sigpipe_ignored) {
+    signal(SIGPIPE, SIG_IGN);
+    zero_proc_sigpipe_ignored = 1;
+  }
+
+  uint32_t generation = zero_proc_child_next_generation(zero_proc_children[index].generation);
+  zero_proc_children[index] = (ZeroRuntimeProcChild){
+    .active = 1,
+    .generation = generation,
+    .reaped = 0,
+    .status = 127,
+    .pid = pid,
+    .stdin_fd = -1,
+    .stdout_fd = -1,
+    .stderr_fd = -1,
+    .pty_fd = master_fd,
+    .pty = 1,
+  };
+  return zero_proc_child_handle(index, generation);
+#endif
+}
+
+static int32_t zero_pty_spawn_impl(ZeroByteView command, const char *cwd, char *env) {
+  char storage[ZERO_RUNTIME_PROC_COMMAND_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  if (!zero_runtime_proc_parse_command(command, storage, argv)) return 0;
+  return zero_pty_spawn_argv_impl(argv, cwd, env);
+}
+
+int32_t zero_pty_spawn(ZeroByteView command) {
+  return zero_pty_spawn_impl(command, NULL, NULL);
+}
+
+int32_t zero_pty_spawn_in(ZeroByteView command, ZeroByteView cwd) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf)) return 0;
+  return zero_pty_spawn_impl(command, cwd_buf, NULL);
+}
+
+int32_t zero_pty_spawn_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env) {
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_path_copy(cwd, cwd_buf) || !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_pty_spawn_impl(command, cwd_buf, env_buf);
+}
+
+int32_t zero_pty_spawn_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env) {
+  char argv_storage[ZERO_RUNTIME_PROC_ARGS_BYTES];
+  char *argv[ZERO_RUNTIME_PROC_MAX_ARGS];
+  char cwd_buf[ZERO_RUNTIME_PATH_BYTES];
+  char env_buf[ZERO_RUNTIME_PROC_ENV_BYTES];
+  if (!zero_runtime_proc_build_argv(program, args, argv_storage, argv) ||
+      !zero_runtime_path_copy(cwd, cwd_buf) ||
+      !zero_runtime_proc_copy_env_block(env, env_buf)) return 0;
+  return zero_pty_spawn_argv_impl(argv, cwd_buf, env_buf);
+}
+
+int32_t zero_pty_resize(int32_t child, uint64_t columns, uint64_t rows) {
+#if defined(_WIN32)
+  (void)child;
+  (void)columns;
+  (void)rows;
+  return 0;
+#else
+  int index = zero_proc_child_index(child);
+  if (index < 0 || columns == 0 || rows == 0 || columns > UINT16_MAX || rows > UINT16_MAX) return 0;
+  ZeroRuntimeProcChild *slot = &zero_proc_children[index];
+  if (!slot->pty || slot->pty_fd < 0) return 0;
+#if defined(TIOCSWINSZ)
+  struct winsize size;
+  memset(&size, 0, sizeof(size));
+  size.ws_col = (unsigned short)columns;
+  size.ws_row = (unsigned short)rows;
+  return ioctl(slot->pty_fd, TIOCSWINSZ, &size) == 0 ? 1 : 0;
+#else
+  return 0;
+#endif
+#endif
+}
+
+int32_t zero_proc_child_op(int32_t child, uint32_t op) {
+#if defined(_WIN32)
+  (void)child;
+  (void)op;
+  return 0;
+#else
+  switch ((ZeroProcChildOp)op) {
+    case ZERO_PROC_CHILD_OP_PID_RUNNING:
+      return zero_proc_pid_running(child);
+    case ZERO_PROC_CHILD_OP_KILL_PID:
+      return zero_proc_signal_pid(child, SIGTERM);
+    case ZERO_PROC_CHILD_OP_INTERRUPT_PID:
+      return zero_proc_signal_pid(child, SIGINT);
+    case ZERO_PROC_CHILD_OP_KILL_GROUP_PID:
+      return zero_proc_signal_group_pid(child, SIGTERM);
+    case ZERO_PROC_CHILD_OP_INTERRUPT_GROUP_PID:
+      return zero_proc_signal_group_pid(child, SIGINT);
+    default:
+      break;
+  }
+  int index = zero_proc_child_index(child);
+  if (index < 0) return op == ZERO_PROC_CHILD_OP_WAIT ? 127 : 0;
+  ZeroRuntimeProcChild *slot = &zero_proc_children[index];
+  switch ((ZeroProcChildOp)op) {
+    case ZERO_PROC_CHILD_OP_VALID:
+      return 1;
+    case ZERO_PROC_CHILD_OP_PID:
+      return (int32_t)slot->pid;
+    case ZERO_PROC_CHILD_OP_RUNNING:
+      return zero_proc_child_reap(slot, 1) ? 0 : 1;
+    case ZERO_PROC_CHILD_OP_WAIT:
+      zero_proc_child_wait_with_drain(slot, -1);
+      return slot->status;
+    case ZERO_PROC_CHILD_OP_KILL:
+      if (zero_proc_child_reap(slot, 1)) return 1;
+      return zero_proc_signal_child(slot, SIGTERM);
+    case ZERO_PROC_CHILD_OP_INTERRUPT:
+      if (zero_proc_child_reap(slot, 1)) return 1;
+      return zero_proc_signal_child(slot, SIGINT);
+    case ZERO_PROC_CHILD_OP_CLOSE_STDIN:
+      if (slot->pty) return 1;
+      zero_proc_child_close_fd(&slot->stdin_fd);
+      return 1;
+    case ZERO_PROC_CHILD_OP_CLOSE:
+      return zero_proc_child_close_handle(slot);
+    default:
+      return 0;
+  }
+#endif
+}
+
+ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_t op) {
+  if (!buffer.ptr && buffer.len > 0) return zero_runtime_none_usize();
+#if defined(_WIN32)
+  (void)child;
+  (void)op;
+  return zero_runtime_none_usize();
+#else
+  int index = zero_proc_child_index(child);
+  if (index < 0) return zero_runtime_none_usize();
+  ZeroRuntimeProcChild *slot = &zero_proc_children[index];
+  int fd = -1;
+  if (slot->pty) {
+    if (op == ZERO_PROC_CHILD_IO_READ_STDOUT || op == ZERO_PROC_CHILD_IO_WRITE_STDIN) fd = slot->pty_fd;
+    else return zero_runtime_none_usize();
+  } else {
+    if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) fd = slot->stdout_fd;
+    else if (op == ZERO_PROC_CHILD_IO_READ_STDERR) fd = slot->stderr_fd;
+    else if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) fd = slot->stdin_fd;
+    else return zero_runtime_none_usize();
+  }
+  if (op == ZERO_PROC_CHILD_IO_WRITE_STDIN) {
+    if (fd < 0) return zero_runtime_none_usize();
+    if (buffer.len == 0) return (ZeroMaybeUsize){1, 0};
+    ZeroWriteResult written = ZERO_RUNTIME_WRITE(fd, buffer.ptr, buffer.len > (size_t)UINT_MAX ? UINT_MAX : (unsigned)buffer.len);
+    if (written < 0) {
+      if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();
+      if (slot->pty) zero_proc_child_close_fd(&slot->pty_fd);
+      else zero_proc_child_close_fd(&slot->stdin_fd);
+      return zero_runtime_none_usize();
+    }
+    return (ZeroMaybeUsize){1, (uint64_t)written};
+  }
+
+  if (buffer.len == 0) return zero_runtime_none_usize();
+  ZeroRuntimeProcPipeBuffer *pending = NULL;
+  if (slot->pty) pending = &slot->pty_buffer;
+  else if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) pending = &slot->stdout_buffer;
+  else if (op == ZERO_PROC_CHILD_IO_READ_STDERR) pending = &slot->stderr_buffer;
+  ZeroMaybeUsize buffered = zero_proc_pipe_buffer_read(pending, buffer);
+  if (buffered.has) return buffered;
+  if (fd < 0) return zero_runtime_none_usize();
+
+  ZeroReadResult got = ZERO_RUNTIME_READ(fd, buffer.ptr, buffer.len > (size_t)UINT_MAX ? UINT_MAX : (unsigned)buffer.len);
+  if (got < 0) {
+    if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();
+    if (slot->pty) zero_proc_child_close_fd(&slot->pty_fd);
+    else if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) zero_proc_child_close_fd(&slot->stdout_fd);
+    else zero_proc_child_close_fd(&slot->stderr_fd);
+    return zero_runtime_none_usize();
+  }
+  if (got == 0) {
+    if (slot->pty) zero_proc_child_close_fd(&slot->pty_fd);
+    else if (op == ZERO_PROC_CHILD_IO_READ_STDOUT) zero_proc_child_close_fd(&slot->stdout_fd);
+    else zero_proc_child_close_fd(&slot->stderr_fd);
+    return zero_runtime_none_usize();
+  }
+  return (ZeroMaybeUsize){1, (uint64_t)got};
+#endif
 }
 
 uint64_t zero_parse_u32(ZeroByteView text) {
@@ -581,6 +2036,318 @@ uint64_t zero_text_op(ZeroByteView text, uint32_t op) {
   }
 }
 
+#define ZERO_TERM_KEY_ARROW_UP UINT32_C(1114113)
+#define ZERO_TERM_KEY_ARROW_DOWN UINT32_C(1114114)
+#define ZERO_TERM_KEY_ARROW_RIGHT UINT32_C(1114115)
+#define ZERO_TERM_KEY_ARROW_LEFT UINT32_C(1114116)
+#define ZERO_TERM_KEY_DELETE UINT32_C(1114117)
+#define ZERO_TERM_KEY_HOME UINT32_C(1114118)
+#define ZERO_TERM_KEY_END UINT32_C(1114119)
+#define ZERO_TERM_KEY_PAGE_UP UINT32_C(1114120)
+#define ZERO_TERM_KEY_PAGE_DOWN UINT32_C(1114121)
+#define ZERO_TERM_KEY_INSERT UINT32_C(1114122)
+#define ZERO_TERM_KEY_SHIFT_TAB UINT32_C(1114123)
+#define ZERO_TERM_KEY_F1 UINT32_C(1114124)
+#define ZERO_TERM_KEY_F2 UINT32_C(1114125)
+#define ZERO_TERM_KEY_F3 UINT32_C(1114126)
+#define ZERO_TERM_KEY_F4 UINT32_C(1114127)
+#define ZERO_TERM_KEY_F5 UINT32_C(1114128)
+#define ZERO_TERM_KEY_F6 UINT32_C(1114129)
+#define ZERO_TERM_KEY_F7 UINT32_C(1114130)
+#define ZERO_TERM_KEY_F8 UINT32_C(1114131)
+#define ZERO_TERM_KEY_F9 UINT32_C(1114132)
+#define ZERO_TERM_KEY_F10 UINT32_C(1114133)
+#define ZERO_TERM_KEY_F11 UINT32_C(1114134)
+#define ZERO_TERM_KEY_F12 UINT32_C(1114135)
+#define ZERO_TERM_KEY_PASTE_START UINT32_C(1114136)
+#define ZERO_TERM_KEY_PASTE_END UINT32_C(1114137)
+
+static uint32_t zero_term_utf8_key(ZeroByteView text, size_t *width_out) {
+  if (text.len == 0 || !text.ptr) return 0;
+  unsigned char first = text.ptr[0];
+  size_t width = zero_text_utf8_sequence_len(first);
+  if (width == 0 || width > text.len) return 0;
+  uint32_t code = first;
+  if (width == 2) {
+    unsigned char second = text.ptr[1];
+    if (!zero_text_is_cont(second)) return 0;
+    code = ((uint32_t)(first & 0x1fu) << 6) | (uint32_t)(second & 0x3fu);
+  } else if (width == 3) {
+    unsigned char second = text.ptr[1];
+    unsigned char third = text.ptr[2];
+    if (!zero_text_is_cont(second) || !zero_text_is_cont(third)) return 0;
+    if (first == 224u && second < 160u) return 0;
+    if (first == 237u && second > 159u) return 0;
+    code = ((uint32_t)(first & 0x0fu) << 12) | ((uint32_t)(second & 0x3fu) << 6) | (uint32_t)(third & 0x3fu);
+  } else if (width == 4) {
+    unsigned char second = text.ptr[1];
+    unsigned char third = text.ptr[2];
+    unsigned char fourth = text.ptr[3];
+    if (!zero_text_is_cont(second) || !zero_text_is_cont(third) || !zero_text_is_cont(fourth)) return 0;
+    if (first == 240u && second < 144u) return 0;
+    if (first == 244u && second > 143u) return 0;
+    code = ((uint32_t)(first & 0x07u) << 18) | ((uint32_t)(second & 0x3fu) << 12) | ((uint32_t)(third & 0x3fu) << 6) | (uint32_t)(fourth & 0x3fu);
+  }
+  if (width_out) *width_out = width;
+  return code;
+}
+
+static uint32_t zero_term_key_decode(ZeroByteView text, int return_len) {
+  if (!zero_str_view_valid(text) || text.len == 0) return 0;
+  unsigned char first = text.ptr[0];
+  if (first == 0x1bu) {
+    if (text.len == 1) return return_len ? 1u : 27u;
+    if (text.len >= 3 && (text.ptr[1] == '[' || text.ptr[1] == 'O')) {
+      unsigned char code = text.ptr[2];
+      if (code == 'A') return return_len ? 3u : ZERO_TERM_KEY_ARROW_UP;
+      if (code == 'B') return return_len ? 3u : ZERO_TERM_KEY_ARROW_DOWN;
+      if (code == 'C') return return_len ? 3u : ZERO_TERM_KEY_ARROW_RIGHT;
+      if (code == 'D') return return_len ? 3u : ZERO_TERM_KEY_ARROW_LEFT;
+      if (code == 'H') return return_len ? 3u : ZERO_TERM_KEY_HOME;
+      if (code == 'F') return return_len ? 3u : ZERO_TERM_KEY_END;
+      if (code == 'Z' && text.ptr[1] == '[') return return_len ? 3u : ZERO_TERM_KEY_SHIFT_TAB;
+      if (code == 'P' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F1;
+      if (code == 'Q' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F2;
+      if (code == 'R' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F3;
+      if (code == 'S' && text.ptr[1] == 'O') return return_len ? 3u : ZERO_TERM_KEY_F4;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '2' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_INSERT;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '3' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_DELETE;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && (text.ptr[2] == '1' || text.ptr[2] == '7') && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_HOME;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && (text.ptr[2] == '4' || text.ptr[2] == '8') && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_END;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '5' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_PAGE_UP;
+    }
+    if (text.len >= 4 && text.ptr[1] == '[' && text.ptr[2] == '6' && text.ptr[3] == '~') {
+      return return_len ? 4u : ZERO_TERM_KEY_PAGE_DOWN;
+    }
+    if (text.len >= 5 && text.ptr[1] == '[' && text.ptr[4] == '~') {
+      unsigned char a = text.ptr[2];
+      unsigned char b = text.ptr[3];
+      if (a == '1' && b == '1') return return_len ? 5u : ZERO_TERM_KEY_F1;
+      if (a == '1' && b == '2') return return_len ? 5u : ZERO_TERM_KEY_F2;
+      if (a == '1' && b == '3') return return_len ? 5u : ZERO_TERM_KEY_F3;
+      if (a == '1' && b == '4') return return_len ? 5u : ZERO_TERM_KEY_F4;
+      if (a == '1' && b == '5') return return_len ? 5u : ZERO_TERM_KEY_F5;
+      if (a == '1' && b == '7') return return_len ? 5u : ZERO_TERM_KEY_F6;
+      if (a == '1' && b == '8') return return_len ? 5u : ZERO_TERM_KEY_F7;
+      if (a == '1' && b == '9') return return_len ? 5u : ZERO_TERM_KEY_F8;
+      if (a == '2' && b == '0') return return_len ? 5u : ZERO_TERM_KEY_F9;
+      if (a == '2' && b == '1') return return_len ? 5u : ZERO_TERM_KEY_F10;
+      if (a == '2' && b == '3') return return_len ? 5u : ZERO_TERM_KEY_F11;
+      if (a == '2' && b == '4') return return_len ? 5u : ZERO_TERM_KEY_F12;
+    }
+    if (text.len >= 6 && text.ptr[1] == '[' && text.ptr[2] == '2' && text.ptr[3] == '0' && text.ptr[5] == '~') {
+      if (text.ptr[4] == '0') return return_len ? 6u : ZERO_TERM_KEY_PASTE_START;
+      if (text.ptr[4] == '1') return return_len ? 6u : ZERO_TERM_KEY_PASTE_END;
+    }
+    return 0;
+  }
+  if (first == '\r' || first == '\n') return return_len ? 1u : 13u;
+  if (first == '\t') return return_len ? 1u : 9u;
+  if (first == 0x7fu || first == 0x08u) return return_len ? 1u : 127u;
+  if (first < 32u) return return_len ? 1u : (uint32_t)first;
+  if (first < 128u) return return_len ? 1u : (uint32_t)first;
+  size_t width = 0;
+  uint32_t code = zero_term_utf8_key(text, &width);
+  if (!code) return 0;
+  return return_len ? (uint32_t)width : code;
+}
+
+static uint64_t zero_term_size_or(uint64_t fallback, int height) {
+#if !defined(_WIN32) && defined(TIOCGWINSZ)
+  struct winsize size;
+  if (ioctl(ZERO_RUNTIME_STDOUT_FD, TIOCGWINSZ, &size) == 0) {
+    unsigned value = height ? size.ws_row : size.ws_col;
+    if (value > 0) return value;
+  }
+#endif
+  return fallback;
+}
+
+#if defined(_WIN32)
+static DWORD zero_term_original_mode;
+static int zero_term_raw_active;
+static int zero_term_restore_registered;
+
+static void zero_term_restore_at_exit(void) {
+  if (!zero_term_raw_active) return;
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return;
+  SetConsoleMode(input, zero_term_original_mode);
+  zero_term_raw_active = 0;
+}
+
+static uint64_t zero_term_enter_raw_mode(void) {
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return 0;
+  DWORD mode = 0;
+  if (!GetConsoleMode(input, &mode)) return 0;
+  if (zero_term_raw_active) return 1;
+  DWORD raw = mode;
+  raw &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+  raw |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+  if (!SetConsoleMode(input, raw)) return 0;
+  zero_term_original_mode = mode;
+  zero_term_raw_active = 1;
+  if (!zero_term_restore_registered) {
+    atexit(zero_term_restore_at_exit);
+    zero_term_restore_registered = 1;
+  }
+  return 1;
+}
+
+static uint64_t zero_term_leave_raw_mode(void) {
+  if (!zero_term_raw_active) return 1;
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return 0;
+  if (!SetConsoleMode(input, zero_term_original_mode)) return 0;
+  zero_term_raw_active = 0;
+  return 1;
+}
+#else
+static struct termios zero_term_original_mode;
+static int zero_term_raw_active;
+static int zero_term_restore_registered;
+
+static void zero_term_restore_at_exit(void) {
+  if (!zero_term_raw_active) return;
+  tcsetattr(ZERO_RUNTIME_STDIN_FD, TCSAFLUSH, &zero_term_original_mode);
+  zero_term_raw_active = 0;
+}
+
+static uint64_t zero_term_enter_raw_mode(void) {
+  if (!ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDIN_FD)) return 0;
+  struct termios mode;
+  if (tcgetattr(ZERO_RUNTIME_STDIN_FD, &mode) != 0) return 0;
+  if (zero_term_raw_active) return 1;
+  zero_term_original_mode = mode;
+  mode.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  mode.c_oflag &= ~(OPOST);
+  mode.c_cflag |= CS8;
+#if defined(IEXTEN)
+  mode.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+#else
+  mode.c_lflag &= ~(ECHO | ICANON | ISIG);
+#endif
+  mode.c_cc[VMIN] = 0;
+  mode.c_cc[VTIME] = 0;
+  if (tcsetattr(ZERO_RUNTIME_STDIN_FD, TCSAFLUSH, &mode) != 0) return 0;
+  zero_term_raw_active = 1;
+  if (!zero_term_restore_registered) {
+    atexit(zero_term_restore_at_exit);
+    zero_term_restore_registered = 1;
+  }
+  return 1;
+}
+
+static uint64_t zero_term_leave_raw_mode(void) {
+  if (!zero_term_raw_active) return 1;
+  if (tcsetattr(ZERO_RUNTIME_STDIN_FD, TCSAFLUSH, &zero_term_original_mode) != 0) return 0;
+  zero_term_raw_active = 0;
+  return 1;
+}
+#endif
+
+static size_t zero_term_read_chunk_len(size_t len) {
+  return len > (size_t)UINT_MAX ? (size_t)UINT_MAX : len;
+}
+
+ZeroMaybeUsize zero_term_read_input(ZeroMutByteView buffer) {
+  if (!buffer.ptr || buffer.len == 0) return zero_runtime_none_usize();
+  size_t chunk = zero_term_read_chunk_len(buffer.len);
+#if defined(_WIN32)
+  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+  if (input == INVALID_HANDLE_VALUE) return zero_runtime_none_usize();
+  if (ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDIN_FD)) {
+    if (!_kbhit()) return zero_runtime_none_usize();
+    int first = _getch();
+    if (first == 0 || first == 0xe0) {
+      if (!_kbhit()) return zero_runtime_none_usize();
+      int second = _getch();
+      const unsigned char *sequence = NULL;
+      size_t len = 0;
+      static const unsigned char up[] = {0x1b, '[', 'A'};
+      static const unsigned char down[] = {0x1b, '[', 'B'};
+      static const unsigned char right[] = {0x1b, '[', 'C'};
+      static const unsigned char left[] = {0x1b, '[', 'D'};
+      static const unsigned char del[] = {0x1b, '[', '3', '~'};
+      if (second == 72) { sequence = up; len = sizeof(up); }
+      else if (second == 80) { sequence = down; len = sizeof(down); }
+      else if (second == 77) { sequence = right; len = sizeof(right); }
+      else if (second == 75) { sequence = left; len = sizeof(left); }
+      else if (second == 83) { sequence = del; len = sizeof(del); }
+      if (!sequence || len > buffer.len) return zero_runtime_none_usize();
+      memcpy(buffer.ptr, sequence, len);
+      return (ZeroMaybeUsize){1, (uint64_t)len};
+    }
+    buffer.ptr[0] = (unsigned char)first;
+    return (ZeroMaybeUsize){1, 1};
+  }
+  DWORD type = GetFileType(input);
+  if (type == FILE_TYPE_PIPE) {
+    DWORD available = 0;
+    if (!PeekNamedPipe(input, NULL, 0, NULL, &available, NULL) || available == 0) return zero_runtime_none_usize();
+    if ((uint64_t)chunk > (uint64_t)available) chunk = (size_t)available;
+  } else if (type != FILE_TYPE_DISK) {
+    return zero_runtime_none_usize();
+  }
+  int got = ZERO_RUNTIME_READ(ZERO_RUNTIME_STDIN_FD, buffer.ptr, (unsigned)chunk);
+  if (got <= 0) return zero_runtime_none_usize();
+  return (ZeroMaybeUsize){1, (uint64_t)got};
+#else
+  for (;;) {
+    fd_set read_set;
+    FD_ZERO(&read_set);
+    FD_SET(ZERO_RUNTIME_STDIN_FD, &read_set);
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+    int ready = select(ZERO_RUNTIME_STDIN_FD + 1, &read_set, NULL, NULL, &timeout);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      return zero_runtime_none_usize();
+    }
+    if (ready == 0) return zero_runtime_none_usize();
+    ZeroReadResult got = ZERO_RUNTIME_READ(ZERO_RUNTIME_STDIN_FD, buffer.ptr, (unsigned)chunk);
+    if (got < 0) {
+      if (errno == EINTR) continue;
+      if (errno == EAGAIN || errno == EWOULDBLOCK) return zero_runtime_none_usize();
+      return zero_runtime_none_usize();
+    }
+    if (got == 0) return zero_runtime_none_usize();
+    return (ZeroMaybeUsize){1, (uint64_t)got};
+  }
+#endif
+}
+
+uint64_t zero_term_op(uint64_t fallback, uint32_t op) {
+  switch ((ZeroTermOp)op) {
+    case ZERO_TERM_OP_STDIN_IS_TTY:
+      return ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDIN_FD) ? 1u : 0u;
+    case ZERO_TERM_OP_STDOUT_IS_TTY:
+      return ZERO_RUNTIME_ISATTY(ZERO_RUNTIME_STDOUT_FD) ? 1u : 0u;
+    case ZERO_TERM_OP_WIDTH_OR:
+      return zero_term_size_or(fallback, 0);
+    case ZERO_TERM_OP_HEIGHT_OR:
+      return zero_term_size_or(fallback, 1);
+    case ZERO_TERM_OP_ENTER_RAW_MODE:
+      return zero_term_enter_raw_mode();
+    case ZERO_TERM_OP_LEAVE_RAW_MODE:
+      return zero_term_leave_raw_mode();
+    default:
+      return fallback;
+  }
+}
+
 static int zero_parse_ascii_digit(unsigned char byte) {
   return byte >= '0' && byte <= '9';
 }
@@ -653,6 +2420,10 @@ uint64_t zero_parse_op(ZeroByteView text, uint32_t arg, uint32_t op) {
       return zero_parse_u32_max(text, UINT8_MAX);
     case ZERO_PARSE_OP_PARSE_U16:
       return zero_parse_u32_max(text, UINT16_MAX);
+    case ZERO_PARSE_OP_TERM_KEY_CODE:
+      return zero_term_key_decode(text, 0);
+    case ZERO_PARSE_OP_TERM_KEY_BYTE_LEN:
+      return zero_term_key_decode(text, 1);
     default:
       return 0;
   }
@@ -678,6 +2449,98 @@ static int64_t zero_time_floor_div(int64_t value, int64_t divisor) {
   return quotient;
 }
 
+static int64_t zero_time_sleep_ns(int64_t ns) {
+  if (ns <= 0) return 1;
+#if defined(_WIN32)
+  uint64_t remaining_ms = ((uint64_t)ns + 999999u) / 1000000u;
+  while (remaining_ms > 0) {
+    DWORD chunk = remaining_ms > 0xffffffffu ? 0xffffffffu : (DWORD)remaining_ms;
+    Sleep(chunk);
+    remaining_ms -= chunk;
+  }
+  return 1;
+#else
+  struct timespec req;
+  req.tv_sec = (time_t)(ns / 1000000000);
+  req.tv_nsec = (long)(ns % 1000000000);
+  while (nanosleep(&req, &req) != 0) {
+    if (errno == EINTR) continue;
+    return 0;
+  }
+  return 1;
+#endif
+}
+
+static int64_t zero_time_wall_seconds(void) {
+#if defined(_WIN32)
+  FILETIME ft;
+  GetSystemTimeAsFileTime(&ft);
+  uint64_t ticks = ((uint64_t)ft.dwHighDateTime << 32) | (uint64_t)ft.dwLowDateTime;
+  if (ticks < 116444736000000000ull) return 0;
+  return (int64_t)((ticks - 116444736000000000ull) / 10000000ull);
+#else
+  return (int64_t)time(NULL);
+#endif
+}
+
+#if defined(_WIN32)
+static uint64_t zero_time_scale_qpc_remainder_ns(uint64_t remainder, uint64_t frequency) {
+  if (frequency == 0) return 0;
+  uint64_t quotient = 0;
+  uint64_t rem = 0;
+  uint64_t term_quotient = remainder / frequency;
+  uint64_t term_rem = remainder % frequency;
+  uint64_t multiplier = 1000000000ull;
+  while (multiplier > 0) {
+    if ((multiplier & 1ull) != 0) {
+      if (quotient > UINT64_MAX - term_quotient) return UINT64_MAX;
+      quotient += term_quotient;
+      uint64_t gap = frequency - term_rem;
+      if (term_rem != 0 && rem >= gap) {
+        if (quotient == UINT64_MAX) return UINT64_MAX;
+        quotient++;
+        rem -= gap;
+      } else {
+        rem += term_rem;
+      }
+    }
+    multiplier >>= 1;
+    if (multiplier == 0) break;
+    if (term_quotient > UINT64_MAX / 2u) return UINT64_MAX;
+    term_quotient *= 2u;
+    uint64_t gap = frequency - term_rem;
+    if (term_rem != 0 && term_rem >= gap) {
+      if (term_quotient == UINT64_MAX) return UINT64_MAX;
+      term_quotient++;
+      term_rem -= gap;
+    } else {
+      term_rem += term_rem;
+    }
+  }
+  return quotient;
+}
+#endif
+
+static int64_t zero_time_monotonic_ns(void) {
+#if defined(_WIN32)
+  LARGE_INTEGER frequency;
+  LARGE_INTEGER counter;
+  if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&counter) || frequency.QuadPart <= 0 || counter.QuadPart < 0) return 0;
+  uint64_t qpc_frequency = (uint64_t)frequency.QuadPart;
+  uint64_t qpc_ticks = (uint64_t)counter.QuadPart;
+  uint64_t seconds = qpc_ticks / qpc_frequency;
+  uint64_t remainder_ns = zero_time_scale_qpc_remainder_ns(qpc_ticks % qpc_frequency, qpc_frequency);
+  if (seconds > (uint64_t)(INT64_MAX / 1000000000ll)) return INT64_MAX;
+  uint64_t whole_ns = seconds * 1000000000ull;
+  if (remainder_ns > (uint64_t)INT64_MAX - whole_ns) return INT64_MAX;
+  return (int64_t)(whole_ns + remainder_ns);
+#else
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+  return (int64_t)ts.tv_sec * 1000000000ll + (int64_t)ts.tv_nsec;
+#endif
+}
+
 int64_t zero_time_op(int64_t a, int64_t b, int64_t c, uint32_t op) {
   switch (op) {
     case ZERO_TIME_OP_AS_US_FLOOR:
@@ -697,6 +2560,18 @@ int64_t zero_time_op(int64_t a, int64_t b, int64_t c, uint32_t op) {
       if (upper < a) return upper;
       return a;
     }
+    case ZERO_TIME_OP_SLEEP:
+      return zero_time_sleep_ns(a);
+    case ZERO_TIME_OP_WALL_SECONDS:
+      (void)a;
+      (void)b;
+      (void)c;
+      return zero_time_wall_seconds();
+    case ZERO_TIME_OP_MONOTONIC:
+      (void)a;
+      (void)b;
+      (void)c;
+      return zero_time_monotonic_ns();
     default:
       return 0;
   }
@@ -1757,9 +3632,13 @@ uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op) {
   return status;
 }
 
-static uint64_t zero_json_pack_span(int has, size_t offset, size_t len) {
+static uint64_t zero_runtime_pack_span(int has, size_t offset, size_t len) {
   if (!has || offset > UINT32_MAX || len > 0x7fffffffu) return 0;
   return (1ull << 63) | ((uint64_t)len << 32) | (uint64_t)(uint32_t)offset;
+}
+
+static uint64_t zero_json_pack_span(int has, size_t offset, size_t len) {
+  return zero_runtime_pack_span(has, offset, len);
 }
 
 static int zero_json_key_matches(ZeroByteView input, size_t start, size_t end, ZeroByteView key) {

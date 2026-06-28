@@ -38,7 +38,7 @@ libc = "musl"
 libcMode = "bundled-libc"
 exeSuffix = ""
 zigTarget = "x86_64-linux-musl"
-capabilities = ["memory", "stdio", "args", "env", "fs", "time", "rand"]
+capabilities = ["memory", "stdio", "args", "env", "fs", "time", "rand", "proc"]
 
 [[target]]
 name = "linux-musl-arm64"

@@ -475,6 +475,7 @@ typedef enum {
   IR_VALUE_FS_REMOVE_DIR,
   IR_VALUE_FS_IS_DIR,
   IR_VALUE_FS_DIR_ENTRY_COUNT,
+  IR_VALUE_FS_DIR_ENTRY_NAME,
   IR_VALUE_FS_TEMP_NAME,
   IR_VALUE_FS_ATOMIC_WRITE,
   IR_VALUE_JSON_PARSE_BYTES,
@@ -522,7 +523,16 @@ typedef enum {
   IR_VALUE_VEC_CONTAINS,
   IR_VALUE_VEC_INSERT_UNIQUE,
   IR_VALUE_VEC_REMOVE_VALUE,
-  IR_VALUE_JSON_ERROR_LABEL
+  IR_VALUE_JSON_ERROR_LABEL,
+  IR_VALUE_PROC_CAPTURE,
+  IR_VALUE_PROC_CAPTURE_FILES,
+  IR_VALUE_PROC_CHILD_SPAWN,
+  IR_VALUE_PROC_CHILD_OP,
+  IR_VALUE_PROC_CHILD_IO,
+  IR_VALUE_PROC_PTY_RESIZE,
+  IR_VALUE_TERM_RUNTIME,
+  IR_VALUE_PROC_SPAWN_INHERIT,
+  IR_VALUE_FS_APPEND_BYTES_PATH, IR_VALUE_KIND_LAST = IR_VALUE_FS_APPEND_BYTES_PATH
 } IrValueKind;
 
 typedef enum {
@@ -603,7 +613,9 @@ typedef enum {
   IR_PARSE_OP_PARSE_BOOL,
   IR_PARSE_OP_PARSE_U8,
   IR_PARSE_OP_PARSE_U16,
-  IR_PARSE_OP_PARSE_USIZE
+  IR_PARSE_OP_PARSE_USIZE,
+  IR_PARSE_OP_TERM_KEY_CODE,
+  IR_PARSE_OP_TERM_KEY_BYTE_LEN
 } IrParseOp;
 
 typedef enum {
@@ -612,8 +624,41 @@ typedef enum {
   IR_TIME_OP_AS_SECONDS_FLOOR,
   IR_TIME_OP_MIN,
   IR_TIME_OP_MAX,
-  IR_TIME_OP_CLAMP
+  IR_TIME_OP_CLAMP,
+  IR_TIME_OP_SLEEP,
+  IR_TIME_OP_WALL_SECONDS,
+  IR_TIME_OP_MONOTONIC
 } IrTimeOp;
+
+typedef enum {
+  IR_TERM_OP_STDIN_IS_TTY,
+  IR_TERM_OP_STDOUT_IS_TTY,
+  IR_TERM_OP_WIDTH_OR,
+  IR_TERM_OP_HEIGHT_OR,
+  IR_TERM_OP_ENTER_RAW_MODE,
+  IR_TERM_OP_LEAVE_RAW_MODE,
+  IR_TERM_OP_READ_INPUT
+} IrTermOp;
+
+typedef enum {
+  IR_PROC_CHILD_OP_RUNNING,
+  IR_PROC_CHILD_OP_WAIT,
+  IR_PROC_CHILD_OP_KILL,
+  IR_PROC_CHILD_OP_CLOSE,
+  IR_PROC_CHILD_OP_VALID,
+  IR_PROC_CHILD_OP_PID,
+  IR_PROC_CHILD_OP_INTERRUPT,
+  IR_PROC_CHILD_OP_CLOSE_STDIN,
+  IR_PROC_CHILD_OP_PID_RUNNING,
+  IR_PROC_CHILD_OP_KILL_PID,
+  IR_PROC_CHILD_OP_INTERRUPT_PID, IR_PROC_CHILD_OP_KILL_GROUP_PID, IR_PROC_CHILD_OP_INTERRUPT_GROUP_PID
+} IrProcChildOp;
+
+typedef enum {
+  IR_PROC_CHILD_IO_READ_STDOUT,
+  IR_PROC_CHILD_IO_READ_STDERR,
+  IR_PROC_CHILD_IO_WRITE_STDIN
+} IrProcChildIoOp;
 
 typedef enum {
   IR_MATH_OP_MIN_I32,
@@ -737,6 +782,7 @@ struct IrValue {
 typedef enum {
   IR_INSTR_LOCAL_SET,
   IR_INSTR_INDEX_STORE,
+  IR_INSTR_ARRAY_FILL,
   IR_INSTR_FIELD_STORE,
   IR_INSTR_WORLD_WRITE,
   IR_INSTR_RAISE,
@@ -745,7 +791,7 @@ typedef enum {
   IR_INSTR_IF,
   IR_INSTR_WHILE,
   IR_INSTR_BREAK,
-  IR_INSTR_CONTINUE
+  IR_INSTR_CONTINUE, IR_INSTR_KIND_LAST = IR_INSTR_CONTINUE
 } IrInstrKind;
 
 typedef struct {
@@ -844,6 +890,7 @@ typedef struct {
 // local with a single literal value. The caller emits a fill loop and
 // advances past the run.
 bool z_direct_detect_fill_run(Z_IN const IrFunction *fun, Z_IN const IrInstr *instrs, size_t len, size_t start, size_t min_run, Z_OUT ZDirectFillRun *out);
+bool z_direct_fill_run_from_instr(Z_IN const IrFunction *fun, Z_IN const IrInstr *instr, Z_OUT ZDirectFillRun *out);
 
 typedef struct {
   char *symbol;
@@ -958,7 +1005,7 @@ typedef struct {
   long long lower_ms, codegen_ms, object_ms, link_ms;
   long long graph_load_ms, graph_stdlib_merge_ms, graph_readiness_check_ms;
   long long graph_stdlib_reference_scan_ms, graph_stdlib_cleanup_ms, graph_stdlib_module_load_ms;
-  long long graph_stdlib_node_merge_ms, graph_stdlib_edge_merge_ms, graph_stdlib_finalize_ms;
+  long long graph_stdlib_node_merge_ms, graph_stdlib_edge_merge_ms, graph_stdlib_finalize_ms, graph_stdlib_prune_ms, graph_stdlib_identity_ms;
   long long graph_mir_cache_load_ms, graph_mir_lower_ms, graph_mir_cache_write_ms, graph_mir_cache_reload_ms;
   size_t graph_stdlib_modules_merged, graph_stdlib_nodes_merged, graph_stdlib_edges_merged;
   bool graph_stdlib_merge_cache_hit, graph_stdlib_merge_cache_stored;

@@ -619,6 +619,20 @@ static bool a64_emit_load_byte_view_from_scratch(ZBuf *text, const IrValue *view
   return a64_emit_load_scratch(text, len_reg, IR_TYPE_U32, slot + 1, view, diag);
 }
 
+static bool a64_emit_runtime_byte_views_at(ZBuf *text, const IrFunction *fun, const IrValue **views, unsigned count, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  for (unsigned i = 0; i < count; i++) {
+    unsigned slot = scratch_slot + i * 2u;
+    if (!a64_emit_byte_view_to_scratch(text, fun, views[i], slot, frame_size, slot, ctx, diag)) return false;
+  }
+  for (unsigned i = 0; i < count; i++) {
+    unsigned ptr_reg = i * 2u;
+    unsigned len_reg = ptr_reg + 1u;
+    unsigned slot = scratch_slot + ptr_reg;
+    if (!a64_emit_load_byte_view_from_scratch(text, views[i], ptr_reg, len_reg, slot, diag)) return false;
+  }
+  return true;
+}
+
 static ZAArch64DirectRuntimeHelper a64_str_runtime_helper(IrStrOp op) {
   switch (op) {
     case IR_STR_OP_REVERSE:
@@ -959,6 +973,128 @@ static bool a64_emit_search_runtime_to_reg_at(ZBuf *text, const IrFunction *fun,
   return true;
 }
 
+static bool a64_emit_proc_capture_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    const IrValue *views[3] = {value->args[0], value->args[1], value->right};
+    if (!a64_emit_runtime_byte_views_at(text, fun, views, 3, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    return a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE_ARGS, diag, value);
+  }
+  if (!value || !value->left || !value->right) {
+    return a64_diag(diag, "direct AArch64 std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  const IrValue *views[2] = {value->left, value->right};
+  if (!a64_emit_runtime_byte_views_at(text, fun, views, 2, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE, diag, value);
+}
+
+static bool a64_emit_proc_capture_files_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->right, value->index};
+    if (!a64_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE_FILES_ARGS, diag, value)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
+  if (!value || !value->left || !value->right || !value->index) {
+    return a64_diag(diag, "direct AArch64 std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
+  }
+  const IrValue *views[3] = {value->left, value->right, value->index};
+  if (!a64_emit_runtime_byte_views_at(text, fun, views, 3, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CAPTURE_FILES, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool a64_emit_proc_spawn_inherit_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->args[2], value->args[3]};
+    if (!a64_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_INHERIT_ARGS, diag, value)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
+  if (!value || !value->left) {
+    return a64_diag(diag, "direct AArch64 std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_SPAWN_INHERIT, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool a64_emit_proc_child_spawn_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    const IrValue *views[4] = {value->args[0], value->args[1], value->args[2], value->args[3]};
+    if (!a64_emit_runtime_byte_views_at(text, fun, views, 4, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    ZAArch64DirectRuntimeHelper helper = value->int_value ? A64_DIRECT_RUNTIME_PTY_SPAWN_ARGS : A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_ARGS;
+    if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+    return true;
+  }
+  if (!value || !value->left) {
+    return a64_diag(diag, "direct AArch64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  const IrValue *views[3] = {value->left, value->right, value->index};
+  unsigned view_count = value->index ? 3u : (value->right ? 2u : 1u);
+  if (!a64_emit_runtime_byte_views_at(text, fun, views, view_count, frame_size, scratch_slot, ctx, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  ZAArch64DirectRuntimeHelper helper = A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD;
+  if (value->int_value) helper = value->index ? A64_DIRECT_RUNTIME_PTY_SPAWN_IN_ENV : (value->right ? A64_DIRECT_RUNTIME_PTY_SPAWN_IN : A64_DIRECT_RUNTIME_PTY_SPAWN);
+  else helper = value->index ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD_IN : A64_DIRECT_RUNTIME_PROC_SPAWN_CHILD);
+  if (!a64_record_runtime_patch(ctx, patch, helper, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool a64_emit_proc_pty_resize_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return a64_diag(diag, "direct AArch64 std.pty.resize requires a handle, columns, and rows", value ? value->line : 1, value ? value->column : 1, "missing pty resize input");
+  }
+  if (!a64_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_value_to_reg_at(text, fun, value->right, 8, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 8, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  if (!a64_emit_value_to_reg_at(text, fun, value->index, 2, frame_size, scratch_slot + 2, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_load_scratch(text, 1, value->right->type, scratch_slot + 1, value->right, diag)) return false;
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PTY_RESIZE, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool a64_emit_proc_child_op_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return a64_diag(diag, "direct AArch64 std.proc child op requires a handle", value ? value->line : 1, value ? value->column : 1, "missing process child handle");
+  }
+  if (!a64_emit_value_to_reg_at(text, fun, value->left, 0, frame_size, scratch_slot, ctx, diag)) return false;
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CHILD_OP, diag, value)) return false;
+  if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  return true;
+}
+
+static bool a64_emit_proc_child_io_to_maybe_regs_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return a64_diag(diag, "direct AArch64 std.proc child I/O requires a handle and buffer", value ? value->line : 1, value ? value->column : 1, "missing process child I/O input");
+  }
+  if (!a64_emit_value_to_reg_at(text, fun, value->left, 8, frame_size, scratch_slot, ctx, diag)) return false;
+  if (!a64_emit_store_scratch(text, 8, value->left->type, scratch_slot, value->left, diag)) return false;
+  if (!a64_emit_byte_view_pair_at(text, fun, value->right, 1, 2, frame_size, scratch_slot + 1, ctx, diag)) return false;
+  if (!a64_emit_load_scratch(text, 0, value->left->type, scratch_slot, value->left, diag)) return false;
+  z_aarch64_emit_movz_w(text, 3, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  return a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_PROC_CHILD_IO, diag, value);
+}
+
 static bool a64_emit_sort_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
   if (!value || !value->left) return a64_diag(diag, "direct AArch64 std.sort helper requires a span", value ? value->line : 1, value ? value->column : 1, "invalid std.sort input");
   if (!a64_emit_byte_view_to_scratch(text, fun, value->left, scratch_slot, frame_size, scratch_slot, ctx, diag)) return false;
@@ -1229,6 +1365,34 @@ static bool a64_emit_time_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, c
   z_aarch64_emit_movz_w(text, 3, (uint32_t)value->int_value);
   size_t patch = z_aarch64_emit_bl_placeholder(text);
   if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_TIME_OP, diag, value)) return false;
+  if (a64_type_is_scalar64(value->type)) {
+    if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
+  } else {
+    if (reg != 0) z_aarch64_emit_mov_w(text, reg, 0);
+  }
+  return true;
+}
+
+static bool a64_emit_term_runtime_to_reg_at(ZBuf *text, const IrFunction *fun, const IrValue *value, unsigned reg, unsigned frame_size, unsigned scratch_slot, ZAArch64DirectContext *ctx, ZDiag *diag) {
+  if (value && (IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    if (!value->left) {
+      return a64_diag(diag, "direct AArch64 std.term.readInput requires a caller buffer", value->line, value->column, "missing terminal input buffer");
+    }
+    if (!a64_emit_byte_view_pair_at(text, fun, value->left, 0, 1, frame_size, scratch_slot, ctx, diag)) return false;
+    size_t patch = z_aarch64_emit_bl_placeholder(text);
+    return a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_TERM_READ_INPUT, diag, value);
+  }
+  if (!value || value->arg_len > 1) {
+    return a64_diag(diag, "direct AArch64 std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  }
+  if (value->arg_len == 1) {
+    if (!a64_emit_value_to_reg_at(text, fun, value->args[0], 0, frame_size, scratch_slot, ctx, diag)) return false;
+  } else {
+    z_aarch64_emit_movz_x(text, 0, 0);
+  }
+  z_aarch64_emit_movz_w(text, 1, (uint32_t)value->int_value);
+  size_t patch = z_aarch64_emit_bl_placeholder(text);
+  if (!a64_record_runtime_patch(ctx, patch, A64_DIRECT_RUNTIME_TERM_OP, diag, value)) return false;
   if (a64_type_is_scalar64(value->type)) {
     if (reg != 0) z_aarch64_emit_mov_x(text, reg, 0);
   } else {
@@ -1669,8 +1833,25 @@ static bool a64_emit_value_to_reg_at(ZBuf *text, const IrFunction *fun, const Ir
       return a64_emit_fmt_to_maybe_byte_view_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_STR_RUNTIME: return a64_emit_str_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_TIME_RUNTIME: return a64_emit_time_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME: return a64_emit_term_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_MATH_RUNTIME: return a64_emit_math_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME: return a64_emit_search_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE:
+      (void)reg;
+      return a64_emit_proc_capture_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE_FILES:
+      return a64_emit_proc_capture_files_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+      return a64_emit_proc_spawn_inherit_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      return a64_emit_proc_child_spawn_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_OP:
+      return a64_emit_proc_child_op_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_CHILD_IO:
+      (void)reg;
+      return a64_emit_proc_child_io_to_maybe_regs_at(text, fun, value, frame_size, scratch_slot, ctx, diag);
+    case IR_VALUE_PROC_PTY_RESIZE:
+      return a64_emit_proc_pty_resize_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_SORT_RUNTIME: return a64_emit_sort_runtime_to_reg_at(text, fun, value, reg, frame_size, scratch_slot, ctx, diag);
     case IR_VALUE_JSON_PARSE_BYTES:
     case IR_VALUE_JSON_VALIDATE_BYTES:
@@ -1841,7 +2022,8 @@ static bool a64_emit_local_set(ZBuf *text, const IrFunction *fun, const IrInstr 
          instr->value->kind == IR_VALUE_PARSE_I32 ||
          instr->value->kind == IR_VALUE_PARSE_U32 ||
          instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
-         instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+         instr->value->kind == IR_VALUE_MATH_RUNTIME || instr->value->kind == IR_VALUE_TERM_RUNTIME || instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+         instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
          instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
          instr->value->kind == IR_VALUE_RAND_RANGE_U32) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
       if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
@@ -2017,7 +2199,8 @@ static bool a64_emit_instr(ZBuf *text, const IrFunction *fun, const IrInstr *ins
            instr->value->kind == IR_VALUE_PARSE_I32 ||
            instr->value->kind == IR_VALUE_PARSE_U32 ||
            instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR ||
-           instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+           instr->value->kind == IR_VALUE_MATH_RUNTIME || instr->value->kind == IR_VALUE_TERM_RUNTIME || instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+           instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
            instr->value->kind == IR_VALUE_RAND_NEXT_BELOW ||
            instr->value->kind == IR_VALUE_RAND_RANGE_U32) && instr->value->type == IR_TYPE_MAYBE_SCALAR) {
         if (!a64_emit_value_to_reg_at(text, fun, instr->value, 0, frame_size, 0, ctx, diag)) return false;
@@ -2108,6 +2291,10 @@ static void a64_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFi
 static bool a64_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, unsigned frame_size, ZAArch64DirectContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
     ZDirectFillRun run;
+    if (z_direct_fill_run_from_instr(fun, &instrs[i], &run)) {
+      a64_emit_fill_run(text, fun, &run, frame_size);
+      continue;
+    }
     if (z_direct_detect_fill_run(fun, instrs, len, i, A64_FILL_RUN_MIN, &run)) {
       a64_emit_fill_run(text, fun, &run, frame_size);
       i += run.count - 1;

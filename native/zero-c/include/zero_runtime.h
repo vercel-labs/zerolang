@@ -94,7 +94,10 @@ typedef enum {
   ZERO_PARSE_OP_SCAN_WHITESPACE = 7,
   ZERO_PARSE_OP_PARSE_BOOL = 8,
   ZERO_PARSE_OP_PARSE_U8 = 9,
-  ZERO_PARSE_OP_PARSE_U16 = 10
+  ZERO_PARSE_OP_PARSE_U16 = 10,
+  ZERO_PARSE_OP_PARSE_USIZE = 11,
+  ZERO_PARSE_OP_TERM_KEY_CODE = 12,
+  ZERO_PARSE_OP_TERM_KEY_BYTE_LEN = 13
 } ZeroParseOp;
 
 typedef enum {
@@ -103,7 +106,10 @@ typedef enum {
   ZERO_TIME_OP_AS_SECONDS_FLOOR = 2,
   ZERO_TIME_OP_MIN = 3,
   ZERO_TIME_OP_MAX = 4,
-  ZERO_TIME_OP_CLAMP = 5
+  ZERO_TIME_OP_CLAMP = 5,
+  ZERO_TIME_OP_SLEEP = 6,
+  ZERO_TIME_OP_WALL_SECONDS = 7,
+  ZERO_TIME_OP_MONOTONIC = 8
 } ZeroTimeOp;
 
 typedef enum {
@@ -177,12 +183,74 @@ typedef enum {
   ZERO_SORT_OP_IS_SORTED_USIZE = 5
 } ZeroSortOp;
 
+typedef enum {
+  ZERO_TERM_OP_STDIN_IS_TTY = 0,
+  ZERO_TERM_OP_STDOUT_IS_TTY = 1,
+  ZERO_TERM_OP_WIDTH_OR = 2,
+  ZERO_TERM_OP_HEIGHT_OR = 3,
+  ZERO_TERM_OP_ENTER_RAW_MODE = 4,
+  ZERO_TERM_OP_LEAVE_RAW_MODE = 5,
+  ZERO_TERM_OP_READ_INPUT = 6
+} ZeroTermOp;
+
+typedef enum {
+  ZERO_PROC_CHILD_OP_RUNNING = 0,
+  ZERO_PROC_CHILD_OP_WAIT = 1,
+  ZERO_PROC_CHILD_OP_KILL = 2,
+  ZERO_PROC_CHILD_OP_CLOSE = 3,
+  ZERO_PROC_CHILD_OP_VALID = 4,
+  ZERO_PROC_CHILD_OP_PID = 5,
+  ZERO_PROC_CHILD_OP_INTERRUPT = 6,
+  ZERO_PROC_CHILD_OP_CLOSE_STDIN = 7,
+  ZERO_PROC_CHILD_OP_PID_RUNNING = 8,
+  ZERO_PROC_CHILD_OP_KILL_PID = 9,
+  ZERO_PROC_CHILD_OP_INTERRUPT_PID = 10, ZERO_PROC_CHILD_OP_KILL_GROUP_PID = 11, ZERO_PROC_CHILD_OP_INTERRUPT_GROUP_PID = 12
+} ZeroProcChildOp;
+
+typedef enum {
+  ZERO_PROC_CHILD_IO_READ_STDOUT = 0,
+  ZERO_PROC_CHILD_IO_READ_STDERR = 1,
+  ZERO_PROC_CHILD_IO_WRITE_STDIN = 2
+} ZeroProcChildIoOp;
+
+typedef enum {
+  ZERO_FS_PATH_EXISTS = 0,
+  ZERO_FS_PATH_IS_DIR = 1,
+  ZERO_FS_PATH_MAKE_DIR = 2,
+  ZERO_FS_PATH_REMOVE_DIR = 3,
+  ZERO_FS_PATH_REMOVE = 4
+} ZeroFsPathOp;
+
 #define ZERO_HTTP_RESPONSE_META_BYTES 24u
 
 int zero_world_write(int fd, const char *buf, unsigned len);
 
 ZeroMaybeUsize zero_fs_read_bytes(ZeroByteView path, ZeroMutByteView buffer);
 ZeroMaybeUsize zero_fs_read_bytes_at(ZeroByteView path, uint64_t offset, ZeroMutByteView buffer);
+ZeroMaybeUsize zero_fs_write_bytes(ZeroByteView path, ZeroByteView bytes);
+ZeroMaybeUsize zero_fs_append_bytes(ZeroByteView path, ZeroByteView bytes);
+ZeroMaybeUsize zero_fs_dir_entry_count(ZeroByteView path);
+uint64_t zero_fs_dir_entry_name(ZeroMutByteView buffer, ZeroByteView path, uint64_t index);
+uint32_t zero_fs_path_op(ZeroByteView path, uint32_t op);
+uint32_t zero_fs_rename(ZeroByteView from_path, ZeroByteView to_path);
+uint32_t zero_fs_atomic_write(ZeroByteView path, ZeroByteView temp_path, ZeroByteView bytes);
+int32_t zero_proc_spawn_inherit(ZeroByteView command);
+int32_t zero_proc_spawn_inherit_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
+ZeroMaybeUsize zero_proc_capture(ZeroByteView command, ZeroMutByteView buffer);
+ZeroMaybeUsize zero_proc_capture_args(ZeroByteView program, ZeroByteView args, ZeroMutByteView buffer);
+int32_t zero_proc_capture_files(ZeroByteView command, ZeroByteView stdout_path, ZeroByteView stderr_path);
+int32_t zero_proc_capture_files_args(ZeroByteView program, ZeroByteView args, ZeroByteView stdout_path, ZeroByteView stderr_path);
+int32_t zero_proc_spawn_child(ZeroByteView command);
+int32_t zero_proc_spawn_child_in(ZeroByteView command, ZeroByteView cwd);
+int32_t zero_proc_spawn_child_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_proc_spawn_child_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_proc_child_op(int32_t child, uint32_t op);
+ZeroMaybeUsize zero_proc_child_io(int32_t child, ZeroMutByteView buffer, uint32_t op);
+int32_t zero_pty_spawn(ZeroByteView command);
+int32_t zero_pty_spawn_in(ZeroByteView command, ZeroByteView cwd);
+int32_t zero_pty_spawn_in_env(ZeroByteView command, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_pty_spawn_args(ZeroByteView program, ZeroByteView args, ZeroByteView cwd, ZeroByteView env);
+int32_t zero_pty_resize(int32_t child, uint64_t columns, uint64_t rows);
 
 int64_t zero_json_parse_bytes(ZeroByteView input);
 uint64_t zero_json_diagnostic(ZeroByteView input, uint32_t op);
@@ -210,11 +278,14 @@ uint64_t zero_text_op(ZeroByteView text, uint32_t op);
 uint64_t zero_parse_op(ZeroByteView text, uint32_t arg, uint32_t op);
 ZeroMaybeUsize zero_parse_usize(ZeroByteView text);
 int64_t zero_time_op(int64_t a, int64_t b, int64_t c, uint32_t op);
+uint32_t zero_rand_entropy_u32(void);
 uint64_t zero_math_op(int64_t a, int64_t b, int64_t c, uint32_t op);
 ZeroMaybeUsize zero_math_usize_op(uint64_t a, uint64_t b, uint64_t c, uint32_t op);
 uint64_t zero_search_op(ZeroByteView items, int64_t needle, uint32_t op);
 void zero_sort_op(ZeroMutByteView items, uint32_t op);
 uint32_t zero_sort_is_sorted_op(ZeroByteView items, uint32_t op);
+uint64_t zero_term_op(uint64_t fallback, uint32_t op);
+ZeroMaybeUsize zero_term_read_input(ZeroMutByteView buffer);
 uint32_t zero_str_contains(ZeroByteView text, ZeroByteView needle);
 uint32_t zero_str_buffer_op(ZeroMutByteView buffer, ZeroByteView text, uint32_t op);
 uint32_t zero_str_concat(ZeroMutByteView buffer, ZeroByteView left, ZeroByteView right);

@@ -1,0 +1,10 @@
+test "pty target capability" {
+    let child: ProcChild = std.pty.spawn("zero-noop")
+    expect (!std.pty.valid(child) || std.pty.close(child))
+}
+
+test "term target capability" {
+    var input: [1]u8 = [0_u8; 1]
+    let pending: Maybe<usize> = std.term.readInput(input)
+    expect (!pending.has || pending.value <= 1_usize)
+}

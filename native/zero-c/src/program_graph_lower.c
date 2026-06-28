@@ -357,8 +357,13 @@ static bool lower_embedded_std_module(const ZProgramGraphNode *module) {
     if (!std_module) continue;
     const char *short_name = strrchr(std_module->module, '.');
     const char *module_name = short_name ? short_name + 1 : std_module->module;
+    const char *std_path_base = strrchr(std_module->path, '/');
+    std_path_base = std_path_base ? std_path_base + 1 : std_module->path;
     bool name_matches = lower_text_eq(module->name, std_module->module) || lower_text_eq(module->name, module_name);
-    bool path_matches = !module->path || !module->path[0] || lower_text_eq(module->path, std_module->path);
+    bool path_matches = !module->path ||
+                        !module->path[0] ||
+                        lower_text_eq(module->path, std_module->path) ||
+                        (!strchr(module->path, '/') && lower_text_eq(module->path, std_path_base));
     if (name_matches && path_matches) return true;
   }
   return false;

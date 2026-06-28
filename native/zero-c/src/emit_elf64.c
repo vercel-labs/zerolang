@@ -224,6 +224,7 @@ static ElfRuntimeHelper elf_runtime_helper_for_value(IrValueKind kind) {
     case IR_VALUE_TEXT_RUNTIME: return ELF_RUNTIME_TEXT_OP;
     case IR_VALUE_PARSE_RUNTIME: return ELF_RUNTIME_PARSE_OP;
     case IR_VALUE_TIME_RUNTIME: return ELF_RUNTIME_TIME_OP;
+    case IR_VALUE_TERM_RUNTIME: return ELF_RUNTIME_TERM_OP;
     case IR_VALUE_MATH_RUNTIME: return ELF_RUNTIME_MATH_OP;
     case IR_VALUE_SEARCH_RUNTIME: return ELF_RUNTIME_SEARCH_OP;
     case IR_VALUE_ARGS_FIND:
@@ -664,6 +665,12 @@ static bool elf_emit_runtime_arg_value(ZBuf *code, const IrFunction *fun, const 
   elf_emit_runtime_temp_slot_store(code, temp_base, *slot, 0);
   *slot += 1u;
   return true;
+}
+
+static void elf_emit_runtime_arg_u32(ZBuf *code, uint32_t value, unsigned temp_base, unsigned *slot) {
+  z_x64_emit_mov_reg_u32(code, 0, value);
+  elf_emit_runtime_temp_slot_store(code, temp_base, *slot, 0);
+  *slot += 1u;
 }
 
 static bool elf_emit_json_write_runtime_args(ZBuf *code, const IrFunction *fun, const IrValue *value, unsigned temp_base, unsigned *slot, ElfEmitContext *ctx, ZDiag *diag) {
@@ -1118,8 +1125,27 @@ static bool elf_emit_fs_dir_entry_count_value(ZBuf *code, const IrFunction *fun,
       size_t scan_loop = code->len;
       z_x64_emit_cmp_reg_reg(code, 9, 8, true);
       size_t scan_done = z_x64_emit_jcc32_placeholder(code, 0x83);
-      z_x64_emit_inc_rsp_offset64(code, 1032);
       z_x64_emit_movzx_reg32_ptr_reg_disp_u16(code, 0, 9, 16);
+      z_x64_emit_mov_reg_from_reg(code, 10, 9, true);
+      z_x64_emit_add_reg_i8(code, 10, 19, true);
+      z_x64_emit_movzx_reg32_ptr_reg_u8(code, 11, 10);
+      z_x64_emit_cmp_reg_i8(code, 11, '.', false);
+      size_t count_entry = z_x64_emit_jcc32_placeholder(code, 0x85);
+      z_x64_emit_add_reg_i8(code, 10, 1, true);
+      z_x64_emit_movzx_reg32_ptr_reg_u8(code, 11, 10);
+      z_x64_emit_cmp_reg_i8(code, 11, 0, false);
+      size_t skip_dot = z_x64_emit_jcc32_placeholder(code, 0x84);
+      z_x64_emit_cmp_reg_i8(code, 11, '.', false);
+      size_t count_after_second = z_x64_emit_jcc32_placeholder(code, 0x85);
+      z_x64_emit_add_reg_i8(code, 10, 1, true);
+      z_x64_emit_movzx_reg32_ptr_reg_u8(code, 11, 10);
+      z_x64_emit_cmp_reg_i8(code, 11, 0, false);
+      size_t skip_dotdot = z_x64_emit_jcc32_placeholder(code, 0x84);
+      z_x64_patch_rel32(code, count_entry, code->len);
+      z_x64_patch_rel32(code, count_after_second, code->len);
+      z_x64_emit_inc_rsp_offset64(code, 1032);
+      z_x64_patch_rel32(code, skip_dot, code->len);
+      z_x64_patch_rel32(code, skip_dotdot, code->len);
       z_x64_emit_add_reg_reg(code, 9, 0, true);
       size_t scan_back = z_x64_emit_jmp32_placeholder(code, 0xe9);
       z_x64_patch_rel32(code, scan_back, scan_loop);
@@ -1143,6 +1169,24 @@ static bool elf_emit_fs_dir_entry_count_value(ZBuf *code, const IrFunction *fun,
     }
     default: return elf_diag(diag, "direct ELF64 filesystem value kind is invalid for this helper", value->line, value->column, "invalid filesystem value");
   }
+}
+
+static bool elf_emit_fs_dir_entry_name_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return elf_diag(diag, "direct ELF64 std.fs.dirEntryName requires a buffer, path, and index", value ? value->line : 1, value ? value->column : 1, "missing dirEntryName input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 5, 5, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_value(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_FS_DIR_ENTRY_NAME, 5, 5, temp_base, value, diag)) return false;
+  elf_emit_runtime_temp_slot_load(code, temp_base, 0, 2);
+  elf_emit_http_packed_span_result(code);
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
 }
 
 static bool elf_emit_fs_atomic_write_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
@@ -1343,8 +1387,9 @@ static bool elf_emit_fs_path_io_value(ZBuf *code, const IrFunction *fun, const I
       elf_emit_fs_read_total_size_tail(code, open_fail);
       return true;
     }
-    case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: {
-      if (!elf_emit_openat_path(code, fun, value->left, 577, 0644, ctx, diag)) return false;
+    case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: case IR_VALUE_FS_APPEND_BYTES_PATH: {
+      uint32_t flags = value->kind == IR_VALUE_FS_APPEND_BYTES_PATH ? 1089u : 577u;
+      if (!elf_emit_openat_path(code, fun, value->left, flags, 0644, ctx, diag)) return false;
       z_x64_emit_test_rax_rax(code, true);
       size_t open_fail = elf_emit_js_placeholder(code);
       z_x64_emit_push_rax(code);
@@ -1472,6 +1517,167 @@ static bool elf_emit_http_request_body_within_value(ZBuf *code, const IrFunction
   z_x64_emit_pop_reg64(code, 2);
   z_x64_emit_pop_reg64(code, 2);
   elf_emit_http_packed_span_result(code);
+  return true;
+}
+
+static bool elf_emit_proc_capture_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 6, 6, &temp_base, &total_stack);
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_ARGS, 6, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
+  if (!value || !value->left || !value->right) {
+    return elf_diag(diag, "direct ELF64 std.proc.capture requires a command and output buffer", value ? value->line : 1, value ? value->column : 1, "missing process capture input");
+  }
+  if (!elf_emit_byte_view_pair(code, fun, value->left, 8, 10, ctx, diag)) return false;
+  z_x64_emit_push_reg64(code, 8);
+  z_x64_emit_push_reg64(code, 10);
+  if (!elf_emit_byte_view_pair(code, fun, value->right, 2, 1, ctx, diag)) return false;
+  z_x64_emit_pop_reg64(code, 6);
+  z_x64_emit_pop_reg64(code, 7);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  return z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_PROC_CAPTURE, patch, diag, value);
+}
+
+static bool elf_emit_proc_capture_files_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 2) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 8, 6, &temp_base, &total_stack);
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[0], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[1], temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_FILES_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
+  if (!value || !value->left || !value->right || !value->index) {
+    return elf_diag(diag, "direct ELF64 std.proc.captureFiles requires a command, stdout path, and stderr path", value ? value->line : 1, value ? value->column : 1, "missing process capture files input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 6, 6, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CAPTURE_FILES, 6, 6, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_spawn_inherit_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 8, 6, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_SPAWN_INHERIT_ARGS, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
+  if (!value || !value->left) {
+    return elf_diag(diag, "direct ELF64 std.proc.spawnInherit requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 2, 2, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_SPAWN_INHERIT, 2, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_child_spawn_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && value->arg_len == 4) {
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 8, 6, &temp_base, &total_stack);
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!elf_emit_runtime_arg_byte_view(code, fun, value->args[i], temp_base, &slot, ctx, diag)) return false;
+    }
+    ElfRuntimeHelper helper = value->int_value ? ELF_RUNTIME_PTY_SPAWN_ARGS : ELF_RUNTIME_PROC_SPAWN_CHILD_ARGS;
+    if (!elf_emit_runtime_call(code, ctx, helper, 8, 6, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
+  if (!value || !value->left) {
+    return elf_diag(diag, "direct ELF64 std.proc.spawnChild requires a command", value ? value->line : 1, value ? value->column : 1, "missing process command");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  unsigned abi_slots = value->index ? 6 : (value->right ? 4 : 2);
+  elf_emit_runtime_call_begin(code, abi_slots, abi_slots, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (value->right && !elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (value->index && !elf_emit_runtime_arg_byte_view(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  ElfRuntimeHelper helper = ELF_RUNTIME_PROC_SPAWN_CHILD;
+  if (value->int_value) helper = value->index ? ELF_RUNTIME_PTY_SPAWN_IN_ENV : (value->right ? ELF_RUNTIME_PTY_SPAWN_IN : ELF_RUNTIME_PTY_SPAWN);
+  else helper = value->index ? ELF_RUNTIME_PROC_SPAWN_CHILD_IN_ENV : (value->right ? ELF_RUNTIME_PROC_SPAWN_CHILD_IN : ELF_RUNTIME_PROC_SPAWN_CHILD);
+  if (!elf_emit_runtime_call(code, ctx, helper, abi_slots, abi_slots, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_pty_resize_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right || !value->index) {
+    return elf_diag(diag, "direct ELF64 std.pty.resize requires a handle, columns, and rows", value ? value->line : 1, value ? value->column : 1, "missing pty resize input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 3, 3, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_value(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_value(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_value(code, fun, value->index, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PTY_RESIZE, 3, 3, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_child_op_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left) {
+    return elf_diag(diag, "direct ELF64 std.proc child op requires a handle", value ? value->line : 1, value ? value->column : 1, "missing process child handle");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 2, 2, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_value(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  elf_emit_runtime_arg_u32(code, (uint32_t)value->int_value, temp_base, &slot);
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CHILD_OP, 2, 2, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
+  return true;
+}
+
+static bool elf_emit_proc_child_io_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (!value || !value->left || !value->right) {
+    return elf_diag(diag, "direct ELF64 std.proc child I/O requires a handle and buffer", value ? value->line : 1, value ? value->column : 1, "missing process child I/O input");
+  }
+  unsigned temp_base = 0;
+  unsigned total_stack = 0;
+  unsigned slot = 0;
+  elf_emit_runtime_call_begin(code, 4, 4, &temp_base, &total_stack);
+  if (!elf_emit_runtime_arg_value(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+  if (!elf_emit_runtime_arg_byte_view(code, fun, value->right, temp_base, &slot, ctx, diag)) return false;
+  elf_emit_runtime_arg_u32(code, (uint32_t)value->int_value, temp_base, &slot);
+  if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_PROC_CHILD_IO, 4, 4, temp_base, value, diag)) return false;
+  z_x64_emit_add_rsp(code, total_stack);
   return true;
 }
 
@@ -2086,6 +2292,32 @@ static bool elf_emit_time_runtime_value(ZBuf *code, const IrFunction *fun, const
   size_t patch = z_x64_emit_call32_placeholder(code);
   if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_TIME_OP, patch, diag, value)) return false;
   if (value->type == IR_TYPE_I32) z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
+  return true;
+}
+
+static bool elf_emit_term_runtime_value(ZBuf *code, const IrFunction *fun, const IrValue *value, ElfEmitContext *ctx, ZDiag *diag) {
+  if (value && (IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    if (!value->left) return elf_diag(diag, "direct ELF64 std.term.readInput requires a caller buffer", value->line, value->column, "missing terminal input buffer");
+    unsigned temp_base = 0;
+    unsigned total_stack = 0;
+    unsigned slot = 0;
+    elf_emit_runtime_call_begin(code, 2, 2, &temp_base, &total_stack);
+    if (!elf_emit_runtime_arg_byte_view(code, fun, value->left, temp_base, &slot, ctx, diag)) return false;
+    if (!elf_emit_runtime_call(code, ctx, ELF_RUNTIME_TERM_READ_INPUT, 2, 2, temp_base, value, diag)) return false;
+    z_x64_emit_add_rsp(code, total_stack);
+    return true;
+  }
+  if (!value || value->arg_len > 1) return elf_diag(diag, "direct ELF64 std.term helper supports at most one fallback argument", value ? value->line : 1, value ? value->column : 1, "invalid std.term arity");
+  if (value->arg_len == 1) {
+    if (!elf_emit_value(code, fun, value->args[0], ctx, diag)) return false;
+    z_x64_emit_mov_rdi_from_rax(code);
+  } else {
+    z_x64_emit_xor_reg_reg(code, 7, true);
+  }
+  z_x64_emit_mov_reg_u32(code, 6, (uint32_t)value->int_value);
+  size_t patch = z_x64_emit_call32_placeholder(code);
+  if (!z_elf_record_value_runtime_patch(ctx, ELF_RUNTIME_TERM_OP, patch, diag, value)) return false;
+  if (value->type == IR_TYPE_BOOL) z_x64_emit_mov_reg_from_reg(code, 0, 0, false);
   return true;
 }
 
@@ -2901,8 +3133,10 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       !((value->kind == IR_VALUE_STR_RUNTIME) && (value->type == IR_TYPE_BYTE_VIEW || value->type == IR_TYPE_MAYBE_BYTE_VIEW)) &&
       !((value->kind == IR_VALUE_SORT_RUNTIME) && value->type == IR_TYPE_VOID) &&
+      !((value->kind == IR_VALUE_PROC_CAPTURE || value->kind == IR_VALUE_PROC_CHILD_IO) && value->type == IR_TYPE_MAYBE_SCALAR) &&
       !((value->kind == IR_VALUE_FMT_BOOL || value->kind == IR_VALUE_FMT_HEX_U32 || value->kind == IR_VALUE_FMT_I32 ||
-         value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER) &&
+         value->kind == IR_VALUE_FMT_U32 || value->kind == IR_VALUE_FMT_USIZE || value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
+         value->kind == IR_VALUE_FS_DIR_ENTRY_NAME) &&
         value->type == IR_TYPE_MAYBE_BYTE_VIEW) &&
       value->kind != IR_VALUE_MAYBE_HAS && value->kind != IR_VALUE_VEC_LEN && value->kind != IR_VALUE_VEC_CAPACITY &&
       value->kind != IR_VALUE_VEC_PUSH && value->kind != IR_VALUE_VEC_GET && value->kind != IR_VALUE_VEC_SET && value->kind != IR_VALUE_VEC_CLEAR && value->kind != IR_VALUE_VEC_POP && value->kind != IR_VALUE_VEC_TRUNCATE && value->kind != IR_VALUE_VEC_REMOVE_SWAP &&
@@ -2931,6 +3165,20 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_args_find_value(code, fun, value, ctx, diag);
     case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
       return elf_emit_fmt_u32_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE:
+      return elf_emit_proc_capture_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CAPTURE_FILES:
+      return elf_emit_proc_capture_files_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+      return elf_emit_proc_spawn_inherit_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      return elf_emit_proc_child_spawn_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_OP:
+      return elf_emit_proc_child_op_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_CHILD_IO:
+      return elf_emit_proc_child_io_value(code, fun, value, ctx, diag);
+    case IR_VALUE_PROC_PTY_RESIZE:
+      return elf_emit_proc_pty_resize_value(code, fun, value, ctx, diag);
     case IR_VALUE_ASCII_RUNTIME:
       return elf_emit_ascii_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_TEXT_RUNTIME:
@@ -2941,6 +3189,8 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_parse_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_TIME_RUNTIME:
       return elf_emit_time_runtime_value(code, fun, value, ctx, diag);
+    case IR_VALUE_TERM_RUNTIME:
+      return elf_emit_term_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_MATH_RUNTIME:
       return elf_emit_math_runtime_value(code, fun, value, ctx, diag);
     case IR_VALUE_SEARCH_RUNTIME:
@@ -2955,11 +3205,13 @@ static bool elf_emit_value(ZBuf *code, const IrFunction *fun, const IrValue *val
       return elf_emit_fs_basic_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
       return elf_emit_fs_dir_entry_count_value(code, fun, value, ctx, diag);
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      return elf_emit_fs_dir_entry_name_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_ATOMIC_WRITE:
       return elf_emit_fs_atomic_write_value(code, fun, value, ctx, diag);
     case IR_VALUE_FS_FILE_LEN: case IR_VALUE_FS_READ_FILE: case IR_VALUE_FS_WRITE_ALL_FILE:
       return elf_emit_fs_file_handle_value(code, fun, value, ctx, diag);
-    case IR_VALUE_FS_READ_PATH: case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH: case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_READ_PATH: case IR_VALUE_FS_READ_BYTES_PATH: case IR_VALUE_FS_READ_BYTES_AT_PATH: case IR_VALUE_FS_WRITE_PATH: case IR_VALUE_FS_WRITE_BYTES_PATH: case IR_VALUE_FS_APPEND_BYTES_PATH:
       return elf_emit_fs_path_io_value(code, fun, value, ctx, diag);
     case IR_VALUE_MAYBE_HAS: case IR_VALUE_MAYBE_VALUE: case IR_VALUE_VEC_LEN: case IR_VALUE_VEC_CAPACITY:
     case IR_VALUE_VEC_PUSH: case IR_VALUE_VEC_GET: case IR_VALUE_VEC_SET: case IR_VALUE_VEC_CLEAR: case IR_VALUE_VEC_POP: case IR_VALUE_VEC_TRUNCATE: case IR_VALUE_VEC_REMOVE_SWAP:
@@ -3375,7 +3627,8 @@ static bool elf_emit_maybe_byte_view_local_set(ZBuf *text, const IrFunction *fun
                        instr->value->kind == IR_VALUE_FMT_HEX_U32 ||
                        instr->value->kind == IR_VALUE_FMT_I32 ||
                        instr->value->kind == IR_VALUE_FMT_U32 ||
-                       instr->value->kind == IR_VALUE_FMT_USIZE)) {
+                       instr->value->kind == IR_VALUE_FMT_USIZE ||
+                       instr->value->kind == IR_VALUE_FS_DIR_ENTRY_NAME)) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
     elf_emit_store_local_slot_reg(text, local, 8, 2, true);
@@ -3433,6 +3686,9 @@ static bool elf_emit_maybe_scalar_local_set(ZBuf *text, const IrFunction *fun, c
       instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
       instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
       instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+      instr->value->kind == IR_VALUE_TERM_RUNTIME ||
+      instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+      instr->value->kind == IR_VALUE_PROC_CHILD_IO ||
       instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
     elf_emit_store_local_slot_reg(text, local, 0, 0, false);
@@ -3590,6 +3846,7 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_FMT_I32 ||
                    instr->value->kind == IR_VALUE_FMT_U32 ||
                    instr->value->kind == IR_VALUE_FMT_USIZE ||
+                   instr->value->kind == IR_VALUE_FS_DIR_ENTRY_NAME ||
                    instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
         } else if (instr->value->kind == IR_VALUE_MAYBE_BYTE_VIEW_LITERAL) {
@@ -3615,8 +3872,12 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
                    instr->value->kind == IR_VALUE_PARSE_I32 || instr->value->kind == IR_VALUE_PARSE_U32 || instr->value->kind == IR_VALUE_JSON_LOOKUP_SCALAR || instr->value->kind == IR_VALUE_ARGS_PARSE_U32 || instr->value->kind == IR_VALUE_ARGS_FIND ||
                    instr->value->kind == IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32 ||
                    instr->value->kind == IR_VALUE_ASCII_RUNTIME || instr->value->kind == IR_VALUE_TEXT_RUNTIME || instr->value->kind == IR_VALUE_MATH_RUNTIME ||
+                   instr->value->kind == IR_VALUE_TERM_RUNTIME ||
+                   instr->value->kind == IR_VALUE_PROC_CAPTURE ||
+                   instr->value->kind == IR_VALUE_PROC_CHILD_IO || instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH || instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH ||
                    instr->value->kind == IR_VALUE_RAND_NEXT_BELOW || instr->value->kind == IR_VALUE_RAND_RANGE_U32) {
           if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
+          if (instr->value->kind == IR_VALUE_FS_WRITE_BYTES_PATH || instr->value->kind == IR_VALUE_FS_APPEND_BYTES_PATH) { z_x64_emit_mov_reg_from_rax(text, 2, true); z_x64_emit_bool_from_nonnegative_rax(text); }
         } else if (instr->value->kind == IR_VALUE_MAYBE_SCALAR_LITERAL) {
           z_x64_emit_mov_rax_u64(text, (uint64_t)instr->value->int_value);
           z_x64_emit_mov_reg_from_rax(text, 2, true);
@@ -3643,7 +3904,6 @@ static bool elf_emit_terminal_instr(ZBuf *text, const IrFunction *fun, const IrI
       return elf_diag(diag, "direct ELF64 terminal instruction kind is invalid for this helper", instr->line, instr->column, "invalid terminal instruction");
   }
 }
-
 static bool elf_emit_control_instr(ZBuf *text, const IrFunction *fun, const IrInstr *instr, ElfEmitContext *ctx, ZDiag *diag) {
   if (instr->kind == IR_INSTR_IF) {
     if (!elf_emit_value(text, fun, instr->value, ctx, diag)) return false;
@@ -3719,6 +3979,10 @@ static void elf_emit_fill_run(ZBuf *text, const IrFunction *fun, const ZDirectFi
 static bool elf_emit_instrs(ZBuf *text, const IrFunction *fun, const IrInstr *instrs, size_t len, ElfEmitContext *ctx, ZDiag *diag) {
   for (size_t i = 0; i < len; i++) {
     ZDirectFillRun run;
+    if (z_direct_fill_run_from_instr(fun, &instrs[i], &run)) {
+      elf_emit_fill_run(text, fun, &run);
+      continue;
+    }
     if (z_direct_detect_fill_run(fun, instrs, len, i, ELF_FILL_RUN_MIN, &run)) {
       elf_emit_fill_run(text, fun, &run);
       i += run.count - 1;

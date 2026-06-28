@@ -145,6 +145,7 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
           value->kind == IR_VALUE_ARGS_VALUE_AFTER ||
           value->kind == IR_VALUE_ENV_GET ||
           value->kind == IR_VALUE_FS_READ_ALL ||
+          value->kind == IR_VALUE_FS_DIR_ENTRY_NAME ||
           value->kind == IR_VALUE_FS_TEMP_NAME ||
           value->kind == IR_VALUE_HTTP_REQUEST_METHOD_NAME ||
           value->kind == IR_VALUE_HTTP_REQUEST_PATH ||
@@ -160,7 +161,8 @@ static bool mir_verify_local_initializer_kind(IrProgram *ir, const IrLocal *loca
           value->kind == IR_VALUE_FMT_HEX_U32 ||
           value->kind == IR_VALUE_FMT_I32 ||
           value->kind == IR_VALUE_FMT_U32 ||
-          value->kind == IR_VALUE_FMT_USIZE) {
+          value->kind == IR_VALUE_FMT_USIZE ||
+          value->kind == IR_VALUE_PROC_CAPTURE) {
         return true;
       }
       break;
@@ -428,6 +430,85 @@ static bool mir_verify_value_type(IrProgram *ir, const IrValue *value, IrTypeKin
 
 static bool mir_verify_helper_result_type(IrProgram *ir, const IrValue *value, IrTypeKind expected, const char *role) {
   return mir_verify_value_type(ir, value, expected, "MIR verifier found helper result type mismatch", role);
+}
+
+static bool mir_verify_maybe_scalar_result(IrProgram *ir, const IrValue *value, IrTypeKind element_type, const char *message, const char *role);
+static bool mir_verify_mutable_byte_storage(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, const char *message, const char *role);
+
+static bool mir_verify_proc_capture_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
+  if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found process capture result type mismatch", "process capture")) return false;
+  if (value->arg_len == 2) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process capture buffer", "process capture buffer");
+  }
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
+  return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process capture buffer", "process capture buffer");
+}
+
+static bool mir_verify_proc_capture_files_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process capture files status")) return false;
+  if (value->arg_len == 2) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    if (!mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stdout path", "stdout path")) return false;
+    return mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stderr path", "stderr path");
+  }
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
+  if (!mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stdout path", "stdout path")) return false;
+  return mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid stderr path", "stderr path");
+}
+
+static bool mir_verify_proc_spawn_inherit_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process inherited status")) return false;
+  if (value->arg_len == 4) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    return true;
+  }
+  return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command");
+}
+
+static bool mir_verify_proc_child_spawn_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child handle")) return false;
+  if (value->arg_len == 4) {
+    for (size_t i = 0; i < value->arg_len; i++) {
+      if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_BYTE_VIEW, "MIR verifier found invalid structured process argument", "structured process argument")) return false;
+    }
+    return true;
+  }
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process command", "process command")) return false;
+  if (value->right && !mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process cwd", "process cwd")) return false;
+  if (value->index && !mir_verify_value_type(ir, value->index, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process env block", "process env block")) return false;
+  return true;
+}
+
+static bool mir_verify_proc_child_op_contract(IrProgram *ir, const IrValue *value) {
+  if ((IrProcChildOp)value->int_value == IR_PROC_CHILD_OP_WAIT || (IrProcChildOp)value->int_value == IR_PROC_CHILD_OP_PID) {
+    if (!mir_verify_helper_result_type(ir, value, IR_TYPE_I32, "process child status")) return false;
+  } else if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "process child boolean result")) {
+    return false;
+  }
+  return mir_verify_value_type(ir, value->left, IR_TYPE_I32, "MIR verifier found invalid process child handle", "process child handle");
+}
+
+static bool mir_verify_proc_child_io_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value) {
+  if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found process child I/O result type mismatch", "process child I/O")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_I32, "MIR verifier found invalid process child handle", "process child handle")) return false;
+  if ((IrProcChildIoOp)value->int_value == IR_PROC_CHILD_IO_WRITE_STDIN) {
+    return mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid process stdin bytes", "process stdin bytes");
+  }
+  return mir_verify_mutable_byte_storage(ir, fun, state, value->right, "MIR verifier found invalid process output buffer", "process output buffer");
+}
+
+static bool mir_verify_proc_pty_resize_contract(IrProgram *ir, const IrValue *value) {
+  if (!mir_verify_helper_result_type(ir, value, IR_TYPE_BOOL, "pty resize result")) return false;
+  if (!mir_verify_value_type(ir, value->left, IR_TYPE_I32, "MIR verifier found invalid pty child handle", "pty child handle")) return false;
+  if (!mir_verify_value_type(ir, value->right, IR_TYPE_USIZE, "MIR verifier found invalid pty column count", "pty columns")) return false;
+  return mir_verify_value_type(ir, value->index, IR_TYPE_USIZE, "MIR verifier found invalid pty row count", "pty rows");
 }
 
 static bool mir_verify_value_is_integer(IrProgram *ir, const IrValue *value, const char *message, const char *role) {
@@ -892,6 +973,14 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
           element_type = IR_TYPE_USIZE;
           name = "std.parse.parseUsize";
           break;
+        case IR_PARSE_OP_TERM_KEY_CODE:
+          result_type = IR_TYPE_U32;
+          name = "std.term.keyCode";
+          break;
+        case IR_PARSE_OP_TERM_KEY_BYTE_LEN:
+          result_type = IR_TYPE_USIZE;
+          name = "std.term.keyByteLen";
+          break;
         default:
           mir_verify_mark_unsupported(ir, "MIR verifier found unknown std.parse runtime op", value->line, value->column, "invalid std.parse op");
           return false;
@@ -994,6 +1083,34 @@ static bool mir_verify_direct_helper_value_contract(IrProgram *ir, const IrFunct
       if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid fmt output buffer", buffer)) return false;
       return mir_verify_value_type(ir, value->right, number_type, "MIR verifier found invalid fmt value", number);
     }
+    case IR_VALUE_PROC_CAPTURE:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureArgs" : "std.proc.capture");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureArgs" : "std.proc.capture");
+      return mir_verify_proc_capture_contract(ir, fun, state, value);
+    case IR_VALUE_PROC_SPAWN_INHERIT:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnInheritArgs" : "std.proc.spawnInherit");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 4 ? "std.proc.spawnInheritArgs" : "std.proc.spawnInherit");
+      return mir_verify_proc_spawn_inherit_contract(ir, value);
+    case IR_VALUE_PROC_CAPTURE_FILES:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureFilesArgs" : "std.proc.captureFiles");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->arg_len == 2 ? "std.proc.captureFilesArgs" : "std.proc.captureFiles");
+      return mir_verify_proc_capture_files_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_SPAWN:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, value->int_value ? (value->arg_len == 4 ? "std.pty.spawnArgs" : (value->index ? "std.pty.spawnInEnv" : (value->right ? "std.pty.spawnIn" : "std.pty.spawn"))) : (value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild"))));
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, value->int_value ? (value->arg_len == 4 ? "std.pty.spawnArgs" : (value->index ? "std.pty.spawnInEnv" : (value->right ? "std.pty.spawnIn" : "std.pty.spawn"))) : (value->arg_len == 4 ? "std.proc.spawnChildArgs" : (value->index ? "std.proc.spawnChildInEnv" : (value->right ? "std.proc.spawnChildIn" : "std.proc.spawnChild"))));
+      return mir_verify_proc_child_spawn_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_OP:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child op");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc child op");
+      return mir_verify_proc_child_op_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_IO:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.proc child I/O");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.proc child I/O");
+      return mir_verify_proc_child_io_contract(ir, fun, state, value);
+    case IR_VALUE_PROC_PTY_RESIZE:
+      mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, "std.pty.resize");
+      mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, "std.pty.resize");
+      return mir_verify_proc_pty_resize_contract(ir, value);
     default:
       return true;
   }
@@ -1402,6 +1519,16 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
     case IR_VALUE_FS_WRITE_BYTES_PATH:
       if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem write result type mismatch", "filesystem write bytes")) return false;
       return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid filesystem write input", "filesystem write path", "filesystem write bytes");
+    case IR_VALUE_FS_APPEND_BYTES_PATH:
+      if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem append result type mismatch", "filesystem append bytes")) return false;
+      return mir_verify_byte_view_pair(ir, value, "MIR verifier found invalid filesystem append input", "filesystem append path", "filesystem append bytes");
+    case IR_VALUE_PROC_SPAWN_INHERIT: return mir_verify_proc_spawn_inherit_contract(ir, value);
+    case IR_VALUE_PROC_CAPTURE: return mir_verify_proc_capture_contract(ir, fun, state, value);
+    case IR_VALUE_PROC_CAPTURE_FILES: return mir_verify_proc_capture_files_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_SPAWN: return mir_verify_proc_child_spawn_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_OP: return mir_verify_proc_child_op_contract(ir, value);
+    case IR_VALUE_PROC_CHILD_IO: return mir_verify_proc_child_io_contract(ir, fun, state, value);
+    case IR_VALUE_PROC_PTY_RESIZE: return mir_verify_proc_pty_resize_contract(ir, value);
     case IR_VALUE_FS_READ_ALL:
       if (value->type == IR_TYPE_MAYBE_BYTE_VIEW) {
         if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem readAll result")) return false;
@@ -1451,6 +1578,11 @@ static bool mir_verify_fs_value_contract(IrProgram *ir, const IrFunction *fun, c
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
       if (!mir_verify_maybe_scalar_result(ir, value, IR_TYPE_USIZE, "MIR verifier found filesystem directory count result type mismatch", "filesystem directory count")) return false;
       return mir_verify_value_type(ir, value->left, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid filesystem directory path", "filesystem directory path");
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
+      if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem directory entry name result")) return false;
+      if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid filesystem directory entry name buffer", "filesystem directory entry name buffer")) return false;
+      if (!mir_verify_value_type(ir, value->right, IR_TYPE_BYTE_VIEW, "MIR verifier found invalid filesystem directory path", "filesystem directory path")) return false;
+      return mir_verify_value_is_integer(ir, value->index, "MIR verifier found invalid filesystem directory entry index", "filesystem directory entry index");
     case IR_VALUE_FS_TEMP_NAME:
       if (!mir_verify_helper_result_type(ir, value, IR_TYPE_MAYBE_BYTE_VIEW, "filesystem temp name result")) return false;
       if (!mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid filesystem temp buffer", "filesystem temp buffer")) return false;
@@ -1799,6 +1931,9 @@ static const char *mir_verify_time_op_name(IrTimeOp op) {
     case IR_TIME_OP_MIN: return "std.time.min";
     case IR_TIME_OP_MAX: return "std.time.max";
     case IR_TIME_OP_CLAMP: return "std.time.clamp";
+    case IR_TIME_OP_SLEEP: return "std.time.sleep";
+    case IR_TIME_OP_WALL_SECONDS: return "std.time.wallSeconds";
+    case IR_TIME_OP_MONOTONIC: return "std.time.monotonic";
   }
   return "std.time";
 }
@@ -1813,6 +1948,15 @@ static bool mir_verify_time_runtime_contract(IrProgram *ir, const IrValue *value
     case IR_TIME_OP_AS_SECONDS_FLOOR:
       expected_args = 1;
       expected_result = IR_TYPE_I64;
+      break;
+    case IR_TIME_OP_WALL_SECONDS:
+    case IR_TIME_OP_MONOTONIC:
+      expected_args = 0;
+      expected_result = IR_TYPE_I64;
+      break;
+    case IR_TIME_OP_SLEEP:
+      expected_args = 1;
+      expected_result = IR_TYPE_BOOL;
       break;
     case IR_TIME_OP_AS_MS_FLOOR:
       expected_args = 1;
@@ -1839,6 +1983,63 @@ static bool mir_verify_time_runtime_contract(IrProgram *ir, const IrValue *value
   for (size_t i = 0; i < value->arg_len; i++) {
     if (!mir_verify_value_type(ir, value->args[i], IR_TYPE_I64, "MIR verifier found invalid std.time Duration argument", "std.time Duration")) return false;
   }
+  return true;
+}
+
+static const char *mir_verify_term_op_name(IrTermOp op) {
+  switch (op) {
+    case IR_TERM_OP_STDIN_IS_TTY: return "std.term.stdinIsTty";
+    case IR_TERM_OP_STDOUT_IS_TTY: return "std.term.stdoutIsTty";
+    case IR_TERM_OP_WIDTH_OR: return "std.term.widthOr";
+    case IR_TERM_OP_HEIGHT_OR: return "std.term.heightOr";
+    case IR_TERM_OP_ENTER_RAW_MODE: return "std.term.enterRawMode";
+    case IR_TERM_OP_LEAVE_RAW_MODE: return "std.term.leaveRawMode";
+    case IR_TERM_OP_READ_INPUT: return "std.term.readInput";
+  }
+  return "std.term";
+}
+
+static bool mir_verify_term_runtime_contract(IrProgram *ir, const IrFunction *fun, const MirVerifierState *state, const IrValue *value, MirHelperRequirements *requirements) {
+  mir_require_count(&requirements->runtime_helpers, 1, value->line, value->column, mir_verify_term_op_name((IrTermOp)value->int_value));
+  mir_require_count(&requirements->host_runtime_imports, 1, value->line, value->column, mir_verify_term_op_name((IrTermOp)value->int_value));
+  size_t expected_args = 0;
+  IrTypeKind expected_result = IR_TYPE_BOOL;
+  IrTypeKind expected_element = IR_TYPE_VOID;
+  switch ((IrTermOp)value->int_value) {
+    case IR_TERM_OP_STDIN_IS_TTY:
+    case IR_TERM_OP_STDOUT_IS_TTY:
+    case IR_TERM_OP_ENTER_RAW_MODE:
+    case IR_TERM_OP_LEAVE_RAW_MODE:
+      expected_args = 0;
+      expected_result = IR_TYPE_BOOL;
+      break;
+    case IR_TERM_OP_WIDTH_OR:
+    case IR_TERM_OP_HEIGHT_OR:
+      expected_args = 1;
+      expected_result = IR_TYPE_USIZE;
+      break;
+    case IR_TERM_OP_READ_INPUT:
+      expected_args = 0;
+      expected_result = IR_TYPE_MAYBE_SCALAR;
+      expected_element = IR_TYPE_USIZE;
+      break;
+    default:
+      mir_verify_mark_unsupported(ir, "MIR verifier found unknown std.term runtime operation", value->line, value->column, "unknown std.term operation");
+      return false;
+  }
+  if (value->arg_len != expected_args) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found invalid std.term runtime arity", value->line, value->column, "wrong std.term arity");
+    return false;
+  }
+  if (!mir_verify_helper_result_type(ir, value, expected_result, "std.term runtime result")) return false;
+  if (expected_result == IR_TYPE_MAYBE_SCALAR && value->element_type != expected_element) {
+    mir_verify_mark_unsupported(ir, "MIR verifier found std.term Maybe result element mismatch", value->line, value->column, mir_type_kind_name(value->element_type));
+    return false;
+  }
+  if ((IrTermOp)value->int_value == IR_TERM_OP_READ_INPUT) {
+    return mir_verify_mutable_byte_storage(ir, fun, state, value->left, "MIR verifier found invalid terminal input buffer", "terminal input buffer");
+  }
+  if (expected_args == 1 && !mir_verify_value_type(ir, value->args[0], IR_TYPE_USIZE, "MIR verifier found invalid std.term fallback argument", "std.term fallback")) return false;
   return true;
 }
 
@@ -2189,6 +2390,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
       return mir_verify_text_runtime_contract(ir, value, requirements);
     case IR_VALUE_TIME_RUNTIME:
       return mir_verify_time_runtime_contract(ir, value, requirements);
+    case IR_VALUE_TERM_RUNTIME:
+      return mir_verify_term_runtime_contract(ir, fun, state, value, requirements);
     case IR_VALUE_MATH_RUNTIME:
       return mir_verify_math_runtime_contract(ir, value, requirements);
     case IR_VALUE_SEARCH_RUNTIME:
@@ -2248,7 +2451,8 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_HTTP_STATUS_CLASS:
     case IR_VALUE_PARSE_RUNTIME: case IR_VALUE_PARSE_I32: case IR_VALUE_PARSE_U32: case IR_VALUE_ARGS_PARSE_U32: case IR_VALUE_ARGS_FIND: case IR_VALUE_ARGS_CONTAINS:
     case IR_VALUE_ARGS_VALUE_AFTER: case IR_VALUE_ARGS_VALUE_AFTER_OR: case IR_VALUE_ARGS_VALUE_AFTER_PARSE_U32:
-    case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE:
+    case IR_VALUE_FMT_BOOL: case IR_VALUE_FMT_HEX_U32: case IR_VALUE_FMT_I32: case IR_VALUE_FMT_U32: case IR_VALUE_FMT_USIZE: case IR_VALUE_PROC_SPAWN_INHERIT: case IR_VALUE_PROC_CAPTURE: case IR_VALUE_PROC_CAPTURE_FILES:
+    case IR_VALUE_PROC_CHILD_SPAWN: case IR_VALUE_PROC_CHILD_OP: case IR_VALUE_PROC_CHILD_IO: case IR_VALUE_PROC_PTY_RESIZE:
       return mir_verify_direct_helper_value_contract(ir, fun, state, value, requirements);
     case IR_VALUE_MAYBE_HAS:
     case IR_VALUE_MAYBE_VALUE:
@@ -2285,6 +2489,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_FS_READ_BYTES_PATH:
     case IR_VALUE_FS_READ_BYTES_AT_PATH:
     case IR_VALUE_FS_WRITE_BYTES_PATH:
+    case IR_VALUE_FS_APPEND_BYTES_PATH:
     case IR_VALUE_FS_READ_ALL:
     case IR_VALUE_FS_READ_FILE:
     case IR_VALUE_FS_WRITE_ALL_FILE:
@@ -2297,6 +2502,7 @@ static bool mir_verify_direct_value_kind_contract(IrProgram *ir, const IrFunctio
     case IR_VALUE_FS_REMOVE_DIR:
     case IR_VALUE_FS_IS_DIR:
     case IR_VALUE_FS_DIR_ENTRY_COUNT:
+    case IR_VALUE_FS_DIR_ENTRY_NAME:
     case IR_VALUE_FS_TEMP_NAME:
     case IR_VALUE_FS_ATOMIC_WRITE:
       return mir_verify_fs_value_contract(ir, fun, state, value);
@@ -2376,6 +2582,24 @@ static bool mir_verify_direct_return_instr(IrProgram *ir, const IrFunction *fun,
   return false;
 }
 
+static bool mir_verify_array_fill_instr(IrProgram *ir, const IrFunction *fun, const IrInstr *instr) {
+  if (!mir_verify_local_index(ir, fun, instr->array_index, instr->line, instr->column, "MIR verifier found array fill outside the local table")) return false;
+  const IrLocal *local = &fun->locals[instr->array_index];
+  if (!local->is_array || local->array_len == 0 || local->type == IR_TYPE_BYTE_VIEW) {
+    char actual[160];
+    snprintf(actual, sizeof(actual), "local %s is %s", local->name ? local->name : "<unnamed>", mir_type_kind_name(local->type));
+    mir_verify_mark_unsupported(ir, "MIR verifier found array fill to an unsupported local", instr->line, instr->column, actual);
+    return false;
+  }
+  if (!instr->value || (instr->value->kind != IR_VALUE_INT && instr->value->kind != IR_VALUE_BOOL) || instr->value->type != local->element_type) {
+    char actual[160];
+    snprintf(actual, sizeof(actual), "array fill has %s but element is %s", instr->value ? mir_type_kind_name(instr->value->type) : "missing", mir_type_kind_name(local->element_type));
+    mir_verify_mark_unsupported(ir, "MIR verifier found array fill type mismatch", instr->line, instr->column, actual);
+    return false;
+  }
+  return true;
+}
+
 static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fun, const IrInstr *instr, MirHelperRequirements *requirements) {
   if (!ir || !ir->mir_valid || !fun || !instr) return false;
   switch (instr->kind) {
@@ -2417,6 +2641,10 @@ static bool mir_verify_direct_instr_contract(IrProgram *ir, const IrFunction *fu
         mir_verify_mark_unsupported(ir, "MIR verifier found indexed write type mismatch", instr->line, instr->column, actual);
         return false;
       }
+      break;
+    }
+    case IR_INSTR_ARRAY_FILL: {
+      if (!mir_verify_array_fill_instr(ir, fun, instr)) return false;
       break;
     }
     case IR_INSTR_FIELD_STORE: {
