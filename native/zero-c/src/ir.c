@@ -1221,7 +1221,7 @@ static bool ir_add_readonly_data(IrProgram *ir, const unsigned char *bytes, unsi
   }
 
   size_t offset = IR_READONLY_DATA_BASE + ir->readonly_data_bytes;
-  if (offset + len >= IR_READONLY_DATA_LIMIT) {
+  if (offset >= IR_READONLY_DATA_LIMIT || len >= IR_READONLY_DATA_LIMIT - offset) {
     ir_mark_unsupported(ir, "direct backend readonly data exceeds the bootstrap data limit", line, column, "string/data segment");
     return false;
   }
