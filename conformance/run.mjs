@@ -835,6 +835,7 @@ const passCheckFixtures = [
   "conformance/native/pass/checked-fallible-interface-method.0",
   "conformance/native/pass/fallibility-check-value.0",
   "conformance/native/pass/rescue-check.0",
+  "conformance/native/pass/fallible-void-fallthrough.0",
   "conformance/native/pass/std-fs-fallible.0",
   "conformance/native/pass/std-fs-fallible-resources.0",
   "conformance/native/pass/std-cli-helpers.0",
@@ -5175,6 +5176,7 @@ await assertDirectRuntimeRequired("conformance/native/pass/frame-large-locals.0"
 await assertDirectRuntimeRequired("conformance/native/pass/frame-limit-boundary.0", "frame-limit-boundary-required", { stdout: "frame limit boundary ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/frame-split-helpers.0", "frame-split-helpers-required", { stdout: "frame split helpers ok\n" });
 await assertDirectRuntimeRequired("conformance/native/pass/fixed-buf-alloc-local.0", "fixed-buf-alloc-local-required", { stdout: "fixed buf alloc local ok\n" });
+await assertDirectRuntimeRequired("conformance/native/pass/fallible-void-fallthrough.0", "fallible-void-fallthrough-required", { stdout: "fallible void fallthrough ok\n" });
 
 const frameLimitOverFixture = `${outDir}/frame-limit-over.0`;
 const frameLimitOverBody = await writeImportFailureFixture(frameLimitOverFixture, `pub fn main(world: World) -> Void raises {

@@ -1,0 +1,51 @@
+type Counter {
+    total: i64,
+}
+
+fn leave_nothing() -> Void raises [Missing] {
+}
+
+fn leave_wide() -> Void raises [Missing] {
+    let wide: i64 = 4294967296
+}
+
+fn leave_inferred() -> Void raises {
+    check leave_wide()
+    let wide: i64 = 4294967296
+}
+
+fn leave_param(value: i64) -> Void raises [Missing] {
+    let kept: i64 = value
+}
+
+fn store_total(counter: mutref<Counter>, value: i64) -> Void raises [Missing] {
+    counter.total = value
+}
+
+fn leave_or_raise(fail: Bool, value: i64) -> Void raises [Missing] {
+    if fail {
+        raise Missing
+    }
+    let kept: i64 = value
+}
+
+fn finished(fail: Bool) -> Bool raises [Missing] {
+    check leave_or_raise(fail, -1)
+    return true
+}
+
+pub fn main(world: World) -> Void raises {
+    var counter: Counter = Counter { total: 0 }
+    let seed: i64 = 4294967296
+    check leave_nothing()
+    check leave_wide()
+    check leave_inferred()
+    check leave_param(4294967296)
+    check leave_param(-1)
+    check store_total(&mut counter, 4294967296)
+    let fell_through: Bool = rescue finished(false) err false
+    let raised_through: Bool = rescue finished(true) err false
+    if counter.total == 4294967296 && fell_through && !raised_through {
+        check world.out.write("fallible void fallthrough ok\n")
+    }
+}

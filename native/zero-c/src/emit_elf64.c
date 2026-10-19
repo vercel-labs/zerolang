@@ -4038,7 +4038,13 @@ static bool elf_emit_function_text(ZBuf *text, const IrFunction *fun, ElfEmitCon
     abi_slot += slots;
   }
   if (!elf_emit_instrs(text, fun, fun->instrs, fun->instr_len, ctx, diag)) return false;
-  if (fun->instr_len == 0 || fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RETURN) elf_emit_epilogue(text, fun, ctx);
+  if (fun->instr_len == 0 || fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RETURN) {
+    /* Falling off a fallible Void body is an implicit `return`: clear the
+       packed error channel (rax[63:32]) like the explicit return path does,
+       instead of leaving the last emitted value in rax. */
+    if (fun->raises) z_x64_emit_xor_rax_rax(text);
+    elf_emit_epilogue(text, fun, ctx);
+  }
   return true;
 }
 
