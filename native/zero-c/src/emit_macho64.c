@@ -3569,7 +3569,11 @@ static bool macho_emit_function_text(ZBuf *text, const IrFunction *fun, MachOEmi
     abi_slot += slots;
   }
   if (!macho_emit_instrs(text, fun, fun->instrs, fun->instr_len, frame_size, seed_process_args, ctx, diag)) return false;
-  if (fun->instr_len == 0 || (fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RETURN && fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RAISE)) macho_emit_epilogue(text, frame_size, seed_process_args);
+  if (fun->instr_len == 0 || (fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RETURN && fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RAISE)) {
+    /* Implicit `return` from a fallible Void body: clear the error channel. */
+    if (fun->raises) z_aarch64_emit_movz_x(text, 0, 0);
+    macho_emit_epilogue(text, frame_size, seed_process_args);
+  }
   return true;
 }
 

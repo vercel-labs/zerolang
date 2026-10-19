@@ -2434,7 +2434,11 @@ static bool machx64_emit_function_text(ZBuf *text, const IrFunction *fun, MachOE
     abi_slot++;
   }
   if (!machx64_emit_instrs(text, fun, fun->instrs, fun->instr_len, ctx, diag)) return false;
-  if (fun->instr_len == 0 || (fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RETURN && fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RAISE)) z_x64_emit_epilogue(text);
+  if (fun->instr_len == 0 || (fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RETURN && fun->instrs[fun->instr_len - 1].kind != IR_INSTR_RAISE)) {
+    /* Implicit `return` from a fallible Void body: clear the error channel. */
+    if (fun->raises) z_x64_emit_xor_rax_rax(text);
+    z_x64_emit_epilogue(text);
+  }
   return true;
 }
 
