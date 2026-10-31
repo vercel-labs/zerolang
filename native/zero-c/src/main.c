@@ -16422,18 +16422,10 @@ int main(int argc, char **argv) {
       }
       bool wrote = false;
       if (!matches) {
-        FILE *out = fopen(fmt_input.source_file, "wb");
-        if (!out) {
-          fprintf(stderr, "zero fmt: could not open %s for writing\n", fmt_input.source_file);
-          free(formatted);
-          z_free_source(&fmt_input);
-          return 1;
-        }
-        size_t len = strlen(formatted);
-        size_t written = fwrite(formatted, 1, len, out);
-        fclose(out);
-        if (written != len) {
-          fprintf(stderr, "zero fmt: short write to %s (%zu of %zu bytes)\n", fmt_input.source_file, written, len);
+        if (!z_write_file(fmt_input.source_file, formatted, &diag)) {
+          const char *diag_path = diag.path ? diag.path : fmt_input.source_file;
+          if (command.json) print_command_diag_json(&command, diag_path, &diag);
+          else print_diag(diag_path, &diag);
           free(formatted);
           z_free_source(&fmt_input);
           return 1;
