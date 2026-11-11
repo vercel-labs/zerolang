@@ -723,7 +723,7 @@ int z_program_graph_run_tests_direct(const ZProgramGraphTestCommand *command, co
            function_count == 1 ? "" : "s",
            module_count,
            module_count == 1 ? "" : "s");
-    printf("tip: add a test block in source, or zero patch --op 'addTest name=\"...\" call=\"<fn>\" arg0=\"...\" expect=\"...\" type=\"<type>\"'\n");
+    printf("tip: add a test block in source, or zero patch --op 'addTest name=\"...\" call=\"<two-arg-fn>\" arg0=\"...\" arg1=\"...\" expect=\"...\" type=\"<type>\"'\n");
   } else printf("%zu test(s) ok\n", run.selected);
   int rc = run.failed ? 1 : 0;
   pgt_run_free(&run);
