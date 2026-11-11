@@ -143,7 +143,7 @@ pub fn main() -> Void {
 }
 ```
 
-Array and span indexing is bounds-checked at runtime; an out-of-range index traps with a signal exit and no output, so exercise boundary inputs before declaring a change done.
+Array and span indexing is bounds-checked at runtime; an out-of-range index prints `trap: index out of bounds` to stderr and terminates abnormally, so exercise boundary inputs before declaring a change done.
 
 ## Generics
 
